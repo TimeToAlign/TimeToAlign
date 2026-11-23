@@ -22,6 +22,7 @@ Sections (in file order):
 
 from __future__ import annotations
 
+import math
 import re
 from abc import abstractmethod
 from collections.abc import Sequence
@@ -47,6 +48,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationError,
     computed_field,
     field_validator,
     model_validator,
@@ -429,7 +431,30 @@ class _OnOneAxis:
             values[name] = _axis_value(
                 _unwrapped(info.annotation), row[name], axis, written
             )
-        return cls(**values)
+        return cls._built(**values)
+
+    @classmethod
+    def _built(cls, **values: Any) -> Any:
+        """The scalar of *values*, as every constructor of a shape (and of a
+        Box) makes it.
+
+        A refusal of the scalar's validators is raised as the validator
+        composed it, a ``ValueError`` holding the message alone, never inside
+        pydantic's validation report; an input pydantic refuses before any
+        validator runs (a missing or unknown property) keeps pydantic's.
+
+        Raises:
+            ValueError: The validator's refusal.
+            ValidationError: Pydantic's refusal of the input.
+        """
+        try:
+            return cls(**values)
+        except ValidationError as error:
+            for detail in error.errors():
+                cause = detail.get("ctx", {}).get("error")
+                if isinstance(cause, ValueError):
+                    raise ValueError(*cause.args) from None
+            raise
 
 
 def _axis_value(kind: Any, cell: Any, unit: TimeUnit, number_type: NumberType) -> Any:
@@ -461,11 +486,12 @@ def _on_axis(
     must name. *number_type*, if given, decides how the number is written;
     else a scalar keeps its own and a raw number takes the unit's default.
 
-    Geometry is never rounded (:func:`_held_exactly`): on an ``int`` axis a
-    float is taken only when it is a whole number (``100.0`` is 100) and a
-    ratio only when its denominator is 1; on a ``fraction`` axis a float is
-    taken only when it is a whole number; on a ``float`` axis a value is
-    taken as given.
+    Geometry is finite and never rounded (:func:`_held_exactly`): NaN and
+    infinities are refused on every axis; on an ``int`` axis a float is taken
+    only when it is a whole number (``100.0`` is 100) and a ratio only when
+    its denominator is 1; on a ``fraction`` axis a float is taken only when
+    it is a whole number; on a ``float`` axis a ratio is taken only when it
+    is a whole number, a float as given.
 
     Raises:
         TypeError: If a raw number comes without a unit.
@@ -490,7 +516,7 @@ def _on_axis(
         axis, written, number = TimeUnit(unit), number_type, value
     target = axis.resolve_number_type(written)
     held = _held_exactly(number, axis, target, f"{owner}'s {what}")
-    return kind(held, axis, number_type=written)
+    return kind(held, axis, number_type=target)
 
 
 def _held_exactly(
@@ -498,18 +524,37 @@ def _held_exactly(
 ) -> Any:
     """*number* as the axis *unit*, *number_type* holds it, never rounded.
 
-    The strict entry of geometry: a whole float is read as its integer, so
-    the scalar's construction protocol never rounds a shape's number; any
-    value the axis cannot hold exactly is refused here.
+    The strict entry of geometry, which every number of a shape and a Box's
+    origin pass: a whole float or a whole ratio is read as its integer, so
+    the scalar's construction protocol never rounds a shape's number nor
+    turns it into another number type; any value the axis cannot hold as
+    given is refused here, naming *what*, the value and the axis.
+
+    Args:
+        number: The value given.
+        unit: The unit of the axis.
+        number_type: The axis's number type, resolved.
+        what: How the message names the value: ``"A shape's x"``.
+
+    Returns:
+        The value the scalar is made of.
 
     Raises:
-        ValueError: If *number* is a float that is no whole number on an
-            ``int`` or ``fraction`` axis, or a ratio that is no whole number
-            on an ``int`` axis.
+        ValueError: If *number* is NaN or infinite (on every axis), a float
+            that is no whole number on an ``int`` or ``fraction`` axis, or a
+            ratio that is no whole number on an ``int`` or ``float`` axis.
     """
-    if number_type is NumberType.float or isinstance(number, bool):
+    if isinstance(number, bool):
         return number
+    shown = format_number(number) if isinstance(number, (float, Fraction)) else ""
     if isinstance(number, float):
+        if not math.isfinite(number):
+            raise ValueError(
+                f"{what} is {shown}, which is no finite number: geometry holds "
+                "finite numbers only."
+            )
+        if number_type is NumberType.float:
+            return number
         if number.is_integer():
             return int(number)
         reason = (
@@ -518,17 +563,23 @@ def _held_exactly(
             else "a float is read as a ratio only when it is a whole number; "
             "give a Fraction."
         )
-    elif (
-        isinstance(number, Fraction)
-        and number.denominator != 1
-        and number_type is NumberType.int
-    ):
+    elif isinstance(number, Fraction):
+        if number.denominator == 1:
+            return number.numerator
+        if number_type is NumberType.fraction:
+            return number
+        if number_type is NumberType.float:
+            raise ValueError(
+                f"{what} is {shown}, a ratio, which {unit} as float does not take: "
+                "the declared number type governs and a ratio is read as a float "
+                "only when it is a whole number; give a float."
+            )
         reason = "geometry is never rounded."
     else:
         return number
     raise ValueError(
-        f"{what} is {format_number(number)}, which {unit} as {number_type.name} "
-        f"cannot hold exactly: {reason}"
+        f"{what} is {shown}, which {unit} as {number_type.name} cannot hold "
+        f"exactly: {reason}"
     )
 
 
@@ -593,6 +644,23 @@ def _axis_text(scalar: TimeScalar) -> str:
     return f"{scalar.unit} as {scalar.number_type}"
 
 
+def _held_on_their_axis(
+    owner: BaseModel, members: list[tuple[str, TimeScalar]]
+) -> None:
+    """Refuse a member of *owner* its axis does not hold (:func:`_held_exactly`).
+
+    A scalar made directly, not through a constructor's strict entry, is
+    checked by its validator here: a NaN or an infinity is refused.
+    """
+    for name, scalar in members:
+        _held_exactly(
+            scalar.value,
+            scalar.unit,
+            scalar.number_type,
+            f"A {type(owner).__name__}'s {name}",
+        )
+
+
 class Point(_OnOneAxis, ScalarVocabulary, BaseModel):
     """A point of an image: its ``x`` and ``y``, on one axis.
 
@@ -634,7 +702,7 @@ class Point(_OnOneAxis, ScalarVocabulary, BaseModel):
                 return point
             point = (point.x, point.y)
         x, y = point
-        return cls(
+        return cls._built(
             x=_on_axis(x, Coordinate, what="x", unit=unit, number_type=number_type),
             y=_on_axis(y, Coordinate, what="y", unit=unit, number_type=number_type),
         )
@@ -646,6 +714,7 @@ class Point(_OnOneAxis, ScalarVocabulary, BaseModel):
                 f"A Point lies on one axis: its y is in {_axis_text(self.y)}, its x "
                 f"in {_axis_text(self.x)}."
             )
+        _held_on_their_axis(self, [("x", self.x), ("y", self.y)])
         return self
 
     def __repr__(self) -> str:
@@ -670,11 +739,13 @@ class Shape(_OnOneAxis, ScalarVocabulary, BaseModel):
     canonical order ``top_left, top_right, bottom_right, bottom_left`` (the
     order SVG and IIIF selectors draw a polygon in).
 
-    Every number enters a shape as given, never rounded: on an ``int`` axis
-    a float is taken only when it is a whole number (``100.0`` is 100) and a
-    ratio only when its denominator is 1, on a ``fraction`` axis a float only
-    when it is a whole number; anything else is refused, naming the value
-    and the axis.
+    Every number enters a shape as given, finite and never rounded: NaN and
+    the infinities are refused on every axis; on an ``int`` axis a float is
+    taken only when it is a whole number (``100.0`` is 100) and a ratio only
+    when its denominator is 1, on a ``fraction`` axis a float only when it
+    is a whole number, on a ``float`` axis a ratio only when it is a whole
+    number; anything else is refused, naming the value and the axis. A
+    constructor's refusal is a ``ValueError`` holding its message alone.
 
     A shape is written as a format writes it (:meth:`as_media_fragment`,
     :meth:`as_svg_points`, :meth:`as_mei_zone`) and read back from it; a
@@ -801,6 +872,7 @@ class Shape(_OnOneAxis, ScalarVocabulary, BaseModel):
                     f"A {type(self).__name__} lies on one axis: its {name} is in "
                     f"{_axis_text(scalar)}, its {first_name} in {_axis_text(first)}."
                 )
+        _held_on_their_axis(self, members)
         self._check()
         return self
 
@@ -1058,7 +1130,7 @@ class BoundingBox(Shape):
                 (``1.5`` on ``pixels``: never rounded).
         """
         axis = {"unit": unit, "number_type": number_type}
-        return cls(
+        return cls._built(
             x=_on_axis(x, Coordinate, what="x", **axis),
             y=_on_axis(y, Coordinate, what="y", **axis),
             width=_on_axis(width, Duration, what="width", **axis),
@@ -1092,7 +1164,7 @@ class BoundingBox(Shape):
         top = _on_axis(uly, Coordinate, what="uly", **axis)
         right = _on_axis(lrx, Coordinate, what="lrx", **axis)
         bottom = _on_axis(lry, Coordinate, what="lry", **axis)
-        return cls(x=left, y=top, width=right - left, height=bottom - top)
+        return cls._built(x=left, y=top, width=right - left, height=bottom - top)
 
     @classmethod
     def from_media_fragment(
@@ -1308,7 +1380,7 @@ class Quadrilateral(Shape):
         given = list(points)
         if len(given) != 4:
             raise ValueError(f"A Quadrilateral has four corners; {len(given)} given.")
-        return cls(
+        return cls._built(
             **{
                 role: Point.of(point, unit=unit, number_type=number_type)
                 for role, point in zip(roles, given)
@@ -1330,12 +1402,15 @@ class Quadrilateral(Shape):
         points of a convex outline are read in either direction from any
         corner and brought into the canonical order: a counter-clockwise
         list (y down) is reversed and the list is started at its top-left
-        corner, the corner of least x + y (of two, the upper).
+        corner, the corner of least x + y (of two, the upper). A closed ring,
+        the four points followed by the first again, is the same outline and
+        reads as its four points.
 
         Raises:
-            ValueError: If *text* does not hold four points, or the points do
-                not bound a convex quadrilateral (an outline turning both
-                ways), naming the points where it turns.
+            ValueError: If *text* does not hold four points (or a closed ring
+                of them), or the points do not bound a convex quadrilateral
+                (an outline turning both ways), naming the points where it
+                turns.
 
         Examples:
             A measure listed counter-clockwise from its bottom-right corner:
@@ -1353,16 +1428,19 @@ class Quadrilateral(Shape):
                 f"The SVG points {text!r} hold {len(tokens)} numbers, which are no "
                 "list of x,y pairs; a Quadrilateral's are four points."
             )
-        if len(tokens) != 8:
-            raise ValueError(
-                f"The SVG points {text!r} hold {len(tokens) // 2} points; a "
-                "Quadrilateral's are four."
-            )
+        refusal = ValueError(
+            f"The SVG points {text!r} hold {len(tokens) // 2} points; a "
+            "Quadrilateral's are four."
+        )
+        if len(tokens) not in (8, 10):
+            raise refusal
         numbers = [_read_number(token, written) for token in tokens]
-        corners = [
-            Point.of(pair, unit=axis, number_type=written)
-            for pair in zip(numbers[0::2], numbers[1::2])
-        ]
+        pairs = list(zip(numbers[0::2], numbers[1::2]))
+        if len(pairs) == 5:
+            if pairs[4] != pairs[0]:
+                raise refusal
+            del pairs[4]  # a closed ring: the outline back at its first point
+        corners = [Point.of(pair, unit=axis, number_type=written) for pair in pairs]
         turns = cls._turns(corners)
         clockwise = [index for index, turn in enumerate(turns) if turn > 0]
         counter = [index for index, turn in enumerate(turns) if turn < 0]
@@ -1375,7 +1453,9 @@ class Quadrilateral(Shape):
         if counter:
             corners.reverse()
         start = cls._top_left_at(corners)
-        return cls(**dict(zip(cls.CORNER_ORDER, corners[start:] + corners[:start])))
+        return cls._built(
+            **dict(zip(cls.CORNER_ORDER, corners[start:] + corners[:start]))
+        )
 
     @classmethod
     def _from_dict_values(
@@ -4640,25 +4720,6 @@ class Event(_OnOneAxis, ScalarVocabulary, BaseModel):
             self._refuse_off_the_start_axis("duration", self.duration)
         return self
 
-    def _refuse_off_the_start_axis(self, what: str, held: Any) -> None:
-        """Refuse *held* (it has a ``unit`` and a ``number_type``) when it is
-        not on the start's axis.
-
-        Raises:
-            ValueError: Naming the event, *what* and both axes.
-        """
-        start = self.start
-        if held.unit != start.unit:
-            raise ValueError(
-                f"{self._name}: its {what} is in {held.unit}, its start in "
-                f"{start.unit}; both are on one axis."
-            )
-        if held.number_type is not start.number_type:
-            raise ValueError(
-                f"{self._name}: its {what} is written as {held.number_type}, its "
-                f"start as {start.number_type}; both are on one axis."
-            )
-
     @property
     def _name(self) -> str:
         """The event as a message names it: ``Box 'm1'``, ``A Box``."""
@@ -4686,6 +4747,25 @@ class Event(_OnOneAxis, ScalarVocabulary, BaseModel):
         if self.duration is None:
             return None
         return self.start + self.duration
+
+    def _refuse_off_the_start_axis(self, what: str, held: Any) -> None:
+        """Refuse *held* (it has a ``unit`` and a ``number_type``) when it is
+        not on the start's axis.
+
+        Raises:
+            ValueError: Naming the event, *what* and both axes.
+        """
+        start = self.start
+        if held.unit != start.unit:
+            raise ValueError(
+                f"{self._name}: its {what} is in {held.unit}, its start in "
+                f"{start.unit}; both are on one axis."
+            )
+        if held.number_type is not start.number_type:
+            raise ValueError(
+                f"{self._name}: its {what} is written as {held.number_type}, its "
+                f"start as {start.number_type}; both are on one axis."
+            )
 
     def to_event_row(self) -> dict[str, Any]:
         """The event as an event row of a timeline.
@@ -4899,7 +4979,9 @@ class Box(Event):
             if isinstance(shape, BoundingBox)
             else {"quadrilateral": shape}
         )
-        return cls(id=id, start=x_min - shift, duration=shape.x_max - x_min, **held)
+        return cls._built(
+            id=id, start=x_min - shift, duration=shape.x_max - x_min, **held
+        )
 
     @model_validator(mode="after")
     def _one_shape_spanning_the_duration(self) -> Box:

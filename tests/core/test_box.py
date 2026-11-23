@@ -116,9 +116,35 @@ class TestFromShape:
     ) -> None:
         with pytest.raises(ValueError) as refused:
             Box.from_shape(measure_1, origin=origin)
+        assert type(refused.value) is ValueError
         assert str(refused.value) == (
             f"A Box's origin is {shown}, which pixels as int cannot hold exactly: "
             "geometry is never rounded."
+        )
+
+    @pytest.mark.parametrize(
+        ("origin", "shown"), [(float("nan"), "nan"), (float("-inf"), "-inf")]
+    )
+    def test_a_non_finite_origin_is_refused(
+        self, origin: float, shown: str, measure_1: Quadrilateral
+    ) -> None:
+        with pytest.raises(ValueError) as refused:
+            Box.from_shape(measure_1, origin=origin)
+        assert type(refused.value) is ValueError
+        assert str(refused.value) == (
+            f"A Box's origin is {shown}, which is no finite number: geometry holds "
+            "finite numbers only."
+        )
+
+    def test_a_ratio_origin_on_a_float_axis_is_refused(self) -> None:
+        box = BoundingBox.from_xywh(1.5, 0, 2.5, 1, unit="css_pixels")
+        with pytest.raises(ValueError) as refused:
+            Box.from_shape(box, origin=Fraction(1, 2))
+        assert type(refused.value) is ValueError
+        assert str(refused.value) == (
+            "A Box's origin is 1/2, a ratio, which css_pixels as float does not "
+            "take: the declared number type governs and a ratio is read as a float "
+            "only when it is a whole number; give a float."
         )
 
 

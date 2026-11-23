@@ -815,10 +815,19 @@ sides with the axis once in its metadata.
   1221,2266"`: a counter-clockwise list is reversed, then started at the
   top-left corner. The tie rule's worked example is the diamond `"0,5 5,10
   10,5 5,0"` (counter-clockwise): (0, 5) and (5, 0) both have x + y = 5, the
-  upper (5, 0) is top-left, so it reads as `"5,0 10,5 5,10 0,5"`. Anything
-  that is not four points of a convex quadrilateral is refused whole:
-  five points (`The SVG points '0,0 10,0 10,10 0,10 5,5' hold 5 points; a
-  Quadrilateral's are four.`), an odd count of numbers (`The SVG points
+  upper (5, 0) is top-left, so it reads as `"5,0 10,5 5,10 0,5"`. **A
+  closed ring is the same outline**: SVG and MEI allow a polygon's list to
+  end at its first point again, so `"1221,1589 2151,1589 2161,2266
+  1221,2266 1221,1589"` (measure 1 closed) and its counter-clockwise twin
+  `"1221,1589 1221,2266 2161,2266 2151,1589 1221,1589"` both read as
+  measure 1 (equal to it, SVG points `"1221,1589 2151,1589 2161,2266
+  1221,2266"`); the closing point compares by value, so `"0,0 10,0 10,10
+  0,10 0.0,0"` is a ring too. Anything that is not four points of a
+  convex quadrilateral is refused whole: five distinct points (`The SVG
+  points '0,0 10,0 10,10 0,10 5,5' hold 5 points; a Quadrilateral's are
+  four.`), a ring closed twice (`The SVG points '0,0 10,0 10,10 0,10 0,0
+  0,0' hold 6 points; a Quadrilateral's are four.`), an odd count of
+  numbers (`The SVG points
   '0,0 10,0 10,10 0' hold 7 numbers, which are no list of x,y pairs; a
   Quadrilateral's are four points.`), and the concave `"0,0 10,0 4,4 0,10"`
   (`... bound no convex quadrilateral: the outline turns clockwise at points
@@ -854,7 +863,8 @@ sides with the axis once in its metadata.
   constructor or reader it comes through. On an `int` axis a float is taken
   only when it is a whole number and a ratio only when its denominator is
   1; on a `fraction` axis a float only when it is a whole number (no ratio
-  is guessed from a float); on a `float` axis a value is taken as given.
+  is guessed from a float); on a `float` axis a float is taken as given
+  and a ratio only when it is a whole number (below).
   Refused whole, each naming the member, the value, the unit and the number
   type: `from_xywh(1.5, 0, 1, 1, unit="pixels")` (`A shape's x is 1.5,
   which pixels as int cannot hold exactly: geometry is never rounded.`),
@@ -871,9 +881,50 @@ sides with the axis once in its metadata.
   `int` 100 (the manifest format reads `100.0` as 100), `from_xywh(2.0, 0,
   1, 1, unit="quarters")` has `x` `Fraction(2)`, and `from_xywh(1.5, 0, 1,
   1, unit="css_pixels")` keeps the float 1.5.
+- **Geometry is finite.** NaN and the infinities name no point of an
+  image; the strict entry refuses them on every axis, before an `int` or
+  `fraction` axis could call them unholdable, naming the member and the
+  value: `from_xywh(nan, 0, 1, 1, unit="css_pixels")` (`A shape's x is nan,
+  which is no finite number: geometry holds finite numbers only.`), the
+  width `inf` on `css_pixels` (`A shape's width is inf, ...`), `nan` on
+  `pixels` and `-inf` on `quarters` (the same sentence, where the
+  `pixels` refusal used to claim the axis could not hold `nan` exactly),
+  a `Quadrilateral.from_points` corner `(nan, 2266)` (`A shape's x is nan,
+  ...`; it used to pass the convexity check, every comparison with NaN
+  being false), a `Coordinate(inf, css_pixels)` given as `x` (the scalar's
+  value enters the same way), and `Box.from_shape(box, origin=nan)` (`A
+  Box's origin is nan, ...`). A `Point` made directly with
+  `Coordinate(nan, css_pixels)` is refused by its validator through the
+  same entry (`A Point's x is nan, ...`). Before, each was constructed and
+  failed only when written (`to_dict`, the storage cell).
+- **The declared number type governs; nothing is guessed.** A ratio on a
+  `float` axis is taken only when it is a whole number, as a float on a
+  `fraction` axis is: `from_xywh(Fraction(1, 3), 0, 1, 1,
+  unit="css_pixels")` is refused with the shape's own sentence, `A shape's
+  x is 1/3, a ratio, which css_pixels as float does not take: the declared
+  number type governs and a ratio is read as a float only when it is a
+  whole number; give a float.` (it used to raise pydantic's report
+  claiming the x was `in css_pixels as fraction`), the same with
+  `number_type="float"` (which used to give 0.3333333333333333) and with
+  `Fraction(1, 2)` (the sentence claims no inexactness, so it stays true
+  of a ratio a double holds exactly); `Box.from_shape` of a `css_pixels`
+  box with `origin=Fraction(1, 2)` likewise (`A Box's origin is 1/2, a
+  ratio, ...`). `from_xywh(Fraction(4), 0, 1, 1, unit="css_pixels")` is
+  the float box with `x` 4.0 (`float`; it used to be refused).
 - **Each refusal of the shapes once, whole:** members on two axes, a
   negative width, an `order` that is not the four corner names, and
   raw numbers without a unit.
+- **A constructor raises its own sentence.** Every refusal a shape's
+  constructor (`from_points`, `from_xywh`, `from_corners`,
+  `from_svg_points`, `Point.of`, `from_row`) or `Box.from_shape` raises
+  is a `ValueError` holding the composed message alone (`type(error) is
+  ValueError`, `str(error)` the sentence), never pydantic's validation
+  report around it: the crossed and rotated corner lists of
+  `from_points` and the negative width of `from_corners` above, and
+  `BoundingBox.from_row` of a stored row whose width is -1 (`A
+  BoundingBox's width is -1; ...`). Only the pydantic constructor itself
+  (`BoundingBox(x=..., ...)`, the members on two axes) raises pydantic's
+  report, the validator's sentence inside it.
 
 ### `test_box.py` - A box is an interval event on its timeline
 
@@ -900,7 +951,15 @@ made from the shape and that a Box contradicting its shape cannot exist.
   its integer), while `origin=7.5` is refused whole (`A Box's origin is
   7.5, which pixels as int cannot hold exactly: geometry is never
   rounded.`; it used to give start 1213, a Box whose start no longer was
-  its shape's `x_min` less the origin) and so is `Fraction(15, 2)`.
+  its shape's `x_min` less the origin) and so is `Fraction(15, 2)`. A
+  non-finite origin is refused on every axis (`origin=nan` on measure 1:
+  `A Box's origin is nan, which is no finite number: geometry holds
+  finite numbers only.`, `-inf` likewise; it used to make a Box whose
+  start was `nan`), and a ratio on a float axis as in `test_shapes.py`
+  (`origin=Fraction(1, 2)` on the `css_pixels` box (1.5, 0, 2.5, 1): `A
+  Box's origin is 1/2, a ratio, which css_pixels as float does not take:
+  ...`). Every refusal of `from_shape` is a plain `ValueError` holding the
+  sentence.
 - **Refusals, whole:** a duration other than the x extent (`Box 'm1': its
   duration is 10 and its shape spans 940 in x (1221 to 2161); a Box's
   duration is its shape's x extent.`); both shapes or none (`A Box holds

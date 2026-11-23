@@ -49,8 +49,15 @@ M1_POINTS = "1221,1589 2151,1589 2161,2266 1221,2266"
 
 
 def _message(refused: pytest.ExceptionInfo[ValidationError]) -> str:
-    """The message a validator raised, as the library composed it."""
+    """The message a validator raised inside pydantic's report."""
     return str(refused.value.errors()[0]["ctx"]["error"])
+
+
+def _sentence(refused: pytest.ExceptionInfo[ValueError]) -> str:
+    """The message a constructor raised: a plain ``ValueError``, never
+    pydantic's report around it."""
+    assert type(refused.value) is ValueError
+    return str(refused.value)
 
 
 def _px(value: int) -> Coordinate:
@@ -171,9 +178,9 @@ class TestDmosQuadrilaterals:
 
     def test_the_crossed_outline_is_refused(self) -> None:
         crossed = [(1221, 1589), (2151, 1589), (1221, 2266), (2161, 2266)]
-        with pytest.raises(ValidationError) as refused:
+        with pytest.raises(ValueError) as refused:
             Quadrilateral.from_points(crossed, unit="pixels")
-        assert _message(refused) == (
+        assert _sentence(refused) == (
             "The corners top_left (1221, 1589), top_right (2151, 1589), bottom_right "
             "(1221, 2266), bottom_left (2161, 2266) do not run clockwise around a "
             "convex outline: the turn at bottom_right is counter-clockwise."
@@ -196,22 +203,22 @@ class TestCornerRoles:
     )
     def test_a_rotated_list_is_refused(self, start: int, corner: str) -> None:
         rotated = M1_CORNERS[start:] + M1_CORNERS[:start]
-        with pytest.raises(ValidationError) as refused:
+        with pytest.raises(ValueError) as refused:
             Quadrilateral.from_points(rotated, unit="pixels")
         listed = ", ".join(
             f"{name} ({x}, {y})"
             for name, (x, y) in zip(Quadrilateral.CORNER_ORDER, rotated)
         )
-        assert _message(refused) == (
+        assert _sentence(refused) == (
             f"The corners {listed} run clockwise around a convex outline but start "
             f"at its {corner} corner: its top-left corner is (1221, 1589), the "
             "corner of least x + y (of two, the upper)."
         )
 
     def test_the_message_names_each_corner(self) -> None:
-        with pytest.raises(ValidationError) as refused:
+        with pytest.raises(ValueError) as refused:
             Quadrilateral.from_points(M1_CORNERS[2:] + M1_CORNERS[:2], unit="pixels")
-        assert _message(refused) == (
+        assert _sentence(refused) == (
             "The corners top_left (2161, 2266), top_right (1221, 2266), bottom_right "
             "(1221, 1589), bottom_left (2151, 1589) run clockwise around a convex "
             "outline but start at its bottom_right corner: its top-left corner is "
@@ -219,13 +226,18 @@ class TestCornerRoles:
         )
 
     def test_a_rotated_order_is_refused(self) -> None:
-        with pytest.raises(ValidationError) as refused:
+        with pytest.raises(ValueError) as refused:
             Quadrilateral.from_points(
                 M1_CORNERS,
                 order=("top_right", "bottom_right", "bottom_left", "top_left"),
                 unit="pixels",
             )
-        assert "but start at its bottom_left corner" in _message(refused)
+        assert _sentence(refused) == (
+            "The corners top_left (1221, 2266), top_right (1221, 1589), bottom_right "
+            "(2151, 1589), bottom_left (2161, 2266) run clockwise around a convex "
+            "outline but start at its bottom_left corner: its top-left corner is "
+            "(1221, 1589), the corner of least x + y (of two, the upper)."
+        )
 
     @pytest.mark.parametrize("start", range(4))
     @pytest.mark.parametrize("counter_clockwise", [False, True])
@@ -240,6 +252,24 @@ class TestCornerRoles:
         assert read == measure_1
         assert read.as_svg_points() == M1_POINTS
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "1221,1589 2151,1589 2161,2266 1221,2266 1221,1589",
+            "1221,1589 1221,2266 2161,2266 2151,1589 1221,1589",
+        ],
+    )
+    def test_a_closed_ring_is_its_four_points(
+        self, text: str, measure_1: Quadrilateral
+    ) -> None:
+        read = Quadrilateral.from_svg_points(text, unit="pixels")
+        assert read == measure_1
+        assert read.as_svg_points() == M1_POINTS
+
+    def test_the_closing_point_compares_by_value(self) -> None:
+        ring = Quadrilateral.from_svg_points("0,0 10,0 10,10 0,10 0.0,0", unit="pixels")
+        assert _corners(ring) == [(0, 0), (10, 0), (10, 10), (0, 10)]
+
     def test_the_upper_of_two_corners_is_top_left(self) -> None:
         diamond = Quadrilateral.from_svg_points("0,5 5,10 10,5 5,0", unit="pixels")
         assert diamond.as_svg_points() == "5,0 10,5 5,10 0,5"
@@ -251,6 +281,11 @@ class TestCornerRoles:
             (
                 "0,0 10,0 10,10 0,10 5,5",
                 "The SVG points '0,0 10,0 10,10 0,10 5,5' hold 5 points; a "
+                "Quadrilateral's are four.",
+            ),
+            (
+                "0,0 10,0 10,10 0,10 0,0 0,0",
+                "The SVG points '0,0 10,0 10,10 0,10 0,0 0,0' hold 6 points; a "
                 "Quadrilateral's are four.",
             ),
             (
@@ -269,7 +304,7 @@ class TestCornerRoles:
     def test_no_convex_quadrilateral(self, text: str, message: str) -> None:
         with pytest.raises(ValueError) as refused:
             Quadrilateral.from_svg_points(text, unit="pixels")
-        assert str(refused.value) == message
+        assert _sentence(refused) == message
 
 
 class TestFields:
@@ -499,9 +534,20 @@ class TestRefusals:
         )
 
     def test_a_negative_width(self) -> None:
-        with pytest.raises(ValidationError) as refused:
+        with pytest.raises(ValueError) as refused:
             BoundingBox.from_corners(10, 0, 9, 5, unit="pixels")
-        assert _message(refused) == (
+        assert _sentence(refused) == (
+            "A BoundingBox's width is -1; its width and height are never negative."
+        )
+
+    def test_a_stored_row_is_refused_in_its_own_sentence(self) -> None:
+        def cell(value: int) -> dict[str, object]:
+            return {"value": float(value), "numerator": value, "denominator": 1}
+
+        row = {"x": cell(10), "y": cell(0), "width": cell(-1), "height": cell(5)}
+        with pytest.raises(ValueError) as refused:
+            BoundingBox.from_row(row, unit="pixels", number_type="int")
+        assert _sentence(refused) == (
             "A BoundingBox's width is -1; its width and height are never negative."
         )
 
@@ -523,3 +569,88 @@ class TestRefusals:
         assert str(refused.value) == (
             "A shape's x is the bare number 385, which names no unit: pass unit=."
         )
+
+
+NAN, INF = float("nan"), float("inf")
+
+NON_FINITE = "which is no finite number: geometry holds finite numbers only."
+
+
+class TestFinite:
+    @pytest.mark.parametrize(
+        ("build", "named"),
+        [
+            (
+                lambda: BoundingBox.from_xywh(NAN, 0, 1, 1, unit="css_pixels"),
+                "A shape's x is nan",
+            ),
+            (
+                lambda: BoundingBox.from_xywh(0, 0, INF, 1, unit="css_pixels"),
+                "A shape's width is inf",
+            ),
+            (
+                lambda: BoundingBox.from_xywh(NAN, 0, 1, 1, unit="pixels"),
+                "A shape's x is nan",
+            ),
+            (
+                lambda: BoundingBox.from_xywh(0, -INF, 1, 1, unit="quarters"),
+                "A shape's y is -inf",
+            ),
+            (
+                lambda: Quadrilateral.from_points(
+                    [(1221, 1589), (2151, 1589), (2161, 2266), (NAN, 2266)],
+                    unit="css_pixels",
+                ),
+                "A shape's x is nan",
+            ),
+            (
+                lambda: BoundingBox.from_xywh(
+                    Coordinate(INF, TimeUnit.css_pixels), 0, 1, 1
+                ),
+                "A shape's x is inf",
+            ),
+        ],
+    )
+    def test_refused_on_every_axis(self, build: Any, named: str) -> None:
+        with pytest.raises(ValueError) as refused:
+            build()
+        assert _sentence(refused) == f"{named}, {NON_FINITE}"
+
+    def test_a_point_made_directly(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            Point(
+                x=Coordinate(NAN, TimeUnit.css_pixels),
+                y=Coordinate(0.0, TimeUnit.css_pixels),
+            )
+        assert _message(refused) == f"A Point's x is nan, {NON_FINITE}"
+
+
+class TestRatioOnAFloatAxis:
+    RATIO = (
+        "a ratio, which css_pixels as float does not take: the declared number "
+        "type governs and a ratio is read as a float only when it is a whole "
+        "number; give a float."
+    )
+
+    @pytest.mark.parametrize(
+        ("value", "number_type", "shown"),
+        [
+            (Fraction(1, 3), None, "1/3"),
+            (Fraction(1, 3), "float", "1/3"),
+            (Fraction(1, 2), None, "1/2"),
+        ],
+    )
+    def test_refused_in_the_shapes_sentence(
+        self, value: Fraction, number_type: str | None, shown: str
+    ) -> None:
+        with pytest.raises(ValueError) as refused:
+            BoundingBox.from_xywh(
+                value, 0, 1, 1, unit="css_pixels", number_type=number_type
+            )
+        assert _sentence(refused) == f"A shape's x is {shown}, {self.RATIO}"
+
+    def test_a_whole_ratio_is_its_float(self) -> None:
+        box = BoundingBox.from_xywh(Fraction(4), 0, 1, 1, unit="css_pixels")
+        assert box.x.value == 4.0
+        assert type(box.x.value) is float
+        assert box.number_type is NumberType.float

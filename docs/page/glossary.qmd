@@ -62,6 +62,38 @@ to the relevant section of the conceptual model.
     lattice reads 6/8 as six beats of an eighth, because its beat-in-bar index
     counts the notated value rather than the felt pulse.
 
+**BoundingBox**
+:   An axis-aligned area of an image: `x`, `y`, `width` and `height` (the
+    `xywh` of IIIF and Media Fragments), in image space (origin the image's
+    top-left corner, x right, y down), all four in one unit and one number
+    type; `width` and `height` are never negative. A shape, as is
+    {{< glossary Quadrilateral >}}: built with `from_xywh()`,
+    `from_corners()` (MEI's `ulx`, `uly`, `lrx`, `lry`) or
+    `from_media_fragment()`, and written with `to_dict()`,
+    `as_media_fragment()`, `as_svg_points()` and `as_mei_zone()`. Its
+    numbers are never rounded: a value the axis cannot hold exactly (385.5
+    on `pixels`) is refused. Every shape has a bounding box, the smallest
+    BoundingBox holding it.
+    See [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb).
+
+**Box**
+:   An area of an image as an interval event of a graphical
+    {{< glossary Timeline >}} running along the image's x axis. A Box holds
+    exactly one shape, a {{< glossary BoundingBox >}} or a
+    {{< glossary Quadrilateral >}}, in the image's space, and the interval
+    of the shape's x extent on its timeline: `start` is the shape's `x_min`
+    less the x at which the timeline stands in its image (the x of its
+    `meta["box"]`, 0 where it states none), `duration` is
+    `x_max − x_min`. `Box.from_shape(shape, origin=, id=)` makes it; adding
+    a Box whose interval contradicts its shape, or whose shape is on another
+    unit or number type than the timeline, is refused on every path that
+    adds events, a package read included. `DmosLoader` and
+    `MeiFacsimileLoader` read Boxes; an {{< glossary AlignmentBundle >}}'s
+    `to_file()` writes every timeline's Boxes beside the manifest in one
+    table, `boxes.parquet`, named in its `resources` with the type `Box`
+    (see {{< glossary Resource >}}), and `from_file()` reads them back.
+    See [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb).
+
 **Break**
 :   A {{< glossary ControlEvent >}} that voids {{< glossary Contiguity >}}
     at its {{< glossary Instant >}}. TimeIntervals cannot span a Break,
@@ -699,6 +731,22 @@ to the relevant section of the conceptual model.
     [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) and
     [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 9.
 
+## Q
+
+**Quadrilateral**
+:   An area of an image bounded by four corners, each a `Point` (`x`, `y`),
+    held in the order `top_left`, `top_right`, `bottom_right`,
+    `bottom_left` (the order SVG polygons and IIIF selectors draw): it
+    follows a measure of a scan whose sides are not upright. A shape, as is
+    {{< glossary BoundingBox >}}. `from_points()` takes the corners in any
+    order a source writes them, `order=` naming each one's role;
+    `from_svg_points()` reads four SVG or MEI `points` starting at any
+    corner and running either way. The corners held always run clockwise
+    around a convex outline: `from_points()` refuses roles that do not, and
+    points that bound no convex quadrilateral are refused, never reordered
+    into one.
+    See [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb).
+
 ## R
 
 **raw_quarters**
@@ -736,16 +784,18 @@ to the relevant section of the conceptual model.
     holds; an entry the library adds gets a minted `resource_N`, and an
     entry read keeps its own when written back), its `type` (what its rows are: `MatchClaim` for the
     MatchClaim table, a {{< glossary MatchClaimField >}}, `Projection` for
-    the Projections table, see {{< glossary Projection >}}), the IDs of the
+    the Projections table, see {{< glossary Projection >}}, `Box` for the
+    Box table, see {{< glossary Box >}}), the IDs of the
     `timelines` it holds data for, its `url` relative to the manifest, and
     optionally its `media_type`, `size` in bytes and `integrity` (an
     `Integrity`: `algorithm` and `digest`). At most one resource has each of
-    the two types. A manifest and the files it names make a package; the
+    the three types. A manifest and the files it names make a package; the
     manifest reads and draws without them, and names no event. An
     {{< glossary AlignmentBundle >}} keeps the entries as `Resource` objects
     in its `resources`; its `to_file()` writes the MatchClaim table when it
-    holds MatchClaims and the Projections table when a timeline holds
-    Projections, each with its entry, and refuses to write event rows into
+    holds MatchClaims, the Projections table when a timeline holds
+    Projections and the Box table (`boxes.parquet`) when a timeline holds
+    Boxes, each with its entry, and refuses to write event rows into
     the manifest beside them (`events=True`); `from_file()` reads them back.
     A named file that is absent is not read and its entry is kept.
     See the API reference ([Resource](reference/Resource.qmd),

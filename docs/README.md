@@ -57,6 +57,7 @@ the manuscript (not Chorissimo from Figure 5).
 | `how01_graphical_timelines` | Graphical Timelines | TimeAxisPath, image timelines, pixel-to-time conversion |
 | `how01_beat_grids` | Building Beat Grids | BeatGrid, tempo segments, beat tables, annotation-tool export |
 | **`how01_thoresen_annotation_transfer`** | **Transferring Annotations Between Graphical Analyses** | **SegmentLine, ConstantMap, MatchClaim, y-coordinate transfer (manuscript Section 3.3)** |
+| `how01_graphical_boxes` | Representing Areas of Page Images as Boxes | BoundingBox, Quadrilateral, Box events, DmosLoader, MeiFacsimileLoader, IIIF volumes, boxes.parquet |
 | **`how02_supra_piano_roll`** | **Aligning a Piano Roll (SUPRA)** | **IIIF images, ATON, MIDI, Audio, Score (manuscript Section 3.1)** |
 | `how03_create_note_alignment` | Creating a Note Alignment | MatchClaims, AlignmentBundle, MatchLines (manuscript Section 3.4 prerequisite) |
 | **`how03_beethoven_multimodal`** | **Aligning Multimodal Data (Beethoven)** | **AlignmentBundle, FlowMap, OMR, 23 timelines, 3 domains (manuscript Section 3.4)** |

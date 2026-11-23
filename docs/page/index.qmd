@@ -64,6 +64,7 @@ This documentation follows the
     [How to Load Tabular Data](howto/how01_tabular_loaders.ipynb) ·
     [How to Work with Graphical Timelines](howto/how01_graphical_timelines.ipynb) ·
     [How to Transfer Annotations Between Graphical Analyses](howto/how01_thoresen_annotation_transfer.ipynb) ·
+    [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb) ·
     [How to Build Beat Grids](howto/how01_beat_grids.ipynb)
 
     *TimelineGroups* ---

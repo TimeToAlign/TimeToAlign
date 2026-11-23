@@ -72,6 +72,8 @@ website:
               href: howto/how01_graphical_timelines.ipynb
             - text: "How to Transfer Annotations Between Graphical Analyses"
               href: howto/how01_thoresen_annotation_transfer.ipynb
+            - text: "How to Represent Areas of Page Images as Boxes"
+              href: howto/how01_graphical_boxes.ipynb
             - text: "How to Build Beat Grids"
               href: howto/how01_beat_grids.ipynb
         - section: "TimelineGroups"
@@ -174,6 +176,18 @@ quartodoc:
         - IdCoordinate
         - Interval
         - IntervalField
+        - Point
+        - PointField
+        - Shape
+        - ShapeField
+        - BoundingBox
+        - BoundingBoxField
+        - Quadrilateral
+        - QuadrilateralField
+        - Event
+        - EventField
+        - Box
+        - BoxField
         - OptionalCoordinate
         - ResolvedCoordinate
         - resolve_coordinate_spec
@@ -394,6 +408,10 @@ quartodoc:
         - name: GraphicalLoader
           package: timetoalign.loader.graphical
         - name: IIIFManifestLoader
+          package: timetoalign.loader.graphical
+        - name: DmosLoader
+          package: timetoalign.loader.graphical
+        - name: MeiFacsimileLoader
           package: timetoalign.loader.graphical
         - name: ATONLoader
           package: timetoalign.loader.graphical.aton

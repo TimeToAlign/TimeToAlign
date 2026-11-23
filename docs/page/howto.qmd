@@ -47,6 +47,9 @@ documentation:
   TimeAxisPath, image-based timelines, and pixel-to-time conversion.
 - [How to Transfer Annotations Between Graphical Analyses](howto/how01_thoresen_annotation_transfer.ipynb) ---
   SegmentLine, ConstantMap, MatchClaims with Projections, y-coordinate transfer.
+- [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb) ---
+  BoundingBox, Quadrilateral and Box events, DmosLoader, MeiFacsimileLoader,
+  an IIIF volume page by page, and Boxes in a package.
 - [How to Build Beat Grids](howto/how01_beat_grids.ipynb) ---
   BeatGrid, tempo segments, beat tables, measure/beat queries, and
   annotation-tool export.

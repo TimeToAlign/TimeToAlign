@@ -43,6 +43,31 @@ BeatPolicy: |
   six beats of an eighth, because its beat-in-bar index counts the notated
   value rather than the felt pulse.
 
+BoundingBox: |
+  An axis-aligned area of an image: x, y, width and height (the xywh of IIIF
+  and Media Fragments), in image space (origin the image's top-left corner,
+  x right, y down), all four in one unit and one number type; width and
+  height are never negative. A Shape, as is Quadrilateral: built with
+  from_xywh(), from_corners() (MEI's ulx, uly, lrx, lry) or
+  from_media_fragment(), and written with to_dict(), as_media_fragment(),
+  as_svg_points() and as_mei_zone(). Its numbers are never rounded: a value
+  the axis cannot hold exactly (385.5 on pixels) is refused. Every shape has
+  a bounding box, the smallest BoundingBox holding it.
+
+Box: |
+  An area of an image as an interval event of a graphical timeline running
+  along the image's x axis. A Box holds exactly one shape, a BoundingBox or
+  a Quadrilateral, in the image's space, and the interval of the shape's x
+  extent on its timeline: start is the shape's x_min less the x at which the
+  timeline stands in its image (the x of its meta["box"], 0 where it states
+  none), duration is x_max − x_min. Box.from_shape(shape, origin=, id=)
+  makes it; adding a Box whose interval contradicts its shape, or whose
+  shape is on another unit or number type than the timeline, is refused on
+  every path that adds events, a package read included. DmosLoader and
+  MeiFacsimileLoader read Boxes; an AlignmentBundle's to_file() writes every
+  timeline's Boxes beside the manifest in one table, boxes.parquet, named
+  in its resources with the type Box, and from_file() reads them back.
+
 Break: |
   A control event that voids contiguity at its Instant. TimeIntervals cannot span
   a Break, and Breaks cannot be inserted into existing TimeIntervals.
@@ -511,6 +536,18 @@ Provenance: |
   person's belief "true", and AlignmentBundle.add_match_claim_belief() records
   a belief in a claim the bundle holds.
 
+Quadrilateral: |
+  An area of an image bounded by four corners, each a Point (x, y), held in
+  the order top_left, top_right, bottom_right, bottom_left (the order SVG
+  polygons and IIIF selectors draw): it follows a measure of a scan whose
+  sides are not upright. A Shape, as is BoundingBox. from_points() takes
+  the corners in any order a source writes them, order= naming each one's
+  role; from_svg_points() reads four SVG or MEI points starting at any
+  corner and running either way. The corners held always run clockwise
+  around a convex outline: from_points() refuses roles that do not, and
+  points that bound no convex quadrilateral are refused, never reordered
+  into one.
+
 Reach: |
   The farthest coordinate on a timeline's own axis that its content reaches:
   the ends of its children (a child of unknown length contributing its offset
@@ -530,14 +567,16 @@ Resource: |
   element of the manifest holds; an entry the library adds gets a minted
   resource_N, and an entry read keeps its own when written back), its type
   (what its rows are: MatchClaim for the MatchClaim table, Projection for
-  the Projections table), the ids of the timelines it holds data for, its url
-  relative to the manifest, and optionally its media type, size in bytes and
-  integrity (an Integrity: algorithm and digest). At most one resource has
-  each of the two types. A manifest and the files it names make a package;
-  the manifest reads and draws without them, and names no event. An
+  the Projections table, Box for the Box table), the ids of the timelines it
+  holds data for, its url relative to the manifest, and optionally its media
+  type, size in bytes and integrity (an Integrity: algorithm and digest). At
+  most one resource has each of the three types. A manifest and the files it
+  names make a package; the manifest reads and draws without them, and names
+  no event. An
   AlignmentBundle keeps the entries as Resource objects in its resources; its
-  to_file() writes the MatchClaim table when it holds MatchClaims and the
-  Projections table when a timeline holds Projections, each with its entry,
+  to_file() writes the MatchClaim table when it holds MatchClaims, the
+  Projections table when a timeline holds Projections and the Box table
+  (boxes.parquet) when a timeline holds Boxes, each with its entry,
   and refuses to write event rows into the manifest beside them; from_file()
   reads them back. A named file that is absent is not read and its entry is
   kept.

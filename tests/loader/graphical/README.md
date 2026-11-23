@@ -315,6 +315,128 @@ other numbers.
 - **Refusals.** A root other than `<mei>` in the MEI namespace, each of the
   three `create_*` methods before `load()`, and a second source are refused.
 
+## `IIIFManifestLoader`
+
+`test_iiif_loader.py`. A manifest states images and their sizes, never where
+time runs through them, so the loader builds nothing without a time path per
+canvas. The tests therefore prove two things: that the timelines are the
+PATHS' (every length a number of the path, none a canvas's width or height),
+and that each one names the CANVAS it lies on.
+
+**Sources.** The SUPRA piano roll manifest (corpus `supra`): one canvas,
+4096 x 299400, labelled `display image`. Two published manifests, trimmed by
+the test to the members the loader reads (`@context`, the manifest's and
+each canvas's id and label, `width`, `height`, `duration`) and written to
+`tmp_path`, the values stated literally in the test. Gallica's
+`bpt6k11620688` (Presentation 2): six page canvases `f1`...`f6` at positions
+0 to 5, all 6174 high, 4564, 4512, 4564, 4512, 4564 and 4577 wide, labelled
+`NP`, `2`, `3`, `4`, `5`, `NP`. The BnF disc `bpt6k88448791` (Presentation
+3): four sound canvases (positions 0 to 3; `duration` 221.0, 219.0, 257.0,
+155.0; no width or height), then four image canvases (positions 4 to 7; two
+2677 x 2677 labelled `5`, `6`, two 2940 wide x 2985 high labelled `recto`,
+`verso`).
+
+**The paths are written by hand** from the *scan* literals of "Time paths
+and pages" below (the systems of the four music pages of this very Gallica
+volume, which lie on canvases 1 to 4): one horizontal line per system over
+its x extent. Only system 1 of page 1 has its real line (y 3855/2,
+half-breadth 677/2, so its strip is y 1589 to 2266, height 677); every other
+system k of its page is placed at y = 1000 k with half-breadth 300 (strip
+1000 k - 300, height 600), which is on every canvas (5000 <= 6174).
+
+**What proves the volume.** `create_timeline` with these four paths and
+`canvases=[1, 2, 3, 4]`:
+
+1. *The lengths are the paths'.* Volume 53123; pages 12311, 15690, 12562,
+   12560 at offsets 0, 12311, 28001, 40563; the accolades of page 1 are
+   2880, 3141, 3142, 3148 long at offsets 0, 2880, 6021, 9163 (the sums of
+   "Time paths and pages"). No canvas width (4512, 4564) or height (6174)
+   appears, which a loader measuring the image instead of the path would
+   give.
+2. *The shape.* The volume is a `SegmentLine[SegmentLine[
+   DiscreteGraphicalTimeline]]`, each page a segment line, each accolade a
+   plain timeline; the volume and the pages are locked, the accolades are
+   not.
+3. *Every timeline names what it measures.* The volume is named with the
+   manifest's label and states `dcterms:source` with the manifest's `@id`;
+   page i is named with its canvas's label (`2`, `3`, `4`, `5`) and states
+   `dcterms:source` and `meta["image"]` with its canvas's `@id` (`f2` to
+   `f5`: the canvases selected, not the first four), and no `meta["box"]`;
+   an accolade states the same `meta["image"]` and its strip as
+   `meta["box"]` (page 1: `{x: 1221, y: 1589, width: 2880, height: 677}`
+   and `{x: 971, y: 1700, width: 3141, height: 600}`), and no statement.
+4. *Identity.* Minted ids follow document order: volume `dgt_1`, page 1
+   `dgt_2` and its four accolades `dgt_3` to `dgt_6`, page 2 `dgt_7` (five
+   accolades, `dgt_8` to `dgt_12`), page 3 `dgt_13`, page 4 `dgt_18`. `uid`,
+   `name`, `page_ids` (a template) and `accolade_ids` (a template) replace
+   them; the values expected are spelled out.
+5. *The file.* Written with the manifest file writer and read back, the
+   volume has the same class, ids, offsets, lengths, names, `meta` and
+   statements on all three levels, so the canvas of every page survives in
+   the format.
+
+`create_timelines` with the same arguments answers the four pages as roots:
+the same lengths, names, `meta` and statements, each locked, and nothing
+states the manifest (there is no volume); ids `dgt_1` (page 1), `dgt_6`,
+`dgt_12`, `dgt_17`.
+
+**What proves the selection.** Each case is decided by which canvases'
+labels and `@id`s come back, in which order:
+
+- canvases named by id, by position, mixed and in reverse order give the
+  same pages in manifest order; paths keyed by id and by position are the
+  same paths;
+- `canvases=None` on the BnF disc selects positions 4 to 7 (the images) and
+  never a sound canvas: with one horizontal line each (x 100 to 2600, 2500
+  long; x 0 to 2677; x 0 to 2940; x 40 to 2940, 2900 long) the volume is a
+  `SegmentLine[DiscreteGraphicalTimeline]` 11017 long (2500 + 2677 + 2940 +
+  2900), pages at 0, 2500, 5177, 8117 named `5`, `6`, `recto`, `verso`; a
+  page along one horizontal line states its strip as `meta["box"]`;
+- one path with one selected canvas needs no mapping. The piano roll is
+  this case: SUPRA with `VerticalLinePath(x=2048, y0=0, y1=299400,
+  tolerance=2048)` gives ONE plain `DiscreteGraphicalTimeline` of length
+  299400 (the path's length, here also the image's height), locked, named
+  `display image`, stating its canvas in `meta["image"]` and
+  `dcterms:source`, with no `meta["box"]` (the path is no horizontal line)
+  and no child. The same roll read along the half 0 to 149700 is 149700
+  long, which a loader reading the canvas's height would not give.
+
+**Refusals**, each asserted whole, and each followed by the proof that
+nothing was built: the next successful call still mints `dgt_1`.
+
+- Gallica with the four paths and no `canvases`: `canvases 0, 5 have no time
+  path: give each one or leave them out with canvases=`; one canvas missing
+  reads `canvas 0 has no time path: give it one or leave it out with
+  canvases=`.
+- A path for a canvas that is unknown (position 9, id `nope`), time-based
+  (BnF position 0) or not selected (Gallica position 0 beside
+  `canvases=[1]`): `KeyError` naming each with its reason and listing the
+  selected canvases as `position: 'id'`.
+- One path for several selected canvases; one canvas given two paths (by
+  position and by id); `paths` that is neither a path nor a mapping
+  (`TypeError`).
+- `canvases` as a bare string (`TypeError`: it would read as its
+  characters); `canvases` naming a canvas the manifest does not hold
+  (`KeyError` listing all canvases).
+- A line leaving its canvas, the message naming the canvas (position, id,
+  size), the piece and what a line needs. Pinned on both sides of each
+  bound on Gallica canvas 1 (4512 x 6174): `x1` 4512 and `y` 6174 and `y` 0
+  are on it; `x1` 4513, `y` 6175, `x0` -1 are refused; for a vertical line
+  `y1` 6174 and `x` 4512 are on it, `y1` 6175 and `x` 4513 refused. A piece
+  of a piecewise path is named by its number from 1.
+- The removed arguments have no alias: `create_timeline()` without paths
+  and `axis=` are a `TypeError`; `canvases="all"` is the bare-string
+  refusal.
+- A manifest of sound canvases only selects nothing: `create_timelines({})`
+  is `[]` and `create_timeline({})` is refused (`A volume needs at least one
+  page.`).
+
+**Time-based canvases and parsing** are unchanged: the BnF disc parses, its
+canvases expose their durations and no width or height, `dimensions`,
+`width` and `height` refuse a first canvas that is time-based with the
+time-based message, `repr` works, and a canvas with neither extent nor
+duration is refused at parsing.
+
 ## Time paths and pages
 
 `test_paths.py` covers `loader/graphical/paths.py` (the accolade rule,

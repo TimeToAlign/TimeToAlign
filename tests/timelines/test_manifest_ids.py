@@ -17,6 +17,7 @@ from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, FlowControlElement, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
+from timetoalign.loader.graphical.paths import VerticalLinePath
 from timetoalign.loader.midi.score import ScoreMidiLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.loader.score import Ms3Loader
@@ -1219,7 +1220,7 @@ LOADERS: list[tuple[str, Callable[[], Timeline]]] = [
         "iiif",
         lambda: IIIFManifestLoader()
         .load(SUPRA / "image/ifff_manifest.json")
-        .create_timeline(),
+        .create_timelines(VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048))[0],
     ),
 ]
 

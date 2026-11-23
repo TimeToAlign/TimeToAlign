@@ -56,6 +56,7 @@ from timetoalign.loader.alignment import (
 )
 from timetoalign.loader.alignment.tilia import TiliaJsonLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
+from timetoalign.loader.graphical.paths import VerticalLinePath
 from timetoalign.loader.midi.score import ScoreMidiLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps import (
@@ -233,9 +234,17 @@ def _parangonada() -> Timeline:
 
 
 def _graphical() -> Timeline:
-    return (
-        IIIFManifestLoader().load(SUPRA / "image/ifff_manifest.json").create_timeline()
+    """The SUPRA roll along its height, without the statement naming its canvas.
+
+    Every manifest of the catalogue is one without statements.
+    """
+    (roll,) = (
+        IIIFManifestLoader()
+        .load(SUPRA / "image/ifff_manifest.json")
+        .create_timelines(VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048))
     )
+    (canvas,) = roll.statements["dcterms:source"]
+    return roll.remove_statement("dcterms:source", canvas)
 
 
 def _direct_groups() -> list[TimelineGroup]:

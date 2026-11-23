@@ -2,7 +2,9 @@
 
 IIIF (International Image Interoperability Framework) manifests contain
 structured metadata about images, including dimensions, that can be used
-to construct graphical timelines without loading the full image data.
+to construct graphical timelines without loading the full image data. An
+image has no time axis of its own: the caller gives each canvas the time
+path that runs through it (:mod:`timetoalign.loader.graphical.paths`).
 
 This loader supports IIIF Presentation API 2.x and 3.x manifests. A
 Presentation 3 manifest may also hold time-based canvases (sound or video
@@ -14,12 +16,19 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from timetoalign.core import TimeUnit
 from timetoalign.loader.base import Loader
+from timetoalign.loader.graphical._pages import Page, build_pages, build_volume
+from timetoalign.loader.graphical.paths import (
+    HorizontalLinePath,
+    PiecewisePath,
+    TimeAxisPath,
+    VerticalLinePath,
+)
 from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine
 
 module_logger = logging.getLogger(__name__)
@@ -62,25 +71,6 @@ class IIIFCanvasInfo:
         """Whether the canvas states both a width and a height."""
         return self.width is not None and self.height is not None
 
-    def extent(self, axis: str) -> int:
-        """Return the canvas's extent in pixels along *axis*.
-
-        Args:
-            axis: ``"height"`` or ``"width"``.
-
-        Raises:
-            ValueError: If *axis* is neither, or the canvas is time-based and
-                states no width and height.
-        """
-        if axis not in ("height", "width"):
-            raise ValueError(f"axis must be 'height' or 'width', got: {axis!r}")
-        if not self.is_spatial:
-            raise ValueError(
-                f"Canvas {self.id} is time-based (duration {self.duration}) and "
-                "states no width and height, so it has no extent in pixels"
-            )
-        return self.width if axis == "width" else self.height
-
 
 @dataclass
 class IIIFManifestInfo:
@@ -104,14 +94,15 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
 
     IIIF manifests contain canvas dimensions that represent image sizes.
     This loader extracts width/height for use with graphical timelines
-    without needing to download or load the actual image files: one image
-    (the first canvas) or a whole volume, every image laid end to end
-    (:meth:`create_timeline` with ``canvases="all"``).
+    without needing to download or load the actual image files. A timeline
+    runs along the time path the caller gives for a canvas:
+    :meth:`create_timelines` answers one timeline per canvas,
+    :meth:`create_timeline` the whole volume, its pages laid end to end.
 
     Supports both IIIF Presentation API 2.x and 3.x formats. Time-based
     Presentation 3 canvases (``duration`` without ``width``/``height``) are
-    read and expose their duration; they have no extent in pixels, so a
-    volume skips them and the single-image accessors refuse a manifest whose
+    read and expose their duration; they have no pixels, so no time path
+    runs through them and the single-image accessors refuse a manifest whose
     first canvas is one.
 
     Examples:
@@ -126,6 +117,15 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         >>> for canvas in loader.manifest_info.canvases:
         ...     print(f"{canvas.label}: {canvas.width}x{canvas.height}")
         display image: 4096x299400
+
+        A piano roll is read from top to bottom, so its time path is a
+        vertical line down the middle of the image:
+
+        >>> from timetoalign.loader.graphical.paths import VerticalLinePath
+        >>> path = VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048)
+        >>> (roll,) = loader.create_timelines(path)
+        >>> roll.length.value
+        299400
 
     Attributes:
         manifest_info: Parsed manifest information (after loading).
@@ -366,7 +366,12 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
                 width and height.
         """
         canvas = self.manifest_info.canvases[0]
-        return {"width": canvas.extent("width"), "height": canvas.extent("height")}
+        if canvas.width is None or canvas.height is None:
+            raise ValueError(
+                f"Canvas {canvas.id} is time-based (duration {canvas.duration}) and "
+                "states no width and height, so it has no extent in pixels"
+            )
+        return {"width": canvas.width, "height": canvas.height}
 
     @property
     def width(self) -> int:
@@ -436,134 +441,274 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
 
     # region Timeline Creation
 
-    @property
-    def name(self) -> str:
-        """Human-readable name for the loaded image.
-
-        Returns the manifest label if available, otherwise uses the canvas label,
-        or falls back to the source filename.
-        """
-        if self._manifest_info is None:
-            return "Unknown"
-
-        # Try manifest label first
-        if self._manifest_info.label:
-            return self._manifest_info.label
-
-        # Try first canvas label
-        if self._manifest_info.canvases and self._manifest_info.canvases[0].label:
-            return self._manifest_info.canvases[0].label
-
-        # Fall back to source filename
-        if self._source_path:
-            return self._source_path.stem
-
-        return "IIIF Image"
-
     def create_timeline(
         self,
+        paths: Mapping[int | str, TimeAxisPath] | TimeAxisPath,
+        *,
+        canvases: Sequence[int | str] | None = None,
         uid: str | None = None,
         name: str | None = None,
-        axis: str = "height",
-        canvases: Literal["first", "all"] = "first",
-    ) -> DiscreteGraphicalTimeline:
-        """Create a graphical timeline in pixels from the loaded IIIF manifest.
+        page_ids: Sequence[str] | str | None = None,
+        accolade_ids: Sequence[str] | str | None = None,
+    ) -> SegmentLine:
+        """Create the volume: the selected canvases laid end to end, in pixels.
 
-        With ``canvases="first"`` the timeline measures the first canvas: its
-        length is that image's extent along *axis* (height by default, for
-        vertical piano rolls).
+        Each selected canvas becomes one page along its time path, in
+        manifest order, and the volume is the segment line of the pages, as
+        long as all of them together. A page whose path is a
+        :class:`~timetoalign.loader.graphical.paths.PiecewisePath` is itself
+        a segment line of accolades, one per piece; any other path gives one
+        plain timeline of the path's length. See :meth:`create_timelines`
+        for what a page and an accolade state.
 
-        With ``canvases="all"`` the timeline measures the whole volume: a
-        segment line (``SegmentLine[DiscreteGraphicalTimeline]``) holding one
-        child per canvas that states a width and a height, in manifest order,
-        laid end to end from 0. Each child is as long as its canvas's extent
-        along *axis* and is named with the canvas's label; the line is as
-        long as all of them together. Time-based canvases are skipped. The
-        other dimension of each canvas stays in :attr:`manifest_info`.
-
-        Each child states the canvas it measures, and the line the manifest
-        it was read from, as the property ``dcterms:source`` whose value is
-        the IRI node (``{"id": <canvas or manifest id>}``; Presentation 2
-        ``@id``, Presentation 3 ``id``). A canvas or manifest without an id
-        states nothing. This property is provisional: it may change.
+        The volume states the manifest it was read from as the property
+        ``dcterms:source`` (``{"id": <manifest id>}``; a manifest without an
+        id states nothing). This property is provisional: it may change.
 
         Args:
-            uid: Unique identifier for the timeline. Auto-generated if None;
-                the children's IDs are always generated.
-            name: Human-readable name. Uses manifest/canvas label if None.
-            axis: Which dimension to use as the timeline axis:
-                - "height" (default): Timeline length = image height
-                - "width": Timeline length = image width
-            canvases: ``"first"`` (default) for the first canvas alone,
-                ``"all"`` for every spatial canvas as a segment line.
+            paths: The time path of each selected canvas: a mapping from a
+                canvas, named by its position from 0 (as :meth:`get_canvas`)
+                or by its id, to its path; or one path, where exactly one
+                canvas is selected.
+            canvases: The canvases to read, by position or id; they are read
+                in manifest order whatever order they are named in. None
+                selects every canvas that states a width and a height.
+            uid: The volume's id. Minted (``dgt_N``) if None.
+            name: The volume's name. The manifest's label if None.
+            page_ids: The pages' ids: a sequence, one per page, or a
+                template filled with ``page`` and ``n`` (``"p{page}"``).
+                Minted if None.
+            accolade_ids: The accolades' ids: a sequence over the whole
+                call, or a template filled with ``page``, ``accolade`` and
+                ``n`` (``"p{page}_s{accolade}"``). Minted if None.
 
         Returns:
-            A DiscreteGraphicalTimeline representing the image, or, for
-            ``canvases="all"``, the segment line of the volume (also a
-            DiscreteGraphicalTimeline).
+            The locked volume: ``SegmentLine[SegmentLine[DiscreteGraphical
+            Timeline]]`` where the pages are built of accolades, else
+            ``SegmentLine[DiscreteGraphicalTimeline]``.
 
         Raises:
             RuntimeError: If no manifest has been loaded.
-            ValueError: If axis is not "height" or "width", *canvases* is
-                neither "first" nor "all", the first canvas is time-based
-                (``"first"``), or no canvas states a width and height
-                (``"all"``).
+            TypeError: If *canvases* is a bare string, or *paths* is neither
+                a mapping nor a time path.
+            KeyError: If *canvases* names a canvas the manifest does not
+                hold, or *paths* names a canvas that is unknown, time-based
+                or not selected.
+            ValueError: If a selected canvas has no path, one path is given
+                for several canvases, a line leaves its canvas, no canvas is
+                selected, some pages are built of accolades and others are
+                not, or an ids argument does not fit the call. Nothing is
+                built then.
 
         Examples:
-            One image::
+            Two pages of a printed score, each with two systems::
+
+                from timetoalign.loader.graphical.paths import (
+                    HorizontalLinePath, PiecewisePath,
+                )
+
+                def systems(*lines):
+                    return PiecewisePath(tuple(
+                        HorizontalLinePath(x0=x0, x1=x1, y=y, tolerance=300)
+                        for x0, x1, y in lines
+                    ))
 
                 loader = IIIFManifestLoader().load("manifest.json")
-                timeline = loader.create_timeline(uid="dgt_1")
-
-            A whole volume, its pages laid end to end along their height::
-
-                volume = loader.create_timeline(canvases="all")
+                volume = loader.create_timeline(
+                    {
+                        1: systems((1221, 4101, 1900), (971, 4112, 3300)),
+                        2: systems((519, 3661, 900), (522, 3659, 2300)),
+                    },
+                    canvases=[1, 2],
+                    uid="scan",
+                )
                 for _, offset, page in volume.iter_segments():
                     print(page.name, offset.value, page.length.value,
                           page.statements["dcterms:source"])
         """
-        if self._manifest_info is None:
-            raise RuntimeError("No manifest loaded. Call load() first.")
-        if axis not in ("height", "width"):
-            raise ValueError(f"axis must be 'height' or 'width', got: {axis!r}")
-        if canvases == "all":
-            return self._create_volume(uid, name or self.name, axis)
-        if canvases != "first":
-            raise ValueError(f"canvases must be 'first' or 'all', got: {canvases!r}")
-
-        return DiscreteGraphicalTimeline(
-            length=self._manifest_info.canvases[0].extent(axis),
-            unit=TimeUnit.pixels,
+        info = self.manifest_info
+        return build_volume(
+            self,
+            self._pages(paths, canvases),
             uid=uid,
-            name=name or self.name,
+            name=info.label if name is None else name,
+            statements=_source_statements(info.id),
+            page_ids=page_ids,
+            accolade_ids=accolade_ids,
         )
 
-    def _create_volume(
-        self, uid: str | None, name: str, axis: str
-    ) -> SegmentLine[DiscreteGraphicalTimeline]:
-        """Build the segment line of every spatial canvas (``canvases="all"``).
+    def create_timelines(
+        self,
+        paths: Mapping[int | str, TimeAxisPath] | TimeAxisPath,
+        *,
+        canvases: Sequence[int | str] | None = None,
+        page_ids: Sequence[str] | str | None = None,
+        accolade_ids: Sequence[str] | str | None = None,
+    ) -> list[DiscreteGraphicalTimeline]:
+        """Create one timeline in pixels per selected canvas, along its time path.
+
+        A canvas whose path is a
+        :class:`~timetoalign.loader.graphical.paths.PiecewisePath` becomes a
+        segment line of accolades, one per piece in path order: an accolade
+        along a horizontal piece is as long as the piece (``x1 - x0``) and
+        states the strip it stands for in ``meta["box"]``. Any other path
+        gives one plain timeline of the path's length, which must be a whole
+        number of pixels: a piano roll is read along a ``VerticalLinePath``.
+
+        Each page is named with its canvas's label and states the canvas it
+        measures: its id in ``meta["image"]`` (the accolades too) and as the
+        property ``dcterms:source`` (``{"id": <canvas id>}``; Presentation 2
+        ``@id``, Presentation 3 ``id``). A canvas without an id states
+        nothing. This property is provisional: it may change.
+
+        A horizontal or vertical line must lie on its canvas: ``0 <= x0``,
+        ``x1 <= width`` and ``0 <= y <= height`` (for a vertical line ``0 <=
+        x <= width``, ``0 <= y0`` and ``y1 <= height``).
+
+        Args:
+            paths: As :meth:`create_timeline`.
+            canvases: As :meth:`create_timeline`.
+            page_ids: As :meth:`create_timeline`.
+            accolade_ids: As :meth:`create_timeline`.
+
+        Returns:
+            The pages in manifest order, each locked; an empty list where no
+            canvas is selected.
 
         Raises:
-            ValueError: If no canvas states a width and height.
+            RuntimeError: If no manifest has been loaded.
+            TypeError: As :meth:`create_timeline`.
+            KeyError: As :meth:`create_timeline`.
+            ValueError: As :meth:`create_timeline`, except that no canvas
+                need be selected and the pages need not be of one kind.
+
+        Examples:
+            A piano roll, read from top to bottom::
+
+                from timetoalign.loader.graphical.paths import VerticalLinePath
+
+                loader = IIIFManifestLoader().load("manifest.json")
+                (roll,) = loader.create_timelines(
+                    VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048)
+                )
+        """
+        return build_pages(
+            self,
+            self._pages(paths, canvases),
+            page_ids=page_ids,
+            accolade_ids=accolade_ids,
+        )
+
+    def _pages(
+        self,
+        paths: Mapping[int | str, TimeAxisPath] | TimeAxisPath,
+        canvases: Sequence[int | str] | None,
+    ) -> list[Page]:
+        """Describe each selected canvas with its time path, in manifest order.
+
+        Raises:
+            TypeError, KeyError, ValueError: Every refusal of *paths* and
+                *canvases* (see :meth:`create_timeline`).
         """
         info = self.manifest_info
-        pages = [canvas for canvas in info.canvases if canvas.is_spatial]
-        if not pages:
+        positions = _positions_by_id(info.canvases)
+        listing = _listed(info.canvases, range(len(info.canvases)))
+
+        if canvases is None:
+            selected = [
+                i for i, canvas in enumerate(info.canvases) if canvas.is_spatial
+            ]
+        elif isinstance(canvases, str):
+            raise TypeError(
+                f"canvases takes a sequence of positions or ids, not the bare "
+                f"string {canvases!r}: write canvases=[{canvases!r}]."
+            )
+        else:
+            resolved = [
+                _position(key, positions, len(info.canvases)) for key in canvases
+            ]
+            unknown = [key for key, at in zip(canvases, resolved) if at is None]
+            if unknown:
+                raise KeyError(
+                    f"canvases names {_spelled(unknown)}, which the manifest does "
+                    f"not hold. Available canvases: {listing}"
+                )
+            selected = sorted(set(resolved))
+
+        if isinstance(paths, TimeAxisPath):
+            if len(selected) != 1:
+                raise ValueError(
+                    f"One time path was given and {len(selected)} canvases are "
+                    f"selected ({_listed(info.canvases, selected)}): give a mapping "
+                    "from each canvas to its path, or select one canvas with "
+                    "canvases=."
+                )
+            path_of = {selected[0]: paths}
+        elif isinstance(paths, Mapping):
+            path_of = {}
+            named_as: dict[int, int | str] = {}
+            unknown, time_based, not_selected = [], [], []
+            for key, path in paths.items():
+                at = _position(key, positions, len(info.canvases))
+                if at is None:
+                    unknown.append(key)
+                elif not info.canvases[at].is_spatial:
+                    time_based.append(key)
+                elif at not in selected:
+                    not_selected.append(key)
+                elif at in named_as:
+                    raise ValueError(
+                        f"paths gives canvas {at} two time paths, as "
+                        f"{named_as[at]!r} and as {key!r}."
+                    )
+                else:
+                    named_as[at] = key
+                    path_of[at] = path
+            refused = [
+                f"{_spelled(keys)} ({reason})"
+                for keys, reason in (
+                    (unknown, "not in the manifest"),
+                    (time_based, "time-based: no width and height"),
+                    (not_selected, "not selected by canvases="),
+                )
+                if keys
+            ]
+            if refused:
+                raise KeyError(
+                    f"paths gives a time path to {'; '.join(refused)}. Selected "
+                    f"canvases: {_listed(info.canvases, selected)}"
+                )
+        else:
+            raise TypeError(
+                "paths takes a time path or a mapping from canvases to time "
+                f"paths, not {type(paths).__name__}."
+            )
+
+        without = [at for at in selected if at not in path_of]
+        if len(without) == 1:
             raise ValueError(
-                f"Manifest {info.id} has no canvas with a width and height: "
-                f"all {len(info.canvases)} canvas(es) are time-based"
+                f"canvas {without[0]} has no time path: give it one or leave it "
+                "out with canvases="
             )
-        volume = SegmentLine[DiscreteGraphicalTimeline](
-            length=0, unit=TimeUnit.pixels, uid=uid, name=name
-        )
-        _state_source(volume, info.id)
-        for canvas in pages:
-            page = DiscreteGraphicalTimeline(
-                length=canvas.extent(axis), unit=TimeUnit.pixels, name=canvas.label
+        if without:
+            raise ValueError(
+                f"canvases {', '.join(map(str, without))} have no time path: give "
+                "each one or leave them out with canvases="
             )
-            _state_source(page, canvas.id)
-            volume.append_segment(page)
-        return volume
+
+        pages = []
+        for at in selected:
+            canvas = info.canvases[at]
+            _refuse_off_canvas(path_of[at], at, canvas)
+            pages.append(
+                Page(
+                    name=canvas.label,
+                    image=canvas.id or None,
+                    path=path_of[at],
+                    statements=_source_statements(canvas.id),
+                )
+            )
+        return pages
 
     # endregion
 
@@ -582,7 +727,68 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         )
 
 
-def _state_source(timeline: DiscreteGraphicalTimeline, iri: str) -> None:
-    """State that *timeline* measures the resource *iri*, unless *iri* is empty."""
-    if iri:
-        timeline.add_statement(SOURCE_PROPERTY, {"id": iri})
+def _source_statements(iri: str) -> list[tuple[str, dict[str, str]]]:
+    """The statement that a timeline measures the resource *iri*; none if empty."""
+    return [(SOURCE_PROPERTY, {"id": iri})] if iri else []
+
+
+def _positions_by_id(canvases: Sequence[IIIFCanvasInfo]) -> dict[str, int]:
+    """Each canvas id's position; of canvases sharing an id, the first."""
+    positions: dict[str, int] = {}
+    for at, canvas in enumerate(canvases):
+        positions.setdefault(canvas.id, at)
+    return positions
+
+
+def _position(key: object, positions: Mapping[str, int], count: int) -> int | None:
+    """The position of the canvas *key* names (a position or an id), or None."""
+    if isinstance(key, str):
+        return positions.get(key)
+    if isinstance(key, int) and not isinstance(key, bool) and 0 <= key < count:
+        return key
+    return None
+
+
+def _spelled(keys: Sequence[object]) -> str:
+    """Canvas names as the caller wrote them, for a message."""
+    return ", ".join(repr(key) for key in keys)
+
+
+def _listed(canvases: Sequence[IIIFCanvasInfo], positions: Sequence[int]) -> str:
+    """The canvases at *positions*, each as ``position: 'id'``, for a message."""
+    return ", ".join(f"{at}: {canvases[at].id!r}" for at in positions) or "none"
+
+
+def _refuse_off_canvas(path: TimeAxisPath, at: int, canvas: IIIFCanvasInfo) -> None:
+    """Refuse a horizontal or vertical line of *path* that leaves *canvas*.
+
+    Raises:
+        ValueError: Naming the canvas, the piece and the canvas's size.
+    """
+    pieces = path.pieces if isinstance(path, PiecewisePath) else (path,)
+    for k, piece in enumerate(pieces, start=1):
+        if isinstance(piece, HorizontalLinePath):
+            on_canvas = (
+                0 <= piece.x0
+                and piece.x1 <= canvas.width
+                and 0 <= piece.y <= canvas.height
+            )
+            needed = f"0 <= x0, x1 <= {canvas.width} and 0 <= y <= {canvas.height}"
+        elif isinstance(piece, VerticalLinePath):
+            on_canvas = (
+                0 <= piece.y0
+                and piece.y1 <= canvas.height
+                and 0 <= piece.x <= canvas.width
+            )
+            needed = f"0 <= y0, y1 <= {canvas.height} and 0 <= x <= {canvas.width}"
+        else:
+            continue
+        if not on_canvas:
+            which = (
+                f"piece {k} of its time path" if path is not piece else "its time path"
+            )
+            raise ValueError(
+                f"Canvas {at} ({canvas.id!r}, {canvas.width} x {canvas.height} "
+                f"pixels): {which}, {piece!r}, leaves the canvas; a line on it "
+                f"needs {needed}."
+            )

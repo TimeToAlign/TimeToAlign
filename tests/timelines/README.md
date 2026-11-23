@@ -2630,6 +2630,101 @@ event cells):
   in pixels as int`, followed by the shape's own refusal in parentheses
   (asserted as a prefix: that part is the shape's).
 
+### `test_boxes_rebased.py` - Boxes moved onto a timeline cut from theirs
+
+**Purpose:** Four operations make a timeline from a part of another and move
+the source's events onto it, each event's start re-based by the cut's start
+`a` (offset arithmetic, `start − a`): `get_slice` (hence `apply_flow`, which
+slices), `create_child_from_region` / `create_children_from_regions`,
+`create_segment_line` (hence `_from_regions`, `_by_grouping`,
+`_by_splitting`) and `SegmentLine.from_segmentation`. A Box holds its
+shape in the image's space, so the shape never moves; what moves is the
+timeline's place in the image. The new timeline therefore states its own
+area: its `meta["box"]` is the source's area cut to the new x extent, `x =
+o(S) + a`, `width` = the new timeline's length, `y` and `height` the
+source's (of its bounding box where the source states a quadrilateral), and
+`meta["image"]` is carried over. Then `start − a = x_min − (o(S) + a)` is
+exactly the invariant `start = x_min − o(T)` on the new timeline, so every
+operation adds the moved rows through the checked path (the slice through
+the one Box check of a source's rows, the others through `add_events`) and a
+Box contradicting its shape cannot arise.
+
+**What each operation does with an interval crossing the cut, applied to
+Boxes unchanged:** the three cut operations take an event when its start
+lies in `[a, b)` and keep it whole, the new timeline growing to hold it (a
+Box's shape is then whole too, and the area stated is the grown length); an
+event starting before `a` is not taken. `get_slice` clips a crossing
+interval to `[a, b)` (`truncate_events=True`, the default) or leaves it out
+(`False`). A clipped Box would contradict its shape, so `get_slice` refuses
+a Box crossing either boundary when it would clip it: a documented known
+issue (`get_slice`'s docstring), with its own test. A source that states no
+`meta["box"]` stands at x 0 and gives no y extent; the design has no form
+for an area without one, so the new timeline states no `meta["box"]`: a cut
+at 0 keeps every Box valid (both origins are 0), and a cut elsewhere that
+would move a Box is refused, naming the Box, the source and the cut.
+
+**What would show it broken:** a Box whose shape changed; a moved Box whose
+start disagrees with its new timeline's `meta["box"]` (the timeline then
+cannot be written and read back: the round trip is the proof); a clipped
+Box; a timeline without Boxes whose cut gains anything (the existing test
+files of the four operations run unchanged).
+
+**Values.** `page` (`DiscreteGraphicalTimeline`, pixels, int, length 4564,
+`meta = {"box": {"x": 0, "y": 0, "width": 4564, "height": 6174}, "image":
+"page_1.jpg"}`) holds the Boxes `b1` = `BoundingBox.from_xywh(1221, 1589,
+940, 677)` (x 1221 to 2161) and `b2` = `(2161, 1589, 800, 677)` (x 2161 to
+2961), starts 1221 and 2161 (origin 0). Every shape below is asserted equal
+to the shape added (`bounding_box` cell `{x 1221, y 1589, width 940, height
+677}` for `b1`), and every new timeline round-trips:
+`type(t).from_dict(t.to_dict(events=True)).to_dict(events=True) ==
+t.to_dict(events=True)` (a segment line and a parent with its child read
+back whole, which runs the Box check on every timeline of the tree).
+
+- **Slice [1000, 3000).** Length 2000, `meta == {"box": {"x": 1000, "y": 0,
+  "width": 2000, "height": 6174}, "image": "page_1.jpg"}`; `b1` start 221
+  (1221 − 1000), duration 940; `b2` start 1161, duration 800.
+- **Child from the region [1000, 3000).** The child at offset 1000, length
+  2000, the same `meta`, `b1` at 221 and `b2` at 1161 (its own rows); the
+  page reads back whole.
+- **Segment line at [0, 1000, 3000, 4564]** (`create_segment_line` and
+  `SegmentLine.from_segmentation` alike): three segments at offsets 0,
+  1000, 3000, lengths 1000, 2000, 1564, areas `x` 0, 1000, 3000 with those
+  widths (`y` 0, `height` 6174, image carried); the middle one holds `b1`
+  at 221 and `b2` at 1161, the others no event.
+- **A quadrilateral source, through a child.** A page without Boxes holding
+  DMOS's system 1 as its child `sys` (offset 1221, length 2880, `meta["box"]`
+  the system's quadrilateral, x 1221 to 4101, y 1589 to 2266) with measures
+  `m1` (x 1221 to 2161) and `m2` (x 2151 to 2775) at starts 0 and 930. The
+  page's slice [1000, 3000) holds the slice of `sys` at offset 221 (1221 −
+  1000), length 1779 (3000 − 1221), `meta["box"] = {"x": 1221, "y": 1589,
+  "width": 1779, "height": 677}` (the cut starts at `sys`'s 0, so `x` stays
+  1221; `y`, `height` from the quadrilateral's bounding box), `m1` at 0,
+  `m2` at 930, quadrilaterals unchanged.
+- **Crossing, slice.** `page.get_slice(1500, 3000)` is refused, `b1` (1221
+  to 2161) crossing 1500: `Box 'b1' runs from 1221 to 2161 on timeline
+  'page' and crosses the slice's boundary at 1500: a slice clips the
+  intervals that cross its boundaries, and a clipped Box would contradict
+  its shape. Slice with truncate_events=False to leave it out.` The end
+  boundary likewise: `get_slice(1000, 2500)` names `b2` (2161 to 2961) and
+  2500. With `truncate_events=False`, `[1500, 3000)` leaves `b1` out and
+  holds `b2` at 661, area `x` 1500, width 1500.
+- **Crossing, child and segments.** The child from the region [1500, 2500)
+  does not take `b1` (it starts at 1221) and takes `b2` whole (it starts at
+  2161): `b2` at 661, the child grown from 1000 to 1461 (2961 − 1500), area
+  `x` 1500, width 1461. The segment line at [0, 1500, 2500, 4564]: `b1` in
+  the first segment at 1221 (grown to 2161, area width 2161), `b2` in the
+  second at 661 (grown to 1461, area `x` 1500, width 1461), the third empty
+  (length 2064, area `x` 2500), the segments at offsets 0, 2161, 3622 (the
+  line places each after the grown one before it, as for any interval).
+- **A source without `meta["box"]`.** The same page stating no meta:
+  `get_slice(0, 3000)` keeps `b1` at 1221 and `b2` at 2161 and its `meta`
+  is `{}`;
+  `get_slice(1000, 3000)`, the child from the region [1000, 3000) and the
+  segment line at [0, 1000, 3000, 4564] are refused with `Box 'b1' cannot
+  move onto a timeline cut at 1000 from timeline 'page': 'page' states no
+  meta["box"], so the cut cannot state where it stands in the image.`, and
+  the page keeps no child.
+
 ### `test_external_references.py` - Incoming External References and `to_dict()` Flags
 
 **Purpose:** Validates the per-timeline table of *incoming* external

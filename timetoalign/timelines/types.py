@@ -609,6 +609,10 @@ class SegmentLine(SegmentLineMixin, Timeline):
     ) -> "SegmentLine":
         """Create a parameterized line from slices of an unchanged source.
 
+        Each segment takes the source's events and area of an image as
+        :meth:`~timetoalign.timelines.Timeline.create_segment_line` gives
+        them.
+
         Args:
             source: Timeline to segment (not modified).
             split_coords: Coordinates defining segment boundaries.
@@ -621,6 +625,7 @@ class SegmentLine(SegmentLineMixin, Timeline):
         Raises:
             ValueError: If source already has children (ambiguous nesting).
             ValueError: If fewer than 2 split coordinates provided.
+            ValueError: As ``create_segment_line`` refuses a Box.
             TypeError: If a parameterized receiver does not match the source.
         """
         if source.n_children > 0:
@@ -666,27 +671,7 @@ class SegmentLine(SegmentLineMixin, Timeline):
                 name=f"segment_{i}",
             )
 
-            if copy_events:
-                events_in_range = source.get_events(
-                    min_coord=start,
-                    max_coord=end,
-                )
-
-                adjusted_events = []
-                for event in events_in_range:
-                    adjusted = dict(event)
-                    for coord_col in ("instant", "start", "end"):
-                        val = adjusted.get(coord_col)
-                        if val is not None:
-                            # Read the cell's exact side: taking the "value"
-                            # member alone would re-slice an exact event
-                            # position as the double nearest to it.
-                            adjusted[coord_col] = cls._coord_to_value(val) - start
-                    adjusted_events.append(adjusted)
-
-                if adjusted_events:
-                    segment.add_events(adjusted_events)
-
+            source._copy_events_to_cut(segment, start, end, copy_events=copy_events)
             segment_line.append_segment(segment)
 
         return segment_line

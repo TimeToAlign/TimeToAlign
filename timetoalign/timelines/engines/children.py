@@ -11,16 +11,19 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from timetoalign.core import (
+    BoundingBox,
     Coordinate,
     CoordinateSpec,
     CoordinateValue,
     NumberType,
+    Shape,
     TimeUnit,
 )
-from timetoalign.core.ids import mint_id, timeline_id_prefix
+from timetoalign.core.ids import mint_id, quote_id, timeline_id_prefix
 from timetoalign.core.time import (
     compare_number_column,
     coordinate_numeric_value,
+    express_as,
     number_to_json,
     shift_coordinate,
     shift_number,
@@ -35,9 +38,9 @@ from timetoalign.maps import (
     MeasureBeatMap,
     MeasureNumberMap,
 )
+from timetoalign.storage.events import BOX_EVENT_TYPE
 
 from ..manifest import spell
-from ..regions import Region
 from .regions import _resolve_boundary_names
 
 if TYPE_CHECKING:
@@ -1086,8 +1089,12 @@ class ChildrenMixin:
 
         The child's length = region duration, offset = region start.
         The child's class matches the parent's concrete class, and its name
-        is the region's name. If copy_events, events in [start, end) are
-        copied with adjusted coordinates.
+        is the region's name. If copy_events, the events starting in
+        [start, end) are copied whole with adjusted coordinates (the child
+        grows to hold one running past the region's end). The child states
+        the part of this timeline's area of an image (``meta["box"]``,
+        ``meta["image"]``) over the region, so a Box keeps its shape and its
+        start moves with the child's origin.
 
         Args:
             region_id: Id of an existing region.
@@ -1103,7 +1110,9 @@ class ChildrenMixin:
             KeyError: If region_id not found.
             RuntimeError: If timeline is locked.
             ValueError: With *measures*, if this timeline has no measure map
-                or the measure map refuses the slice.
+                or the measure map refuses the slice; if a Box would move
+                while this timeline states no ``meta["box"]`` and the region
+                does not start at 0.
 
         Examples:
             >>> tl.create_regions_by_splitting("breaks", prefix="movement")
@@ -1135,8 +1144,9 @@ class ChildrenMixin:
         if measured is not None:
             measured.give_to(child)
 
-        if copy_events:
-            self._copy_events_to_child(child, region)
+        self._copy_events_to_cut(
+            child, region.start.value, region.end.value, copy_events=copy_events
+        )
 
         self.add_child(child, offset=region.start)
         return child
@@ -1295,38 +1305,148 @@ class ChildrenMixin:
         """
         return child_id in self._children
 
-    def _copy_events_to_child(
+    def _copy_events_to_cut(
         self,
-        child: "Timeline",
-        region: Region,
+        target: "Timeline",
+        start: Any,
+        end: Any,
+        *,
+        copy_events: bool = True,
     ) -> None:
-        """Copy events within a region to a child, adjusting coordinates.
+        """Copy the events starting in [start, end) onto *target*, cut there.
 
-        Events in [region.start, region.end) are copied with coordinates
-        shifted by -region.start so they are relative to the child's origin.
+        The one copy of a child made from a region and of a segment: each
+        event whose start lies in [start, end) (``get_events``, children's
+        events included) is taken whole, its ``start``, ``end`` and
+        ``instant`` shifted by -start, and added through
+        :meth:`~timetoalign.timelines.Timeline.add_events`, so *target* grows
+        to hold an event running past *end*; an event starting before
+        *start* is not taken. *target* states its place in the image first
+        (:meth:`_move_rows_onto_cut`), with or without events.
 
         Args:
-            child: The target child timeline.
-            region: The region defining the source interval.
+            target: The new timeline, standing at *start* of this one.
+            start: The cut's start, in this timeline's number type.
+            end: The cut's end, likewise.
+            copy_events: Whether the events are copied; the area is stated
+                either way.
+
+        Raises:
+            ValueError: As :meth:`_move_rows_onto_cut` refuses a Box, or as
+                ``add_events`` refuses a row; *target* is then incomplete.
         """
-        events_in_region = self.get_events(
-            min_coord=region.start,
-            max_coord=region.end,
-        )
+        rows: list[dict[str, Any]] = []
+        if copy_events:
+            for event in self.get_events(min_coord=start, max_coord=end):
+                row = dict(event)
+                for key in ("instant", "start", "end"):
+                    if row.get(key) is not None:
+                        row[key] = shift_coordinate(row[key], start, subtract=True)
+                rows.append(row)
+        self._move_rows_onto_cut(target, rows, start, end, stated=False)
 
-        adjusted_events = []
-        for event in events_in_region:
-            adjusted = dict(event)
-            for coord_col in ("instant", "start", "end"):
-                val = adjusted.get(coord_col)
-                if val is not None:
-                    adjusted[coord_col] = shift_coordinate(
-                        val, region.start.value, subtract=True
+    def _image_area_of_cut(self, at: Any, length: Any) -> dict[str, Any]:
+        """The ``meta`` entries of a timeline cut from this one at *at*.
+
+        A timeline standing for an area of an image states it in
+        ``meta["box"]`` and names the image in ``meta["image"]``. A cut of
+        *length* from *at* measures the same image (``image`` carried over)
+        and stands for the part of this timeline's area over its x extent:
+        a box at ``x`` = this area's ``x_min`` + *at*, of ``width``
+        *length*, with this area's ``y`` and ``height`` (of its bounding
+        box where the area is a quadrilateral). Without ``meta["box"]``
+        this timeline states no y extent, so the cut states no box.
+
+        Args:
+            at: Where the cut starts on this timeline, in its number type.
+            length: The cut's length, likewise.
+
+        Returns:
+            The entries, ``box`` and ``image`` where this timeline states
+            them.
+
+        Raises:
+            ValueError: If ``meta["box"]`` is no shape on this axis.
+        """
+        entries: dict[str, Any] = {}
+        if "image" in self._meta:
+            entries["image"] = copy.deepcopy(self._meta["image"])
+        box = self._meta.get("box")
+        if box is not None:
+            area = Shape.from_dict(
+                box, unit=self._unit, number_type=self._number_type
+            ).bounding_box
+            entries["box"] = BoundingBox.from_xywh(
+                express_as(
+                    shift_number(area.x.value, at, subtract=False), self._number_type
+                ),
+                area.y,
+                length,
+                area.height,
+                unit=self._unit,
+                number_type=self._number_type,
+            ).to_dict()
+        return entries
+
+    def _move_rows_onto_cut(
+        self,
+        target: "Timeline",
+        rows: list[dict[str, Any]],
+        start: Any,
+        end: Any,
+        *,
+        stated: bool,
+    ) -> None:
+        """Add *rows*, moved from [start, end) of this timeline, onto *target*.
+
+        A Box's shape stays in its image's space while its interval moves
+        with the cut: *target* first states its own place in the image
+        (:meth:`_image_area_of_cut`), so that ``start - a`` of each moved
+        Box is ``x_min - o(target)``, the invariant the Box check holds
+        every Box to. The rows then pass that check: through
+        ``add_events`` (which may grow *target*; the area is then stated
+        again over the grown length), or, with *stated*, as a source's rows
+        are read (``_add_stated_events``: no ID minted, no growth).
+
+        Args:
+            target: The new timeline, standing at *start* of this one.
+            rows: The rows, their positions already shifted by -start.
+            start: The cut's start, in this timeline's number type.
+            end: The cut's end, likewise.
+            stated: Add as rows read from a source rather than through
+                ``add_events``.
+
+        Raises:
+            ValueError: If a row is a Box, *start* is not 0 and this
+                timeline states no ``meta["box"]``, so the cut cannot state
+                where it stands; or as the Box check or ``add_events``
+                refuses a row. Nothing is added then.
+        """
+        if "box" not in self._meta and start != 0:
+            for row in rows:
+                if row.get("event_type") == BOX_EVENT_TYPE:
+                    raise ValueError(
+                        f"Box {quote_id(row.get('id'))} cannot move onto a timeline "
+                        f"cut at {_format_coordinate_value(start)} from timeline "
+                        f"{quote_id(self._id)}: {quote_id(self._id)} states no "
+                        f'meta["box"], so the cut cannot state where it stands in '
+                        f"the image."
                     )
-            adjusted_events.append(adjusted)
-
-        if adjusted_events:
-            child.add_events(adjusted_events)
+        extent = end - start
+        target._meta.update(self._image_area_of_cut(start, extent))
+        if rows:
+            if stated:
+                target._add_stated_events(rows)
+            else:
+                target.add_events(rows)
+        grown = target.length
+        if (
+            not stated
+            and "box" in self._meta
+            and grown is not None
+            and grown.value > extent
+        ):
+            target._meta.update(self._image_area_of_cut(start, grown.value))
 
     def _slice_bounds(
         self, start: CoordinateSpec, end: CoordinateSpec
@@ -1392,6 +1512,16 @@ class ChildrenMixin:
         Slicing creates a new timeline that is a structural copy of the
         specified interval of the source.
 
+        A timeline standing for an area of an image (``meta["box"]``) gives
+        the slice the part of that area over the slice's x extent, and
+        ``meta["image"]`` is carried over: a Box keeps its shape, in the
+        image's space, and its start moves with the slice's origin.
+
+        Known issue: a Box crossing a slice boundary cannot be clipped (its
+        interval would contradict its shape), so with *truncate_events* the
+        slice is refused; slice with ``truncate_events=False`` to leave such
+        a Box out.
+
         Args:
             start: Start coordinate (inclusive).
             end: End coordinate (exclusive).
@@ -1408,8 +1538,11 @@ class ChildrenMixin:
             coordinates shifted to [0, end-start).
 
         Raises:
-            ValueError: If start >= end or either is outside timeline bounds.
-                The end is not bounded on a timeline of unknown length.
+            ValueError: If start >= end or either is outside timeline bounds
+                (the end is not bounded on a timeline of unknown length); if
+                a Box crosses a boundary and *truncate_events* is set; or if
+                a Box would move while this timeline states no
+                ``meta["box"]`` and *start* is not 0.
 
         Examples:
             >>> source = ContinuousLogicalTimeline(length=100)
@@ -1464,12 +1597,21 @@ class ChildrenMixin:
         The 'instant' key is only used as input convenience during
         ``add_events()`` and is converted to 'start' internally.
 
+        The rows are added as a source's rows are read, through the one Box
+        check, after *target* states its place in the image
+        (:meth:`_move_rows_onto_cut`). A Box is never clipped: one that
+        truncating would clip is refused.
+
         Args:
             target: The target timeline to receive events.
             start: Start coordinate (inclusive) in source coords.
             end: End coordinate (exclusive) in source coords.
             truncate_events: If True, clip straddling intervals. If False,
                 only include fully-contained intervals.
+
+        Raises:
+            ValueError: If truncating would clip a Box, or as
+                :meth:`_move_rows_onto_cut` refuses a row.
         """
         # Get this timeline's own events only. Children are copied separately
         # by _copy_children_to_slice, so pulling their events up here would
@@ -1512,6 +1654,10 @@ class ChildrenMixin:
 
                     if clipped_start >= clipped_end:
                         continue  # Fully outside
+                    if ev.get("event_type") == BOX_EVENT_TYPE and (
+                        clipped_start != ev_start or clipped_end != ev_end
+                    ):
+                        self._refuse_clipping_box(ev, ev_start, ev_end, start, end)
 
                     ev["start"] = shift_coordinate(clipped_start, start, subtract=True)
                     ev["end"] = shift_coordinate(clipped_end, start, subtract=True)
@@ -1527,8 +1673,32 @@ class ChildrenMixin:
                         ev["duration"] = subtract_coordinates(ev["end"], ev["start"])
                         adjusted_events.append(ev)
 
-        if adjusted_events:
-            target._add_events_unchecked(adjusted_events)
+        self._move_rows_onto_cut(target, adjusted_events, start, end, stated=True)
+
+    def _refuse_clipping_box(
+        self,
+        row: dict[str, Any],
+        box_start: Any,
+        box_end: Any,
+        start: Any,
+        end: Any,
+    ) -> None:
+        """Refuse to clip the Box *row*, which crosses the slice [start, end).
+
+        Raises:
+            ValueError: Always, naming the Box, its span on this timeline and
+                the boundary it crosses (*start* where it crosses both).
+        """
+        boundary = start if box_start < start else end
+        raise ValueError(
+            f"Box {quote_id(row.get('id'))} runs from "
+            f"{_format_coordinate_value(box_start)} to "
+            f"{_format_coordinate_value(box_end)} on timeline {quote_id(self._id)} "
+            f"and crosses the slice's boundary at "
+            f"{_format_coordinate_value(boundary)}: a slice clips the intervals "
+            f"that cross its boundaries, and a clipped Box would contradict its "
+            f"shape. Slice with truncate_events=False to leave it out."
+        )
 
     def _copy_children_to_slice(
         self,

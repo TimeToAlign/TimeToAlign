@@ -7,7 +7,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
 from timetoalign.core import CoordinateSpec
-from timetoalign.core.time import coordinate_numeric_value, shift_coordinate
+from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
 if TYPE_CHECKING:
@@ -31,6 +31,10 @@ class SegmentsMixin:
 
         Given k+1 sorted coordinates, produces a new SegmentLine with k
         contiguous segments. Each segment's class matches self's class.
+        Each segment takes the events starting in its span, whole (it grows
+        to hold one running past its end), and the part of this timeline's
+        area of an image (``meta["box"]``, ``meta["image"]``) over its span,
+        so a Box keeps its shape and its start moves with the segment.
 
         Does NOT modify self. Returns a new independent SegmentLine.
 
@@ -43,7 +47,8 @@ class SegmentsMixin:
 
         Raises:
             ValueError: If fewer than 2 boundaries or not monotonically
-                increasing.
+                increasing, or a Box would move into a segment not starting
+                at 0 while this timeline states no ``meta["box"]``.
 
         Examples:
             >>> measures = audio_tl.create_segment_line(
@@ -89,22 +94,7 @@ class SegmentsMixin:
                 name=f"segment_{i}",
             )
 
-            if copy_events:
-                events_in_range = self.get_events(
-                    min_coord=start,
-                    max_coord=end,
-                )
-                adjusted = []
-                for event in events_in_range:
-                    adj = dict(event)
-                    for col in ("instant", "start", "end"):
-                        val = adj.get(col)
-                        if val is not None:
-                            adj[col] = shift_coordinate(val, start, subtract=True)
-                    adjusted.append(adj)
-                if adjusted:
-                    segment.add_events(adjusted)
-
+            self._copy_events_to_cut(segment, start, end, copy_events=copy_events)
             sl.append_segment(segment)
 
         return sl

@@ -30,8 +30,9 @@ from images and PDFs. The key components are:
 - **DmosLoader**: Read the pages, systems and measures of a DMOS JSON file as page
   timelines made of their systems' accolades, with the measures as Box events.
 
-- **MeiFacsimileLoader**: Read the surfaces and zones of an MEI facsimile as page
-  timelines holding Box events, and the ``@facs`` links to them.
+- **MeiFacsimileLoader**: Read the surfaces and zones of an MEI facsimile as pages
+  made of accolades, the zones as Box events of their accolade, and the ``@facs``
+  links to them.
 
 Examples:
     >>> from timetoalign.loader.graphical import GraphicalLoader

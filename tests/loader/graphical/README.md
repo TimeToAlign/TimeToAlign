@@ -169,25 +169,107 @@ case: the page excerpt with that region as its system 2.
 
 ## `MeiFacsimileLoader`
 
-**Source:** `MEI/061_Gelobet seist du Jesu Christ_facsimile.mei` of the
-Anhaltisches Choralbuch digital edition (CC BY 4.0): one `surface`
-(`xml:id` `surface_01M7DF2DF3J8BVY6RSGDQBJ6W6`, `n` 54, `ulx` 0 `uly` 0
-`lrx` 3999 `lry` 2999) with a `graphic` (`target`
-`../facsimile/20251230_181354.jpg`, `width` 4000, `height` 3000) and its first
-two zones, and the two measures pointing to them by `@facs`.
+**Source:** `001_Ach bleib bei uns, Herr Jesu Christ_facsimile.mei` of the
+Anhaltisches Choralbuch digital edition (CC BY 4.0): its one `surface`
+(`xml:id` `surface_01M7DF2D8Q8FYGETPJXXMG03QP`, `n` 15, `ulx` 0 `uly` 0
+`lrx` 3999 `lry` 2999) with its `graphic` (`target`
+`facsimile/20251230_180023.jpg`, `width` 4000, `height` 3000) and its nine
+`measure` zones, and the first two measures pointing to them by `@facs`. The
+zones, as (`ulx`, `uly`, `lrx`, `lry`), called zone 1 to 9 below:
 
-- **The surface** is a root timeline with the surface's `xml:id`, named
-  `"54"`, length 4000 (the graphic's width, not `lrx - ulx` = 3999: the
-  graphic states the image), locked, `meta == {"image":
-  "../facsimile/20251230_181354.jpg", "box": {"x": 0, "y": 0, "width": 4000,
-  "height": 3000}}`.
-- **Zones** are Boxes with the zone's `xml:id`. MEI corners are points, so a
-  zone's width is `lrx - ulx`: `zone_01M7DF2DF4MQT5E96R26XFVEYG` (`ulx` 520,
-  `uly` 390, `lrx` 874, `lry` 1019) is the BoundingBox (520, 390, 354, 629),
-  start 520, duration 354; `zone_01M7DF2DF4R34CYF6DVH8GZD9P` is (814, 408,
-  315, 625), start 814, duration 315. They overlap in x.
-- **`facs`** maps `m-43` to `("zone_01M7DF2DF4MQT5E96R26XFVEYG",)` and `m-57`
-  to `("zone_01M7DF2DF4R34CYF6DVH8GZD9P",)`, the leading `#` of each
+| | zone | | zone |
+|---|---|---|---|
+| 1 | 490, 344, 973, 877 | 6 | 498, 858, 1496, 1337 |
+| 2 | 944, 368, 1523, 864 | 7 | 1465, 885, 2146, 1353 |
+| 3 | 1481, 388, 2082, 912 | 8 | 2110, 886, 2748, 1357 |
+| 4 | 2034, 402, 2694, 884 | 9 | 2704, 886, 3302, 1387 |
+| 5 | 2669, 389, 3296, 916 | | |
+
+**What has to be proved.** MEI states pages and zones but no systems, and a
+page's width is no time axis. The loader is right when the timeline follows
+the page's time path: one accolade per line of music, each as long as its
+zones reach in x, the page their concatenation, and each zone a Box of the
+accolade it lies on, placed from that accolade's left edge. Every number
+below is derived by hand from the table, so a loader that kept a page-wide
+timeline, grouped wrongly, or placed a zone from the image's left edge gives
+other numbers.
+
+- **The grouping, by hand.** Left edges in document order: 490, 944, 1481,
+  2034, 2669, 498, 1465, 2110, 2704; their span is 2704 - 490 = 2214. A zone
+  begins a new accolade where its left edge falls back from the previous
+  one's by more than half the span: the only fall is 2669 to 498 = 2171, and
+  2 x 2171 > 2214. So zones 1 to 5 are accolade 1, zones 6 to 9 accolade 2.
+- **The paths** (`create_paths()`, keyed by the surface's `xml:id`):
+  accolade 1 runs x 490 to 3296 (least `ulx`, greatest `lrx`), y 344 to 916,
+  so its line is at y (344 + 916) / 2 = 630 with tolerance 286; accolade 2
+  runs x 498 to 3302, y 858 to 1387, line at y 2245/2, tolerance 529/2 (kept
+  as fractions, never rounded). A surface without `xml:id` is keyed by its
+  position in the file from 0; a surface without a zone taking part has no
+  path.
+- **The page** (`create_timelines()`) is a locked root
+  `SegmentLine[DiscreteGraphicalTimeline]` with the surface's `xml:id`, named
+  `"15"`, length 2806 + 2804 = 5610 (not the graphic's 4000), `meta ==
+  {"image": "facsimile/20251230_180023.jpg"}`: a page states no
+  `meta["box"]`, the graphic's size is on no timeline.
+- **The accolades** are its segments: `accolade_1` (`dgt_2`) at offset 0,
+  length 2806, `meta["box"]` (490, 344, 2806, 572); `accolade_2` (`dgt_3`)
+  at offset 2806, length 2804, `meta["box"]` (498, 858, 2804, 529); both
+  state the page's image. The given page id takes number 1 of the minted
+  ids.
+- **Zones are Boxes of their accolade** with the zone's `xml:id`, shape as
+  written (MEI corners are points, so a width is `lrx - ulx`), start =
+  `ulx` less the accolade's left edge. All nine are asserted literally:
+  accolade 1 holds zones 1 to 5 at 0, 454, 991, 1544, 2179 with durations
+  483, 579, 601, 660, 627; accolade 2 zones 6 to 9 at 0, 967, 1612, 2206
+  with durations 998, 681, 638, 598. Zone 6 at 0 (not 498) is what a
+  page-wide timeline gets wrong. The image-space invariant (principle 3) is
+  checked on every accolade with the tests' own helper. The two strips
+  overlap in y (858 to 916); each zone's centre is nearer its own line.
+- **A zone stays in the accolade it was grouped into.** Three zones a (100,
+  0, 400, 100), b (400, 300, 800, 400), c (100, 200, 800, 600): the left
+  edge falls back 400 to 100 = 300 against a span of 300, so a and b are
+  accolade 1 (x 100 to 800, y 0 to 400, line at y 200) and c accolade 2 (y
+  200 to 600, line at y 400). The strips overlap and b's centre (y 350) is
+  nearer the second line; b must still be a Box of accolade 1 at 300, where
+  a loader placing grouped zones by the nearest line puts it on accolade 2.
+- **The volume** (`create_timeline()`) is a locked
+  `SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]` of the pages: id
+  `dgt_1` (or the given `uid`, with `name`), page as above, accolades then
+  `dgt_3`, `dgt_4`. With a second surface holding one zone (100, 50, 400,
+  90) its length is 5610 + 300 = 5910 and the second page lies at offset
+  5610.
+- **Which zones take part.** A surface holds, in this order, a `staff` zone
+  (300, 300, 3400, 950), zones 1 and 2 as `measure`, and a zone without
+  `@type` (1000, 400, 1100, 500). With `zone_types="measure"` only the two
+  measures are Boxes and the accolade runs x 490 to 1523 (length 1033, line
+  at y 1221/2, tolerance 533/2), not 300 to 3400; without `zone_types` all
+  four take part (left edges 300, 490, 944, 1000 never fall back: one
+  accolade x 300 to 3400, length 3100, zone 1 at 190, the untyped zone at
+  700); a collection of types (`["measure", "staff"]`) takes three. A
+  surface none of whose zones takes part is left out of timelines and
+  paths, as a surface without zones is.
+- **Given paths** replace the grouping. For the nine zones, two lines
+  written by hand, x 400 to 3400 at y 630 and y 1120, tolerance 300 each:
+  two accolades of length 3000 (page 6000), `meta["box"]` (400, 330, 3000,
+  600) and (400, 820, 3000, 600); zone 2 then starts at 944 - 400 = 544 and
+  zone 6 (centre y 1097.5, outside the first strip 330 to 930) at 98 on the
+  second. The same result whether the path is given alone, under the
+  surface's `xml:id` or under position 0. A single `HorizontalLinePath`
+  makes the page one plain timeline with the Boxes on it. Refused, each
+  message asserted whole: a `VerticalLinePath` where zones take part; one
+  path for a file of two surfaces; a mapping naming a surface the file does
+  not hold (`KeyError` listing the surfaces); one surface named twice, by id
+  and by position; a zone lying on no piece of the given path. A surface
+  without zones that is given a path is built from it (a `VerticalLinePath`
+  of 0 to 2000 is a plain timeline of length 2000).
+- **Identity.** `box_ids="m{n}"` names the nine Boxes `m1` to `m9` through
+  both accolades; `accolade_ids="p{page}_s{accolade}"` gives `p1_s1`,
+  `p1_s2`; `page_ids=["folio"]` replaces the surface's id. `facs` is the
+  file's and unchanged by `box_ids`. A sequence of eight Box ids for nine
+  zones is refused. A surface without `xml:id` is minted `dgt_1` and, without
+  `@n`, named `page_1`; a zone without `xml:id` is `box_1` on its accolade.
+- **`facs`** maps `m-43` to `("zone_01M7DF2D8RNCKHKF6SMCWB94Z5",)` and `m-57`
+  to `("zone_01M7DF2D8R00HP8JYGXRTE13G3",)`, the leading `#` of each
   reference dropped; an element pointing to two zones keeps both in the
   order written.
 - **`@points`.** MEI, as SVG, fixes neither a first corner nor a direction,
@@ -196,11 +278,12 @@ two zones, and the two measures pointing to them by `@facs`.
   DMOS measure 1 is listed eight ways (each of its four corners first, each
   direction): every listing reads as the same quadrilateral, asserted
   literally as `top_left (1221, 1589)`, `top_right (2151, 1589)`,
-  `bottom_right (2161, 2266)`, `bottom_left (1221, 2266)` in its dict form,
-  start 1221, duration 940. A reader that kept the written order would
-  hold `(2161, 2266)` as the top left of the listing starting there (or
-  refuse it); one that refused a counter-clockwise listing refuses valid
-  MEI.
+  `bottom_right (2161, 2266)`, `bottom_left (1221, 2266)` in its dict form.
+  Alone on its surface it is its accolade: start 0, duration 940,
+  `meta["box"]` (1221, 1589, 940, 677), the bounding box of the four points.
+  A reader that kept the written order would hold `(2161, 2266)` as the top
+  left of the listing starting there (or refuse it); one that refused a
+  counter-clockwise listing refuses valid MEI.
 - **Known issue: `@points` that are no convex quadrilateral.** A zone is a
   Box holding a `Quadrilateral`, which has four corners bounding a convex
   area; any other `@points` cannot be one, and nothing is put in its place
@@ -215,31 +298,22 @@ two zones, and the two measures pointing to them by `@facs`.
   1221,2266 2161,2266`): `... bound no convex quadrilateral: the outline
   turns clockwise at points 1 and 2 and counter-clockwise at points 3 and
   4.`
-- **Sizes the file does not give.** A surface without a graphic but with
-  `ulx` 100, `uly` 0, `lrx` 600, `lry` 400 has length 500 and `meta["box"]`
-  (100, 0, 500, 400), so a zone at `ulx` 150 starts at 50 (the invariant with
-  `o(T)` = 100). A graphic whose size is in centimetres states no pixel size:
-  with no surface coordinates the length is `None` and `meta` holds the image
-  only. A graphic size written `4000px` is 4000. A surface without `xml:id`
-  is minted `dgt_N` (and, without `@n`, named by that id); a second surface
-  after one with a given id is minted `dgt_2`, since the given id takes a
-  number too.
-- **The image's right edge.** A zone ending at x 4600 on a 4512-pixel image
-  is refused at loading, naming the zone.
-- **Known issue: the surface's corners beside the graphic's size.** Where
-  the graphic states its pixel width, the image's space is that width from
-  x 0 and the surface's `ulx` .. `lry` are not used, even where they state
-  another area. The case pins this: a surface `ulx` 100, `uly` 0, `lrx`
-  4100, `lry` 3000 with a graphic 4000 x 3000 has length 4000 and
-  `meta["box"]` (0, 0, 4000, 3000), not the surface's (100, 0, 4000,
-  3000); a zone at `ulx` 150 .. `lrx` 200 starts at 150 (not 50); a zone
-  ending at x 4050 (inside the surface's corners) is refused as past the
-  right edge at x 4000. Should the surface's corners come to decide the
-  space, this case is the one to change.
+- **The image's right edge.** A zone ending at x 4600 on a graphic 4512
+  pixels wide is refused at loading, naming the zone; so is one ending at
+  4050 on a graphic of `4000px`. A graphic whose size is in centimetres
+  states no pixel width, so nothing is checked against it.
+- **Known issue: the surface's corners.** Zone coordinates are taken as the
+  graphic's pixels; the surface's `ulx` .. `lry` are not read. The case pins
+  this: on a surface `ulx` 100, `uly` 0, `lrx` 4100, `lry` 3000 with a
+  graphic 4000 x 3000, a zone ending at x 4050 (inside the surface's
+  corners) is refused as past the right edge at x 4000, and a zone at `ulx`
+  150 .. `lrx` 200 states `meta["box"]` x 150 on its accolade, as written.
+  Should the surface's corners come to state the space, this case is the
+  one to change.
 - **Zones without coordinates** are not read and are listed, in document
   order, in `zones_without_coordinates`.
-- **Refusals.** A root other than `<mei>` in the MEI namespace, `create_
-  timelines()` before `load()`, and a second source are refused.
+- **Refusals.** A root other than `<mei>` in the MEI namespace, each of the
+  three `create_*` methods before `load()`, and a second source are refused.
 
 ## Time paths and pages
 

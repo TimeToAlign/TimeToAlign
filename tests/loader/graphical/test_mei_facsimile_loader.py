@@ -1,14 +1,16 @@
 """Tests for MeiFacsimileLoader.
 
 The fixtures are excerpts of an MEI file of the Anhaltisches Choralbuch digital
-edition (``061_Gelobet seist du Jesu Christ_facsimile.mei``, CC BY 4.0) and
-variations of its surface, written by the test. The validation logic is
-documented in ``tests/loader/graphical/README.md`` ("``MeiFacsimileLoader``").
-All expected values are exact and read from the source file by hand.
+edition (``001_Ach bleib bei uns, Herr Jesu Christ_facsimile.mei``, CC BY 4.0):
+its surface with all nine zones, and variations written by the test. The
+validation logic is documented in ``tests/loader/graphical/README.md``
+("``MeiFacsimileLoader``"). All expected values are exact and derived from the
+source file by hand.
 """
 
 from __future__ import annotations
 
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -23,18 +25,46 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.loader.graphical import MeiFacsimileLoader
-from timetoalign.timelines import DiscreteGraphicalTimeline, Timeline
+from timetoalign.loader.graphical.paths import (
+    HorizontalLinePath,
+    PiecewisePath,
+    VerticalLinePath,
+)
+from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine, Timeline
 
-SURFACE = "surface_01M7DF2DF3J8BVY6RSGDQBJ6W6"
-ZONE_1 = "zone_01M7DF2DF4MQT5E96R26XFVEYG"
-ZONE_2 = "zone_01M7DF2DF4R34CYF6DVH8GZD9P"
-IMAGE = "../facsimile/20251230_181354.jpg"
+SURFACE = "surface_01M7DF2D8Q8FYGETPJXXMG03QP"
+IMAGE = "facsimile/20251230_180023.jpg"
+# The nine zones of the surface: xml:id, ulx, uly, lrx, lry.
+ZONES = [
+    ("zone_01M7DF2D8RNCKHKF6SMCWB94Z5", 490, 344, 973, 877),
+    ("zone_01M7DF2D8R00HP8JYGXRTE13G3", 944, 368, 1523, 864),
+    ("zone_01M7DF2D8R4E9KQCXCPC9RV59F", 1481, 388, 2082, 912),
+    ("zone_01M7DF2D8S9S18YJ6CYJVF4QCJ", 2034, 402, 2694, 884),
+    ("zone_01M7DF2D8SY6CN7SFAZFPE58FT", 2669, 389, 3296, 916),
+    ("zone_01M7DF2D8SF9X38YEGDA0JCD04", 498, 858, 1496, 1337),
+    ("zone_01M7DF2D8S1F9S83VHS68E6N7W", 1465, 885, 2146, 1353),
+    ("zone_01M7DF2D8TV0F9DCHY6QNWYTDX", 2110, 886, 2748, 1357),
+    ("zone_01M7DF2D8TSXCHCSA07C235VTV", 2704, 886, 3302, 1387),
+]
+ZONE_IDS = [zone[0] for zone in ZONES]
+ZONE_1, ZONE_2 = ZONE_IDS[:2]
 
+
+def _zone(zone_id: str, ulx: int, uly: int, lrx: int, lry: int, type_: str) -> str:
+    kind = f' type="{type_}"' if type_ else ""
+    return (
+        f'\n        <zone xml:id="{zone_id}"{kind} ulx="{ulx}" uly="{uly}" '
+        f'lrx="{lrx}" lry="{lry}"/>'
+    )
+
+
+GRAPHIC = (
+    f'<graphic xml:id="graphic_01M7DF2D8RMG9SGXTZRR3S1BA3" target="{IMAGE}" '
+    'width="4000" height="3000"/>'
+)
 EXCERPT_SURFACE = f"""
-      <surface xml:id="{SURFACE}" n="54" ulx="0" uly="0" lrx="3999" lry="2999">
-        <graphic xml:id="graphic_01M7DF2DF43DZBVPP3758RC994" target="{IMAGE}" width="4000" height="3000"/>
-        <zone xml:id="{ZONE_1}" type="measure" ulx="520" uly="390" lrx="874" lry="1019"/>
-        <zone xml:id="{ZONE_2}" type="measure" ulx="814" uly="408" lrx="1129" lry="1033"/>
+      <surface xml:id="{SURFACE}" n="15" ulx="0" uly="0" lrx="3999" lry="2999">
+        {GRAPHIC}{"".join(_zone(*zone, "measure") for zone in ZONES)}
       </surface>"""
 
 EXCERPT_BODY = f"""
@@ -49,11 +79,28 @@ EXCERPT_BODY = f"""
       </mdiv>
     </body>"""
 
+ACCOLADE_1_BOX = {"x": 490, "y": 344, "width": 2806, "height": 572}
+ACCOLADE_2_BOX = {"x": 498, "y": 858, "width": 2804, "height": 529}
+# Per accolade: (zone number, start, duration, bounding box x, y, width, height).
+ACCOLADE_1_ZONES = [
+    (1, 0, 483, (490, 344, 483, 533)),
+    (2, 454, 579, (944, 368, 579, 496)),
+    (3, 991, 601, (1481, 388, 601, 524)),
+    (4, 1544, 660, (2034, 402, 660, 482)),
+    (5, 2179, 627, (2669, 389, 627, 527)),
+]
+ACCOLADE_2_ZONES = [
+    (6, 0, 998, (498, 858, 998, 479)),
+    (7, 967, 681, (1465, 885, 681, 468)),
+    (8, 1612, 638, (2110, 886, 638, 471)),
+    (9, 2206, 598, (2704, 886, 598, 501)),
+]
+
 
 def _mei(surfaces: str, body: str = "") -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1">
-  <meiHead><fileDesc><titleStmt><title>Gelobet seist du Jesu Christ</title></titleStmt>
+  <meiHead><fileDesc><titleStmt><title>Ach bleib bei uns, Herr Jesu Christ</title></titleStmt>
   <pubStmt/></fileDesc></meiHead>
   <music>
     <facsimile>{surfaces}
@@ -96,6 +143,33 @@ def _boxes(timeline: Timeline) -> list[Box]:
     ]
 
 
+def _placed(timeline: Timeline) -> list[tuple[str, int, int]]:
+    """Id, start and duration of the Boxes of a timeline."""
+    return [(box.id, box.start.value, box.duration.value) for box in _boxes(timeline)]
+
+
+def _segments(line: Timeline) -> list[Timeline]:
+    return [line.get_child(child_id) for child_id in line.list_children()]
+
+
+def _offsets(line: Timeline) -> list[int]:
+    return [line.get_child_offset(child_id).value for child_id in line.list_children()]
+
+
+def _expected(
+    zones: list[tuple[int, int, int, tuple[int, int, int, int]]],
+) -> list[Box]:
+    return [
+        Box(
+            id=ZONE_IDS[number - 1],
+            start=_px(start),
+            duration=_extent(duration),
+            bounding_box=BoundingBox.from_xywh(*area, unit="pixels"),
+        )
+        for number, start, duration, area in zones
+    ]
+
+
 def _assert_image_space_invariant(timeline: Timeline) -> None:
     """start = x_min - o(T) and duration = x_max - x_min for every Box of T."""
     stated = timeline.meta.get("box")
@@ -118,123 +192,158 @@ def _surface(zones: str, *, graphic: str = "", attributes: str = "") -> str:
 
 
 CANVAS = '<graphic target="page.jpg" width="4512" height="6174"/>'
+SMALL_ZONE = '<zone xml:id="z1" ulx="100" uly="50" lrx="400" lry="90"/>'
 
 
-class TestSurface:
-    def test_the_surface_is_a_root_of_the_image_width(self, source: Path) -> None:
-        (surface,) = MeiFacsimileLoader.from_file(source).create_timelines()
-        assert type(surface) is DiscreteGraphicalTimeline
-        assert surface.id == SURFACE
-        assert surface.name == "54"
-        assert surface.unit is TimeUnit.pixels
-        assert surface.number_type is NumberType.int
-        assert surface.length.value == 4000
-        assert surface.is_locked
-        assert surface.meta == {
-            "image": IMAGE,
-            "box": {"x": 0, "y": 0, "width": 4000, "height": 3000},
-        }
-
-    def test_without_a_graphic_the_surface_corners_state_the_area(
-        self, tmp_path: Path
-    ) -> None:
-        loader = _load(
-            tmp_path,
-            _surface(
-                '<zone xml:id="z1" ulx="150" uly="10" lrx="200" lry="20"/>',
-                attributes=' ulx="100" uly="0" lrx="600" lry="400"',
-            ),
-        )
-        (surface,) = loader.create_timelines()
-        assert surface.id == "dgt_1"
-        assert surface.name == "dgt_1"
-        assert surface.length.value == 500
-        assert surface.meta == {"box": {"x": 100, "y": 0, "width": 500, "height": 400}}
-        assert _boxes(surface) == [
-            Box(
-                id="z1",
-                start=_px(50),
-                duration=_extent(50),
-                bounding_box=BoundingBox.from_xywh(150, 10, 50, 10, unit="pixels"),
+class TestPaths:
+    def test_the_zones_group_into_two_accolades(self, source: Path) -> None:
+        assert MeiFacsimileLoader.from_file(source).create_paths() == {
+            SURFACE: PiecewisePath(
+                (
+                    HorizontalLinePath(x0=490, x1=3296, y=630, tolerance=286),
+                    HorizontalLinePath(
+                        x0=498, x1=3302, y=Fraction(2245, 2), tolerance=Fraction(529, 2)
+                    ),
+                )
             )
-        ]
-        _assert_image_space_invariant(surface)
-
-    def test_a_size_in_centimetres_states_no_pixel_size(self, tmp_path: Path) -> None:
-        graphic = '<graphic target="page.jpg" width="21cm" height="29.7cm"/>'
-        (surface,) = _load(tmp_path, _surface("", graphic=graphic)).create_timelines()
-        assert surface.length is None
-        assert not surface.is_locked
-        assert surface.meta == {"image": "page.jpg"}
-
-    def test_a_size_in_px(self, tmp_path: Path) -> None:
-        graphic = '<graphic target="page.jpg" width="4000px" height="3000px"/>'
-        (surface,) = _load(tmp_path, _surface("", graphic=graphic)).create_timelines()
-        assert surface.length.value == 4000
-        assert surface.meta == {
-            "image": "page.jpg",
-            "box": {"x": 0, "y": 0, "width": 4000, "height": 3000},
         }
 
-    def test_the_graphic_size_decides_the_space_not_the_surface_corners(
+    def test_a_surface_without_an_id_is_keyed_by_its_position(
         self, tmp_path: Path
     ) -> None:
-        # Known issue: the surface's corners state another area; unused.
-        graphic = '<graphic target="page.jpg" width="4000" height="3000"/>'
-        surface_corners = ' ulx="100" uly="0" lrx="4100" lry="3000"'
-        zone = '<zone xml:id="z1" ulx="150" uly="10" lrx="200" lry="20"/>'
-        (surface,) = _load(
-            tmp_path, _surface(zone, graphic=graphic, attributes=surface_corners)
-        ).create_timelines()
-        assert surface.length.value == 4000
-        assert surface.meta == {
-            "image": "page.jpg",
-            "box": {"x": 0, "y": 0, "width": 4000, "height": 3000},
-        }
-        assert [(box.id, box.start, box.duration) for box in _boxes(surface)] == [
-            ("z1", _px(150), _extent(50))
-        ]
-
-        past = '<zone xml:id="z2" ulx="3900" uly="10" lrx="4050" lry="20"/>'
-        path = _write(
-            tmp_path, _mei(_surface(past, graphic=graphic, attributes=surface_corners))
-        )
-        with pytest.raises(ValueError) as raised:
-            MeiFacsimileLoader().load(path)
-        assert str(raised.value) == (
-            "MEI zone 'z2' ends at x 4050, past the right edge of its image at x 4000."
-        )
-
-    def test_surfaces_in_document_order(self, tmp_path: Path) -> None:
         loader = _load(
             tmp_path,
-            EXCERPT_SURFACE + _surface("", graphic=CANVAS, attributes=' n="55"'),
+            _surface("", graphic=CANVAS) + _surface(SMALL_ZONE, graphic=CANVAS),
         )
-        surfaces = loader.create_timelines()
-        assert [(surface.id, surface.name) for surface in surfaces] == [
-            (SURFACE, "54"),
-            ("dgt_2", "55"),
+        assert loader.create_paths() == {
+            1: PiecewisePath((HorizontalLinePath(x0=100, x1=400, y=70, tolerance=20),))
+        }
+
+
+class TestPage:
+    def test_the_page_is_a_segment_line_of_its_accolades(self, source: Path) -> None:
+        (page,) = MeiFacsimileLoader.from_file(source).create_timelines()
+        assert type(page) is SegmentLine[DiscreteGraphicalTimeline]
+        assert page.id == SURFACE
+        assert page.name == "15"
+        assert page.unit is TimeUnit.pixels
+        assert page.number_type is NumberType.int
+        assert page.length.value == 5610
+        assert page.is_locked
+        assert page.meta == {"image": IMAGE}
+        assert _boxes(page) == []
+
+        first, second = _segments(page)
+        assert _offsets(page) == [0, 2806]
+        assert [type(first), type(second)] == [DiscreteGraphicalTimeline] * 2
+        assert (first.id, first.name, first.length.value) == (
+            "dgt_2",
+            "accolade_1",
+            2806,
+        )
+        assert (second.id, second.name, second.length.value) == (
+            "dgt_3",
+            "accolade_2",
+            2804,
+        )
+        assert first.meta == {"box": ACCOLADE_1_BOX, "image": IMAGE}
+        assert second.meta == {"box": ACCOLADE_2_BOX, "image": IMAGE}
+
+    def test_a_surface_without_id_and_n(self, tmp_path: Path) -> None:
+        (page,) = _load(tmp_path, _surface(SMALL_ZONE)).create_timelines()
+        assert (page.id, page.name, page.length.value) == ("dgt_1", "page_1", 300)
+        assert page.meta == {}
+        (accolade,) = _segments(page)
+        assert accolade.id == "dgt_2"
+        assert accolade.meta == {"box": {"x": 100, "y": 50, "width": 300, "height": 40}}
+
+    def test_a_surface_without_zones_is_left_out(self, tmp_path: Path) -> None:
+        loader = _load(
+            tmp_path,
+            _surface("", graphic=CANVAS, attributes=' n="14"') + EXCERPT_SURFACE,
+        )
+        assert [page.name for page in loader.create_timelines()] == ["15"]
+        assert list(loader.create_paths()) == [SURFACE]
+
+    def test_pages_in_document_order(self, tmp_path: Path) -> None:
+        loader = _load(
+            tmp_path,
+            EXCERPT_SURFACE
+            + _surface(SMALL_ZONE, graphic=CANVAS, attributes=' n="16"'),
+        )
+        pages = loader.create_timelines()
+        assert [(page.id, page.name, page.length.value) for page in pages] == [
+            (SURFACE, "15", 5610),
+            ("dgt_4", "16", 300),
         ]
+        assert [accolade.id for accolade in _segments(pages[1])] == ["dgt_5"]
+
+
+class TestVolume:
+    def test_the_volume_is_a_segment_line_of_pages(self, source: Path) -> None:
+        volume = MeiFacsimileLoader.from_file(source).create_timeline()
+        assert type(volume) is SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]
+        assert volume.id == "dgt_1"
+        assert volume.length.value == 5610
+        assert volume.is_locked
+        assert volume.meta == {}
+        (page,) = _segments(volume)
+        assert type(page) is SegmentLine[DiscreteGraphicalTimeline]
+        assert (page.id, page.name, page.length.value) == (SURFACE, "15", 5610)
+        assert page.meta == {"image": IMAGE}
+        assert [accolade.id for accolade in _segments(page)] == ["dgt_3", "dgt_4"]
+        assert _expected(ACCOLADE_2_ZONES) == _boxes(_segments(page)[1])
+
+    def test_uid_and_name(self, source: Path) -> None:
+        volume = MeiFacsimileLoader.from_file(source).create_timeline(
+            uid="choralbuch", name="Anhaltisches Choralbuch"
+        )
+        assert (volume.id, volume.name) == ("choralbuch", "Anhaltisches Choralbuch")
+
+    def test_two_pages(self, tmp_path: Path) -> None:
+        loader = _load(
+            tmp_path,
+            EXCERPT_SURFACE
+            + _surface(SMALL_ZONE, graphic=CANVAS, attributes=' n="16"'),
+        )
+        volume = loader.create_timeline()
+        assert volume.length.value == 5910
+        assert _offsets(volume) == [0, 5610]
+        assert [page.name for page in _segments(volume)] == ["15", "16"]
+
+    def test_no_surface_with_zones(self, tmp_path: Path) -> None:
+        loader = _load(tmp_path, _surface("", graphic=CANVAS))
+        assert loader.create_timelines() == []
+        with pytest.raises(ValueError) as raised:
+            loader.create_timeline()
+        assert str(raised.value) == "A volume needs at least one page."
 
 
 class TestZones:
-    def test_zones_are_boxes_with_their_ids(self, source: Path) -> None:
-        (surface,) = MeiFacsimileLoader.from_file(source).create_timelines()
-        assert _boxes(surface) == [
-            Box(
-                id=ZONE_1,
-                start=_px(520),
-                duration=_extent(354),
-                bounding_box=BoundingBox.from_xywh(520, 390, 354, 629, unit="pixels"),
-            ),
-            Box(
-                id=ZONE_2,
-                start=_px(814),
-                duration=_extent(315),
-                bounding_box=BoundingBox.from_xywh(814, 408, 315, 625, unit="pixels"),
-            ),
-        ]
-        _assert_image_space_invariant(surface)
+    def test_zones_are_boxes_of_their_accolade(self, source: Path) -> None:
+        (page,) = MeiFacsimileLoader.from_file(source).create_timelines()
+        first, second = _segments(page)
+        assert _boxes(first) == _expected(ACCOLADE_1_ZONES)
+        assert _boxes(second) == _expected(ACCOLADE_2_ZONES)
+        _assert_image_space_invariant(first)
+        _assert_image_space_invariant(second)
+
+    def test_a_zone_stays_in_the_accolade_it_was_grouped_into(
+        self, tmp_path: Path
+    ) -> None:
+        # Zone b's centre (y 350) is nearer the second accolade's line (y 400)
+        # than its own (y 200); the grouping, not the nearest line, places it.
+        zones = (
+            '<zone xml:id="a" ulx="100" uly="0" lrx="400" lry="100"/>'
+            '<zone xml:id="b" ulx="400" uly="300" lrx="800" lry="400"/>'
+            '<zone xml:id="c" ulx="100" uly="200" lrx="800" lry="600"/>'
+        )
+        (page,) = _load(tmp_path, _surface(zones)).create_timelines()
+        first, second = _segments(page)
+        assert first.meta == {"box": {"x": 100, "y": 0, "width": 700, "height": 400}}
+        assert second.meta == {"box": {"x": 100, "y": 200, "width": 700, "height": 400}}
+        assert _placed(first) == [("a", 0, 300), ("b", 300, 400)]
+        assert _placed(second) == [("c", 0, 700)]
 
     def test_facs_links(self, source: Path) -> None:
         assert MeiFacsimileLoader.from_file(source).facs == {
@@ -268,8 +377,9 @@ class TestZones:
         self, tmp_path: Path, points: str
     ) -> None:
         zone = f'<zone xml:id="m1" points="{points}"/>'
-        (surface,) = _load(tmp_path, _surface(zone, graphic=CANVAS)).create_timelines()
-        (box,) = _boxes(surface)
+        (page,) = _load(tmp_path, _surface(zone, graphic=CANVAS)).create_timelines()
+        (accolade,) = _segments(page)
+        (box,) = _boxes(accolade)
         assert box.id == "m1"
         assert box.bounding_box is None
         assert box.quadrilateral.to_dict() == {
@@ -278,8 +388,274 @@ class TestZones:
             "bottom_right": {"x": 2161, "y": 2266},
             "bottom_left": {"x": 1221, "y": 2266},
         }
-        assert (box.start, box.duration) == (_px(1221), _extent(940))
-        _assert_image_space_invariant(surface)
+        assert (box.start, box.duration) == (_px(0), _extent(940))
+        assert accolade.meta == {
+            "box": {"x": 1221, "y": 1589, "width": 940, "height": 677},
+            "image": "page.jpg",
+        }
+        _assert_image_space_invariant(accolade)
+
+    def test_zones_without_coordinates_are_listed(self, tmp_path: Path) -> None:
+        zones = (
+            '<zone xml:id="empty_1" type="measure"/>'
+            f'<zone xml:id="{ZONE_1}" ulx="520" uly="390" lrx="874" lry="1019"/>'
+            '<zone xml:id="empty_2"/>'
+        )
+        loader = _load(tmp_path, _surface(zones, graphic=CANVAS))
+        assert loader.zones_without_coordinates == ("empty_1", "empty_2")
+        (page,) = loader.create_timelines()
+        (accolade,) = _segments(page)
+        assert _placed(accolade) == [(ZONE_1, 0, 354)]
+
+    def test_a_zone_without_an_id_is_minted(self, tmp_path: Path) -> None:
+        zone = '<zone ulx="520" uly="390" lrx="874" lry="1019"/>'
+        (page,) = _load(tmp_path, _surface(zone, graphic=CANVAS)).create_timelines()
+        (accolade,) = _segments(page)
+        assert [box.id for box in _boxes(accolade)] == ["box_1"]
+
+
+TYPED_ZONES = (
+    _zone("staff_1", 300, 300, 3400, 950, "staff")
+    + _zone(*ZONES[0], "measure")
+    + _zone(*ZONES[1], "measure")
+    + _zone("untyped", 1000, 400, 1100, 500, "")
+)
+
+
+class TestZoneTypes:
+    def test_one_type(self, tmp_path: Path) -> None:
+        loader = _load(tmp_path, _surface(TYPED_ZONES, graphic=CANVAS))
+        (page,) = loader.create_timelines(zone_types="measure")
+        (accolade,) = _segments(page)
+        assert page.length.value == 1033
+        assert accolade.meta["box"] == {
+            "x": 490,
+            "y": 344,
+            "width": 1033,
+            "height": 533,
+        }
+        assert _placed(accolade) == [(ZONE_1, 0, 483), (ZONE_2, 454, 579)]
+        assert loader.create_paths(zone_types="measure") == {
+            0: PiecewisePath(
+                (
+                    HorizontalLinePath(
+                        x0=490, x1=1523, y=Fraction(1221, 2), tolerance=Fraction(533, 2)
+                    ),
+                )
+            )
+        }
+
+    def test_every_zone_by_default(self, tmp_path: Path) -> None:
+        (page,) = _load(
+            tmp_path, _surface(TYPED_ZONES, graphic=CANVAS)
+        ).create_timelines()
+        (accolade,) = _segments(page)
+        assert page.length.value == 3100
+        assert _placed(accolade) == [
+            ("staff_1", 0, 3100),
+            (ZONE_1, 190, 483),
+            (ZONE_2, 644, 579),
+            ("untyped", 700, 100),
+        ]
+
+    def test_several_types(self, tmp_path: Path) -> None:
+        volume = _load(tmp_path, _surface(TYPED_ZONES, graphic=CANVAS)).create_timeline(
+            zone_types=["measure", "staff"]
+        )
+        (page,) = _segments(volume)
+        (accolade,) = _segments(page)
+        assert [box.id for box in _boxes(accolade)] == ["staff_1", ZONE_1, ZONE_2]
+
+    def test_a_surface_none_of_whose_zones_takes_part_is_left_out(
+        self, tmp_path: Path
+    ) -> None:
+        loader = _load(tmp_path, _surface(TYPED_ZONES, graphic=CANVAS))
+        assert loader.create_timelines(zone_types="system") == []
+        assert loader.create_paths(zone_types="system") == {}
+
+
+WRITTEN = PiecewisePath(
+    (
+        HorizontalLinePath(x0=400, x1=3400, y=630, tolerance=300),
+        HorizontalLinePath(x0=400, x1=3400, y=1120, tolerance=300),
+    )
+)
+
+
+class TestGivenPaths:
+    @pytest.mark.parametrize(
+        "paths",
+        [WRITTEN, {SURFACE: WRITTEN}, {0: WRITTEN}],
+        ids=["one", "id", "position"],
+    )
+    def test_a_written_path_replaces_the_grouping(
+        self, source: Path, paths: object
+    ) -> None:
+        (page,) = MeiFacsimileLoader.from_file(source).create_timelines(paths=paths)
+        first, second = _segments(page)
+        assert page.length.value == 6000
+        assert _offsets(page) == [0, 3000]
+        assert first.meta["box"] == {"x": 400, "y": 330, "width": 3000, "height": 600}
+        assert second.meta["box"] == {"x": 400, "y": 820, "width": 3000, "height": 600}
+        assert _placed(first) == [
+            (ZONE_IDS[0], 90, 483),
+            (ZONE_IDS[1], 544, 579),
+            (ZONE_IDS[2], 1081, 601),
+            (ZONE_IDS[3], 1634, 660),
+            (ZONE_IDS[4], 2269, 627),
+        ]
+        assert _placed(second) == [
+            (ZONE_IDS[5], 98, 998),
+            (ZONE_IDS[6], 1065, 681),
+            (ZONE_IDS[7], 1710, 638),
+            (ZONE_IDS[8], 2304, 598),
+        ]
+        _assert_image_space_invariant(first)
+        _assert_image_space_invariant(second)
+
+    def test_one_horizontal_line_is_one_plain_timeline(self, tmp_path: Path) -> None:
+        loader = _load(
+            tmp_path, _surface(SMALL_ZONE, graphic=CANVAS, attributes=' n="3"')
+        )
+        line = HorizontalLinePath(x0=0, x1=1000, y=70, tolerance=30)
+        (page,) = loader.create_timelines(paths=line)
+        assert type(page) is DiscreteGraphicalTimeline
+        assert (page.id, page.name, page.length.value) == ("dgt_1", "3", 1000)
+        assert page.is_locked
+        assert page.meta == {
+            "box": {"x": 0, "y": 40, "width": 1000, "height": 60},
+            "image": "page.jpg",
+        }
+        assert _placed(page) == [("z1", 100, 300)]
+        _assert_image_space_invariant(page)
+
+    def test_a_vertical_line_where_zones_take_part(self, source: Path) -> None:
+        roll = VerticalLinePath(x=2000, y0=0, y1=3000, tolerance=2000)
+        with pytest.raises(ValueError) as raised:
+            MeiFacsimileLoader.from_file(source).create_timelines(paths=roll)
+        assert str(raised.value) == (
+            f"The time path given for MEI surface '{SURFACE}' is a "
+            "VerticalLinePath; its 9 zones are placed along a HorizontalLinePath "
+            "or the pieces of a PiecewisePath."
+        )
+
+    def test_a_path_for_a_surface_without_zones(self, tmp_path: Path) -> None:
+        loader = _load(tmp_path, _surface("", graphic=CANVAS, attributes=' n="roll"'))
+        roll = VerticalLinePath(x=2000, y0=0, y1=2000, tolerance=2000)
+        (page,) = loader.create_timelines(paths={0: roll})
+        assert type(page) is DiscreteGraphicalTimeline
+        assert (page.name, page.length.value) == ("roll", 2000)
+        assert page.meta == {"image": "page.jpg"}
+
+    def test_one_path_for_two_surfaces(self, tmp_path: Path) -> None:
+        loader = _load(tmp_path, EXCERPT_SURFACE + _surface(SMALL_ZONE))
+        with pytest.raises(ValueError) as raised:
+            loader.create_timelines(paths=WRITTEN)
+        assert str(raised.value) == (
+            "One time path names one surface; this file holds 2: give a mapping "
+            "from each surface's xml:id or position to its path."
+        )
+
+    def test_a_surface_the_file_does_not_hold(self, tmp_path: Path) -> None:
+        loader = _load(tmp_path, EXCERPT_SURFACE + _surface(SMALL_ZONE))
+        for key in ("surface_9", 2):
+            with pytest.raises(KeyError) as raised:
+                loader.create_timeline(paths={key: WRITTEN})
+            assert raised.value.args[0] == (
+                f"paths names the surface {key!r}, which this file does not hold. "
+                f"Available surfaces: ['{SURFACE}', None] (or their positions "
+                "from 0)."
+            )
+
+    def test_one_surface_named_twice(self, source: Path) -> None:
+        with pytest.raises(ValueError) as raised:
+            MeiFacsimileLoader.from_file(source).create_timelines(
+                paths={SURFACE: WRITTEN, 0: WRITTEN}
+            )
+        assert str(raised.value) == (
+            f"paths gives MEI surface '{SURFACE}' two paths, one by its xml:id and "
+            "one by its position."
+        )
+
+    def test_a_zone_on_no_piece(self, source: Path) -> None:
+        short = PiecewisePath(
+            (HorizontalLinePath(x0=400, x1=3400, y=630, tolerance=300),)
+        )
+        with pytest.raises(ValueError) as raised:
+            MeiFacsimileLoader.from_file(source).create_timelines(paths=short)
+        assert str(raised.value) == (
+            "Page '15', Box 6: The shape spanning x 498 to 1496 with its centre "
+            "at y 2195/2 lies on no piece of the path."
+        )
+
+    def test_the_second_surface_alone_is_given_a_path(self, tmp_path: Path) -> None:
+        loader = _load(tmp_path, EXCERPT_SURFACE + _surface(SMALL_ZONE))
+        line = PiecewisePath((HorizontalLinePath(x0=0, x1=1000, y=70, tolerance=30),))
+        first, second = loader.create_timelines(paths={1: line})
+        assert (first.length.value, second.length.value) == (5610, 1000)
+        assert _placed(_segments(second)[0]) == [("z1", 100, 300)]
+
+
+class TestIdentity:
+    def test_box_ids_number_the_measures_through_the_page(self, source: Path) -> None:
+        loader = MeiFacsimileLoader.from_file(source)
+        (page,) = loader.create_timelines(
+            box_ids="m{n}", accolade_ids="p{page}_s{accolade}", page_ids=["folio"]
+        )
+        first, second = _segments(page)
+        assert page.id == "folio"
+        assert (first.id, second.id) == ("p1_s1", "p1_s2")
+        assert [box.id for box in _boxes(first)] == ["m1", "m2", "m3", "m4", "m5"]
+        assert [box.id for box in _boxes(second)] == ["m6", "m7", "m8", "m9"]
+        assert loader.facs == {"m-43": (ZONE_1,), "m-57": (ZONE_2,)}
+
+    def test_a_sequence_of_another_length(self, source: Path) -> None:
+        with pytest.raises(ValueError) as raised:
+            MeiFacsimileLoader.from_file(source).create_timeline(
+                box_ids=[f"m{n}" for n in range(8)]
+            )
+        assert str(raised.value) == "box_ids names 8 Boxes; this call creates 9."
+
+
+class TestTheImageSpace:
+    def test_a_zone_past_the_image_width(self, tmp_path: Path) -> None:
+        zone = '<zone xml:id="z9" ulx="4000" uly="0" lrx="4600" lry="10"/>'
+        path = _write(tmp_path, _mei(_surface(zone, graphic=CANVAS)))
+        with pytest.raises(ValueError) as raised:
+            MeiFacsimileLoader().load(path)
+        assert str(raised.value) == (
+            "MEI zone 'z9' ends at x 4600, past the right edge of its image at x 4512."
+        )
+
+    def test_a_size_in_centimetres_states_no_pixel_width(self, tmp_path: Path) -> None:
+        graphic = '<graphic target="page.jpg" width="21cm" height="29.7cm"/>'
+        zone = '<zone xml:id="z9" ulx="4000" uly="0" lrx="4600" lry="10"/>'
+        (page,) = _load(tmp_path, _surface(zone, graphic=graphic)).create_timelines()
+        assert page.length.value == 600
+        assert page.meta == {"image": "page.jpg"}
+
+    def test_the_surface_corners_are_not_read(self, tmp_path: Path) -> None:
+        # Known issue: the surface's corners state another area; unused.
+        graphic = '<graphic target="page.jpg" width="4000px" height="3000px"/>'
+        surface_corners = ' ulx="100" uly="0" lrx="4100" lry="3000"'
+        zone = '<zone xml:id="z1" ulx="150" uly="10" lrx="200" lry="20"/>'
+        (page,) = _load(
+            tmp_path, _surface(zone, graphic=graphic, attributes=surface_corners)
+        ).create_timelines()
+        (accolade,) = _segments(page)
+        assert page.meta == {"image": "page.jpg"}
+        assert accolade.meta["box"] == {"x": 150, "y": 10, "width": 50, "height": 10}
+        assert _placed(accolade) == [("z1", 0, 50)]
+
+        past = '<zone xml:id="z2" ulx="3900" uly="10" lrx="4050" lry="20"/>'
+        path = _write(
+            tmp_path, _mei(_surface(past, graphic=graphic, attributes=surface_corners))
+        )
+        with pytest.raises(ValueError) as raised:
+            MeiFacsimileLoader().load(path)
+        assert str(raised.value) == (
+            "MEI zone 'z2' ends at x 4050, past the right edge of its image at x 4000."
+        )
 
 
 class TestPointsThatAreNoQuadrilateral:
@@ -315,31 +691,6 @@ class TestPointsThatAreNoQuadrilateral:
             "counter-clockwise at points 3 and 4."
         )
 
-    def test_a_zone_past_the_image_width(self, tmp_path: Path) -> None:
-        zone = '<zone xml:id="z9" ulx="4000" uly="0" lrx="4600" lry="10"/>'
-        path = _write(tmp_path, _mei(_surface(zone, graphic=CANVAS)))
-        with pytest.raises(ValueError) as raised:
-            MeiFacsimileLoader().load(path)
-        assert str(raised.value) == (
-            "MEI zone 'z9' ends at x 4600, past the right edge of its image at x 4512."
-        )
-
-    def test_zones_without_coordinates_are_listed(self, tmp_path: Path) -> None:
-        zones = (
-            '<zone xml:id="empty_1" type="measure"/>'
-            f'<zone xml:id="{ZONE_1}" ulx="520" uly="390" lrx="874" lry="1019"/>'
-            '<zone xml:id="empty_2"/>'
-        )
-        loader = _load(tmp_path, _surface(zones, graphic=CANVAS))
-        assert loader.zones_without_coordinates == ("empty_1", "empty_2")
-        (surface,) = loader.create_timelines()
-        assert [box.id for box in _boxes(surface)] == [ZONE_1]
-
-    def test_a_zone_without_an_id_is_minted(self, tmp_path: Path) -> None:
-        zone = '<zone ulx="520" uly="390" lrx="874" lry="1019"/>'
-        (surface,) = _load(tmp_path, _surface(zone, graphic=CANVAS)).create_timelines()
-        assert [box.id for box in _boxes(surface)] == ["box_1"]
-
 
 class TestLifecycle:
     def test_no_mei_root(self, tmp_path: Path) -> None:
@@ -353,9 +704,15 @@ class TestLifecycle:
         )
 
     def test_nothing_loaded(self) -> None:
-        with pytest.raises(RuntimeError) as raised:
-            MeiFacsimileLoader().create_timelines()
-        assert str(raised.value) == "No MEI file loaded. Call load() first."
+        loader = MeiFacsimileLoader()
+        for create in (
+            loader.create_timeline,
+            loader.create_timelines,
+            loader.create_paths,
+        ):
+            with pytest.raises(RuntimeError) as raised:
+                create()
+            assert str(raised.value) == "No MEI file loaded. Call load() first."
 
     def test_one_source(self, source: Path, tmp_path: Path) -> None:
         loader = MeiFacsimileLoader.from_file(source)
@@ -370,5 +727,5 @@ class TestLifecycle:
     def test_repr(self, source: Path) -> None:
         assert repr(MeiFacsimileLoader()) == "MeiFacsimileLoader(not loaded)"
         assert repr(MeiFacsimileLoader.from_file(source)) == (
-            "MeiFacsimileLoader(surfaces=1, zones=2)"
+            "MeiFacsimileLoader(surfaces=1, zones=9)"
         )

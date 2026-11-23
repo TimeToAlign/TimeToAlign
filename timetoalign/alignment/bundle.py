@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+from pydantic import ValidationError
 from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 
 from timetoalign.core import (
@@ -68,6 +69,7 @@ from timetoalign.core.retrieval import (
 from timetoalign.core.time import cell_coordinate, shift_number
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
+from timetoalign.timelines.engines.events import _refusal_of
 from timetoalign.timelines.groups import (
     _groups_by_timeline,
     _held_ids,
@@ -4493,14 +4495,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             path = named["Box"].path_in(directory)
             if path.is_file():
                 for timeline_id, rows in read_event_table(path).items():
-                    self._require_known_timeline(timeline_id).add_events(
-                        [
+                    try:
+                        boxes = [
                             Box.from_row(
                                 row, unit=row["unit"], number_type=row["number_type"]
                             )
                             for row in rows.to_pylist()
                         ]
-                    )
+                    except ValidationError as error:
+                        # The Box's own refusal, as add_events gives it.
+                        raise _refusal_of(error) from None
+                    self._require_known_timeline(timeline_id).add_events(boxes)
         if "MatchClaim" in named:
             path = named["MatchClaim"].path_in(directory)
             if path.is_file():

@@ -1384,6 +1384,38 @@ class TestBoxes:
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             AlignmentBundle.from_file(tmp_path / "package.yaml")
 
+    def test_a_box_refused_by_its_own_rule_reads_as_add_events_refuses_it(
+        self, tmp_path: Path
+    ) -> None:
+        _box_bundle().to_file(tmp_path / "package.yaml")
+        table = pq.read_table(tmp_path / "boxes.parquet")
+        durations = table.column("duration").to_pylist()
+        durations[1] = _number(10)
+        pq.write_table(
+            table.set_column(
+                table.schema.get_field_index("duration"),
+                "duration",
+                pa.array(durations, NUMBER_TYPE),
+            ),
+            tmp_path / "boxes.parquet",
+        )
+        message = (
+            "Box 'm1': its duration is 10 and its shape spans 940 in x (1221 to "
+            "2161); a Box's duration is its shape's x extent."
+        )
+        with pytest.raises(ValueError) as read:
+            AlignmentBundle.from_file(tmp_path / "package.yaml")
+        assert type(read.value) is ValueError
+        assert str(read.value) == message
+
+        # The same row as a dict, on an empty timeline standing where sys does.
+        written = _box_bundle()._known_timelines()["sys"]
+        empty = DiscreteGraphicalTimeline(length=2880, uid="sys", meta=written.meta)
+        m1 = _boxes()["sys"][0]
+        with pytest.raises(ValueError) as added:
+            empty.add_events([{**m1.to_event_row(), "duration": 10}])
+        assert str(added.value) == str(read.value)
+
     def test_no_event_row_is_written_beside_the_box_table(self, tmp_path: Path) -> None:
         message = (
             "A package's manifest names no event ID: the bundle writes its "

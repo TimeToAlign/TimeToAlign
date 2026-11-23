@@ -1954,7 +1954,15 @@ then fails to load. Each test pins one of these with exact values.
   the invariant message of `Timeline.add_events`, `Box 'm1' starts at 1 on
   timeline 'sys', but its shape starts at x 1221 and the timeline stands
   at x 1221 of its image (meta["box"]): its start is 0.` Every Box read
-  passes `add_events`, so a table is never trusted over its shapes.
+  passes `add_events`, so a table is never trusted over its shapes. A
+  Box's own rule is refused in the same words on every path: the table
+  rewritten with `m1.duration` `{10, null, null}` gives exactly the
+  sentence `add_events` gives for that row as a dict, added to an empty
+  timeline standing where `sys` does (its length and `meta`) (`Box 'm1':
+  its duration is 10 and its shape spans 940 in x (1221 to 2161); a Box's
+  duration is its shape's x extent.`), not pydantic's report around it;
+  the test asserts both the literal text and the equality with the
+  `add_events` refusal, so a reader wrapping the sentence fails.
 - **Boxes beside event rows.** As for Projections, a bundle holding Boxes
   writes them in `boxes.parquet` alone: `to_file(..., events=True)` is
   refused before any file is written (`A package's manifest names no event

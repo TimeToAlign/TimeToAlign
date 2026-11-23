@@ -261,6 +261,61 @@ def _spaced(at: int, space: str = '<mSpace xml:id="sp{n}"/>') -> str:
     return _HEAD + _score("3/4", "".join(measures), staves=2) + _TAIL
 
 
+def _space_bar(xml_id: str, n: int, attrs: str = "", extra: str = "") -> str:
+    """One measure holding only ``<mSpace xml:id="{xml_id}sp">``."""
+    return (
+        f'<measure xml:id="{xml_id}" n="{n}" {attrs}><staff xml:id="{xml_id}s" n="1">'
+        f'<layer xml:id="{xml_id}l" n="1"><mSpace xml:id="{xml_id}sp"/></layer></staff>'
+        f"{extra}</measure>"
+    )
+
+
+def _tempo(xml_id: str, bpm: int) -> str:
+    """A tempo indication at the start of its measure."""
+    return (
+        f'<tempo xml:id="{xml_id}" staff="1" tstamp="1" midi.bpm="{bpm}">{bpm}</tempo>'
+    )
+
+
+SPACE_REPEAT = (
+    _HEAD
+    + _score(
+        "2/4",
+        _bar("m1", 1, "c", 'left="rptstart"')
+        + _space_bar("m2", 2, 'right="rptend"')
+        + _bar("m3", 3, "e", 'right="end"'),
+    )
+    + _TAIL
+)
+SPACE_TEMPO = (
+    _HEAD
+    + _score(
+        "2/4",
+        _bar("m1", 1, "c", extra=_tempo("t1", 60))
+        + _space_bar("m2", 2)
+        + _bar("m3", 3, "e", extra=_tempo("t3", 120)),
+    )
+    + _TAIL
+)
+SPACE_TEMPO_INSIDE = (
+    _HEAD
+    + _score(
+        "2/4",
+        _bar("m1", 1, "c", extra=_tempo("t1", 60))
+        + _space_bar("m2", 2, extra=_tempo("t2", 30))
+        + _bar("m3", 3, "e", extra=_tempo("t3", 120)),
+    )
+    + _TAIL
+)
+SPACE_FIRST_TEMPO = (
+    _HEAD
+    + _score(
+        "2/4", _space_bar("m1", 1) + _bar("m2", 2, "c", extra=_tempo("t2", 120))
+    ).replace('meter.unit="4"', 'meter.unit="4" midi.bpm="60"')
+    + _TAIL
+)
+
+
 def _leaf(xml_id: str, bars: str, label: str | None = None) -> str:
     """One 2/4 ``<mdiv>`` holding *bars*, every id unique to it, named by *label*."""
     name = f' label="{label}"' if label is not None else ""
@@ -326,6 +381,10 @@ FIXTURES = {
     "space_middle": _spaced(2),
     "space_last": _spaced(3),
     "space_empty": _spaced(2, space=""),
+    "space_repeat": SPACE_REPEAT,
+    "space_tempo": SPACE_TEMPO,
+    "space_tempo_inside": SPACE_TEMPO_INSIDE,
+    "space_first_tempo": SPACE_FIRST_TEMPO,
     "duplicate_dynam": DUPLICATE_DYNAM,
     "duplicate_note": DUPLICATE_NOTE,
 }
@@ -721,6 +780,115 @@ class TestMeasureSpaces:
     def test_measure_without_content_raises(self, mei: dict[str, Path]) -> None:
         with pytest.raises(ValueError, match=r"without one: \['m2'\]"):
             VerovioLoader.from_file(mei["space_empty"])
+
+
+def _measures(timeline: ContinuousLogicalTimeline) -> list[tuple]:
+    return [
+        (m.id, m.name, m.qstamp, m.actual_length, m.time_signature)
+        for m in timeline.measure_map.measures
+    ]
+
+
+def _starts(timeline: ContinuousLogicalTimeline | ContinuousPhysicalTimeline) -> dict:
+    return {row["id"]: _q(row["start"]) for row in timeline.get_events()}
+
+
+class TestMeasureSpaceRepeated:
+    @pytest.fixture(scope="class")
+    def repeat(self, mei: dict[str, Path]) -> VerovioLoader:
+        return VerovioLoader.from_file(mei["space_repeat"])
+
+    def test_played_in_every_pass(self, repeat: VerovioLoader) -> None:
+        timeline = repeat.create_timeline()
+        assert timeline.length.value == Fraction(10)
+        assert _measures(timeline) == [
+            (xml_id, name, Fraction(2 * i), Fraction(2), "2/4")
+            for i, (xml_id, name) in enumerate(
+                [
+                    ("m1", "1"),
+                    ("m2", "2"),
+                    ("m1-rend2", "1"),
+                    ("m2-rend2", "2"),
+                    ("m3", "3"),
+                ]
+            )
+        ]
+        assert _starts(timeline) == {
+            "m1n": Fraction(0),
+            "m1n-rend2": Fraction(4),
+            "m3n": Fraction(8),
+        }
+        assert {row["event_type"] for row in timeline.get_events()} == {"Note"}
+        assert repeat.store.metadata["omitted_measures"] == []
+
+    def test_printed_table(self, repeat: VerovioLoader) -> None:
+        rows = list(repeat.store.measures)
+        assert [(r["id"], _q(r["start"]), _q(r["duration"])) for r in rows] == [
+            ("m1", Fraction(0), Fraction(2)),
+            ("m2", Fraction(2), Fraction(2)),
+            ("m3", Fraction(4), Fraction(2)),
+        ]
+        assert _flow(repeat) == [1, 2, 1, 2, 3]
+
+    def test_seconds(self, repeat: VerovioLoader) -> None:
+        physical = repeat.create_physical_timeline()
+        assert physical.length.value == Fraction(5)
+        assert _starts(physical)["m3n"] == Fraction(4)
+
+    def test_unexpanded_reading(
+        self, mei: dict[str, Path], repeat: VerovioLoader
+    ) -> None:
+        loader = VerovioLoader.from_file(
+            mei["space_repeat"], options={"expandNever": True}
+        )
+        timeline = loader.create_timeline()
+        assert timeline.length.value == Fraction(6)
+        assert _measures(timeline) == [
+            ("m1", "1", Fraction(0), Fraction(2), "2/4"),
+            ("m2", "2", Fraction(2), Fraction(2), "2/4"),
+            ("m3", "3", Fraction(4), Fraction(2), "2/4"),
+        ]
+        assert _starts(timeline) == {"m1n": Fraction(0), "m3n": Fraction(4)}
+        assert list(loader.store.measures) == list(repeat.store.measures)
+
+
+_TEMPO_CASES = {
+    # fixture: (onsets in quarters, onsets in seconds, physical length)
+    "space_tempo": (
+        {"m1n": 0, "t1": 0, "m3n": 4, "t3": 4},
+        {"m1n": 0, "t1": 0, "m3n": 4, "t3": 4},
+        5,
+    ),
+    "space_tempo_inside": (
+        {"m1n": 0, "t1": 0, "t2": 2, "m3n": 4, "t3": 4},
+        {"m1n": 0, "t1": 0, "t2": 2, "m3n": 6, "t3": 6},
+        7,
+    ),
+    "space_first_tempo": ({"m2n": 2, "t2": 2}, {"m2n": 2, "t2": 2}, 3),
+}
+
+
+class TestMeasureSpaceTempo:
+    @pytest.mark.parametrize("name", list(_TEMPO_CASES))
+    def test_played_at_its_own_tempo(self, mei: dict[str, Path], name: str) -> None:
+        quarters, seconds, length = _TEMPO_CASES[name]
+        loader = VerovioLoader.from_file(mei[name])
+        timeline = loader.create_timeline()
+        bars = len(timeline.measure_map.measures)
+        assert timeline.length.value == Fraction(2 * bars)
+        assert [(m.qstamp, m.actual_length) for m in timeline.measure_map.measures] == [
+            (Fraction(2 * i), Fraction(2)) for i in range(bars)
+        ]
+        assert _starts(timeline) == {k: Fraction(v) for k, v in quarters.items()}
+        physical = loader.create_physical_timeline()
+        assert physical.length.value == Fraction(length)
+        assert _starts(physical) == {k: Fraction(v) for k, v in seconds.items()}
+
+    def test_conversion_map(self, mei: dict[str, Path]) -> None:
+        cmap = VerovioLoader.from_file(
+            mei["space_tempo"]
+        ).create_quarters_to_seconds_map()
+        assert (cmap(Fraction(2)), cmap(Fraction(4))) == (Fraction(2), Fraction(4))
 
 
 class TestGraceNotesAsVerovioPlacesThem:

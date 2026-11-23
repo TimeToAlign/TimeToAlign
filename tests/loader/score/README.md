@@ -662,12 +662,12 @@ Verovio times a measure by its timed elements, so it gives a measure holding not
 `<mSpace>` no timemap entry and no time: in `space_middle.mei` below, Verovio 6.4.1 starts the
 third measure at 3, where the first ends, and plays its notes at 3/2 s. Read verbatim, the measure has no length, and a zero-length measure is no measure of the
 format (its `actual_length` is strictly positive). What the source states is the meter, and an
-`<mSpace>` fills its measure, so the loader completes the timemap: the measure lasts what its
-meter states, at its place in the tree, and every later position moves by that length (in
-seconds at the tempo Verovio plays there); nothing else is added, and the `<mSpace>` is no event.
-Where the measure stands decides what Verovio writes and so how the timemap is completed: first or
-in the middle, the measure has no entry (the next measure's start takes it); last, Verovio opens it
-at the timemap's end with no time, and the timemap must be extended by one entry. Each fixture is 3/4
+`<mSpace>` fills its measure as a measure rest does, so the loader renders Verovio's MEI output
+once more with each `<mSpace>` of such a measure written `<mRest>` (same `xml:id`): Verovio then
+times the measure itself, at its meter's length and the tempo in force there, in every pass of an
+expansion, and nothing is computed by the loader. The rests are no events. Where the measure
+stands does not matter: first, in the middle or last (where Verovio opens it at the timemap's end
+with no time), it is rendered in its place. Each fixture is 3/4
 on two staves, three measures `m1`, `m2`, `m3` (named `1`–`3`), one of them holding only
 `<mSpace>` in each layer; the other two hold, in order, staff 1 `x1` quarter + `x2` half, staff 2
 `y1` dotted half (the first), and staff 1 `z1` dotted half, staff 2 `w1` half + `w2` quarter (the
@@ -685,6 +685,36 @@ The physical timeline is 9/2 s long in each case (nine quarters at 120 per minut
 maps 6 quarters to exactly 3 s. Store metadata `omitted_measures` is empty (nothing is
 expanded). `space_empty.mei`, `space_middle.mei` with `m2`'s layers left empty, still raises
 naming `m2`: a measure without any content, not even an `<mSpace>`, states no length.
+
+What would fail if the measure were timed by the loader instead of by Verovio, the two cases
+below: a repeat (the measure must be played as often as the expansion plays it) and a tempo
+change around it (the measure must last at its own tempo, not the next measure's). Each is 2/4
+on one staff, a measure `mK` holding a half note `mKn` (C4, D4, E4 by measure) or only
+`<mSpace xml:id="mKsp">`; a tempo indication `tK` stands at beat 1 of its measure with its
+`midi.bpm`.
+
+- **`space_repeat.mei`**: `m1` (`rptstart`, `m1n`), `m2` (`<mSpace>` only, `rptend`), `m3`
+  (`m3n`). Verovio plays m1 m2 m1 m2 m3, so the expanded reading is the unexpanded one unfolded:
+  root length 10 quarters; `MeasureMap` `m1`, `m2`, `m1-rend2`, `m2-rend2`, `m3`, named `1`, `2`,
+  `1`, `2`, `3`, at 0, 2, 4, 6, 8, each 2/4 with actual length 2; exactly 3 events, the notes
+  `m1n` 0, `m1n-rend2` 4, `m3n` 8 (no rest, nothing at `m2sp`); store metadata
+  `omitted_measures` empty; the printed table `m1`, `m2`, `m3` at 0, 2, 4, each 2 long, with
+  default flow MC 1 2 1 2 3. At 120 per minute the physical timeline is 5 s long and `m3n` starts
+  at 4 s. With `expandNever` the same file reads as printed: length 6, `MeasureMap` `m1`, `m2`,
+  `m3` at 0, 2, 4, each 2, events `m1n` 0 and `m3n` 4, the same printed table.
+- **`space_tempo.mei`**: `m1` (`m1n`, `t1` 60), `m2` (`<mSpace>` only), `m3` (`m3n`, `t3`
+  120). `m2` is played at 60, the tempo before it: 2 quarters last 2 s, and `t3` applies from
+  `m3` on. Expected: length 6 quarters, `MeasureMap` at 0, 2, 4 each 2; `m3n` and `t3` at 4
+  quarters. In seconds `m1n` and `t1` 0, `m3n` and `t3` 4 (not 3, which the next measure's tempo
+  would give), physical length 5; the C-Map maps 2 quarters to 2 s and 4 to 4 s.
+- **`space_tempo_inside.mei`**: as `space_tempo.mei`, with `t2` 30 in `m2`. A tempo written in the
+  silent measure is its tempo: 2 quarters at 30 per minute last 4 s. Expected: `t2` at 2 quarters
+  and 2 s, `m3n` and `t3` at 4 quarters and 6 s, physical length 7.
+- **`space_first_tempo.mei`**: the score's initial tempo `midi.bpm="60"` on the `<scoreDef>`,
+  `m1` (`<mSpace>` only), `m2` (`m2n`, `t2` 120). The first measure is played at the initial
+  tempo: `m2n` and `t2` at 2 quarters and 2 s, physical length 3.
+
+All seconds here are whole milliseconds, so no value depends on Verovio's rounding.
 
 **`startid.mei`** (2/4): m1 `a1` C4 quarter, chord `ch1` (`ch1a` E4, `ch1b` G4, quarter) with
 `<tempo xml:id="tc" startid="#ch1">Allegro</tempo>`; m2 a triplet `tu` (`num=3 numbase=2`: `u1`,

@@ -31,7 +31,15 @@ bottom left), so its outline runs around the area.
 DMOS states no measure identity: measures are known by their position in
 the document only, and are named where the timelines are created. A measure
 must lie within its system's x extent; one leaving it on either side is
-refused. A page without systems has no time path and becomes no timeline.
+refused.
+
+DMOS output holds, on some pages, a system whose region is a vertical line
+(no x extent) and which holds no measures. Such a system is no part of the
+time path: it is left out of the paths and of the timelines, and loading
+says so once per file in a warning naming each page and system. A system
+without x extent that holds measures is refused where paths or timelines
+are created. A page without systems, or all of whose systems are left out,
+has no time path and becomes no timeline.
 """
 
 from __future__ import annotations
@@ -72,14 +80,30 @@ class _DmosSystem:
     """One system as DMOS states it.
 
     Attributes:
+        position: Its position on its page, counted from 1.
         name: DMOS's system id, as a string (ids repeat on some pages).
         area: The system's region.
         measures: The regions of its measures, in document order.
     """
 
+    position: int
     name: str
     area: Quadrilateral
     measures: tuple[Quadrilateral, ...]
+
+    @property
+    def has_x_extent(self) -> bool:
+        """Whether the region is wider than a vertical line."""
+        return self.area.x_max.value > self.area.x_min.value
+
+    @property
+    def is_left_out(self) -> bool:
+        """Whether the system is no part of the time path.
+
+        True for a region without x extent holding no measures: nothing of
+        it lies along a time axis.
+        """
+        return not self.has_x_extent and not self.measures
 
 
 @dataclass(frozen=True)
@@ -97,16 +121,30 @@ class _DmosPage:
     systems: tuple[_DmosSystem, ...]
 
     @property
+    def path_systems(self) -> tuple[_DmosSystem, ...]:
+        """The systems that are pieces of the page's time path, in document order."""
+        return tuple(system for system in self.systems if not system.is_left_out)
+
+    @property
     def path(self) -> PiecewisePath:
-        """The page's time path: its systems, one horizontal piece each.
+        """The page's time path: its path systems, one horizontal piece each.
 
         Raises:
-            ValueError: If a system's region has no x extent, naming the page.
+            ValueError: If a system holding measures has a region without x
+                extent, naming the page and the system's position.
         """
+        systems = self.path_systems
+        for system in systems:
+            if not system.has_x_extent:
+                raise ValueError(
+                    f"DMOS page {self.number}, system {system.position} has no x "
+                    f"extent (its region spans x {system.area.x_min.value} to "
+                    f"{system.area.x_max.value}) and holds {len(system.measures)} "
+                    "measure(s): it cannot be a piece of a time path."
+                )
         try:
             return TimeAxisPath.from_boxes(
-                [system.area for system in self.systems],
-                accolades=range(len(self.systems)),
+                [system.area for system in systems], accolades=range(len(systems))
             )
         except ValueError as error:
             raise located(f"DMOS page {self.number}", error) from error
@@ -198,6 +236,7 @@ def _read_document(source: Path) -> _DmosDocument:
                 )
             systems.append(
                 _DmosSystem(
+                    position=k,
                     name=str(_member(system, "id", at)),
                     area=area,
                     measures=tuple(measures),
@@ -244,11 +283,15 @@ class DmosLoader(Loader[_DmosDocument]):
     leaves its system's region, on the left or on the right, cannot be a Box
     of that system's accolade and refuses the file (the accolade spans
     exactly its region's x extent; neither is widened to hold the measure).
-    A page without systems has no time path and is left out. A system whose
-    region has no x extent (DMOS output holds some: a region that is a
-    vertical line) loads, but is no piece of a time path: creating paths or
-    timelines from a file holding one is refused, naming the page and the
-    system's position; the system is not dropped.
+    A system whose region has no x extent (a vertical line) and which holds
+    no measures, as DMOS output holds some, is no part of the time path: it
+    is left out of :meth:`create_paths`, :meth:`create_timelines` and
+    :meth:`create_timeline` alike, and :meth:`load` logs one warning per
+    file naming each such system by its page and its position on it. A
+    system without x extent that holds measures loads, but creating paths
+    or timelines from the file is refused, naming the page and the system's
+    position. A page without systems, or all of whose systems are left out,
+    has no time path and is left out.
 
     Examples:
         The pages of a DMOS file as one timeline, its measures numbered
@@ -309,6 +352,18 @@ class DmosLoader(Loader[_DmosDocument]):
         super()._accept_source(path, source_meta, payload)
         self._document = payload
         self._logger.debug(f"Loaded {path}: {self!r}")
+        left_out = [
+            f"page {page.number}, system {system.position}"
+            for page in payload.pages
+            for system in page.systems
+            if system.is_left_out
+        ]
+        if left_out:
+            self._logger.warning(
+                f"{path}: {len(left_out)} system(s) without x extent and without "
+                "measures are no part of the time path and are left out: "
+                f"{'; '.join(left_out)}."
+            )
 
     def clear(self) -> None:
         """Forget the loaded file."""
@@ -326,8 +381,12 @@ class DmosLoader(Loader[_DmosDocument]):
         return self._document
 
     def _pages_with_paths(self) -> list[tuple[_DmosPage, PiecewisePath]]:
-        """Each page that has systems with its time path, in document order."""
-        return [(page, page.path) for page in self._loaded().pages if page.systems]
+        """Each page whose time path has a system, with that path, in document order.
+
+        A page without systems, or all of whose systems are left out of the
+        path, is not listed.
+        """
+        return [(page, page.path) for page in self._loaded().pages if page.path_systems]
 
     def _described_pages(self) -> list[Page]:
         """The pages as the page builder takes them: a path, its accolades, their Boxes."""
@@ -342,7 +401,7 @@ class DmosLoader(Loader[_DmosDocument]):
                         area=system.area,
                         boxes=[PageBox(measure) for measure in system.measures],
                     )
-                    for system in page.systems
+                    for system in page.path_systems
                 ],
             )
             for page, path in self._pages_with_paths()
@@ -356,16 +415,18 @@ class DmosLoader(Loader[_DmosDocument]):
         its y extent, with half that extent as ``tolerance``, so the piece's
         strip is the system's y extent. Nothing is grouped or guessed: every
         stated system is one piece, also where it starts right of the one
-        before. A page without systems has no path and no entry.
+        before. A system without x extent and without measures is no piece
+        of the path and is left out; a page without systems, or all of whose
+        systems are left out, has no path and no entry.
 
         Returns:
             The paths, in document order.
 
         Raises:
             RuntimeError: If no file has been loaded.
-            ValueError: If a system's region has no x extent; the message
-                names the page by ``no_page`` and the system by its position
-                on the page, counted from 1.
+            ValueError: If a system holding measures has a region without x
+                extent; the message names the page by ``no_page`` and the
+                system by its position on the page, counted from 1.
         """
         return {page.number: path for page, path in self._pages_with_paths()}
 
@@ -407,8 +468,9 @@ class DmosLoader(Loader[_DmosDocument]):
 
         Raises:
             RuntimeError: If no file has been loaded.
-            ValueError: If no page of the file has a system, a system's
-                region has no x extent, or an ids argument does not fit the
+            ValueError: If no page of the file has a system on its time
+                path, a system holding measures has a region without x
+                extent, or an ids argument does not fit the
                 call (a sequence of another length, an unknown template
                 field, an invalid id, one id given to two timelines).
                 Nothing is built then.
@@ -440,8 +502,9 @@ class DmosLoader(Loader[_DmosDocument]):
         ``page_url``) and no ``meta["box"]``. Each system is an accolade as
         long as its region's x extent, named by its DMOS id, with
         ``meta["box"]`` its quadrilateral's dict and ``meta["image"]`` the
-        page's. Its measures are its Box events in document order. A page
-        without systems is left out.
+        page's. Its measures are its Box events in document order. A system
+        without x extent and without measures is left out, and so is a page
+        without systems or all of whose systems are left out.
 
         Args:
             page_ids: The pages' ids (see :meth:`create_timeline`); minted
@@ -455,8 +518,8 @@ class DmosLoader(Loader[_DmosDocument]):
 
         Raises:
             RuntimeError: If no file has been loaded.
-            ValueError: If a system's region has no x extent, or an ids
-                argument does not fit the call (see :meth:`create_timeline`).
+            ValueError: If a system holding measures has a region without x
+                extent, or an ids argument does not fit the call (see :meth:`create_timeline`).
                 Nothing is built then.
         """
         return build_pages(

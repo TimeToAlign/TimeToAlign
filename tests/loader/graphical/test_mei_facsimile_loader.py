@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
     BoundingBox,
     Box,
@@ -690,6 +691,46 @@ class TestPointsThatAreNoQuadrilateral:
             "quadrilateral: the outline turns clockwise at points 1 and 2 and "
             "counter-clockwise at points 3 and 4."
         )
+
+
+class TestPackageRoundTrip:
+    def test_the_volume_s_boxes_survive_a_package(
+        self, source: Path, tmp_path: Path
+    ) -> None:
+        volume = MeiFacsimileLoader.from_file(source).create_timeline(uid="chorale")
+        bundle = AlignmentBundle(id="choralbuch")
+        bundle.add_timeline(volume)
+        path = bundle.to_file(tmp_path / "package" / "package.yaml")
+        assert sorted(entry.name for entry in path.parent.iterdir()) == [
+            "boxes.parquet",
+            "package.yaml",
+        ]
+
+        read = AlignmentBundle.from_file(path).get_timeline("chorale")
+
+        assert isinstance(read, SegmentLine)
+        assert read.is_locked
+        assert read.length == _px(5610)
+        assert read.meta == {}
+        (page_id,) = read.list_children()
+        page = read.get_child(page_id)
+        assert (page.id, page.name, page.length) == (SURFACE, "15", _px(5610))
+        assert type(page).__name__ == "SegmentLine[DiscreteGraphicalTimeline]"
+        assert page.is_locked
+        assert page.meta == {"image": IMAGE}
+        assert len(page.get_events(include_children=False)) == 0
+        accolades = [page.get_child(uid) for uid in page.list_children()]
+        assert [
+            (a.id, a.name, page.get_child_offset(a.id).value, a.length.value)
+            for a in accolades
+        ] == [("dgt_3", "accolade_1", 0, 2806), ("dgt_4", "accolade_2", 2806, 2804)]
+        assert [a.meta for a in accolades] == [
+            {"box": ACCOLADE_1_BOX, "image": IMAGE},
+            {"box": ACCOLADE_2_BOX, "image": IMAGE},
+        ]
+        for accolade, zones in zip(accolades, (ACCOLADE_1_ZONES, ACCOLADE_2_ZONES)):
+            assert _boxes(accolade) == _expected(zones)
+            _assert_image_space_invariant(accolade)
 
 
 class TestLifecycle:

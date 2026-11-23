@@ -10,12 +10,14 @@ file by hand.
 from __future__ import annotations
 
 import json
+import logging
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
     Box,
     Coordinate,
@@ -39,6 +41,8 @@ MEASURE_3 = [[971, 2493], [1935, 2493], [971, 3192], [1945, 3192]]
 MEASURE_4 = [[519, 896], [1520, 896], [519, 1647], [1522, 1647]]
 #: A system region that is a vertical line, as DMOS output holds some.
 NO_WIDTH = [[22, 929], [22, 1185], [22, 929], [22, 1185]]
+#: A measure on that line, in DMOS's measure order.
+NO_WIDTH_MEASURE = [[22, 929], [22, 929], [22, 1185], [22, 1185]]
 
 #: The regions of all systems of the scan, per page, as the file writes them.
 SCAN_SYSTEMS = [
@@ -409,35 +413,143 @@ class TestSystems:
 
 
 class TestSystemWithoutWidth:
-    """Known issue: a system whose region is a vertical line is no piece of a path."""
+    """A system that is a vertical line: left out when empty, refused when not."""
 
-    MESSAGE = "DMOS page 1: accolade 2: x1 (22) must be greater than x0 (22)"
+    LOGGER = "timetoalign.loader.graphical.dmos.DmosLoader"
 
     @pytest.fixture
-    def loader(self, tmp_path: Path) -> DmosLoader:
+    def source(self, tmp_path: Path) -> Path:
+        """Page 1 (system 1, a line, system 2), page 2 (a line alone), page 3."""
+        return _write(
+            tmp_path,
+            _pages_document(
+                [
+                    _page(
+                        1,
+                        [
+                            _system(1, SYSTEM_1, [_measure(MEASURE_1)]),
+                            _system(1, NO_WIDTH, []),
+                            _system(2, SYSTEM_2, [_measure(MEASURE_3)]),
+                        ],
+                    ),
+                    _page(2, [_system(1, NO_WIDTH, [])]),
+                    _page(3, [_system(1, SYSTEM_2, []), _system(2, NO_WIDTH, [])]),
+                ]
+            ),
+        )
+
+    def test_loading_says_once_which_systems_are_left_out(
+        self, source: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=self.LOGGER):
+            loader = DmosLoader.from_file(source)
+            loader.create_paths()
+            loader.create_timelines()
+            loader.create_timeline()
+        assert repr(loader) == "DmosLoader(pages=3, systems=6, measures=2)"
+        assert [
+            (record.name, record.levelname, record.getMessage())
+            for record in caplog.records
+        ] == [
+            (
+                self.LOGGER,
+                "WARNING",
+                f"{source}: 3 system(s) without x extent and without measures are "
+                "no part of the time path and are left out: page 1, system 2; "
+                "page 2, system 1; page 3, system 2.",
+            )
+        ]
+
+    def test_a_file_without_such_a_system_says_nothing(
+        self, scan: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=self.LOGGER):
+            DmosLoader.from_file(scan).create_timeline()
+        assert caplog.records == []
+
+    def test_the_paths_leave_them_out(self, source: Path) -> None:
+        paths = DmosLoader.from_file(source).create_paths()
+        assert list(paths) == [1, 3]
+        assert paths[1] == PiecewisePath(
+            (
+                HorizontalLinePath(1221, 4101, Fraction(3855, 2), Fraction(677, 2)),
+                HorizontalLinePath(971, 4112, Fraction(5685, 2), Fraction(699, 2)),
+            )
+        )
+        assert paths[1].offsets == (0, 2880)
+        assert paths[3] == PiecewisePath(
+            (HorizontalLinePath(971, 4112, Fraction(5685, 2), Fraction(699, 2)),)
+        )
+
+    def test_the_pages_leave_them_out(self, source: Path) -> None:
+        pages = DmosLoader.from_file(source).create_timelines()
+        assert [(page.id, page.name, page.length.value) for page in pages] == [
+            ("dgt_1", "1", 6021),
+            ("dgt_4", "3", 3141),
+        ]
+        accolades = _segments(pages[0])
+        assert [(a.id, a.name, a.length.value) for a in accolades] == [
+            ("dgt_2", "1", 2880),
+            ("dgt_3", "2", 3141),
+        ]
+        assert _offsets(pages[0]) == [0, 2880]
+        assert [_box_ids(accolade) for accolade in accolades] == [["box_1"], ["box_1"]]
+        assert [(a.id, a.name) for a in _segments(pages[1])] == [("dgt_5", "1")]
+
+    def test_the_volume_leaves_them_out(self, source: Path) -> None:
+        volume = DmosLoader.from_file(source).create_timeline(
+            box_ids="m{n}", accolade_ids="p{page}_s{accolade}"
+        )
+        assert volume.length.value == 9162
+        assert [page.name for page in _segments(volume)] == ["1", "3"]
+        assert _offsets(volume) == [0, 6021]
+        accolades = [a for page in _segments(volume) for a in _segments(page)]
+        assert [(a.id, _box_ids(a)) for a in accolades] == [
+            ("p1_s1", ["m1"]),
+            ("p1_s2", ["m2"]),
+            ("p2_s1", []),
+        ]
+        _assert_image_space_invariant(volume)
+
+    def test_a_file_of_such_systems_alone(self, tmp_path: Path) -> None:
+        loader = DmosLoader.from_file(
+            _write(tmp_path, _document([_system(1, NO_WIDTH, [])]))
+        )
+        assert loader.create_paths() == {}
+        assert loader.create_timelines() == []
+        with pytest.raises(ValueError) as raised:
+            loader.create_timeline()
+        assert str(raised.value) == "A volume needs at least one page."
+
+    @pytest.mark.parametrize(
+        "method", ["create_paths", "create_timelines", "create_timeline"]
+    )
+    def test_one_holding_measures_is_refused(
+        self, tmp_path: Path, method: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
         source = _write(
             tmp_path,
             _document(
                 [
                     _system(1, SYSTEM_1, [_measure(MEASURE_1)]),
                     _system(1, NO_WIDTH, []),
+                    _system(2, NO_WIDTH, [_measure(NO_WIDTH_MEASURE)]),
                 ]
             ),
         )
-        return DmosLoader.from_file(source)
-
-    def test_the_file_loads(self, loader: DmosLoader) -> None:
-        assert repr(loader) == "DmosLoader(pages=1, systems=2, measures=1)"
-
-    @pytest.mark.parametrize(
-        "method", ["create_paths", "create_timelines", "create_timeline"]
-    )
-    def test_no_path_and_no_timeline_is_made(
-        self, loader: DmosLoader, method: str
-    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=self.LOGGER):
+            loader = DmosLoader.from_file(source)
+        assert repr(loader) == "DmosLoader(pages=1, systems=3, measures=2)"
+        assert [record.getMessage() for record in caplog.records] == [
+            f"{source}: 1 system(s) without x extent and without measures are "
+            "no part of the time path and are left out: page 1, system 2."
+        ]
         with pytest.raises(ValueError) as raised:
             getattr(loader, method)()
-        assert str(raised.value) == self.MESSAGE
+        assert str(raised.value) == (
+            "DMOS page 1, system 3 has no x extent (its region spans x 22 to 22) "
+            "and holds 1 measure(s): it cannot be a piece of a time path."
+        )
 
 
 class TestMeasures:
@@ -671,6 +783,112 @@ class TestMeasuresLeavingTheirSystem:
             )
         ]
         _assert_image_space_invariant(page)
+
+
+class TestPackageRoundTrip:
+    def test_the_volume_s_boxes_survive_a_package(
+        self, scan: Path, tmp_path: Path
+    ) -> None:
+        volume = DmosLoader.from_file(scan).create_timeline(uid="scan", box_ids="m{n}")
+        bundle = AlignmentBundle(id="gallica")
+        bundle.add_timeline(volume)
+        path = bundle.to_file(tmp_path / "package" / "package.yaml")
+        assert sorted(entry.name for entry in path.parent.iterdir()) == [
+            "boxes.parquet",
+            "package.yaml",
+        ]
+
+        read = AlignmentBundle.from_file(path).get_timeline("scan")
+
+        assert isinstance(read, SegmentLine)
+        assert read.is_locked
+        assert read.length == _px(53123)
+        assert read.meta == {"image": SCORE_URL}
+        pages = _segments(read)
+        assert [(page.id, page.name, page.length.value) for page in pages] == [
+            ("dgt_2", "1", 12311),
+            ("dgt_7", "2", 15690),
+            ("dgt_13", "3", 12562),
+            ("dgt_18", "4", 12560),
+        ]
+        assert _offsets(read) == [0, 12311, 28001, 40563]
+        assert [type(page).__name__ for page in pages] == [
+            "SegmentLine[DiscreteGraphicalTimeline]"
+        ] * 4
+        assert [page.meta for page in pages] == [
+            {"image": f"{SCORE_URL}/f{n}"} for n in (2, 3, 4, 5)
+        ]
+        accolades = _segments(pages[0])
+        assert [(a.id, a.name, a.length.value) for a in accolades] == [
+            ("dgt_3", "1", 2880),
+            ("dgt_4", "2", 3141),
+            ("dgt_5", "3", 3142),
+            ("dgt_6", "4", 3148),
+        ]
+        assert _offsets(pages[0]) == [0, 2880, 6021, 9163]
+        assert accolades[0].meta == {
+            "box": {
+                "top_left": {"x": 1221, "y": 1589},
+                "top_right": {"x": 4097, "y": 1589},
+                "bottom_right": {"x": 4101, "y": 2266},
+                "bottom_left": {"x": 1221, "y": 2266},
+            },
+            "image": PAGE_URL,
+        }
+        assert accolades[1].meta == {
+            "box": {
+                "top_left": {"x": 971, "y": 2493},
+                "top_right": {"x": 4104, "y": 2493},
+                "bottom_right": {"x": 4112, "y": 3192},
+                "bottom_left": {"x": 971, "y": 3192},
+            },
+            "image": PAGE_URL,
+        }
+        assert _boxes(accolades[0]) == [
+            Box(
+                id="m1",
+                start=_px(0),
+                duration=_extent(940),
+                quadrilateral=_canonical(
+                    (1221, 1589), (2151, 1589), (2161, 2266), (1221, 2266)
+                ),
+            ),
+            Box(
+                id="m2",
+                start=_px(930),
+                duration=_extent(624),
+                quadrilateral=_canonical(
+                    (2151, 1589), (2766, 1589), (2775, 2266), (2161, 2266)
+                ),
+            ),
+        ]
+        assert _boxes(accolades[1]) == [
+            Box(
+                id="m3",
+                start=_px(0),
+                duration=_extent(974),
+                quadrilateral=_canonical(
+                    (971, 2493), (1935, 2493), (1945, 3192), (971, 3192)
+                ),
+            )
+        ]
+        page_2 = _segments(pages[1])
+        assert page_2[0].id == "dgt_8"
+        assert _boxes(page_2[0]) == [
+            Box(
+                id="m4",
+                start=_px(0),
+                duration=_extent(1003),
+                quadrilateral=_canonical(
+                    (519, 896), (1520, 896), (1522, 1647), (519, 1647)
+                ),
+            )
+        ]
+        every = [a for page in pages for a in _segments(page)]
+        assert len(every) == 17
+        assert sum(len(_boxes(accolade)) for accolade in every) == 4
+        assert [len(_boxes(holder)) for holder in (read, *pages)] == [0] * 5
+        _assert_image_space_invariant(read)
 
 
 class TestLifecycle:

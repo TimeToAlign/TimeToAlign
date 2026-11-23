@@ -1,26 +1,45 @@
 # Graphical loader tests: areas of page images
 
-This README documents the validation logic of the two readers of areas drawn
-on page images, `DmosLoader` (`test_dmos_loader.py`) and `MeiFacsimileLoader`
-(`test_mei_facsimile_loader.py`). Both turn each area into a `Box` event: its
-shape (a `Quadrilateral` or a `BoundingBox`) in the image's pixel space, its
-interval on the timeline that runs along the image's x axis.
+This README documents the validation logic of the three readers of page
+images and of the two modules they share:
+
+- `DmosLoader` (`test_dmos_loader.py`): pages, systems and measures of a
+  DMOS JSON file;
+- `MeiFacsimileLoader` (`test_mei_facsimile_loader.py`): surfaces and zones
+  of an MEI facsimile;
+- `IIIFManifestLoader` (`test_iiif_loader.py`): the canvases of a IIIF
+  manifest, along a time path that is given;
+- time paths (`test_paths.py`) and the builder of pages and volumes
+  (`test_pages.py`), in "Time paths and pages".
+
+Nothing in a page image is a time axis until a path through it is stated: a
+line of music is one horizontal piece, a page the pieces one after the
+other. Every reader builds the same tree from such paths, all in `pixels`:
+an **accolade** per piece, as long as the piece; a **page**, the segment
+line of its accolades; a **volume**, the segment line of the pages. Each
+area drawn on the image (a DMOS measure, an MEI zone) is a `Box` event of
+the accolade it lies on: its shape (a `Quadrilateral` or a `BoundingBox`)
+in the image's pixel space, its interval on the accolade.
 
 The fixtures are small excerpts of real files, written by the tests to
-`tmp_path`; no corpus is fetched. All expected values are exact integers read
-from the source files by hand (named below), never computed by the code under
-test.
+`tmp_path`; no corpus is fetched. All expected values are exact integers
+(fractions where a line lies between two pixels) read from the source files
+by hand (named below), never computed by the code under test.
 
 ## What proves a reader right
 
-A reader is right when three things hold, and each test checks all three on
-what the loader returns, not on its internals:
+A reader is right when four things hold, and each test checks them on what
+the loader returns, not on its internals:
 
-1. **The tree is the source's.** Every container the file states (a page, a
-   system, an MEI surface) is a timeline, in document order, with the name
-   the file gives it, and nothing the file does not state is invented: a
-   page size the file does not give is unknown (`length` `None`, no
-   `meta["box"]`), never guessed.
+1. **The tree mirrors the time path.** Every piece of a path is an
+   accolade, every page the segment line of its accolades in the path's
+   order, the volume the segment line of the pages in document order, with
+   the names the file gives. No length is unknown and none is an image
+   size: an accolade is as long as its piece, a page and a volume as long
+   as the sum of their segments. An accolade states its area in
+   `meta["box"]`; a page states no `meta["box"]`, since its axis is a
+   concatenation and no area. What has no path (a page without systems, a
+   surface without zones) is no timeline.
 2. **Every shape is the source's, corner for corner.** Each Box equals a Box
    built by hand from the file's corners, written in the canonical order
    (top left, top right, bottom right, bottom left). DMOS writes its corners
@@ -32,8 +51,15 @@ what the loader returns, not on its internals:
    `start = x_min - o(T)` and `duration = x_max - x_min`, where `o(T)` is the
    x of T's `meta["box"]` (0 where T states none). The tests check it with a
    helper of their own over every Box of every returned timeline, so a reader
-   that placed a measure on its page's axis instead of its system's fails
+   that placed a measure on its page's axis instead of its accolade's fails
    even where the single expected values were not spelled out.
+4. **The Boxes survive a package.** A manifest file holds no event, so a
+   volume written alone comes back with empty accolades; the Boxes live in
+   the package's `boxes.parquet`. For each reader of Boxes one volume is put
+   in an `AlignmentBundle`, written to `tmp_path` and read back, and the
+   tree read is compared with literals, never with the volume written: a
+   writer and a reader that dropped or moved the same thing would agree
+   with each other and still be wrong.
 
 Refusals the library composes are asserted whole.
 
@@ -157,15 +183,77 @@ to 4120, right of it) gives the same sentence for `measure 2` and `3500 to
 of system 1 in measure order) loads as `box_1`, start 0, duration 2880: both
 edges are inside.
 
-**Known issue: a system without width.** DMOS output can hold a system whose
-region is a vertical line (seen in one file as `[[22,929],[22,1185],
-[22,929],[22,1185]]`, holding no measure). The file loads, since the region
-is read as written, but such a system is no piece of a time path: a
-horizontal piece runs from one x to a greater one. `create_paths()`,
-`create_timelines()` and `create_timeline()` refuse it, naming the page and
-the system's position: `DMOS page 1: accolade 2: x1 (22) must be greater
-than x0 (22)`. The system is not dropped and nothing is built. Separate
-case: the page excerpt with that region as its system 2.
+**A system without width.** DMOS output holds, on some pages, a system
+whose region is a vertical line and which holds no measure (seen in the
+output for Debussy's *Pelléas et Mélisande*, act 2: page 12, second system,
+`[[22,929],[22,1185],[22,929],[22,1185]]`, x 22 to 22). A horizontal piece
+runs from one x to a greater one, so such a system lies along no time axis.
+The rule: it is **no part of the time path**. The file loads with the system
+as written (`repr` counts it), loading says once per file, in one warning of
+the loader's logger, which systems are left out, and `create_paths()`,
+`create_timelines()` and `create_timeline()` all leave them out, as they
+leave out a page without systems; a page all of whose systems are left out
+is left out too. What proves it is that the three methods agree and that
+nothing else moves: the remaining systems keep their extents, the offsets
+and minted ids close up over the gap, and positions in id templates count
+the accolades made.
+
+The case, with the regions of the page excerpt: page 1 holds system 1 with
+measure 1, the line (DMOS id 1, no measure), and system 2 with its measure
+1; page 2 holds the line alone; page 3 holds system 2's region and the
+line. By hand:
+
+- the loader's `repr` is `DmosLoader(pages=3, systems=6, measures=2)`, and
+  exactly one warning is logged by `timetoalign.loader.graphical.dmos.
+  DmosLoader`, also after all three `create_*` calls: `<file>: 3 system(s)
+  without x extent and without measures are no part of the time path and
+  are left out: page 1, system 2; page 2, system 1; page 3, system 2.`
+  (positions on the page, from 1). The scan, which holds no such system,
+  logs nothing;
+- paths: keys 1 and 3; page 1 the two pieces (1221, 4101, 3855/2, 677/2)
+  and (971, 4112, 5685/2, 699/2) at offsets 0 and 2880; page 3 the one
+  piece of system 2;
+- pages: `dgt_1` named `"1"`, length 2880 + 3141 = 6021, its accolades
+  `dgt_2` (name `"1"`, 2880) and `dgt_3` (name `"2"`, 3141) at 0 and 2880,
+  each with its `box_1`; then `dgt_4` named `"3"`, length 3141, its
+  accolade `dgt_5`. A reader that kept the line as a zero-length accolade
+  mints `dgt_3` for it and names two accolades `"1"`;
+- volume: length 6021 + 3141 = 9162, pages `"1"` and `"3"` at 0 and 6021;
+  with `accolade_ids="p{page}_s{accolade}"` and `box_ids="m{n}"` the
+  accolades are `p1_s1` (`m1`), `p1_s2` (`m2`) and `p2_s1` (no Box): page 3
+  is the second page created, system 2 the second accolade of its page;
+- a file whose only system is the line gives no path, no page, and the
+  refused volume of a file without systems (`A volume needs at least one
+  page.`).
+
+**Known issue: a system without width that holds measures.** Leaving such a
+system out would drop its measures, and no accolade of length 0 can hold a
+Box, so it stays refused: the file loads (a measure on the line, `[[22,929],
+[22,929],[22,1185],[22,1185]]`, does not leave its system's x extent), and
+each of the three `create_*` methods refuses with `DMOS page 1, system 3
+has no x extent (its region spans x 22 to 22) and holds 1 measure(s): it
+cannot be a piece of a time path.` Separate case: page 1 with system 1, the
+empty line and a line holding that measure; the position named is the
+system's on its page (3), counting the system left out before it, and the
+warning names that one (`page 1, system 2`) alone.
+
+**The package round trip** (principle 4). The scan's volume, created with
+`uid="scan"` and `box_ids="m{n}"`, is written in a bundle to
+`package/package.yaml`; the directory then holds exactly `boxes.parquet`
+and `package.yaml`. Read back, every value is one derived above: the volume
+`scan` is a locked segment line of length 53123 stating the
+`score_image_url`; its pages `dgt_2`, `dgt_7`, `dgt_13`, `dgt_18` (each
+page's number follows its predecessor's accolades: 4, 5 and 4 of them),
+named `"1"` to `"4"`, of lengths 12311, 15690, 12562, 12560 at offsets 0,
+12311, 28001, 40563, each stating its `page_url` only; page 1's accolades
+`dgt_3` to `dgt_6` of lengths 2880, 3141, 3142, 3148 at 0, 2880, 6021,
+9163; the `meta["box"]` of the first two the regions of systems 1 and 2 in
+canonical order, corner for corner (bottom right (4101, 2266) and (4112,
+3192)). The four Boxes are compared whole (id, start, duration and the four
+corners): `m1` [0, 940) and `m2` [930, 1554) on `dgt_3`, `m3` [0, 974) on
+`dgt_4`, `m4` [0, 1003) on `dgt_8`, page 2's first accolade. The 17
+accolades hold four Boxes together, volume and pages none, and the
+image-space invariant holds over the tree read.
 
 ## `MeiFacsimileLoader`
 
@@ -312,6 +400,17 @@ other numbers.
   one to change.
 - **Zones without coordinates** are not read and are listed, in document
   order, in `zones_without_coordinates`.
+- **The package round trip** (principle 4). The excerpt's volume, created
+  with `uid="chorale"`, is written in a bundle to `package/package.yaml`
+  (the directory then holds exactly `boxes.parquet` and `package.yaml`) and
+  read back. Every value is one derived above: the volume `chorale` is a
+  locked segment line of length 5610 with empty `meta`; its one page has the
+  surface's `xml:id`, name `"15"`, length 5610, `meta` the image alone and
+  no event; the accolades `dgt_3` (`accolade_1`, offset 0, length 2806,
+  `meta["box"]` (490, 344, 2806, 572)) and `dgt_4` (`accolade_2`, offset
+  2806, length 2804, (498, 858, 2804, 529)) state the image; all nine Boxes
+  are compared whole with the table of starts, durations and bounding boxes
+  above (zone 6 at 0 on accolade 2), under their zones' `xml:id`s.
 - **Refusals.** A root other than `<mei>` in the MEI namespace, each of the
   three `create_*` methods before `load()`, and a second source are refused.
 

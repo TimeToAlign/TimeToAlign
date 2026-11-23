@@ -515,6 +515,16 @@ class TestIdentity:
                 "The id 'surface_15' is given to page '15' and to accolade "
                 "'accolade_1' of page '15': every timeline of a call has its own id.",
             ),
+            (
+                {"box_ids": "m"},
+                "The id 'm' is given to two Boxes of accolade 'accolade_1' of page "
+                "'15': every Box of an accolade has its own id.",
+            ),
+            (
+                {"box_ids": ["a", "b", "a", "d", "e", "f", "g", "h", "i"]},
+                "The id 'a' is given to two Boxes of accolade 'accolade_1' of page "
+                "'15': every Box of an accolade has its own id.",
+            ),
         ],
     )
     def test_refused_before_anything_is_built(
@@ -535,6 +545,53 @@ class TestIdentity:
             "timeline of a call has its own id."
         )
         _assert_nothing_minted(loader)
+
+    def test_a_box_id_is_unique_in_its_accolade_only(self) -> None:
+        loader = _Loader()
+        line = Page(
+            name="p",
+            image="img",
+            path=HorizontalLinePath(x0=10, x1=500, y=100),
+            boxes=[
+                PageBox(_rect(20, 95, 50, 105), source_id="z"),
+                PageBox(_rect(60, 95, 90, 105), source_id="z"),
+            ],
+        )
+        with pytest.raises(ValueError) as error:
+            build_pages(loader, [line])
+        assert str(error.value) == (
+            "The id 'z' is given to two Boxes of page 'p': every Box of an "
+            "accolade has its own id."
+        )
+        _assert_nothing_minted(loader)
+
+        (page,) = build_pages(loader, [_chorale_page()], box_ids="m{box}")
+        (_, first), (_, second) = _segments(page)
+        assert [box[0] for box in _boxes(first)] == ["m1", "m2", "m3", "m4", "m5"]
+        assert [box[0] for box in _boxes(second)] == ["m1", "m2", "m3", "m4"]
+
+    def test_no_accolade_is_minted_a_given_id(self) -> None:
+        loader = _Loader()
+        (page,) = build_pages(
+            loader, [_chorale_page(source_id=None)], accolade_ids=["dgt_1", "x"]
+        )
+        assert page.id == "dgt_2"
+        assert [accolade.id for _, accolade in _segments(page)] == ["dgt_1", "x"]
+        assert _mint_timeline_id(loader, TimeUnit.pixels) == "dgt_5"
+
+    def test_no_timeline_is_minted_a_given_page_id(self) -> None:
+        volume = build_volume(
+            _Loader(), _scan_pages(), page_ids=["p1", "dgt_3", "p3", "p4"]
+        )
+        assert volume.id == "dgt_4"
+        pages = [page for _, page in _segments(volume)]
+        assert [page.id for page in pages] == ["p1", "dgt_3", "p3", "p4"]
+        assert [[a.id for _, a in _segments(page)] for page in pages] == [
+            ["dgt_6", "dgt_7", "dgt_8", "dgt_9"],
+            ["dgt_11", "dgt_12", "dgt_13", "dgt_14", "dgt_15"],
+            ["dgt_17", "dgt_18", "dgt_19", "dgt_20"],
+            ["dgt_22", "dgt_23", "dgt_24", "dgt_25"],
+        ]
 
 
 class TestOtherPaths:

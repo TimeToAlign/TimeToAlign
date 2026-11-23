@@ -529,8 +529,30 @@ against the hand-derived numbers above:
    `accolade`, `box`, `n` (`m{n}` numbers the scan's measures through the
    pages; with zones given in an order that alternates between accolades, a
    sequence still names the zones in the order given).
+   *A Box id is unique in its accolade, and only there.* The Boxes of one
+   accolade are the events of one timeline, so two of them cannot share an
+   id; two accolades are two timelines and may. Both sides are pinned: a
+   template without a position (`box_ids="m"`) and a sequence naming the
+   chorale's zones 1 and 3 alike are refused, naming the id and accolade
+   `accolade_1` of page `15` (a page along one line is named itself), while
+   `box_ids="m{box}"` gives `m1`–`m5` on the first accolade and `m1`–`m4`
+   on the second.
+   *No timeline is minted an id the call was given.* The numbers of all
+   given timeline ids are set aside before the first id is minted, and a
+   minted id is numbered above every number held, so the expected ids
+   follow by counting. Chorale page without a source id, `accolade_ids=
+   ["dgt_1", "x"]`: `dgt_1` is held, the page is minted `dgt_2`, the two
+   named accolades take `dgt_3` and `dgt_4`, and the next id minted from
+   the loader is `dgt_5`. Scan volume with `page_ids=["p1", "dgt_3", "p3",
+   "p4"]`: the volume is `dgt_4`, page `p1` takes `dgt_5` and its four
+   accolades are `dgt_6`–`dgt_9`, page `dgt_3` takes `dgt_10` and its five
+   accolades are `dgt_11`–`dgt_15`, `p3` takes `dgt_16` (`dgt_17`–`dgt_20`),
+   `p4` takes `dgt_21` (`dgt_22`–`dgt_25`). A builder that set a given id's
+   number aside only on reaching its timeline would mint the volume
+   `dgt_1` and the first accolade of `p1` `dgt_3`, the id of page 2.
 6. *Nothing happens on a refusal*: each refusal (wrong sequence length,
-   unknown template field, invalid id, one id for two timelines, a Box on no
+   unknown template field, invalid id, one id for two timelines, one id for
+   two Boxes of an accolade, a Box on no
    piece, a Box leaving its accolade, a stated area that is not its piece's x
    extent, a length that is no whole pixel, pages of two kinds in one volume,
    no page) is asserted whole, and after it the next timeline minted from the

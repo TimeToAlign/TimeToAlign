@@ -46,8 +46,11 @@ functions:
 
 ``owner`` is the loader: minted timeline ids (``dgt_N``) are drawn from it
 in document order (the volume, then each page followed by its accolades), a
-named timeline taking its number all the same. A page for which the loader
-can make no path is simply not handed over.
+named timeline taking its number all the same. The numbers of the ids a call
+is given are set aside before its first id is minted, so no timeline is
+minted an id the call gives another (``page_ids=["p1", "dgt_3"]``: the
+volume is ``dgt_4``). A page for which the loader can make no path is simply
+not handed over.
 
 Identity
 --------
@@ -71,8 +74,10 @@ in their order, then the unassigned ones in the order given.
 
 Everything is checked before anything is built or minted: a sequence of
 another length, a template field that does not exist, an invalid id, one id
-given to two timelines of the call, a Box outside its accolade, an accolade
-area that is not its piece's x extent, pages of one volume of two kinds.
+given to two timelines of the call or to two Boxes of one accolade (two
+accolades may each hold a Box of one id), a Box outside its accolade, an
+accolade area that is not its piece's x extent, pages of one volume of two
+kinds.
 
 Examples:
     One scanned page with two systems, the first holding two measures::
@@ -509,7 +514,46 @@ def _plan(
                     f"and to {holder_name}: every timeline of a call has its own id."
                 )
             holders_of[timeline_id] = holder_name
+        # The Boxes of one timeline are its events: an id names one of them.
+        # The holders are the accolades, or the page itself along one line.
+        box_holders = named if plan.accolades is None else named[1:]
+        for holder, (_, holder_name) in zip(plan.holders, box_holders):
+            seen: set[str] = set()
+            for box_id in holder.box_ids:
+                if box_id is None:
+                    continue
+                if box_id in seen:
+                    raise ValueError(
+                        f"The id {box_id!r} is given to two Boxes of {holder_name}: "
+                        "every Box of an accolade has its own id."
+                    )
+                seen.add(box_id)
     return plans
+
+
+def _set_aside_given_ids(
+    owner: object, plans: list[_PagePlan], uid: str | None
+) -> None:
+    """Keep every timeline id the call was given out of *owner*'s minting.
+
+    Called once a call's checks have passed and before its first timeline is
+    made, so that a timeline minted early is never given the id a later one
+    was named with. A given id holds its number as
+    :func:`~timetoalign.timelines.factory._root_timeline_id` reads it: by
+    its part after the last ``:``.
+    """
+    given = [uid] + [
+        timeline.uid for plan in plans for timeline in (plan, *(plan.accolades or ()))
+    ]
+    taken: set[str] | None = getattr(owner, "_minted_timeline_ids", None)
+    if taken is None:
+        taken = set()
+        setattr(owner, "_minted_timeline_ids", taken)
+    taken.update(
+        timeline_id.rpartition(":")[2]
+        for timeline_id in given
+        if timeline_id is not None
+    )
 
 
 # endregion
@@ -612,7 +656,8 @@ def build_pages(
         ``PiecewisePath``, else one ``DiscreteGraphicalTimeline``.
 
     Raises:
-        ValueError: If an ids argument does not fit the call, a path or an
+        ValueError: If an ids argument does not fit the call, one id is given
+            to two timelines or to two Boxes of one accolade, a path or an
             area holds a number the pixel axis cannot hold exactly, a stated
             accolade area is not its piece's x extent, or a Box lies on no
             piece of its page's path or leaves its accolade. Nothing is
@@ -624,6 +669,7 @@ def build_pages(
     plans = _plan(
         pages, uid=None, page_ids=page_ids, accolade_ids=accolade_ids, box_ids=box_ids
     )
+    _set_aside_given_ids(owner, plans, None)
     timelines = []
     for plan in plans:
         timeline = _build_page(owner, plan)
@@ -690,6 +736,7 @@ def build_volume(
         if of_accolades
         else DiscreteGraphicalTimeline
     )
+    _set_aside_given_ids(owner, plans, uid)
     volume = _timeline(
         owner,
         SegmentLine[page_class],

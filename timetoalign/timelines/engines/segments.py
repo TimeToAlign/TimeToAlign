@@ -50,8 +50,9 @@ class SegmentsMixin:
         Raises:
             ValueError: If fewer than 2 boundaries or not monotonically
                 increasing; if this timeline holds Boxes and its
-                ``meta["box"]`` is no shape, or a Box would move into a
-                segment not starting at 0 while it states no ``meta["box"]``.
+                ``meta["box"]`` is no shape; or if it states no
+                ``meta["box"]`` and a Box would move that a descendant
+                holds, or one of its own into a segment not starting at 0.
 
         Examples:
             >>> measures = audio_tl.create_segment_line(

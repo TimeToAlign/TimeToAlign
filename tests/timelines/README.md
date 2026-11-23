@@ -2827,6 +2827,131 @@ starts 0 and 930, durations 940 and 624.
   ['left', 'top']: a BoundingBox's keys are x, y, width and height, a
   Quadrilateral's top_left, top_right, bottom_right and bottom_left.`
 
+### `test_boxes_pages.py` - Cuts of pages and volumes
+
+**Purpose:** A scanned page is a segment line of accolades: each accolade
+stands for an area of the page's image (`meta["box"]`, `meta["image"]`) and
+holds its Boxes at `start = x_min −` the `x` of that area. The page states
+`meta["image"]` and no `meta["box"]`: its axis is the accolades laid end to
+end, a concatenation of areas and no area itself. A volume is a segment
+line of such pages and states no area either. The four cut operations of
+the section above meet such a timeline in two ways.
+
+**Reasoning.** A Box's shape never moves, so a Box may only stand on a
+timeline whose x origin agrees with it (`start = x_min − origin`). On the
+page's axis the measure `m3` of the second accolade starts at 1100 while
+its shape starts at x 220: no timeline cut from the page has an origin both
+accolades' Boxes agree with, at any cut start, 0 included. Hence:
+
+- **A slice never moves a Box off its accolade.** It copies each timeline's
+  own rows and slices each child in turn, so each accolade is cut by the
+  rule of the section above (its slice states its own area) and the page's
+  and the volume's slices carry `meta["image"]` and state no box. This is
+  the cut a page affords.
+- **A cut that lifts descendants' rows onto one new timeline is refused**
+  wherever one of those rows is a Box: a child from a region and a segment
+  of `create_segment_line` taking events along. The refusal is the one a
+  timeline without area already gives (`... the timeline states no area
+  (meta["box"]), so the cut's area cannot be stated.`), now at every cut
+  start. What tells such a row from a timeline's own is `source_timeline`
+  of the rows `get_events(min_coord=, max_coord=)` gives: null for an own
+  row, the holding descendant's id otherwise. The tests assert that reading
+  first, on the page and on the volume, since the rule rests on it.
+- **A timeline's own Boxes are untouched by this.** A hand-made timeline
+  holding Boxes itself without `meta["box"]` stands at x 0: its own Boxes
+  move onto a cut at 0 and nowhere else, as in the section above. Where it
+  also has an accolade child, only that child's Boxes are refused at 0.
+- **Without a Box nothing changes.** A timeline whose tree holds no Box is
+  cut as before, descendants' rows included, whatever `meta` says.
+
+**What would show it broken:** a page's slice stating a box, or losing its
+image; an accolade's slice whose area or Box starts differ from the
+accolade cut alone; a child or segment of a page holding a Box (it could
+not be written and read back) or refused with the Box check's sentence
+instead of the cut's; a refused cut leaving a child behind; an own Box
+refused at 0; a tree without Boxes refused or given `meta`. Every timeline
+a cut returns round-trips (`from_dict(to_dict(events=True))`), which runs
+the Box check on each timeline of its tree, and every Box's shape cell is
+compared with the one its accolade held.
+
+**Values** (pixels, int). Accolade `a1`: area `{x 100, y 200, width 1000,
+height 300}`, length 1000, Boxes `m1` = `(150, 200, 300, 300)` at start 50
+and `m2` = `(600, 200, 300, 300)` at 500, each of duration 300. Accolade
+`a2`: area `{x 120, y 700, width 900, height 300}`, length 900, `m3` =
+`(220, 700, 300, 300)` at 100 and `m4` = `(700, 700, 300, 300)` at 580.
+`page` (`SegmentLine[DiscreteGraphicalTimeline]`, `meta == {"image":
+"page_1.jpg"}`) holds `a1` at 0 and `a2` at 1000, length 1900. `vol`
+(`SegmentLine` of such pages, `meta == {"image": "volume"}`) holds `p1` at
+0 and `p2` at 1900 (ids prefixed `p1_`, `p2_`; images `page_1.jpg`,
+`page_2.jpg`), length 3800.
+
+- **Rows of descendants.** `page.get_events(min_coord=0, max_coord=1900)`:
+  `(id, start, source_timeline)` = `(m1, 50, a1)`, `(m2, 500, a1)`, `(m3,
+  1100, a2)`, `(m4, 1580, a2)`. `vol.get_events(min_coord=1000,
+  max_coord=2000)`: `(p1_m3, 1100, p1_a2)`, `(p1_m4, 1580, p1_a2)`,
+  `(p2_m1, 1950, p2_a1)` (the holder, two levels down).
+  `page.get_events(include_children=False)` is empty.
+- **Slice of the page, [500, 1500).** Length 1000, `meta == {"image":
+  "page_1.jpg"}`; two segments at 0 and 500, each of length 500: the first
+  with `meta["box"] == {x 600, y 200, width 500, height 300}` (100 + 500)
+  holding `m2` at 0; the second `{x 120, y 700, width 500, height 300}`
+  holding `m3` at 100; both carry the image. The whole page, [0, 1900):
+  both accolades' `meta` as written, the four Boxes at their starts.
+- **A Box crossing a slice boundary.** `page.get_slice(200, 1900)` cuts
+  `a1` at 200, which `m1` (50 to 350) crosses: `Box 'm1' runs from 50 to
+  350 on timeline 'a1' and crosses the slice's boundary at 200: a slice
+  clips the intervals that cross its boundaries, and a clipped Box would
+  contradict its shape. Slice with truncate_events=False to leave it out.`
+  With `truncate_events=False`: length 1700, segments at 0 (length 800,
+  area `x` 300, width 800, `m2` at 300) and 800 (`a2` whole: area as
+  written, `m3` at 100, `m4` at 580).
+- **Slice of the volume, [500, 2400).** Length 1900, `meta == {"image":
+  "volume"}`; segments at 0 (length 1400, `{"image": "page_1.jpg"}`) and
+  1400 (length 500, `{"image": "page_2.jpg"}`). The first holds the slice
+  of `p1_a1` at 0 (length 500, area `x` 600, width 500, `p1_m2` at 0) and
+  `p1_a2` whole at 500 (length 900, `p1_m3` at 100, `p1_m4` at 580); the
+  second the slice of `p2_a1` at 0 (length 500, area `{x 100, y 200, width
+  500, height 300}`, `p2_m1` at 50).
+- **Child from a region, refused.** `page`, region [0, 1000): `Box 'm1'
+  cannot move onto a timeline cut at 0 from timeline 'page': the timeline
+  states no area (meta["box"]), so the cut's area cannot be stated.`;
+  region [500, 1500): the same sentence with `'m2'` and `500`. `vol`,
+  region [0, 1900): `'p1_m1'`, `0`, `'vol'`; region [1900, 3800):
+  `'p2_m1'`, `1900`. The page keeps `a1`, `a2` alone, the volume `p1`,
+  `p2`.
+- **Segments, refused.** `page.create_segment_line([0, 1000, 1900])`:
+  the sentence with `'m1'`, `0`, `'page'`;
+  `vol.create_segment_line([0, 1900, 3800])`: `'p1_m1'`, `0`, `'vol'`.
+  With `copy_events=False` no Box moves and nothing is refused: the page
+  gives two segments of lengths 1000 and 900, each with `meta == {"image":
+  "page_1.jpg"}` and no event. `SegmentLine.from_segmentation` never
+  reaches a cut here: it refuses every timeline that has children (`Cannot
+  segment a timeline that already has children. This would create
+  conflicting nesting hierarchies.`), as before.
+- **A parent that is no segment line.** `sheet`
+  (`DiscreteGraphicalTimeline`, length 3000, `meta == {"image":
+  "page_1.jpg"}`) holding `a1` at offset 1500. Its child from the region
+  [0, 1000) takes no Box and is made: length 1000, `meta == {"image":
+  "page_1.jpg"}`, no event. From [0, 2000) (`m1` at 1550): refused,
+  `'m1'`, `0`, `'sheet'`; `sheet` keeps `a1` alone.
+- **Own Boxes beside an accolade.** `sheet` also holding its own Box `own`
+  = `(200, 50, 400, 100)` at 200 (no area: x 0). The child from [0, 1000):
+  `own` at 200, shape unchanged, `meta == {"image": "page_1.jpg"}`. From
+  [100, 1000): refused, `'own'`, `100`. From [0, 2000): refused for the
+  accolade's `'m1'` at `0`, and no child is made. `get_slice(0, 3000)`:
+  `own` at 200 and the slice of `a1` at 1500 with its area as written,
+  `m1` at 50, `m2` at 500.
+- **No Box anywhere.** `sheet` (same `meta`) holding the Note `e1`
+  [200, 600) and the child `strip` (offset 1500, length 1000, `meta`
+  `{"box": {x 100, y 200, width 1000, height 300}, "image":
+  "page_1.jpg"}`) holding the Note `e2` [50, 350). The child from the
+  region [100, 2000): length 1900, `meta == {}`, `e1` at 100 and `e2` at
+  1450 (1500 + 50 − 100; the descendant's row moves). `get_slice(100,
+  3000)`: `meta == {}`, `e1` at 100, the slice of `strip` at 1400 with
+  `meta == {}` and `e2` at 50. `create_segment_line([0, 1000, 3000])`:
+  segments of lengths 1000 and 2000, `meta` `{}` and `{}`, holding `e1` at
+  200 and `e2` at 550.
+
 ### `test_external_references.py` - Incoming External References and `to_dict()` Flags
 
 **Purpose:** Validates the per-timeline table of *incoming* external

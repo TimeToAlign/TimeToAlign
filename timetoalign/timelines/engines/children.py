@@ -1112,9 +1112,10 @@ class ChildrenMixin:
             RuntimeError: If timeline is locked.
             ValueError: With *measures*, if this timeline has no measure map
                 or the measure map refuses the slice; if this timeline holds
-                Boxes and its ``meta["box"]`` is no shape, or a Box would
-                move while it states no ``meta["box"]`` and the region does
-                not start at 0.
+                Boxes and its ``meta["box"]`` is no shape; or if it states
+                no ``meta["box"]`` and a Box would move that a descendant
+                holds, or one of its own while the region does not start
+                at 0.
 
         Examples:
             >>> tl.create_regions_by_splitting("breaks", prefix="movement")
@@ -1468,8 +1469,13 @@ class ChildrenMixin:
         over the grown length.
 
         Known issue: a timeline holding Boxes that states no area
-        (``meta["box"]``) gives the cut no area, so a Box can move only onto
-        a cut at 0 (both stand at x 0).
+        (``meta["box"]``) gives the cut no area. One of its own Boxes can
+        move only onto a cut at 0 (both stand at x 0). A Box a descendant
+        holds (a row whose ``source_timeline`` is not null) stands against
+        that descendant's area and cannot move at all: a page made of
+        accolades, or a volume of such pages, is a concatenation of areas
+        and none itself, so no timeline cut from it has an x origin its
+        accolades' Boxes agree with.
 
         Args:
             target: The new timeline, standing at *start* of this one.
@@ -1481,16 +1487,18 @@ class ChildrenMixin:
 
         Raises:
             ValueError: If this timeline holds Boxes and its ``meta["box"]``
-                is no shape (:meth:`_stated_area`); if a row is a Box,
-                *start* is not 0 and this timeline states no area; or as the
-                Box check or ``add_events`` refuses a row. Nothing is added
-                then.
+                is no shape (:meth:`_stated_area`); if this timeline states
+                no area and a row is a Box that a descendant holds, or one
+                of its own while *start* is not 0; or as the Box check or
+                ``add_events`` refuses a row. Nothing is added then.
         """
         holds_boxes = self._holds_boxes()
         area = self._stated_area() if holds_boxes else None
-        if holds_boxes and area is None and start != 0:
+        if holds_boxes and area is None:
             for row in rows:
-                if row.get("event_type") == BOX_EVENT_TYPE:
+                if row.get("event_type") == BOX_EVENT_TYPE and (
+                    start != 0 or row.get("source_timeline") is not None
+                ):
                     raise ValueError(
                         f"Box {quote_id(row.get('id'))} cannot move onto a timeline "
                         f"cut at {_format_coordinate_value(start)} from timeline "
@@ -1592,7 +1600,9 @@ class ChildrenMixin:
         a Box out (the flag holds for the slices of the children too). The
         area of a proper slice of a quadrilateral area is the slice of its
         bounding box. A timeline holding Boxes that states no area moves a
-        Box only into a slice starting at 0.
+        Box of its own only into a slice starting at 0; its children are
+        sliced by this rule in turn, so a page made of accolades is sliced
+        accolade by accolade, each slice stating its own area.
 
         Args:
             start: Start coordinate (inclusive).

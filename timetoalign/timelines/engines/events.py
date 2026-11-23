@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+from pydantic import ValidationError
 
 from timetoalign.core import (
-    BoundingBoxField,
     Box,
     Coordinate,
     CoordinateSpec,
@@ -22,12 +22,12 @@ from timetoalign.core import (
     EventReference,
     NumberType,
     Projection,
-    QuadrilateralField,
     Shape,
     struct_to_coordinate,
 )
 from timetoalign.core.ids import quote_id
 from timetoalign.core.time import (
+    RATIONAL_STRUCT_TYPE,
     combine_number_columns,
     combine_numbers,
     compare_number_column,
@@ -40,10 +40,13 @@ from timetoalign.core.time import (
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.storage import EventData
 from timetoalign.storage.events import (
+    BOX_EVENT_TYPE,
     PROJECTION_EVENT_TYPE,
+    SHAPE_FIELDS,
     _event_rows,
     mint_event_ids,
     projection_ids,
+    refuse_shapes_off_the_axis,
     refuse_shared_projection_ids,
 )
 
@@ -53,13 +56,6 @@ if TYPE_CHECKING:
     from ..base import Timeline
 
 SEGMENT_EVENT_TYPE = "Segment"
-BOX_EVENT_TYPE = Box.__name__
-
-#: The columns of a Box row that may hold its shape, each with its field.
-_SHAPE_COLUMNS = (
-    ("bounding_box", BoundingBoxField),
-    ("quadrilateral", QuadrilateralField),
-)
 
 #: The keys a Projection row may hold a value under: its ID, its type, its
 #: position and the event it stands for.
@@ -118,11 +114,6 @@ def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
         )
 
 
-def _box_name(event_id: str | None) -> str:
-    """A Box row as a message names it: ``Box 'm1'``, or ``A Box`` without ID."""
-    return "A Box" if event_id is None else f"Box {quote_id(event_id)}"
-
-
 def _image_origin(timeline: Timeline) -> Coordinate:
     """The x at which *timeline* stands in the image whose space it measures.
 
@@ -141,29 +132,20 @@ def _image_origin(timeline: Timeline) -> Coordinate:
     ).x_min
 
 
-def _refuse_box_off_the_axis(
-    row: dict[str, Any], timeline_id: str, unit: Any, number_type: NumberType
-) -> None:
-    """Refuse a Box row whose shape is not on the timeline's axis.
+def _named(event_id: str | None) -> str:
+    """A Box as a message names it (:class:`~timetoalign.core.Event`'s own
+    naming): ``Box 'm1'``, or ``A Box`` without ID."""
+    return Box.model_construct(id=event_id)._name
 
-    A shape is the source's statement in its own numbers: it is never
-    converted into another unit nor rounded into another number type, so a
-    Box enters a timeline only on that timeline's axis.
 
-    Raises:
-        ValueError: If the row's shape is in another unit or number type.
-    """
-    shape = row.get("bounding_box")
-    if shape is None:
-        shape = row.get("quadrilateral")
-    if not isinstance(shape, Shape):
-        return
-    if (shape.unit, shape.number_type) != (unit, number_type):
-        raise ValueError(
-            f"{_box_name(row.get('id'))} is in {shape.unit} as {shape.number_type}, "
-            f"timeline {quote_id(timeline_id)} in {unit} as {number_type}: a Box "
-            "is added on its timeline's axis."
-        )
+def _refusal_of(error: ValidationError) -> ValueError:
+    """The refusal a scalar's validator raised, as it raised it; *error*
+    itself where pydantic refused the input before the validator ran."""
+    for detail in error.errors():
+        cause = detail.get("ctx", {}).get("error")
+        if isinstance(cause, ValueError):
+            return ValueError(*cause.args)
+    return error
 
 
 #: The cells and the reference that make two Projections of one timeline the
@@ -470,9 +452,9 @@ class EventsMixin:
         rows = _event_rows(rows)
         if not rows:
             return []
-        for row in rows:
-            if row.get("event_type") == BOX_EVENT_TYPE:
-                _refuse_box_off_the_axis(row, self._id, self._unit, self._number_type)
+        # A shape is never converted: refused before any position of the rows
+        # is converted, so the refusal names the shape, not a missing C-Map.
+        refuse_shapes_off_the_axis(rows, self._unit, self._number_type)
 
         # Resolve unit-qualified coordinates into this timeline's native unit
         # before anything measures or stores them. A ``Coordinate`` whose unit
@@ -498,23 +480,29 @@ class EventsMixin:
         return [row["id"] for row in rows]
 
     def _refuse_boxes_off_their_shapes(
-        self, added: EventData, given_ids: list[str | None]
+        self, added: EventData, given_ids: Sequence[str | None]
     ) -> None:
-        """Refuse the rows *added* would add if a Box's start contradicts its shape.
+        """Refuse the rows *added* would add if a Box contradicts its shape.
 
-        For every Box row, ``start`` must equal ``x_min - o``, *o* the x at
-        which this timeline stands in its image (:func:`_image_origin`),
+        The one check of a Box row, whatever brought it (a
+        :class:`~timetoalign.core.Box`, a dict, a manifest's event rows, a
+        package's Box table): in this order, every Box row holds exactly one
+        shape, a duration, a ``start`` equal to ``x_min - o`` (*o* the x at
+        which this timeline stands in its image, :func:`_image_origin`) and
+        a duration equal to the shape's x extent (``x_max - x_min``), each
         compared exactly on an exact axis (:func:`compare_number_column`),
-        all rows at once. The duration is the Box's own invariant, checked
-        when it is made.
+        all rows at once. A Box's own rules (one shape, its duration) are
+        refused with the Box's own message: the first row breaking one is
+        read as a :class:`~timetoalign.core.Box`, which refuses it.
 
         Args:
             added: The rows as they will be stored.
-            given_ids: Row for row, the ID the caller gave, or None.
+            given_ids: Row for row of the rows given, the ID the caller gave,
+                or None.
 
         Raises:
-            ValueError: Naming the first Box whose start contradicts its
-                shape, the timeline, both x and the start it must have.
+            ValueError: Naming the first Box breaking a rule; for the start,
+                the timeline, both x and the start it must have.
         """
         table = added.table
         if "event_type" not in table.column_names:
@@ -525,42 +513,82 @@ class EventsMixin:
         if not pc.any(is_box).as_py():
             return
         boxes = table.filter(is_box)
-        x_min = None
-        for name, field_class in _SHAPE_COLUMNS:
+        positions = pc.indices_nonzero(is_box).to_pylist()
+        number_type = self._number_type
+
+        def refuse_as_the_box(wrong: pa.Array) -> None:
+            if not pc.any(wrong).as_py():
+                return
+            at = pc.index(wrong, True).as_py()
+            row = {**boxes.slice(at, 1).to_pylist()[0], "id": given_ids[positions[at]]}
+            if row["duration"] is None:
+                raise ValueError(
+                    f"{_named(row['id'])}: it has no duration; a Box's duration "
+                    "is its shape's x extent."
+                )
+            try:
+                box = Box.from_row(row, unit=self._unit, number_type=number_type)
+            except ValidationError as error:
+                raise _refusal_of(error) from None
+            raise ValueError(  # pragma: no cover - the Box refuses first
+                f"{box._name} contradicts its shape."
+            )
+
+        n_shapes = pa.array(np.zeros(len(boxes), dtype=np.int64))
+        x_min = x_max = pa.nulls(len(boxes), RATIONAL_STRUCT_TYPE)
+        for name, field_class in SHAPE_FIELDS.items():
             if name not in boxes.column_names:
                 continue
-            column = field_class.from_field(
-                (boxes.column(name).combine_chunks(), boxes.schema.field(name))
-            ).x_min()
-            x_min = (
-                column
-                if x_min is None
-                else pc.if_else(column.is_valid(), column, x_min)
-            )
-        if x_min is None:
-            return
-        number_type = self._number_type
+            data = boxes.column(name).combine_chunks()
+            n_shapes = pc.add(n_shapes, pc.cast(data.is_valid(), pa.int64()))
+            field = field_class.from_field((data, boxes.schema.field(name)))
+            x_min = pc.if_else(data.is_valid(), field.x_min(), x_min)
+            x_max = pc.if_else(data.is_valid(), field.x_max(), x_max)
+        refuse_as_the_box(pc.not_equal(n_shapes, 1))
+        duration = boxes.column("duration").combine_chunks()
+        refuse_as_the_box(duration.is_null())
+
         origin = _image_origin(self)
         expected = combine_number_columns(x_min, origin.value, "subtract", number_type)
         start = boxes.column("start").combine_chunks()
-        agrees = compare_number_column(start, expected, "equal", number_type)
-        wrong = pc.invert(pc.fill_null(agrees, True))
-        if not pc.any(wrong).as_py():
-            return
-        at = pc.index(wrong, True).as_py()
-        row = pc.indices_nonzero(is_box)[at].as_py()
+        wrong = pc.invert(compare_number_column(start, expected, "equal", number_type))
+        if pc.any(wrong).as_py():
+            at = pc.index(wrong, True).as_py()
 
-        def written(cells: pa.StructArray) -> str:
-            return _format_coordinate_value(
-                struct_to_coordinate(cells[at].as_py(), number_type)
+            def written(cells: pa.StructArray) -> str:
+                return _format_coordinate_value(
+                    struct_to_coordinate(cells[at].as_py(), number_type)
+                )
+
+            raise ValueError(
+                f"{_named(given_ids[positions[at]])} starts at {written(start)} on "
+                f"timeline {quote_id(self._id)}, but its shape starts at x "
+                f"{written(x_min)} and the timeline stands at x "
+                f"{_format_coordinate_value(origin.value)} of its image "
+                f'(meta["box"]): its start is {written(expected)}.'
             )
-
-        raise ValueError(
-            f"{_box_name(given_ids[row])} starts at {written(start)} on timeline "
-            f"{quote_id(self._id)}, but its shape starts at x {written(x_min)} and "
-            f"the timeline stands at x {_format_coordinate_value(origin.value)} of "
-            f'its image (meta["box"]): its start is {written(expected)}.'
+        extent = combine_number_columns(x_max, x_min, "subtract", number_type)
+        refuse_as_the_box(
+            pc.invert(compare_number_column(duration, extent, "equal", number_type))
         )
+
+    def _add_stated_events(self, rows: list[dict[str, Any]]) -> None:
+        """Add the event rows a source states, every Box checked.
+
+        For rows read as a source writes them (a manifest's event rows,
+        :meth:`from_events`): no ID is minted or compared and the length is
+        not grown, but a Box row is refused as :meth:`add_events` refuses it
+        (:meth:`_refuse_boxes_off_their_shapes`), so the library reads no
+        Box it would not add.
+
+        Raises:
+            ValueError: As :meth:`add_events` refuses a Box; nothing is added.
+        """
+        if not rows:
+            return
+        added = self._event_data_of(rows)
+        self._refuse_boxes_off_their_shapes(added, [row.get("id") for row in rows])
+        self._events.extend(added)
 
     def add_projections(
         self,

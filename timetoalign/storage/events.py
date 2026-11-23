@@ -35,6 +35,7 @@ from typing_extensions import Self
 
 from timetoalign.core import (
     BoundingBoxField,
+    Box,
     Coordinate,
     CoordinateSpec,
     Duration,
@@ -101,6 +102,9 @@ def _register_timeline_factory(
 #: The event type a :class:`~timetoalign.core.Projection` is stored under.
 PROJECTION_EVENT_TYPE = Projection.__name__
 
+#: The event type a :class:`~timetoalign.core.Box` is stored under.
+BOX_EVENT_TYPE = Box.__name__
+
 #: Extra columns whose type is declared, not read off the rows: every batch
 #: types them alike, whether its rows hold a value there or none, so batches
 #: concatenate. A column of a field on one axis (a Box's shape) is written in
@@ -111,12 +115,14 @@ _DECLARED_EXTRA_FIELDS: dict[str, type[SemanticField[Any]]] = {
     "quadrilateral": QuadrilateralField,
 }
 
-#: The declared columns whose numbers lie on the table's axis.
-_AXIS_COLUMNS = frozenset(
-    name
+#: The declared columns whose numbers lie on the table's axis, each with its
+#: field: a Box's shape, in the order of :data:`_DECLARED_EXTRA_FIELDS`. Only
+#: a Box row holds a value there.
+SHAPE_FIELDS: dict[str, type[SharedAxisField[Any]]] = {
+    name: declared
     for name, declared in _DECLARED_EXTRA_FIELDS.items()
     if issubclass(declared, SharedAxisField)
-)
+}
 
 
 def mint_event_ids(
@@ -226,38 +232,115 @@ def _event_rows(
     return [row.to_event_row() if isinstance(row, Event) else row for row in rows]
 
 
+def _refuse_shape_off_the_axis(
+    value: Shape, key: str, unit: TimeUnit, number_type: NumberType
+) -> None:
+    """Refuse a shape in another unit or number type than the events.
+
+    A shape is the source's statement in its own numbers: it is never
+    converted into another unit nor rounded into another number type.
+
+    Raises:
+        ValueError: Naming the column and both axes.
+    """
+    if (value.unit, value.number_type) != (unit, number_type):
+        raise ValueError(
+            f"The event's {key} is in {value.unit} as {value.number_type}, the "
+            f"events are in {unit} as {number_type}; a shape is never converted "
+            "onto the events' axis."
+        )
+
+
+def refuse_shapes_off_the_axis(
+    rows: Sequence[dict[str, Any]], unit: TimeUnit, number_type: NumberType
+) -> None:
+    """Refuse the rows if a shape among them is not on the events' axis.
+
+    The one rule :meth:`EventData.from_dicts` applies to a shape, for a
+    caller that must refuse before it converts anything else of the rows
+    (:meth:`Timeline.add_events <timetoalign.timelines.Timeline.add_events>`,
+    whose positions may be converted through a C-Map).
+
+    Raises:
+        ValueError: As :meth:`EventData.from_dicts` refuses a shape off the
+            axis.
+    """
+    for row in rows:
+        for key in SHAPE_FIELDS:
+            value = row.get(key)
+            if isinstance(value, Shape):
+                _refuse_shape_off_the_axis(value, key, unit, number_type)
+
+
+def _is_cell_of(value: Any, kind: pa.DataType) -> bool:
+    """Whether *value* is a memory cell of *kind*: number structs nested as
+    *kind* nests them, every number holding its value and its ratio."""
+    if not isinstance(value, dict):
+        return False
+    if kind == RATIONAL_STRUCT_TYPE:
+        if set(value) != {"value", "numerator", "denominator"}:
+            return False
+        ratio = (value["numerator"], value["denominator"])
+        return isinstance(value["value"], (int, float)) and all(
+            isinstance(member, int) and not isinstance(member, bool) for member in ratio
+        )
+    if not pa.types.is_struct(kind):
+        return False
+    return set(value) == {member.name for member in kind} and all(
+        _is_cell_of(value[member.name], member.type) for member in kind
+    )
+
+
 def _axis_cells(
-    values: list[Any],
+    rows: list[dict[str, Any]],
     key: str,
     declared: type[SharedAxisField[Any]],
     unit: TimeUnit,
     number_type: NumberType,
 ) -> list[Any]:
-    """The cells of a column on the table's axis (a Box's shape), row by row.
+    """The cells of a column of a Box's shape, row by row.
 
-    A scalar (a :class:`~timetoalign.core.Shape`) becomes its struct of
-    number cells; a row holding cells already (a table's own rows) is taken as
-    it is.
+    Only a Box row holds a value there. A shape (a
+    :class:`~timetoalign.core.BoundingBox` under ``bounding_box``, a
+    :class:`~timetoalign.core.Quadrilateral` under ``quadrilateral``)
+    becomes its struct of number cells; a memory cell of the column (a
+    table's own row, read back) is taken as it is.
 
     Raises:
-        ValueError: If a scalar is in another unit or number type than the
-            table: a shape is never converted or rounded onto an axis.
+        ValueError: If a row of another event type gives the column, a Box
+            gives it a value that is neither the column's shape nor its
+            memory cell, or a shape is in another unit or number type than
+            the table: a shape is never converted or rounded onto an axis.
     """
-    for value in values:
-        if isinstance(value, Shape) and (value.unit, value.number_type) != (
-            unit,
-            number_type,
-        ):
+    shape_class = declared.scalar_cls
+    for row in rows:
+        value = row.get(key)
+        if value is None:
+            continue
+        event_type = row.get("event_type")
+        if event_type != BOX_EVENT_TYPE:
             raise ValueError(
-                f"The event's {key} is in {value.unit} as {value.number_type}, the "
-                f"events are in {unit} as {number_type}; a shape is never converted "
-                "onto the events' axis."
+                f"An event of type {quote_id(str(event_type))} gives {key}: the "
+                "columns bounding_box and quadrilateral hold the shape of a Box "
+                "and belong to Box events only."
             )
+        if isinstance(value, shape_class):
+            _refuse_shape_off_the_axis(value, key, unit, number_type)
+        elif not _is_cell_of(value, declared.pa_schema):
+            hint = (
+                f" Read a dict form with {shape_class.__name__}.from_dict."
+                if isinstance(value, dict)
+                else ""
+            )
+            raise ValueError(
+                f"A Box's {key} is a {shape_class.__name__}, not {value!r}.{hint}"
+            )
+    values = [row.get(key) for row in rows]
     scalars = [value if isinstance(value, Shape) else None for value in values]
     built = declared.from_shapes(scalars, unit=unit, number_type=number_type)
     return [
         cells if isinstance(value, Shape) else value
-        for value, cells in zip(values, built.to_pyarrow().to_pylist())
+        for value, cells in zip(values, built.to_pyarrow().to_pylist(), strict=True)
     ]
 
 
@@ -491,7 +574,7 @@ def _in_lowest_terms(table: pa.Table) -> pa.Table:
     for index, field in enumerate(table.schema):
         if _is_number_column(field):
             table = table.set_column(index, field, in_lowest_terms(table.column(index)))
-        elif field.name in _AXIS_COLUMNS and pa.types.is_struct(field.type):
+        elif field.name in SHAPE_FIELDS and pa.types.is_struct(field.type):
             table = table.set_column(
                 index, field, _leaves_in_lowest_terms(table.column(index))
             )
@@ -753,7 +836,7 @@ def _build_extra_field_schema(
         declared = _DECLARED_EXTRA_FIELDS.get(name)
         if declared is not None and issubclass(declared, SharedAxisField):
             cells = _axis_cells(
-                [row.get(name) for row in processed_rows],
+                processed_rows,
                 name,
                 declared,
                 unit,
@@ -1363,7 +1446,9 @@ class EventData(SemanticFieldAccessMixin):
                 ``start``/``end``) and an ``event_type``. A position may be
                 a ``Coordinate`` or ``Duration`` in *unit*; a Box's shape
                 (``bounding_box``, ``quadrilateral``) is in *unit* and
-                *number_type*. All other fields have sensible defaults.
+                *number_type*, given as the shape or as the cell a table's
+                row holds; no other event type gives these two columns. All
+                other fields have sensible defaults.
             unit: The time unit for coordinates.
             number_type: The number type for coordinates.
             interval_policy: How to handle end/duration inconsistencies.
@@ -1374,7 +1459,9 @@ class EventData(SemanticFieldAccessMixin):
 
         Raises:
             ValueError: If a position is in another unit, or a shape in
-                another unit or number type, than the table.
+                another unit or number type, than the table; if a row of
+                another event type than Box gives a shape column, or a Box
+                gives one a value that is neither its shape nor its cell.
 
         Examples:
             >>> data = EventData.from_dicts([

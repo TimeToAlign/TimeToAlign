@@ -256,6 +256,26 @@ so a shape is never converted or rounded on its way into a table.
   table, `The event's bounding_box is in user_units as fraction, the
   events are in user_units as float; a shape is never converted onto the
   events' axis.`
+- **The two columns are a Box's.** Design: in a timeline's events,
+  `bounding_box` and `quadrilateral` are declared columns holding a Box's
+  shape; a Box row leaves the other one null. So a row of another event
+  type giving either is refused with a message the library composes,
+  naming the column and the event type, never a raw `ArrowTypeError`: a
+  Note giving `bounding_box` `{"x": 1, "y": 2, "width": 3, "height": 4}`,
+  `"left"` or a `BoundingBox` scalar, `An event of type 'Note' gives
+  bounding_box: the columns bounding_box and quadrilateral hold the shape
+  of a Box and belong to Box events only.` (A Note row giving neither is
+  unchanged; every other test of this file adds such rows.) What would show
+  it broken: a pyarrow conversion error reaching the caller, or a shape
+  column accepted on a Note.
+- **A Box's shape is a shape or its memory cell.** A Box row's
+  `bounding_box` given as the dict form `{"x": 1, "y": 2, "width": 3,
+  "height": 4}` is refused, `A Box's bounding_box is a BoundingBox, not
+  {'x': 1, 'y': 2, 'width': 3, 'height': 4}. Read a dict form with
+  BoundingBox.from_dict.`; the rows of a table holding a Box, read back
+  (`list(data)`, memory cells) and given to `from_dicts` again, give an
+  equal table (the internal paths that rebuild rows, such as a parent's
+  `get_events` over its children, rely on it).
 - The shape leaves are reduced at the doors like every coordinate cell: on
   a `user_units` table written as fractions, a quadrilateral corner `x`
   cell stating `2442/2` is held as `1221/1` after `EventData(table)`, the

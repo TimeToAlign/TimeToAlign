@@ -2469,15 +2469,38 @@ timeline running along the image's x axis (the scalar is tested in
 shape, in the image's pixel space, and its interval on the timeline. They
 agree by one invariant, `start = x_min − o(T)` and `duration = x_max −
 x_min`, where `o(T)` is the x at which the timeline stands in its image: the
-`x_min` of the shape its `meta["box"]` states, 0 where it states none. The
-duration half is the Box's own validator; `Timeline.add_events` checks the
-start half for every Box row it is given, and refuses a Box whose numbers
-are not on the timeline's axis, since geometry is never converted or
-rounded onto an axis. What would show it broken: a Box accepted whose start
-contradicts its shape (a reader of the interval and a reader of the shape
-would then name two areas), a Box in another unit converted or rounded
-onto the axis, a refusal that leaves part of a batch added, or a shape read
-in another number type than the timeline's.
+`x_min` of the shape its `meta["box"]` states, 0 where it states none.
+
+**One check, every entry path.** A Box reaches a timeline's events as a
+`Box` scalar, as a dict row (`add_events`, `Timeline.from_events`), as an
+event row of a manifest (`Timeline.from_dict`, which an `AlignmentBundle`
+read uses too) and as a row of a package's Box table (`boxes.parquet`). Every
+one of these paths passes the same rules, in this order, for all rows before
+any is added: exactly one shape; a duration; `start = x_min − o(T)`;
+`duration = x_max − x_min`. The Box's own rules (one shape, its duration) are
+refused with the `Box` scalar's own message, whichever path brought the row,
+so a dict and a manifest cannot be refused differently from the scalar. A
+shape is never converted or rounded onto an axis: a shape in another unit or
+number type than the timeline is refused before any position is converted,
+by the one rule `EventData.from_dicts` applies (its message is the table's,
+`tests/storage/README.md`). What would show it broken: a Box accepted whose
+interval contradicts its shape on any one path (a reader of the interval and
+a reader of the shape would then name two areas, and a package written from
+it would be refused on reading), a refusal that leaves part of a batch
+added, or one rule worded two ways.
+
+**One dict form.** `Timeline.to_dict(events=True)` writes every number of a
+Box's shape as the contract's JSON numbers (`number_to_json`: an int an
+integer, a float a number, a Fraction a `[numerator, denominator]` pair),
+the shape's own `to_dict()`; no memory cell (`{value, numerator,
+denominator}`) is written, so no number is written twice and no written
+number can contradict itself. Reading takes only that form
+(`Shape.from_dict` on the timeline's axis); a memory cell in a manifest is
+refused. What proves it: the JSON text of the written row, asserted
+literally per number type (the text tells `385` from `385.0`, which a Python
+equality would not), and the exact round trip `to_dict → from_dict →
+to_dict` with equal event cells. What would show it broken: a float beside a
+Fraction in the written shape, or a written dict the reader refuses.
 
 **What proves it** (values read from the sources, so the test is a check of
 the sources' own arithmetic, never a restatement of the implementation):
@@ -2501,10 +2524,15 @@ the sources' own arithmetic, never a restatement of the implementation):
   start is 385.`, and `seg_2` holds no event and keeps its length 867.
 - **Off the axis, refused before any conversion.** The same rectangle in
   `css_pixels` as float (`BoundingBox.from_xywh(385.0, 46.0, 139.0, 20.0,
-  unit="css_pixels")`, origin 7.0) on `seg_2`: `Box 'rect_h2' is in
-  css_pixels as float, timeline 'seg_2' in pixels as int: a Box is added on
-  its timeline's axis.` A Box made without an ID is named `A Box` in both
-  messages (the ID the timeline would mint is never shown).
+  unit="css_pixels")`, origin 7.0) on `seg_2`, whose start is a
+  `Coordinate` in `css_pixels` that `seg_2` has no C-Map for: the shape is
+  refused, not the conversion, `The event's bounding_box is in css_pixels as
+  float, the events are in pixels as int; a shape is never converted onto
+  the events' axis.`, and `seg_2` holds no event.
+- **A Box made without an ID is named `A Box`** in the start message (`A
+  Box starts at 378 on timeline 'seg_2', ...`) and in the Box's own
+  duration message (`A Box: its duration is ...`): the ID the timeline would
+  mint is never shown.
 - **A quadrilateral on a child timeline.** DMOS's *Aimons-nous* page 1
   (`page`, pixels, length 4512, meta box `(0, 0, 4512, 6174)`) holds
   system 1 as its child `sys` at offset 1221, length 2880 (4101 − 1221),
@@ -2536,7 +2564,71 @@ the sources' own arithmetic, never a restatement of the implementation):
   reads its `meta["box"]` (a malformed one, `{"x": "left"}`, refuses
   nothing when a Note is added).
 
----
+**Every path refuses alike** (`TestOneCheckEveryPath`; on `seg_2`, whose
+`o` is 7, so `rect_h2` starts at 378 and spans 139, x 385 to 524; each
+refusal leaves `seg_2` with no event and its length 867):
+
+- **The duration.** The scalar `Box(id="a", start=378 px, duration=10 px,
+  bounding_box=rect_h2)` is refused at construction with `Box 'a': its
+  duration is 10 and its shape spans 139 in x (385 to 524); a Box's
+  duration is its shape's x extent.` (inside pydantic's report); the dict
+  row of the same numbers given to `add_events` is refused with exactly that
+  sentence, and so is the dict row stating `end` 400 in place of a duration
+  (`its duration is 22`, the 400 − 378 its interval states). A dict row
+  stating no duration and no end: `Box 'a': it has no duration; a Box's
+  duration is its shape's x extent.`
+- **One shape.** A dict row holding no shape, and one holding both
+  `rect_h2` and its quadrilateral (corners (385, 46), (524, 46), (524, 66),
+  (385, 66)), are refused with the Box's own `A Box holds exactly one shape:
+  give bounding_box or quadrilateral.`
+- **Atomic.** A batch of a valid Note and the duration-10 Box adds nothing.
+- **`Timeline.from_events`** takes dict rows of a source as they stand and
+  refuses the duration-10 Box with the same sentence.
+- **A manifest.** `seg_2` holding `rect_h2`, written by
+  `to_dict(events=True)` and edited, is refused by `Timeline.from_dict`:
+  its shape's `width` set to 10 (the row's interval kept, 378 to 517), `Box
+  'rect_h2': its duration is 139 and its shape spans 10 in x (385 to 395);
+  ...`; its `start`, `end` set to 1, 140 (an interval of 139 still),
+  `Box 'rect_h2' starts at 1 on timeline 'seg_2', but its shape starts at x
+  385 and the timeline stands at x 7 of its image (meta["box"]): its start
+  is 378.`; its `bounding_box` set to null, the one-shape sentence.
+- **A package.** A bundle holding `seg_2` writes `boxes.parquet` beside its
+  manifest; the table's `start` of `rect_h2` changed to 1 (the package
+  form of an int, numerator 1, denominator and value null) is refused by
+  `AlignmentBundle.from_file` with the start sentence above for start 1,
+  and its `duration` changed to 10 with the duration sentence (inside
+  pydantic's report: the package reader builds the `Box` itself).
+
+**Written and read back** (`TestDictForm`; the JSON text of the written
+Box row, and `Timeline.from_dict(d).to_dict(events=True) == d` with equal
+event cells):
+
+- **int.** `rect_h2` on `seg_2`, added as a dict row whose `bounding_box` is
+  the `BoundingBox` scalar: `"start": 378, "end": 517, "duration": 139,
+  "bounding_box": {"x": 385, "y": 46, "width": 139, "height": 20}` and no
+  `quadrilateral` key (no row of the table gave that column).
+- **fraction.** `f` (`BoundingBox.from_xywh(1/3, 0, 2/3, 1)`) on `uu`:
+  `"start": [1, 3], "end": [1, 1], "duration": [2, 3], "bounding_box":
+  {"x": [1, 3], "y": [0, 1], "width": [2, 3], "height": [1, 1]}`: a
+  Fraction is a pair even where it is whole.
+- **float.** `q`, the quadrilateral (10.5, 1.0), (20.25, 1.0), (20.25,
+  5.5), (10.5, 5.5) in `css_pixels` on `fl` (`ContinuousGraphicalTimeline`,
+  float, length 900.0): `"start": 10.5, "end": 20.25, "duration": 9.75,
+  "quadrilateral": {"top_left": {"x": 10.5, "y": 1.0}, "top_right": {"x":
+  20.25, "y": 1.0}, "bottom_right": {"x": 20.25, "y": 5.5}, "bottom_left":
+  {"x": 10.5, "y": 5.5}}`: `1.0`, never `1`.
+- **A child and its package.** The DMOS page with `sys` holding `m1` reads
+  back from its dict with `m1`'s quadrilateral `{"top_left": {"x": 1221,
+  "y": 1589}, "top_right": {"x": 2151, "y": 1589}, "bottom_right": {"x":
+  2161, "y": 2266}, "bottom_left": {"x": 1221, "y": 2266}}`, and a bundle of
+  the page written by `to_file` and read by `from_file` holds `sys`'s event
+  rows equal, cell for cell.
+- **A memory cell in a manifest is refused.** The written `bounding_box`
+  replaced by its memory cells (`{"x": {"value": 385.0, "numerator": 385,
+  "denominator": 1}, ...}`, as memory holds them): `Box 'rect_h2' of
+  timeline 'seg_2': its bounding_box is not the dict form of a BoundingBox
+  in pixels as int`, followed by the shape's own refusal in parentheses
+  (asserted as a prefix: that part is the shape's).
 
 ### `test_external_references.py` - Incoming External References and `to_dict()` Flags
 

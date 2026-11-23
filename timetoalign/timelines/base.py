@@ -57,6 +57,7 @@ from timetoalign.maps import (
     ScalarMap,
 )
 from timetoalign.storage import EventData
+from timetoalign.storage.events import BOX_EVENT_TYPE, SHAPE_FIELDS
 
 from .engines import (
     ChildrenMixin,
@@ -72,6 +73,7 @@ from .engines import conversion as _conversion_engine
 from .engines import (
     empty_external_reference_table,
 )
+from .engines.events import _named
 from .flowcontrol import FlowControlRegistry
 from .manifest import (
     Manifest,
@@ -561,7 +563,7 @@ class Timeline(
                 max_coord = max(max_coord, start + duration)
 
         timeline = cls(length=max_coord, unit=unit, number_type=number_type, **kwargs)
-        timeline._add_events_unchecked(rows)
+        timeline._add_stated_events(rows)
         return timeline
 
     @classmethod
@@ -1759,7 +1761,13 @@ class Timeline(
         return self._dict_form(fields, minimal=False)
 
     def _event_rows_to_json(self) -> list[dict[str, Any]]:
-        """Return the event rows with their coordinates as JSON numbers."""
+        """Return the event rows with their numbers as JSON numbers.
+
+        Each coordinate is written in the timeline's number type through
+        ``number_to_json``, and so is every number of a Box's shape: the
+        shape's dict form (:meth:`~timetoalign.core.Shape.to_dict`), never
+        the cells memory holds.
+        """
         event_rows: list[dict[str, Any]] = []
         for stored_event in self._events:
             event = dict(stored_event)
@@ -1773,8 +1781,53 @@ class Timeline(
                     event[coord_col] = number_to_json(int(struct_to_rational(value)))
                 else:
                     event[coord_col] = number_to_json(struct_to_rational(value))
+            for key, field_class in SHAPE_FIELDS.items():
+                if event.get(key) is not None:
+                    event[key] = field_class.scalar_cls.from_row(
+                        event[key], unit=self._unit, number_type=self._number_type
+                    ).to_dict()
             event_rows.append(event)
         return event_rows
+
+    def _event_rows_from_json(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The event rows of a manifest with their numbers read.
+
+        The inverse of :meth:`_event_rows_to_json`: each coordinate is read
+        by the timeline's number type (``number_from_json``), and a Box's
+        shape from its dict form (:meth:`~timetoalign.core.Shape.from_dict`),
+        the one form a manifest writes. A Segment row is left out: the
+        children recreate it.
+
+        Raises:
+            ValueError: If a Box's shape is not the dict form of the
+                column's shape on the timeline's axis, naming the Box, the
+                column and the timeline.
+        """
+        events = []
+        for row in rows:
+            if row.get("event_type") == SEGMENT_EVENT_TYPE:
+                continue
+            event = dict(row)
+            for coord_col in ("instant", "start", "end", "duration"):
+                if event.get(coord_col) is not None:
+                    event[coord_col] = number_from_json(event[coord_col])
+            if event.get("event_type") == BOX_EVENT_TYPE:
+                for key, field_class in SHAPE_FIELDS.items():
+                    if event.get(key) is None:
+                        continue
+                    shape_class = field_class.scalar_cls
+                    try:
+                        event[key] = shape_class.from_dict(
+                            event[key], unit=self._unit, number_type=self._number_type
+                        )
+                    except (TypeError, ValueError) as error:
+                        raise ValueError(
+                            f"{_named(event.get('id'))} of timeline {quote_id(self._id)}: its {key} is "
+                            f"not the dict form of a {shape_class.__name__} in "
+                            f"{self._unit} as {self._number_type} ({error})"
+                        ) from error
+            events.append(event)
+        return events
 
     @classmethod
     def from_dict(
@@ -1976,20 +2029,11 @@ class Timeline(
             meta=copy.deepcopy(data.get("meta", {})),
         )
 
-        # Event coordinates arrive as JSON numbers; decode them back to the
-        # numbers the EventData builder expects. Segment events are recreated
-        # by the children.
-        events = []
-        for row in data.get("events", []):
-            if row.get("event_type") == SEGMENT_EVENT_TYPE:
-                continue
-            event = dict(row)
-            for coord_col in ("instant", "start", "end", "duration"):
-                if event.get(coord_col) is not None:
-                    event[coord_col] = number_from_json(event[coord_col])
-            events.append(event)
-        if events:
-            timeline._add_events_unchecked(events)
+        # Event numbers arrive as JSON numbers, a Box's shape as its dict
+        # form; every Box is checked as add_events checks it.
+        timeline._add_stated_events(
+            timeline._event_rows_from_json(data.get("events", []))
+        )
         # Validation is skipped: references may legitimately come without events.
         references = data.get("external_references")
         if references:

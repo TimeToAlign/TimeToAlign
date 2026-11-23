@@ -887,6 +887,63 @@ class TestBoxRows:
             "axis."
         )
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            {"x": 1, "y": 2, "width": 3, "height": 4},
+            "left",
+            BoundingBox.from_xywh(1, 2, 3, 4, unit="pixels"),
+        ],
+    )
+    def test_another_event_type_giving_a_shape_column_is_refused(
+        self, value: Any
+    ) -> None:
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [{"event_type": "Note", "start": 0, "bounding_box": value}],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert str(refused.value) == (
+            "An event of type 'Note' gives bounding_box: the columns bounding_box "
+            "and quadrilateral hold the shape of a Box and belong to Box events "
+            "only."
+        )
+
+    def test_a_box_giving_a_dict_form_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [
+                    {
+                        "event_type": "Box",
+                        "start": 1,
+                        "duration": 3,
+                        "bounding_box": {"x": 1, "y": 2, "width": 3, "height": 4},
+                    }
+                ],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert str(refused.value) == (
+            "A Box's bounding_box is a BoundingBox, not {'x': 1, 'y': 2, 'width': 3, "
+            "'height': 4}. Read a dict form with BoundingBox.from_dict."
+        )
+
+    def test_a_tables_own_rows_read_back(self) -> None:
+        data = EventData.from_dicts(
+            [
+                {"event_type": "Note", "start": 0, "duration": 5},
+                Box.from_shape(self._measure(), origin=1221, id="m1"),
+            ],
+            TimeUnit.pixels,
+            NumberType.int,
+        )
+
+        again = EventData.from_dicts(list(data), TimeUnit.pixels, NumberType.int)
+
+        assert again.table.to_pylist() == data.table.to_pylist()
+        assert again.table.schema == data.table.schema
+
     def test_shape_leaves_are_reduced_at_the_door(self) -> None:
         measure = self._measure("user_units", "fraction")
         data = EventData.from_dicts(

@@ -4405,6 +4405,206 @@ def cells_from_package(
 
 
 # ---------------------------------------------------------------------------
+# SharedAxisField — fields whose numbers share one axis
+# ---------------------------------------------------------------------------
+
+AxisScalarT = TypeVar("AxisScalarT", bound=BaseModel)
+"""The scalar of a :class:`SharedAxisField`."""
+
+
+def _as_unit(unit: TimeUnit | str | None) -> TimeUnit | None:
+    """*unit* as a :class:`TimeUnit`; ``None`` stays ``None``."""
+    return TimeUnit(unit) if isinstance(unit, str) else unit
+
+
+def _as_number_type(number_type: NumberType | str | None) -> NumberType | None:
+    """*number_type* as a :class:`NumberType`; ``None`` stays ``None``."""
+    return NumberType(number_type) if isinstance(number_type, str) else number_type
+
+
+class SharedAxisField(SemanticField[AxisScalarT]):
+    """A field whose every number lies on one axis, declared once.
+
+    The scalar holds several numbers (an interval's two ends, a shape's
+    coordinates, a box's interval and shape), all in one unit and one
+    number type. Each is stored as the number struct alone
+    (:data:`RATIONAL_STRUCT_TYPE`, both sides filled); the unit and the
+    number type are written once, in the field's metadata, and read back
+    from there.
+
+    Args:
+        raw: The struct field holding the numbers.
+        unit: The unit of every number; read from the metadata when omitted.
+        number_type: The number type of every number; read from the metadata
+            when omitted.
+        source_fields: Optional blueprint source-field declaration.
+
+    Raises:
+        TypeError: If neither *raw* nor *source_fields* is given.
+        ValueError: If *raw* is given and no unit is found.
+    """
+
+    def __init__(
+        self,
+        raw: StructField | None = None,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+        *,
+        source_fields: str | dict[str, Any] | None = None,
+    ) -> None:
+        name = type(self).__name__
+        if raw is None and source_fields is None:
+            raise TypeError(f"{name} requires either a raw field or source_fields=")
+        super().__init__(raw, source_fields=source_fields)
+        if raw is None:
+            self._unit = None
+            self._number_type = NumberType.float
+            return
+        resolved_unit, resolved_number_type = TimeScalarField._resolve_metadata(
+            raw.field, unit, number_type
+        )
+        if resolved_unit is None:
+            raise ValueError(f"{name} requires unit metadata or an explicit unit")
+        self._unit = resolved_unit
+        self._number_type = resolved_number_type
+
+    @property
+    def unit(self) -> TimeUnit:
+        """Return the unit every number is in."""
+        return self._unit
+
+    @property
+    def domain(self) -> Domain:
+        """Return the domain implied by the unit."""
+        return self._unit.domain
+
+    @property
+    def number_type(self) -> NumberType:
+        """Return the number type every number is written in."""
+        return self._number_type
+
+    @property
+    def semantic_type(self) -> str:
+        """Return the paired scalar's name."""
+        return self.scalar_cls.__name__
+
+    def metadata_dict(self) -> dict[str, str]:
+        """Return the semantic type and the shared axis."""
+        return {
+            **super().metadata_dict(),
+            "unit": self.unit.value,
+            "domain": self.domain.value,
+            "number_type": self.number_type.name,
+        }
+
+    @classmethod
+    def _shared_axis(
+        cls,
+        values: Sequence[Any],
+        unit: TimeUnit | str | None,
+        number_type: NumberType | str | None,
+    ) -> tuple[TimeUnit, NumberType]:
+        """The one axis of *values* (each with ``unit`` and ``number_type``).
+
+        An explicit *unit* or *number_type* must agree with the values; an
+        empty or all-null input needs both.
+
+        Raises:
+            ValueError: If the values lie on two axes, an explicit axis
+                contradicts them, or an empty input names none.
+        """
+        name = cls.__name__
+        unit, number_type = _as_unit(unit), _as_number_type(number_type)
+        present = [value for value in values if value is not None]
+        if not present:
+            if unit is None or number_type is None:
+                raise ValueError(f"Empty {name} input requires unit and number_type")
+            return unit, number_type
+        inferred_unit = present[0].unit
+        inferred_number_type = present[0].number_type
+        if any(
+            value.unit != inferred_unit or value.number_type != inferred_number_type
+            for value in present
+        ):
+            raise ValueError(f"{name} values must share one unit and number_type")
+        if unit is not None and unit != inferred_unit:
+            raise ValueError(f"Explicit {name} unit conflicts with values")
+        if number_type is not None and number_type != inferred_number_type:
+            raise ValueError(f"Explicit {name} number_type conflicts with values")
+        return inferred_unit, inferred_number_type
+
+    @classmethod
+    def _of_struct_array(
+        cls, array: pa.StructArray, name: str, unit: TimeUnit, number_type: NumberType
+    ) -> SharedAxisField[AxisScalarT]:
+        """The field of *array*, named *name*, on the axis given."""
+        return cls(StructField(array, pa.field(name, array.type)), unit, number_type)
+
+    @classmethod
+    def from_field(
+        cls,
+        source: (
+            pa.Array
+            | pa.ChunkedArray
+            | StructField
+            | pa.Field
+            | tuple[pa.Array | None, pa.Field]
+        ),
+        *,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+        name: str | None = None,
+    ) -> SharedAxisField[AxisScalarT]:
+        """Build the field from an Arrow or raw field source.
+
+        Args:
+            source: Supported Arrow field representation.
+            unit: Unit override; else the metadata's.
+            number_type: Number type override; else the metadata's.
+            name: Field name for a bare array; the class's default name
+                when omitted.
+
+        Returns:
+            A live or blueprint field.
+        """
+        if isinstance(source, tuple):
+            data, field = source
+            return cls(StructField(data, field), unit, number_type)
+        if isinstance(source, pa.Field):
+            return cls(StructField(None, source), unit, number_type)
+        if isinstance(source, StructField):
+            return cls(source, unit, number_type)
+        if isinstance(source, (pa.Array, pa.ChunkedArray)):
+            field_name = name if name is not None else cls._default_name()
+            return cls(
+                StructField(source, pa.field(field_name, source.type)),
+                unit,
+                number_type,
+            )
+        raise TypeError(
+            f"Unsupported source type for {cls.__name__}.from_field: "
+            f"{type(source).__name__}"
+        )
+
+    @classmethod
+    def _default_name(cls) -> str:
+        """The name of a field built without one: the scalar's, in snake case
+        (``interval``, ``bounding_box``)."""
+        return re.sub(
+            r"(?<!^)(?=[A-Z])", "_", cls.__name__.removesuffix("Field")
+        ).lower()
+
+    def __getitem__(self, i: int) -> AxisScalarT | None:
+        """Materialize one scalar on the field's axis, or ``None``."""
+        cell = self._raw[i]
+        if cell is None:
+            return None
+        return self.scalar_cls.from_row(
+            cell, unit=self.unit, number_type=self.number_type
+        )
+
+
+# ---------------------------------------------------------------------------
 # Interval / IntervalField
 # ---------------------------------------------------------------------------
 
@@ -4531,7 +4731,7 @@ class Interval(BaseModel):
         return f"[{self.start._format_value()}, {self.end._format_value()}) {self.unit}"
 
 
-class IntervalField(SemanticField[Interval]):
+class IntervalField(SharedAxisField[Interval]):
     """Semantic field storing intervals with shared axis metadata.
 
     Args:
@@ -4542,60 +4742,6 @@ class IntervalField(SemanticField[Interval]):
     """
 
     scalar_cls = Interval
-
-    def __init__(
-        self,
-        raw: StructField | None = None,
-        unit: TimeUnit | str | None = None,
-        number_type: NumberType | str | None = None,
-        *,
-        source_fields: str | dict[str, Any] | None = None,
-    ) -> None:
-        if raw is None and source_fields is None:
-            raise TypeError(
-                "IntervalField requires either a raw field or source_fields="
-            )
-        super().__init__(raw, source_fields=source_fields)
-        if raw is None:
-            self._unit = None
-            self._number_type = NumberType.float
-            return
-        resolved_unit, resolved_number_type = TimeScalarField._resolve_metadata(
-            raw.field, unit, number_type
-        )
-        if resolved_unit is None:
-            raise ValueError("IntervalField requires unit metadata or an explicit unit")
-        self._unit = resolved_unit
-        self._number_type = resolved_number_type
-
-    @property
-    def unit(self) -> TimeUnit:
-        """Return the common endpoint unit."""
-        return self._unit
-
-    @property
-    def domain(self) -> Domain:
-        """Return the temporal domain implied by the unit."""
-        return self._unit.domain
-
-    @property
-    def number_type(self) -> NumberType:
-        """Return the common endpoint number type."""
-        return self._number_type
-
-    @property
-    def semantic_type(self) -> str:
-        """Return the paired scalar semantic type."""
-        return "Interval"
-
-    def metadata_dict(self) -> dict[str, str]:
-        """Return semantic type and shared axis metadata."""
-        return {
-            **super().metadata_dict(),
-            "unit": self.unit.value,
-            "domain": self.domain.value,
-            "number_type": self.number_type.name,
-        }
 
     @classmethod
     def from_intervals(
@@ -4621,41 +4767,9 @@ class IntervalField(SemanticField[Interval]):
         Raises:
             ValueError: If non-null intervals do not share one metadata triple.
         """
-        present = [value for value in intervals if value is not None]
-        if present:
-            inferred_unit = present[0].unit
-            inferred_number_type = present[0].number_type
-            if any(
-                value.unit != inferred_unit or value.number_type != inferred_number_type
-                for value in present
-            ):
-                raise ValueError(
-                    "IntervalField values must share one unit and number_type"
-                )
-            resolved_unit = TimeUnit(unit) if isinstance(unit, str) else unit
-            resolved_number_type = (
-                NumberType(number_type) if isinstance(number_type, str) else number_type
-            )
-            if resolved_unit is not None and resolved_unit != inferred_unit:
-                raise ValueError("Explicit IntervalField unit conflicts with values")
-            if (
-                resolved_number_type is not None
-                and resolved_number_type != inferred_number_type
-            ):
-                raise ValueError(
-                    "Explicit IntervalField number_type conflicts with values"
-                )
-            resolved_unit = inferred_unit
-            resolved_number_type = inferred_number_type
-        else:
-            if unit is None or number_type is None:
-                raise ValueError(
-                    "Empty IntervalField input requires unit and number_type"
-                )
-            resolved_unit = TimeUnit(unit) if isinstance(unit, str) else unit
-            resolved_number_type = (
-                NumberType(number_type) if isinstance(number_type, str) else number_type
-            )
+        resolved_unit, resolved_number_type = cls._shared_axis(
+            intervals, unit, number_type
+        )
         rows = [
             (
                 None
@@ -4674,50 +4788,7 @@ class IntervalField(SemanticField[Interval]):
             ]
         )
         array = pa.array(rows, type=interval_type)
-        field = pa.field(name, interval_type)
-        return cls(StructField(array, field), resolved_unit, resolved_number_type)
-
-    @classmethod
-    def from_field(
-        cls,
-        source: (
-            pa.Array
-            | pa.ChunkedArray
-            | StructField
-            | pa.Field
-            | tuple[pa.Array | None, pa.Field]
-        ),
-        *,
-        unit: TimeUnit | str | None = None,
-        number_type: NumberType | str | None = None,
-        name: str = "interval",
-    ) -> IntervalField:
-        """Build an interval field from an Arrow or raw field source.
-
-        Args:
-            source: Supported Arrow field representation.
-            unit: Common endpoint unit override.
-            number_type: Common endpoint number type override.
-            name: Field name for a bare array.
-
-        Returns:
-            A live or blueprint interval field.
-        """
-        if isinstance(source, tuple):
-            data, field = source
-            return cls(StructField(data, field), unit, number_type)
-        if isinstance(source, pa.Field):
-            return cls(StructField(None, source), unit, number_type)
-        if isinstance(source, StructField):
-            return cls(source, unit, number_type)
-        if isinstance(source, (pa.Array, pa.ChunkedArray)):
-            return cls(
-                StructField(source, pa.field(name, source.type)), unit, number_type
-            )
-        raise TypeError(
-            f"Unsupported source type for IntervalField.from_field: "
-            f"{type(source).__name__}"
-        )
+        return cls._of_struct_array(array, name, resolved_unit, resolved_number_type)
 
     def __getitem__(self, i: int) -> Interval | None:
         """Materialize one interval scalar or null."""

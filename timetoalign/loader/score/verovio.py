@@ -130,7 +130,10 @@ class _Movement:
 
 @dataclass
 class _Measure:
-    """One ``<measure>`` of the MEI tree, in document order."""
+    """One ``<measure>`` of the MEI tree, in document order.
+
+    ``measure_space`` states that one of its layers holds an ``<mSpace>``.
+    """
 
     xml_id: str
     n: str | None
@@ -140,6 +143,7 @@ class _Measure:
     meter: tuple[str, str] | None
     movement: int | None
     marks: list[tuple[str, str]] = field(default_factory=list)
+    measure_space: bool = False
 
 
 @dataclass
@@ -382,6 +386,8 @@ def _read_score(mei: str) -> _Score:
             ]
         elif tag in ("note", "rest", "mRest") and "measure" in ctx:
             score.timed[element.get(XML_ID)] = _timed(element, tag, ctx)
+        elif tag == "mSpace" and "measure" in ctx:
+            score.measures[ctx["measure"] - 1].measure_space = True
         for child in element:
             walk(child, ctx)
 
@@ -432,7 +438,8 @@ class VerovioLoader(ScoreLoader):
 
     Any format Verovio reads (MEI, MusicXML, Humdrum, ABC, PAE, …) yields
     one score as Verovio renders it: its timemap is taken verbatim, and
-    nothing is computed from the notated rhythm.
+    nothing is computed from the notated rhythm, except the length of a
+    measure that holds only ``<mSpace>`` (see Known issues).
 
     * :meth:`create_timeline` gives the logical timeline: one
       ``ContinuousLogicalTimeline`` in quarters, positions the timemap's exact
@@ -531,8 +538,17 @@ class VerovioLoader(ScoreLoader):
         ``"dangling_ties"``; its start note keeps ``tie = "i"`` and nothing
         is invented for the missing end. Verovio prints its own warning to
         the process's standard error; ``getLog()`` stays empty.
-        A measure without content has no length in Verovio's timemap and no
-        entry of its own; such a score raises, naming the measures.
+        A measure without timed content has no length in Verovio's timemap
+        and no entry of its own: the next measure starts where the one
+        before it ends. A measure holding an ``<mSpace>`` (a measure-long
+        space) is completed: it lasts what its meter states, at the place
+        of the tree, and every later position moves by that length, in
+        seconds at the tempo Verovio states where the next measure starts
+        (which includes a tempo change at that measure's start). It holds
+        no event. Any other measure without content raises, naming the
+        measures. With an expansion such a measure is left out like an
+        omitted ending (below), its length read from the completed
+        ``expandNever`` rendering.
         Verovio 6.4.1's expansion leaves out the measures of ``<ending>``s
         it cannot place (both endings, and no repeat of their passage, after
         another repeat). Their lengths are read from a second rendering
@@ -615,12 +631,15 @@ class VerovioLoader(ScoreLoader):
         notated = _notated_ids(timemap, score, toolkit)
         rendered = _rendered_measures(timemap, notated)
         score = _loaded_movements(score, {m.notated_id for m in rendered})
+        if not notated:
+            timemap = _with_measure_spaces(timemap, score)
+            rendered = _rendered_measures(timemap, notated)
         lengths = _measure_lengths(rendered)
         omitted = [
             m.xml_id for m in score.measures if notated and m.xml_id not in lengths
         ]
         if omitted:
-            lengths = _unexpanded_lengths(source, options, lengths, omitted)
+            lengths = _unexpanded_lengths(source, options, lengths, omitted, score)
         printed = _printed_measures(rendered, score, lengths, expanded=bool(notated))
         omitted_mcs = {
             mc
@@ -1103,6 +1122,101 @@ def _rendered_measures(
     ]
 
 
+def _meter_length(meter: tuple[str, str]) -> Fraction:
+    """Return the quarters a measure of *meter* lasts (an additive count summed)."""
+    count, unit = meter
+    return sum((Fraction(part) for part in count.split("+")), Fraction(0)) * Fraction(
+        4, int(unit)
+    )
+
+
+def _with_measure_spaces(
+    timemap: list[dict[str, Any]], score: _Score
+) -> list[dict[str, Any]]:
+    """Return the timemap with the measures that hold only an ``<mSpace>``.
+
+    Verovio times a measure by its timed elements, so a measure whose layers
+    hold nothing but ``<mSpace>`` (a measure-long space) gets no time: the
+    measure after it starts where the one before it ends, taking the timemap
+    entry (Verovio keeps one measure per entry), and a last such measure
+    opens at the timemap's end. Such a measure lasts what its meter states.
+    It is placed where the next measure of the tree starts (at the end of
+    the timemap when none follows), and every later entry moves by its
+    length: in quarters, and in milliseconds at the tempo Verovio states at
+    that place. The entry opening the inserted measure takes the ends and
+    the tempo stated there; nothing else is added. A measure without time
+    that holds no ``<mSpace>`` or has no meter is left as it is, to be
+    refused by `_printed_measures`.
+
+    *timemap* is a rendering that expands nothing, so its measure ids are
+    those of *score*'s tree, in tree order.
+    """
+    spaced = {
+        measure.xml_id: _meter_length(measure.meter)
+        for measure in score.measures
+        if measure.measure_space and measure.meter is not None
+    }
+    present = {entry["measureOn"] for entry in timemap if "measureOn" in entry}
+    last = timemap[-1].get("measureOn")
+    present.discard(last if last in spaced else None)
+    runs: dict[str | None, list[tuple[str, Fraction]]] = {}
+    run: list[tuple[str, Fraction]] = []
+    for measure in score.measures:
+        if measure.xml_id in present:
+            if run:
+                runs[measure.xml_id], run = run, []
+        elif measure.xml_id in spaced:
+            run.append((measure.xml_id, spaced[measure.xml_id]))
+    if run:
+        runs[None] = run
+    if not runs:
+        return timemap
+
+    shift_q = shift_ms = Fraction(0)
+    tempo: Fraction | None = None
+    completed: list[dict[str, Any]] = []
+    for index, entry in enumerate(timemap):
+        if "tempo" in entry:
+            tempo = Fraction(entry["tempo"])
+        rest = dict(entry)
+        is_last = index == len(timemap) - 1
+        if is_last and rest.get("measureOn") not in present:
+            rest.pop("measureOn", None)
+        key = rest.get("measureOn")
+        spaces = runs.get(key) if key is not None or is_last else None
+        if spaces:
+            if tempo is None:
+                raise ValueError("Verovio's timemap states no tempo")
+            ends = {
+                name: rest.pop(name)
+                for name in ("off", "restsOff", "tempo")
+                if name in rest
+            }
+            for count, (xml_id, length) in enumerate(spaces):
+                completed.append(
+                    {
+                        **(ends if count == 0 else {}),
+                        "measureOn": xml_id,
+                        **_moved(entry, shift_q, shift_ms),
+                    }
+                )
+                shift_q += length
+                shift_ms += length * 60000 / tempo
+        completed.append({**rest, **_moved(entry, shift_q, shift_ms)})
+    return completed
+
+
+def _moved(
+    entry: dict[str, Any], quarters: Fraction, milliseconds: Fraction
+) -> dict[str, Any]:
+    """Return the ``qfrac`` and ``tstamp`` of *entry*, moved later by both."""
+    position = _qfrac(entry) + quarters
+    return {
+        "qfrac": [position.numerator, position.denominator],
+        "tstamp": entry["tstamp"] + milliseconds,
+    }
+
+
 def _loaded_movements(score: _Score, rendered: set[str]) -> _Score:
     """Keep the measures, notes, rests and tempos of the movements Verovio loaded.
 
@@ -1163,11 +1277,13 @@ def _unexpanded_lengths(
     options: dict[str, Any],
     lengths: dict[str, Fraction],
     omitted: list[str],
+    score: _Score,
 ) -> dict[str, Fraction]:
     """Return the printed lengths of a rendering with ``expandNever``.
 
     Verovio's expansion can leave printed measures out; a second rendering
-    of the notated score states their lengths. Every measure both renderings
+    of the notated score states their lengths (an ``<mSpace>`` measure's
+    as `_with_measure_spaces` completes it). Every measure both renderings
     hold must have the same length in each.
     """
     module_logger.warning(
@@ -1179,7 +1295,8 @@ def _unexpanded_lengths(
     )
     toolkit = verovio.toolkit()
     _load_file(toolkit, source, {**options, "expandNever": True})
-    unexpanded = _measure_lengths(_rendered_measures(_timemap(toolkit, source), {}))
+    timemap = _with_measure_spaces(_timemap(toolkit, source), score)
+    unexpanded = _measure_lengths(_rendered_measures(timemap, {}))
     differing = sorted(
         xml_id
         for xml_id, length in lengths.items()
@@ -1211,7 +1328,8 @@ def _printed_measures(
         raise ValueError(
             "The timemap's measures differ from the MEI tree's: "
             f"{len(lengths)} of {len(order)} measures have an entry; without one: "
-            f"{missing[:5]} (Verovio gives a measure without content no length)"
+            f"{missing[:5]} (Verovio gives a measure without timed content no "
+            "length; only one holding an <mSpace> takes its meter's)"
         )
     printed: list[tuple[_Measure, Fraction, Fraction]] = []
     position = rendered[0].start

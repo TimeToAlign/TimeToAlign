@@ -656,6 +656,36 @@ of the 2/4 measure; Verovio rounds the first four entries to the milliseconds 0,
 `create_timeline()` works (length 2; the C-Map only needs increasing quarters); `create_physical_timeline()` raises, naming the coinciding entries, because their
 order in seconds is not stated.
 
+**Measures of `<mSpace>`** (`space_first.mei`, `space_middle.mei`, `space_last.mei`). An
+`<mSpace>` is a measure-long space: valid MEI that states no event, only that the measure passes.
+Verovio times a measure by its timed elements, so it gives a measure holding nothing but
+`<mSpace>` no timemap entry and no time: in `space_middle.mei` below, Verovio 6.4.1 starts the
+third measure at 3, where the first ends, and plays its notes at 3/2 s. Read verbatim, the measure has no length, and a zero-length measure is no measure of the
+format (its `actual_length` is strictly positive). What the source states is the meter, and an
+`<mSpace>` fills its measure, so the loader completes the timemap: the measure lasts what its
+meter states, at its place in the tree, and every later position moves by that length (in
+seconds at the tempo Verovio plays there); nothing else is added, and the `<mSpace>` is no event.
+Where the measure stands decides what Verovio writes and so how the timemap is completed: first or
+in the middle, the measure has no entry (the next measure's start takes it); last, Verovio opens it
+at the timemap's end with no time, and the timemap must be extended by one entry. Each fixture is 3/4
+on two staves, three measures `m1`, `m2`, `m3` (named `1`–`3`), one of them holding only
+`<mSpace>` in each layer; the other two hold, in order, staff 1 `x1` quarter + `x2` half, staff 2
+`y1` dotted half (the first), and staff 1 `z1` dotted half, staff 2 `w1` half + `w2` quarter (the
+second). Expected, for each: root length 9 quarters, the `MeasureMap` `m1`, `m2`, `m3` at 0, 3, 6,
+each 3/4 with actual length 3; exactly 6 events, all notes, no rest, none at the `<mSpace>`'s
+`xml:id`:
+
+| Fixture | `<mSpace>` in | Onsets of `x1 x2 y1 z1 w1 w2` | First note after the space, in seconds |
+|---|---|---|---|
+| `space_first.mei` | `m1` | 3, 4, 3, 6, 6, 8 | `x1` at 3/2 |
+| `space_middle.mei` | `m2` | 0, 1, 0, 6, 6, 8 | `z1` at 3 |
+| `space_last.mei` | `m3` | 0, 1, 0, 3, 3, 5 | — (the physical timeline ends at 9/2) |
+
+The physical timeline is 9/2 s long in each case (nine quarters at 120 per minute), and the C-Map
+maps 6 quarters to exactly 3 s. Store metadata `omitted_measures` is empty (nothing is
+expanded). `space_empty.mei`, `space_middle.mei` with `m2`'s layers left empty, still raises
+naming `m2`: a measure without any content, not even an `<mSpace>`, states no length.
+
 **`startid.mei`** (2/4): m1 `a1` C4 quarter, chord `ch1` (`ch1a` E4, `ch1b` G4, quarter) with
 `<tempo xml:id="tc" startid="#ch1">Allegro</tempo>`; m2 a triplet `tu` (`num=3 numbase=2`: `u1`,
 `u2`, `u3`, 8ths) and `a2` F4 quarter, with `<tempo xml:id="tn" startid="#u2">Meno mosso</tempo>`.

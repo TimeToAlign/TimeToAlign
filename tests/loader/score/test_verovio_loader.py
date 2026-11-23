@@ -232,6 +232,35 @@ STARTID = (
 )
 
 
+_SPACE_CONTENT = (
+    '<staff xml:id="{m}s1" n="1"><layer xml:id="{m}l1" n="1">{one}</layer></staff>'
+    '<staff xml:id="{m}s2" n="2"><layer xml:id="{m}l2" n="1">{two}</layer></staff>'
+)
+_SPACE_FIRST_BAR = (
+    '<note xml:id="x1" pname="c" oct="5" dur="4"/><note xml:id="x2" pname="d" oct="5" dur="2"/>',
+    '<note xml:id="y1" pname="c" oct="3" dur="2" dots="1"/>',
+)
+_SPACE_SECOND_BAR = (
+    '<note xml:id="z1" pname="e" oct="5" dur="2" dots="1"/>',
+    '<note xml:id="w1" pname="g" oct="2" dur="2"/><note xml:id="w2" pname="a" oct="2" dur="4"/>',
+)
+
+
+def _spaced(at: int, space: str = '<mSpace xml:id="sp{n}"/>') -> str:
+    """Three 3/4 measures on two staves, measure *at* holding only *space*."""
+    bars = iter((_SPACE_FIRST_BAR, _SPACE_SECOND_BAR))
+    measures = []
+    for n in (1, 2, 3):
+        one, two = (
+            (space.format(n=f"{n}a"), space.format(n=f"{n}b"))
+            if n == at
+            else next(bars)
+        )
+        content = _SPACE_CONTENT.format(m=f"m{n}", one=one, two=two)
+        measures.append(f'<measure xml:id="m{n}" n="{n}">{content}</measure>')
+    return _HEAD + _score("3/4", "".join(measures), staves=2) + _TAIL
+
+
 def _leaf(xml_id: str, bars: str, label: str | None = None) -> str:
     """One 2/4 ``<mdiv>`` holding *bars*, every id unique to it, named by *label*."""
     name = f' label="{label}"' if label is not None else ""
@@ -293,6 +322,10 @@ FIXTURES = {
     "nested": NESTED,
     "fast": FAST,
     "startid": STARTID,
+    "space_first": _spaced(1),
+    "space_middle": _spaced(2),
+    "space_last": _spaced(3),
+    "space_empty": _spaced(2, space=""),
     "duplicate_dynam": DUPLICATE_DYNAM,
     "duplicate_note": DUPLICATE_NOTE,
 }
@@ -638,6 +671,56 @@ class TestPhysicalTimeline:
             fast.create_physical_timeline()
         assert "('0', '1/64', '0')" in str(raised.value)
         assert "('1/32', '3/64', '1/1000')" in str(raised.value)
+
+
+_SPACE_CASES = {
+    # fixture: (measure holding the <mSpace>, onsets of x1 x2 y1 z1 w1 w2, first note after it)
+    "space_first": (1, (3, 4, 3, 6, 6, 8), ("x1", Fraction(3, 2))),
+    "space_middle": (2, (0, 1, 0, 6, 6, 8), ("z1", Fraction(3))),
+    "space_last": (3, (0, 1, 0, 3, 3, 5), None),
+}
+
+
+class TestMeasureSpaces:
+    @pytest.mark.parametrize("name", list(_SPACE_CASES))
+    def test_measure_lasts_its_meter(self, mei: dict[str, Path], name: str) -> None:
+        loader = VerovioLoader.from_file(mei[name])
+        timeline = loader.create_timeline()
+        assert timeline.length.value == Fraction(9)
+        measures = timeline.measure_map.measures
+        assert [m.id for m in measures] == ["m1", "m2", "m3"]
+        assert [m.name for m in measures] == ["1", "2", "3"]
+        assert [m.qstamp for m in measures] == [Fraction(0), Fraction(3), Fraction(6)]
+        assert [m.actual_length for m in measures] == [Fraction(3)] * 3
+        assert {m.time_signature for m in measures} == {"3/4"}
+        assert loader.store.metadata["omitted_measures"] == []
+
+    @pytest.mark.parametrize("name", list(_SPACE_CASES))
+    def test_only_the_notes_of_the_other_measures(
+        self, mei: dict[str, Path], name: str
+    ) -> None:
+        at, onsets, _ = _SPACE_CASES[name]
+        rows = VerovioLoader.from_file(mei[name]).create_timeline().get_events()
+        assert {row["event_type"] for row in rows} == {"Note"}
+        assert {row["id"]: _q(row["start"]) for row in rows} == dict(
+            zip(("x1", "x2", "y1", "z1", "w1", "w2"), map(Fraction, onsets))
+        )
+        assert {f"sp{at}a", f"sp{at}b"}.isdisjoint(row["id"] for row in rows)
+
+    @pytest.mark.parametrize("name", list(_SPACE_CASES))
+    def test_seconds_move_by_the_measure(self, mei: dict[str, Path], name: str) -> None:
+        _, _, after = _SPACE_CASES[name]
+        loader = VerovioLoader.from_file(mei[name])
+        physical = loader.create_physical_timeline()
+        assert physical.length.value == Fraction(9, 2)
+        assert loader.create_quarters_to_seconds_map()(Fraction(6)) == Fraction(3)
+        if after is not None:
+            starts = {row["id"]: _q(row["start"]) for row in physical.get_events()}
+            assert starts[after[0]] == after[1]
+
+    def test_measure_without_content_raises(self, mei: dict[str, Path]) -> None:
+        with pytest.raises(ValueError, match=r"without one: \['m2'\]"):
+            VerovioLoader.from_file(mei["space_empty"])
 
 
 class TestGraceNotesAsVerovioPlacesThem:

@@ -40,63 +40,132 @@ Refusals the library composes are asserted whole.
 ## `DmosLoader`
 
 **Source:** the DMOS optical music recognition output for the Gallica score
-`ark:/12148/bpt6k11620688`. The excerpt holds page 1 (`no_page` 1,
-`page_url` `https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2`, an
-image of 4512 x 6174 pixels that the file does not state), its systems 1
-and 2, and measures 1 and 2 of system 1. System 2 keeps no measures: DMOS
-output holds systems with no measure, and the reader must take one.
+`ark:/12148/bpt6k11620688` (4 pages, 17 systems, 67 measures; `no_page` 1 to
+4, `page_url` `https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2` to
+`/f5`, `score_image_url` the same without `/fN`). Two excerpts are written by
+the tests, every corner copied from the file:
+
+- *The page*: page 1 with its systems 1 and 2 and measures 1 and 2 of
+  system 1. System 2 keeps no measures: DMOS output holds systems with no
+  measure, and the reader must take one.
+- *The scan*: all four pages with the regions of all 17 systems, and four
+  measures: measures 1 and 2 of page 1's system 1, measure 1 of its system 2
+  and measure 1 of page 2's system 1. It carries the lengths of the whole
+  file, since a length depends on the system regions only.
+
+**What the numbers are, by hand.**
 
 - **System corners** are written top left, bottom left, top right, bottom
-  right. System 1 `[[1221,1589],[1221,2266],[4097,1589],[4101,2266]]` is the
-  quadrilateral (1221,1589) (4097,1589) (4101,2266) (1221,2266): a child of
-  the page at offset 1221 (its least x) of length 2880 (4101 - 1221). System 2
-  `[[971,2493],[971,3192],[4104,2493],[4112,3192]]`: offset 971, length 3141;
-  it overlaps system 1 in x, and both are children of the page.
+  right. System 1 of page 1 `[[1221,1589],[1221,2266],[4097,1589],
+  [4101,2266]]` is the quadrilateral (1221,1589) (4097,1589) (4101,2266)
+  (1221,2266): x 1221 to 4101, y 1589 to 2266. System 2
+  `[[971,2493],[971,3192],[4104,2493],[4112,3192]]`: x 971 to 4112, y 2493 to
+  3192.
+- **A page's time path is its systems, one horizontal piece each**: from the
+  region's least x to its greatest, at the middle of its y extent, with half
+  that extent as half-breadth. Page 1: (x0 1221, x1 4101, y 3855/2, 677/2),
+  (971, 4112, 5685/2, 699/2), (983, 4125, 7549/2, 721/2), (994, 4142, 4729,
+  362): the last system spans y 4367 to 5091, an even sum, so its `y` and
+  `tolerance` are integers, the others fractions, never floats. Nothing is
+  grouped: system 2 starts 250 pixels left of system 1 and is a piece of its
+  own because the file states it, and the paths are keyed by `no_page`.
+- **Lengths** (x extents of the 17 regions). Page 1: 2880 + 3141 + 3142 +
+  3148 = 12311, the accolades at offsets 0, 2880, 6021, 9163. Page 2 (x
+  519–3661, 522–3659, 522–3659, 523–3658, 522–3661): 3142 + 3137 + 3137 +
+  3135 + 3139 = 15690. Page 3 (913–4060, 918–4054, 913–4051, 907–4048): 3147
+  + 3136 + 3138 + 3141 = 12562. Page 4 (508–3650, 504–3643, 494–3634,
+  489–3628): 3142 + 3139 + 3140 + 3139 = 12560. Volume: 53123, the pages at
+  0, 12311, 28001, 40563.
 - **Measure corners** are written top left, top right, bottom left, bottom
   right. Measure 1 `[[1221,1589],[2151,1589],[1221,2266],[2161,2266]]` is
-  (1221,1589) (2151,1589) (2161,2266) (1221,2266), the Box `box_1` with start
-  0 and duration 940 on system 1. Measure 2 is (2151,1589) (2766,1589)
-  (2775,2266) (2161,2266), `box_2`, start 930 (2151 - 1221), duration 624.
-  The two measures overlap by 10 pixels at the bottom (the right edge of
-  measure 1 leans), so the intervals are [0, 940) and [930, 1554).
-- **Page size.** With `page_sizes={1: (4512, 6174)}` the page has length
-  4512, is locked (the image's width is a fact, never grown) and `meta ==
-  {"image": page_url, "box": {"x": 0, "y": 0, "width": 4512, "height":
-  6174}}`; without, `length` is `None` and `meta == {"image": page_url}`.
-  A `page_sizes` key naming no page is a `KeyError` listing the pages the
-  file holds. A width of 4101 takes system 1 (ending at 4101: the edge
-  itself is inside) and refuses system 2 (ending at 4112), naming page and
-  system, so the boundary is exercised from both sides.
-- **Ids.** Timelines are minted `dgt_1` (the page), `dgt_2`, `dgt_3` (the
-  systems, in document order); Boxes are minted `box_1`, `box_2` per system.
-  System names are DMOS's system ids as strings: DMOS output repeats a
-  system id on some pages, so on a page whose systems are both numbered 1
-  the two children are named `"1"` and `"1"` and keep distinct ids.
-- **What is not read.** Measure staff headers and voices are left in the
-  excerpt and must leave no trace: each system holds exactly its Boxes.
-- **Refusals.** A measure whose corners, read in DMOS's measure order, do not
-  run around a convex outline is refused with the shape's own message,
-  prefixed by where it stands (`DMOS page 1, system 1, measure 1: ...`),
-  since DMOS measures have no ids; so is a corner that is no whole number
-  of pixels (`1221.5`: geometry is never rounded). `create_timelines()`
-  before `load()` and a second source are refused (the loader reads one
-  file).
-- **Known issue: a measure leaving its system.** A measure is a Box of its
-  system's timeline, which spans exactly the system region's x extent, so
-  a measure reaching left or right of that extent has no place there;
-  optical music recognition can produce one (measure edges lean: measure
-  1's right edge runs from x 2151 to 2161). One rule for both edges: the file is refused at
-  loading with one message naming page, system and measure and both
-  extents; no negative start is produced and the system is not widened.
-  Separate cases, each with the excerpt's system 1 (x 1221 to 4101):
-  measure 1 at `[[1200,1589],[2151,1589],[1200,2266],[2161,2266]]` (x 1200
-  to 2161, left of the system) gives `DMOS page 1, system 1, measure 1
-  spans x 1200 to 2161, which leaves its system's region, spanning x 1221
-  to 4101.`; measure 2 at `[[3500,1589],[4110,1589],[3500,2266],
-  [4120,2266]]` after measure 1 (x 3500 to 4120, right of it) gives the
-  same sentence for `measure 2` and `3500 to 4120`. A measure spanning the
-  system exactly (x 1221 to 4101, corners those of system 1 in measure
-  order) loads as `box_1`, start 0, duration 2880: both edges are inside.
+  (1221,1589) (2151,1589) (2161,2266) (1221,2266): on system 1's accolade
+  start 0, duration 940. Measure 2 is (2151,1589) (2766,1589) (2775,2266)
+  (2161,2266): start 930 (2151 − 1221), duration 624. The two overlap by 10
+  pixels at the bottom (the right edge of measure 1 leans), so the intervals
+  are [0, 940) and [930, 1554). Measure 1 of system 2 spans x 971 to 1945:
+  start 0, duration 974. Measure 1 of page 2's system 1 spans x 519 to 1522:
+  start 0, duration 1003.
+
+**What proves the loader right.** The tests read only what the loader
+returns and compare it with the numbers above:
+
+1. **The tree mirrors the path.** `create_timeline()` is a locked
+   `SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]` of length 53123
+   whose segments are the pages at the offsets above, each a locked segment
+   line of its systems' accolades (unlocked plain timelines) at theirs; the
+   length of every page is the sum of its accolades. `create_timelines()`
+   gives the same pages as locked roots. A loader that still laid a page
+   along its image's width, or put the systems on it as overlapping children
+   at their least x (offsets 1221 and 971), fails on class, offsets and
+   lengths at once.
+2. **Who states what.** An accolade states `meta["box"]` (its system's
+   quadrilateral in canonical order, bottom right (4101, 2266) for system 1)
+   and `meta["image"]` (the `page_url`); a page states `meta["image"]` only;
+   the volume states the file's `score_image_url` as `meta["image"]`, and
+   nothing where the file has none. No timeline has an unknown length, and no
+   argument takes an image size.
+3. **Every shape is the source's and every Box keeps the image-space
+   invariant** (see above), checked by the helper over the whole tree, so a
+   measure placed on its page's or the volume's axis fails.
+4. **Names and minted ids.** Pages are named by `no_page`, accolades by
+   DMOS's system id as a string. DMOS output repeats a system id on some
+   pages, so two systems numbered 1 give two accolades named `"1"` with
+   distinct ids. Minted ids follow document order: for the volume `dgt_1`,
+   then page 1 `dgt_2`, its accolades `dgt_3` to `dgt_6`, page 2 `dgt_7`;
+   for `create_timelines()` page 1 is `dgt_1`, its accolades `dgt_2` to
+   `dgt_5`, page 2 `dgt_6`. Boxes are minted `box_1`, `box_2` per accolade.
+5. **Identity given at creation.** `uid="scan"` names the volume and page 1
+   is still `dgt_2`. `box_ids="m{n}"` numbers the scan's four measures
+   through the pages: `m1`, `m2` on page 1's first accolade, `m3` on its
+   second, `m4` on page 2's first. `accolade_ids="p{page}_s{accolade}"`
+   gives `p1_s1` … `p1_s4`, `p2_s1` … `p4_s4`; `page_ids` as a sequence
+   names the four pages in document order; a `box_ids` sequence of four
+   names the measures in document order. Refusals come before anything is
+   built, which the tests prove by creating again from the same loader and
+   finding the first number, `dgt_1`, not drawn: three ids for four Boxes, a
+   template field that does not exist (`{system}`), an id holding a control
+   character, and `uid` equal to a page id.
+6. **A page without systems is left out.** A file whose page 2 of three has
+   `"systems": []` gives pages named `"1"` and `"3"`, paths keyed 1 and 3,
+   and a volume of two segments; a file with no system at all gives no page,
+   no path, and a refused volume (`A volume needs at least one page.`).
+7. **What is not read.** Measure staff headers and voices are left in the
+   excerpts and must leave no trace: each accolade holds exactly its Boxes,
+   pages and volume hold no event of their own.
+
+**Refusals at loading.** A measure whose corners, read in DMOS's measure
+order, do not run around a convex outline is refused with the shape's own
+message, prefixed by where it stands (`DMOS page 1, system 1, measure 1:
+...`), since DMOS measures have no ids; so is a corner that is no whole
+number of pixels (`1221.5`: geometry is never rounded). Creating before
+`load()` and a second source are refused (the loader reads one file).
+
+**Known issue: a measure leaving its system.** A measure is a Box of its
+system's accolade, which spans exactly the system region's x extent, so a
+measure reaching left or right of that extent has no place there; optical
+music recognition can produce one (measure edges lean: measure 1's right
+edge runs from x 2151 to 2161). One rule for both edges: the file is refused
+at loading with one message naming page, system and measure and both
+extents; no negative start is produced and the system is not widened.
+Separate cases, each with the excerpt's system 1 (x 1221 to 4101): measure 1
+at `[[1200,1589],[2151,1589],[1200,2266],[2161,2266]]` (x 1200 to 2161, left
+of the system) gives `DMOS page 1, system 1, measure 1 spans x 1200 to 2161,
+which leaves its system's region, spanning x 1221 to 4101.`; measure 2 at
+`[[3500,1589],[4110,1589],[3500,2266],[4120,2266]]` after measure 1 (x 3500
+to 4120, right of it) gives the same sentence for `measure 2` and `3500 to
+4120`. A measure spanning the system exactly (x 1221 to 4101, corners those
+of system 1 in measure order) loads as `box_1`, start 0, duration 2880: both
+edges are inside.
+
+**Known issue: a system without width.** DMOS output can hold a system whose
+region is a vertical line (seen in one file as `[[22,929],[22,1185],
+[22,929],[22,1185]]`, holding no measure). The file loads, since the region
+is read as written, but such a system is no piece of a time path: a
+horizontal piece runs from one x to a greater one. `create_paths()`,
+`create_timelines()` and `create_timeline()` refuse it, naming the page and
+the system's position: `DMOS page 1: accolade 2: x1 (22) must be greater
+than x0 (22)`. The system is not dropped and nothing is built. Separate
+case: the page excerpt with that region as its system 2.
 
 ## `MeiFacsimileLoader`
 

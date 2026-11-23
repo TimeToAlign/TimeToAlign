@@ -8,13 +8,18 @@ y down, origin at the top left corner). The file is one JSON object whose
 and ``systems``; a system holds ``id``, ``region`` and ``measures``; a
 measure holds ``region``.
 
-The loader reads exactly that: pages, systems and measures. Each page is a
-:class:`DiscreteGraphicalTimeline` in ``pixels`` along the image's x axis,
-each system a child of its page at its least x, each measure a :class:`Box`
-event of its system holding the measure's :class:`Quadrilateral`. Not read:
-the symbols (the measures' ``voices`` and their elements), the staff headers
-of systems and measures, ``header_systems``, and the document's ``id``,
-``date`` and ``score_image_url``.
+The loader reads exactly that: pages, systems and measures. Nothing in a
+page image is a time axis until a path through it is given, and DMOS gives
+one: its systems, read one after the other. Each system is one horizontal
+piece of its page's time path, over the x extent of its region; a page is
+the :class:`~timetoalign.loader.graphical.paths.PiecewisePath` of its
+systems. The timelines mirror the path, all in ``pixels``: a system is an
+accolade as long as its region is wide, a page the segment line of its
+accolades, the file the segment line of its pages. Each measure is a
+:class:`Box` event of its system's accolade holding the measure's
+:class:`Quadrilateral`. Not read: the symbols (the measures' ``voices`` and
+their elements), the staff headers of systems and measures,
+``header_systems``, and the document's ``id`` and ``date``.
 
 DMOS writes corners in two orders, neither of which draws the outline when
 followed: measures top left, top right, bottom left, bottom right
@@ -23,25 +28,33 @@ bottom right (:data:`SYSTEM_CORNER_ORDER`). Every quadrilateral is read in
 its order and held in the canonical one (top left, top right, bottom right,
 bottom left), so its outline runs around the area.
 
-DMOS states no page size and no measure identity: the size of a page image
-is unknown unless given to :meth:`DmosLoader.create_timelines`, and measures
-are known by their position in the document only. A measure must lie within
-its system's x extent; one leaving it on either side is refused.
+DMOS states no measure identity: measures are known by their position in
+the document only, and are named where the timelines are created. A measure
+must lie within its system's x extent; one leaving it on either side is
+refused. A page without systems has no time path and becomes no timeline.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
-from timetoalign.core import BoundingBox, Box, Quadrilateral, TimeUnit
+from timetoalign.core import Quadrilateral, TimeUnit
 from timetoalign.loader.base import Loader
 from timetoalign.loader.graphical._located import located
-from timetoalign.timelines import DiscreteGraphicalTimeline
+from timetoalign.loader.graphical._pages import (
+    Ids,
+    Page,
+    PageAccolade,
+    PageBox,
+    build_pages,
+    build_volume,
+)
+from timetoalign.loader.graphical.paths import PiecewisePath, TimeAxisPath
+from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine
 
 module_logger = logging.getLogger(__name__)
 
@@ -82,6 +95,35 @@ class _DmosPage:
     number: int
     image: str
     systems: tuple[_DmosSystem, ...]
+
+    @property
+    def path(self) -> PiecewisePath:
+        """The page's time path: its systems, one horizontal piece each.
+
+        Raises:
+            ValueError: If a system's region has no x extent, naming the page.
+        """
+        try:
+            return TimeAxisPath.from_boxes(
+                [system.area for system in self.systems],
+                accolades=range(len(self.systems)),
+            )
+        except ValueError as error:
+            raise located(f"DMOS page {self.number}", error) from error
+
+
+@dataclass(frozen=True)
+class _DmosDocument:
+    """One DMOS file.
+
+    Attributes:
+        image: The file's ``score_image_url``, as written; None where it
+            states none.
+        pages: Its pages, in document order.
+    """
+
+    image: str | None
+    pages: tuple[_DmosPage, ...]
 
 
 def _member(mapping: Any, key: str, where: str) -> Any:
@@ -125,7 +167,7 @@ def _within(measure: Quadrilateral, system: Quadrilateral, where: str) -> Quadri
     return measure
 
 
-def _read_pages(source: Path) -> tuple[_DmosPage, ...]:
+def _read_document(source: Path) -> _DmosDocument:
     """Parse the pages, systems and measures of the DMOS file at *source*.
 
     Raises:
@@ -168,42 +210,55 @@ def _read_pages(source: Path) -> tuple[_DmosPage, ...]:
                 systems=tuple(systems),
             )
         )
-    return tuple(pages)
+    return _DmosDocument(image=document.get("score_image_url"), pages=tuple(pages))
 
 
-class DmosLoader(Loader[tuple[_DmosPage, ...]]):
+class DmosLoader(Loader[_DmosDocument]):
     """Load the pages, systems and measures of a DMOS JSON file.
 
-    Each page becomes a root :class:`DiscreteGraphicalTimeline` in ``pixels``
-    (``int``) along its image's x axis, each system a child of its page and
-    each measure a :class:`~timetoalign.core.Box` event of its system,
-    holding the measure's quadrilateral in the page image's pixels (see the
-    module docstring for what is and is not read).
+    A page's time path is its systems read one after the other
+    (:meth:`create_paths`), and the timelines mirror it, all in ``pixels``
+    (``int``):
 
-    For a Box on a system, ``start`` is the measure's least x minus the
-    system's least x and ``duration`` is the measure's x extent, so the
-    system's ``meta["box"]`` and the Box's shape, both in image space, agree
-    with the interval.
+    - a **system** is an accolade: a
+      :class:`~timetoalign.timelines.DiscreteGraphicalTimeline` as long as
+      its region is wide, named by its DMOS id, stating the region in
+      ``meta["box"]`` and the page image in ``meta["image"]``;
+    - a **page** is the segment line of its accolades in document order,
+      named by its ``no_page``, stating ``meta["image"]`` (its ``page_url``)
+      and no ``meta["box"]``: its axis is a concatenation, not an area;
+    - the **volume** (:meth:`create_timeline`) is the segment line of the
+      pages.
 
-    Known limits: DMOS states no page size, so a page's length is unknown
-    unless :meth:`create_timelines` is given it; measures have no id and no
-    number in DMOS, so their Boxes are minted ``box_N`` per system in
-    document order; DMOS system ids repeat on some pages, so a system's name
-    (its DMOS id) need not be unique, while its timeline id is. A measure
-    whose x extent leaves its system's region, on the left or on the right,
-    cannot be a Box of that system's timeline and refuses the file (the
-    system's timeline spans exactly its region's x extent; neither is
-    widened to hold the measure).
+    Each measure is a :class:`~timetoalign.core.Box` event of its system's
+    accolade, holding the measure's quadrilateral in the page image's
+    pixels: ``start`` is the measure's least x minus the system's least x
+    and ``duration`` the measure's x extent, so the accolade's
+    ``meta["box"]`` and the Box's shape, both in image space, agree with the
+    interval.
+
+    Known limits: measures have no id and no number in DMOS, so their Boxes
+    are minted ``box_N`` per system unless ``box_ids`` names them; DMOS
+    system ids repeat on some pages, so an accolade's name (its DMOS id)
+    need not be unique, while its timeline id is. A measure whose x extent
+    leaves its system's region, on the left or on the right, cannot be a Box
+    of that system's accolade and refuses the file (the accolade spans
+    exactly its region's x extent; neither is widened to hold the measure).
+    A page without systems has no time path and is left out. A system whose
+    region has no x extent (DMOS output holds some: a region that is a
+    vertical line) loads, but is no piece of a time path: creating paths or
+    timelines from a file holding one is refused, naming the page and the
+    system's position; the system is not dropped.
 
     Examples:
-        The systems and measures of a DMOS file whose first page image is
-        4512 by 6174 pixels::
+        The pages of a DMOS file as one timeline, its measures numbered
+        through the score::
 
             loader = DmosLoader.from_file("dmos.json")
-            pages = loader.create_timelines(page_sizes={1: (4512, 6174)})
-            page = pages[0]
-            system = page.get_child(page.list_children()[0])
-            boxes = system.get_events().table.to_pylist()
+            volume = loader.create_timeline(uid="scan", box_ids="m{n}")
+            page = volume.get_child(volume.list_children()[0])
+            accolade = page.get_child(page.list_children()[0])
+            boxes = accolade.get_events().table.to_pylist()
     """
 
     #: One loader reads one DMOS file.
@@ -212,28 +267,29 @@ class DmosLoader(Loader[tuple[_DmosPage, ...]]):
     def __init__(self) -> None:
         """Initialize the loader."""
         super().__init__()
-        self._pages: tuple[_DmosPage, ...] | None = None
+        self._document: _DmosDocument | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
     def __repr__(self) -> str:
         """Return a concise representation."""
-        if self._pages is None:
+        if self._document is None:
             return "DmosLoader(not loaded)"
-        systems = [system for page in self._pages for system in page.systems]
+        pages = self._document.pages
+        systems = [system for page in pages for system in page.systems]
         measures = sum(len(system.measures) for system in systems)
         return (
-            f"DmosLoader(pages={len(self._pages)}, systems={len(systems)}, "
+            f"DmosLoader(pages={len(pages)}, systems={len(systems)}, "
             f"measures={measures})"
         )
 
-    def _load_source(self, source: Path) -> tuple[_DmosPage, ...]:
+    def _load_source(self, source: Path) -> _DmosDocument:
         """Read the pages, systems and measures of one DMOS JSON file.
 
         Args:
             source: Path to the JSON file.
 
         Returns:
-            Its pages, in document order.
+            The document: its pages, in document order.
 
         Raises:
             FileNotFoundError: If the file does not exist.
@@ -244,115 +300,169 @@ class DmosLoader(Loader[tuple[_DmosPage, ...]]):
                 side; the message names the page by ``no_page`` and the
                 system and measure by their position, counted from 1.
         """
-        return _read_pages(source)
+        return _read_document(source)
 
     def _accept_source(
-        self, path: Path, source_meta: dict[str, Any], payload: tuple[_DmosPage, ...]
+        self, path: Path, source_meta: dict[str, Any], payload: _DmosDocument
     ) -> None:
-        """Keep the pages of the one source."""
+        """Keep the document of the one source."""
         super()._accept_source(path, source_meta, payload)
-        self._pages = payload
+        self._document = payload
         self._logger.debug(f"Loaded {path}: {self!r}")
 
     def clear(self) -> None:
         """Forget the loaded file."""
         super().clear()
-        self._pages = None
+        self._document = None
 
-    def create_timelines(
-        self, *, page_sizes: Mapping[int, tuple[int, int]] | None = None
-    ) -> list[DiscreteGraphicalTimeline]:
-        """Create one root timeline per page, in document order.
-
-        A page is in ``pixels`` (``int``), minted ``dgt_N``, named by its
-        ``no_page`` and states its image in ``meta["image"]`` (the
-        ``page_url``). Where *page_sizes* gives its image's width and height,
-        its length is the width, ``meta["box"]`` is ``{"x": 0, "y": 0,
-        "width": w, "height": h}`` and the page is locked, since the width
-        is the image's; else its length is unknown and it has no box.
-
-        Each system is a child of its page at its least x, of length its x
-        extent, minted ``dgt_N``, named by its DMOS id, with ``meta["box"]``
-        its quadrilateral's dict. Its measures are its Box events in
-        document order, minted ``box_N``.
-
-        Args:
-            page_sizes: The ``(width, height)`` in pixels of each page image
-                whose size is known, keyed by ``no_page``.
-
-        Returns:
-            The pages' timelines.
+    def _loaded(self) -> _DmosDocument:
+        """The loaded document.
 
         Raises:
             RuntimeError: If no file has been loaded.
-            KeyError: If *page_sizes* names a page the file does not hold.
-            ValueError: If a size is not a whole, non-negative number of
-                pixels, or a system ends past the right edge of its page's
-                image; the message names the page by ``no_page`` and the
-                system by its position on the page, counted from 1.
         """
-        from timetoalign.timelines.factory import (
-            _flag_minted,
-            _mint_timeline_id,
-            _root_timeline_id,
+        if self._document is None:
+            raise RuntimeError("No DMOS file loaded. Call load() first.")
+        return self._document
+
+    def _pages_with_paths(self) -> list[tuple[_DmosPage, PiecewisePath]]:
+        """Each page that has systems with its time path, in document order."""
+        return [(page, page.path) for page in self._loaded().pages if page.systems]
+
+    def _described_pages(self) -> list[Page]:
+        """The pages as the page builder takes them: a path, its accolades, their Boxes."""
+        return [
+            Page(
+                name=str(page.number),
+                image=page.image,
+                path=path,
+                accolades=[
+                    PageAccolade(
+                        name=system.name,
+                        area=system.area,
+                        boxes=[PageBox(measure) for measure in system.measures],
+                    )
+                    for system in page.systems
+                ],
+            )
+            for page, path in self._pages_with_paths()
+        ]
+
+    def create_paths(self) -> dict[int, PiecewisePath]:
+        """Return each page's time path, keyed by its ``no_page``.
+
+        A page's path is its systems in document order, each one horizontal
+        piece: from its region's least x to its greatest, at the middle of
+        its y extent, with half that extent as ``tolerance``, so the piece's
+        strip is the system's y extent. Nothing is grouped or guessed: every
+        stated system is one piece, also where it starts right of the one
+        before. A page without systems has no path and no entry.
+
+        Returns:
+            The paths, in document order.
+
+        Raises:
+            RuntimeError: If no file has been loaded.
+            ValueError: If a system's region has no x extent; the message
+                names the page by ``no_page`` and the system by its position
+                on the page, counted from 1.
+        """
+        return {page.number: path for page, path in self._pages_with_paths()}
+
+    def create_timeline(
+        self,
+        *,
+        uid: str | None = None,
+        name: str | None = None,
+        page_ids: Ids = None,
+        accolade_ids: Ids = None,
+        box_ids: Ids = None,
+    ) -> SegmentLine:
+        """Create the volume: one timeline of all pages, in document order.
+
+        The volume is a locked segment line of the pages, its length the sum
+        of theirs; each page is a segment line of its systems' accolades, as
+        :meth:`create_timelines` builds it. The volume states the file's
+        ``score_image_url`` in ``meta["image"]`` where the file has one.
+
+        Each of *page_ids*, *accolade_ids* and *box_ids* names every element
+        of its kind: a sequence of ids in document order, or a template
+        filled with :meth:`str.format` from ``page`` (the page's position
+        among the pages created, from 1), ``accolade`` (its position on its
+        page), ``box`` (its position in its accolade) and ``n`` (the running
+        count of the kind over the call). ``box_ids="m{n}"`` numbers the
+        measures through the score. Left out, timelines are minted ``dgt_N``
+        (the volume, then each page followed by its accolades) and Boxes
+        ``box_N`` per accolade.
+
+        Args:
+            uid: The volume's id; minted ``dgt_N`` when None.
+            name: The volume's name.
+            page_ids: The pages' ids.
+            accolade_ids: The accolades' ids.
+            box_ids: The Boxes' ids.
+
+        Returns:
+            The volume, a ``SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]``.
+
+        Raises:
+            RuntimeError: If no file has been loaded.
+            ValueError: If no page of the file has a system, a system's
+                region has no x extent, or an ids argument does not fit the
+                call (a sequence of another length, an unknown template
+                field, an invalid id, one id given to two timelines).
+                Nothing is built then.
+        """
+        document = self._loaded()
+        return build_volume(
+            self,
+            self._described_pages(),
+            uid=uid,
+            name=name,
+            image=document.image,
+            page_ids=page_ids,
+            accolade_ids=accolade_ids,
+            box_ids=box_ids,
         )
 
-        if self._pages is None:
-            raise RuntimeError("No DMOS file loaded. Call load() first.")
-        sizes = dict(page_sizes or {})
-        numbers = [page.number for page in self._pages]
-        for key in sizes:
-            if key not in numbers:
-                raise KeyError(
-                    f"page_sizes names page {key!r}, which the DMOS file does not "
-                    f"hold; its pages are {', '.join(map(str, numbers))}."
-                )
+    def create_timelines(
+        self,
+        *,
+        page_ids: Ids = None,
+        accolade_ids: Ids = None,
+        box_ids: Ids = None,
+    ) -> list[DiscreteGraphicalTimeline]:
+        """Create one root timeline per page, in document order.
 
-        timelines = []
-        for page in self._pages:
-            meta: dict[str, Any] = {"image": page.image}
-            size = sizes.get(page.number)
-            if size is not None:
-                width, height = size
-                meta["box"] = BoundingBox.from_xywh(
-                    0, 0, width, height, unit=TimeUnit.pixels
-                ).to_dict()
-            uid, minted = _root_timeline_id(self, TimeUnit.pixels, None)
-            timeline = _flag_minted(
-                DiscreteGraphicalTimeline(
-                    length=None if size is None else width,
-                    unit=TimeUnit.pixels,
-                    uid=uid,
-                    name=str(page.number),
-                    locked=size is not None,
-                    meta=meta,
-                ),
-                minted,
-            )
-            for k, system in enumerate(page.systems, start=1):
-                area = system.area
-                if size is not None and area.x_max.value > width:
-                    raise ValueError(
-                        f"DMOS page {page.number}, system {k} ends at x "
-                        f"{area.x_max.value}, past the right edge of its image, "
-                        f"{width} pixels wide."
-                    )
-                child = _flag_minted(
-                    DiscreteGraphicalTimeline(
-                        length=area.x_max.value - area.x_min.value,
-                        unit=TimeUnit.pixels,
-                        uid=_mint_timeline_id(self, TimeUnit.pixels),
-                        name=system.name,
-                        meta={"box": area.to_dict()},
-                    ),
-                    True,
-                )
-                timeline.add_child(child, area.x_min)
-                child.add_events(
-                    [
-                        Box.from_shape(measure, origin=area.x_min)
-                        for measure in system.measures
-                    ]
-                )
-            timelines.append(timeline)
-        return timelines
+        A page is a locked segment line of its systems' accolades in
+        ``pixels`` (``int``), its length the sum of theirs, named by its
+        ``no_page``; it states its image in ``meta["image"]`` (the
+        ``page_url``) and no ``meta["box"]``. Each system is an accolade as
+        long as its region's x extent, named by its DMOS id, with
+        ``meta["box"]`` its quadrilateral's dict and ``meta["image"]`` the
+        page's. Its measures are its Box events in document order. A page
+        without systems is left out.
+
+        Args:
+            page_ids: The pages' ids (see :meth:`create_timeline`); minted
+                ``dgt_N`` when None.
+            accolade_ids: The accolades' ids; minted ``dgt_N`` when None.
+            box_ids: The Boxes' ids; minted ``box_N`` per accolade when None.
+
+        Returns:
+            The pages' timelines, each a
+            ``SegmentLine[DiscreteGraphicalTimeline]``.
+
+        Raises:
+            RuntimeError: If no file has been loaded.
+            ValueError: If a system's region has no x extent, or an ids
+                argument does not fit the call (see :meth:`create_timeline`).
+                Nothing is built then.
+        """
+        return build_pages(
+            self,
+            self._described_pages(),
+            page_ids=page_ids,
+            accolade_ids=accolade_ids,
+            box_ids=box_ids,
+        )

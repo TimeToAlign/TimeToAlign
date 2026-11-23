@@ -28,7 +28,7 @@ from images and PDFs. The key components are:
   child of the drawing's timeline.
 
 - **DmosLoader**: Read the pages, systems and measures of a DMOS JSON file as page
-  timelines, their systems as children and the measures as Box events.
+  timelines made of their systems' accolades, with the measures as Box events.
 
 - **MeiFacsimileLoader**: Read the surfaces and zones of an MEI facsimile as page
   timelines holding Box events, and the ``@facs`` links to them.

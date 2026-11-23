@@ -9,25 +9,36 @@ Architectural decision log).
 
 Sections (in file order):
 
-* Graphical scalars + paired Fields (1 pair)
+* Graphical scalars + paired Fields (``Point``, the abstract ``Shape`` and
+  its ``BoundingBox`` and ``Quadrilateral``)
 * Pitch scalars + paired Fields (7 pairs)
 * Harmony scalars + paired Fields (5 pairs) — plus the DCML import
   schemas (``DcmlStorageSchema`` etc.) and the ``Inversion`` enum.
 * Event scalars + paired Fields (Note, Measure, MeasureNumber, Id,
-  EventReference, Projection)
+  EventReference, and the ``Event`` base of Projection and Box)
 * MIDI event scalars + paired Fields (``MidiEvent`` base +
   ``ScoreMidiEvent`` subclass).
 """
 
 from __future__ import annotations
 
-import math
 import re
+from abc import abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from types import UnionType
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Literal,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+)
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -41,6 +52,7 @@ from pydantic import (
     model_validator,
 )
 
+from .enums import NumberType, TimeUnit
 from .fields import (
     ScalarVocabulary,
     SemanticField,
@@ -56,11 +68,17 @@ from .protocols import TwelveTETPitchMixin
 from .time import (
     Coordinate,
     Duration,
+    SharedAxisField,
+    TimeScalar,
     cell_coordinate,
+    combine_number_columns,
+    compare_number_column,
     coordinate_cell_projector,
     coordinate_cells,
+    format_number,
     number_from_json,
     number_to_json,
+    struct_to_coordinate,
     struct_to_rational,
 )
 
@@ -352,104 +370,988 @@ def _parse_octave_from_sp(sp: str | None, step: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# BoundingBox + BoundingBoxField
+# Point, Shape, BoundingBox, Quadrilateral + paired Fields
 # ---------------------------------------------------------------------------
 
+#: A number as a source writes it in text: an integer or a decimal.
+_DECIMAL_RE = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
+_INTEGER_RE = re.compile(r"[+-]?\d+")
 
-class BoundingBox(ScalarVocabulary, BaseModel):
-    """Axis-aligned rectangular extent in image coordinates.
 
-    ``ul`` and ``lr`` are the upper-left and lower-right corners. Image
-    coordinates are assumed: x grows rightward and y grows downward.
-    Storage struct (derived): ``{ul: {x: float64, y: float64}, lr: {x:
-    float64, y: float64}}``.
+def _unwrapped(annotation: Any) -> Any:
+    """*annotation* without an ``Optional`` wrapper."""
+    if get_origin(annotation) in (Union, UnionType):
+        arms = [arm for arm in get_args(annotation) if arm is not type(None)]
+        if len(arms) == 1:
+            return arms[0]
+    return annotation
+
+
+class _OnOneAxis:
+    """A scalar whose numbers all lie on one axis, read from a memory row.
+
+    The scalar's field stores each number as the number struct alone and
+    the axis once, in its metadata (:class:`~timetoalign.core.time.SharedAxisField`);
+    :meth:`from_row` puts the axis back.
     """
 
-    model_config = ConfigDict(frozen=True)
+    @classmethod
+    def from_row(
+        cls,
+        row: dict[str, Any] | None,
+        *,
+        unit: TimeUnit | str,
+        number_type: NumberType | str | None,
+    ) -> Any:
+        """Construct from a memory row whose numbers lie on one axis.
 
-    class Point(BaseModel):
-        """A two-dimensional point in image coordinates."""
+        Each ``Coordinate`` or ``Duration`` property is read from its number
+        struct in *number_type*, each nested scalar of one axis from its own
+        struct, every other property as it stands. Keys the scalar does not
+        have (an event table's ``event_type``) are not read.
 
-        model_config = ConfigDict(frozen=True)
+        Args:
+            row: The row, or ``None`` for a null cell.
+            unit: The unit of every number.
+            number_type: The number type every number is written in.
 
-        x: float
-        y: float
+        Returns:
+            The scalar, or ``None`` for a null cell.
+        """
+        if row is None:
+            return None
+        axis = TimeUnit(unit)
+        written = axis.resolve_number_type(number_type)
+        values: dict[str, Any] = {}
+        for name, info in cls.model_fields.items():  # type: ignore[attr-defined]
+            if name not in row:
+                continue
+            values[name] = _axis_value(
+                _unwrapped(info.annotation), row[name], axis, written
+            )
+        return cls(**values)
 
-    ul: Point
-    lr: Point
+
+def _axis_value(kind: Any, cell: Any, unit: TimeUnit, number_type: NumberType) -> Any:
+    """The property *kind* of one memory cell on the axis given."""
+    if cell is None:
+        return None
+    if kind is Coordinate or kind is Duration:
+        return kind(
+            struct_to_coordinate(cell, number_type), unit, number_type=number_type
+        )
+    if isinstance(kind, type) and issubclass(kind, _OnOneAxis):
+        return kind.from_row(cell, unit=unit, number_type=number_type)
+    return cell
+
+
+def _on_axis(
+    value: Any,
+    kind: type[TimeScalar],
+    *,
+    what: str,
+    unit: TimeUnit | str | None,
+    number_type: NumberType | str | None,
+) -> TimeScalar:
+    """*value* as a ``Coordinate`` or ``Duration`` (*kind*) of a shape.
+
+    A raw number takes *unit*; a scalar keeps its own, which *unit*, if
+    given, must name. *number_type*, if given, decides how the number is
+    written; the construction protocol of the scalar applies either way.
+
+    Raises:
+        TypeError: If a raw number comes without a unit.
+        ValueError: If a scalar is in another unit than *unit*.
+    """
+    if isinstance(value, TimeScalar):
+        if unit is not None and value.unit != TimeUnit(unit):
+            raise ValueError(
+                f"A shape's {what} is in {value.unit}, not in {TimeUnit(unit)}: "
+                "a shape is never converted."
+            )
+        written = value.number_type if number_type is None else number_type
+        return kind(value.value, value.unit, number_type=written)
+    if unit is None:
+        raise TypeError(
+            f"A shape's {what} is the bare number {value!r}, which names no unit: "
+            "pass unit=."
+        )
+    return kind(value, unit, number_type=number_type)
+
+
+def _read_number(token: str, number_type: NumberType) -> int | float | Fraction:
+    """A number a source writes in text, read exactly.
+
+    An integer is an ``int``; a decimal is a ``float`` on a float axis and its
+    exact ratio otherwise, so the scalar's construction protocol, not this
+    reader, decides whether the axis can hold it.
+
+    Raises:
+        ValueError: If *token* is no number.
+    """
+    token = token.strip()
+    if _INTEGER_RE.fullmatch(token):
+        return int(token)
+    if not _DECIMAL_RE.fullmatch(token):
+        raise ValueError(f"{token!r} is no number")
+    return float(token) if number_type is NumberType.float else Fraction(token)
+
+
+def _whole_text(value: int | float | Fraction, refusal: str) -> str:
+    """*value* written as a whole number, or *refusal* raised with it."""
+    if isinstance(value, Fraction):
+        if value.denominator == 1:
+            return str(value.numerator)
+    elif isinstance(value, int) or value.is_integer():
+        return str(int(value))
+    raise ValueError(refusal.format(format_number(value)))
+
+
+def _decimal_text(value: int | float | Fraction) -> str:
+    """*value* written as a decimal number, exactly.
+
+    Raises:
+        ValueError: If *value* is a ratio without a finite decimal expansion.
+    """
+    if not isinstance(value, Fraction):
+        return format_number(value)
+    if value.denominator == 1:
+        return str(value.numerator)
+    rest, twos, fives = value.denominator, 0, 0
+    while rest % 2 == 0:
+        rest, twos = rest // 2, twos + 1
+    while rest % 5 == 0:
+        rest, fives = rest // 5, fives + 1
+    if rest != 1:
+        raise ValueError(
+            f"SVG points are decimal numbers; {format_number(value)} has no finite "
+            "decimal expansion."
+        )
+    places = max(twos, fives)
+    digits = str(abs(value.numerator * 10**places // value.denominator)).rjust(
+        places + 1, "0"
+    )
+    sign = "-" if value < 0 else ""
+    return f"{sign}{digits[:-places]}.{digits[-places:]}".rstrip("0")
+
+
+def _axis_text(scalar: TimeScalar) -> str:
+    """How a message names the axis of *scalar*: unit and number type."""
+    return f"{scalar.unit} as {scalar.number_type}"
+
+
+class Point(_OnOneAxis, ScalarVocabulary, BaseModel):
+    """A point of an image: its ``x`` and ``y``, on one axis.
+
+    Image space: the origin is the image's top-left corner, x runs right
+    and y down. Both coordinates have one unit and one number type.
+
+    Storage struct (derived): ``{x, y}``, each the number struct; the unit
+    and number type are the field's (:class:`PointField`).
+
+    Examples:
+        >>> Point(x=Coordinate(1221, "pixels"), y=Coordinate(1589, "pixels"))
+        Point(x=Coordinate(1221, pixels), y=Coordinate(1589, pixels))
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
+    x: Coordinate
+    y: Coordinate
 
     @model_validator(mode="after")
-    def _validate_corners(self) -> BoundingBox:
-        """Require lower-right coordinates to be at or beyond upper-left."""
-        coordinates = (self.ul.x, self.ul.y, self.lr.x, self.lr.y)
-        if not all(math.isfinite(coordinate) for coordinate in coordinates):
-            raise ValueError("BoundingBox coordinates must be finite")
-        if self.lr.x < self.ul.x:
-            raise ValueError("BoundingBox.lr.x must be greater than or equal to ul.x")
-        if self.lr.y < self.ul.y:
-            raise ValueError("BoundingBox.lr.y must be greater than or equal to ul.y")
+    def _on_one_axis(self) -> Point:
+        if (self.x.unit, self.x.number_type) != (self.y.unit, self.y.number_type):
+            raise ValueError(
+                f"A Point lies on one axis: its y is in {_axis_text(self.y)}, its x "
+                f"in {_axis_text(self.x)}."
+            )
         return self
+
+    @classmethod
+    def of(
+        cls,
+        point: Any,
+        *,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+    ) -> Point:
+        """A point given as a ``Point`` or as a pair ``(x, y)``.
+
+        Each member of a pair is a raw number (in *unit*), a ``Coordinate``
+        or an ``IdCoordinate``.
+
+        Raises:
+            ValueError: If a pair does not have two members.
+        """
+        if isinstance(point, Point):
+            if unit is None and number_type is None:
+                return point
+            point = (point.x, point.y)
+        x, y = point
+        return cls(
+            x=_on_axis(x, Coordinate, what="x", unit=unit, number_type=number_type),
+            y=_on_axis(y, Coordinate, what="y", unit=unit, number_type=number_type),
+        )
+
+    def _text(self) -> str:
+        """The point as a message writes it: ``(1221, 1589)``."""
+        return f"({self.x._format_value()}, {self.y._format_value()})"
+
+    def __repr__(self) -> str:
+        return f"Point(x={self.x!r}, y={self.y!r})"
+
+
+class PointField(SharedAxisField[Point]):
+    """Paired Field for :class:`Point`: ``{x, y}`` on one declared axis."""
+
+
+class Shape(_OnOneAxis, ScalarVocabulary, BaseModel):
+    """An area of an image, on one axis: a :class:`BoundingBox` or a
+    :class:`Quadrilateral`.
+
+    The shape is in image space (origin the top-left corner, x right, y
+    down), every member in one unit and one number type. Everything a shape
+    answers is derived here from :attr:`corners`, its four corners in the
+    canonical order ``top_left, top_right, bottom_right, bottom_left`` (the
+    order SVG and IIIF selectors draw a polygon in).
+
+    A shape is written as a format writes it (:meth:`as_media_fragment`,
+    :meth:`as_svg_points`, :meth:`as_mei_zone`) and read back from it; a
+    value a format cannot write is refused, never rounded.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
+    #: The keys of the shape's dict form, in order.
+    _DICT_KEYS: ClassVar[tuple[str, ...]] = ()
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> Shape:
+        members = self._members()
+        first_name, first = members[0]
+        for name, scalar in members[1:]:
+            if (scalar.unit, scalar.number_type) != (first.unit, first.number_type):
+                raise ValueError(
+                    f"A {type(self).__name__} lies on one axis: its {name} is in "
+                    f"{_axis_text(scalar)}, its {first_name} in {_axis_text(first)}."
+                )
+        self._check()
+        return self
+
+    # -- what each shape supplies ------------------------------------------
+
+    @property
+    @abstractmethod
+    def corners(self) -> tuple[Point, Point, Point, Point]:
+        """The four corners: top-left, top-right, bottom-right, bottom-left."""
+
+    @abstractmethod
+    def _members(self) -> list[tuple[str, TimeScalar]]:
+        """Every number of the shape, named as a message names it."""
+
+    def _check(self) -> None:  # noqa: B027 - a hook, empty by default
+        """Refuse a shape its members do not describe."""
+
+    @abstractmethod
+    def _dict_values(self) -> dict[str, Any]:
+        """The dict form: each number through ``number_to_json``."""
+
+    @classmethod
+    @abstractmethod
+    def _from_dict_values(
+        cls, data: dict[str, Any], unit: TimeUnit, number_type: NumberType
+    ) -> Shape:
+        """The shape of a dict form holding this class's keys."""
+
+    # -- derived ------------------------------------------------------------
+
+    @property
+    def unit(self) -> TimeUnit:
+        """The unit of every member."""
+        return self._members()[0][1].unit
+
+    @property
+    def number_type(self) -> NumberType:
+        """The number type every member is written in."""
+        return self._members()[0][1].number_type
+
+    @property
+    def x_min(self) -> Coordinate:
+        """The smallest x of the corners."""
+        return min(corner.x for corner in self.corners)
+
+    @property
+    def x_max(self) -> Coordinate:
+        """The largest x of the corners."""
+        return max(corner.x for corner in self.corners)
+
+    @property
+    def y_min(self) -> Coordinate:
+        """The smallest y of the corners."""
+        return min(corner.y for corner in self.corners)
+
+    @property
+    def y_max(self) -> Coordinate:
+        """The largest y of the corners."""
+        return max(corner.y for corner in self.corners)
+
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """The smallest box holding the shape."""
+        return BoundingBox(
+            x=self.x_min,
+            y=self.y_min,
+            width=self.x_max - self.x_min,
+            height=self.y_max - self.y_min,
+        )
+
+    # -- the dict form ------------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        """The shape as a dict of bare numbers, in its axis's number type.
+
+        Each number is written by
+        :func:`~timetoalign.core.time.number_to_json`: an ``int`` as an
+        integer, a ``float`` as a number, a ``Fraction`` as a pair. The
+        keys decide the class: ``x, y, width, height`` for a
+        :class:`BoundingBox`, the four corners, each ``{x, y}``, for a
+        :class:`Quadrilateral`.
+
+        Examples:
+            >>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").to_dict()
+            {'x': 385, 'y': 46, 'width': 139, 'height': 20}
+        """
+        return self._dict_values()
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        unit: TimeUnit | str,
+        number_type: NumberType | str | None,
+    ) -> Shape:
+        """The shape of a dict form (:meth:`to_dict`), on the axis given.
+
+        Args:
+            data: The dict; its keys decide the class.
+            unit: The unit of every number.
+            number_type: The number type the numbers are read in
+                (:func:`~timetoalign.core.time.number_from_json`); the
+                unit's default when ``None``.
+
+        Returns:
+            A :class:`BoundingBox` or a :class:`Quadrilateral`.
+
+        Raises:
+            ValueError: If the keys are neither class's, or name a class
+                that is not *cls* or one of its subclasses.
+        """
+        keys = set(data)
+        for kind in (BoundingBox, Quadrilateral):
+            if keys == set(kind._DICT_KEYS):
+                break
+        else:
+            raise ValueError(
+                f"A shape's dict holds {sorted(keys)}: a BoundingBox's keys are "
+                "x, y, width and height, a Quadrilateral's top_left, top_right, "
+                "bottom_right and bottom_left."
+            )
+        if not issubclass(kind, cls):
+            raise ValueError(f"The dict holds a {kind.__name__}, not a {cls.__name__}.")
+        axis = TimeUnit(unit)
+        return kind._from_dict_values(data, axis, axis.resolve_number_type(number_type))
+
+    # -- the formats --------------------------------------------------------
+
+    def as_media_fragment(self) -> str:
+        """The shape's bounding box as a Media Fragments ``xywh`` selector.
+
+        IIIF's image regions and selectors use the same form.
+
+        Raises:
+            ValueError: If a member of the bounding box is not a whole number.
+
+        Examples:
+            >>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").as_media_fragment()
+            'xywh=385,46,139,20'
+        """
+        box = self.bounding_box
+        refusal = "A media fragment writes whole numbers; this shape's {} is {{}}."
+        return "xywh=" + ",".join(
+            _whole_text(scalar.value, refusal.format(name))
+            for name, scalar in box._members()
+        )
+
+    def as_svg_points(self) -> str:
+        """The four corners in the syntax of SVG's ``points``.
+
+        ``x,y`` pairs in the canonical order, separated by spaces.
+
+        Raises:
+            ValueError: If a value is a ratio with no finite decimal
+                expansion.
+
+        Examples:
+            >>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").as_svg_points()
+            '385,46 524,46 524,66 385,66'
+        """
+        return " ".join(
+            f"{_decimal_text(corner.x.value)},{_decimal_text(corner.y.value)}"
+            for corner in self.corners
+        )
+
+    def as_mei_zone(self) -> dict[str, str]:
+        """The attributes of an MEI ``zone`` holding the shape.
+
+        ``ulx``, ``uly``, ``lrx``, ``lry`` are the bounding box's corners
+        (points, not pixel indices: ``lrx`` is ``x + width``); a
+        :class:`Quadrilateral` adds its corners as ``points``.
+
+        Raises:
+            ValueError: If a corner of the bounding box is not a whole number,
+                or a point has no finite decimal expansion.
+
+        Examples:
+            >>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").as_mei_zone()
+            {'ulx': '385', 'uly': '46', 'lrx': '524', 'lry': '66'}
+        """
+        refusal = "MEI zone coordinates are whole numbers; this shape's {} is {{}}."
+        corners = {
+            "ulx": self.x_min,
+            "uly": self.y_min,
+            "lrx": self.x_max,
+            "lry": self.y_max,
+        }
+        zone = {
+            name: _whole_text(scalar.value, refusal.format(name))
+            for name, scalar in corners.items()
+        }
+        if not isinstance(self, BoundingBox):
+            zone["points"] = self.as_svg_points()
+        return zone
+
+    @classmethod
+    def from_mei_zone(
+        cls,
+        attributes: dict[str, str],
+        *,
+        unit: TimeUnit | str,
+        number_type: NumberType | str | None = None,
+    ) -> Shape:
+        """The shape an MEI ``zone`` states.
+
+        With ``points``, a :class:`Quadrilateral` of those points (in the
+        canonical order), whose bounding box must be the one ``ulx`` ...
+        ``lry`` state where they are given; without, the
+        :class:`BoundingBox` from ``ulx``, ``uly``, ``lrx``, ``lry``. Other
+        attributes are not read.
+
+        Args:
+            attributes: The zone's attributes, as written.
+            unit: The unit of the coordinates.
+            number_type: Their number type; the unit's default when ``None``.
+
+        Raises:
+            ValueError: If the zone states no complete box and no points, or
+                its points and its box name two areas.
+        """
+        axis = TimeUnit(unit)
+        written = axis.resolve_number_type(number_type)
+        names = ("ulx", "uly", "lrx", "lry")
+        given = [attributes.get(name) for name in names]
+        box = None
+        if None not in given:
+            box = BoundingBox.from_corners(
+                *(_read_number(value, written) for value in given),
+                unit=axis,
+                number_type=written,
+            )
+        points = attributes.get("points")
+        if points is None:
+            if box is None:
+                missing = [name for name, value in zip(names, given) if value is None]
+                raise ValueError(
+                    f"An MEI zone without points states ulx, uly, lrx and lry; this "
+                    f"one lacks {', '.join(missing)}."
+                )
+            return box
+        quadrilateral = Quadrilateral.from_svg_points(
+            points, unit=axis, number_type=written
+        )
+        if box is not None and box != quadrilateral.bounding_box:
+            raise ValueError(
+                f"The MEI zone's points {points!r} span "
+                f"{quadrilateral.bounding_box.as_mei_zone()}, its ulx, uly, lrx and "
+                f"lry {box.as_mei_zone()}: a zone states one area."
+            )
+        return quadrilateral
+
+
+ShapeT = TypeVar("ShapeT", bound=Shape)
+
+
+class ShapeField(SharedAxisField[ShapeT]):
+    """The field of one kind of shape: every number on one declared axis.
+
+    Each number is stored as the number struct alone, both sides filled; the
+    unit and the number type are the field's metadata, as an
+    :class:`~timetoalign.core.time.IntervalField` holds them.
+    """
+
+    @classmethod
+    def from_shapes(
+        cls,
+        shapes: Sequence[ShapeT | None],
+        *,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+        name: str | None = None,
+    ) -> ShapeField[ShapeT]:
+        """Build the field of *shapes*, in row order.
+
+        Args:
+            shapes: Shapes of the field's class (``None`` for a null row).
+            unit: The shapes' unit; required for an empty or all-null input.
+            number_type: Their number type; required likewise.
+            name: The field's name: ``bounding_box`` or ``quadrilateral`` when
+                omitted.
+
+        Returns:
+            The field.
+
+        Raises:
+            TypeError: If a shape is not of the field's class.
+            ValueError: If the shapes lie on two axes, or an explicit axis
+                contradicts them.
+        """
+        items = list(shapes)
+        unit, number_type = cls._shared_axis(items, unit, number_type)
+        array = build_struct_array(cls.scalar_cls, items)
+        return cls._of_struct_array(
+            array, name if name is not None else cls._default_name(), unit, number_type
+        )
+
+    def _x_columns(self) -> tuple[list[pa.Array], list[pa.Array]]:
+        """The columns whose least is ``x_min`` and those whose greatest is
+        ``x_max``."""
+        raise NotImplementedError(type(self).__name__)
+
+    def _extreme(self, columns: list[pa.Array], comparison: str) -> pa.StructArray:
+        """Per row the cell of *columns* that *comparison* keeps, compared exactly."""
+        result = columns[0]
+        for column in columns[1:]:
+            keep = compare_number_column(result, column, comparison, self.number_type)
+            result = pc.if_else(keep, result, column)
+        return result
+
+    def x_min(self) -> pa.StructArray:
+        """Per row the shape's smallest x, a number struct (null on a null row)."""
+        return self._extreme(self._x_columns()[0], "less_equal")
+
+    def x_max(self) -> pa.StructArray:
+        """Per row the shape's largest x, a number struct (null on a null row)."""
+        return self._extreme(self._x_columns()[1], "greater_equal")
+
+
+class BoundingBox(Shape):
+    """An axis-aligned box of an image: ``x``, ``y``, ``width``, ``height``.
+
+    The members of the Media Fragments and IIIF ``xywh`` region: the
+    top-left corner and the extent, x right and y down. ``width`` and
+    ``height`` are never negative (zero is kept). All four are on one axis.
+
+    Storage struct (derived): ``{x, y, width, height}``, each the number
+    struct; the axis is the field's (:class:`BoundingBoxField`).
+
+    Examples:
+        >>> box = BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels")
+        >>> box.x_max
+        Coordinate(524, pixels)
+    """
+
+    _DICT_KEYS: ClassVar[tuple[str, ...]] = ("x", "y", "width", "height")
+
+    x: Coordinate
+    y: Coordinate
+    width: Duration
+    height: Duration
+
+    def _members(self) -> list[tuple[str, TimeScalar]]:
+        return [
+            ("x", self.x),
+            ("y", self.y),
+            ("width", self.width),
+            ("height", self.height),
+        ]
+
+    def _check(self) -> None:
+        for name, extent in (("width", self.width), ("height", self.height)):
+            if extent.is_negative():
+                raise ValueError(
+                    f"A BoundingBox's {name} is {extent._format_value()}; its width "
+                    "and height are never negative."
+                )
+
+    @property
+    def corners(self) -> tuple[Point, Point, Point, Point]:
+        """The four corners: top-left, top-right, bottom-right, bottom-left."""
+        right, bottom = self.x + self.width, self.y + self.height
+        return (
+            Point(x=self.x, y=self.y),
+            Point(x=right, y=self.y),
+            Point(x=right, y=bottom),
+            Point(x=self.x, y=bottom),
+        )
+
+    @property
+    def x_min(self) -> Coordinate:
+        """``x``."""
+        return self.x
+
+    @property
+    def x_max(self) -> Coordinate:
+        """``x + width``."""
+        return self.x + self.width
+
+    @property
+    def y_min(self) -> Coordinate:
+        """``y``."""
+        return self.y
+
+    @property
+    def y_max(self) -> Coordinate:
+        """``y + height``."""
+        return self.y + self.height
+
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """The box itself."""
+        return self
+
+    def _dict_values(self) -> dict[str, Any]:
+        return {name: number_to_json(scalar.value) for name, scalar in self._members()}
+
+    @classmethod
+    def _from_dict_values(
+        cls, data: dict[str, Any], unit: TimeUnit, number_type: NumberType
+    ) -> BoundingBox:
+        return cls.from_xywh(
+            *(number_from_json(data[key], number_type) for key in cls._DICT_KEYS),
+            unit=unit,
+            number_type=number_type,
+        )
+
+    @classmethod
+    def from_xywh(
+        cls,
+        x: Any,
+        y: Any,
+        width: Any,
+        height: Any,
+        *,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+    ) -> BoundingBox:
+        """The box at ``x``, ``y`` of extent ``width`` by ``height``.
+
+        Args:
+            x: The left edge: a raw number, a ``Coordinate`` or an
+                ``IdCoordinate``.
+            y: The top edge, likewise.
+            width: The extent along x: a raw number or a ``Duration``.
+            height: The extent along y, likewise.
+            unit: The unit of the raw numbers; a scalar carries its own.
+            number_type: How the numbers are written; the construction
+                protocol of the scalars decides when omitted.
+
+        Raises:
+            TypeError: If a raw number comes without a unit.
+            ValueError: If the members lie on two axes or an extent is
+                negative.
+        """
+        axis = {"unit": unit, "number_type": number_type}
+        return cls(
+            x=_on_axis(x, Coordinate, what="x", **axis),
+            y=_on_axis(y, Coordinate, what="y", **axis),
+            width=_on_axis(width, Duration, what="width", **axis),
+            height=_on_axis(height, Duration, what="height", **axis),
+        )
 
     @classmethod
     def from_corners(
         cls,
-        ulx: int | float,
-        uly: int | float,
-        lrx: int | float,
-        lry: int | float,
+        ulx: Any,
+        uly: Any,
+        lrx: Any,
+        lry: Any,
+        *,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
     ) -> BoundingBox:
-        """Construct a bounding box from upper-left and lower-right corners."""
-        return cls(ul={"x": ulx, "y": uly}, lr={"x": lrx, "y": lry})
+        """The box from its upper-left and lower-right corners.
+
+        The corners are points (as MEI's ``ulx`` ... ``lry`` and ATON's
+        origin plus extent state them): ``width`` is ``lrx - ulx``.
+
+        Raises:
+            TypeError: If a raw number comes without a unit.
+            ValueError: If the members lie on two axes or a lower-right
+                coordinate lies before its upper-left one.
+        """
+        axis = {"unit": unit, "number_type": number_type}
+        left = _on_axis(ulx, Coordinate, what="ulx", **axis)
+        top = _on_axis(uly, Coordinate, what="uly", **axis)
+        right = _on_axis(lrx, Coordinate, what="lrx", **axis)
+        bottom = _on_axis(lry, Coordinate, what="lry", **axis)
+        return cls(x=left, y=top, width=right - left, height=bottom - top)
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> BoundingBox | None:
-        """Materialize a bounding box scalar from an Arrow struct row."""
-        if row.get("ul") is None or row.get("lr") is None:
-            return None
-        return cls.model_validate(row)
+    def from_media_fragment(
+        cls,
+        text: str,
+        *,
+        unit: TimeUnit | str,
+        number_type: NumberType | str | None = None,
+    ) -> BoundingBox:
+        """The box a Media Fragments ``xywh`` selector names.
+
+        ``xywh=x,y,w,h`` and ``xywh=pixel:x,y,w,h`` are read (a leading
+        ``#`` is allowed); ``xywh=percent:`` is refused, since it needs the
+        image's size.
+
+        Raises:
+            ValueError: If *text* is no ``xywh`` selector or is a percent one.
+        """
+        match = re.fullmatch(
+            r"#?xywh=(?:(pixel|percent):)?([^,]*),([^,]*),([^,]*),([^,]*)",
+            text.strip(),
+        )
+        if match is None:
+            raise ValueError(f"{text!r} is no xywh media fragment: write xywh=x,y,w,h.")
+        if match.group(1) == "percent":
+            raise ValueError(
+                f"{text!r} is a percent media fragment, which needs the image's size: "
+                "give the box in pixels (xywh=x,y,w,h)."
+            )
+        axis = TimeUnit(unit)
+        written = axis.resolve_number_type(number_type)
+        return cls.from_xywh(
+            *(_read_number(token, written) for token in match.groups()[1:]),
+            unit=axis,
+            number_type=written,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"BoundingBox(x={self.x!r}, y={self.y!r}, width={self.width!r}, "
+            f"height={self.height!r})"
+        )
 
 
-class BoundingBoxField(SemanticField[BoundingBox]):
-    """Columnar wrapper for ``BoundingBox`` (paired Field)."""
+class BoundingBoxField(ShapeField[BoundingBox]):
+    """Paired Field for :class:`BoundingBox`: ``{x, y, width, height}``."""
 
-    @classmethod
-    def from_field(cls, source: Any, **kw: Any) -> BoundingBoxField:
-        """Construct from standard field sources or bounding-box scalars."""
-        if isinstance(source, list):
-            if any(
-                value is not None and not isinstance(value, BoundingBox)
-                for value in source
-            ):
-                raise TypeError(
-                    "BoundingBoxField list ingestion requires BoundingBox values"
+    def _x_columns(self) -> tuple[list[pa.Array], list[pa.Array]]:
+        array = self.to_pyarrow()
+        left = pc.struct_field(array, "x")
+        right = combine_number_columns(
+            left, pc.struct_field(array, "width"), "add", self.number_type
+        )
+        return [left], [right]
+
+
+class Quadrilateral(Shape):
+    """A four-cornered area of an image, its corners in the canonical order.
+
+    ``top_left``, ``top_right``, ``bottom_right``, ``bottom_left``: the
+    cyclic order SVG ``polygon`` and IIIF ``SvgSelector`` draw a box in
+    (:data:`CORNER_ORDER`). Its sides may be skewed (a measure of a scanned
+    page). The corners run clockwise around a convex outline (with y down):
+    an outline whose sides cross is refused, so a polygon drawn from the
+    corners is the area they bound. All eight numbers are on one axis.
+
+    Storage struct (derived): ``{top_left, top_right, bottom_right,
+    bottom_left}``, each ``{x, y}`` of number structs; the axis is the
+    field's (:class:`QuadrilateralField`).
+
+    Examples:
+        >>> measure = Quadrilateral.from_points(
+        ...     [(1221, 1589), (2151, 1589), (1221, 2266), (2161, 2266)],
+        ...     order=("top_left", "top_right", "bottom_left", "bottom_right"),
+        ...     unit="pixels",
+        ... )
+        >>> measure.as_svg_points()
+        '1221,1589 2151,1589 2161,2266 1221,2266'
+    """
+
+    CORNER_ORDER: ClassVar[tuple[str, str, str, str]] = (
+        "top_left",
+        "top_right",
+        "bottom_right",
+        "bottom_left",
+    )
+    _DICT_KEYS: ClassVar[tuple[str, ...]] = CORNER_ORDER
+
+    top_left: Point
+    top_right: Point
+    bottom_right: Point
+    bottom_left: Point
+
+    @property
+    def corners(self) -> tuple[Point, Point, Point, Point]:
+        """The four corners: top-left, top-right, bottom-right, bottom-left."""
+        return (self.top_left, self.top_right, self.bottom_right, self.bottom_left)
+
+    def _members(self) -> list[tuple[str, TimeScalar]]:
+        return [
+            (f"{name}.{member}", getattr(getattr(self, name), member))
+            for name in self.CORNER_ORDER
+            for member in ("x", "y")
+        ]
+
+    def _check(self) -> None:
+        corners = self.corners
+        for index, name in enumerate(self.CORNER_ORDER):
+            before, here, after = (
+                corners[index - 1],
+                corners[index],
+                corners[(index + 1) % 4],
+            )
+            turn = (here.x.value - before.x.value) * (after.y.value - here.y.value) - (
+                here.y.value - before.y.value
+            ) * (after.x.value - here.x.value)
+            if turn < 0:
+                listed = ", ".join(
+                    f"{corner_name} {corner._text()}"
+                    for corner_name, corner in zip(self.CORNER_ORDER, corners)
                 )
-            array = build_struct_array(BoundingBox, source)
-            field = pa.field(kw.pop("name", "bounding_box"), cls.pa_schema)
-            return super().from_field((array, field), **kw)
-        return super().from_field(source, **kw)
+                raise ValueError(
+                    f"The corners {listed} do not run clockwise around a convex "
+                    f"outline: the turn at {name} is counter-clockwise."
+                )
+
+    def _dict_values(self) -> dict[str, Any]:
+        return {
+            name: {
+                "x": number_to_json(corner.x.value),
+                "y": number_to_json(corner.y.value),
+            }
+            for name, corner in zip(self.CORNER_ORDER, self.corners)
+        }
 
     @classmethod
-    def matches_pa_field(cls, pa_field: pa.Field) -> bool:
-        """Accept canonical boxes and raw integer/float corner structs."""
-        if super().matches_pa_field(pa_field):
-            return True
-        if not pa.types.is_struct(pa_field.type):
-            return False
-        corners = {field.name: field.type for field in pa_field.type}
-        if set(corners) != {"ul", "lr"}:
-            return False
-        for corner in corners.values():
-            if not pa.types.is_struct(corner):
-                return False
-            coordinates = {field.name: field.type for field in corner}
-            if set(coordinates) != {"x", "y"}:
-                return False
-            if not all(
-                pa.types.is_integer(coordinate) or pa.types.is_floating(coordinate)
-                for coordinate in coordinates.values()
-            ):
-                return False
-        return True
+    def _from_dict_values(
+        cls, data: dict[str, Any], unit: TimeUnit, number_type: NumberType
+    ) -> Quadrilateral:
+        points = []
+        for name in cls.CORNER_ORDER:
+            corner = data[name]
+            if set(corner) != {"x", "y"}:
+                raise ValueError(
+                    f"A Quadrilateral's {name} holds {sorted(corner)}: a corner "
+                    "holds x and y."
+                )
+            points.append(
+                (
+                    number_from_json(corner["x"], number_type),
+                    number_from_json(corner["y"], number_type),
+                )
+            )
+        return cls.from_points(points, unit=unit, number_type=number_type)
+
+    @classmethod
+    def from_points(
+        cls,
+        points: Sequence[Any],
+        *,
+        order: Sequence[str] = CORNER_ORDER,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+    ) -> Quadrilateral:
+        """The quadrilateral of four points, each given the role *order* names.
+
+        Args:
+            points: Four points, each a :class:`Point` or a pair ``(x, y)`` of
+                raw numbers or ``Coordinate``s.
+            order: The corner each point is, in the order given: a
+                permutation of :data:`CORNER_ORDER` (DMOS writes a measure
+                ``top_left, top_right, bottom_left, bottom_right``).
+            unit: The unit of raw numbers; a scalar carries its own.
+            number_type: How the numbers are written.
+
+        Raises:
+            ValueError: If *order* is not the four corner names, the number
+                of points is not four, or the corners are not clockwise
+                around a convex outline.
+        """
+        roles = tuple(order)
+        if sorted(roles) != sorted(cls.CORNER_ORDER):
+            raise ValueError(
+                f"The order {list(roles)} names each corner once: top_left, "
+                "top_right, bottom_right and bottom_left."
+            )
+        given = list(points)
+        if len(given) != 4:
+            raise ValueError(f"A Quadrilateral has four corners; {len(given)} given.")
+        return cls(
+            **{
+                role: Point.of(point, unit=unit, number_type=number_type)
+                for role, point in zip(roles, given)
+            }
+        )
+
+    @classmethod
+    def from_svg_points(
+        cls,
+        text: str,
+        *,
+        unit: TimeUnit | str,
+        number_type: NumberType | str | None = None,
+    ) -> Quadrilateral:
+        """The quadrilateral of an SVG ``points`` list, in the canonical order.
+
+        Raises:
+            ValueError: If *text* does not hold four points, or the corners are
+                not clockwise around a convex outline.
+        """
+        axis = TimeUnit(unit)
+        written = axis.resolve_number_type(number_type)
+        tokens = [token for token in re.split(r"[\s,]+", text.strip()) if token]
+        if len(tokens) != 8:
+            raise ValueError(
+                f"The SVG points {text!r} hold {len(tokens)} numbers; a "
+                "Quadrilateral's hold eight, four x,y pairs."
+            )
+        numbers = [_read_number(token, written) for token in tokens]
+        return cls.from_points(
+            list(zip(numbers[0::2], numbers[1::2])), unit=axis, number_type=written
+        )
+
+    def __repr__(self) -> str:
+        return (
+            "Quadrilateral("
+            + ", ".join(
+                f"{name}={corner._text()}"
+                for name, corner in zip(self.CORNER_ORDER, self.corners)
+            )
+            + f", unit={self.unit})"
+        )
+
+
+class QuadrilateralField(ShapeField[Quadrilateral]):
+    """Paired Field for :class:`Quadrilateral`: four corners of ``{x, y}``."""
+
+    def _x_columns(self) -> tuple[list[pa.Array], list[pa.Array]]:
+        array = self.to_pyarrow()
+        if isinstance(array, pa.ChunkedArray):
+            array = array.combine_chunks()
+        columns = [
+            pc.struct_field(pc.struct_field(array, name), "x")
+            for name in Quadrilateral.CORNER_ORDER
+        ]
+        return columns, columns
 
 
 install_paired_field_registry()
@@ -3556,7 +4458,116 @@ class EventReferenceField(SemanticField[EventReference]):
     """
 
 
-class Projection(ScalarVocabulary, BaseModel):
+class Event(_OnOneAxis, ScalarVocabulary, BaseModel):
+    """An event of a timeline: its ID and its position on the timeline's axis.
+
+    The base of the event types that are scalars of their own
+    (:class:`Projection`, :class:`Box`). ``start`` and ``duration`` are on
+    one axis: the duration has the start's unit and number type. An instant
+    has no duration. An event made without an ID has ``id`` ``None`` until
+    the timeline it is added to mints one (:meth:`Timeline.add_events`).
+
+    Storage struct (derived): ``{id, start, duration}``, the positions as
+    number structs on the axis :class:`EventField` declares.
+
+    Examples:
+        >>> Event(start=Coordinate(3, "samples")).to_event_row()
+        {'event_type': 'Event', 'start': Coordinate(3, samples), 'duration': None}
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
+    id: str | None = None  # noqa: A003 - the event's ID, a column of its table
+    start: Coordinate
+    duration: Duration | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _valid_id(cls, value: str | None) -> str | None:
+        return None if value is None else validate_id(value)
+
+    @model_validator(mode="after")
+    def _duration_on_the_start_axis(self) -> Event:
+        if self.duration is not None:
+            self._refuse_off_the_start_axis("duration", self.duration)
+        return self
+
+    def _refuse_off_the_start_axis(self, what: str, held: Any) -> None:
+        """Refuse *held* (it has a ``unit`` and a ``number_type``) when it is
+        not on the start's axis.
+
+        Raises:
+            ValueError: Naming the event, *what* and both axes.
+        """
+        start = self.start
+        if held.unit != start.unit:
+            raise ValueError(
+                f"{self._name}: its {what} is in {held.unit}, its start in "
+                f"{start.unit}; both are on one axis."
+            )
+        if held.number_type is not start.number_type:
+            raise ValueError(
+                f"{self._name}: its {what} is written as {held.number_type}, its "
+                f"start as {start.number_type}; both are on one axis."
+            )
+
+    @property
+    def _name(self) -> str:
+        """The event as a message names it: ``Box 'm1'``, ``A Box``."""
+        kind = type(self).__name__
+        return f"A {kind}" if self.id is None else f"{kind} {quote_id(self.id)}"
+
+    @property
+    def semantic_type(self) -> str:
+        """The event type the event is stored under: its class name."""
+        return type(self).__name__
+
+    @property
+    def unit(self) -> TimeUnit:
+        """The unit of the event's axis."""
+        return self.start.unit
+
+    @property
+    def number_type(self) -> NumberType:
+        """The number type of the event's axis."""
+        return self.start.number_type
+
+    @property
+    def end(self) -> Coordinate | None:
+        """``start + duration``; ``None`` for an instant."""
+        if self.duration is None:
+            return None
+        return self.start + self.duration
+
+    def to_event_row(self) -> dict[str, Any]:
+        """The event as an event row of a timeline.
+
+        The row :meth:`Timeline.add_events` and
+        :meth:`~timetoalign.storage.EventData.from_dicts` take: ``event_type``
+        (:attr:`semantic_type`), ``id`` only where the event holds one, then
+        every further property in field order, the positions and shapes as
+        the scalars they are.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate, TimeUnit
+            >>> row = Projection(id="p", start=Coordinate(3, TimeUnit.samples)).to_event_row()
+            >>> row["event_type"], row["id"], row["start"], row["duration"]
+            ('Projection', 'p', Coordinate(3, samples), None)
+        """
+        row: dict[str, Any] = {"event_type": self.semantic_type}
+        if self.id is not None:
+            row["id"] = self.id
+        for name in type(self).model_fields:
+            if name != "id":
+                row[name] = getattr(self, name)
+        return row
+
+
+class EventField(SharedAxisField[Event]):
+    """Paired Field for :class:`Event`: ``{id, start, duration}`` on one axis."""
+
+
+class Projection(Event):
     """An event standing on a timeline for an event not held there.
 
     A Projection is an event type of its own (``event_type`` ``"Projection"``
@@ -3589,52 +4600,7 @@ class Projection(ScalarVocabulary, BaseModel):
         True
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
-
-    id: str | None = None  # noqa: A003 - the event's ID, a column of its table
-    start: Coordinate
-    duration: Duration | None = None
     projection_of: EventReference | None = None
-
-    @field_validator("id")
-    @classmethod
-    def _valid_id(cls, value: str | None) -> str | None:
-        return None if value is None else validate_id(value)
-
-    @model_validator(mode="after")
-    def _duration_on_the_start_axis(self) -> Projection:
-        duration = self.duration
-        if duration is None:
-            return self
-        if duration.unit != self.start.unit:
-            raise ValueError(
-                f"{self._name}: its duration is in {duration.unit}, "
-                f"its start in {self.start.unit}; both are on one axis"
-            )
-        if duration.number_type is not self.start.number_type:
-            raise ValueError(
-                f"{self._name}: its duration is written as "
-                f"{duration.number_type}, its start as {self.start.number_type}; "
-                "both are on one axis"
-            )
-        return self
-
-    @property
-    def _name(self) -> str:
-        """The Projection as a message names it."""
-        return "A Projection" if self.id is None else f"Projection {quote_id(self.id)}"
-
-    @property
-    def semantic_type(self) -> str:
-        """The event type a Projection is stored under: ``"Projection"``."""
-        return "Projection"
-
-    @property
-    def end(self) -> Coordinate | None:
-        """``start + duration``; ``None`` for an instant."""
-        if self.duration is None:
-            return None
-        return self.start + self.duration
 
     @classmethod
     def from_row(cls, row: dict[str, Any] | None) -> Projection | None:
@@ -3652,30 +4618,6 @@ class Projection(ScalarVocabulary, BaseModel):
             duration=cell_coordinate(row.get("duration"), Duration),
             projection_of=EventReference.from_row(row.get("projection_of")),
         )
-
-    def to_event_row(self) -> dict[str, Any]:
-        """The Projection as an event row of a timeline.
-
-        The row :meth:`Timeline.add_events` and
-        :meth:`~timetoalign.storage.EventData.from_dicts` take: ``event_type``
-        ``"Projection"``, the positions as the scalars they are, ``id`` only
-        where the Projection holds one.
-
-        Examples:
-            >>> from timetoalign.core import Coordinate, TimeUnit
-            >>> row = Projection(id="p", start=Coordinate(3, TimeUnit.samples)).to_event_row()
-            >>> row["event_type"], row["id"], row["start"], row["duration"]
-            ('Projection', 'p', Coordinate(3, samples), None)
-        """
-        row: dict[str, Any] = {"event_type": self.semantic_type}
-        if self.id is not None:
-            row["id"] = self.id
-        row.update(
-            start=self.start,
-            duration=self.duration,
-            projection_of=self.projection_of,
-        )
-        return row
 
     def __repr__(self) -> str:
         parts = [] if self.id is None else [f"id={self.id!r}"]
@@ -3736,6 +4678,140 @@ class ProjectionField(SemanticField[Projection]):
             name, array.type, metadata=blob_metadata(field_type=cls.field_type())
         )
         return cls.from_field((array, pa_field))
+
+
+class Box(Event):
+    """An area of an image as an interval event of a timeline along its x.
+
+    A Box holds exactly one shape, a :class:`BoundingBox` or a
+    :class:`Quadrilateral`, in the image's space, and the interval of the
+    shape's x extent on its timeline: ``start`` is the shape's ``x_min``
+    less the x at which the timeline stands in the image, ``duration`` the
+    shape's x extent (``x_max - x_min``). The shape is on the start's axis
+    (one unit, one number type).
+
+    Storage struct (derived): ``{id, start, duration, bounding_box,
+    quadrilateral}``, the shape not held null; every number on the axis
+    :class:`BoxField` declares. In a timeline's events, ``bounding_box`` and
+    ``quadrilateral`` are two columns.
+
+    Examples:
+        >>> box = BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels")
+        >>> rect = Box.from_shape(box, origin=7, id="rect_h2")
+        >>> rect.start, rect.duration
+        (Coordinate(378, pixels), Duration(139, pixels))
+    """
+
+    duration: Duration
+    bounding_box: BoundingBox | None = None
+    quadrilateral: Quadrilateral | None = None
+
+    @model_validator(mode="after")
+    def _one_shape_spanning_the_duration(self) -> Box:
+        if (self.bounding_box is None) is (self.quadrilateral is None):
+            raise ValueError(
+                "A Box holds exactly one shape: give bounding_box or quadrilateral."
+            )
+        shape = self.shape
+        self._refuse_off_the_start_axis("shape", shape)
+        x_min, x_max = shape.x_min, shape.x_max
+        if (x_max - x_min).value != self.duration.value:
+            raise ValueError(
+                f"{self._name}: its duration is {self.duration._format_value()} and "
+                f"its shape spans {(x_max - x_min)._format_value()} in x "
+                f"({x_min._format_value()} to {x_max._format_value()}); a Box's "
+                "duration is its shape's x extent."
+            )
+        return self
+
+    @property
+    def shape(self) -> Shape:
+        """The shape the Box holds."""
+        return (
+            self.bounding_box if self.bounding_box is not None else self.quadrilateral
+        )
+
+    @classmethod
+    def from_shape(
+        cls,
+        shape: Shape,
+        *,
+        origin: Coordinate | int | float | Fraction = 0,
+        id: str | None = None,  # noqa: A002 - the event's ID
+    ) -> Box:
+        """The Box of *shape* on a timeline standing at x *origin* of the image.
+
+        Args:
+            shape: A :class:`BoundingBox` or a :class:`Quadrilateral`.
+            origin: The image's x at which the timeline starts (a raw number in
+                the shape's unit, or a ``Coordinate``); 0 for a timeline
+                spanning its image from the left edge.
+            id: The Box's ID; minted by the timeline when ``None``.
+
+        Returns:
+            The Box: ``start`` = ``shape.x_min - origin``, ``duration`` =
+            ``shape.x_max - shape.x_min``.
+
+        Raises:
+            ValueError: If *origin* is in another unit than the shape.
+        """
+        if isinstance(origin, TimeScalar) and origin.unit != shape.unit:
+            raise ValueError(
+                f"The origin is in {origin.unit}, the shape in {shape.unit}; both "
+                "are on one axis."
+            )
+        value = origin.value if isinstance(origin, TimeScalar) else origin
+        shift = Duration(value, shape.unit, number_type=shape.number_type)
+        x_min = shape.x_min
+        held = (
+            {"bounding_box": shape}
+            if isinstance(shape, BoundingBox)
+            else {"quadrilateral": shape}
+        )
+        return cls(id=id, start=x_min - shift, duration=shape.x_max - x_min, **held)
+
+    def __repr__(self) -> str:
+        parts = [] if self.id is None else [f"id={self.id!r}"]
+        parts.append(f"start={self.start}")
+        parts.append(f"duration={self.duration}")
+        kind = "bounding_box" if self.bounding_box is not None else "quadrilateral"
+        parts.append(f"{kind}={self.shape!r}")
+        return f"Box({', '.join(parts)})"
+
+
+class BoxField(SharedAxisField[Box]):
+    """Paired Field for :class:`Box`: every number on one declared axis."""
+
+    @classmethod
+    def from_boxes(
+        cls,
+        boxes: Sequence[Box | None],
+        *,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+        name: str = "box",
+    ) -> BoxField:
+        """Build the field of *boxes*, in row order.
+
+        Args:
+            boxes: The Boxes (``None`` for a null row).
+            unit: Their unit; required for an empty or all-null input.
+            number_type: Their number type; required likewise.
+            name: The field's name.
+
+        Returns:
+            The field, its struct ``{id, start, duration, bounding_box,
+            quadrilateral}``.
+
+        Raises:
+            ValueError: If the Boxes lie on two axes, or an explicit axis
+                contradicts them.
+        """
+        items = list(boxes)
+        unit, number_type = cls._shared_axis(items, unit, number_type)
+        return cls._of_struct_array(
+            build_struct_array(Box, items), name, unit, number_type
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

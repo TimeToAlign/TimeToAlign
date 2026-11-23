@@ -34,13 +34,17 @@ from pydantic import BaseModel
 from typing_extensions import Self
 
 from timetoalign.core import (
+    BoundingBoxField,
     Coordinate,
     CoordinateSpec,
     Duration,
+    Event,
     EventReferenceField,
     IntervalPolicy,
     NumberType,
     Projection,
+    QuadrilateralField,
+    Shape,
     TimeUnit,
     resolve_coordinate_spec,
 )
@@ -48,6 +52,7 @@ from timetoalign.core.fields import SemanticField, blob_metadata, field_metadata
 from timetoalign.core.ids import id_column, mint_ids, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
+    SharedAxisField,
     build_number_struct_array,
     combine_number_columns,
     combine_numbers,
@@ -98,10 +103,20 @@ PROJECTION_EVENT_TYPE = Projection.__name__
 
 #: Extra columns whose type is declared, not read off the rows: every batch
 #: types them alike, whether its rows hold a value there or none, so batches
-#: concatenate.
+#: concatenate. A column of a field on one axis (a Box's shape) is written in
+#: the table's unit and number type, as the coordinate columns are.
 _DECLARED_EXTRA_FIELDS: dict[str, type[SemanticField[Any]]] = {
     "projection_of": EventReferenceField,
+    "bounding_box": BoundingBoxField,
+    "quadrilateral": QuadrilateralField,
 }
+
+#: The declared columns whose numbers lie on the table's axis.
+_AXIS_COLUMNS = frozenset(
+    name
+    for name, declared in _DECLARED_EXTRA_FIELDS.items()
+    if issubclass(declared, SharedAxisField)
+)
 
 
 def mint_event_ids(
@@ -202,12 +217,48 @@ def refuse_shared_projection_ids(
 
 
 def _event_rows(
-    rows: Projection | Sequence[dict[str, Any] | Projection],
+    rows: Event | Sequence[dict[str, Any] | Event],
 ) -> list[dict[str, Any]]:
-    """The event rows of *rows*: a Projection as its row, a dict as it is."""
-    if isinstance(rows, Projection):
+    """The event rows of *rows*: an event (a Projection, a Box) as its row, a
+    dict as it is."""
+    if isinstance(rows, Event):
         rows = [rows]
-    return [row.to_event_row() if isinstance(row, Projection) else row for row in rows]
+    return [row.to_event_row() if isinstance(row, Event) else row for row in rows]
+
+
+def _axis_cells(
+    values: list[Any],
+    key: str,
+    declared: type[SharedAxisField[Any]],
+    unit: TimeUnit,
+    number_type: NumberType,
+) -> list[Any]:
+    """The cells of a column on the table's axis (a Box's shape), row by row.
+
+    A scalar (a :class:`~timetoalign.core.Shape`) becomes its struct of
+    number cells; a row holding cells already (a table's own rows) is taken as
+    it is.
+
+    Raises:
+        ValueError: If a scalar is in another unit or number type than the
+            table: a shape is never converted or rounded onto an axis.
+    """
+    for value in values:
+        if isinstance(value, Shape) and (value.unit, value.number_type) != (
+            unit,
+            number_type,
+        ):
+            raise ValueError(
+                f"The event's {key} is in {value.unit} as {value.number_type}, the "
+                f"events are in {unit} as {number_type}; a shape is never converted "
+                "onto the events' axis."
+            )
+    scalars = [value if isinstance(value, Shape) else None for value in values]
+    built = declared.from_shapes(scalars, unit=unit, number_type=number_type)
+    return [
+        cells if isinstance(value, Shape) else value
+        for value, cells in zip(values, built.to_pyarrow().to_pylist())
+    ]
 
 
 def _native_position(
@@ -433,13 +484,33 @@ def _in_lowest_terms(table: pa.Table) -> pa.Table:
 
     Memory holds one spelling of each value (:func:`in_lowest_terms`): a
     cell stating ``2/4`` is held as ``1/2``. Every coordinate column is
-    reduced, the base ones and any further one; a column's field and its
-    metadata are kept. One vectorized pass per coordinate column.
+    reduced, the base ones and any further one, and every number of a
+    column on the table's axis (a Box's shape); a column's field and its
+    metadata are kept. One vectorized pass per number column.
     """
     for index, field in enumerate(table.schema):
         if _is_number_column(field):
             table = table.set_column(index, field, in_lowest_terms(table.column(index)))
+        elif field.name in _AXIS_COLUMNS and pa.types.is_struct(field.type):
+            table = table.set_column(
+                index, field, _leaves_in_lowest_terms(table.column(index))
+            )
     return table
+
+
+def _leaves_in_lowest_terms(column: pa.Array | pa.ChunkedArray) -> pa.Array:
+    """*column*, a struct nesting number structs, with each of them reduced."""
+    if isinstance(column, pa.ChunkedArray):
+        column = column.combine_chunks()
+    if column.type == RATIONAL_STRUCT_TYPE:
+        return in_lowest_terms(column)
+    if not pa.types.is_struct(column.type):
+        return column
+    return pa.StructArray.from_arrays(
+        [_leaves_in_lowest_terms(member) for member in column.flatten()],
+        fields=list(column.type),
+        mask=column.is_null(),
+    )
 
 
 def _is_number_column(field: pa.Field) -> bool:
@@ -636,6 +707,8 @@ def _build_extra_field_schema(
     schema: pa.Schema,
     extra_field_names: list[str],
     processed_rows: list[dict[str, Any]],
+    unit: TimeUnit,
+    number_type: NumberType,
 ) -> pa.Schema:
     """Append extra (non-base-schema) fields to *schema*, preserving shape.
 
@@ -663,6 +736,9 @@ def _build_extra_field_schema(
         extra_field_names: Sorted names of the carried columns not already
             in *schema*.
         processed_rows: The row dicts about to be turned into a table.
+        unit: The table's unit, which a declared column on the table's axis
+            is written in.
+        number_type: The table's number type, likewise.
 
     Returns:
         A new ``pa.Schema`` with the extra fields appended.
@@ -675,6 +751,24 @@ def _build_extra_field_schema(
     new_fields = list(schema)
     for name in extra_field_names:
         declared = _DECLARED_EXTRA_FIELDS.get(name)
+        if declared is not None and issubclass(declared, SharedAxisField):
+            cells = _axis_cells(
+                [row.get(name) for row in processed_rows],
+                name,
+                declared,
+                unit,
+                number_type,
+            )
+            for row, cell in zip(processed_rows, cells):
+                row[name] = cell
+            new_fields.append(
+                declared.from_field(
+                    pa.field(name, declared.pa_schema),
+                    unit=unit,
+                    number_type=number_type,
+                ).to_field()
+            )
+            continue
         if declared is not None:
             for row in processed_rows:
                 value = row.get(name)
@@ -1236,7 +1330,7 @@ class EventData(SemanticFieldAccessMixin):
     @classmethod
     def from_dicts(
         cls,
-        rows: Projection | Sequence[dict[str, Any] | Projection],
+        rows: Event | Sequence[dict[str, Any] | Event],
         unit: TimeUnit,
         number_type: NumberType | None = None,
         *,
@@ -1261,13 +1355,15 @@ class EventData(SemanticFieldAccessMixin):
         inconsistent is controlled by *interval_policy*.
 
         Args:
-            rows: Event dictionaries, or :class:`~timetoalign.core.Projection`
-                objects (one or a list), each standing for its event row
-                (:meth:`~timetoalign.core.Projection.to_event_row`). At
+            rows: Event dictionaries, or :class:`~timetoalign.core.Event`
+                objects such as Projections and Boxes (one or a list), each
+                standing for its event row
+                (:meth:`~timetoalign.core.Event.to_event_row`). At
                 minimum each dict needs a coordinate (``instant`` *or*
                 ``start``/``end``) and an ``event_type``. A position may be
-                a ``Coordinate`` or ``Duration`` in *unit*. All other fields
-                have sensible defaults.
+                a ``Coordinate`` or ``Duration`` in *unit*; a Box's shape
+                (``bounding_box``, ``quadrilateral``) is in *unit* and
+                *number_type*. All other fields have sensible defaults.
             unit: The time unit for coordinates.
             number_type: The number type for coordinates.
             interval_policy: How to handle end/duration inconsistencies.
@@ -1275,6 +1371,10 @@ class EventData(SemanticFieldAccessMixin):
 
         Returns:
             A new EventData containing the events.
+
+        Raises:
+            ValueError: If a position is in another unit, or a shape in
+                another unit or number type, than the table.
 
         Examples:
             >>> data = EventData.from_dicts([
@@ -1291,7 +1391,7 @@ class EventData(SemanticFieldAccessMixin):
     @classmethod
     def _rows_table(
         cls,
-        rows: Projection | Sequence[dict[str, Any] | Projection],
+        rows: Event | Sequence[dict[str, Any] | Event],
         unit: TimeUnit,
         number_type: NumberType,
         *,
@@ -1355,7 +1455,7 @@ class EventData(SemanticFieldAccessMixin):
 
         if extra_field_names:
             schema = _build_extra_field_schema(
-                schema, sorted(extra_field_names), processed_rows
+                schema, sorted(extra_field_names), processed_rows, unit, number_type
             )
 
         return pa.Table.from_pylist(processed_rows, schema=schema)

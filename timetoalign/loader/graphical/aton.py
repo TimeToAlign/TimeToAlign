@@ -78,7 +78,7 @@ class ATONHole:
 
     @property
     def bounding_box(self) -> BoundingBox:
-        """Return this hole's axis-aligned image-coordinate bounding box.
+        """Return this hole's axis-aligned bounding box in image pixels.
 
         ATON stores an upper-left origin plus row/column extents. The
         lower-right corner is therefore the origin plus the extent; image y
@@ -89,6 +89,7 @@ class ATONHole:
             self.origin_row,
             self.origin_col + self.width_col,
             self.origin_row + self.width_row,
+            unit="pixels",
         )
 
 

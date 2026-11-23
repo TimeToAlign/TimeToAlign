@@ -230,6 +230,37 @@ by declaration rather than by the rows of one batch.
   holding a reference concatenates and the column reads `[None,
   {"timeline_id": "clt_6", "event_id": "x1azmn68"}]`.
 
+### `test_events.py` - Boxes as rows and the declared shape columns
+
+**Purpose:** A `Box` stands for its event row as a Projection does, and its
+two shape columns, `bounding_box` and `quadrilateral`, are typed by
+declaration and written on the table's axis, as the coordinate columns are,
+so a shape is never converted or rounded on its way into a table.
+
+**Contract and what proves it** (`TestBoxRows`):
+
+- `EventData.from_dicts([Box.from_shape(m1, origin=1221,
+  id="m1").to_event_row()], pixels, int)` (the DMOS measure of
+  `tests/core/README.md`) holds the columns `bounding_box` (one null row)
+  and `quadrilateral`, typed exactly `BoundingBoxField.pa_schema` and
+  `QuadrilateralField.pa_schema`, their metadata declaring the field type,
+  `pixels` and `int`; `get_field(Quadrilateral)[0] == m1`, and the
+  `start` and `duration` cells are `{0.0, 0, 1}` and `{940.0, 940, 1}`.
+- A row whose shape is in another unit or written in another number type
+  than the table's is refused whole, before any table is made (where a
+  position would be re-expressed in the table's number type, a shape is
+  not: geometry is never rounded): a row holding the `pixels` measure on a
+  `css_pixels` float table, `The event's quadrilateral is in pixels as
+  int, the events are in css_pixels as float; a shape is never converted
+  onto the events' axis.`; a Box of fractions on a `user_units` float
+  table, `The event's bounding_box is in user_units as fraction, the
+  events are in user_units as float; a shape is never converted onto the
+  events' axis.`
+- The shape leaves are reduced at the doors like every coordinate cell: on
+  a `user_units` table written as fractions, a quadrilateral corner `x`
+  cell stating `2442/2` is held as `1221/1` after `EventData(table)`, the
+  column's metadata kept.
+
 ### `test_events.py` - One axis per table: number type kept, cells reduced
 
 **Purpose:** An `EventData` reads every cell in its one unit and number type,

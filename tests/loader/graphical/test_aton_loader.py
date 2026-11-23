@@ -392,7 +392,9 @@ class TestMinimalATON:
         assert first.origin_col == 200
         assert first.width_row == 20
         assert first.width_col == 15
-        assert first.bounding_box == BoundingBox.from_corners(200, 100, 215, 120)
+        assert first.bounding_box == BoundingBox.from_corners(
+            200, 100, 215, 120, unit="pixels"
+        )
         assert first.centroid_row == 110.5
         assert first.centroid_col == 207.5
         assert first.area == 280

@@ -731,6 +731,125 @@ one metadata triple; indexing reconstructs `Interval | None`, and its `start`,
 `end`, and `duration` accessors return the paired semantic field types without
 changing exact rational values.
 
+### `test_shapes.py` - Boxes and quadrilaterals in an image's pixel space
+
+**Purpose:** A graphical area is a `Shape`: a `BoundingBox` (`x, y, width,
+height`, the members of IIIF's and Media Fragments' `xywh`) or a
+`Quadrilateral` (four `Point`s, `top_left, top_right, bottom_right,
+bottom_left`). Every member is a `Coordinate` (a `Duration` for `width` and
+`height`) in one unit and one number type, and a shape is written as each
+format writes it, or refused where the format cannot write the value. These
+tests prove that the values sources state survive exactly, that the corner
+order a source writes is read into the one canonical order, that an outline
+no polygon can be drawn from is refused, and that the field stores every
+number on both sides with the axis once in its metadata.
+
+**What proves it** (values read from real sources):
+
+- **A Thoresen rectangle** (`thoresen_test.tsv`, row `rect_h2`:
+  `{"x": 385, "y": 46, "width": 139, "height": 20}`),
+  `BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels")`: `x_max` is
+  `Coordinate(524, pixels)` and `y_max` 66, both `int`, since the box's far
+  edge is `x + width`; `as_media_fragment()` is `"xywh=385,46,139,20"`;
+  `as_svg_points()` is `"385,46 524,46 524,66 385,66"` (the four corners in
+  the canonical order); `as_mei_zone()` is `{"ulx": "385", "uly": "46",
+  "lrx": "524", "lry": "66"}` (MEI's lower-right corner is a point, not a
+  pixel index, so `lrx = x + width`). `from_media_fragment` of the fragment
+  and of `"xywh=pixel:385,46,139,20"` gives the box back; `"xywh=percent:…"`
+  is refused, as it needs the image size.
+- **A DMOS measure** (CollabScore, *Aimons-nous*, page 1, measure 1, region
+  `[[1221,1589],[2151,1589],[1221,2266],[2161,2266]]`, which DMOS writes
+  top-left, top-right, bottom-left, bottom-right):
+  `Quadrilateral.from_points(region, order=("top_left", "top_right",
+  "bottom_left", "bottom_right"), unit="pixels")` has the canonical corners
+  (1221,1589) (2151,1589) (2161,2266) (1221,2266); its `bounding_box` is
+  (1221, 1589, 940, 677) (the bottom edge is skewed: `x_max` 2161 is the
+  bottom-right corner's); its SVG points are `"1221,1589 2151,1589
+  2161,2266 1221,2266"`, and `from_svg_points` of them gives the same
+  quadrilateral. `to_dict()` names the four corners, each `{x, y}`, and
+  `Shape.from_dict` of it is the quadrilateral again (the keys decide the
+  class; a `BoundingBox`'s dict reads back as a `BoundingBox`).
+- **A DMOS system** (system 1 of that page,
+  `[[1221,1589],[1221,2266],[4097,1589],[4101,2266]]`, written top-left,
+  bottom-left, top-right, bottom-right) read in that order has the corners
+  (1221,1589) (4097,1589) (4101,2266) (1221,2266).
+- **The crossed outline is refused.** Neuma's sync manifest copies DMOS's
+  order into an SVG selector, `"1221,1589 2151,1589 1221,2266 2161,2266"`;
+  read in the SVG order (canonical), its third corner turns the other way
+  (cross product −636,380), so `from_svg_points` raises the whole message
+  `The corners top_left (1221, 1589), top_right (2151, 1589), bottom_right
+  (1221, 2266), bottom_left (2161, 2266) do not run clockwise around a
+  convex outline: the turn at bottom_right is counter-clockwise.` A
+  validator accepting this would draw the measure as a bow tie.
+- **The field.** `QuadrilateralField.from_shapes([m1, m2])` (measure 2:
+  (2151,1589) (2766,1589) (2775,2266) (2161,2266)): `x_min()` cells are
+  1221 and 2151, `x_max()` cells 2161 and 2775 (vectorised over the
+  corners); every leaf of the stored struct is `{value, numerator,
+  denominator}` with both sides filled (`{1221.0, 1221, 1}`); the field's
+  metadata declares the unit `pixels` and the number type `int`, and
+  indexing gives back `m1` and `m2`. `BoundingBoxField.from_shapes` of the
+  Thoresen box and a null row gives `x_max()` cells 524 and null.
+- **An MEI zone** (Anhalt chorale book, no. 061, zone
+  `zone_01M7DF2DF4MQT5E96R26XFVEYG`, `ulx=520 uly=390 lrx=874 lry=1019`):
+  `BoundingBox.from_corners(520, 390, 874, 1019, unit="pixels")` is (520,
+  390, 354, 629); `Shape.from_mei_zone({"ulx": "520", "uly": "390", "lrx":
+  "874", "lry": "1019"}, unit="pixels")` equals it, and `as_mei_zone()`
+  returns that dict. A zone with `points` reads as the quadrilateral of
+  those points, its `as_mei_zone()` adding them.
+- **Exactness.** `from_xywh(Fraction(1, 3), 0, Fraction(2, 3), 1,
+  unit="user_units", number_type="fraction")` has `x_max` `Fraction(1)`, and
+  `to_dict()` is `{"x": [1, 3], "y": [0, 1], "width": [2, 3], "height": [1,
+  1]}`, the library's JSON form of a fraction axis (every value a pair, as
+  `number_from_json` reads it back on that axis); `Shape.from_dict` of it
+  equals the box. Its media fragment, MEI zone and SVG points raise, whole:
+  `A media fragment writes whole numbers; this shape's x is 1/3.`, `MEI zone
+  coordinates are whole numbers; this shape's ulx is 1/3.` and `SVG points
+  are decimal numbers; 1/3 has no finite decimal expansion.` (a ratio is
+  never rounded to be written). A ratio with a finite expansion is written
+  as a decimal (`Fraction(1, 4)` is `0.25`). `from_xywh(Fraction(3, 2), 0,
+  1, 1, unit="pixels")` is refused by the coordinate construction protocol
+  (an exact non-integral value on an integer axis).
+- **Each refusal of the shapes once, whole:** members on two axes, a
+  negative width, an `order` that is not the four corner names, and
+  raw numbers without a unit.
+
+### `test_box.py` - A box is an interval event on its timeline
+
+**Purpose:** A `Box` is an event (`Event(id, start, duration)`) whose
+interval is the x extent of a shape: its `start` is the shape's `x_min`
+less the x at which its timeline stands in the image (the origin), and its
+`duration` is the shape's x extent. These tests prove that the interval is
+made from the shape and that a Box contradicting its shape cannot exist.
+
+**What proves it:**
+
+- `Box.from_shape(thoresen_box, origin=7, id="rect_h2")` has `start` 378
+  and `duration` 139 (`int` pixels): the Thoresen notebook crops that image
+  at x0 = 7. `Box.from_shape(m1, origin=1221, id="m1")` (the measure on
+  system 1, which starts at x 1221) has start 0 and duration 940;
+  measure 2 on the same system has start 930 and duration 624. `shape` is
+  the quadrilateral given; `to_event_row()` is `{event_type: "Box", id,
+  start, duration, bounding_box, quadrilateral}`, the shape not given
+  `None`.
+- A fraction box (1/3, 0, 2/3, 1) on `user_units` has start 1/3 and
+  duration 2/3, `Fraction`s.
+- **Refusals, whole:** a duration other than the x extent (`Box 'm1': its
+  duration is 10 and its shape spans 940 in x (1221 to 2161); a Box's
+  duration is its shape's x extent.`); both shapes or none (`A Box holds
+  exactly one shape: give bounding_box or quadrilateral.`); a shape in
+  `css_pixels` against a start in `pixels` (`Box 'm1': its shape is in
+  css_pixels, its start in pixels; both are on one axis.`) and its
+  number-type twin, a `float` shape against a `fraction` start on
+  `user_units` (`Box 'm1': its shape is written as float, its start as
+  fraction; both are on one axis.`).
+- **The field.** `BoxField.from_boxes([m1_box, None])` declares `pixels`
+  and `int`, indexing gives the Box back and `None`, and
+  `Box.from_row(row, unit=, number_type=)` of a stored row equals the Box.
+- **The event base.** `issubclass(Projection, Event)` and
+  `issubclass(Box, Event)`; a Projection's event row and messages are
+  unchanged (`test_projection.py` and `tests/timelines/test_projections.py`
+  pass as they stand).
+
 ### `test_projection.py` - The Projection event and its reference
 
 **Purpose:** A `Projection` is an event standing on a timeline for an event

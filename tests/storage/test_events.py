@@ -16,12 +16,17 @@ import pytest
 
 from timetoalign import storage
 from timetoalign.core import (
+    BoundingBox,
+    BoundingBoxField,
+    Box,
     Coordinate,
     Duration,
     EventReference,
     IntervalPolicy,
     NumberType,
     Projection,
+    Quadrilateral,
+    QuadrilateralField,
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
@@ -805,6 +810,111 @@ class TestProjectionRows:
             EventData.from_dicts(
                 Projection(start=Coordinate(2.0, TimeUnit.seconds)), TimeUnit.samples
             )
+
+
+class TestBoxRows:
+    """A Box stands for its event row; its shape columns are declared."""
+
+    @staticmethod
+    def _measure(unit: str = "pixels", number_type: str | None = None) -> Quadrilateral:
+        """Measure 1 of *Aimons-nous*, page 1 (DMOS), in the canonical order."""
+        return Quadrilateral.from_points(
+            [(1221, 1589), (2151, 1589), (2161, 2266), (1221, 2266)],
+            unit=unit,
+            number_type=number_type,
+        )
+
+    def test_from_dicts_takes_a_box(self) -> None:
+        m1 = self._measure()
+        data = EventData.from_dicts(
+            [Box.from_shape(m1, origin=1221, id="m1").to_event_row()],
+            TimeUnit.pixels,
+            NumberType.int,
+        )
+        schema = data.table.schema
+        for name, field_cls in (
+            ("bounding_box", BoundingBoxField),
+            ("quadrilateral", QuadrilateralField),
+        ):
+            assert schema.field(name).type == field_cls.pa_schema
+            assert field_metadata(schema.field(name)) == {
+                "field_type": field_cls.field_type(),
+                "unit": "pixels",
+                "domain": "graphical",
+                "number_type": "int",
+                "version": 1,
+            }
+        assert data.table.column("bounding_box").to_pylist() == [None]
+        assert data.get_field(Quadrilateral)[0] == m1
+        row = data.table.select(["id", "event_type", "start", "duration"]).to_pylist()
+        assert row == [
+            {
+                "id": "m1",
+                "event_type": "Box",
+                "start": {"value": 0.0, "numerator": 0, "denominator": 1},
+                "duration": {"value": 940.0, "numerator": 940, "denominator": 1},
+            }
+        ]
+
+    def test_a_shape_in_another_unit_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [{"event_type": "Box", "start": 0, "quadrilateral": self._measure()}],
+                TimeUnit.css_pixels,
+                NumberType.float,
+            )
+        assert str(refused.value) == (
+            "The event's quadrilateral is in pixels as int, the events are in "
+            "css_pixels as float; a shape is never converted onto the events' axis."
+        )
+
+    def test_a_shape_in_another_number_type_is_refused(self) -> None:
+        third = BoundingBox.from_xywh(
+            Fraction(1, 3),
+            0,
+            Fraction(2, 3),
+            1,
+            unit="user_units",
+            number_type="fraction",
+        )
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                Box.from_shape(third, id="f"), TimeUnit.user_units, NumberType.float
+            )
+        assert str(refused.value) == (
+            "The event's bounding_box is in user_units as fraction, the events are "
+            "in user_units as float; a shape is never converted onto the events' "
+            "axis."
+        )
+
+    def test_shape_leaves_are_reduced_at_the_door(self) -> None:
+        measure = self._measure("user_units", "fraction")
+        data = EventData.from_dicts(
+            Box.from_shape(measure, origin=1221, id="m1"),
+            TimeUnit.user_units,
+            NumberType.fraction,
+        )
+        table = data.table
+        index = table.schema.get_field_index("quadrilateral")
+        rows = table.column(index).to_pylist()
+        rows[0]["top_left"]["x"] = {
+            "value": 1221.0,
+            "numerator": 2442,
+            "denominator": 2,
+        }
+        stated = table.set_column(
+            index,
+            table.schema.field(index),
+            pa.array(rows, type=table.schema.field(index).type),
+        )
+
+        held = EventData(stated, TimeUnit.user_units, NumberType.fraction)
+
+        corner = held.table.column("quadrilateral").to_pylist()[0]["top_left"]["x"]
+        assert corner == {"value": 1221.0, "numerator": 1221, "denominator": 1}
+        assert held.table.schema.field("quadrilateral").metadata == (
+            table.schema.field("quadrilateral").metadata
+        )
 
 
 class TestOneAxisPerTable:

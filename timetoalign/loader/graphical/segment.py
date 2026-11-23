@@ -7,6 +7,7 @@ defining how timeline coordinates map to 2D pixel coordinates.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -155,10 +156,15 @@ class GraphicalSegment:
         return self.timeline_offset + local_coord
 
     def get_image_bounds(self) -> BoundingBox:
-        """Get bounding box of the path in image coordinates.
+        """Get the bounding box of the path in image pixels.
+
+        The path is sampled, so its extremes are measured positions; they are
+        rounded outward to whole pixels (the floor of each minimum, the ceiling
+        of each maximum), so the box holds every sampled point.
 
         Returns:
-            Bounding box with upper-left and lower-right image corners.
+            Bounding box in ``pixels``, from the upper-left to the lower-right
+            corner.
         """
         # Sample path to find bounds
         x_min = float("inf")
@@ -183,7 +189,13 @@ class GraphicalSegment:
             x_max += self.region[0]
             y_max += self.region[1]
 
-        return BoundingBox.from_corners(x_min, y_min, x_max, y_max)
+        return BoundingBox.from_corners(
+            math.floor(x_min),
+            math.floor(y_min),
+            math.ceil(x_max),
+            math.ceil(y_max),
+            unit="pixels",
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary.

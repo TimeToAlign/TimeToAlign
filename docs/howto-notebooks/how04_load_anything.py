@@ -824,8 +824,18 @@ print(f"Label: {iiif_loader.label}")
 print(f"Canvases: {iiif_loader.n_canvases}")
 print(f"Dimensions: {iiif_loader.dimensions}")
 
+# %% [markdown]
+# An image has no time axis until its path through the image is given.
+# The manifest describes the scan of a piano roll, which is read from top
+# to bottom: its time path is a vertical line down the middle of the
+# image, the whole width as its strip. `create_timelines()` answers one
+# timeline per canvas along the path given; here there is one canvas.
+
 # %%
-iiif_tl = iiif_loader.create_timeline()
+from timetoalign.loader.graphical import VerticalLinePath
+
+roll_path = VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048)
+(iiif_tl,) = iiif_loader.create_timelines(roll_path)
 iiif_tl
 
 

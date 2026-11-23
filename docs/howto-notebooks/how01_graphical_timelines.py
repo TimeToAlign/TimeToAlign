@@ -27,7 +27,8 @@
 #
 # ## Key Concepts
 #
-# - **TimeAxisPath**: Abstract path defining how 1D timeline coordinates map to 2D pixels
+# - **TimeAxisPath**: Abstract path defining how 1D timeline coordinates map to 2D pixels.
+#   No image has a time axis until its path through the image is defined
 # - **ImageSource**: Unified interface for images (files, PDFs)
 # - **GraphicalSegment**: Source + path + timeline offset
 # - **GraphicalBundle**: Collection of sources and segments
@@ -194,11 +195,71 @@ spiral_path = ParametricPath(
 print(f"Spiral path length: {spiral_path.length:.1f} pixels")
 
 # %% [markdown]
+# ## Paths of Several Pieces
+#
+# A page of a score is read along its first accolade (system), then along
+# the second, and so on. A `PiecewisePath` is such a path: consecutive
+# pieces, each starting on the path where the ones before it end. Its
+# numbers are the pieces' own, so pieces of integers give exact answers.
+
+# %%
+from timetoalign.loader.graphical import (  # noqa: E402
+    HorizontalLinePath,
+    PiecewisePath,
+    TimeAxisPath,
+)
+
+# Two accolades of a page, 490 and 400 pixels long
+page_path = PiecewisePath(
+    (
+        HorizontalLinePath(x0=10, x1=500, y=100, tolerance=40),
+        HorizontalLinePath(x0=20, x1=420, y=300, tolerance=40),
+    )
+)
+print(f"Offsets: {page_path.offsets}, length: {page_path.length} pixels")
+print(f"Coordinate 489 is at {page_path.to_2d(489)}, 490 at {page_path.to_2d(490)}")
+print(f"Image point (120, 320) is at {page_path.from_2d(120, 320)}")
+print(f"Image point (120, 200) is at {page_path.from_2d(120, 200)}")
+
+# %% [markdown]
+# The second piece starts at 490 on the path, so the point (120, 320), 100
+# pixels along it, is at 590; a point between the two strips is on no piece.
+#
+# `TimeAxisPath.from_boxes()` makes the path of a page from the areas drawn
+# on it, given in reading order: one horizontal piece per accolade, from
+# its boxes' least x to their greatest, at the middle of their y extent,
+# with half that extent as `tolerance`. A box begins a new accolade when
+# its left edge falls back by more than half the span of all left edges
+# (or `accolades=` assigns the boxes). Below, three measures, the third on
+# a second line.
+
+# %%
+from timetoalign import BoundingBox  # noqa: E402
+
+measures = [
+    BoundingBox.from_corners(100, 50, 300, 90, unit="pixels"),
+    BoundingBox.from_corners(300, 52, 520, 95, unit="pixels"),
+    BoundingBox.from_corners(90, 150, 400, 190, unit="pixels"),
+]
+measures_path = TimeAxisPath.from_boxes(measures)
+for piece in measures_path.pieces:
+    print(piece)
+print(f"Offsets: {measures_path.offsets}, length: {measures_path.length} pixels")
+print(f"The third measure lies on piece {measures_path.piece_of(measures[2])}")
+
+# %% [markdown]
+# The first piece spans x 100 to 520 (420 pixels) and y 50 to 95, whose
+# middle is 145/2; the second spans x 90 to 400 (310 pixels), so the path is
+# 730 pixels long. Pages built of such paths, with the areas as Box events,
+# are the subject of
+# [How to Represent Areas of Page Images as Boxes](how01_graphical_boxes.ipynb).
+
+# %% [markdown]
 # ## Summary
 #
 # The graphical loader provides:
 #
-# 1. **Flexible path definitions** - Horizontal, vertical, diagonal, or parametric curves
+# 1. **Flexible path definitions** - Horizontal, vertical, diagonal, parametric curves, or several pieces in a row
 # 2. **Multiple image support** - Single or multi-page analyses
 # 3. **Bidirectional conversion** - Timeline ↔ Image coordinates
 # 4. **Visualization** - Draw paths and events on images

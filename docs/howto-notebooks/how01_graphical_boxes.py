@@ -17,10 +17,15 @@
 # # How to Represent Areas of Page Images as Boxes
 #
 # A measure on a scanned page, a zone of an MEI facsimile and a rectangle
-# drawn on an analytical diagram are all areas of an image. A graphical
-# timeline runs along the image's x axis, so each such area is also an
-# interval on that timeline: it starts where the area starts in x and lasts
-# as long as the area is wide.
+# drawn on an analytical diagram are all areas of an image. An image has no
+# time axis of its own: neither its width nor its height is one. It has one
+# only along a **time path**, the line a reader follows through it. On a
+# page of a score the path runs along the first **accolade** (a system, one
+# line of the page) from left to right, then along the second, and so on. A
+# page is therefore built of its accolades, laid end to end, and a volume
+# of its pages. Along one accolade each area is an interval: it starts
+# where the area starts in x, counted from the accolade's left end, and
+# lasts as long as the area is wide.
 #
 # The library holds both views in one event, the **Box**. A Box keeps the
 # area as the source states it, its **shape**, in the image's own pixels:
@@ -31,10 +36,12 @@
 # they do not.
 #
 # This guide builds shapes and writes them in the forms other formats use,
-# puts Boxes on a page and on a system of that page, shows the rectangles of
-# a graphical analysis as Boxes on its image crops, reads Boxes from a DMOS
-# page layout and from an MEI facsimile, lays out the pages of an IIIF
-# volume, and writes a bundle holding Boxes as a package and reads it back.
+# makes the time path of a page from the areas drawn on it, builds the page
+# from its accolades and puts Boxes on them, shows the rectangles of a
+# graphical analysis as Boxes on its image crops, reads pages from a DMOS
+# page layout and from an MEI facsimile, lays the pages of an IIIF volume
+# along their paths, and writes a bundle holding Boxes as a package and
+# reads it back.
 
 # %% [markdown]
 # ## Setup
@@ -44,7 +51,8 @@
 # written by the guide into a temporary directory. The helpers: `boxes`
 # reads the Boxes a timeline holds (ID, interval and shape, straight from
 # its event table), `box_table` shows them one per row with the x extent of
-# each shape beside the interval, `refusal` runs a call the library refuses
+# each shape beside the interval, `segment_table` lists the timelines a
+# page or a volume is built of, `refusal` runs a call the library refuses
 # and prints its message, `write` writes a source file into the temporary
 # directory, and `show` prints one key of a manifest file.
 
@@ -68,6 +76,7 @@ from timetoalign import (
     MeiFacsimileLoader,
     Quadrilateral,
 )
+from timetoalign.loader.graphical import TimeAxisPath
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import SegmentLine
 
@@ -111,6 +120,21 @@ def box_table(timeline):
                 "x_max": box["shape"].x_max.value,
             }
             for box in boxes(timeline)
+        ]
+    )
+
+
+def segment_table(line):
+    """One row per timeline a page or a volume is built of, in reading order."""
+    return pd.DataFrame(
+        [
+            {
+                "id": child_id,
+                "name": line.get_child(child_id).name,
+                "offset": line.get_child_offset(child_id).value,
+                "length": line.get_child(child_id).length.value,
+            }
+            for child_id in line.list_children()
         ]
     )
 
@@ -180,16 +204,19 @@ rect
 # optical music recognition tool DMOS writes a measure top-left, top-right,
 # bottom-left, bottom-right. These are the corners of the first measure of
 # the first system on page 2 of a printed score in Gallica
-# (`ark:/12148/bpt6k11620688`), as DMOS states them. The quadrilateral keeps
-# them in the canonical order.
+# (`ark:/12148/bpt6k11620688`), as DMOS states them; measure 2 follows it
+# on that system, and measure 3 is the first of the second system. The
+# quadrilateral keeps the corners in the canonical order.
 
 # %%
 DMOS_MEASURE_ORDER = ("top_left", "top_right", "bottom_left", "bottom_right")
 MEASURE_1 = [[1221, 1589], [2151, 1589], [1221, 2266], [2161, 2266]]
 MEASURE_2 = [[2151, 1589], [2766, 1589], [2161, 2266], [2775, 2266]]
+MEASURE_3 = [[971, 2493], [1935, 2493], [971, 3192], [1945, 3192]]
 
-measure_1 = Quadrilateral.from_points(
-    MEASURE_1, order=DMOS_MEASURE_ORDER, unit="pixels"
+measure_1, measure_2, measure_3 = (
+    Quadrilateral.from_points(corners, order=DMOS_MEASURE_ORDER, unit="pixels")
+    for corners in (MEASURE_1, MEASURE_2, MEASURE_3)
 )
 measure_1
 
@@ -228,93 +255,142 @@ BoundingBox.from_xywh(385.0, 46, 139, 20, unit="pixels") == rect
 refusal(lambda: BoundingBox.from_xywh(385.5, 46, 139, 20, unit="pixels"))
 
 # %% [markdown]
-# ## A page, a system and its measures
+# ## The time path of a page
 #
-# A timeline standing for an area of an image says so in its `meta`:
-# `meta["box"]` is that area as a shape's dict form, in the image's space,
-# and `meta["image"]` names the image. A page spans its whole image, so its
-# box starts at x 0. The page image of the score above is 4512 × 6174
-# pixels, as Gallica's IIIF manifest states.
+# **No image has a time axis until its path through the image is defined.**
+# A set of boxes makes one: `TimeAxisPath.from_boxes()` takes the areas of
+# one page in reading order and returns a `PiecewisePath`, one horizontal
+# piece per accolade.
+#
+# DMOS states the systems of the page as areas too (corners top-left,
+# bottom-left, top-right, bottom-right). Each system is one accolade, so
+# `accolades=` gives every box its own label.
 
 # %%
 PAGE_URL = "https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2"
-page_area = BoundingBox.from_xywh(0, 0, 4512, 6174, unit="pixels")
-page = DiscreteGraphicalTimeline(
-    length=4512,
-    unit="pixels",
-    uid="page",
-    name="Page 2",
-    meta={"box": page_area.to_dict(), "image": PAGE_URL},
-)
-
-# %% [markdown]
-# A system of that page is a child timeline. It starts where the system
-# starts in x, so its offset on the page is the system's `x_min`, and it
-# states its own area, the system's quadrilateral as DMOS gives it (corners
-# top-left, bottom-left, top-right, bottom-right).
-
-# %%
 DMOS_SYSTEM_ORDER = ("top_left", "bottom_left", "top_right", "bottom_right")
 SYSTEM_1 = [[1221, 1589], [1221, 2266], [4097, 1589], [4101, 2266]]
-system_area = Quadrilateral.from_points(
-    SYSTEM_1, order=DMOS_SYSTEM_ORDER, unit="pixels"
-)
+SYSTEM_2 = [[971, 2493], [971, 3192], [4104, 2493], [4112, 3192]]
+system_areas = [
+    Quadrilateral.from_points(corners, order=DMOS_SYSTEM_ORDER, unit="pixels")
+    for corners in (SYSTEM_1, SYSTEM_2)
+]
 
-system = DiscreteGraphicalTimeline(
-    length=(system_area.x_max - system_area.x_min).value,
-    unit="pixels",
-    uid="system_1",
-    name="System 1",
-    meta={"box": system_area.to_dict()},
-)
-page.add_child(system, offset=system_area.x_min)
-{"offset": page.get_child_offset("system_1"), "length": system.length}
+path = TimeAxisPath.from_boxes(system_areas, accolades=[1, 2])
+path.pieces
 
 # %% [markdown]
+# A piece spans its boxes exactly: `x0` is their least x and `x1` their
+# greatest, `y` is the middle of their y extent and `tolerance` half of it,
+# so the strip `y ± tolerance` is the accolade's height. Nothing is
+# rounded: the first system spans y 1589 to 2266, whose middle is 3855/2.
+#
+# The path's length is the sum of its pieces, 2880 + 3141 pixels, and each
+# piece starts on the path where the ones before it end.
+
+# %%
+(path.offsets, path.length)
+
+# %% [markdown]
+# The path converts between its own coordinate and the image's (x, y).
+# Coordinate 2880 is the left end of the second accolade, x 971; the point
+# (2151, 1900) lies in the first accolade's strip, 930 pixels from its left
+# end; a point between the two strips is on no piece.
+
+# %%
+(path.to_2d(2880), path.from_2d(2151, 1900), path.from_2d(2151, 2400))
+
+# %% [markdown]
+# Where a source states no accolades, `accolades=` is left out and
+# `from_boxes()` finds them: reading on, the left edges of the boxes grow
+# within an accolade and fall back at the start of the next, so a box
+# begins a new accolade when its left edge lies left of the previous box's
+# by more than half the span of all left edges. Of the three measures, the
+# third falls back from x 2151 to 971 and begins the second piece; each
+# piece spans the measures given, not the whole system.
+
+# %%
+TimeAxisPath.from_boxes([measure_1, measure_2, measure_3]).pieces
+
+# %% [markdown]
+# ## A page, its accolades and their measures
+#
+# The timelines mirror the path. An accolade is a timeline as long as its
+# piece, and it says which area of which image it stands for in its `meta`:
+# `meta["box"]` is that area as a shape's dict form, in the image's space,
+# and `meta["image"]` names the image. Identifiers are given at creation:
+# `uid=` for a timeline, `id=` for a Box.
+#
 # `Box.from_shape()` makes the Box of a shape on a timeline. Its `origin` is
-# the x at which the timeline stands in the image, here the system's
+# the x at which the timeline stands in the image, here the accolade's
 # `x_min`. The Box's interval follows from the shape:
 #
 # - `start` = the shape's `x_min` − the timeline's origin,
 # - `duration` = the shape's `x_max` − `x_min`.
 
 # %%
-measure_2 = Quadrilateral.from_points(
-    MEASURE_2, order=DMOS_MEASURE_ORDER, unit="pixels"
+system_1, system_2 = (
+    DiscreteGraphicalTimeline(
+        length=(area.x_max - area.x_min).value,
+        unit="pixels",
+        uid=f"system_{number}",
+        name=f"System {number}",
+        meta={"box": area.to_dict(), "image": PAGE_URL},
+    )
+    for number, area in enumerate(system_areas, start=1)
 )
-system.add_events(
+system_1.add_events(
     [
-        Box.from_shape(measure_1, origin=system_area.x_min, id="m1"),
-        Box.from_shape(measure_2, origin=system_area.x_min, id="m2"),
+        Box.from_shape(measure_1, origin=system_areas[0].x_min, id="m1"),
+        Box.from_shape(measure_2, origin=system_areas[0].x_min, id="m2"),
     ]
 )
-box_table(system)
+system_2.add_events([Box.from_shape(measure_3, origin=system_areas[1].x_min, id="m3")])
+box_table(system_1)
 
 # %% [markdown]
-# Measure 1 starts at x 1221 of the image and the system stands at x 1221,
-# so the measure starts at 0 on the system; measure 2 starts at 2151, which
-# is 930 on the system. Asked from the page, which stands at x 0, a Box's
-# interval is again the image's x: the timestamp of measure 2 gives 2151 on
-# the page and 930 on the system.
+# Measure 1 starts at x 1221 of the image and the accolade stands at x 1221,
+# so the measure starts at 0 on the accolade; measure 2 starts at 2151,
+# which is 930 on the accolade.
+#
+# The page is the segment line of its accolades, in reading order. It names
+# its image and states no `meta["box"]`: its axis is the accolades laid end
+# to end, which is no area of the image.
 
 # %%
-print(page.get_timestamp_for("m2"))
+page = SegmentLine[DiscreteGraphicalTimeline](
+    length=0, unit="pixels", uid="page", name="Page 2", meta={"image": PAGE_URL}
+)
+page.append_segment(system_1, name="System 1")
+page.append_segment(system_2, name="System 2")
+page
+
+# %% [markdown]
+# The page is as long as the path, 6021 pixels, and its accolades start at
+# the path's offsets. A coordinate on the page is therefore a position along
+# the path, not an x of the image: measure 3 starts at x 971 of the image,
+# at 0 on its accolade, and at 2880 on the page.
+
+# %%
+print(page.get_timestamp_for("m3"))
 
 # %% [markdown]
 # A Box whose interval contradicts its shape is refused, on every path that
 # adds events. Forgetting the origin is the common case: the Box below
-# starts at 1221, the shape's x in the image, but on a system standing at
+# starts at 1221, the shape's x in the image, but on an accolade standing at
 # x 1221 of its image the shape starts at 0.
 
 # %%
-refusal(lambda: system.add_events([Box.from_shape(measure_1, id="m1_again")]))
+refusal(lambda: system_1.add_events([Box.from_shape(measure_1, id="m1_again")]))
 
 # %% [markdown]
 # ## The rectangles of a graphical analysis
 #
 # [How to Transfer Annotations Between Graphical Analyses](how01_thoresen_annotation_transfer.ipynb)
 # places eleven rectangles, drawn on five image crops of an analytical
-# diagram, on a segment line of those crops. Each rectangle is stated in its
+# diagram, on a segment line of those crops. The diagram is read along one
+# horizontal line per crop, one crop after the other, so the crops are to
+# the analysis what accolades are to a page. Each rectangle is stated in its
 # image's pixels, and each crop starts a few pixels right of its image's
 # left edge. As Boxes, the rectangles keep their shapes and each crop states
 # where it stands in its image.
@@ -383,16 +459,21 @@ print(analysis.get_timestamp_for("rect_h2"))
 # DMOS writes the layout it recognises on each page as JSON: per page its
 # image (`page_url`) and its systems, per system its region and its
 # measures, each with its region. Region corners are in the orders seen
-# above. The excerpt below is page 2 of the Gallica score, trimmed to its
-# first system and that system's first two measures and to the keys the
+# above. The excerpt below is pages 2 and 3 of the Gallica score, trimmed
+# to the first two systems of page 2 and the first of page 3, to the
+# measures used above and the first measure of page 3, and to the keys the
 # loader reads.
 
 # %%
+SCORE_URL = "https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688"
+SYSTEM_3 = [[519, 896], [519, 1647], [3661, 896], [3655, 1647]]
+MEASURE_4 = [[519, 896], [1520, 896], [519, 1647], [1522, 1647]]
+
 write(
-    "dmos_page.json",
+    "dmos_pages.json",
     json.dumps(
         {
-            "score_image_url": "https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688",
+            "score_image_url": SCORE_URL,
             "pages": [
                 {
                     "page_url": PAGE_URL,
@@ -402,9 +483,25 @@ write(
                             "id": 1,
                             "region": SYSTEM_1,
                             "measures": [{"region": MEASURE_1}, {"region": MEASURE_2}],
+                        },
+                        {
+                            "id": 2,
+                            "region": SYSTEM_2,
+                            "measures": [{"region": MEASURE_3}],
+                        },
+                    ],
+                },
+                {
+                    "page_url": f"{SCORE_URL}/f3",
+                    "no_page": 2,
+                    "systems": [
+                        {
+                            "id": 1,
+                            "region": SYSTEM_3,
+                            "measures": [{"region": MEASURE_4}],
                         }
                     ],
-                }
+                },
             ],
         },
         indent=1,
@@ -412,59 +509,120 @@ write(
 )
 
 # %% [markdown]
-# `DmosLoader` reads one root timeline per page, each system as a child at
-# its left x, and each measure as a Box with its quadrilateral; measures
-# have no IDs in DMOS, so their Boxes are minted `box_1`, `box_2`, … per
-# system. DMOS states no page size: `page_sizes` gives it (page number →
-# width, height), and the page then has a length and a `meta["box"]`.
+# DMOS gives each page its time path: the systems, read one after the
+# other. `create_paths()` returns it per page number (`no_page`), every
+# stated system one piece over the x extent of its region. Page 1 has the
+# path made by hand above.
 
 # %%
-(dmos_page,) = DmosLoader.from_file(FILES / "dmos_page.json").create_timelines(
-    page_sizes={1: (4512, 6174)}
+dmos = DmosLoader.from_file(FILES / "dmos_pages.json")
+dmos_paths = dmos.create_paths()
+(dmos_paths[1] == path, dmos_paths[2].pieces)
+
+# %% [markdown]
+# `create_timeline()` reads the whole file as one volume: a segment line of
+# its pages, each page a segment line of its systems' accolades, each
+# measure a Box of its system's accolade with its quadrilateral. The
+# identifiers are given in the same call. `uid` names the volume; `page_ids`,
+# `accolade_ids` and `box_ids` each name every element of their kind, as a
+# sequence of IDs in document order or as a template filled from `page`
+# (the page's position, from 1), `accolade` (its position on its page),
+# `box` (its position in its accolade) and `n` (the running count). DMOS
+# states no measure numbers, so `box_ids="m{n}"` numbers the measures
+# through the score.
+
+# %%
+scan = dmos.create_timeline(
+    uid="scan",
+    name="Gallica bpt6k11620688",
+    page_ids="page_{page}",
+    accolade_ids="p{page}_s{accolade}",
+    box_ids="m{n}",
 )
-dmos_system = dmos_page.get_child(dmos_page.list_children()[0])
+scan
+
+# %% [markdown]
+# Pages are named by their `no_page`, accolades by their DMOS system ID.
+# The volume and the pages name their images and state no area; each
+# accolade states its system's region.
+
+# %%
+dmos_page = scan.get_child("page_1")
 {
-    "page": (dmos_page.id, dmos_page.length, dmos_page.meta),
-    "system": (
-        dmos_system.id,
-        dmos_page.get_child_offset(dmos_system.id),
-        dmos_system.meta,
-    ),
+    "volume": scan.meta,
+    "page": dmos_page.meta,
+    "accolade": dmos_page.get_child("p1_s2").meta,
 }
 
 # %%
-box_table(dmos_system)
+segment_table(dmos_page)
+
+# %%
+box_table(dmos_page.get_child("p1_s1"))
 
 # %% [markdown]
 # The loader builds what the previous section built by hand: the same
-# system offset and the same measure shapes.
+# lengths and offsets and the same measure shapes.
 
 # %%
-[box["shape"] for box in boxes(dmos_system)] == [box["shape"] for box in boxes(system)]
+(
+    segment_table(dmos_page)[["offset", "length"]].equals(
+        segment_table(page)[["offset", "length"]]
+    ),
+    [box["shape"] for box in boxes(dmos_page.get_child("p1_s1"))]
+    == [box["shape"] for box in boxes(system_1)],
+)
 
 # %% [markdown]
-# Without `page_sizes`, a page's length is unknown and it states no
-# `meta["box"]`; its systems and Boxes are read all the same.
+# On the volume, measure 4, the first of the second page, starts where the
+# first page ends, at 6021.
 
 # %%
-(unsized,) = DmosLoader.from_file(FILES / "dmos_page.json").create_timelines()
-(unsized.length, unsized.meta)
+print(scan.get_timestamp_for("m4"))
+
+# %% [markdown]
+# `create_timelines()` returns one root timeline per page instead. Without
+# the identity parameters, timelines are minted `dgt_N` and Boxes `box_N`
+# per accolade.
+
+# %%
+{
+    root.id: {
+        accolade_id: [box["id"] for box in boxes(root.get_child(accolade_id))]
+        for accolade_id in root.list_children()
+    }
+    for root in DmosLoader.from_file(FILES / "dmos_pages.json").create_timelines()
+}
 
 # %% [markdown]
 # ## An MEI facsimile
 #
 # An MEI `facsimile` holds one `surface` per page image, with a `graphic`
-# naming the image and its size and one `zone` per area; elements of the
-# encoding point to their zones with `@facs`. The first surface below is an
-# excerpt of a chorale of the *Anhaltisches Choralbuch digital* edition
-# (CC BY 4.0): two measure zones and the two measures pointing to them. The
+# naming the image and one `zone` per area; elements of the encoding point
+# to their zones with `@facs`. The first surface below is a page of a
+# chorale of the *Anhaltisches Choralbuch digital* edition (CC BY 4.0) with
+# its nine measure zones, and two measures pointing to the first two. The
 # second surface is page 2 of the Gallica score, holding measure 1 as the
 # zone `as_mei_zone()` wrote above, its corners as `points`.
 
 # %%
-SURFACE = "surface_01M7DF2DF3J8BVY6RSGDQBJ6W6"
-ZONE_1 = "zone_01M7DF2DF4MQT5E96R26XFVEYG"
-ZONE_2 = "zone_01M7DF2DF4R34CYF6DVH8GZD9P"
+SURFACE = "surface_01M7DF2D8Q8FYGETPJXXMG03QP"
+ZONES = [
+    ("zone_01M7DF2D8RNCKHKF6SMCWB94Z5", 490, 344, 973, 877),
+    ("zone_01M7DF2D8R00HP8JYGXRTE13G3", 944, 368, 1523, 864),
+    ("zone_01M7DF2D8R4E9KQCXCPC9RV59F", 1481, 388, 2082, 912),
+    ("zone_01M7DF2D8S9S18YJ6CYJVF4QCJ", 2034, 402, 2694, 884),
+    ("zone_01M7DF2D8SY6CN7SFAZFPE58FT", 2669, 389, 3296, 916),
+    ("zone_01M7DF2D8SF9X38YEGDA0JCD04", 498, 858, 1496, 1337),
+    ("zone_01M7DF2D8S1F9S83VHS68E6N7W", 1465, 885, 2146, 1353),
+    ("zone_01M7DF2D8TV0F9DCHY6QNWYTDX", 2110, 886, 2748, 1357),
+    ("zone_01M7DF2D8TSXCHCSA07C235VTV", 2704, 886, 3302, 1387),
+]
+chorale_zones = "\n        ".join(
+    f'<zone xml:id="{zone_id}" type="measure" ulx="{ulx}" uly="{uly}" '
+    f'lrx="{lrx}" lry="{lry}"/>'
+    for zone_id, ulx, uly, lrx, lry in ZONES
+)
 zone_attributes = " ".join(
     f'{name}="{value}"' for name, value in measure_1.as_mei_zone().items()
 )
@@ -473,15 +631,14 @@ write(
     "facsimile.mei",
     f"""<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1">
-  <meiHead><fileDesc><titleStmt><title>Gelobet seist du Jesu Christ</title></titleStmt>
+  <meiHead><fileDesc><titleStmt><title>Ach bleib bei uns, Herr Jesu Christ</title></titleStmt>
   <pubStmt/></fileDesc></meiHead>
   <music>
     <facsimile>
-      <surface xml:id="{SURFACE}" n="54" ulx="0" uly="0" lrx="3999" lry="2999">
-        <graphic xml:id="graphic_01M7DF2DF43DZBVPP3758RC994"
-                 target="../facsimile/20251230_181354.jpg" width="4000" height="3000"/>
-        <zone xml:id="{ZONE_1}" type="measure" ulx="520" uly="390" lrx="874" lry="1019"/>
-        <zone xml:id="{ZONE_2}" type="measure" ulx="814" uly="408" lrx="1129" lry="1033"/>
+      <surface xml:id="{SURFACE}" n="15" ulx="0" uly="0" lrx="3999" lry="2999">
+        <graphic xml:id="graphic_01M7DF2D8RMG9SGXTZRR3S1BA3"
+                 target="facsimile/20251230_180023.jpg" width="4000" height="3000"/>
+        {chorale_zones}
       </surface>
       <surface xml:id="gallica_f2" n="2">
         <graphic target="{PAGE_URL}" width="4512" height="6174"/>
@@ -492,8 +649,8 @@ write(
       <mdiv>
         <score>
           <section>
-            <measure xml:id="m-43" metcon="false" n="0" facs="#{ZONE_1}"/>
-            <measure xml:id="m-57" n="1" facs="#{ZONE_2}"/>
+            <measure xml:id="m-43" metcon="false" n="0" facs="#{ZONES[0][0]}"/>
+            <measure xml:id="m-57" n="1" facs="#{ZONES[1][0]}"/>
           </section>
         </score>
       </mdiv>
@@ -504,22 +661,49 @@ write(
 )
 
 # %% [markdown]
-# `MeiFacsimileLoader` reads one root timeline per surface: its ID is the
-# surface's `xml:id`, its name the surface's `@n`, its length the graphic's
-# width, and its `meta` the graphic's area and target. Each zone becomes a
-# Box with the zone's `xml:id`: a `BoundingBox` from `ulx` … `lry`, or a
-# `Quadrilateral` where the zone has `points`.
+# MEI zones name no accolade, so `MeiFacsimileLoader` makes each surface's
+# time path from its zones, with `TimeAxisPath.from_boxes()` and the rule
+# of the left edges. On the chorale page the sixth zone falls back from
+# x 2669 to 498: the page has two accolades, of five and four measures.
 
 # %%
 mei = MeiFacsimileLoader.from_file(FILES / "facsimile.mei")
-chorale, gallica_page = mei.create_timelines()
+mei.create_paths()[SURFACE].pieces
+
+# %% [markdown]
+# `create_timelines()` reads one root timeline per surface, a page built of
+# the accolades of that path: its ID is the surface's `xml:id`, its name the
+# surface's `@n`, its `meta["image"]` the graphic's target. The graphic's
+# size is on no timeline. Each accolade is named `accolade_K` and states
+# the strip of its piece as `meta["box"]`. Each zone becomes a Box of the
+# accolade it lies on, with the zone's `xml:id` as its ID: a `BoundingBox`
+# from `ulx` … `lry`, or a `Quadrilateral` where the zone has `points`.
+# Here the accolades are named in the call, with `accolade_ids`.
+
+# %%
+chorale, gallica_page = mei.create_timelines(accolade_ids="p{page}_a{accolade}")
 {
     surface.id: (surface.name, surface.length, surface.meta)
     for surface in (chorale, gallica_page)
 }
 
 # %%
-box_table(chorale)
+segment_table(chorale)
+
+# %%
+second_accolade = chorale.get_child("p1_a2")
+second_accolade.meta
+
+# %% [markdown]
+# The second accolade stands at x 498 of the image, so its first zone
+# (x 498 to 1496) starts at 0 and lasts 998 pixels. On the page that zone
+# starts at 2806, the length of the first accolade.
+
+# %%
+box_table(second_accolade)
+
+# %%
+print(chorale.get_timestamp_for(ZONES[5][0]))
 
 # %% [markdown]
 # The `@facs` links are kept per element, so a measure of the encoding finds
@@ -532,21 +716,30 @@ mei.facs
 # The zone written from measure 1 reads back as the same quadrilateral.
 
 # %%
-boxes(gallica_page)[0]["shape"] == measure_1
+boxes(gallica_page.get_child("p2_a1"))[0]["shape"] == measure_1
+
+# %% [markdown]
+# Where the rule of the left edges does not find a page's accolades (zones
+# not listed accolade by accolade, say), the path returned by
+# `create_paths()` is corrected or written anew and given back as `paths=`,
+# keyed by the surface's `xml:id`. `zone_types=` selects the zones taking
+# part by their `@type`, and `box_ids=` replaces the zones' `xml:id`s, as in
+# the DMOS section; `create_timeline()` gives the whole facsimile as one
+# volume.
 
 # %% [markdown]
 # ## An IIIF volume
 #
 # An IIIF Presentation manifest lists the page images of a volume as
-# canvases, each with its width and height. `IIIFManifestLoader` reads the
-# first canvas by default; `canvases="all"` lays every canvas end to end as
-# a segment line, one child per canvas. The excerpt below is the Gallica
-# manifest of the score above (Presentation 2), trimmed to its first three
-# canvases.
+# canvases, each with its width and height. It states no areas, so nothing
+# in it says where the page is read: `IIIFManifestLoader` builds a timeline
+# only along the time path it is given for a canvas. The excerpt below is
+# the Gallica manifest of the score above (Presentation 2), trimmed to its
+# first three canvases.
 
 # %%
-MANIFEST_ID = "https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/manifest.json"
-CANVAS = "https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/canvas/f{}"
+MANIFEST_ID = f"{SCORE_URL}/manifest.json"
+CANVAS = SCORE_URL + "/canvas/f{}"
 write(
     "manifest.json",
     json.dumps(
@@ -580,32 +773,47 @@ write(
 )
 
 # %% [markdown]
-# By default the pages are laid along their height. `axis="width"` lays
-# them along their width, the axis Boxes run along, so each child is as
-# long as its canvas is wide. Each child, and the volume, states the IIIF
-# resource it stands for as a `dcterms:source` statement.
+# `create_timeline()` takes the paths as a mapping from a canvas, named by
+# its position from 0 or by its ID, to its path, and `canvases=` selects
+# the canvases to read. The first canvas is an unnumbered page without
+# music; the second and third are the pages DMOS read, and DMOS's
+# `no_page` is the canvas's position, so the paths of `create_paths()` fit
+# as they are. The volume is the segment line of the selected pages, each
+# page the segment line of its accolades. IDs are given in the call, as
+# above.
 
 # %%
 volume = IIIFManifestLoader.from_file(FILES / "manifest.json").create_timeline(
-    axis="width", canvases="all"
+    dmos_paths,
+    canvases=[1, 2],
+    uid="volume",
+    page_ids=["f2", "f3"],
+    accolade_ids="p{page}_s{accolade}",
 )
-pd.DataFrame(
-    [
-        {
-            "id": child_id,
-            "name": volume.get_child(child_id).name,
-            "offset": volume.get_child_offset(child_id).value,
-            "length": volume.get_child(child_id).length.value,
-            "dcterms:source": volume.get_child(child_id).statements["dcterms:source"][
-                0
-            ]["id"],
-        }
-        for child_id in volume.list_children()
-    ]
-)
+volume
+
+# %% [markdown]
+# Each page is named with its canvas's label and is as long as its path;
+# no page is as long as its canvas is wide. Each page, and the volume,
+# states the IIIF resource it stands for as a `dcterms:source` statement,
+# and each accolade the strip of its piece as `meta["box"]`.
 
 # %%
-(volume.length, volume.statements)
+pages = segment_table(volume)
+pages["dcterms:source"] = [
+    volume.get_child(page_id).statements["dcterms:source"][0]["id"]
+    for page_id in pages["id"]
+]
+pages
+
+# %%
+(volume.length, volume.statements, volume.get_child("f2").get_child("p1_s1").meta)
+
+# %% [markdown]
+# A canvas read along a single line is one plain timeline of the line's
+# length: a piano roll, read from top to bottom, takes a `VerticalLinePath`
+# down its image (see
+# [How to Load Anything](how04_load_anything.ipynb)).
 
 # %% [markdown]
 # ## Boxes in a package
@@ -613,8 +821,8 @@ pd.DataFrame(
 # A bundle keeps its timelines in a TimeToShare manifest; the Boxes are data
 # and live beside it in a table, `boxes.parquet`, one row per Box with its
 # timeline's ID, which the manifest names among its `resources` with the
-# type `Box`. The bundle below holds the page built by hand, with its
-# system and the two measures, and a logical timeline beside it.
+# type `Box`. The bundle below holds the page built by hand, with its two
+# accolades and their three measures, and a logical timeline beside it.
 
 # %%
 score = ContinuousLogicalTimeline(length=Fraction(8), uid="score", name="Score")
@@ -638,8 +846,15 @@ show(manifest_path, "resources")
 
 # %%
 read = AlignmentBundle.from_file(manifest_path)
-read_system = read.timelines["page"].get_child("system_1")
-(boxes(read_system) == boxes(system), read_system.meta == system.meta)
+read_page = read.timelines["page"]
+[
+    (
+        accolade.id,
+        boxes(read_page.get_child(accolade.id)) == boxes(accolade),
+        read_page.get_child(accolade.id).meta == accolade.meta,
+    )
+    for accolade in (system_1, system_2)
+]
 
 # %% [markdown]
 # ## Next
@@ -647,7 +862,8 @@ read_system = read.timelines["page"].get_child("system_1")
 # - The same rectangles carried from one analysis to another through
 #   seconds, with MatchClaims and Projections:
 #   [How to Transfer Annotations Between Graphical Analyses](how01_thoresen_annotation_transfer.ipynb).
-# - Timelines laid along drawn paths in an image:
+# - Time paths of every kind, and timelines laid along drawn paths in an
+#   image:
 #   [How to Work with Graphical Timelines](how01_graphical_timelines.ipynb).
 # - Manifests, files and packages in depth:
 #   [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb)

@@ -13,6 +13,20 @@ to the relevant section of the conceptual model.
 
 ## A
 
+**Accolade**
+:   One line of a page of music (a system), read from left to right: one
+    horizontal piece of the page's {{< glossary "Time path" >}}, and the
+    {{< glossary Timeline >}} along it. An accolade is as long as its piece,
+    states the area of the image it stands for in `meta["box"]` and the
+    image in `meta["image"]`, and holds the {{< glossary Box >}}es of the
+    areas lying on it. A page is the {{< glossary SegmentLine >}} of its
+    accolades, a volume the segment line of its pages; neither states an
+    area. `TimeAxisPath.from_boxes()` finds the accolades among the areas
+    of a page given in reading order: a box begins a new accolade when its
+    left edge lies left of the previous box's by more than half the span of
+    all left edges (`group_into_accolades`).
+    See [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb).
+
 **AlignmentAnchor**
 :   A coordinate pair associating one coordinate on timeline A with one on
     timeline B; a neutral record with no claim semantics---provenance is
@@ -78,7 +92,9 @@ to the relevant section of the conceptual model.
 
 **Box**
 :   An area of an image as an interval event of a graphical
-    {{< glossary Timeline >}} running along the image's x axis. A Box holds
+    {{< glossary Timeline >}} running along a horizontal piece of the
+    image's {{< glossary "Time path" >}}, such as an
+    {{< glossary Accolade >}} of a page. A Box holds
     exactly one shape, a {{< glossary BoundingBox >}} or a
     {{< glossary Quadrilateral >}}, in the image's space, and the interval
     of the shape's x extent on its timeline: `start` is the shape's `x_min`
@@ -88,7 +104,8 @@ to the relevant section of the conceptual model.
     a Box whose interval contradicts its shape, or whose shape is on another
     unit or number type than the timeline, is refused on every path that
     adds events, a package read included. `DmosLoader` and
-    `MeiFacsimileLoader` read Boxes; an {{< glossary AlignmentBundle >}}'s
+    `MeiFacsimileLoader` read Boxes onto the accolades of their pages and
+    name them with `box_ids`; an {{< glossary AlignmentBundle >}}'s
     `to_file()` writes every timeline's Boxes beside the manifest in one
     table, `boxes.parquet`, named in its `resources` with the type `Box`
     (see {{< glossary Resource >}}), and `from_file()` reads them back.
@@ -887,6 +904,22 @@ to the relevant section of the conceptual model.
     See [Foundations](concepts.qmd#foundations).
 
 ## T
+
+**Time path**
+:   The line a reader follows through an image (`TimeAxisPath`). No image
+    has a time axis until its path is defined: a {{< glossary Timeline >}}
+    of an image runs along the path and is as long as it. A path converts
+    between its coordinate and the image's (x, y) with `to_2d()` and
+    `from_2d()`. `HorizontalLinePath`, `VerticalLinePath`,
+    `DiagonalLinePath` and `ParametricPath` are single lines; a
+    `PiecewisePath` is made of consecutive pieces, such as the
+    {{< glossary Accolade >}}s of a page, each starting where the ones
+    before it end. `TimeAxisPath.from_boxes()` makes the path of a page
+    from the areas drawn on it. `DmosLoader` and `MeiFacsimileLoader` make
+    the paths of their pages (`create_paths()`); `IIIFManifestLoader` is
+    given the path of each canvas.
+    See [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb)
+    and [How to Work with Graphical Timelines](howto/how01_graphical_timelines.ipynb).
 
 **TimeInterval**
 :   Defined by a {{< glossary StartInstant >}} and

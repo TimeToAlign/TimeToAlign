@@ -44,12 +44,14 @@ documentation:
 - [How to Load Tabular Data](howto/how01_tabular_loaders.ipynb) ---
   CoordinateField, ComputedField, and custom loader configuration.
 - [How to Work with Graphical Timelines](howto/how01_graphical_timelines.ipynb) ---
-  TimeAxisPath, image-based timelines, and pixel-to-time conversion.
+  TimeAxisPath, paths of several pieces, image-based timelines, and
+  pixel-to-time conversion.
 - [How to Transfer Annotations Between Graphical Analyses](howto/how01_thoresen_annotation_transfer.ipynb) ---
   SegmentLine, ConstantMap, MatchClaims with Projections, y-coordinate transfer.
 - [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb) ---
-  BoundingBox, Quadrilateral and Box events, DmosLoader, MeiFacsimileLoader,
-  an IIIF volume page by page, and Boxes in a package.
+  BoundingBox, Quadrilateral and Box events, the time path of a page made
+  from its boxes, pages built of accolades, DmosLoader, MeiFacsimileLoader,
+  an IIIF volume along given paths, and Boxes in a package.
 - [How to Build Beat Grids](howto/how01_beat_grids.ipynb) ---
   BeatGrid, tempo segments, beat tables, measure/beat queries, and
   annotation-tool export.

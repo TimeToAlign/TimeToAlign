@@ -19,6 +19,8 @@ import pytest
 import timetoshare
 from timetoshare.fixtures import fixture_paths
 from timetoshare.tables import (
+    NUMBER_TYPE,
+    PROJECTION_SCHEMA,
     TableError,
     check_match_claims,
     fixture_path,
@@ -34,10 +36,13 @@ from timetoalign.alignment import (
     MatchGraph,
 )
 from timetoalign.core import (
+    BoundingBox,
+    Box,
     Coordinate,
     EventReference,
     Projection,
     Provenance,
+    Quadrilateral,
     TimeUnit,
 )
 from timetoalign.core.time import number_to_json, struct_to_rational
@@ -47,11 +52,14 @@ from timetoalign.timelines.manifest import (
     Integrity,
     Manifest,
     Resource,
+    event_table_schema,
     projection_table,
 )
 from timetoalign.timelines.types import (
+    ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
+    DiscreteGraphicalTimeline,
     DiscretePhysicalTimeline,
 )
 
@@ -599,8 +607,8 @@ class TestWriting:
     def test_no_event_row_is_written_beside_the_tables(self, tmp_path: Path) -> None:
         message = (
             "A package's manifest names no event ID: the bundle writes its "
-            "MatchClaim table and its Projections table beside the manifest, so "
-            "its event rows are not written into it; write it with events=False."
+            "MatchClaim table and its event tables beside the manifest, so its "
+            "event rows are not written into it; write it with events=False."
         )
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _bundle().to_file(tmp_path / "package.yaml", events=True)
@@ -1152,3 +1160,235 @@ class TestTimeToShareFixturePackage:
         assert table.table.column("id").to_pylist() == [
             claim.id for claim in graph.claims
         ]
+
+
+# The package of Boxes: values in tests/alignment/README.md ("Boxes in the
+# package") and tests/timelines/README.md (``test_boxes.py``).
+_PAGE_URL = "https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2"
+_SYSTEM_ORDER = ("top_left", "bottom_left", "top_right", "bottom_right")
+_MEASURE_ORDER = ("top_left", "top_right", "bottom_left", "bottom_right")
+
+
+def _boxes() -> dict[str, list[Box]]:
+    """The Boxes of the package, by the ID of the timeline holding them."""
+    measure_1 = Quadrilateral.from_points(
+        [[1221, 1589], [2151, 1589], [1221, 2266], [2161, 2266]],
+        order=_MEASURE_ORDER,
+        unit="pixels",
+    )
+    measure_2 = Quadrilateral.from_points(
+        [[2151, 1589], [2766, 1589], [2161, 2266], [2775, 2266]],
+        order=_MEASURE_ORDER,
+        unit="pixels",
+    )
+    thirds = BoundingBox.from_xywh(
+        Fraction(1, 3), 0, Fraction(2, 3), 1, unit="user_units", number_type="fraction"
+    )
+    return {
+        "seg_2": [
+            Box.from_shape(
+                BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels"),
+                origin=7,
+                id="rect_h2",
+            )
+        ],
+        "sys": [
+            Box.from_shape(measure_1, origin=1221, id="m1"),
+            Box.from_shape(measure_2, origin=1221, id="m2"),
+        ],
+        "uu": [Box.from_shape(thirds, id="f")],
+    }
+
+
+def _box_bundle() -> AlignmentBundle:
+    """A page with its system, a Thoresen crop and a user-units timeline."""
+    system_1 = Quadrilateral.from_points(
+        [[1221, 1589], [1221, 2266], [4097, 1589], [4101, 2266]],
+        order=_SYSTEM_ORDER,
+        unit="pixels",
+    )
+    page = DiscreteGraphicalTimeline(
+        length=4512,
+        uid="page",
+        meta={
+            "box": {"x": 0, "y": 0, "width": 4512, "height": 6174},
+            "image": _PAGE_URL,
+        },
+    )
+    system = DiscreteGraphicalTimeline(
+        length=2880, uid="sys", meta={"box": system_1.to_dict()}
+    )
+    page.add_child(system, 1221)
+    seg_2 = DiscreteGraphicalTimeline(
+        length=867,
+        uid="seg_2",
+        meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}},
+    )
+    uu = ContinuousGraphicalTimeline(
+        length=2, unit="user_units", number_type="fraction", uid="uu"
+    )
+    holders = {"seg_2": seg_2, "sys": system, "uu": uu}
+    for timeline_id, boxes in _boxes().items():
+        holders[timeline_id].add_events(boxes)
+    bundle = AlignmentBundle(id="boxes")
+    for root in (page, seg_2, uu):
+        bundle.add_timeline(root)
+    return bundle
+
+
+def _held_boxes(bundle: AlignmentBundle) -> dict[str, list[Box]]:
+    """Each timeline's Box rows read as Boxes on its axis, for those holding one."""
+    held = {}
+    for timeline_id, timeline in sorted(bundle._known_timelines().items()):
+        rows = [
+            row
+            for row in timeline.events.table.to_pylist()
+            if row["event_type"] == "Box"
+        ]
+        if rows:
+            held[timeline_id] = [
+                Box.from_row(row, unit=timeline.unit, number_type=timeline.number_type)
+                for row in rows
+            ]
+    return held
+
+
+class TestBoxes:
+    def test_the_projection_table_is_the_event_table_of_projection(self) -> None:
+        assert event_table_schema(Projection) == PROJECTION_SCHEMA
+
+    def test_the_box_table_schema(self) -> None:
+        def numbers(*names: str) -> pa.StructType:
+            return pa.struct([pa.field(name, NUMBER_TYPE) for name in names])
+
+        point = numbers("x", "y")
+        assert event_table_schema(Box) == pa.schema(
+            [
+                pa.field("id", pa.string()),
+                pa.field("timeline_id", pa.string()),
+                pa.field("unit", pa.string()),
+                pa.field("number_type", pa.string()),
+                pa.field("start", NUMBER_TYPE),
+                pa.field("duration", NUMBER_TYPE),
+                pa.field("bounding_box", numbers("x", "y", "width", "height")),
+                pa.field(
+                    "quadrilateral",
+                    pa.struct(
+                        [
+                            pa.field(corner, point)
+                            for corner in Quadrilateral.CORNER_ORDER
+                        ]
+                    ),
+                ),
+            ]
+        )
+
+    def test_the_box_table_is_written_and_named(self, tmp_path: Path) -> None:
+        bundle = _box_bundle()
+
+        path = bundle.to_file(tmp_path / "package.yaml")
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "boxes.parquet",
+            "package.yaml",
+        ]
+        table = pq.read_table(tmp_path / "boxes.parquet")
+        assert table.schema == event_table_schema(Box)
+        rows = {row["id"]: row for row in table.to_pylist()}
+        assert [
+            (row["id"], row["timeline_id"], row["unit"], row["number_type"])
+            for row in table.to_pylist()
+        ] == [
+            ("rect_h2", "seg_2", "pixels", "int"),
+            ("m1", "sys", "pixels", "int"),
+            ("m2", "sys", "pixels", "int"),
+            ("f", "uu", "user_units", "fraction"),
+        ]
+        assert rows["rect_h2"]["start"] == _number(378)
+        assert rows["rect_h2"]["duration"] == _number(139)
+        assert rows["rect_h2"]["bounding_box"] == {
+            "x": _number(385),
+            "y": _number(46),
+            "width": _number(139),
+            "height": _number(20),
+        }
+        assert rows["rect_h2"]["quadrilateral"] is None
+        assert (rows["m1"]["start"], rows["m2"]["start"]) == (_number(0), _number(930))
+        assert rows["m1"]["quadrilateral"]["bottom_right"] == {
+            "x": _number(2161),
+            "y": _number(2266),
+        }
+        assert rows["m1"]["bounding_box"] is None
+        assert rows["f"]["start"] == _number(1, 3)
+        assert rows["f"]["duration"] == _number(2, 3)
+        assert rows["f"]["bounding_box"]["y"] == _number(0, 1)
+        assert rows["f"]["bounding_box"]["height"] == _number(1, 1)
+
+        data = (tmp_path / "boxes.parquet").read_bytes()
+        expected = Resource(
+            "resource_1",
+            "Box",
+            ("seg_2", "sys", "uu"),
+            "boxes.parquet",
+            PARQUET_MEDIA_TYPE,
+            len(data),
+            Integrity("SHA-256", hashlib.sha256(data).hexdigest()),
+        )
+        assert bundle.resources == [expected]
+        manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
+        assert (
+            manifest["resources"]
+            == timetoshare.with_file_ids({"resources": [expected.to_dict()]})[
+                "resources"
+            ]
+        )
+
+    def test_the_boxes_read_back_exactly(self, tmp_path: Path) -> None:
+        bundle = _box_bundle()
+        (tmp_path / "first").mkdir()
+        bundle.to_file(tmp_path / "first" / "package.yaml")
+
+        read = AlignmentBundle.from_file(tmp_path / "first" / "package.yaml")
+
+        assert _held_boxes(read) == _boxes()
+        known, written = read._known_timelines(), bundle._known_timelines()
+        assert known["page"].meta == written["page"].meta
+        assert known["sys"].meta == written["sys"].meta
+        assert read.to_dict() == bundle.to_dict()
+        (tmp_path / "second").mkdir()
+        read.to_file(tmp_path / "second" / "package.yaml")
+        assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
+
+    def test_a_box_table_contradicting_its_shapes_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        _box_bundle().to_file(tmp_path / "package.yaml")
+        table = pq.read_table(tmp_path / "boxes.parquet")
+        starts = table.column("start").to_pylist()
+        starts[1] = _number(1)
+        pq.write_table(
+            table.set_column(
+                table.schema.get_field_index("start"),
+                "start",
+                pa.array(starts, NUMBER_TYPE),
+            ),
+            tmp_path / "boxes.parquet",
+        )
+
+        message = (
+            "Box 'm1' starts at 1 on timeline 'sys', but its shape starts at x "
+            "1221 and the timeline stands at x 1221 of its image "
+            '(meta["box"]): its start is 0.'
+        )
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            AlignmentBundle.from_file(tmp_path / "package.yaml")
+
+    def test_no_event_row_is_written_beside_the_box_table(self, tmp_path: Path) -> None:
+        message = (
+            "A package's manifest names no event ID: the bundle writes its "
+            "MatchClaim table and its event tables beside the manifest, so its "
+            "event rows are not written into it; write it with events=False."
+        )
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            _box_bundle().to_file(tmp_path / "package.yaml", events=True)
+        assert list(tmp_path.iterdir()) == []

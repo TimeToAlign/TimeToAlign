@@ -1903,6 +1903,64 @@ then fails to load. Each test pins one of these with exact values.
   `projection_1` on `pcm`. A bundle whose MatchClaims were created inside
   it writes and reads back with its exact Projection IDs (the loader tests
   of the Performance Precision and MAPS bundles).
+- **Boxes in the package** (`TestBoxes`). One writer serves every event
+  type: `event_table(timelines, event_type)` writes `id`, `timeline_id`,
+  `unit`, `number_type`, then every property of the type after `id`, each
+  number written once by its row's number type, at whatever depth it lies
+  in a shape; `read_event_table` is its inverse. The Projections table is
+  that writer for `Projection`: `event_table_schema(Projection)` equals
+  TimeToShare's `PROJECTION_SCHEMA`, and the byte-equal tests above
+  (`test_the_package_is_written_back`, the fixture package) stay green, so
+  the generalisation changed no byte. `event_table_schema(Box)` is `id`,
+  `timeline_id`, `unit`, `number_type` (strings), `start`, `duration` (the
+  package number), `bounding_box` (`x`, `y`, `width`, `height`, each the
+  package number) and `quadrilateral` (`top_left`, `top_right`,
+  `bottom_right`, `bottom_left`, each a struct of `x` and `y` package
+  numbers). The package bundle holds three roots:
+  - `page` (`DiscreteGraphicalTimeline`, pixels, int, length 4512,
+    `meta["box"]` `(0, 0, 4512, 6174)`, `meta["image"]` the Gallica URL
+    `https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2`), its child
+    `sys` at offset 1221, length 2880, `meta["box"]` the quadrilateral of
+    DMOS system 1, holding `m1` (start 0, duration 940) and `m2` (930,
+    624), both quadrilaterals (values in `tests/timelines/README.md`,
+    `test_boxes.py`);
+  - `seg_2` (pixels, length 867, `meta["box"]` x 7) with `rect_h2`
+    (start 378, duration 139, the bounding box (385, 46, 139, 20));
+  - `uu` (`ContinuousGraphicalTimeline`, `user_units`, fraction, length
+    2) with `f`, the bounding box (1/3, 0, 2/3, 1), start 1/3, duration
+    2/3.
+
+  It holds neither MatchClaims nor Projections, and `to_file` writes
+  exactly `boxes.parquet` beside the manifest. Its rows, timelines sorted
+  by ID (`page` holds no Box): `rect_h2` on `seg_2`, `m1`, `m2` on `sys`,
+  `f` on `uu`, with `unit`/`number_type` `pixels`/`int` ×3 and
+  `user_units`/`fraction`. `rect_h2.start` is `{numerator: 378,
+  denominator: null, value: null}` (an int is its numerator alone);
+  `f.start` is `{1, 3, null}`, `f.bounding_box.y` `{0, 1, null}` and
+  `f.bounding_box.height` `{1, 1, null}` (a fraction keeps its
+  denominator, 1 included); `m1.quadrilateral.bottom_right` is `{x: {2161,
+  null, null}, y: {2266, null, null}}`; `rect_h2.quadrilateral` and
+  `m1.bounding_box` are null. The resource is `resource_1`, type `"Box"`,
+  timelines `["seg_2", "sys", "uu"]`, URL `boxes.parquet`, the Parquet
+  media type, its size and SHA-256 those of the file. `from_file` reads
+  back the four Boxes equal to the originals (each timeline's Box rows
+  read by `Box.from_row` on its axis), the timelines' `meta` as written;
+  written again into a fresh directory, both files are byte for byte the
+  first ones. A writer that wrote numbers through a float would lose `f`'s
+  thirds; one that dropped nested leaves' number types would write `{1,
+  1}` as an int.
+- **A Box table contradicting its shapes is refused on reading.** The
+  table rewritten with `m1.start` `{1, null, null}`: `from_file` raises
+  the invariant message of `Timeline.add_events`, `Box 'm1' starts at 1 on
+  timeline 'sys', but its shape starts at x 1221 and the timeline stands
+  at x 1221 of its image (meta["box"]): its start is 0.` Every Box read
+  passes `add_events`, so a table is never trusted over its shapes.
+- **Boxes beside event rows.** As for Projections, a bundle holding Boxes
+  writes them in `boxes.parquet` alone: `to_file(..., events=True)` is
+  refused before any file is written (`A package's manifest names no event
+  ID: the bundle writes its MatchClaim table and its event tables beside
+  the manifest, so its event rows are not written into it; write it with
+  events=False.`).
 
 ### Conformance with TimeToShare's fixture package
 

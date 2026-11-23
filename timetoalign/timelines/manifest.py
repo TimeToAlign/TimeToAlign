@@ -73,17 +73,14 @@ import pyarrow.parquet as pq
 import timetoshare
 from timetoshare import FORMAT_CONTEXT, load_catalogue, loads
 from timetoshare.serialization import Serialization
-from timetoshare.tables import (
-    PROJECTION_OF_TYPE,
-    PROJECTION_SCHEMA,
-    TableError,
-    projection_problems,
-)
+from timetoshare.tables import TableError, projection_problems
 
-from timetoalign.core import Coordinate, NumberType, Projection, TimeUnit
+from timetoalign.core import Coordinate, Event, NumberType, Projection, TimeUnit
+from timetoalign.core.fields import derive_arrow_schema
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
+    PACKAGE_NUMBER_TYPE,
     RATIONAL_STRUCT_TYPE,
     build_number_struct_array,
     is_fraction_json,
@@ -340,8 +337,8 @@ INTEGRITY_ALGORITHMS: tuple[str, ...] = tuple(
 PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 """The media type of the Parquet tables a package holds."""
 
-TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection")
-"""The resource types a manifest names at most once: its two package tables."""
+TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection", "Box")
+"""The resource types a manifest names at most once: its package tables."""
 
 _MEDIA_TYPE = re.compile(_RESOURCE_SCHEMA["media_type"]["pattern"])
 _DIGEST = re.compile(r"[0-9a-f]+")
@@ -614,23 +611,165 @@ def resource_path(directory: str | PathLike[str], url: str) -> Path:
 # endregion
 
 
-# region The Projections table
+# region The event tables
 
 PROJECTIONS_FILE_NAME = "projections.parquet"
 """The file name of a package's Projections table beside its manifest."""
+
+BOXES_FILE_NAME = "boxes.parquet"
+"""The file name of a package's Box table beside its manifest."""
+
+#: The columns an event table writes before the properties of its event type.
+_EVENT_TABLE_HEADER = ("id", "timeline_id", "unit", "number_type")
+
+
+def _package_type(type_: pa.DataType) -> pa.DataType:
+    """*type_* with every number in it (a number struct or a coordinate cell)
+    as the package number, at whatever depth."""
+    if type_ in (RATIONAL_STRUCT_TYPE, COORDINATE_CELL_TYPE):
+        return PACKAGE_NUMBER_TYPE
+    if pa.types.is_struct(type_):
+        return pa.struct(
+            [pa.field(field.name, _package_type(field.type)) for field in type_]
+        )
+    return type_
+
+
+def event_table_schema(event_type: type[Event]) -> pa.Schema:
+    """The columns of the package table of *event_type*.
+
+    ``id``, ``timeline_id``, ``unit`` and ``number_type`` (strings), then
+    every property of the event type after ``id``, in field order, as the
+    type derives it, each number in it written as the package number
+    (:data:`~timetoalign.core.time.PACKAGE_NUMBER_TYPE`): the unit and the
+    number type are stated once per row. For :class:`~timetoalign.core.Projection`
+    it is TimeToShare's Projections table
+    (:data:`timetoshare.tables.PROJECTION_SCHEMA`).
+
+    Args:
+        event_type: An event type (:class:`~timetoalign.core.Event` or a
+            subclass).
+
+    Returns:
+        The schema.
+
+    Examples:
+        >>> from timetoalign.core import Box
+        >>> event_table_schema(Box).names
+        ['id', 'timeline_id', 'unit', 'number_type', 'start', 'duration', 'bounding_box', 'quadrilateral']
+    """
+    derived = derive_arrow_schema(event_type)
+    return pa.schema(
+        [
+            *(pa.field(name, pa.string()) for name in _EVENT_TABLE_HEADER),
+            *(
+                pa.field(field.name, _package_type(field.type))
+                for field in derived
+                if field.name != "id"
+            ),
+        ]
+    )
+
+
+def _packaged(
+    array: Any, type_: pa.DataType, number_type: NumberType, types: pa.Array
+) -> pa.Array:
+    """A memory column of an event table as its package column of *type_*.
+
+    Each number (where *type_* is the package number) is written once by
+    the row's number type (:func:`~timetoalign.core.time.package_numbers`),
+    a struct member by member, by name, and anything else cast; a column
+    the memory table lacks (``None``) or holds untyped is null throughout.
+    """
+    if isinstance(array, pa.ChunkedArray):
+        array = array.combine_chunks()
+    if array is None or pa.types.is_null(array.type):
+        return pa.nulls(len(types), type_)
+    if type_ == PACKAGE_NUMBER_TYPE:
+        stored = build_number_struct_array(array, number_type=number_type)
+        return package_numbers(stored, pc.if_else(stored.is_valid(), types, None))
+    if not pa.types.is_struct(type_):
+        return array.cast(type_)
+    members = dict(
+        zip((field.name for field in array.type), array.flatten(), strict=True)
+    )
+    return pa.StructArray.from_arrays(
+        [_packaged(members[f.name], f.type, number_type, types) for f in type_],
+        fields=list(type_),
+        mask=array.is_null(),
+    )
+
+
+def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Table:
+    """The package table of *event_type*: every such event each timeline holds itself.
+
+    One row per event, timeline by timeline in the order given and in each
+    timeline's event order, in the columns of :func:`event_table_schema`:
+    the event's ``id``, the ``timeline_id`` of the timeline holding it (a
+    child's event is the child's), the ``unit`` and ``number_type`` of that
+    timeline's axis, once for the row, then every property, each number
+    written once, in the member the number type names (the package form,
+    :func:`~timetoalign.core.time.package_numbers`), however deep it lies
+    (a Box's shape). Nothing passes through a float that is not one.
+
+    Args:
+        timelines: The timelines, each once.
+        event_type: The event type whose rows are written (its class name is
+            the rows' ``event_type``).
+
+    Returns:
+        The table, empty when no timeline holds such an event.
+    """
+    schema = event_table_schema(event_type)
+    parts = []
+    for timeline in timelines:
+        events = timeline.events.table
+        if events.num_rows == 0 or "event_type" not in events.column_names:
+            continue
+        rows = events.filter(pc.equal(events.column("event_type"), event_type.__name__))
+        n = rows.num_rows
+        if n == 0:
+            continue
+        number_type = NumberType(timeline.number_type)
+        types = pa.array([number_type.name] * n, pa.string())
+        header = {
+            "timeline_id": pa.array([timeline.id] * n, pa.string()),
+            "unit": pa.array([TimeUnit(timeline.unit).value] * n, pa.string()),
+            "number_type": types,
+        }
+
+        def column(name: str, rows: pa.Table = rows) -> pa.Array | None:
+            return rows.column(name) if name in rows.column_names else None
+
+        parts.append(
+            pa.Table.from_arrays(
+                [
+                    (
+                        header[field.name]
+                        if field.name in header
+                        else _packaged(
+                            column(field.name), field.type, number_type, types
+                        )
+                    )
+                    for field in schema
+                ],
+                schema=schema,
+            )
+        )
+    if not parts:
+        return schema.empty_table()
+    return pa.concat_tables(parts)
 
 
 def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     """The Projections table of *timelines*: every Projection each holds itself.
 
-    One row per Projection, timeline by timeline in the order given and in
-    each timeline's event order, in TimeToShare's Projections table form
+    The event table of :class:`~timetoalign.core.Projection`
+    (:func:`event_table`), TimeToShare's Projections table form
     (:data:`timetoshare.tables.PROJECTION_SCHEMA`): ``id``, the
-    ``timeline_id`` of the timeline holding it (a child's Projection is the
-    child's), the ``unit`` and ``number_type`` of that timeline's axis, once
-    for the row, ``start`` and ``duration`` each its number written once, in
-    the member the number type names (the package form,
-    :func:`~timetoalign.core.time.package_numbers`), and ``projection_of``.
+    ``timeline_id`` of the timeline holding it, the ``unit`` and
+    ``number_type`` of that timeline's axis, ``start`` and ``duration`` each
+    its number written once, and ``projection_of``.
 
     A Projection's ID is unique among all Projections of the package, so
     two timelines holding one Projection ID (each minted it before they
@@ -648,54 +787,7 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     Raises:
         ValueError: If one Projection ID names Projections on two timelines.
     """
-    parts = []
-    for timeline in timelines:
-        events = timeline.events.table
-        if events.num_rows == 0 or "event_type" not in events.column_names:
-            continue
-        rows = events.filter(pc.equal(events.column("event_type"), "Projection"))
-        n = rows.num_rows
-        if n == 0:
-            continue
-        number_type = NumberType(timeline.number_type)
-        number_types = pa.array([number_type.name] * n, pa.string())
-
-        def column(name: str, empty: pa.Array, rows: pa.Table = rows) -> Any:
-            return rows.column(name) if name in rows.column_names else empty
-
-        def numbers(
-            name: str,
-            number_type: NumberType = number_type,
-            types: pa.Array = number_types,
-        ) -> pa.StructArray:
-            stored = build_number_struct_array(
-                column(name, pa.nulls(n, RATIONAL_STRUCT_TYPE)), number_type=number_type
-            )
-            return package_numbers(stored, pc.if_else(stored.is_valid(), types, None))
-
-        columns = {
-            "id": rows.column("id").combine_chunks().cast(pa.string()),
-            "timeline_id": pa.array([timeline.id] * n, pa.string()),
-            "unit": pa.array([TimeUnit(timeline.unit).value] * n, pa.string()),
-            "number_type": number_types,
-            "start": numbers("start"),
-            "duration": numbers("duration"),
-            "projection_of": column("projection_of", pa.nulls(n, PROJECTION_OF_TYPE))
-            .combine_chunks()
-            .cast(PROJECTION_OF_TYPE),
-        }
-        parts.append(
-            pa.Table.from_arrays(
-                [
-                    _in_type(columns[field.name], field.type)
-                    for field in PROJECTION_SCHEMA
-                ],
-                schema=PROJECTION_SCHEMA,
-            )
-        )
-    if not parts:
-        return PROJECTION_SCHEMA.empty_table()
-    table = pa.concat_tables(parts)
+    table = event_table(timelines, Projection)
     refuse_shared_projection_ids(
         table.column("id"),
         table.column("timeline_id"),
@@ -708,27 +800,13 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     return table
 
 
-def _in_type(array: pa.Array, type_: pa.DataType) -> pa.Array:
-    """*array* as *type_*: a struct's members reordered by name, else as it stands."""
-    if array.type == type_ or not pa.types.is_struct(type_):
-        return array
-    members = dict(
-        zip((field.name for field in array.type), array.flatten(), strict=True)
-    )
-    return pa.StructArray.from_arrays(
-        [members[field.name] for field in type_],
-        fields=list(type_),
-        mask=array.is_null(),
-    )
-
-
-def write_projection_table(table: pa.Table, path: str | PathLike[str]) -> Path:
-    """Write a Projections table to its Parquet file, replacing it whole.
+def write_event_table(table: pa.Table, path: str | PathLike[str]) -> Path:
+    """Write an event table to its Parquet file, replacing it whole.
 
     A write that fails leaves the file as it was and no temporary file.
 
     Args:
-        table: The table, as :func:`projection_table` builds it.
+        table: The table, as :func:`event_table` builds it.
         path: The file.
 
     Returns:
@@ -744,6 +822,68 @@ def write_projection_table(table: pa.Table, path: str | PathLike[str]) -> Path:
     return target
 
 
+def _from_package(array: Any, number_types: pa.Array, where: str) -> pa.Array:
+    """A package column of an event table in memory: every number in it
+    (a struct of ``numerator``, ``denominator`` and ``value``) read by the
+    row's number type, at whatever depth; anything else as it stands."""
+    if isinstance(array, pa.ChunkedArray):
+        array = array.combine_chunks()
+    if not pa.types.is_struct(array.type):
+        return array
+    names = [field.name for field in array.type]
+    if sorted(names) == sorted(PACKAGE_NUMBER_TYPE.names):
+        return numbers_from_package(array, number_types, where=f"{where}'")
+    members = [
+        _from_package(member, number_types, f"{where}.{name}")
+        for name, member in zip(names, array.flatten(), strict=True)
+    ]
+    return pa.StructArray.from_arrays(members, names=names, mask=array.is_null())
+
+
+def _event_tables_by_timeline(table: pa.Table, what: str) -> dict[str, pa.Table]:
+    """The rows of an event table in memory, by the ID of the timeline holding
+    them, in row order: ``timeline_id`` dropped, every other column kept and
+    each number read by its row's number type (*what* names the table in a
+    message)."""
+    number_types = table.column("number_type").combine_chunks()
+    memory = pa.table(
+        {
+            name: _from_package(table.column(name), number_types, f"{what} '{name}")
+            for name in table.column_names
+        }
+    )
+    timeline_ids = memory.column("timeline_id")
+    rows = memory.drop_columns(["timeline_id"])
+    return {
+        timeline_id: rows.filter(pc.equal(timeline_ids, timeline_id))
+        for timeline_id in pc.unique(timeline_ids).to_pylist()
+    }
+
+
+def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
+    """Read an event table: the rows of each timeline, in memory, in row order.
+
+    The inverse of :func:`event_table`: per timeline ID, the table of its
+    rows (``id``, ``unit``, ``number_type`` and the properties), each number
+    read in the number type its row states
+    (:func:`~timetoalign.core.time.numbers_from_package`), both sides filled
+    as memory holds them, however deep it lies; a further column is kept as
+    it stands. An event type's ``from_row(row, unit=row["unit"],
+    number_type=row["number_type"])`` reads a row.
+
+    Args:
+        path: The file.
+
+    Returns:
+        The rows by the ID of the timeline holding them.
+
+    Raises:
+        ValueError: If a number does not hold its value as its row's number
+            type says, naming the file, the column and the row.
+    """
+    return _event_tables_by_timeline(pq.read_table(path), Path(path).name)
+
+
 def read_projection_table(
     path: str | PathLike[str], manifest: Mapping[str, Any]
 ) -> dict[str, list[Projection]]:
@@ -755,8 +895,8 @@ def read_projection_table(
     timeline's own axis, every ID given once in the table (a Projection's
     ID is unique in the package, so two timelines never both hold
     ``projection_1``). Each ``start`` and ``duration`` is read in the
-    number type its row states (:func:`~timetoalign.core.time.numbers_from_package`),
-    and a number not standing as that type says is refused.
+    number type its row states, as :func:`read_event_table` reads an event
+    table, and a number not standing as that type says is refused.
 
     Args:
         path: The file.
@@ -775,38 +915,30 @@ def read_projection_table(
     problems = projection_problems(table, manifest)
     if problems:
         raise TableError(problems[0])
-    units = table.column("unit").combine_chunks()
-    number_types = table.column("number_type").combine_chunks()
+    return {
+        timeline_id: [
+            Projection.from_row(
+                {
+                    **row,
+                    "start": _coordinate_cell(row["start"], row),
+                    "duration": _coordinate_cell(row["duration"], row),
+                }
+            )
+            for row in rows.to_pylist()
+        ]
+        for timeline_id, rows in _event_tables_by_timeline(
+            table, "Projections table"
+        ).items()
+    }
 
-    def cells(name: str) -> pa.StructArray:
-        numbers = numbers_from_package(
-            table.column(name), number_types, where=f"Projections table {name!r}"
-        )
-        valid = numbers.is_valid()
-        return pa.StructArray.from_arrays(
-            [
-                *numbers.flatten(),
-                pc.if_else(valid, units, None),
-                pc.if_else(valid, number_types, None),
-            ],
-            fields=list(COORDINATE_CELL_TYPE),
-            mask=pc.invert(valid),
-        )
 
-    rows = pa.Table.from_arrays(
-        [
-            table.column("id").combine_chunks(),
-            table.column("timeline_id").combine_chunks(),
-            cells("start"),
-            cells("duration"),
-            table.column("projection_of").combine_chunks(),
-        ],
-        names=["id", "timeline_id", "start", "duration", "projection_of"],
-    )
-    by_timeline: dict[str, list[Projection]] = {}
-    for row in rows.to_pylist():
-        by_timeline.setdefault(row["timeline_id"], []).append(Projection.from_row(row))
-    return by_timeline
+def _coordinate_cell(
+    number: dict[str, Any] | None, row: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """A number of an event row with its row's axis: a coordinate cell."""
+    if number is None:
+        return None
+    return {**number, "unit": row["unit"], "number_type": row["number_type"]}
 
 
 # endregion

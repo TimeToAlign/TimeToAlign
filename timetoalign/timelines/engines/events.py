@@ -5,24 +5,32 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from fractions import Fraction
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from timetoalign.core import (
+    BoundingBoxField,
+    Box,
     Coordinate,
     CoordinateSpec,
     CoordinateValue,
     Duration,
+    Event,
     EventReference,
     NumberType,
     Projection,
+    QuadrilateralField,
+    Shape,
+    struct_to_coordinate,
 )
 from timetoalign.core.ids import quote_id
 from timetoalign.core.time import (
+    combine_number_columns,
     combine_numbers,
+    compare_number_column,
     coordinate_numeric_value,
     exact_coordinate_value,
     express_as,
@@ -41,7 +49,17 @@ from timetoalign.storage.events import (
 
 from .children import placed_on
 
+if TYPE_CHECKING:
+    from ..base import Timeline
+
 SEGMENT_EVENT_TYPE = "Segment"
+BOX_EVENT_TYPE = Box.__name__
+
+#: The columns of a Box row that may hold its shape, each with its field.
+_SHAPE_COLUMNS = (
+    ("bounding_box", BoundingBoxField),
+    ("quadrilateral", QuadrilateralField),
+)
 
 #: The keys a Projection row may hold a value under: its ID, its type, its
 #: position and the event it stands for.
@@ -97,6 +115,54 @@ def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
             f"A Projection added to timeline {quote_id(timeline_id)} stands for an "
             f"event of another timeline; its projection_of names "
             f"{quote_id(timeline_id)} itself"
+        )
+
+
+def _box_name(event_id: str | None) -> str:
+    """A Box row as a message names it: ``Box 'm1'``, or ``A Box`` without ID."""
+    return "A Box" if event_id is None else f"Box {quote_id(event_id)}"
+
+
+def _image_origin(timeline: Timeline) -> Coordinate:
+    """The x at which *timeline* stands in the image whose space it measures.
+
+    The ``x_min`` of the shape the timeline's ``meta["box"]`` states, read
+    in the timeline's unit and number type
+    (:meth:`~timetoalign.core.Shape.from_dict`); 0 where it states none.
+
+    Raises:
+        ValueError: If ``meta["box"]`` is no shape on the timeline's axis.
+    """
+    box = timeline.meta.get("box")
+    if box is None:
+        return Coordinate(0, timeline.unit, number_type=timeline.number_type)
+    return Shape.from_dict(
+        box, unit=timeline.unit, number_type=timeline.number_type
+    ).x_min
+
+
+def _refuse_box_off_the_axis(
+    row: dict[str, Any], timeline_id: str, unit: Any, number_type: NumberType
+) -> None:
+    """Refuse a Box row whose shape is not on the timeline's axis.
+
+    A shape is the source's statement in its own numbers: it is never
+    converted into another unit nor rounded into another number type, so a
+    Box enters a timeline only on that timeline's axis.
+
+    Raises:
+        ValueError: If the row's shape is in another unit or number type.
+    """
+    shape = row.get("bounding_box")
+    if shape is None:
+        shape = row.get("quadrilateral")
+    if not isinstance(shape, Shape):
+        return
+    if (shape.unit, shape.number_type) != (unit, number_type):
+        raise ValueError(
+            f"{_box_name(row.get('id'))} is in {shape.unit} as {shape.number_type}, "
+            f"timeline {quote_id(timeline_id)} in {unit} as {number_type}: a Box "
+            "is added on its timeline's axis."
         )
 
 
@@ -330,7 +396,7 @@ class EventsMixin:
 
     def add_events(
         self,
-        rows: Projection | Sequence[dict[str, Any] | Projection],
+        rows: Event | Sequence[dict[str, Any] | Event],
         allow_expansion: bool = False,
     ) -> list[str]:
         """Add events to the timeline.
@@ -358,12 +424,22 @@ class EventsMixin:
         position and ``projection_of``, the event of another timeline it
         stands for, as a dict ``{"timeline_id": ..., "event_id": ...}`` or an
         :class:`~timetoalign.core.EventReference` (``None`` where none is
-        known); it repeats nothing else of that event. A
-        :class:`~timetoalign.core.Projection` object may be given in place of
-        its row, alone or in the list.
+        known); it repeats nothing else of that event.
+
+        A Box (``event_type`` ``"Box"``) is an area of the image the
+        timeline runs along: its shape, in the image's space, and the
+        interval of its x extent on the timeline. Its shape must be on the
+        timeline's axis (its unit and number type; a shape is never
+        converted), and its start must be the shape's ``x_min`` less the x
+        at which the timeline stands in its image: the ``x_min`` of the
+        shape ``meta["box"]`` states, 0 where it states none.
+
+        An :class:`~timetoalign.core.Event` object (a
+        :class:`~timetoalign.core.Projection`, a :class:`~timetoalign.core.Box`)
+        may be given in place of its row, alone or in the list.
 
         Args:
-            rows: Event dictionaries or Projections (one or a list).
+            rows: Event dictionaries or events (one or a list).
                 Required keys of a dictionary:
                 - event_type: class name (e.g. ``"Beat"``, ``"Note"``,
                   ``"Projection"``)
@@ -377,9 +453,10 @@ class EventsMixin:
         Raises:
             ValueError: If an ID is already held by an event of this timeline
                 or given twice, a Projection row holds a key a Projection does
-                not have or names an event of this timeline, a position cannot
-                be converted, or the events exceed the length and expansion is
-                not allowed. Nothing is added then.
+                not have or names an event of this timeline, a Box's shape is
+                off the timeline's axis or its start contradicts its shape, a
+                position cannot be converted, or the events exceed the length
+                and expansion is not allowed. Nothing is added then.
 
         Examples:
             >>> from timetoalign.timelines import ContinuousPhysicalTimeline
@@ -393,6 +470,9 @@ class EventsMixin:
         rows = _event_rows(rows)
         if not rows:
             return []
+        for row in rows:
+            if row.get("event_type") == BOX_EVENT_TYPE:
+                _refuse_box_off_the_axis(row, self._id, self._unit, self._number_type)
 
         # Resolve unit-qualified coordinates into this timeline's native unit
         # before anything measures or stores them. A ``Coordinate`` whose unit
@@ -405,18 +485,82 @@ class EventsMixin:
         for row in rows:
             if row.get("event_type") == PROJECTION_EVENT_TYPE:
                 _check_projection_row(row, self._id)
+        given_ids = [row.get("id") for row in rows]
         rows = self._rows_with_ids(rows)
+        added = self._event_data_of(rows)
+        self._refuse_boxes_off_their_shapes(added, given_ids)
 
         # The farthest end, in this timeline's number type: exact on an
         # exact axis, so it is compared and grown to as it will be stored.
         max_coord = max(self._get_event_end_coordinate(row) for row in rows)
-
-        # Ensure capacity
         self._ensure_capacity(max_coord, allow_expansion)
-
-        # Add events
-        self._add_events_unchecked(rows)
+        self._events.extend(added)
         return [row["id"] for row in rows]
+
+    def _refuse_boxes_off_their_shapes(
+        self, added: EventData, given_ids: list[str | None]
+    ) -> None:
+        """Refuse the rows *added* would add if a Box's start contradicts its shape.
+
+        For every Box row, ``start`` must equal ``x_min - o``, *o* the x at
+        which this timeline stands in its image (:func:`_image_origin`),
+        compared exactly on an exact axis (:func:`compare_number_column`),
+        all rows at once. The duration is the Box's own invariant, checked
+        when it is made.
+
+        Args:
+            added: The rows as they will be stored.
+            given_ids: Row for row, the ID the caller gave, or None.
+
+        Raises:
+            ValueError: Naming the first Box whose start contradicts its
+                shape, the timeline, both x and the start it must have.
+        """
+        table = added.table
+        if "event_type" not in table.column_names:
+            return
+        is_box = pc.fill_null(
+            pc.equal(table.column("event_type"), BOX_EVENT_TYPE), False
+        )
+        if not pc.any(is_box).as_py():
+            return
+        boxes = table.filter(is_box)
+        x_min = None
+        for name, field_class in _SHAPE_COLUMNS:
+            if name not in boxes.column_names:
+                continue
+            column = field_class.from_field(
+                (boxes.column(name).combine_chunks(), boxes.schema.field(name))
+            ).x_min()
+            x_min = (
+                column
+                if x_min is None
+                else pc.if_else(column.is_valid(), column, x_min)
+            )
+        if x_min is None:
+            return
+        number_type = self._number_type
+        origin = _image_origin(self)
+        expected = combine_number_columns(x_min, origin.value, "subtract", number_type)
+        start = boxes.column("start").combine_chunks()
+        agrees = compare_number_column(start, expected, "equal", number_type)
+        wrong = pc.invert(pc.fill_null(agrees, True))
+        if not pc.any(wrong).as_py():
+            return
+        at = pc.index(wrong, True).as_py()
+        row = pc.indices_nonzero(is_box)[at].as_py()
+
+        def written(cells: pa.StructArray) -> str:
+            return _format_coordinate_value(
+                struct_to_coordinate(cells[at].as_py(), number_type)
+            )
+
+        raise ValueError(
+            f"{_box_name(given_ids[row])} starts at {written(start)} on timeline "
+            f"{quote_id(self._id)}, but its shape starts at x {written(x_min)} and "
+            f"the timeline stands at x {_format_coordinate_value(origin.value)} of "
+            f'its image (meta["box"]): its start is {written(expected)}.'
+        )
 
     def add_projections(
         self,
@@ -700,10 +844,12 @@ class EventsMixin:
         """
         if not rows:
             return
+        self._events.extend(self._event_data_of(rows))
 
-        data_class = type(self._events)
-        new_data = data_class.from_dicts(rows, self._unit, self._number_type)
-        self._events.extend(new_data)
+    def _event_data_of(self, rows: list[dict[str, Any]]) -> EventData:
+        """The event table of *rows* on this timeline's axis, of the concrete
+        type of ``self._events`` (a subclass such as MeasureData included)."""
+        return type(self._events).from_dicts(rows, self._unit, self._number_type)
 
     def _get_event_end_coordinate(self, row: dict[str, Any]) -> int | float | Fraction:
         """Extract the end coordinate from an event dict.

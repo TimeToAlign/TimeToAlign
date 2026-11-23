@@ -2461,6 +2461,83 @@ and the number of rows the timeline holds afterwards, never a count of calls:
 
 ---
 
+### `test_boxes.py` - Boxes added to a timeline
+
+**Purpose:** A Box is an area of an image held as an interval event of a
+timeline running along the image's x axis (the scalar is tested in
+`tests/core/test_box.py`). It holds two statements of one x extent: its
+shape, in the image's pixel space, and its interval on the timeline. They
+agree by one invariant, `start = x_min − o(T)` and `duration = x_max −
+x_min`, where `o(T)` is the x at which the timeline stands in its image: the
+`x_min` of the shape its `meta["box"]` states, 0 where it states none. The
+duration half is the Box's own validator; `Timeline.add_events` checks the
+start half for every Box row it is given, and refuses a Box whose numbers
+are not on the timeline's axis, since geometry is never converted or
+rounded onto an axis. What would show it broken: a Box accepted whose start
+contradicts its shape (a reader of the interval and a reader of the shape
+would then name two areas), a Box in another unit converted or rounded
+onto the axis, a refusal that leaves part of a batch added, or a shape read
+in another number type than the timeline's.
+
+**What proves it** (values read from the sources, so the test is a check of
+the sources' own arithmetic, never a restatement of the implementation):
+
+- **Thoresen's `rect_h2`, accepted on its crop.** The Thoresen TSV places
+  `rect_h2` on an 875 × 270 image at `{x: 385, y: 46, width: 139, height:
+  20}`; the 2010 example crops that image at x0 = 7 to x1 = 874 as its
+  second segment. `seg_2` (`DiscreteGraphicalTimeline`, pixels, int, length
+  867, `meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}}`) takes
+  `Box.from_shape(BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels"),
+  origin=7, id="rect_h2")`: `add_events` returns `["rect_h2"]`, the stored
+  `start` cell is `{378.0, 378, 1}`, `duration` `{139.0, 139, 1}`, `end`
+  `{517.0, 517, 1}`, `bounding_box.x` `{385.0, 385, 1}` and `quadrilateral`
+  null. As the second segment of the segment line `dgt_2`, after `seg_1`
+  (length 866, the first crop 8 to 874), `dgt_2.get_timestamp_for("rect_h2")`
+  spans [1244, 1383) (866 + 378, 866 + 517), the How-to's existing check.
+- **The same Box without `meta["box"]` is refused.** On a `seg_2` stating
+  no box the timeline stands at x 0, so the Box's start must be 385:
+  `Box 'rect_h2' starts at 378 on timeline 'seg_2', but its shape starts at
+  x 385 and the timeline stands at x 0 of its image (meta["box"]): its
+  start is 385.`, and `seg_2` holds no event and keeps its length 867.
+- **Off the axis, refused before any conversion.** The same rectangle in
+  `css_pixels` as float (`BoundingBox.from_xywh(385.0, 46.0, 139.0, 20.0,
+  unit="css_pixels")`, origin 7.0) on `seg_2`: `Box 'rect_h2' is in
+  css_pixels as float, timeline 'seg_2' in pixels as int: a Box is added on
+  its timeline's axis.` A Box made without an ID is named `A Box` in both
+  messages (the ID the timeline would mint is never shown).
+- **A quadrilateral on a child timeline.** DMOS's *Aimons-nous* page 1
+  (`page`, pixels, length 4512, meta box `(0, 0, 4512, 6174)`) holds
+  system 1 as its child `sys` at offset 1221, length 2880 (4101 − 1221),
+  whose `meta["box"]` is the system's quadrilateral (corners (1221, 1589),
+  (4097, 1589), (4101, 2266), (1221, 2266)), so `o(sys)` = 1221. Measure 1
+  (corners (1221, 1589), (2151, 1589), (2161, 2266), (1221, 2266)) and
+  measure 2 ((2151, 1589), (2766, 1589), (2775, 2266), (2161, 2266)), as
+  `Box.from_shape(q, origin=1221, id=...)`, are accepted with starts 0 and
+  930, durations 940 and 624; their `quadrilateral` cells' `bottom_right`
+  are (2161, 2266) and (2775, 2266), `bounding_box` null.
+- **Atomic in a batch.** `[m1 at origin 1221, m2 at origin 0]` on a fresh
+  `sys`: the second row is refused (`Box 'm2' starts at 2151 on timeline
+  'sys', but its shape starts at x 2151 and the timeline stands at x 1221
+  of its image (meta["box"]): its start is 930.`) and `sys` holds no event,
+  the first row included.
+- **Exact on a fraction axis.** `uu` (`ContinuousGraphicalTimeline`,
+  `user_units`, fraction, length 2) takes the Box `f` of
+  `BoundingBox.from_xywh(1/3, 0, 2/3, 1)` at origin 0: start cell `{1/3, 1,
+  3}`, duration `{2/3, 2, 3}`, `bounding_box.width` `{2/3, 2, 3}`. With
+  `meta["box"] = {"x": [1, 3], "y": [0, 1], "width": [5, 3], "height": [1,
+  1]}` (the fraction pairs `Shape.to_dict` writes), `o(uu)` = 1/3: `f` at
+  origin 1/3 starts at 0 and is accepted; `f` at origin 0 is refused, `Box
+  'f' starts at 1/3 on timeline 'uu', but its shape starts at x 1/3 and the
+  timeline stands at x 1/3 of its image (meta["box"]): its start is 0.`
+  The comparison is exact: a float detour would still agree here, so the
+  float-free path is pinned by the cells holding numerator and denominator.
+- **Other events pass unchanged.** A Note dict beside a Box in one call is
+  added with it (`["note_1", "rect_h2"]`); a timeline holding no Box never
+  reads its `meta["box"]` (a malformed one, `{"x": "left"}`, refuses
+  nothing when a Note is added).
+
+---
+
 ### `test_external_references.py` - Incoming External References and `to_dict()` Flags
 
 **Purpose:** Validates the per-timeline table of *incoming* external

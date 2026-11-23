@@ -101,6 +101,26 @@ class TestFromShape:
         assert type(box.duration.value) is Fraction
         assert box.number_type is NumberType.fraction
 
+    def test_a_whole_float_origin_is_its_integer(
+        self, measure_1: Quadrilateral
+    ) -> None:
+        box = Box.from_shape(measure_1, origin=7.0)
+        assert box.start == Coordinate(1214, TimeUnit.pixels)
+        assert type(box.start.value) is int
+
+    @pytest.mark.parametrize(
+        ("origin", "shown"), [(7.5, "7.5"), (Fraction(15, 2), "15/2")]
+    )
+    def test_the_origin_is_never_rounded(
+        self, origin: float | Fraction, shown: str, measure_1: Quadrilateral
+    ) -> None:
+        with pytest.raises(ValueError) as refused:
+            Box.from_shape(measure_1, origin=origin)
+        assert str(refused.value) == (
+            f"A Box's origin is {shown}, which pixels as int cannot hold exactly: "
+            "geometry is never rounded."
+        )
+
 
 class TestRefusals:
     def test_a_duration_other_than_the_extent(self, measure_1: Quadrilateral) -> None:

@@ -6,6 +6,7 @@ Strategy: ``tests/core/README.md``, section ``test_shapes.py``.
 from __future__ import annotations
 
 from fractions import Fraction
+from typing import Any
 
 import pyarrow as pa
 import pytest
@@ -29,8 +30,8 @@ from timetoalign.core.time import RATIONAL_STRUCT_TYPE
 #: Thoresen, ``thoresen_test.tsv``, row ``rect_h2``.
 THORESEN = (385, 46, 139, 20)
 
-#: CollabScore, *Aimons-nous*, page 1: DMOS's region of measure 1, written
-#: top-left, top-right, bottom-left, bottom-right.
+#: The DMOS output for the Gallica score ``bpt6k11620688``, page 1: the region
+#: of measure 1, written top-left, top-right, bottom-left, bottom-right.
 MEASURE_1 = [[1221, 1589], [2151, 1589], [1221, 2266], [2161, 2266]]
 MEASURE_ORDER = ("top_left", "top_right", "bottom_left", "bottom_right")
 
@@ -39,8 +40,12 @@ MEASURE_ORDER = ("top_left", "top_right", "bottom_left", "bottom_right")
 SYSTEM_1 = [[1221, 1589], [1221, 2266], [4097, 1589], [4101, 2266]]
 SYSTEM_ORDER = ("top_left", "bottom_left", "top_right", "bottom_right")
 
-#: Neuma's selector of measure 1: DMOS's order copied into SVG points.
-NEUMA_M1 = "1221,1589 2151,1589 1221,2266 2161,2266"
+#: An SVG selector of measure 1 that copies DMOS's order into SVG points.
+CROSSED_M1 = "1221,1589 2151,1589 1221,2266 2161,2266"
+
+#: Measure 1's corners in the canonical order.
+M1_CORNERS = [(1221, 1589), (2151, 1589), (2161, 2266), (1221, 2266)]
+M1_POINTS = "1221,1589 2151,1589 2161,2266 1221,2266"
 
 
 def _message(refused: pytest.ExceptionInfo[ValidationError]) -> str:
@@ -165,13 +170,106 @@ class TestDmosQuadrilaterals:
         ]
 
     def test_the_crossed_outline_is_refused(self) -> None:
+        crossed = [(1221, 1589), (2151, 1589), (1221, 2266), (2161, 2266)]
         with pytest.raises(ValidationError) as refused:
-            Quadrilateral.from_svg_points(NEUMA_M1, unit="pixels")
+            Quadrilateral.from_points(crossed, unit="pixels")
         assert _message(refused) == (
             "The corners top_left (1221, 1589), top_right (2151, 1589), bottom_right "
             "(1221, 2266), bottom_left (2161, 2266) do not run clockwise around a "
             "convex outline: the turn at bottom_right is counter-clockwise."
         )
+
+    def test_the_crossed_svg_points_are_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            Quadrilateral.from_svg_points(CROSSED_M1, unit="pixels")
+        assert str(refused.value) == (
+            "The SVG points '1221,1589 2151,1589 1221,2266 2161,2266' bound no "
+            "convex quadrilateral: the outline turns clockwise at points 1 and 2 and "
+            "counter-clockwise at points 3 and 4."
+        )
+
+
+class TestCornerRoles:
+    @pytest.mark.parametrize(
+        ("start", "corner"),
+        [(1, "top_right"), (2, "bottom_right"), (3, "bottom_left")],
+    )
+    def test_a_rotated_list_is_refused(self, start: int, corner: str) -> None:
+        rotated = M1_CORNERS[start:] + M1_CORNERS[:start]
+        with pytest.raises(ValidationError) as refused:
+            Quadrilateral.from_points(rotated, unit="pixels")
+        listed = ", ".join(
+            f"{name} ({x}, {y})"
+            for name, (x, y) in zip(Quadrilateral.CORNER_ORDER, rotated)
+        )
+        assert _message(refused) == (
+            f"The corners {listed} run clockwise around a convex outline but start "
+            f"at its {corner} corner: its top-left corner is (1221, 1589), the "
+            "corner of least x + y (of two, the upper)."
+        )
+
+    def test_the_message_names_each_corner(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            Quadrilateral.from_points(M1_CORNERS[2:] + M1_CORNERS[:2], unit="pixels")
+        assert _message(refused) == (
+            "The corners top_left (2161, 2266), top_right (1221, 2266), bottom_right "
+            "(1221, 1589), bottom_left (2151, 1589) run clockwise around a convex "
+            "outline but start at its bottom_right corner: its top-left corner is "
+            "(1221, 1589), the corner of least x + y (of two, the upper)."
+        )
+
+    def test_a_rotated_order_is_refused(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            Quadrilateral.from_points(
+                M1_CORNERS,
+                order=("top_right", "bottom_right", "bottom_left", "top_left"),
+                unit="pixels",
+            )
+        assert "but start at its bottom_left corner" in _message(refused)
+
+    @pytest.mark.parametrize("start", range(4))
+    @pytest.mark.parametrize("counter_clockwise", [False, True])
+    def test_svg_points_in_any_listing(
+        self, start: int, counter_clockwise: bool, measure_1: Quadrilateral
+    ) -> None:
+        listing = M1_CORNERS[start:] + M1_CORNERS[:start]
+        if counter_clockwise:
+            listing.reverse()
+        text = " ".join(f"{x},{y}" for x, y in listing)
+        read = Quadrilateral.from_svg_points(text, unit="pixels")
+        assert read == measure_1
+        assert read.as_svg_points() == M1_POINTS
+
+    def test_the_upper_of_two_corners_is_top_left(self) -> None:
+        diamond = Quadrilateral.from_svg_points("0,5 5,10 10,5 5,0", unit="pixels")
+        assert diamond.as_svg_points() == "5,0 10,5 5,10 0,5"
+        assert diamond.top_left == Point(x=_px(5), y=_px(0))
+
+    @pytest.mark.parametrize(
+        ("text", "message"),
+        [
+            (
+                "0,0 10,0 10,10 0,10 5,5",
+                "The SVG points '0,0 10,0 10,10 0,10 5,5' hold 5 points; a "
+                "Quadrilateral's are four.",
+            ),
+            (
+                "0,0 10,0 10,10 0",
+                "The SVG points '0,0 10,0 10,10 0' hold 7 numbers, which are no list "
+                "of x,y pairs; a Quadrilateral's are four points.",
+            ),
+            (
+                "0,0 10,0 4,4 0,10",
+                "The SVG points '0,0 10,0 4,4 0,10' bound no convex quadrilateral: "
+                "the outline turns clockwise at points 1, 2 and 4 and "
+                "counter-clockwise at point 3.",
+            ),
+        ],
+    )
+    def test_no_convex_quadrilateral(self, text: str, message: str) -> None:
+        with pytest.raises(ValueError) as refused:
+            Quadrilateral.from_svg_points(text, unit="pixels")
+        assert str(refused.value) == message
 
 
 class TestFields:
@@ -322,14 +420,68 @@ class TestExactness:
         )
         assert quarter.as_svg_points() == "0.25,0 1.25,0 1.25,1 0.25,1"
 
-    def test_a_ratio_on_pixels_is_refused_by_the_construction_protocol(self) -> None:
+
+class TestNeverRounded:
+    @pytest.mark.parametrize(
+        ("build", "member", "shown"),
+        [
+            (lambda: BoundingBox.from_xywh(1.5, 0, 1, 1, unit="pixels"), "x", "1.5"),
+            (
+                lambda: BoundingBox.from_xywh(0, 0, 1.4, 1, unit="pixels"),
+                "width",
+                "1.4",
+            ),
+            (
+                lambda: BoundingBox.from_xywh(Fraction(3, 2), 0, 1, 1, unit="pixels"),
+                "x",
+                "3/2",
+            ),
+            (
+                lambda: Quadrilateral.from_points(
+                    [(1221.4, 1589), (2151, 1589), (2161, 2266), (1221, 2266)],
+                    unit="pixels",
+                ),
+                "x",
+                "1221.4",
+            ),
+            (
+                lambda: BoundingBox.from_media_fragment(
+                    "xywh=12.5,0,1,1", unit="pixels"
+                ),
+                "x",
+                "25/2",
+            ),
+        ],
+    )
+    def test_on_an_int_axis(self, build: Any, member: str, shown: str) -> None:
         with pytest.raises(ValueError) as refused:
-            BoundingBox.from_xywh(Fraction(3, 2), 0, 1, 1, unit="pixels")
+            build()
         assert str(refused.value) == (
-            "exact value 3/2 cannot be stored in an integer-valued field: rounding "
-            "modes apply to inexact measurements, not to a ratio that was written "
-            "down deliberately"
+            f"A shape's {member} is {shown}, which pixels as int cannot hold "
+            "exactly: geometry is never rounded."
         )
+
+    def test_a_float_on_a_fraction_axis(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            BoundingBox.from_xywh(1.5, 0, 1, 1, unit="quarters")
+        assert str(refused.value) == (
+            "A shape's x is 1.5, which quarters as fraction cannot hold exactly: a "
+            "float is read as a ratio only when it is a whole number; give a "
+            "Fraction."
+        )
+
+    def test_whole_floats_are_their_integers(self) -> None:
+        on_pixels = BoundingBox.from_xywh(100.0, 0, 1, 1, unit="pixels")
+        assert on_pixels.x == _px(100)
+        assert type(on_pixels.x.value) is int
+        on_quarters = BoundingBox.from_xywh(2.0, 0, 1, 1, unit="quarters")
+        assert on_quarters.x.value == Fraction(2)
+        assert type(on_quarters.x.value) is Fraction
+
+    def test_a_float_axis_takes_the_value_as_given(self) -> None:
+        box = BoundingBox.from_xywh(1.5, 0, 1, 1, unit="css_pixels")
+        assert box.x.value == 1.5
+        assert box.number_type is NumberType.float
 
 
 class TestRefusals:

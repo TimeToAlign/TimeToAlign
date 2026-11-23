@@ -739,10 +739,12 @@ height`, the members of IIIF's and Media Fragments' `xywh`) or a
 bottom_left`). Every member is a `Coordinate` (a `Duration` for `width` and
 `height`) in one unit and one number type, and a shape is written as each
 format writes it, or refused where the format cannot write the value. These
-tests prove that the values sources state survive exactly, that the corner
-order a source writes is read into the one canonical order, that an outline
-no polygon can be drawn from is refused, and that the field stores every
-number on both sides with the axis once in its metadata.
+tests prove that the values sources state survive exactly and are never
+rounded onto an axis, that the corner order a source writes is read into
+the one canonical order (and that a list naming the wrong corner top-left
+is refused rather than mislabelled), that an outline no polygon can be
+drawn from is refused, and that the field stores every number on both
+sides with the axis once in its metadata.
 
 **What proves it** (values read from real sources):
 
@@ -757,7 +759,8 @@ number on both sides with the axis once in its metadata.
   pixel index, so `lrx = x + width`). `from_media_fragment` of the fragment
   and of `"xywh=pixel:385,46,139,20"` gives the box back; `"xywh=percent:…"`
   is refused, as it needs the image size.
-- **A DMOS measure** (CollabScore, *Aimons-nous*, page 1, measure 1, region
+- **A DMOS measure** (the DMOS output for the Gallica score
+  `bpt6k11620688`, page 1, measure 1, region
   `[[1221,1589],[2151,1589],[1221,2266],[2161,2266]]`, which DMOS writes
   top-left, top-right, bottom-left, bottom-right):
   `Quadrilateral.from_points(region, order=("top_left", "top_right",
@@ -773,14 +776,53 @@ number on both sides with the axis once in its metadata.
   `[[1221,1589],[1221,2266],[4097,1589],[4101,2266]]`, written top-left,
   bottom-left, top-right, bottom-right) read in that order has the corners
   (1221,1589) (4097,1589) (4101,2266) (1221,2266).
-- **The crossed outline is refused.** Neuma's sync manifest copies DMOS's
-  order into an SVG selector, `"1221,1589 2151,1589 1221,2266 2161,2266"`;
-  read in the SVG order (canonical), its third corner turns the other way
-  (cross product −636,380), so `from_svg_points` raises the whole message
-  `The corners top_left (1221, 1589), top_right (2151, 1589), bottom_right
-  (1221, 2266), bottom_left (2161, 2266) do not run clockwise around a
-  convex outline: the turn at bottom_right is counter-clockwise.` A
-  validator accepting this would draw the measure as a bow tie.
+- **The crossed outline is refused.** An IIIF `SvgSelector` that copies
+  DMOS's measure order into SVG points, `"1221,1589 2151,1589 1221,2266
+  2161,2266"`, draws a bow tie: given to the canonical constructor
+  (`from_points` in the canonical order), its third corner turns the other
+  way (cross product −636,380), refused whole: `The corners top_left (1221,
+  1589), top_right (2151, 1589), bottom_right (1221, 2266), bottom_left
+  (2161, 2266) do not run clockwise around a convex outline: the turn at
+  bottom_right is counter-clockwise.` `from_svg_points` of the string turns
+  clockwise at two points and counter-clockwise at the other two, so no
+  direction and no starting corner make it convex: `The SVG points
+  '1221,1589 2151,1589 1221,2266 2161,2266' bound no convex quadrilateral:
+  the outline turns clockwise at points 1 and 2 and counter-clockwise at
+  points 3 and 4.`
+- **Corner roles: the top-left corner is the corner of least x + y; of two
+  such corners, the one of least y.** On an axis-aligned box it is the
+  corner the name says; on DMOS's skewed measure 1, (1221, 1589) has the
+  least sum, 2810, of the four (3740, 4427, 3487). The canonical
+  constructor keeps the canonical order and refuses a clockwise list that
+  starts elsewhere, naming the corner it starts at, because accepting it
+  would give `top_left` the value of another corner. The three other
+  rotations of measure 1 are refused whole, e.g. the list starting at
+  (2161, 2266): `The corners top_left (2161, 2266), top_right (1221, 2266),
+  bottom_right (1221, 1589), bottom_left (2151, 1589) run clockwise around
+  a convex outline but start at its bottom_right corner: its top-left
+  corner is (1221, 1589), the corner of least x + y (of two, the upper).`
+  (`top_right` and `bottom_left` likewise for the two other rotations);
+  `from_points` with the canonical points and a rotated `order`
+  (`top_right, bottom_right, bottom_left, top_left`) is refused as starting
+  at its `bottom_left` corner. DMOS's two permutations (measure and system
+  orders above) are not rotations and still give exactly the corners
+  above.
+- **SVG and MEI points are normalised, not refused.** SVG `points` (hence
+  MEI `@points` and IIIF `SvgSelector`) fix neither a starting corner nor a
+  direction, so `from_svg_points` reads each of the eight listings of
+  measure 1 (four starting corners, clockwise and counter-clockwise, y
+  down) as the same quadrilateral, `"1221,1589 2151,1589 2161,2266
+  1221,2266"`: a counter-clockwise list is reversed, then started at the
+  top-left corner. The tie rule's worked example is the diamond `"0,5 5,10
+  10,5 5,0"` (counter-clockwise): (0, 5) and (5, 0) both have x + y = 5, the
+  upper (5, 0) is top-left, so it reads as `"5,0 10,5 5,10 0,5"`. Anything
+  that is not four points of a convex quadrilateral is refused whole:
+  five points (`The SVG points '0,0 10,0 10,10 0,10 5,5' hold 5 points; a
+  Quadrilateral's are four.`), an odd count of numbers (`The SVG points
+  '0,0 10,0 10,10 0' hold 7 numbers, which are no list of x,y pairs; a
+  Quadrilateral's are four points.`), and the concave `"0,0 10,0 4,4 0,10"`
+  (`... bound no convex quadrilateral: the outline turns clockwise at points
+  1, 2 and 4 and counter-clockwise at point 3.`).
 - **The field.** `QuadrilateralField.from_shapes([m1, m2])` (measure 2:
   (2151,1589) (2766,1589) (2775,2266) (2161,2266)): `x_min()` cells are
   1221 and 2151, `x_max()` cells 2161 and 2775 (vectorised over the
@@ -806,9 +848,29 @@ number on both sides with the axis once in its metadata.
   coordinates are whole numbers; this shape's ulx is 1/3.` and `SVG points
   are decimal numbers; 1/3 has no finite decimal expansion.` (a ratio is
   never rounded to be written). A ratio with a finite expansion is written
-  as a decimal (`Fraction(1, 4)` is `0.25`). `from_xywh(Fraction(3, 2), 0,
-  1, 1, unit="pixels")` is refused by the coordinate construction protocol
-  (an exact non-integral value on an integer axis).
+  as a decimal (`Fraction(1, 4)` is `0.25`).
+- **Geometry is never rounded.** Every number enters a shape (and a Box's
+  origin) through one strict entry, whatever its Python type and whatever
+  constructor or reader it comes through. On an `int` axis a float is taken
+  only when it is a whole number and a ratio only when its denominator is
+  1; on a `fraction` axis a float only when it is a whole number (no ratio
+  is guessed from a float); on a `float` axis a value is taken as given.
+  Refused whole, each naming the member, the value, the unit and the number
+  type: `from_xywh(1.5, 0, 1, 1, unit="pixels")` (`A shape's x is 1.5,
+  which pixels as int cannot hold exactly: geometry is never rounded.`),
+  `from_xywh(0, 0, 1.4, 1, unit="pixels")` (`... width is 1.4 ...`),
+  `from_xywh(Fraction(3, 2), 0, 1, 1, unit="pixels")` (`... x is 3/2
+  ...`), `Quadrilateral.from_points` with the corner (1221.4, 1589) (`... x
+  is 1221.4 ...`), `from_media_fragment("xywh=12.5,0,1,1", unit="pixels")`
+  (the text's exact value: `... x is 25/2 ...`) and `from_xywh(1.5, 0, 1, 1,
+  unit="quarters")` (`A shape's x is 1.5, which quarters as fraction cannot
+  hold exactly: a float is read as a ratio only when it is a whole number;
+  give a Fraction.`). Before this rule the first three became 2, 1 and a
+  refusal, the fourth 1221: one value, three answers by input type.
+  Accepted, exactly: `from_xywh(100.0, 0, 1, 1, unit="pixels")` has `x`
+  `int` 100 (the manifest format reads `100.0` as 100), `from_xywh(2.0, 0,
+  1, 1, unit="quarters")` has `x` `Fraction(2)`, and `from_xywh(1.5, 0, 1,
+  1, unit="css_pixels")` keeps the float 1.5.
 - **Each refusal of the shapes once, whole:** members on two axes, a
   negative width, an `order` that is not the four corner names, and
   raw numbers without a unit.
@@ -833,6 +895,12 @@ made from the shape and that a Box contradicting its shape cannot exist.
   `None`.
 - A fraction box (1/3, 0, 2/3, 1) on `user_units` has start 1/3 and
   duration 2/3, `Fraction`s.
+- **The origin is never rounded.** It enters through the shapes' strict
+  entry: `Box.from_shape(m1, origin=7.0)` has start 1214 (a whole float is
+  its integer), while `origin=7.5` is refused whole (`A Box's origin is
+  7.5, which pixels as int cannot hold exactly: geometry is never
+  rounded.`; it used to give start 1213, a Box whose start no longer was
+  its shape's `x_min` less the origin) and so is `Fraction(15, 2)`.
 - **Refusals, whole:** a duration other than the x extent (`Box 'm1': its
   duration is 10 and its shape spans 940 in x (1221 to 2161); a Box's
   duration is its shape's x extent.`); both shapes or none (`A Box holds

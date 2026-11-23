@@ -83,6 +83,7 @@ from .fields import (
     SemanticField,
     StructField,
     _struct_types_match,
+    build_struct_array,
     data_shaped,
     drop_from_schema,
     metadata_blob_from_dict,
@@ -4539,6 +4540,34 @@ class SharedAxisField(SemanticField[AxisScalarT]):
     ) -> SharedAxisField[AxisScalarT]:
         """The field of *array*, named *name*, on the axis given."""
         return cls(StructField(array, pa.field(name, array.type)), unit, number_type)
+
+    @classmethod
+    def _from_scalars(
+        cls,
+        items: Sequence[AxisScalarT | None],
+        unit: TimeUnit | str | None,
+        number_type: NumberType | str | None,
+        name: str | None,
+    ) -> SharedAxisField[AxisScalarT]:
+        """The field of the scalars *items* (``None`` for a null row), in order.
+
+        The one body of the ``from_*`` builders of fields whose scalar's
+        derived struct holds its numbers as number structs: the axis is
+        :meth:`_shared_axis`'s, the struct :func:`build_struct_array`'s, the
+        name *name* or the class's default.
+
+        Raises:
+            ValueError: If the scalars lie on two axes, or an explicit axis
+                contradicts them.
+        """
+        values = list(items)
+        unit, number_type = cls._shared_axis(values, unit, number_type)
+        return cls._of_struct_array(
+            build_struct_array(cls.scalar_cls, values),
+            name if name is not None else cls._default_name(),
+            unit,
+            number_type,
+        )
 
     @classmethod
     def from_field(

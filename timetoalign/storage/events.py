@@ -34,6 +34,7 @@ from pydantic import BaseModel
 from typing_extensions import Self
 
 from timetoalign.core import (
+    BoundingBox,
     BoundingBoxField,
     Box,
     Coordinate,
@@ -44,6 +45,7 @@ from timetoalign.core import (
     IntervalPolicy,
     NumberType,
     Projection,
+    Quadrilateral,
     QuadrilateralField,
     Shape,
     TimeUnit,
@@ -64,6 +66,7 @@ from timetoalign.core.time import (
     number_cell,
     number_from_json,
     struct_to_coordinate,
+    struct_to_rational,
 )
 
 from .mixins import SemanticFieldAccessMixin
@@ -251,25 +254,90 @@ def _refuse_shape_off_the_axis(
         )
 
 
-def refuse_shapes_off_the_axis(
-    rows: Sequence[dict[str, Any]], unit: TimeUnit, number_type: NumberType
-) -> None:
-    """Refuse the rows if a shape among them is not on the events' axis.
+#: The keys a package's Box table states once per row beside a Box's
+#: properties: the timeline holding it and that timeline's axis. A Box row
+#: may state them; they are checked and never become columns of the events.
+_BOX_ROW_AXIS_KEYS = frozenset({"timeline_id", "unit", "number_type"})
 
-    The one rule :meth:`EventData.from_dicts` applies to a shape, for a
-    caller that must refuse before it converts anything else of the rows
-    (:meth:`Timeline.add_events <timetoalign.timelines.Timeline.add_events>`,
-    whose positions may be converted through a C-Map).
+
+def box_rows_on_the_axis(
+    rows: Sequence[dict[str, Any]],
+    unit: TimeUnit,
+    number_type: NumberType,
+    *,
+    timeline_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """The rows, every shape among them checked to lie on the events' axis.
+
+    The one rule a shape enters a table by, applied before anything else of
+    the rows is converted (:meth:`Timeline.add_events
+    <timetoalign.timelines.Timeline.add_events>` converts positions through
+    a C-Map afterwards, :meth:`EventData.from_dicts` builds the table): a
+    shape given as a :class:`~timetoalign.core.Shape` is in *unit* and
+    *number_type*. A Box row may also state the keys a package's Box table
+    holds once per row: ``unit`` and ``number_type`` (the axis of its
+    numbers) must be the events' (a missing one reads as the events'),
+    ``timeline_id`` the timeline the rows are added to; each is checked and
+    left out of the row, so it never becomes a column of the events.
+
+    Args:
+        rows: The event rows.
+        unit: The events' unit.
+        number_type: The events' number type.
+        timeline_id: The ID of the timeline the rows are added to; ``None``
+            where they belong to no timeline yet (:meth:`EventData.from_dicts`),
+            which then refuses a Box row giving ``timeline_id``.
+
+    Returns:
+        The rows, a Box row without ``unit``, ``number_type`` and
+        ``timeline_id``; every other row as given.
 
     Raises:
-        ValueError: As :meth:`EventData.from_dicts` refuses a shape off the
-            axis.
+        ValueError: If a shape, or a Box row's ``unit`` or ``number_type``,
+            names another axis than the events' (``The event's bounding_box
+            is in seconds as float, the events are in pixels as int; ...``),
+            or a Box row's ``timeline_id`` names another timeline, or any
+            where *timeline_id* is ``None``.
     """
+    checked = []
     for row in rows:
-        for key in SHAPE_FIELDS:
-            value = row.get(key)
+        shapes = [key for key in SHAPE_FIELDS if row.get(key) is not None]
+        for key in shapes:
+            value = row[key]
             if isinstance(value, Shape):
                 _refuse_shape_off_the_axis(value, key, unit, number_type)
+        if row.get("event_type") != BOX_EVENT_TYPE or not (
+            _BOX_ROW_AXIS_KEYS & row.keys()
+        ):
+            checked.append(row)
+            continue
+        stated_unit = row.get("unit", unit)
+        stated_type = row.get("number_type", number_type)
+        if (str(stated_unit), str(stated_type)) != (str(unit), str(number_type)):
+            raise ValueError(
+                f"The event's {shapes[0] if shapes else 'shape'} is in "
+                f"{stated_unit} as {stated_type}, the events are in {unit} as "
+                f"{number_type}; a shape is never converted onto the events' axis."
+            )
+        named = row.get("timeline_id")
+        if named is not None and named != timeline_id:
+            box = _box_named(row.get("id"))
+            raise ValueError(
+                f"{box} names the timeline {quote_id(str(named))} (timeline_id), "
+                + (
+                    "but events read without a timeline hold no timeline ID: add "
+                    "the Box to its timeline with Timeline.add_events."
+                    if timeline_id is None
+                    else f"but is added to the timeline {quote_id(timeline_id)}."
+                )
+            )
+        checked.append({k: v for k, v in row.items() if k not in _BOX_ROW_AXIS_KEYS})
+    return checked
+
+
+def _box_named(box_id: Any) -> str:
+    """How a message names a Box row: ``Box 'a'``, ``A Box`` without an ID."""
+    return "A Box" if box_id is None else f"Box {quote_id(str(box_id))}"
 
 
 def _is_cell_of(value: Any, kind: pa.DataType) -> bool:
@@ -303,30 +371,46 @@ def _axis_cells(
     Only a Box row holds a value there. A shape (a
     :class:`~timetoalign.core.BoundingBox` under ``bounding_box``, a
     :class:`~timetoalign.core.Quadrilateral` under ``quadrilateral``)
-    becomes its struct of number cells; a memory cell of the column (a
-    table's own row, read back) is taken as it is.
+    becomes its struct of number cells. A memory cell of the column (a
+    table's own row, read back) is read as the shape it states, through
+    the shape's own constructor (:func:`_shape_of_cell`), so its numbers
+    pass the rule every shape's numbers pass (never rounded: on an ``int``
+    axis only whole numbers); its cells are then the shape's, and a cell
+    whose two sides hold two numbers is refused, so memory never holds a
+    number its package form would write otherwise.
 
     Raises:
         ValueError: If a row of another event type gives the column, a Box
             gives it a value that is neither the column's shape nor its
-            memory cell, or a shape is in another unit or number type than
-            the table: a shape is never converted or rounded onto an axis.
+            memory cell, a shape is in another unit or number type than
+            the table (a shape is never converted or rounded onto an axis),
+            a cell states a number the axis cannot hold exactly, or a
+            cell's two sides hold two numbers.
     """
     shape_class = declared.scalar_cls
+    shapes: list[Shape | None] = []
     for row in rows:
         value = row.get(key)
         if value is None:
+            shapes.append(None)
             continue
         event_type = row.get("event_type")
         if event_type != BOX_EVENT_TYPE:
+            kind = (
+                "An event without an event type"
+                if event_type is None
+                else f"An event of type {quote_id(str(event_type))}"
+            )
             raise ValueError(
-                f"An event of type {quote_id(str(event_type))} gives {key}: the "
-                "columns bounding_box and quadrilateral hold the shape of a Box "
-                "and belong to Box events only."
+                f"{kind} gives {key}: the columns bounding_box and quadrilateral "
+                "hold the shape of a Box and belong to Box events only."
             )
         if isinstance(value, shape_class):
             _refuse_shape_off_the_axis(value, key, unit, number_type)
-        elif not _is_cell_of(value, declared.pa_schema):
+            shapes.append(value)
+        elif _is_cell_of(value, declared.pa_schema):
+            shapes.append(_shape_of_cell(value, shape_class, unit, number_type))
+        else:
             hint = (
                 f" Read a dict form with {shape_class.__name__}.from_dict."
                 if isinstance(value, dict)
@@ -335,13 +419,81 @@ def _axis_cells(
             raise ValueError(
                 f"A Box's {key} is a {shape_class.__name__}, not {value!r}.{hint}"
             )
-    values = [row.get(key) for row in rows]
-    scalars = [value if isinstance(value, Shape) else None for value in values]
-    built = declared.from_shapes(scalars, unit=unit, number_type=number_type)
-    return [
-        cells if isinstance(value, Shape) else value
-        for value, cells in zip(values, built.to_pyarrow().to_pylist(), strict=True)
-    ]
+    built = declared.from_shapes(shapes, unit=unit, number_type=number_type)
+    cells = built.to_pyarrow().to_pylist()
+    for row, cell in zip(rows, cells, strict=True):
+        value = row.get(key)
+        if isinstance(value, dict):
+            _refuse_two_numbers(value, cell, f"{_box_named(row.get('id'))}: its {key}")
+    return cells
+
+
+def _cell_number(cell: dict[str, Any], number_type: NumberType) -> Any:
+    """The number a memory number cell states on the side *number_type*
+    reads: the float on a ``float`` axis, the exact ratio otherwise."""
+    if number_type is NumberType.float:
+        return float(cell["value"])
+    return struct_to_rational(cell)
+
+
+def _shape_of_cell(
+    cell: dict[str, Any],
+    shape_class: type[Shape],
+    unit: TimeUnit,
+    number_type: NumberType,
+) -> Shape:
+    """The shape a memory cell of its column states, on the axis given.
+
+    Each number is read on the side *number_type* names
+    (:func:`_cell_number`) and handed to the shape's constructor
+    (:meth:`BoundingBox.from_xywh <timetoalign.core.BoundingBox.from_xywh>`,
+    :meth:`Quadrilateral.from_points <timetoalign.core.Quadrilateral.from_points>`),
+    the one entry of every number into a shape, which refuses what the axis
+    cannot hold exactly.
+
+    Raises:
+        ValueError: As the constructor refuses a number (``A shape's y is
+            1/3, which pixels as int cannot hold exactly: geometry is never
+            rounded.``) or the shape.
+    """
+    axis = {"unit": unit, "number_type": number_type}
+    if issubclass(shape_class, BoundingBox):
+        return shape_class.from_xywh(
+            **{name: _cell_number(cell[name], number_type) for name in cell}, **axis
+        )
+    return shape_class.from_points(
+        [
+            (
+                _cell_number(cell[corner]["x"], number_type),
+                _cell_number(cell[corner]["y"], number_type),
+            )
+            for corner in Quadrilateral.CORNER_ORDER
+        ],
+        **axis,
+    )
+
+
+def _refuse_two_numbers(given: dict[str, Any], held: dict[str, Any], path: str) -> None:
+    """Refuse a memory cell *given* whose number cells are not those of the
+    shape read from it (*held*): its two sides hold two numbers.
+
+    A number cell is compared in memory's one spelling (its ratio in lowest
+    terms, :func:`~timetoalign.core.time.number_cell`), so ``2/4`` given
+    for ``1/2`` is the same cell.
+
+    Raises:
+        ValueError: Naming the member, the cell and its two numbers.
+    """
+    if set(given) == _NUMBER_KEYS:
+        if number_cell(given) != held:
+            raise ValueError(
+                f"{path} is the cell {given!r}, whose sides hold two numbers "
+                f"({given['value']!r} and {given['numerator']}/"
+                f"{given['denominator']}); a cell holds one number on both sides."
+            )
+        return
+    for name, member in given.items():
+        _refuse_two_numbers(member, held[name], f"{path}.{name}")
 
 
 def _native_position(
@@ -1461,7 +1613,11 @@ class EventData(SemanticFieldAccessMixin):
             ValueError: If a position is in another unit, or a shape in
                 another unit or number type, than the table; if a row of
                 another event type than Box gives a shape column, or a Box
-                gives one a value that is neither its shape nor its cell.
+                gives one a value that is neither its shape nor its cell, a
+                cell holding a number the axis cannot hold exactly or two
+                numbers; if a Box row's ``unit`` or ``number_type`` is not
+                the table's, or it gives a ``timeline_id`` (a table holds no
+                timeline: :func:`box_rows_on_the_axis`).
 
         Examples:
             >>> data = EventData.from_dicts([
@@ -1485,7 +1641,7 @@ class EventData(SemanticFieldAccessMixin):
         interval_policy: IntervalPolicy = IntervalPolicy.warn,
     ) -> pa.Table:
         """The table :meth:`from_dicts` makes of *rows*, before it is held."""
-        rows = _event_rows(rows)
+        rows = box_rows_on_the_axis(_event_rows(rows), unit, number_type)
         if not rows:
             return cls._empty_table(unit, number_type)
 

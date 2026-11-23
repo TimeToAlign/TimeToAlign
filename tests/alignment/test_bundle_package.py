@@ -1427,6 +1427,161 @@ class TestBoxes:
         assert list(tmp_path.iterdir()) == []
 
 
+def _seg_2() -> DiscreteGraphicalTimeline:
+    """Thoresen's second crop: pixels, int, standing at x 7 of its image."""
+    return DiscreteGraphicalTimeline(
+        length=867,
+        uid="seg_2",
+        meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}},
+    )
+
+
+def _cell(value: Any) -> dict[str, Any]:
+    """The memory cell of an exact value: its float, numerator, denominator."""
+    value = Fraction(value)
+    return {
+        "value": float(value),
+        "numerator": value.numerator,
+        "denominator": value.denominator,
+    }
+
+
+def _rect_h2_row(**given: Any) -> dict[str, Any]:
+    """``rect_h2`` as a dict row, its bounding box given as memory cells."""
+    box = {"x": 385, "y": 46, "width": 139, "height": 20}
+    return {
+        "event_type": "Box",
+        "id": "a",
+        "start": 378,
+        "duration": 139,
+        "bounding_box": {name: _cell(value) for name, value in box.items()},
+        **given,
+    }
+
+
+def _read_back(timeline: Timeline, directory: Path) -> list[dict[str, Any]]:
+    """*timeline*'s events written in a bundle's package and read back, in the
+    columns *timeline* holds; every further column read back is null."""
+    bundle = AlignmentBundle()
+    bundle.add_timeline(timeline)
+    read = AlignmentBundle.from_file(bundle.to_file(directory / "package.yaml"))
+    table = read._known_timeline(timeline.id).events.table
+    names = timeline.events.table.column_names
+    for name in set(table.column_names) - set(names):
+        assert table.column(name).null_count == table.num_rows
+    return table.select(names).to_pylist()
+
+
+class TestBoxRowsAsTheBoxTableStatesThem:
+    """Values in tests/alignment/README.md ("Nothing is accepted in memory that
+    the package would write otherwise", "Box rows as the Box table states
+    them", "The package never drops data silently")."""
+
+    @pytest.mark.parametrize(
+        ("y", "message"),
+        [
+            (
+                _cell(Fraction(1, 3)),
+                "A shape's y is 1/3, which pixels as int cannot hold exactly: "
+                "geometry is never rounded.",
+            ),
+            (
+                {"value": 46.0, "numerator": 47, "denominator": 1},
+                "Box 'a': its bounding_box.y is the cell {'value': 46.0, "
+                "'numerator': 47, 'denominator': 1}, whose sides hold two numbers "
+                "(46.0 and 47/1); a cell holds one number on both sides.",
+            ),
+        ],
+    )
+    def test_a_cell_the_package_would_write_otherwise_is_refused(
+        self, y: dict[str, Any], message: str
+    ) -> None:
+        seg_2 = _seg_2()
+        row = _rect_h2_row()
+        row["bounding_box"]["y"] = y
+
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            seg_2.add_events([row])
+        assert seg_2.n_events == 0
+
+    def test_an_accepted_cell_reads_back_as_memory_holds_it(
+        self, tmp_path: Path
+    ) -> None:
+        seg_2 = _seg_2()
+        seg_2.add_events([_rect_h2_row()])
+
+        assert _read_back(seg_2, tmp_path) == seg_2.events.table.to_pylist()
+
+    def test_a_row_off_the_axis_is_refused_as_the_scalar_is(self) -> None:
+        in_seconds = BoundingBox.from_xywh(
+            385.0, 46.0, 139.0, 20.0, unit="seconds", number_type="float"
+        )
+        with pytest.raises(ValueError) as scalar:
+            _seg_2().add_events(Box.from_shape(in_seconds, origin=7.0, id="a"))
+        seg_2 = _seg_2()
+        with pytest.raises(ValueError) as row:
+            seg_2.add_events([_rect_h2_row(unit="seconds", number_type="float")])
+
+        assert (
+            str(row.value)
+            == str(scalar.value)
+            == (
+                "The event's bounding_box is in seconds as float, the events are in "
+                "pixels as int; a shape is never converted onto the events' axis."
+            )
+        )
+        assert seg_2.n_events == 0
+
+    def test_a_row_naming_another_timeline_is_refused(self) -> None:
+        seg_2 = _seg_2()
+        with pytest.raises(ValueError) as refused:
+            seg_2.add_events([_rect_h2_row(timeline_id="other")])
+
+        assert str(refused.value) == (
+            "Box 'a' names the timeline 'other' (timeline_id), but is added to the "
+            "timeline 'seg_2'."
+        )
+        assert seg_2.n_events == 0
+
+    def test_a_row_stating_its_timeline_and_axis_is_stored_without_them(
+        self, tmp_path: Path
+    ) -> None:
+        plain = _seg_2()
+        plain.add_events([_rect_h2_row()])
+        seg_2 = _seg_2()
+
+        seg_2.add_events(
+            [_rect_h2_row(timeline_id="seg_2", unit="pixels", number_type="int")]
+        )
+
+        assert seg_2.events.table.schema == plain.events.table.schema
+        assert seg_2.events.table.to_pylist() == plain.events.table.to_pylist()
+        (written,) = seg_2.to_dict(events=True)["timelines"][0]["events"]
+        assert {"timeline_id", "unit", "number_type"}.isdisjoint(written)
+        assert _read_back(seg_2, tmp_path) == seg_2.events.table.to_pylist()
+
+    @pytest.mark.parametrize(
+        ("given", "named"),
+        [({"name": "crop"}, "name 'crop'"), ({"staff": 1}, "staff 1")],
+    )
+    def test_a_box_value_the_box_table_has_no_column_for_is_refused(
+        self, tmp_path: Path, given: dict[str, Any], named: str
+    ) -> None:
+        seg_2 = _seg_2()
+        seg_2.add_events([_rect_h2_row(id="rect_h2", **given)])
+        bundle = AlignmentBundle()
+        bundle.add_timeline(seg_2)
+
+        message = (
+            f"Box 'rect_h2' of timeline 'seg_2' gives {named}, which the Box table "
+            "has no column for: a Box holds id, start, duration, bounding_box, "
+            "quadrilateral."
+        )
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            bundle.to_file(tmp_path / "package.yaml")
+        assert list(tmp_path.iterdir()) == []
+
+
 # Event tables of timelines holding other events: values in
 # tests/alignment/README.md ("Event tables of timelines holding other events").
 

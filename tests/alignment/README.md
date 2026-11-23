@@ -1969,6 +1969,60 @@ then fails to load. Each test pins one of these with exact values.
   ID: the bundle writes its MatchClaim table and its event tables beside
   the manifest, so its event rows are not written into it; write it with
   events=False.`).
+- **Nothing is accepted in memory that the package would write otherwise**
+  (`TestBoxRowsAsTheBoxTableStatesThem`). The package writes each number
+  once, on the side its row's number type names, so a number memory holds
+  that the axis cannot hold, or a cell holding two numbers, would be read
+  back changed. `seg_2` (as above) is given `rect_h2` as a dict row with
+  its bounding box as memory cells: with `y` the cell `{1/3, 1, 3}`,
+  `add_events` refuses (`A shape's y is 1/3, which pixels as int cannot
+  hold exactly: geometry is never rounded.`, the shape constructor's
+  sentence) and nothing is added; before, `to_file`/`from_file` read `y`
+  back as 1. With `y` `{46.0, 47, 1}` it refuses likewise (`Box 'a': its
+  bounding_box.y is the cell ..., whose sides hold two numbers (46.0 and
+  47/1); ...`); before, it was read back as 47. With the cells of
+  `(385, 46, 139, 20)` it is accepted, and the bundle written and read
+  back holds `seg_2`'s events equal to those in memory, row for row in
+  memory's columns, every further column read back (the `quadrilateral`
+  the Box table always has) null: what memory accepts is what the package
+  returns.
+- **Box rows as the Box table states them.** The Box table states
+  `timeline_id`, `unit` and `number_type` once per row; a dict row may give
+  them too (a row read out of that table), and they are checked as the
+  scalar is, then dropped, so no stray key reaches the events, the
+  manifest or the package. On `seg_2`: `unit "seconds"`, `number_type
+  "float"` with the pixel bounding box is refused by `add_events` with the
+  sentence the scalar path gives for the bounding box built in seconds as
+  float (`The event's bounding_box is in seconds as float, the events are
+  in pixels as int; a shape is never converted onto the events' axis.`,
+  asserted equal to that refusal);
+  `timeline_id "other"` is refused, `Box 'a' names the timeline 'other'
+  (timeline_id), but is added to the timeline 'seg_2'.`; `timeline_id
+  "seg_2"`, `unit "pixels"`, `number_type "int"` are accepted: `seg_2`'s
+  events table then equals, schema and rows, the one of the same row
+  without the three keys (no `timeline_id`, `unit` or `number_type`
+  column), its manifest row (`to_dict(events=True)`) holds none of the
+  three keys, and the package writes and reads it back equal.
+- **The package never drops data silently.** The Box table's columns are
+  `id`, `timeline_id`, `unit`, `number_type`, `start`, `duration`,
+  `bounding_box`, `quadrilateral`: every member of `Box` (`Event` has no
+  `name`, so a Box has none) plus the row's timeline and axis. The rule for
+  every event table of a declared type (`event_table`): a row of a
+  timeline's events giving a value in a column the table has no place for
+  is refused when the table is made, before any file is written, naming
+  the event, its timeline, the column and its value; the columns the table
+  holds by being of one type (`event_type`) or derives from `start` and
+  `duration` (`temporal_type`, `end`) are not written, and a column null
+  in every row of that type (the `midi` of a Note beside Boxes, below) is
+  no value. On `seg_2`, `rect_h2` given with `name "crop"`: `to_file`
+  refuses, `Box 'rect_h2' of timeline 'seg_2' gives name 'crop', which the
+  Box table has no column for: a Box holds id, start, duration,
+  bounding_box, quadrilateral.`, and the directory stays empty; given with
+  `staff 1` instead, the same sentence names `staff 1`. Before, both were
+  dropped by `to_file` and missing after `from_file`. The Projections table
+  is the same writer: its columns and bytes are unchanged (the byte-equal
+  fixture tests below stay green), and `add_events` already refuses a
+  Projection row giving any other key.
 - **Event tables of timelines holding other events**
   (`TestEventTablesBesideOtherEvents`). A table of one event type holds
   exactly the events of that type of each timeline, whatever other events

@@ -944,6 +944,195 @@ class TestBoxRows:
         assert again.table.to_pylist() == data.table.to_pylist()
         assert again.table.schema == data.table.schema
 
+    def test_a_row_without_an_event_type_giving_a_shape_is_named_so(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [
+                    {
+                        "start": 0,
+                        "duration": 1,
+                        "bounding_box": BoundingBox.from_xywh(
+                            1, 2, 3, 4, unit="pixels"
+                        ),
+                    }
+                ],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert str(refused.value) == (
+            "An event without an event type gives bounding_box: the columns "
+            "bounding_box and quadrilateral hold the shape of a Box and belong to "
+            "Box events only."
+        )
+
+    @staticmethod
+    def _cell(value: Any) -> dict[str, Any]:
+        """The memory cell of an exact value: its float, numerator, denominator."""
+        value = Fraction(value)
+        return {
+            "value": float(value),
+            "numerator": value.numerator,
+            "denominator": value.denominator,
+        }
+
+    def _rect_h2_row(self, **cells: Any) -> dict[str, Any]:
+        """``rect_h2`` as a dict row, its bounding box given as memory cells."""
+        box = {
+            name: self._cell(value)
+            for name, value in {"x": 385, "y": 46, "width": 139, "height": 20}.items()
+        }
+        return {
+            "event_type": "Box",
+            "id": "a",
+            "start": 378,
+            "duration": 139,
+            "bounding_box": {**box, **cells},
+        }
+
+    def test_a_cell_the_axis_cannot_hold_is_refused_as_its_shape_is(self) -> None:
+        with pytest.raises(ValueError) as constructed:
+            BoundingBox.from_xywh(385, Fraction(1, 3), 139, 20, unit="pixels")
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [self._rect_h2_row(y=self._cell(Fraction(1, 3)))],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert (
+            str(refused.value)
+            == str(constructed.value)
+            == (
+                "A shape's y is 1/3, which pixels as int cannot hold exactly: geometry "
+                "is never rounded."
+            )
+        )
+
+    def test_a_cell_holding_two_numbers_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [
+                    self._rect_h2_row(
+                        y={"value": 46.0, "numerator": 47, "denominator": 1}
+                    )
+                ],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert str(refused.value) == (
+            "Box 'a': its bounding_box.y is the cell {'value': 46.0, 'numerator': 47, "
+            "'denominator': 1}, whose sides hold two numbers (46.0 and 47/1); a cell "
+            "holds one number on both sides."
+        )
+
+    def test_a_corner_cell_holding_two_numbers_is_named_by_its_path(self) -> None:
+        row = Box.from_shape(self._measure(), origin=1221, id="m1").to_event_row()
+        cells = QuadrilateralField.from_shapes(
+            [row["quadrilateral"]], unit="pixels", number_type="int"
+        )
+        quadrilateral = cells.to_pyarrow().to_pylist()[0]
+        quadrilateral["top_left"]["x"] = {
+            "value": 1221.0,
+            "numerator": 1222,
+            "denominator": 1,
+        }
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [{**row, "quadrilateral": quadrilateral}],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert str(refused.value) == (
+            "Box 'm1': its quadrilateral.top_left.x is the cell {'value': 1221.0, "
+            "'numerator': 1222, 'denominator': 1}, whose sides hold two numbers "
+            "(1221.0 and 1222/1); a cell holds one number on both sides."
+        )
+
+    def test_a_cell_in_another_spelling_is_its_shape(self) -> None:
+        thirds = BoundingBox.from_xywh(
+            Fraction(1, 3),
+            0,
+            Fraction(2, 3),
+            1,
+            unit="user_units",
+            number_type="fraction",
+        )
+        scalar = EventData.from_dicts(
+            Box.from_shape(thirds, id="f"), TimeUnit.user_units, NumberType.fraction
+        )
+        row = scalar.table.to_pylist()[0]
+        row["bounding_box"]["x"] = {
+            "value": 1 / 3,
+            "numerator": 2,
+            "denominator": 6,
+        }
+
+        given = EventData.from_dicts([row], TimeUnit.user_units, NumberType.fraction)
+
+        assert given.table.to_pylist() == scalar.table.to_pylist()
+        assert given.table.to_pylist()[0]["bounding_box"]["x"] == {
+            "value": 1 / 3,
+            "numerator": 1,
+            "denominator": 3,
+        }
+
+    @pytest.mark.parametrize(
+        ("stated", "axis"),
+        [
+            ({"unit": "seconds", "number_type": "float"}, "seconds as float"),
+            ({"unit": "seconds"}, "seconds as int"),
+            ({"number_type": "float"}, "pixels as float"),
+        ],
+    )
+    def test_a_box_rows_axis_is_the_tables(
+        self, stated: dict[str, str], axis: str
+    ) -> None:
+        rect_h2 = BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels")
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [{**self._rect_h2_row(), "bounding_box": rect_h2, **stated}],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert str(refused.value) == (
+            f"The event's bounding_box is in {axis}, the events are in pixels as "
+            "int; a shape is never converted onto the events' axis."
+        )
+
+    @pytest.mark.parametrize(
+        "stated",
+        [
+            {"unit": "pixels", "number_type": "int"},
+            {"unit": TimeUnit.pixels, "number_type": NumberType.int},
+        ],
+    )
+    def test_a_box_row_stating_the_tables_axis_is_stored_without_it(
+        self, stated: dict[str, Any]
+    ) -> None:
+        plain = EventData.from_dicts(
+            [self._rect_h2_row()], TimeUnit.pixels, NumberType.int
+        )
+
+        data = EventData.from_dicts(
+            [{**self._rect_h2_row(), **stated}], TimeUnit.pixels, NumberType.int
+        )
+
+        assert data.table.schema == plain.table.schema
+        assert data.table.to_pylist() == plain.table.to_pylist()
+        assert {"unit", "number_type"}.isdisjoint(data.table.column_names)
+
+    def test_a_box_row_naming_a_timeline_is_refused_without_one(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            EventData.from_dicts(
+                [{**self._rect_h2_row(), "timeline_id": "seg_2"}],
+                TimeUnit.pixels,
+                NumberType.int,
+            )
+        assert str(refused.value) == (
+            "Box 'a' names the timeline 'seg_2' (timeline_id), but events read "
+            "without a timeline hold no timeline ID: add the Box to its timeline "
+            "with Timeline.add_events."
+        )
+
     def test_shape_leaves_are_reduced_at_the_door(self) -> None:
         measure = self._measure("user_units", "fraction")
         data = EventData.from_dicts(

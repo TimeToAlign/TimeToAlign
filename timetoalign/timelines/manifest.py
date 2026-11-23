@@ -700,6 +700,38 @@ def _packaged(
     )
 
 
+#: The columns of a timeline's events an event table holds without writing
+#: them: it is the table of one event type, and an event's temporal type and
+#: end follow from its ``start`` and ``duration``.
+_IMPLIED_EVENT_COLUMNS = frozenset({"event_type", "temporal_type", "end"})
+
+
+def _refuse_unwritten_columns(
+    rows: pa.Table, schema: pa.Schema, event_type: type[Event], timeline_id: str
+) -> None:
+    """Refuse *rows* (one timeline's events of *event_type*) when one of them
+    gives a value in a column the event table of *schema* does not have.
+
+    Raises:
+        ValueError: Naming the first such event, its timeline, the column
+            and the value, and the members the event type holds.
+    """
+    kind = event_type.__name__
+    for name in rows.column_names:
+        if name in schema.names or name in _IMPLIED_EVENT_COLUMNS:
+            continue
+        column = rows.column(name)
+        if column.null_count == len(column):
+            continue
+        at = pc.index(column.is_valid(), True).as_py()
+        held = ", ".join(event_type.model_fields)
+        raise ValueError(
+            f"{kind} {quote_id(rows.column('id')[at].as_py())} of timeline "
+            f"{quote_id(timeline_id)} gives {name} {column[at].as_py()!r}, which "
+            f"the {kind} table has no column for: a {kind} holds {held}."
+        )
+
+
 def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Table:
     """The package table of *event_type*: every such event each timeline holds itself.
 
@@ -712,6 +744,14 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
     :func:`~timetoalign.core.time.package_numbers`), however deep it lies
     (a Box's shape). Nothing passes through a float that is not one.
 
+    The table holds what the event type holds, and nothing is dropped: a
+    row of a timeline's events giving a value in a column the table does
+    not have (an event's ``name``, a further column such as ``staff``) is
+    refused, naming the column, the event type and the timeline. The
+    columns the table states by being of one type (``event_type``) or
+    derives from ``start`` and ``duration`` (``temporal_type``, ``end``)
+    are not written.
+
     Args:
         timelines: The timelines, each once.
         event_type: The event type whose rows are written (its class name is
@@ -719,6 +759,10 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
 
     Returns:
         The table, empty when no timeline holds such an event.
+
+    Raises:
+        ValueError: If a row gives a value in a column the table does not
+            have.
     """
     schema = event_table_schema(event_type)
     parts = []
@@ -730,6 +774,7 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
         n = rows.num_rows
         if n == 0:
             continue
+        _refuse_unwritten_columns(rows, schema, event_type, timeline.id)
         number_type = NumberType(timeline.number_type)
         types = pa.array([number_type.name] * n, pa.string())
         header = {

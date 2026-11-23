@@ -44,9 +44,9 @@ from timetoalign.storage.events import (
     PROJECTION_EVENT_TYPE,
     SHAPE_FIELDS,
     _event_rows,
+    box_rows_on_the_axis,
     mint_event_ids,
     projection_ids,
-    refuse_shapes_off_the_axis,
     refuse_shared_projection_ids,
 )
 
@@ -414,7 +414,12 @@ class EventsMixin:
         timeline's axis (its unit and number type; a shape is never
         converted), and its start must be the shape's ``x_min`` less the x
         at which the timeline stands in its image: the ``x_min`` of the
-        shape ``meta["box"]`` states, 0 where it states none.
+        shape ``meta["box"]`` states, 0 where it states none. A shape given
+        as the memory cell of its column is read through the shape's
+        constructor, as every shape's numbers are (never rounded). A Box row
+        may state ``unit``, ``number_type`` and ``timeline_id``, as a
+        package's Box table does: they must name this timeline and its axis,
+        and are not stored.
 
         An :class:`~timetoalign.core.Event` object (a
         :class:`~timetoalign.core.Projection`, a :class:`~timetoalign.core.Box`)
@@ -436,7 +441,10 @@ class EventsMixin:
             ValueError: If an ID is already held by an event of this timeline
                 or given twice, a Projection row holds a key a Projection does
                 not have or names an event of this timeline, a Box's shape is
-                off the timeline's axis or its start contradicts its shape, a
+                off the timeline's axis (or its row's ``unit``,
+                ``number_type`` or ``timeline_id`` names another), a number of
+                its shape is one the axis cannot hold exactly, or its start
+                contradicts its shape, a
                 position cannot be converted, or the events exceed the length
                 and expansion is not allowed. Nothing is added then.
 
@@ -449,12 +457,13 @@ class EventsMixin:
             ... ])
             ['beat_1', 'note_1']
         """
-        rows = _event_rows(rows)
-        if not rows:
-            return []
         # A shape is never converted: refused before any position of the rows
         # is converted, so the refusal names the shape, not a missing C-Map.
-        refuse_shapes_off_the_axis(rows, self._unit, self._number_type)
+        rows = box_rows_on_the_axis(
+            _event_rows(rows), self._unit, self._number_type, timeline_id=self._id
+        )
+        if not rows:
+            return []
 
         # Resolve unit-qualified coordinates into this timeline's native unit
         # before anything measures or stores them. A ``Coordinate`` whose unit
@@ -586,6 +595,9 @@ class EventsMixin:
         """
         if not rows:
             return
+        rows = box_rows_on_the_axis(
+            rows, self._unit, self._number_type, timeline_id=self._id
+        )
         added = self._event_data_of(rows)
         self._refuse_boxes_off_their_shapes(added, [row.get("id") for row in rows])
         self._events.extend(added)

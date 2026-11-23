@@ -267,7 +267,10 @@ so a shape is never converted or rounded on its way into a table.
   of a Box and belong to Box events only.` (A Note row giving neither is
   unchanged; every other test of this file adds such rows.) What would show
   it broken: a pyarrow conversion error reaching the caller, or a shape
-  column accepted on a Note.
+  column accepted on a Note. A row without `event_type` giving
+  `bounding_box` is named as such, never as a type `'None'`: `An event
+  without an event type gives bounding_box: ...` (the same sentence after
+  the subject).
 - **A Box's shape is a shape or its memory cell.** A Box row's
   `bounding_box` given as the dict form `{"x": 1, "y": 2, "width": 3,
   "height": 4}` is refused, `A Box's bounding_box is a BoundingBox, not
@@ -276,6 +279,57 @@ so a shape is never converted or rounded on its way into a table.
   (`list(data)`, memory cells) and given to `from_dicts` again, give an
   equal table (the internal paths that rebuild rows, such as a parent's
   `get_events` over its children, rely on it).
+- **A memory cell passes the rule a shape's numbers pass.** Design: every
+  number enters a shape as given, never rounded (on an `int` axis only
+  whole numbers, on a `fraction` axis exact ratios), and the package writes
+  each number once, on the side its number type names. A memory cell has
+  two sides, so a cell taken as it stands could hold a number the axis
+  cannot hold (the third `1/3` on `pixels`, `int`) or two numbers (float
+  side 46.0, ratio 47/1); both would be accepted in memory and written
+  otherwise (the package writes the numerator of an int: `1`, `47`). So a
+  cell is read as the shape it states, each number on the side the axis
+  reads (the ratio on `int`/`fraction`, the float on `float`) and handed to
+  the shape's constructor, the one entry of every number into a shape; its
+  cells are then the shape's. Proved on `rect_h2` (`x` 385, `width` 139,
+  `height` 20, cells `{385.0, 385, 1}` ...) on a `pixels` `int` table:
+  - `y` the cell `{1/3, 1, 3}`: refused with exactly the message
+    `BoundingBox.from_xywh(385, Fraction(1, 3), 139, 20, unit="pixels")`
+    raises, `A shape's y is 1/3, which pixels as int cannot hold exactly:
+    geometry is never rounded.` (one rule, one sentence, whichever form
+    the number came in);
+  - `y` the cell `{46.0, 47, 1}`: refused, `Box 'a': its bounding_box.y is
+    the cell {'value': 46.0, 'numerator': 47, 'denominator': 1}, whose
+    sides hold two numbers (46.0 and 47/1); a cell holds one number on
+    both sides.`; a corner of a quadrilateral is named by its path: the DMOS
+    measure `m1` with `top_left.x` `{1221.0, 1222, 1}`, `Box 'm1': its
+    quadrilateral.top_left.x is the cell {'value': 1221.0, 'numerator':
+    1222, 'denominator': 1}, whose sides hold two numbers (1221.0 and
+    1222/1); ...`;
+  - the thirds box `(1/3, 0, 2/3, 1)` on a `user_units` `fraction` table,
+    its `x` given as `{1/3, 2, 6}` (one value in another spelling): accepted,
+    the table equal to the one `from_dicts` makes of the Box scalar (`x`
+    held `{1/3, 1, 3}`).
+  What would show it broken: a refusal naming the cell's decoder instead of
+  the shape's rule, or an accepted cell whose table differs from the
+  scalar's.
+- **A Box row states its axis as the package's Box table does, or not at
+  all.** Design: a Box enters only on its timeline's axis; the package's
+  Box table states `timeline_id`, `unit` and `number_type` once per row,
+  and nothing else of the events holds them. So a Box dict row giving
+  `unit` or `number_type` is checked as a shape scalar is: `unit "seconds"`,
+  `number_type "float"` on a `pixels` `int` table is refused with the
+  sentence the scalar path gives, `The event's bounding_box is in seconds as
+  float, the events are in pixels as int; a shape is never converted onto
+  the events' axis.`; `unit "seconds"` alone reads the number type as the
+  table's (`... is in seconds as int, ...`). Equal keys (`"pixels"`,
+  `"int"`, or the enums) are accepted and not stored: the table equals the
+  one of the row without them (no `unit` or `number_type` column). A table
+  of `from_dicts` belongs to no timeline, so a Box row giving `timeline_id`
+  is refused there: `Box 'a' names the timeline 'seg_2' (timeline_id), but
+  events read without a timeline hold no timeline ID: add the Box to its
+  timeline with Timeline.add_events.` (`Timeline.add_events` checks it
+  against its own ID: `tests/alignment/README.md`, "Box rows as the Box
+  table states them").
 - The shape leaves are reduced at the doors like every coordinate cell: on
   a `user_units` table written as fractions, a quadrilateral corner `x`
   cell stating `2442/2` is held as `1221/1` after `EventData(table)`, the

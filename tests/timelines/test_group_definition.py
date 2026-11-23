@@ -203,6 +203,7 @@ def test_child_member_writes_its_root() -> None:
         "rules": [],
         "timestamps": [],
         "matchstamps": [],
+        "elisions": [],
     }
 
 
@@ -245,6 +246,7 @@ def test_group_dict_is_exact() -> None:
             "rules": [],
             "timestamps": [],
             "matchstamps": [],
+            "elisions": [],
         },
     }
     assert bare(group.to_dict(minimal=True)) == {

@@ -1589,7 +1589,8 @@ edit of the input dictionary cannot reach the group. Each member alone
 (`styles` only, `rules` only) round-trips alone in the minimal form, so
 neither is invented when absent; a group without styling writes `graphical`
 as `{"order": {...}}` in the minimal form and adds `styles: {}`,
-`rules: []`, `timestamps: []` and `matchstamps: []` in the complete one. A `graphical` holding styling but no
+`rules: []`, `timestamps: []`, `matchstamps: []` and `elisions: []` in the
+complete one. A `graphical` holding styling but no
 `order` reads its members in `members` order, as an absent `graphical` does.
 Any other key of `graphical` (`frame`) is kept and written back, never read.
 The band orders of `graphical.order`, keyed by a timeline's id, are carried

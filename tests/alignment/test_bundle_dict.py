@@ -184,6 +184,7 @@ def test_bundle_dict_is_exact() -> None:
             "rules": [],
             "timestamps": [],
             "matchstamps": [],
+            "elisions": [],
         },
     }
     assert bare(bundle.to_dict(minimal=True))["graphical"] == {
@@ -293,6 +294,7 @@ def test_styling_round_trips_unchanged() -> None:
         **STYLING,
         "timestamps": [],
         "matchstamps": [],
+        "elisions": [],
     }
     assert all(group.styling == {} for group in rebuilt.groups.values())
     assert rebuilt.styling["styles"] is not data["graphical"]["styles"]

@@ -1988,7 +1988,7 @@ from every assertion here.
 2. **Exact expected forms.** One direct construction pins the whole
    manifest in the complete form (`to_dict(minimal=False)`), which writes
    every key TimeToShare gives a default, the empty `resources`,
-   `graphical.timestamps` and `graphical.matchstamps` included: two groups
+   `graphical.timestamps`, `graphical.matchstamps` and `graphical.elisions` included: two groups
    and an ungrouped root, a group member that is a
    child (its root is written, the child id is the member), the `group_N`
    ids, no `id` (the bundle's `bundle_1` is minted), no `support_policy`,

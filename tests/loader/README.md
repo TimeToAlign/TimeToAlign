@@ -151,6 +151,43 @@ perimeter 114.473, circularity 0.78, tracker hole 12, MIDI key -1). IIIF:
 the manifest has one canvas, whose `@id` and the manifest's label are
 compared as written.
 
+The IIIF loader's whole-volume and time-based reading is checked on two
+real manifests, trimmed by the test to the members the loader reads
+(`@context`, the manifest's and each canvas's id and label, `width`,
+`height`, `duration`) and written into `tmp_path`; the values are copied
+from the files and stated literally in the test, never read back from
+the loader. Gallica's `bpt6k11620688` (Presentation 2) holds six page
+canvases `f1`…`f6`, all 6174 px high, 4564, 4512, 4564, 4512, 4564 and
+4577 px wide, labelled `NP`, `2`, `3`, `4`, `5`, `NP`. Reading the whole
+volume along the height must give a segment line of six children in
+manifest order, each 6174 px long, at offsets 0, 6174, …, 30870, the line
+37044 px long; along the width the children's lengths are the six widths,
+their offsets the running sums (0, 4564, 9076, 13640, 18152, 22716) and
+the line 27293 px. That the offsets are the running sums of the stated
+extents, and the length their total, is what proves the pages are laid
+end to end in order with nothing lost or inserted; a single page's
+length would not. Each child bears the canvas's label as its name and
+states `dcterms:source` with the canvas `@id`; the line states it with the
+manifest `@id`, so every pixel range names the image it measures. The
+IDs are the library's own (`dgt_1` the line, `dgt_2`…`dgt_7` the pages).
+The BnF disc `bpt6k88448791` (Presentation 3) holds four sound canvases
+with `duration` 221.0, 219.0, 257.0 and 155.0 seconds and no extent,
+then four image canvases, two 2677 × 2677 and two 2940 wide × 2985 high:
+it must parse (a time-based canvas is no fault), its canvases must expose
+those durations and no width or height, the default single-image reading
+and the `dimensions`/`width`/`height` properties must refuse with the
+time-based message (the first canvas has nothing to measure in pixels),
+`repr` must still work, and the whole-volume reading must hold exactly
+the four image canvases (2677, 2677, 2985, 2985 px along the height,
+11324 px in all), skipping the sound. A canvas with neither extent nor
+duration is refused at parsing, and a volume with no canvas to measure is
+refused at reading. Finally the six-page line is written with the
+manifest file writer and read back: the class, the IDs, the offsets,
+lengths, names and both levels' statements must come back equal, which
+shows that the source of every page survives in the manifest format and
+not only in memory. The single-image tests on SUPRA stay unchanged, so
+the default reading is pinned as before.
+
 A matchfile names both notes of every alignment line, so each MatchClaim
 names them: a `snote(<id>,…)-note(<id>,…)` line is a synchronous interval
 claim between the score note on `score:clt_1` and the performed note on the

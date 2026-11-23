@@ -4,7 +4,10 @@ IIIF (International Image Interoperability Framework) manifests contain
 structured metadata about images, including dimensions, that can be used
 to construct graphical timelines without loading the full image data.
 
-This loader supports IIIF Presentation API 2.x and 3.x manifests.
+This loader supports IIIF Presentation API 2.x and 3.x manifests. A
+Presentation 3 manifest may also hold time-based canvases (sound or video
+with a ``duration``); they are read, and have no pixel extent of their own
+unless the canvas states a width and height.
 """
 
 from __future__ import annotations
@@ -13,32 +16,70 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader.base import Loader
-from timetoalign.timelines import DiscreteGraphicalTimeline
+from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine
 
 module_logger = logging.getLogger(__name__)
 
 
+SOURCE_PROPERTY = "dcterms:source"
+"""The property by which a timeline built from a manifest names what it measures.
+
+Provisional: the property may change.
+"""
+
+
 @dataclass
 class IIIFCanvasInfo:
-    """Information about a single IIIF canvas (image).
+    """Information about a single IIIF canvas.
+
+    A canvas is spatial (an image: ``width`` and ``height``), time-based (a
+    sound: ``duration``), or both (a video).
 
     Attributes:
         id: Canvas identifier (URL or local ID).
-        width: Image width in pixels.
-        height: Image height in pixels.
+        width: Canvas width in pixels, or None when the canvas states none.
+        height: Canvas height in pixels, or None when the canvas states none.
         label: Human-readable label for the canvas.
         metadata: Additional canvas metadata.
+        duration: Canvas duration in seconds (Presentation 3 ``duration``,
+            kept as the JSON number given), or None when the canvas states
+            none.
     """
 
     id: str
-    width: int
-    height: int
+    width: int | None
+    height: int | None
     label: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    duration: float | None = None
+
+    @property
+    def is_spatial(self) -> bool:
+        """Whether the canvas states both a width and a height."""
+        return self.width is not None and self.height is not None
+
+    def extent(self, axis: str) -> int:
+        """Return the canvas's extent in pixels along *axis*.
+
+        Args:
+            axis: ``"height"`` or ``"width"``.
+
+        Raises:
+            ValueError: If *axis* is neither, or the canvas is time-based and
+                states no width and height.
+        """
+        if axis not in ("height", "width"):
+            raise ValueError(f"axis must be 'height' or 'width', got: {axis!r}")
+        if not self.is_spatial:
+            raise ValueError(
+                f"Canvas {self.id} is time-based (duration {self.duration}) and "
+                "states no width and height, so it has no extent in pixels"
+            )
+        return self.width if axis == "width" else self.height
 
 
 @dataclass
@@ -63,9 +104,15 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
 
     IIIF manifests contain canvas dimensions that represent image sizes.
     This loader extracts width/height for use with graphical timelines
-    without needing to download or load the actual image files.
+    without needing to download or load the actual image files: one image
+    (the first canvas) or a whole volume, every image laid end to end
+    (:meth:`create_timeline` with ``canvases="all"``).
 
-    Supports both IIIF Presentation API 2.x and 3.x formats.
+    Supports both IIIF Presentation API 2.x and 3.x formats. Time-based
+    Presentation 3 canvases (``duration`` without ``width``/``height``) are
+    read and expose their duration; they have no extent in pixels, so a
+    volume skips them and the single-image accessors refuse a manifest whose
+    first canvas is one.
 
     Examples:
         >>> from timetoalign.testdata import ensure_data
@@ -240,20 +287,31 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         )
 
     def _parse_v3_canvas(self, data: dict[str, Any]) -> IIIFCanvasInfo:
-        """Parse a single canvas from IIIF 3.x format."""
+        """Parse a single canvas from IIIF 3.x format.
+
+        A canvas needs a width and a height, or a duration.
+
+        Raises:
+            ValueError: If the canvas states neither.
+        """
         canvas_id = data.get("id", "")
         width = data.get("width")
         height = data.get("height")
+        duration = data.get("duration")
         label = self._extract_v3_label(data.get("label"))
 
-        if width is None or height is None:
-            raise ValueError(f"Canvas {canvas_id} missing width/height")
+        spatial = width is not None and height is not None
+        if not spatial and duration is None:
+            raise ValueError(
+                f"Canvas {canvas_id} states neither width and height nor a duration"
+            )
 
         return IIIFCanvasInfo(
             id=canvas_id,
-            width=int(width),
-            height=int(height),
+            width=None if width is None else int(width),
+            height=None if height is None else int(height),
             label=label,
+            duration=duration,
         )
 
     def _extract_v3_label(self, label_data: Any) -> str | None:
@@ -304,19 +362,30 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
 
         Raises:
             RuntimeError: If no manifest has been loaded.
+            ValueError: If the first canvas is time-based and states no
+                width and height.
         """
-        info = self.manifest_info
-        canvas = info.canvases[0]
-        return {"width": canvas.width, "height": canvas.height}
+        canvas = self.manifest_info.canvases[0]
+        return {"width": canvas.extent("width"), "height": canvas.extent("height")}
 
     @property
     def width(self) -> int:
-        """Width of the first canvas in pixels."""
+        """Width of the first canvas in pixels.
+
+        Raises:
+            ValueError: If the first canvas is time-based (see
+                :attr:`dimensions`).
+        """
         return self.dimensions["width"]
 
     @property
     def height(self) -> int:
-        """Height of the first canvas in pixels."""
+        """Height of the first canvas in pixels.
+
+        Raises:
+            ValueError: If the first canvas is time-based (see
+                :attr:`dimensions`).
+        """
         return self.dimensions["height"]
 
     @property
@@ -396,55 +465,124 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         uid: str | None = None,
         name: str | None = None,
         axis: str = "height",
+        canvases: Literal["first", "all"] = "first",
     ) -> DiscreteGraphicalTimeline:
-        """Create a graphical timeline from the loaded IIIF manifest.
+        """Create a graphical timeline in pixels from the loaded IIIF manifest.
 
-        The timeline length is determined by the image dimensions along the
-        specified axis (height by default, for vertical piano rolls).
+        With ``canvases="first"`` the timeline measures the first canvas: its
+        length is that image's extent along *axis* (height by default, for
+        vertical piano rolls).
+
+        With ``canvases="all"`` the timeline measures the whole volume: a
+        segment line (``SegmentLine[DiscreteGraphicalTimeline]``) holding one
+        child per canvas that states a width and a height, in manifest order,
+        laid end to end from 0. Each child is as long as its canvas's extent
+        along *axis* and is named with the canvas's label; the line is as
+        long as all of them together. Time-based canvases are skipped. The
+        other dimension of each canvas stays in :attr:`manifest_info`.
+
+        Each child states the canvas it measures, and the line the manifest
+        it was read from, as the property ``dcterms:source`` whose value is
+        the IRI node (``{"id": <canvas or manifest id>}``; Presentation 2
+        ``@id``, Presentation 3 ``id``). A canvas or manifest without an id
+        states nothing. This property is provisional: it may change.
 
         Args:
-            uid: Unique identifier for the timeline. Auto-generated if None.
+            uid: Unique identifier for the timeline. Auto-generated if None;
+                the children's IDs are always generated.
             name: Human-readable name. Uses manifest/canvas label if None.
             axis: Which dimension to use as the timeline axis:
                 - "height" (default): Timeline length = image height
                 - "width": Timeline length = image width
+            canvases: ``"first"`` (default) for the first canvas alone,
+                ``"all"`` for every spatial canvas as a segment line.
 
         Returns:
-            A DiscreteGraphicalTimeline representing the image.
+            A DiscreteGraphicalTimeline representing the image, or, for
+            ``canvases="all"``, the segment line of the volume (also a
+            DiscreteGraphicalTimeline).
 
         Raises:
             RuntimeError: If no manifest has been loaded.
-            ValueError: If axis is not "height" or "width".
+            ValueError: If axis is not "height" or "width", *canvases* is
+                neither "first" nor "all", the first canvas is time-based
+                (``"first"``), or no canvas states a width and height
+                (``"all"``).
 
         Examples:
-            >>> loader = IIIFManifestLoader()
-            >>> loader.load("manifest.json")
-            >>> timeline = loader.create_timeline(uid="dgt1_image")
+            One image::
+
+                loader = IIIFManifestLoader().load("manifest.json")
+                timeline = loader.create_timeline(uid="dgt_1")
+
+            A whole volume, its pages laid end to end along their height::
+
+                volume = loader.create_timeline(canvases="all")
+                for _, offset, page in volume.iter_segments():
+                    print(page.name, offset.value, page.length.value,
+                          page.statements["dcterms:source"])
         """
         if self._manifest_info is None:
             raise RuntimeError("No manifest loaded. Call load() first.")
-
-        if axis == "height":
-            length = self.height
-        elif axis == "width":
-            length = self.width
-        else:
+        if axis not in ("height", "width"):
             raise ValueError(f"axis must be 'height' or 'width', got: {axis!r}")
+        if canvases == "all":
+            return self._create_volume(uid, name or self.name, axis)
+        if canvases != "first":
+            raise ValueError(f"canvases must be 'first' or 'all', got: {canvases!r}")
 
         return DiscreteGraphicalTimeline(
-            length=length,
+            length=self._manifest_info.canvases[0].extent(axis),
             unit=TimeUnit.pixels,
             uid=uid,
             name=name or self.name,
         )
+
+    def _create_volume(
+        self, uid: str | None, name: str, axis: str
+    ) -> SegmentLine[DiscreteGraphicalTimeline]:
+        """Build the segment line of every spatial canvas (``canvases="all"``).
+
+        Raises:
+            ValueError: If no canvas states a width and height.
+        """
+        info = self.manifest_info
+        pages = [canvas for canvas in info.canvases if canvas.is_spatial]
+        if not pages:
+            raise ValueError(
+                f"Manifest {info.id} has no canvas with a width and height: "
+                f"all {len(info.canvases)} canvas(es) are time-based"
+            )
+        volume = SegmentLine[DiscreteGraphicalTimeline](
+            length=0, unit=TimeUnit.pixels, uid=uid, name=name
+        )
+        _state_source(volume, info.id)
+        for canvas in pages:
+            page = DiscreteGraphicalTimeline(
+                length=canvas.extent(axis), unit=TimeUnit.pixels, name=canvas.label
+            )
+            _state_source(page, canvas.id)
+            volume.append_segment(page)
+        return volume
 
     # endregion
 
     def __repr__(self) -> str:
         if self._manifest_info is None:
             return "IIIFManifestLoader(not loaded)"
+        first = self._manifest_info.canvases[0]
+        shown = (
+            f"dimensions={first.width}x{first.height}"
+            if first.is_spatial
+            else f"duration={first.duration}"
+        )
         return (
             f"IIIFManifestLoader("
-            f"canvases={len(self._manifest_info.canvases)}, "
-            f"dimensions={self.width}x{self.height})"
+            f"canvases={len(self._manifest_info.canvases)}, {shown})"
         )
+
+
+def _state_source(timeline: DiscreteGraphicalTimeline, iri: str) -> None:
+    """State that *timeline* measures the resource *iri*, unless *iri* is empty."""
+    if iri:
+        timeline.add_statement(SOURCE_PROPERTY, {"id": iri})

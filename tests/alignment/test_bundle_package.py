@@ -39,6 +39,7 @@ from timetoalign.core import (
     BoundingBox,
     Box,
     Coordinate,
+    Duration,
     EventReference,
     Projection,
     Provenance,
@@ -1392,3 +1393,194 @@ class TestBoxes:
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _box_bundle().to_file(tmp_path / "package.yaml", events=True)
         assert list(tmp_path.iterdir()) == []
+
+
+# Event tables of timelines holding other events: values in
+# tests/alignment/README.md ("Event tables of timelines holding other events").
+
+
+def _score_with_notes(*, n2: bool = True) -> ContinuousLogicalTimeline:
+    """``score`` holding ``n1`` (and ``n2``), Notes with a ``midi`` column."""
+    score = ContinuousLogicalTimeline(length=Fraction(16), uid="score")
+    notes = [
+        {
+            "id": "n1",
+            "start": Fraction(0),
+            "duration": Fraction(1),
+            "event_type": "Note",
+            "midi": 60,
+        },
+        {"id": "n2", "start": Fraction(3, 2), "event_type": "Note", "midi": 62},
+    ]
+    score.add_events(notes if n2 else notes[:1])
+    return score
+
+
+def _projection_rows(timeline: Timeline) -> list[tuple[Any, ...]]:
+    """Each Projection the timeline holds: id, start, duration, reference."""
+    return [
+        (
+            row["id"],
+            struct_to_rational(row["start"]),
+            struct_to_rational(row["duration"]),
+            row["projection_of"],
+        )
+        for row in timeline.events.table.to_pylist()
+        if row["event_type"] == "Projection"
+    ]
+
+
+def _written_twice(
+    bundle: AlignmentBundle, tmp_path: Path, name: str
+) -> AlignmentBundle:
+    """*bundle* written, read back and written again: the bundle read back.
+
+    Both directories hold the same files byte for byte.
+    """
+    (tmp_path / "first").mkdir()
+    (tmp_path / "second").mkdir()
+    bundle.to_file(tmp_path / "first" / name)
+    read = AlignmentBundle.from_file(tmp_path / "first" / name)
+    read.to_file(tmp_path / "second" / name)
+    assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
+    return read
+
+
+class TestEventTablesBesideOtherEvents:
+    def test_one_projection_beside_notes(self, tmp_path: Path) -> None:
+        score = _score_with_notes()
+        assert score.add_projections(
+            [
+                Projection(
+                    start=Coordinate(Fraction(1, 3), TimeUnit.quarters),
+                    duration=Duration(Fraction(2, 3), TimeUnit.quarters),
+                )
+            ]
+        ) == ["projection_1"]
+        bundle = AlignmentBundle(id="one")
+        bundle.add_timeline(score)
+
+        read = _written_twice(bundle, tmp_path, "one.yaml")
+
+        first = tmp_path / "first"
+        assert sorted(p.name for p in first.iterdir()) == [
+            "one.yaml",
+            "projections.parquet",
+        ]
+        assert pq.read_table(first / "projections.parquet").to_pylist() == [
+            {
+                "id": "projection_1",
+                "timeline_id": "score",
+                "unit": "quarters",
+                "number_type": "fraction",
+                "start": _number(1, 3),
+                "duration": _number(2, 3),
+                "projection_of": None,
+            }
+        ]
+        assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
+            ("resource_1", "Projection", ("score",), "projections.parquet")
+        ]
+        assert _projection_rows(read._known_timelines()["score"]) == [
+            ("projection_1", Fraction(1, 3), Fraction(2, 3), None)
+        ]
+
+    def test_two_boxes_beside_a_note(self, tmp_path: Path) -> None:
+        seg_2 = DiscreteGraphicalTimeline(
+            length=867,
+            uid="seg_2",
+            meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}},
+        )
+        boxes = [
+            Box.from_shape(
+                BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels"),
+                origin=7,
+                id="rect_h2",
+            ),
+            Box.from_shape(
+                BoundingBox.from_xywh(400, 100, 50, 30, unit="pixels"),
+                origin=7,
+                id="rect_b",
+            ),
+        ]
+        assert seg_2.add_events(
+            [{"event_type": "Note", "start": 0, "duration": 10, "midi": 60}, *boxes]
+        ) == ["note_1", "rect_h2", "rect_b"]
+        bundle = AlignmentBundle(id="boxes")
+        bundle.add_timeline(seg_2)
+
+        read = _written_twice(bundle, tmp_path, "boxes.yaml")
+
+        first = tmp_path / "first"
+        assert sorted(p.name for p in first.iterdir()) == [
+            "boxes.parquet",
+            "boxes.yaml",
+        ]
+
+        def box(x: int, y: int, width: int, height: int) -> dict[str, Any]:
+            return {
+                "x": _number(x),
+                "y": _number(y),
+                "width": _number(width),
+                "height": _number(height),
+            }
+
+        assert pq.read_table(first / "boxes.parquet").to_pylist() == [
+            {
+                "id": "rect_h2",
+                "timeline_id": "seg_2",
+                "unit": "pixels",
+                "number_type": "int",
+                "start": _number(378),
+                "duration": _number(139),
+                "bounding_box": box(385, 46, 139, 20),
+                "quadrilateral": None,
+            },
+            {
+                "id": "rect_b",
+                "timeline_id": "seg_2",
+                "unit": "pixels",
+                "number_type": "int",
+                "start": _number(393),
+                "duration": _number(50),
+                "bounding_box": box(400, 100, 50, 30),
+                "quadrilateral": None,
+            },
+        ]
+        assert _held_boxes(read) == {"seg_2": boxes}
+
+    def test_two_timelines_one_holding_a_projection(self, tmp_path: Path) -> None:
+        score = _score_with_notes(n2=False)
+        pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
+        pcm.add_events([{"id": "o1", "start": 22050, "event_type": "Note"}])
+        bundle = AlignmentBundle(id="two")
+        bundle.add_timeline(score)
+        bundle.add_timeline(pcm)
+        bundle.create_match_claims([({"start": 0, "end": 4}, "score", "o1", "pcm")])
+
+        read = _written_twice(bundle, tmp_path, "two.yaml")
+
+        first = tmp_path / "first"
+        reference = {"timeline_id": "pcm", "event_id": "o1"}
+        assert pq.read_table(first / "projections.parquet").to_pylist() == [
+            {
+                "id": "projection_1",
+                "timeline_id": "score",
+                "unit": "quarters",
+                "number_type": "fraction",
+                "start": _number(0, 1),
+                "duration": _number(4, 1),
+                "projection_of": reference,
+            }
+        ]
+        assert [(r.type, r.timelines) for r in bundle.resources] == [
+            ("MatchClaim", ("pcm", "score")),
+            ("Projection", ("score",)),
+        ]
+        assert _projection_rows(read._known_timelines()["score"]) == [
+            ("projection_1", Fraction(0), Fraction(4), reference)
+        ]
+        assert [
+            (claim.id, claim.event_a_id, claim.timeline_a_id, claim.event_b_id)
+            for claim in read.get_match_claims()
+        ] == [("claim_1", "projection_1", "score", "o1")]

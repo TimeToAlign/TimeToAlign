@@ -1961,6 +1961,52 @@ then fails to load. Each test pins one of these with exact values.
   ID: the bundle writes its MatchClaim table and its event tables beside
   the manifest, so its event rows are not written into it; write it with
   events=False.`).
+- **Event tables of timelines holding other events**
+  (`TestEventTablesBesideOtherEvents`). A table of one event type holds
+  exactly the events of that type of each timeline, whatever other events
+  the timeline holds and whatever columns they bring (a score's Notes, with
+  a `midi` column and no `projection_of`): a writer reading a column the
+  Projections lack, or missing one they have, fails or writes a Note. A
+  column the timeline's table lacks is written as typed nulls of the
+  package schema. Each case writes the package, reads it back and writes it
+  again into a fresh directory, byte for byte the first one.
+  - *One Projection beside Notes.* `score` (`ContinuousLogicalTimeline`,
+    quarters, fraction, length 16) holds `n1` (start 0, duration 1, `midi`
+    60) and `n2` (start 3/2, `midi` 62), then one Projection added by
+    `add_projections` (start 1/3, duration 2/3; minted `projection_1`). The
+    bundle `one` holds `score` alone; `to_file` writes exactly
+    `one.yaml` and `projections.parquet`, whose one row is `{id:
+    projection_1, timeline_id: score, unit: quarters, number_type:
+    fraction, start: {1, 3, null}, duration: {2, 3, null}, projection_of:
+    null}`; the resource is `resource_1`, type `"Projection"`, timelines
+    `["score"]`, URL `projections.parquet`. Read back, `score` holds that
+    Projection alone (start 1/3, duration 2/3, `projection_of` null: the
+    manifest names no Note).
+  - *Two Boxes beside a Note.* `seg_2` (pixels, int, length 867,
+    `meta["box"]` x 7) holds the Note `note_1` (start 0, duration 10,
+    `midi` 60), `rect_h2` (the bounding box (385, 46, 139, 20): start 378,
+    duration 139) and `rect_b` (the bounding box (400, 100, 50, 30): start
+    393, duration 50). `to_file` writes exactly the manifest and
+    `boxes.parquet`, whose rows are `rect_h2` and `rect_b` on `seg_2`,
+    `pixels`/`int`, starts `{378, null, null}` and `{393, null, null}`,
+    durations `{139, null, null}` and `{50, null, null}`, bounding boxes as
+    given, `quadrilateral` null; read back, `seg_2` holds those two Boxes,
+    equal to the originals.
+  - *Two timelines, one holding a Projection.* `score` holds `n1` (as
+    above) and `pcm` (`DiscretePhysicalTimeline`, samples, int, length
+    705600) holds the Note `o1` at 22050. One MatchClaim states the score
+    side as the position `{start: 0, end: 4}` and the performance side as
+    the event `o1`: it adds the Projection `projection_1` on `score` and
+    none on `pcm`. `projections.parquet` holds exactly one row, `{id:
+    projection_1, timeline_id: score, unit: quarters, number_type:
+    fraction, start: {0, 1, null}, duration: {4, 1, null}, projection_of:
+    {timeline_id: pcm, event_id: o1}}`; the Projection resource names
+    `["score"]` alone. Read back, `score` holds that Projection with its
+    reference, and the bundle holds the one MatchClaim, `claim_1`, from
+    `projection_1` on `score` to `o1` on `pcm`.
+  - The byte-equal fixture tests above (`test_the_package_is_written_back`,
+    `TestTimeToShareFixturePackage`), whose timelines hold Projections
+    alone, are unchanged and stay green.
 
 ### Conformance with TimeToShare's fixture package
 

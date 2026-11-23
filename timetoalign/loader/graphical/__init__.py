@@ -22,6 +22,12 @@ from images and PDFs. The key components are:
 - **ScoreWarpLoader**: Read the time axis drawn into a ScoreWarp SVG as a calibrated
   child of the drawing's timeline.
 
+- **DmosLoader**: Read the pages, systems and measures of a DMOS JSON file as page
+  timelines, their systems as children and the measures as Box events.
+
+- **MeiFacsimileLoader**: Read the surfaces and zones of an MEI facsimile as page
+  timelines holding Box events, and the ``@facs`` links to them.
+
 Examples:
     >>> from timetoalign.loader.graphical import GraphicalLoader
     >>> loader = GraphicalLoader()
@@ -45,11 +51,17 @@ Examples:
 
 from __future__ import annotations
 
+# DMOS page layout
+from .dmos import DmosLoader
+
 # IIIF manifest loader
 from .iiif import IIIFCanvasInfo, IIIFManifestInfo, IIIFManifestLoader
 
 # Loader factory
 from .loader import GraphicalLoader
+
+# MEI facsimile surfaces and zones
+from .mei_facsimile import MeiFacsimileLoader
 
 # Path definitions
 from .paths import (
@@ -89,4 +101,6 @@ __all__ = [
     "IIIFManifestInfo",
     "IIIFCanvasInfo",
     "ScoreWarpLoader",
+    "DmosLoader",
+    "MeiFacsimileLoader",
 ]

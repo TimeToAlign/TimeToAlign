@@ -217,6 +217,8 @@ _DEFERRED_EXPORTS = {
         "IIIFManifestLoader",
     ),
     "ScoreWarpLoader": ("timetoalign.loader.graphical", "ScoreWarpLoader"),
+    "DmosLoader": ("timetoalign.loader.graphical", "DmosLoader"),
+    "MeiFacsimileLoader": ("timetoalign.loader.graphical", "MeiFacsimileLoader"),
     "RepoVizzInfo": ("timetoalign.loader", "RepoVizzInfo"),
     "RepoVizzLoader": ("timetoalign.loader", "RepoVizzLoader"),
     "TiliaDictStore": ("timetoalign.loader", "TiliaDictStore"),
@@ -381,6 +383,8 @@ __all__ = [
     "ATONLoader",
     "IIIFManifestLoader",
     "ScoreWarpLoader",
+    "DmosLoader",
+    "MeiFacsimileLoader",
     # Timelines
     "Timeline",
     "LogicalTimeline",

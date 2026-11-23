@@ -25,7 +25,8 @@ bottom left), so its outline runs around the area.
 
 DMOS states no page size and no measure identity: the size of a page image
 is unknown unless given to :meth:`DmosLoader.create_timelines`, and measures
-are known by their position in the document only.
+are known by their position in the document only. A measure must lie within
+its system's x extent; one leaving it on either side is refused.
 """
 
 from __future__ import annotations
@@ -37,10 +38,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
-from pydantic import ValidationError
-
 from timetoalign.core import BoundingBox, Box, Quadrilateral, TimeUnit
 from timetoalign.loader.base import Loader
+from timetoalign.loader.graphical._located import located
 from timetoalign.timelines import DiscreteGraphicalTimeline
 
 module_logger = logging.getLogger(__name__)
@@ -91,23 +91,6 @@ def _member(mapping: Any, key: str, where: str) -> Any:
     return mapping[key]
 
 
-def _located(where: str, error: Exception) -> ValueError:
-    """The refusal *error* of a shape, prefixed by *where* it stands.
-
-    A refusal raised by a model validator arrives wrapped in pydantic's
-    report; its own message is taken from there.
-    """
-    reasons = (
-        [
-            str(entry.get("ctx", {}).get("error", entry["msg"]))
-            for entry in error.errors()
-        ]
-        if isinstance(error, ValidationError)
-        else [str(error)]
-    )
-    return ValueError(f"{where}: {' '.join(reasons)}")
-
-
 def _area(region: Any, order: tuple[str, ...], where: str) -> Quadrilateral:
     """Read a DMOS region whose corners are written in *order*.
 
@@ -117,7 +100,29 @@ def _area(region: Any, order: tuple[str, ...], where: str) -> Quadrilateral:
     try:
         return Quadrilateral.from_points(region, order=order, unit=TimeUnit.pixels)
     except (TypeError, ValueError) as error:
-        raise _located(where, error) from error
+        raise located(where, error) from error
+
+
+def _within(measure: Quadrilateral, system: Quadrilateral, where: str) -> Quadrilateral:
+    """Return *measure*, refusing it where its x extent leaves its *system*'s.
+
+    A measure is a Box of its system, placed at its least x less the
+    system's: one starting left of its system would start before the
+    system's timeline, one ending right of it past its end. Both edges are
+    inside.
+
+    Raises:
+        ValueError: Naming *where* the measure stands and both x extents.
+    """
+    if measure.x_min.value < system.x_min.value or (
+        measure.x_max.value > system.x_max.value
+    ):
+        raise ValueError(
+            f"{where} spans x {measure.x_min.value} to {measure.x_max.value}, "
+            f"which leaves its system's region, spanning x {system.x_min.value} "
+            f"to {system.x_max.value}."
+        )
+    return measure
 
 
 def _read_pages(source: Path) -> tuple[_DmosPage, ...]:
@@ -134,19 +139,26 @@ def _read_pages(source: Path) -> tuple[_DmosPage, ...]:
         systems = []
         for k, system in enumerate(_member(page, "systems", where), start=1):
             at = f"{where}, system {k}"
-            measures = tuple(
-                _area(
-                    _member(measure, "region", f"{at}, measure {j}"),
-                    MEASURE_CORNER_ORDER,
-                    f"{at}, measure {j}",
+            area = _area(_member(system, "region", at), SYSTEM_CORNER_ORDER, at)
+            measures = []
+            for j, measure in enumerate(_member(system, "measures", at), start=1):
+                measure_at = f"{at}, measure {j}"
+                measures.append(
+                    _within(
+                        _area(
+                            _member(measure, "region", measure_at),
+                            MEASURE_CORNER_ORDER,
+                            measure_at,
+                        ),
+                        area,
+                        measure_at,
+                    )
                 )
-                for j, measure in enumerate(_member(system, "measures", at), start=1)
-            )
             systems.append(
                 _DmosSystem(
                     name=str(_member(system, "id", at)),
-                    area=_area(_member(system, "region", at), SYSTEM_CORNER_ORDER, at),
-                    measures=measures,
+                    area=area,
+                    measures=tuple(measures),
                 )
             )
         pages.append(
@@ -177,14 +189,21 @@ class DmosLoader(Loader[tuple[_DmosPage, ...]]):
     unless :meth:`create_timelines` is given it; measures have no id and no
     number in DMOS, so their Boxes are minted ``box_N`` per system in
     document order; DMOS system ids repeat on some pages, so a system's name
-    (its DMOS id) need not be unique, while its timeline id is.
+    (its DMOS id) need not be unique, while its timeline id is. A measure
+    whose x extent leaves its system's region, on the left or on the right,
+    cannot be a Box of that system's timeline and refuses the file (the
+    system's timeline spans exactly its region's x extent; neither is
+    widened to hold the measure).
 
     Examples:
-        >>> loader = DmosLoader.from_file("dmos.json")
-        >>> pages = loader.create_timelines(page_sizes={1: (4512, 6174)})
-        >>> page = pages[0]
-        >>> system = page.get_child(page.list_children()[0])
-        >>> boxes = system.get_events().table.to_pylist()
+        The systems and measures of a DMOS file whose first page image is
+        4512 by 6174 pixels::
+
+            loader = DmosLoader.from_file("dmos.json")
+            pages = loader.create_timelines(page_sizes={1: (4512, 6174)})
+            page = pages[0]
+            system = page.get_child(page.list_children()[0])
+            boxes = system.get_events().table.to_pylist()
     """
 
     #: One loader reads one DMOS file.
@@ -219,10 +238,11 @@ class DmosLoader(Loader[tuple[_DmosPage, ...]]):
         Raises:
             FileNotFoundError: If the file does not exist.
             ValueError: If the file is no JSON, a page, system or measure
-                lacks a member read, or a region is not four corners running
-                around a convex outline in the order DMOS writes them; the
-                message names the page by ``no_page`` and the system and
-                measure by their position, counted from 1.
+                lacks a member read, a region is not four corners running
+                around a convex outline in the order DMOS writes them, or a
+                measure's x extent leaves its system's region on either
+                side; the message names the page by ``no_page`` and the
+                system and measure by their position, counted from 1.
         """
         return _read_pages(source)
 

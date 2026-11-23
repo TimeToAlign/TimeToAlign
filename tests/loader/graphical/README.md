@@ -39,12 +39,12 @@ Refusals the library composes are asserted whole.
 
 ## `DmosLoader`
 
-**Source:** `aimons-nous_C055/saintsaens-audio_C055_0/iiif.json` of the
-CollabScore specimens (DMOS optical music recognition output). The excerpt
-holds page 1 (`no_page` 1, `page_url` `.../bpt6k11620688/f2`, an image of
-4512 x 6174 pixels that the file does not state), its systems 1 and 2, and
-measures 1 and 2 of system 1. System 2 keeps no measures, which is also the
-shape of the defect of one Pelléas page (a system with zero measures).
+**Source:** the DMOS optical music recognition output for the Gallica score
+`ark:/12148/bpt6k11620688`. The excerpt holds page 1 (`no_page` 1,
+`page_url` `https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2`, an
+image of 4512 x 6174 pixels that the file does not state), its systems 1
+and 2, and measures 1 and 2 of system 1. System 2 keeps no measures: DMOS
+output holds systems with no measure, and the reader must take one.
 
 - **System corners** are written top left, bottom left, top right, bottom
   right. System 1 `[[1221,1589],[1221,2266],[4097,1589],[4101,2266]]` is the
@@ -69,19 +69,34 @@ shape of the defect of one Pelléas page (a system with zero measures).
   system, so the boundary is exercised from both sides.
 - **Ids.** Timelines are minted `dgt_1` (the page), `dgt_2`, `dgt_3` (the
   systems, in document order); Boxes are minted `box_1`, `box_2` per system.
-  System names are DMOS's system ids as strings: on a page whose systems are
-  both numbered 1 (the Pelléas defect) the two children are named `"1"` and
-  `"1"` and keep distinct ids.
+  System names are DMOS's system ids as strings: DMOS output repeats a
+  system id on some pages, so on a page whose systems are both numbered 1
+  the two children are named `"1"` and `"1"` and keep distinct ids.
 - **What is not read.** Measure staff headers and voices are left in the
   excerpt and must leave no trace: each system holds exactly its Boxes.
 - **Refusals.** A measure whose corners, read in DMOS's measure order, do not
   run around a convex outline is refused with the shape's own message,
   prefixed by where it stands (`DMOS page 1, system 1, measure 1: ...`),
-  since DMOS measures have no ids. `create_timelines()` before `load()` and a
-  second source are refused (the loader reads one file).
-
-The full CollabScore files are not a test corpus; whole-file counts (4 pages,
-17 systems, 67 measures for C055) are checked by hand, not here.
+  since DMOS measures have no ids; so is a corner that is no whole number
+  of pixels (`1221.5`: geometry is never rounded). `create_timelines()`
+  before `load()` and a second source are refused (the loader reads one
+  file).
+- **Known issue: a measure leaving its system.** A measure is a Box of its
+  system's timeline, which spans exactly the system region's x extent, so
+  a measure reaching left or right of that extent has no place there;
+  optical music recognition can produce one (measure edges lean: measure
+  1's right edge runs from x 2151 to 2161). One rule for both edges: the file is refused at
+  loading with one message naming page, system and measure and both
+  extents; no negative start is produced and the system is not widened.
+  Separate cases, each with the excerpt's system 1 (x 1221 to 4101):
+  measure 1 at `[[1200,1589],[2151,1589],[1200,2266],[2161,2266]]` (x 1200
+  to 2161, left of the system) gives `DMOS page 1, system 1, measure 1
+  spans x 1200 to 2161, which leaves its system's region, spanning x 1221
+  to 4101.`; measure 2 at `[[3500,1589],[4110,1589],[3500,2266],
+  [4120,2266]]` after measure 1 (x 3500 to 4120, right of it) gives the
+  same sentence for `measure 2` and `3500 to 4120`. A measure spanning the
+  system exactly (x 1221 to 4101, corners those of system 1 in measure
+  order) loads as `box_1`, start 0, duration 2880: both edges are inside.
 
 ## `MeiFacsimileLoader`
 
@@ -106,12 +121,31 @@ two zones, and the two measures pointing to them by `@facs`.
   to `("zone_01M7DF2DF4R34CYF6DVH8GZD9P",)`, the leading `#` of each
   reference dropped; an element pointing to two zones keeps both in the
   order written.
-- **`@points`.** A zone with `points="1221,1589 2151,1589 2161,2266
-  1221,2266"` (DMOS measure 1 in canonical order) reads as that
-  quadrilateral, start 1221, duration 940. A zone with the crossed order
-  Neuma's annotations copy from DMOS (`1221,1589 2151,1589 1221,2266
-  2161,2266`) is refused with the shape's crossed-corners message, prefixed
-  by the zone's id.
+- **`@points`.** MEI, as SVG, fixes neither a first corner nor a direction,
+  so a zone's four points are read in either direction from any corner and
+  held from the top-left corner (least x + y), clockwise. The outline of
+  DMOS measure 1 is listed eight ways (each of its four corners first, each
+  direction): every listing reads as the same quadrilateral, asserted
+  literally as `top_left (1221, 1589)`, `top_right (2151, 1589)`,
+  `bottom_right (2161, 2266)`, `bottom_left (1221, 2266)` in its dict form,
+  start 1221, duration 940. A reader that kept the written order would
+  hold `(2161, 2266)` as the top left of the listing starting there (or
+  refuse it); one that refused a counter-clockwise listing refuses valid
+  MEI.
+- **Known issue: `@points` that are no convex quadrilateral.** A zone is a
+  Box holding a `Quadrilateral`, which has four corners bounding a convex
+  area; any other `@points` cannot be one, and nothing is put in its place
+  (no bounding box is inferred), so the file is refused at loading, the
+  message naming the zone's `xml:id` and the reason. Separate cases, each
+  asserted whole: five points (`1221,1589 2151,1589 2161,2266 1221,2266
+  1221,1900`): `MEI zone 'm1': The SVG points '...' hold 5 points; a
+  Quadrilateral's are four.`; a concave outline (`0,0 10,0 4,4 0,10`):
+  `... bound no convex quadrilateral: the outline turns clockwise at points
+  1, 2 and 4 and counter-clockwise at point 3.`; the crossed order an IIIF
+  `SvgSelector` copies from DMOS's measure order (`1221,1589 2151,1589
+  1221,2266 2161,2266`): `... bound no convex quadrilateral: the outline
+  turns clockwise at points 1 and 2 and counter-clockwise at points 3 and
+  4.`
 - **Sizes the file does not give.** A surface without a graphic but with
   `ulx` 100, `uly` 0, `lrx` 600, `lry` 400 has length 500 and `meta["box"]`
   (100, 0, 500, 400), so a zone at `ulx` 150 starts at 50 (the invariant with
@@ -123,6 +157,16 @@ two zones, and the two measures pointing to them by `@facs`.
   number too.
 - **The image's right edge.** A zone ending at x 4600 on a 4512-pixel image
   is refused at loading, naming the zone.
+- **Known issue: the surface's corners beside the graphic's size.** Where
+  the graphic states its pixel width, the image's space is that width from
+  x 0 and the surface's `ulx` .. `lry` are not used, even where they state
+  another area. The case pins this: a surface `ulx` 100, `uly` 0, `lrx`
+  4100, `lry` 3000 with a graphic 4000 x 3000 has length 4000 and
+  `meta["box"]` (0, 0, 4000, 3000), not the surface's (100, 0, 4000,
+  3000); a zone at `ulx` 150 .. `lrx` 200 starts at 150 (not 50); a zone
+  ending at x 4050 (inside the surface's corners) is refused as past the
+  right edge at x 4000. Should the surface's corners come to decide the
+  space, this case is the one to change.
 - **Zones without coordinates** are not read and are listed, in document
   order, in `zones_without_coordinates`.
 - **Refusals.** A root other than `<mei>` in the MEI namespace, `create_

@@ -4,7 +4,7 @@ This package provides the infrastructure for loading music representations
 and storing events in efficient PyArrow tables.
 
 Loader Taxonomy:
-    The package contains three categories of loaders:
+    The package contains four categories of loaders:
 
     **Loader** - Returns EventStore (events only):
         - ScoreLoader subclasses: Music21Loader, PartituraLoader, Ms3Loader,
@@ -15,6 +15,11 @@ Loader Taxonomy:
     **ManifestLoader** - Returns ManifestData (dimensions + metadata only):
         - AudioLoader: Audio file -> DiscretePhysicalTimeline (samples)
         - IIIFManifestLoader: IIIF manifest -> Graphical dimensions
+
+    **Readers of areas on page images** - Return timelines holding Box events
+    (in ``timetoalign.loader.graphical``):
+        - DmosLoader: DMOS page layout -> pages, systems, measures
+        - MeiFacsimileLoader: MEI facsimile -> surfaces, zones, ``@facs`` links
 
     **AlignmentLoader** - Returns AlignmentStore (events + C-maps):
         - MatchfileLoader: Score-to-performance alignment

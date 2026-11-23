@@ -19,7 +19,6 @@ from timetoalign.core import (
     Coordinate,
     Duration,
     NumberType,
-    Quadrilateral,
     Shape,
     TimeUnit,
 )
@@ -177,6 +176,35 @@ class TestSurface:
             "box": {"x": 0, "y": 0, "width": 4000, "height": 3000},
         }
 
+    def test_the_graphic_size_decides_the_space_not_the_surface_corners(
+        self, tmp_path: Path
+    ) -> None:
+        # Known issue: the surface's corners state another area; unused.
+        graphic = '<graphic target="page.jpg" width="4000" height="3000"/>'
+        surface_corners = ' ulx="100" uly="0" lrx="4100" lry="3000"'
+        zone = '<zone xml:id="z1" ulx="150" uly="10" lrx="200" lry="20"/>'
+        (surface,) = _load(
+            tmp_path, _surface(zone, graphic=graphic, attributes=surface_corners)
+        ).create_timelines()
+        assert surface.length.value == 4000
+        assert surface.meta == {
+            "image": "page.jpg",
+            "box": {"x": 0, "y": 0, "width": 4000, "height": 3000},
+        }
+        assert [(box.id, box.start, box.duration) for box in _boxes(surface)] == [
+            ("z1", _px(150), _extent(50))
+        ]
+
+        past = '<zone xml:id="z2" ulx="3900" uly="10" lrx="4050" lry="20"/>'
+        path = _write(
+            tmp_path, _mei(_surface(past, graphic=graphic, attributes=surface_corners))
+        )
+        with pytest.raises(ValueError) as raised:
+            MeiFacsimileLoader().load(path)
+        assert str(raised.value) == (
+            "MEI zone 'z2' ends at x 4050, past the right edge of its image at x 4000."
+        )
+
     def test_surfaces_in_document_order(self, tmp_path: Path) -> None:
         loader = _load(
             tmp_path,
@@ -221,31 +249,70 @@ class TestZones:
         )
         assert _load(tmp_path, EXCERPT_SURFACE, body).facs == {"m-1": (ZONE_2, ZONE_1)}
 
-    def test_points_read_as_a_quadrilateral(self, tmp_path: Path) -> None:
-        zone = '<zone xml:id="m1" points="1221,1589 2151,1589 2161,2266 1221,2266"/>'
+    @pytest.mark.parametrize(
+        "points",
+        [
+            # clockwise, from each corner
+            "1221,1589 2151,1589 2161,2266 1221,2266",
+            "2151,1589 2161,2266 1221,2266 1221,1589",
+            "2161,2266 1221,2266 1221,1589 2151,1589",
+            "1221,2266 1221,1589 2151,1589 2161,2266",
+            # counter-clockwise, from each corner
+            "1221,1589 1221,2266 2161,2266 2151,1589",
+            "1221,2266 2161,2266 2151,1589 1221,1589",
+            "2161,2266 2151,1589 1221,1589 1221,2266",
+            "2151,1589 1221,1589 1221,2266 2161,2266",
+        ],
+    )
+    def test_points_read_as_a_quadrilateral_from_any_corner(
+        self, tmp_path: Path, points: str
+    ) -> None:
+        zone = f'<zone xml:id="m1" points="{points}"/>'
         (surface,) = _load(tmp_path, _surface(zone, graphic=CANVAS)).create_timelines()
-        quadrilateral = Quadrilateral.from_points(
-            [(1221, 1589), (2151, 1589), (2161, 2266), (1221, 2266)], unit="pixels"
-        )
-        assert _boxes(surface) == [
-            Box(
-                id="m1",
-                start=_px(1221),
-                duration=_extent(940),
-                quadrilateral=quadrilateral,
-            )
-        ]
+        (box,) = _boxes(surface)
+        assert box.id == "m1"
+        assert box.bounding_box is None
+        assert box.quadrilateral.to_dict() == {
+            "top_left": {"x": 1221, "y": 1589},
+            "top_right": {"x": 2151, "y": 1589},
+            "bottom_right": {"x": 2161, "y": 2266},
+            "bottom_left": {"x": 1221, "y": 2266},
+        }
+        assert (box.start, box.duration) == (_px(1221), _extent(940))
         _assert_image_space_invariant(surface)
 
-    def test_crossed_points_are_refused(self, tmp_path: Path) -> None:
-        zone = '<zone xml:id="m1" points="1221,1589 2151,1589 1221,2266 2161,2266"/>'
+
+class TestPointsThatAreNoQuadrilateral:
+    """Known issue: ``@points`` other than a convex quadrilateral refuse the file."""
+
+    @staticmethod
+    def _refusal(tmp_path: Path, points: str) -> str:
+        zone = f'<zone xml:id="m1" points="{points}"/>'
         path = _write(tmp_path, _mei(_surface(zone, graphic=CANVAS)))
         with pytest.raises(ValueError) as raised:
             MeiFacsimileLoader().load(path)
-        assert str(raised.value) == (
-            "MEI zone 'm1': The corners top_left (1221, 1589), top_right (2151, 1589), "
-            "bottom_right (1221, 2266), bottom_left (2161, 2266) do not run clockwise "
-            "around a convex outline: the turn at bottom_right is counter-clockwise."
+        return str(raised.value)
+
+    def test_five_points(self, tmp_path: Path) -> None:
+        points = "1221,1589 2151,1589 2161,2266 1221,2266 1221,1900"
+        assert self._refusal(tmp_path, points) == (
+            f"MEI zone 'm1': The SVG points '{points}' hold 5 points; a "
+            "Quadrilateral's are four."
+        )
+
+    def test_a_concave_outline(self, tmp_path: Path) -> None:
+        assert self._refusal(tmp_path, "0,0 10,0 4,4 0,10") == (
+            "MEI zone 'm1': The SVG points '0,0 10,0 4,4 0,10' bound no convex "
+            "quadrilateral: the outline turns clockwise at points 1, 2 and 4 and "
+            "counter-clockwise at point 3."
+        )
+
+    def test_a_crossed_outline(self, tmp_path: Path) -> None:
+        points = "1221,1589 2151,1589 1221,2266 2161,2266"
+        assert self._refusal(tmp_path, points) == (
+            f"MEI zone 'm1': The SVG points '{points}' bound no convex "
+            "quadrilateral: the outline turns clockwise at points 1 and 2 and "
+            "counter-clockwise at points 3 and 4."
         )
 
     def test_a_zone_past_the_image_width(self, tmp_path: Path) -> None:

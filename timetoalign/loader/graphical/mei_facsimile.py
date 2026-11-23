@@ -13,7 +13,19 @@ along the image's x axis, each zone a :class:`Box` event of its surface (a
 
 MEI corners are points, not pixel indices: a zone's width is ``lrx - ulx``.
 Coordinates are read exactly as written; a value that is no whole number of
-pixels is refused, never rounded.
+pixels is refused, never rounded. A zone's ``@points`` are read as a
+quadrilateral when they are four points bounding a convex area, listed in
+either direction from any corner (they are held from the top-left corner,
+clockwise); any other ``@points`` (another number of points, a concave or
+crossed outline) refuses the file, naming the zone. Nothing is put in such a
+zone's place, not even its bounding box.
+
+The graphic's size decides the image's space: where the graphic states its
+width in pixels, zone coordinates are taken as pixels of that image, from
+its left edge at x 0, and the surface's own ``@ulx`` .. ``@lry`` are read
+(a malformed value is refused) but neither checked against the graphic's
+size nor used; only where the graphic states no pixel width do the
+surface's corners state the area (see :meth:`MeiFacsimileLoader.create_timelines`).
 """
 
 from __future__ import annotations
@@ -29,7 +41,7 @@ from typing import Any, ClassVar
 from timetoalign.core import BoundingBox, Box, Coordinate, Shape, TimeUnit
 from timetoalign.loader._xml import XML_ID
 from timetoalign.loader.base import Loader
-from timetoalign.loader.graphical.dmos import _located
+from timetoalign.loader.graphical._located import located
 from timetoalign.loader.metadata.mei_head import MEI_NAMESPACE
 from timetoalign.timelines import DiscreteGraphicalTimeline
 
@@ -143,7 +155,7 @@ def _surface(surface: ET.Element, missing: list[str]) -> _MeiSurface:
         try:
             shape = Shape.from_mei_zone(attributes, unit=TimeUnit.pixels)
         except ValueError as error:
-            raise _located(where, error) from error
+            raise located(where, error) from error
         if right is not None and shape.x_max.value > right:
             raise ValueError(
                 f"{where} ends at x {shape.x_max.value}, past the right edge of its "
@@ -208,13 +220,25 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
     size and is not read; a zone without ``xml:id`` is minted ``box_N`` and
     cannot be pointed to; an element without ``xml:id`` is left out of
     :attr:`facs`, and a zone stating no coordinates out of the timelines
-    (:attr:`zones_without_coordinates` lists those with an id).
+    (:attr:`zones_without_coordinates` lists those with an id). A zone whose
+    ``@points`` are not four points bounding a convex area (five points, a
+    concave or crossed outline) cannot be a
+    :class:`~timetoalign.core.Quadrilateral` and refuses the file, the
+    message naming the zone and the reason. Where the graphic states its
+    pixel width, the surface's ``@ulx`` .. ``@lry`` are not used: a surface
+    whose corners measure another space than the graphic's pixels (another
+    scale, or a left edge other than x 0) has its zones placed as if they
+    were the graphic's pixels from x 0, so a zone ending past the graphic's
+    width is refused and any other lands at its own x.
 
     Examples:
-        >>> loader = MeiFacsimileLoader.from_file("chorale_facsimile.mei")
-        >>> (surface,) = loader.create_timelines()
-        >>> boxes = surface.get_events().table.to_pylist()
-        >>> zones = loader.facs["m-43"]
+        The surfaces of an MEI file as timelines, and the zones a measure
+        points to::
+
+            loader = MeiFacsimileLoader.from_file("chorale_facsimile.mei")
+            (surface,) = loader.create_timelines()
+            boxes = surface.get_events().table.to_pylist()
+            zones = loader.facs["m-43"]
     """
 
     #: One loader reads one MEI file.
@@ -260,9 +284,10 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
             FileNotFoundError: If the file does not exist.
             ValueError: If the root is not in the MEI namespace, a graphic's
                 pixel size is no whole number, or a zone states incomplete
-                corners, points that do not run around a convex outline, or
-                points and corners naming two areas, or ends past the right
-                edge of its image; a zone's message names it.
+                corners, ``@points`` other than four points bounding a
+                convex area, or points and corners naming two areas, or ends
+                past the right edge of its image; a zone's message names it
+                (by ``xml:id``, else by its position on its surface).
         """
         return _read_facsimile(source)
 
@@ -290,15 +315,30 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
 
         A surface's timeline is in ``pixels`` (``int``), its id the
         surface's ``xml:id`` (minted ``dgt_N`` where it has none), its name
-        the surface's ``@n`` (where it has none, the timeline's id). Its length is the graphic's ``@width``, else
-        ``lrx - ulx`` of the surface, else unknown; a timeline of known
-        length is locked, since the width is the image's.
-        ``meta["image"]`` is the graphic's ``@target``; ``meta["box"]`` is
-        ``{"x": 0, "y": 0, "width": w, "height": h}`` from the graphic's
-        size, else the surface's corners where the graphic states no width.
+        the surface's ``@n`` (where it has none, the timeline's id);
+        ``meta["image"]`` is the graphic's ``@target``. The image's space
+        comes from one source, decided in this order:
+
+        - the graphic states its width in pixels: the length is that width;
+          ``meta["box"]`` is ``{"x": 0, "y": 0, "width": w, "height": h}``
+          where the graphic also states its height in pixels, else absent.
+          The surface's ``@ulx`` .. ``@lry`` are not used, even where they
+          state another area;
+        - else the surface states all four corners: the length is
+          ``lrx - ulx`` and ``meta["box"]`` the surface's corners
+          (``x`` = ``ulx``);
+        - else the length is unknown and there is no ``meta["box"]``.
+
+        A timeline of known length is locked, since the width is the
+        image's.
 
         Each zone with coordinates is a Box event, its id the zone's
         ``xml:id`` (minted ``box_N`` where it has none), in document order.
+        Its shape is the zone's coordinates as written; its start is the
+        shape's least x less the ``x`` of ``meta["box"]`` (0 where there is
+        none), so zone coordinates are taken in the space that box (or the
+        graphic's width from x 0) states. A zone ending right of that space
+        (past ``x`` + length) was refused when the file was loaded.
 
         Returns:
             The surfaces' timelines.

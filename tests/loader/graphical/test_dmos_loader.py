@@ -1,7 +1,7 @@
 """Tests for DmosLoader.
 
-The fixture is an excerpt of a DMOS JSON file (page 1 of the CollabScore
-specimen *Aimons-nous*, C055), written by the test. The validation logic is
+The fixture is an excerpt of a DMOS JSON file (page 1 of the DMOS output for
+the Gallica score ``ark:/12148/bpt6k11620688``), written by the test. The validation logic is
 documented in ``tests/loader/graphical/README.md`` ("``DmosLoader``"). All
 expected values are exact and read from the source file by hand.
 """
@@ -272,11 +272,67 @@ class TestMeasures:
             "top_left is counter-clockwise."
         )
 
+    def test_a_corner_that_is_no_whole_pixel(self, tmp_path: Path) -> None:
+        fractional = [[1221.5, 1589], [2151, 1589], [1221.5, 2266], [2161, 2266]]
+        source = _write(
+            tmp_path, _document([_system(1, SYSTEM_1, [_measure(fractional)])])
+        )
+        with pytest.raises(ValueError) as raised:
+            DmosLoader().load(source)
+        assert str(raised.value) == (
+            "DMOS page 1, system 1, measure 1: A shape's x is 1221.5, which pixels "
+            "as int cannot hold exactly: geometry is never rounded."
+        )
+
     def test_a_measure_without_a_region(self, tmp_path: Path) -> None:
         source = _write(tmp_path, _document([_system(1, SYSTEM_1, [{"voices": []}])]))
         with pytest.raises(ValueError) as raised:
             DmosLoader().load(source)
         assert str(raised.value) == "DMOS page 1, system 1, measure 1 has no 'region'."
+
+
+class TestMeasuresLeavingTheirSystem:
+    """Known issue: a measure outside its system's x extent refuses the file."""
+
+    def test_a_measure_left_of_its_system(self, tmp_path: Path) -> None:
+        left = [[1200, 1589], [2151, 1589], [1200, 2266], [2161, 2266]]
+        source = _write(tmp_path, _document([_system(1, SYSTEM_1, [_measure(left)])]))
+        with pytest.raises(ValueError) as raised:
+            DmosLoader().load(source)
+        assert str(raised.value) == (
+            "DMOS page 1, system 1, measure 1 spans x 1200 to 2161, which leaves "
+            "its system's region, spanning x 1221 to 4101."
+        )
+
+    def test_a_measure_right_of_its_system(self, tmp_path: Path) -> None:
+        right = [[3500, 1589], [4110, 1589], [3500, 2266], [4120, 2266]]
+        source = _write(
+            tmp_path,
+            _document([_system(1, SYSTEM_1, [_measure(MEASURE_1), _measure(right)])]),
+        )
+        with pytest.raises(ValueError) as raised:
+            DmosLoader().load(source)
+        assert str(raised.value) == (
+            "DMOS page 1, system 1, measure 2 spans x 3500 to 4120, which leaves "
+            "its system's region, spanning x 1221 to 4101."
+        )
+
+    def test_a_measure_spanning_its_system_exactly(self, tmp_path: Path) -> None:
+        whole = [[1221, 1589], [4097, 1589], [1221, 2266], [4101, 2266]]
+        source = _write(tmp_path, _document([_system(1, SYSTEM_1, [_measure(whole)])]))
+        (page,) = DmosLoader.from_file(source).create_timelines()
+        system = page.get_child("dgt_2")
+        assert _boxes(system) == [
+            Box(
+                id="box_1",
+                start=_px(0),
+                duration=_extent(2880),
+                quadrilateral=_canonical(
+                    (1221, 1589), (4097, 1589), (4101, 2266), (1221, 2266)
+                ),
+            )
+        ]
+        _assert_image_space_invariant(page)
 
 
 class TestLifecycle:

@@ -133,6 +133,7 @@ from timetoalign.core import NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
 from timetoalign.loader.format.xml import XmlLoader
+from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap
 from timetoalign.storage.events import EventData, mint_event_ids
 from timetoalign.timelines.factory import _mint_timeline_id
@@ -877,27 +878,17 @@ class Ieee1599Loader(XmlLoader):
         }
         page_spec = _GraphicPageSpec(page=page)
         spec.pages.append(page_spec)
-        graphics = list(instance.findall("graphic_event"))
-        ulx_values = [
-            value
-            for graphic in graphics
-            if (value := _float_or_none(graphic.get("upper_left_x"))) is not None
+        graphics = [
+            (graphic, ulx)
+            for graphic in instance.findall("graphic_event")
+            if (ulx := _float_or_none(graphic.get("upper_left_x"))) is not None
         ]
-        if not ulx_values:
-            return
-        half_span = (max(ulx_values) - min(ulx_values)) / 2
-        segment: _GraphicSegmentSpec | None = None
-        previous_ulx: float | None = None
+        accolades = group_into_accolades([ulx for _, ulx in graphics])
 
-        for graphic in graphics:
-            ulx = _float_or_none(graphic.get("upper_left_x"))
-            if ulx is None:
-                continue
-            if previous_ulx is None or previous_ulx - ulx > half_span:
-                segment = _GraphicSegmentSpec()
-                page_spec.segments.append(segment)
-            previous_ulx = ulx
-            assert segment is not None
+        for (graphic, _), accolade in zip(graphics, accolades):
+            if accolade == len(page_spec.segments):
+                page_spec.segments.append(_GraphicSegmentSpec())
+            segment = page_spec.segments[accolade]
 
             event_ref = graphic.get("event_ref")
             if self._coordinate_of(event_ref, "graphic_event") is None:

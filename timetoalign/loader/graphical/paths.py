@@ -4,8 +4,19 @@ This module provides the abstraction for mapping 1D timeline coordinates
 to 2D image coordinates (and vice versa).
 
 A TimeAxisPath represents the geometric trajectory that the time axis
-follows through an image. Implementations range from simple (horizontal
-lines) to complex (parametric curves, spirals).
+follows through an image: no image has a time axis until that path is
+defined. Implementations range from simple (horizontal lines) to complex
+(parametric curves, spirals); a :class:`PiecewisePath` is made of
+consecutive pieces, such as the accolades of a score page, read one after
+the other. :meth:`TimeAxisPath.from_boxes` makes the path of a page from
+the areas drawn on it, and :func:`group_into_accolades` is the rule that
+finds the accolades among them.
+
+A path holds the numbers it is given and computes with them as they are: a
+line of integers (or of ``Fraction`` values) has an exact length and gives
+exact answers; nothing is turned into a float. Only a
+:class:`DiagonalLinePath` and a :class:`ParametricPath` answer in floats
+(their lengths are square roots).
 
 The design is forward-compatible with video (3D paths through frame-time
 and 2D pixel space).
@@ -20,10 +31,69 @@ from __future__ import annotations
 import logging
 import math
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Callable
+from fractions import Fraction
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from timetoalign.core import Box, Shape
 
 module_logger = logging.getLogger(__name__)
+
+#: A number of a path: kept as given.
+Number = int | float | Fraction
+
+
+def _half(number: Number) -> Number:
+    """Half of *number*, exactly: an ``int`` where whole, else a ``Fraction``.
+
+    A float is halved as a float (halving a float is exact).
+    """
+    if isinstance(number, float):
+        return number / 2
+    half = Fraction(number) / 2
+    return half.numerator if half.denominator == 1 else half
+
+
+def group_into_accolades(left_edges: Sequence[Number]) -> list[int]:
+    """Assign the boxes of one page, given in reading order, to accolades.
+
+    An accolade is one line of a page, read from left to right. Reading on,
+    the left edges of the boxes grow within an accolade and fall back at the
+    start of the next one. A box therefore begins a new accolade when its
+    left edge lies left of the previous box's by more than half the span of
+    all left edges (``max(left_edges) - min(left_edges)``). The comparison
+    is ``2 * (previous - x) > span``, exact on integers and fractions.
+
+    Args:
+        left_edges: The left edge (least x) of every box of ONE page, in
+            reading order.
+
+    Returns:
+        Per box, the index of its accolade, counted from 0. Empty for no
+        box.
+
+    Examples:
+        Nine measures of a page whose sixth starts again at the left:
+
+        >>> group_into_accolades([490, 944, 1481, 2034, 2669, 498, 1465, 2110, 2704])
+        [0, 0, 0, 0, 0, 1, 1, 1, 1]
+        >>> group_into_accolades([])
+        []
+    """
+    if not left_edges:
+        return []
+    span = max(left_edges) - min(left_edges)
+    accolades = []
+    accolade = 0
+    previous: Number | None = None
+    for left_edge in left_edges:
+        if previous is not None and 2 * (previous - left_edge) > span:
+            accolade += 1
+        accolades.append(accolade)
+        previous = left_edge
+    return accolades
 
 
 # region TimeAxisPath ABC
@@ -40,16 +110,113 @@ class TimeAxisPath(ABC):
     - HorizontalLinePath: x = time, y = constant
     - DiagonalLinePath: arbitrary straight line
     - ParametricPath: x(t), y(t) functions for curves/spirals
+    - PiecewisePath: consecutive pieces, such as the accolades of a page
     """
+
+    @classmethod
+    def from_boxes(
+        cls,
+        boxes: Iterable[Shape | Box],
+        *,
+        accolades: Sequence[int] | None = None,
+    ) -> PiecewisePath:
+        """Make the time path of one page from the areas drawn on it.
+
+        Each accolade becomes one :class:`HorizontalLinePath` spanning its
+        boxes exactly: ``x0`` is their least and ``x1`` their greatest x,
+        ``y`` the middle of their y extent and ``tolerance`` half of that
+        extent, so the line's strip is the accolade's y extent. The middle
+        and the half are exact: an ``int`` where whole, else a ``Fraction``.
+
+        Args:
+            boxes: The areas of ONE page in reading order: shapes, or Box
+                events (read through their shape), all of one unit and
+                number type.
+            accolades: Per box, a label of its accolade (one label per box);
+                the accolades follow each other in the order of their first
+                box. When omitted, :func:`group_into_accolades` assigns them
+                from the boxes' left edges.
+
+        Returns:
+            The path, one piece per accolade (a ``PiecewisePath`` of one
+            piece too).
+
+        Raises:
+            ValueError: If no box is given, the boxes lie on two units or
+                number types, *accolades* does not hold one label per box,
+                or an accolade has no x extent (the message names it by its
+                position, counted from 1).
+
+        Examples:
+            Three measures, the third on a second line:
+
+            >>> from timetoalign.core import BoundingBox
+            >>> measures = [
+            ...     BoundingBox.from_corners(100, 50, 300, 90, unit="pixels"),
+            ...     BoundingBox.from_corners(300, 52, 520, 95, unit="pixels"),
+            ...     BoundingBox.from_corners(90, 150, 400, 190, unit="pixels"),
+            ... ]
+            >>> path = TimeAxisPath.from_boxes(measures)
+            >>> path.pieces[0]
+            HorizontalLinePath(x0=100, x1=520, y=Fraction(145, 2), tolerance=Fraction(45, 2))
+            >>> path.pieces[1]
+            HorizontalLinePath(x0=90, x1=400, y=170, tolerance=20)
+            >>> path.offsets, path.length
+            ((0, 420), 730)
+            >>> path.piece_of(measures[2])
+            1
+        """
+        from timetoalign.core import Box
+
+        shapes = [box.shape if isinstance(box, Box) else box for box in boxes]
+        if not shapes:
+            raise ValueError("A time path needs at least one box.")
+        first = shapes[0]
+        for position, shape in enumerate(shapes):
+            if (shape.unit, shape.number_type) != (first.unit, first.number_type):
+                raise ValueError(
+                    "The boxes of a time path are in one unit and number type: "
+                    f"box 0 is in {first.unit} as {first.number_type.name}, box "
+                    f"{position} in {shape.unit} as {shape.number_type.name}."
+                )
+        if accolades is None:
+            labels: Sequence[int] = group_into_accolades(
+                [shape.x_min.value for shape in shapes]
+            )
+        else:
+            labels = list(accolades)
+            if len(labels) != len(shapes):
+                raise ValueError(
+                    f"accolades assigns {len(labels)} boxes; {len(shapes)} were given."
+                )
+        grouped: dict[int, list[Shape]] = {}
+        for label, shape in zip(labels, shapes):
+            grouped.setdefault(label, []).append(shape)
+        pieces = []
+        for position, members in enumerate(grouped.values(), start=1):
+            top = min(shape.y_min.value for shape in members)
+            bottom = max(shape.y_max.value for shape in members)
+            try:
+                pieces.append(
+                    HorizontalLinePath(
+                        x0=min(shape.x_min.value for shape in members),
+                        x1=max(shape.x_max.value for shape in members),
+                        y=_half(top + bottom),
+                        tolerance=_half(bottom - top),
+                    )
+                )
+            except ValueError as error:
+                raise ValueError(f"accolade {position}: {error}") from error
+        return PiecewisePath(tuple(pieces))
 
     @property
     @abstractmethod
-    def length(self) -> float:
+    def length(self) -> Number:
         """Total length of this path in timeline units."""
         ...
 
     @abstractmethod
-    def to_2d(self, coord: float) -> tuple[float, float]:
+    def to_2d(self, coord: Number) -> tuple[Number, Number]:
         """Map timeline coordinate to image (x, y).
 
         Args:
@@ -61,7 +228,7 @@ class TimeAxisPath(ABC):
         ...
 
     @abstractmethod
-    def from_2d(self, x: float, y: float) -> float | None:
+    def from_2d(self, x: Number, y: Number) -> Number | None:
         """Map image (x, y) to timeline coordinate.
 
         Args:
@@ -73,7 +240,7 @@ class TimeAxisPath(ABC):
         """
         ...
 
-    def distance_to_path(self, x: float, y: float) -> float:
+    def distance_to_path(self, x: Number, y: Number) -> Number:
         """Compute perpendicular distance from point to path.
 
         Default implementation samples the path and finds minimum distance.
@@ -96,7 +263,7 @@ class TimeAxisPath(ABC):
             min_dist = min(min_dist, dist)
         return min_dist
 
-    def is_point_on_path(self, x: float, y: float, tolerance: float = 5.0) -> bool:
+    def is_point_on_path(self, x: Number, y: Number, tolerance: Number = 5.0) -> bool:
         """Check if a point is close enough to the path.
 
         Args:
@@ -128,7 +295,12 @@ class HorizontalLinePath(TimeAxisPath):
         x0: Starting x coordinate (left edge).
         x1: Ending x coordinate (right edge).
         y: Fixed y coordinate (vertical position of the line).
-        tolerance: Distance tolerance for from_2d conversion.
+        tolerance: The half-breadth of the strip the line stands for: the
+            strip spans ``y - tolerance`` to ``y + tolerance``, and
+            :meth:`from_2d` answers for the points within it.
+
+    Every number is kept as given: integers (and ``Fraction`` values) give
+    exact answers.
 
     Examples:
         Pixel coordinates stay integral, so the geometry answers in whole
@@ -145,10 +317,10 @@ class HorizontalLinePath(TimeAxisPath):
         245
     """
 
-    x0: float
-    x1: float
-    y: float
-    tolerance: float = 10.0
+    x0: Number
+    x1: Number
+    y: Number
+    tolerance: Number = 10.0
 
     def __post_init__(self) -> None:
         """Validate path parameters."""
@@ -156,19 +328,19 @@ class HorizontalLinePath(TimeAxisPath):
             raise ValueError(f"x1 ({self.x1}) must be greater than x0 ({self.x0})")
 
     @property
-    def length(self) -> float:
+    def length(self) -> Number:
         """Length is simply x1 - x0."""
         return self.x1 - self.x0
 
-    def to_2d(self, coord: float) -> tuple[float, float]:
+    def to_2d(self, coord: Number) -> tuple[Number, Number]:
         """Map timeline coordinate to (x, y)."""
         return (self.x0 + coord, self.y)
 
-    def from_2d(self, x: float, y: float) -> float | None:
+    def from_2d(self, x: Number, y: Number) -> Number | None:
         """Map (x, y) to timeline coordinate.
 
         Returns None if:
-        - y is not within tolerance of the line's y
+        - y is outside the strip ``y ± tolerance``
         - x is outside the [x0, x1] range
         """
         if abs(y - self.y) > self.tolerance:
@@ -177,7 +349,7 @@ class HorizontalLinePath(TimeAxisPath):
             return None
         return x - self.x0
 
-    def distance_to_path(self, x: float, y: float) -> float:
+    def distance_to_path(self, x: Number, y: Number) -> Number:
         """Distance is simply |y - self.y| if x is in range."""
         if x < self.x0:
             # Distance to left endpoint
@@ -205,13 +377,18 @@ class VerticalLinePath(TimeAxisPath):
         x: Fixed x coordinate.
         y0: Starting y coordinate (top).
         y1: Ending y coordinate (bottom).
-        tolerance: Distance tolerance for from_2d conversion.
+        tolerance: The half-breadth of the strip the line stands for: the
+            strip spans ``x - tolerance`` to ``x + tolerance``, and
+            :meth:`from_2d` answers for the points within it.
+
+    Every number is kept as given: integers (and ``Fraction`` values) give
+    exact answers.
     """
 
-    x: float
-    y0: float
-    y1: float
-    tolerance: float = 10.0
+    x: Number
+    y0: Number
+    y1: Number
+    tolerance: Number = 10.0
 
     def __post_init__(self) -> None:
         """Validate path parameters."""
@@ -219,29 +396,192 @@ class VerticalLinePath(TimeAxisPath):
             raise ValueError(f"y1 ({self.y1}) must be greater than y0 ({self.y0})")
 
     @property
-    def length(self) -> float:
+    def length(self) -> Number:
         """Length is y1 - y0."""
         return self.y1 - self.y0
 
-    def to_2d(self, coord: float) -> tuple[float, float]:
+    def to_2d(self, coord: Number) -> tuple[Number, Number]:
         """Map timeline coordinate to (x, y)."""
         return (self.x, self.y0 + coord)
 
-    def from_2d(self, x: float, y: float) -> float | None:
-        """Map (x, y) to timeline coordinate."""
+    def from_2d(self, x: Number, y: Number) -> Number | None:
+        """Map (x, y) to timeline coordinate (None outside the strip or the line)."""
         if abs(x - self.x) > self.tolerance:
             return None
         if not (self.y0 <= y <= self.y1):
             return None
         return y - self.y0
 
-    def distance_to_path(self, x: float, y: float) -> float:
+    def distance_to_path(self, x: Number, y: Number) -> Number:
         """Distance calculation for vertical line."""
         if y < self.y0:
             return math.sqrt((x - self.x) ** 2 + (y - self.y0) ** 2)
         if y > self.y1:
             return math.sqrt((x - self.x) ** 2 + (y - self.y1) ** 2)
         return abs(x - self.x)
+
+
+# endregion
+
+
+# region PiecewisePath
+
+
+@dataclass(frozen=True)
+class PiecewisePath(TimeAxisPath):
+    """A time axis made of consecutive pieces, read one after the other.
+
+    The path of a score page is piecewise: each accolade is one horizontal
+    line, and the page's time runs along the first, then along the second,
+    and so on. Each piece starts on the path where the pieces before it end
+    (:attr:`offsets`); the path's length is the sum of its pieces' lengths.
+    All numbers are the pieces' own: pieces of integers give an integer
+    path.
+
+    Attributes:
+        pieces: The pieces in reading order, at least one, none of them a
+            ``PiecewisePath`` itself (pieces are listed flat).
+
+    Raises:
+        ValueError: If there is no piece, or a piece is a ``PiecewisePath``.
+
+    Examples:
+        Two accolades of a page, 490 and 400 pixels long:
+
+        >>> path = PiecewisePath(
+        ...     (
+        ...         HorizontalLinePath(x0=10, x1=500, y=100, tolerance=40),
+        ...         HorizontalLinePath(x0=20, x1=420, y=300, tolerance=40),
+        ...     )
+        ... )
+        >>> path.length
+        890
+        >>> path.offsets
+        (0, 490)
+        >>> path.to_2d(489)
+        (499, 100)
+        >>> path.to_2d(490)
+        (20, 300)
+        >>> path.from_2d(120, 320)
+        590
+        >>> path.from_2d(120, 200) is None
+        True
+    """
+
+    pieces: tuple[TimeAxisPath, ...]
+
+    def __post_init__(self) -> None:
+        """Validate the pieces."""
+        object.__setattr__(self, "pieces", tuple(self.pieces))
+        if not self.pieces:
+            raise ValueError("A PiecewisePath needs at least one piece.")
+        for position, piece in enumerate(self.pieces):
+            if isinstance(piece, PiecewisePath):
+                raise ValueError(
+                    f"Piece {position} of a PiecewisePath is itself a "
+                    "PiecewisePath: the pieces are listed flat."
+                )
+
+    @property
+    def offsets(self) -> tuple[Number, ...]:
+        """Where each piece starts on the path: the lengths before it, summed."""
+        offsets = []
+        offset: Number = 0
+        for piece in self.pieces:
+            offsets.append(offset)
+            offset = offset + piece.length
+        return tuple(offsets)
+
+    @property
+    def length(self) -> Number:
+        """The sum of the pieces' lengths."""
+        return sum(piece.length for piece in self.pieces)
+
+    def to_2d(self, coord: Number) -> tuple[Number, Number]:
+        """Map a coordinate of the path to the image (x, y) of its piece.
+
+        A piece holds the coordinates from its offset up to, not including,
+        the next piece's offset; the last piece also holds the path's end.
+        """
+        index = 0
+        for position, offset in enumerate(self.offsets):
+            if coord >= offset:
+                index = position
+        return self.pieces[index].to_2d(coord - self.offsets[index])
+
+    def from_2d(self, x: Number, y: Number) -> Number | None:
+        """Map image (x, y) to the path's coordinate.
+
+        Of the pieces that answer for the point, the one whose line is
+        nearest decides (the earlier of two equally near); its answer is
+        counted from the start of the path.
+
+        Returns:
+            The coordinate on the path, or None where no piece answers.
+        """
+        best: tuple[Number, Number] | None = None
+        for piece, offset in zip(self.pieces, self.offsets):
+            local = piece.from_2d(x, y)
+            if local is None:
+                continue
+            distance = piece.distance_to_path(x, y)
+            if best is None or distance < best[0]:
+                best = (distance, local + offset)
+        return None if best is None else best[1]
+
+    def distance_to_path(self, x: Number, y: Number) -> Number:
+        """The least distance from the point to a piece."""
+        return min(piece.distance_to_path(x, y) for piece in self.pieces)
+
+    def piece_of(self, shape: Shape) -> int:
+        """The index of the horizontal piece an area of the image lies on.
+
+        A shape lies on a :class:`HorizontalLinePath` piece when the piece's
+        ``[x0, x1]`` holds the shape's x extent and the piece's strip
+        (``y ± tolerance``) holds the shape's vertical centre, the exact
+        middle of its y extent. Where several pieces hold it (strips may
+        overlap), the one whose ``y`` is nearest the centre is taken.
+
+        Args:
+            shape: An area in the image's space.
+
+        Returns:
+            The piece's index in :attr:`pieces`.
+
+        Raises:
+            ValueError: If the shape lies on no piece, or two pieces holding
+                it are equally near its centre.
+
+        Examples:
+            >>> from timetoalign.core import BoundingBox
+            >>> path = PiecewisePath(
+            ...     (
+            ...         HorizontalLinePath(x0=10, x1=500, y=100, tolerance=40),
+            ...         HorizontalLinePath(x0=20, x1=420, y=300, tolerance=40),
+            ...     )
+            ... )
+            >>> path.piece_of(BoundingBox.from_xywh(30, 280, 100, 50, unit="pixels"))
+            1
+        """
+        x_min, x_max = shape.x_min.value, shape.x_max.value
+        centre = _half(shape.y_min.value + shape.y_max.value)
+        where = f"The shape spanning x {x_min} to {x_max} with its centre at y {centre}"
+        candidates = sorted(
+            (abs(piece.y - centre), position)
+            for position, piece in enumerate(self.pieces)
+            if isinstance(piece, HorizontalLinePath)
+            and piece.x0 <= x_min
+            and x_max <= piece.x1
+            and abs(piece.y - centre) <= piece.tolerance
+        )
+        if not candidates:
+            raise ValueError(f"{where} lies on no piece of the path.")
+        if len(candidates) > 1 and candidates[0][0] == candidates[1][0]:
+            raise ValueError(
+                f"{where} is equally near pieces {candidates[0][1]} and "
+                f"{candidates[1][1]} of the path."
+            )
+        return candidates[0][1]
 
 
 # endregion

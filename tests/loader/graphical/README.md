@@ -171,3 +171,105 @@ two zones, and the two measures pointing to them by `@facs`.
   order, in `zones_without_coordinates`.
 - **Refusals.** A root other than `<mei>` in the MEI namespace, `create_
   timelines()` before `load()`, and a second source are refused.
+
+## Time paths and pages
+
+`test_paths.py` covers `loader/graphical/paths.py` (the accolade rule,
+`PiecewisePath`, `TimeAxisPath.from_boxes`, the numbers a path holds, drawing
+a piecewise path); `test_pages.py` covers the builder that turns pages with
+paths into timelines (`loader/graphical/_pages.py`). No file is read: every
+number is a literal taken by hand from two real sources, and the expected
+values are derived here, on paper, from those literals.
+
+**Sources of the literals.**
+
+- *Scan* (the DMOS output for Gallica `ark:/12148/bpt6k11620688`, 4 pages, 17
+  systems, 67 measures). The x extent of each system's region, per page:
+  page 1: 1221–4101, 971–4112, 983–4125, 994–4142 (lengths 2880, 3141, 3142,
+  3148; sum 12311); page 2: 519–3661, 522–3659, 522–3659, 523–3658, 522–3661
+  (3142, 3137, 3137, 3135, 3139; sum 15690); page 3: 913–4060, 918–4054,
+  913–4051, 907–4048 (3147, 3136, 3138, 3141; sum 12562); page 4: 508–3650,
+  504–3643, 494–3634, 489–3628 (3142, 3139, 3140, 3139; sum 12560). Volume:
+  12311 + 15690 + 12562 + 12560 = 53123; the pages start at 0, 12311, 28001,
+  40563. System 1 of page 1 is the quadrilateral (1221,1589) (4097,1589)
+  (4101,2266) (1221,2266): y 1589 to 2266, so its line is at y (1589 + 2266)
+  / 2 = 3855/2 with half-breadth (2266 − 1589) / 2 = 677/2. Its measures 1
+  and 2 span x 1221–2161 and 2151–2775: starts 0 and 930, durations 940 and
+  624. Systems of which only the extent matters are written as rectangles.
+- *Chorale page* (the facsimile of an MEI chorale edition: one surface
+  `n="15"`, nine measure zones, given as `ulx, uly, lrx, lry`): (490, 344,
+  973, 877), (944, 368, 1523, 864), (1481, 388, 2082, 912), (2034, 402, 2694,
+  884), (2669, 389, 3296, 916), (498, 858, 1496, 1337), (1465, 885, 2146,
+  1353), (2110, 886, 2748, 1357), (2704, 886, 3302, 1387).
+
+**What proves the accolade rule.** The rule is stated as an inequality, `2 ·
+(previous − x) > span`, so the tests pin both of its sides, not only a
+typical page: the chorale page's left edges (span 2704 − 490 = 2214; the one
+fall, 2669 → 498 = 2171, doubles to 4342 > 2214: zones 1–5 and 6–9); a fall
+of exactly half the span, which begins nothing (0, 10, 5); one unit more,
+which does (0, 10, 4); the same in fractions and floats; no box and one box.
+That IEEE 1599 files group as before is proved by that loader's own tests,
+which must pass unchanged.
+
+**What proves a path keeps its numbers.** For each line class, a line of
+integers and a line of `Fraction` values answer `length`, `to_2d` and
+`from_2d` with values that are equal AND of the same Python type as exact
+arithmetic gives; a float line answers floats. The strip is pinned at its
+edges: a point at exactly `y ± tolerance` is on the line, one beyond is not.
+
+**What proves `PiecewisePath`.** Built from the chorale page's two lines
+(below), every answer is one a reader can compute from the offsets (0, 2806)
+and length 5610: the last coordinate of the first piece and the first of the
+second map to different lines; the path's end maps to the end of the last
+piece; a point in the y range both strips share (858 to 916) goes to the
+nearer line, checked with a point nearer each; a point in no strip gives
+`None`; the distance is the least over the pieces. `piece_of` places all nine
+zones (centres at y 610.5 to 652.5 for zones 1–5, on piece 0; 1097.5 to
+1136.5 for zones 6–9, on piece 1). Two made-up shapes centred in the shared
+range decide by the nearer line: centre 870 is 240 from line 630 and 252.5
+from line 2245/2 (piece 0), centre 880 is 250 and 242.5 (piece 1). A shape
+reaching past every piece's x extent, or centred in no strip, is refused; so
+is a centre exactly between two lines that both hold it (lines at 100 and
+200 of half-breadth 60, centre 150).
+
+**What proves `from_boxes`.** The expected pieces are computed by hand:
+chorale accolade 1 spans x 490–3296 and y 344–916, so `y` = 630 and
+`tolerance` = 286 (integers); accolade 2 spans x 498–3302 and y 858–1387, so
+`y` = 2245/2 and `tolerance` = 529/2 (fractions, never floats). With stated
+accolades (the scan's systems, one label each) nothing is grouped: the pieces
+are the systems' extents even where a later system starts further left. Box
+events give the same path as their shapes. Labels group in order of first
+appearance. Refusals are asserted whole.
+
+**What proves the page builder.** A test passes only if the tree a loader
+would return is right in every respect a user can observe, each checked
+against the hand-derived numbers above:
+
+1. *Shape of the tree*: the class of every timeline (volume, page, accolade),
+   segment order, each offset and length, and that the length of a page is
+   the sum of its accolades and of a volume the sum of its pages.
+2. *Locks*: the returned root is locked, a page inside a volume is locked,
+   an accolade is not.
+3. *Areas*: an accolade states `meta["box"]` (the stated area, or the strip
+   of its line: chorale accolade 1 is `{x: 490, y: 344, width: 2806, height:
+   572}`) and `meta["image"]`; a page of accolades and a volume state no
+   `meta["box"]`; a page along a vertical line states none either.
+4. *Boxes*: each Box sits on the right accolade with `start = x_min − x0` and
+   `duration = x_max − x_min` (chorale zone 2: 454 and 579; zone 6: 0 and
+   998), and its stored shape is the source's.
+5. *Identity*: minted ids follow document order (volume, page, its
+   accolades), a named timeline taking its number all the same (`scan`, then
+   `dgt_2`, `dgt_3`); source ids are used unless the argument replaces them;
+   sequences are read in document order and templates filled from `page`,
+   `accolade`, `box`, `n` (`m{n}` numbers the scan's measures through the
+   pages; with zones given in an order that alternates between accolades, a
+   sequence still names the zones in the order given).
+6. *Nothing happens on a refusal*: each refusal (wrong sequence length,
+   unknown template field, invalid id, one id for two timelines, a Box on no
+   piece, a Box leaving its accolade, a stated area that is not its piece's x
+   extent, a length that is no whole pixel, pages of two kinds in one volume,
+   no page) is asserted whole, and after it the next timeline minted from the
+   same loader still gets the first number, so no id was drawn.
+
+A diagonal of length 500.0 (300, 400) is a page of 500 pixels; one of length
+141.42… (100, 100) is refused: lengths are never rounded.

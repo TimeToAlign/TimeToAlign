@@ -5,7 +5,12 @@ from images and PDFs. The key components are:
 
 - **TimeAxisPath**: Abstract path defining how 1D timeline coordinates map to 2D pixels.
   Concrete implementations include HorizontalLinePath, VerticalLinePath,
-  DiagonalLinePath, and ParametricPath (for curves/spirals).
+  DiagonalLinePath, and ParametricPath (for curves/spirals). No image has a time
+  axis until its path is defined.
+
+- **PiecewisePath**: A path made of consecutive pieces, such as the accolades of a
+  score page. ``TimeAxisPath.from_boxes`` makes one from the areas drawn on a page,
+  and **group_into_accolades** is the rule that finds the accolades among them.
 
 - **ImageSource**: Unified interface for image data from files, PDF pages, or
   embedded PDF images. Uses pymupdf as backend.
@@ -68,8 +73,10 @@ from .paths import (
     DiagonalLinePath,
     HorizontalLinePath,
     ParametricPath,
+    PiecewisePath,
     TimeAxisPath,
     VerticalLinePath,
+    group_into_accolades,
 )
 
 # ScoreWarp SVG time axis
@@ -89,6 +96,8 @@ __all__ = [
     "VerticalLinePath",
     "DiagonalLinePath",
     "ParametricPath",
+    "PiecewisePath",
+    "group_into_accolades",
     # Source
     "ImageSource",
     "ImageMetadata",

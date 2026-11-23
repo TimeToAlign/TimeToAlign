@@ -476,15 +476,22 @@ class ImageSource:
     ) -> "ImageSource":
         """Return new ImageSource with a TimeAxisPath drawn.
 
+        A :class:`~timetoalign.loader.graphical.paths.PiecewisePath` is
+        drawn piece by piece: no line joins the end of one piece (an
+        accolade) to the start of the next.
+
         Args:
             path: The TimeAxisPath to draw.
             color: RGB color tuple.
             line_width: Line width in pixels.
-            samples: Number of line segments for curves.
+            samples: Number of line segments for curves (per piece of a
+                ``PiecewisePath``).
 
         Returns:
             New ImageSource with path drawn.
         """
+        from .paths import PiecewisePath
+
         ImageDraw = _image_draw()
 
         pil_img = self.to_pil()
@@ -493,15 +500,17 @@ class ImageSource:
 
         draw = ImageDraw.Draw(pil_img)
 
-        # Sample the path and draw line segments
-        points = []
-        for i in range(samples + 1):
-            t = (i / samples) * path.length
-            x, y = path.to_2d(t)
-            points.append((int(x), int(y)))
+        # Sample each piece and draw its line segments
+        pieces = path.pieces if isinstance(path, PiecewisePath) else (path,)
+        for piece in pieces:
+            points = []
+            for i in range(samples + 1):
+                t = (i / samples) * piece.length
+                x, y = piece.to_2d(t)
+                points.append((int(x), int(y)))
 
-        if len(points) >= 2:
-            draw.line(points, fill=color, width=line_width)
+            if len(points) >= 2:
+                draw.line(points, fill=color, width=line_width)
 
         pymupdf = _get_pymupdf()
         import io

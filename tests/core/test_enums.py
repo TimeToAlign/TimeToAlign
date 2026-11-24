@@ -6,7 +6,14 @@ from fractions import Fraction
 
 import pytest
 
-from timetoalign.core.enums import Domain, EventType, NumberType, TimeUnit
+from timetoalign.core.enums import (
+    ColumnNaming,
+    ColumnRole,
+    Domain,
+    EventType,
+    NumberType,
+    TimeUnit,
+)
 
 
 class TestFancyStrEnum:
@@ -27,11 +34,11 @@ class TestFancyStrEnum:
         assert "lo" in abbrevs
 
     def test_repr(self) -> None:
-        """FancyStrEnum __repr__ returns quoted name."""
+        """FancyStrEnum __repr__ returns the quoted value."""
         assert repr(Domain.logical) == '"logical"'
 
     def test_str(self) -> None:
-        """FancyStrEnum __str__ returns the name."""
+        """FancyStrEnum __str__ returns the value."""
         assert str(Domain.logical) == "logical"
 
 
@@ -303,3 +310,75 @@ class TestEventType:
         """Can create EventType from string."""
         assert EventType("instant") == EventType.instant
         assert EventType("interval") == EventType.interval
+
+
+RENAMED_MEMBERS = [
+    (ColumnNaming, "label", "name"),
+    (ColumnRole, "label", "name"),
+    (ColumnRole, "partition_by", "partition"),
+]
+
+
+class TestMembersNamedApartFromValue:
+    """Members whose Python name differs from their value, so that they shadow
+    no attribute a string enum member inherits."""
+
+    @pytest.mark.parametrize(("cls", "member_name", "value"), RENAMED_MEMBERS)
+    def test_value_and_string_forms(
+        self, cls: type, member_name: str, value: str
+    ) -> None:
+        """The value, str(), repr() and string equality are the stored value."""
+        member = cls.__members__[member_name]
+        assert member.value == value
+        assert str(member) == value
+        assert repr(member) == f'"{value}"'
+        assert f"{member}" == value
+        assert member == value
+
+    @pytest.mark.parametrize(("cls", "member_name", "value"), RENAMED_MEMBERS)
+    def test_lookup_by_value(self, cls: type, member_name: str, value: str) -> None:
+        """Lookup by the value, exact or upper-case, returns the member."""
+        member = cls.__members__[member_name]
+        assert cls(value) is member
+        assert cls(value.upper()) is member
+
+    @pytest.mark.parametrize(("cls", "member_name", "value"), RENAMED_MEMBERS)
+    def test_python_name_is_not_a_value(
+        self, cls: type, member_name: str, value: str
+    ) -> None:
+        """The Python name is not a second accepted spelling of the value."""
+        with pytest.raises(ValueError):
+            cls(member_name)
+
+    @pytest.mark.parametrize(("cls", "member_name", "value"), RENAMED_MEMBERS)
+    def test_name_is_the_inherited_enum_attribute(
+        self, cls: type, member_name: str, value: str
+    ) -> None:
+        """.name is the member's Python name, no longer shadowed by a member."""
+        assert cls.__members__[member_name].name == member_name
+
+    def test_partition_is_str_partition(self) -> None:
+        """.partition on any ColumnRole member is str.partition."""
+        assert ColumnRole.label.partition(":") == ("name", "", "")
+        assert ColumnRole.id.partition(":") == ("id", "", "")
+
+    def test_member_lists(self) -> None:
+        """Every member keeps its value and its place in iteration order."""
+        assert [m.value for m in ColumnNaming] == ["name", "id"]
+        assert [m.value for m in ColumnRole] == [
+            "id",
+            "name",
+            "event_type",
+            "start",
+            "end",
+            "duration",
+            "instant",
+            "cmap_target",
+            "partition",
+            "parent_id",
+            "child_id",
+            "segment_name",
+            "region",
+            "match_ref",
+            "extra",
+        ]

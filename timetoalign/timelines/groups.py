@@ -1263,7 +1263,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             format: ``"table"`` (default) for a PyArrow table, ``"dataframe"``
                 for a pandas DataFrame.
             fields: How to name the DataFrame fields (``format="dataframe"``):
-                - None or ColumnNaming.name (default): Use timeline/cmap name
+                - None or ColumnNaming.label (default): Use timeline/cmap name
                 - ColumnNaming.id: Use timeline/cmap id
                 - Callable: Function taking (name, metadata_dict) -> new_name
                 - list[str]: Explicit field names

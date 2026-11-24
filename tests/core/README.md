@@ -1533,6 +1533,25 @@ threshold fails under load and proves nothing about the result.
    - Values: `instant`, `interval`
    - Alias support (`inst`, `intv`)
 
+6. **Members named apart from their value** (`ColumnNaming`, `ColumnRole`)
+   - A member called `name` or `partition` shadows the attribute every
+     string enum member inherits (`member.name`, `str.partition`), so three
+     members carry another Python name and keep their value:
+     `ColumnNaming.label` and `ColumnRole.label` hold `"name"`,
+     `ColumnRole.partition_by` holds `"partition"`.
+   - What proves the value did not move: `.value`, `str()`, `repr()` and
+     equality with the plain string are exactly `"name"` / `"partition"`
+     (`'"name"'` for `repr`), and lookup by the value — exact and upper-case,
+     as every `FancyStrEnum` accepts — returns that member (`is`).
+   - What proves the shadowing is gone: `.name` is the inherited enum
+     attribute, exactly `"label"` / `"partition_by"`, and
+     `ColumnRole.label.partition(":")` and `ColumnRole.id.partition(":")` are
+     `str.partition`, returning `("name", "", "")` and `("id", "", "")`.
+   - What proves no second spelling was opened: the Python names `"label"`
+     and `"partition_by"` are not accepted as values (`ValueError`), and the
+     member lists are exactly `["name", "id"]` and the fifteen `ColumnRole`
+     values in declaration order.
+
 **Validity Rationale:**
 
 The enum types enforce TimeToAlign's domain model:

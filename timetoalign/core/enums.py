@@ -24,6 +24,9 @@ class FancyStrEnum(StrEnum):
         * Can be instantiated from any alias: FancyStrEnum("abbr") == FancyStrEnum.abbreviation
         * list(FancyStrEnum) returns only non-aliases (canonical members)
         * FancyStrEnum.get_abbreviations() returns a mapping from names to abbreviations
+        * A member whose Python name would shadow a ``str`` or ``Enum`` attribute takes
+          another name and an explicit value (``label = "name"``); ``str()``,
+          ``repr()`` and lookup use the value, never the member name
 
     Example:
         class Vocabulary(FancyStrEnum):
@@ -47,9 +50,12 @@ class FancyStrEnum(StrEnum):
         """
         if isinstance(value, str):
             lower_value = value.lower()
-            if lower_value in cls.__members__:
-                name = cls.__members__[lower_value]
-                return cls(name)
+            for member in cls:
+                if member.value == lower_value:
+                    return member
+            alias = cls.__members__.get(lower_value)
+            if alias is not None and alias.name != lower_value:
+                return alias
         abbrv = cls.get_abbreviations(string=True)
         raise ValueError(
             f"'{value}' is not a valid {cls.__name__}. Available values are: {abbrv}"
@@ -84,10 +90,10 @@ class FancyStrEnum(StrEnum):
         return ", ".join(str_components)
 
     def __repr__(self) -> str:
-        return f'"{self.name}"'
+        return f'"{self.value}"'
 
     def __str__(self) -> str:
-        return self.name
+        return self.value
 
 
 class Domain(FancyStrEnum):
@@ -447,13 +453,13 @@ class ColumnNaming(FancyStrEnum):
     Controls the column header naming strategy for timestamp tables.
 
     Members:
-        name: Use the human-readable name property (e.g., "Musical Holes Region").
-            Falls back to ID if name is not set.
+        label: Use the human-readable name property (e.g., "Musical Holes Region").
+            Falls back to ID if name is not set. Its value is ``"name"``.
         id: Use the unique identifier (e.g., "dgt_holes").
     """
 
-    name = auto()
-    """Use human-readable name (with id fallback)."""
+    label = "name"
+    """Use human-readable name (with id fallback); value ``"name"``."""
 
     id = auto()
     """Use unique identifier."""
@@ -840,11 +846,14 @@ class ColumnRole(FancyStrEnum):
     """Semantic role of a column in the table.
 
     Used for automatic role inference when columns are not explicitly specified.
+
+    Members whose Python name differs from their value: ``label`` (value
+    ``"name"``) and ``partition_by`` (value ``"partition"``).
     """
 
     # Core event identity
     id = auto()
-    name = auto()
+    label = "name"
     event_type = auto()
 
     # Coordinates (primary timeline)
@@ -857,7 +866,7 @@ class ColumnRole(FancyStrEnum):
     cmap_target = auto()
 
     # Structure
-    partition = auto()
+    partition_by = "partition"
     parent_id = auto()
     child_id = auto()
     segment_name = auto()

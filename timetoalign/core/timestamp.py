@@ -1253,7 +1253,7 @@ def timestamp_table_to_dataframe(
         table: PyArrow table with field-level metadata including 'unit' and
             'timeline_id' or 'cmap_id'.
         fields: How to name the DataFrame fields. Options:
-            - None or ColumnNaming.name (default): Use timeline/cmap name property,
+            - None or ColumnNaming.label (default): Use timeline/cmap name property,
               falling back to id if name is not available.
             - ColumnNaming.id: Use timeline/cmap id.
             - Callable[[str, dict], str]: Function taking (field_name, metadata_dict)
@@ -1313,7 +1313,7 @@ def timestamp_table_to_dataframe(
             base_name = (
                 meta_dict.get("timeline_id") or meta_dict.get("cmap_id") or field_name
             )
-        else:  # ColumnNaming.name, None, or default
+        else:  # ColumnNaming.label, None, or default
             # For now, use field name directly (names are already set by Timeline)
             # In future, could look up timeline.name property
             base_name = field_name

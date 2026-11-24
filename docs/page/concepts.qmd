@@ -439,7 +439,7 @@ The key advantage of a SegmentLine is that contiguous siblings allow
 **cumulative summing** of segment lengths and their C-maps (provided they
 convert to the same unit relative to the segment's origin). This enables
 efficient coordinate conversion across the entire structure. On any timeline,
-`is_segment_line()` checks this structural tiling. `as_segment_line()` validates
+the property `is_segment_line` checks this structural tiling. `as_segment_line()` validates
 the structure and homogeneous direct-child class before adopting the matching
 parameterized class; `to_timeline()` drops segment enforcement, while
 `to_typed()` re-types children recursively.
@@ -597,6 +597,11 @@ position, standing for the other side's event (its `projection_of`), or for
 none when both sides are stated as positions. Every stated MatchClaim
 therefore joins two events. `AlignmentBundle.create_match_claims()` adds the
 Projections a list of pairs needs and reuses those a timeline already holds.
+It checks every pair before it adds anything, so a refused list leaves the
+bundle and its timelines unchanged: a float position on a timeline counting
+samples, a span that runs backwards, a position past where its timeline can
+reach (the end of a locked timeline, or an end its parent cannot contain)
+and a held event's ID given with a span other than its own are refused.
 
 MatchClaims grow incrementally: an initial claim between events A and B can
 be extended by adding B-C, creating a **match path** A -> B -> C that

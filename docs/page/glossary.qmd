@@ -408,7 +408,15 @@ to the relevant section of the conceptual model.
     `add_child()` embeds it as a {{< glossary Child >}} with its default
     `locked=True`, or after construction with `lock()`; a child read from a
     manifest keeps the manifest's `locked`. A lock cannot be lifted. A locked
-    timeline's length may still be unknown. Containment does not depend on
+    timeline's length may still be unknown. On a locked timeline, setting
+    `length`, `append_child()` and `append_segment()` raise `RuntimeError`,
+    and content, a child or a MatchClaim position
+    (`AlignmentBundle.create_match_claims()`) past its end is refused with a
+    `ValueError` before anything is added; `create_child_from_region()` gives
+    a child of any region within its length. A loader locks a timeline whose
+    source states its length: `AudioLoader` a recording at the file's length,
+    a score loader a score whose measures state every length, at their sum.
+    Containment does not depend on
     the lock: a child, locked or not, ends within its parent's known length,
     and content or a child added into an unlocked timeline grows that
     timeline only.
@@ -834,6 +842,17 @@ to the relevant section of the conceptual model.
 
 ## S
 
+**ScoreNote**
+:   A note or rest of a score: a `Note` written on a staff and in a voice.
+    `staff` and `voice` are the source's numbers (an MEI `<staff>` and
+    `<layer>`, a MuseScore staff and voice); a performance states neither, so
+    a `Note` has no staff and no voice. Every other member, the pitch among
+    them, is the `Note`'s. The score loaders write their notes as rows of
+    event type `Note`; `get_field(ScoreNote)` on such rows reads them back as
+    ScoreNotes where the table states an integer `staff` and `voice`, and
+    `get_field(Note)` reads the same rows as Notes.
+    See [Foundations](concepts.qmd#foundations).
+
 **Segment**
 :   A {{< glossary Child >}} timeline that is contiguous with its
     siblings. Segments enable concatenation of local coordinate systems.
@@ -843,8 +862,8 @@ to the relevant section of the conceptual model.
 :   A runtime class parameterized by its segment class, such as
     `SegmentLine[DiscreteGraphicalTimeline]`, whose contiguous
     {{< glossary Segment >}}s tile its full length. A line is also an instance
-    of that segment class. Any timeline can check the structure with
-    `is_segment_line()` and adopt enforcement with `as_segment_line()`; a line
+    of that segment class. Any timeline can check the structure with the
+    property `is_segment_line` and adopt enforcement with `as_segment_line()`; a line
     returns to an unenforced timeline with `to_timeline()`; both return a
     copy. Use `create_children_from_boundaries()` for boundary-driven tiling.
     Appending extends an unlocked line, while appending to a locked line

@@ -3210,9 +3210,22 @@ class Coordinate(TimeScalar):
         Duration(120, ticks)
     """
 
-    # The base's constructor, named here so that type checkers see it
-    # rather than the keyword-only one they derive for a pydantic model.
-    __init__ = TimeScalar.__init__
+    # Declared here, and passed on to the base, so that type checkers and
+    # the API reference see this signature rather than the keyword-only one
+    # derived for a pydantic model.
+    def __init__(
+        self,
+        value: TimeScalarValue | dict[str, Any] | None = None,
+        unit: TimeUnit | str | None = None,
+        /,
+        *,
+        number_type: NumberType | str | None = None,
+        rounding: str = "round",
+        **data: Any,
+    ) -> None:
+        super().__init__(
+            value, unit, number_type=number_type, rounding=rounding, **data
+        )
 
     def __index__(self) -> int:
         if isinstance(self.value, int) and not isinstance(self.value, bool):
@@ -3430,9 +3443,22 @@ class Duration(TimeScalar):
         unit: The time unit (e.g., seconds, quarters, ticks).
     """
 
-    # The base's constructor, named here so that type checkers see it
-    # rather than the keyword-only one they derive for a pydantic model.
-    __init__ = TimeScalar.__init__
+    # Declared here, and passed on to the base, so that type checkers and
+    # the API reference see this signature rather than the keyword-only one
+    # derived for a pydantic model.
+    def __init__(
+        self,
+        value: TimeScalarValue | dict[str, Any] | None = None,
+        unit: TimeUnit | str | None = None,
+        /,
+        *,
+        number_type: NumberType | str | None = None,
+        rounding: str = "round",
+        **data: Any,
+    ) -> None:
+        super().__init__(
+            value, unit, number_type=number_type, rounding=rounding, **data
+        )
 
     @property
     def semantic_type(self) -> str:
@@ -3596,9 +3622,28 @@ class IdCoordinate(Coordinate, IdTimeScalar):
     # plain coordinate one rather than the derived "IdCoordinateField".
     field_type_name = "CoordinateField"
 
-    # The constructor taking a timeline id; without this name the plain
-    # base, which precedes IdTimeScalar in the MRO, would supply its own.
-    __init__ = IdTimeScalar.__init__
+    # Passed on to IdTimeScalar by name: the plain base precedes it in the
+    # MRO and would otherwise supply its constructor without a timeline id.
+    def __init__(
+        self,
+        value: TimeScalarValue | None = None,
+        unit: TimeUnit | str | None = None,
+        timeline_id: str | None = None,
+        /,
+        *,
+        number_type: NumberType | str | None = None,
+        rounding: str = "round",
+        **data: Any,
+    ) -> None:
+        IdTimeScalar.__init__(
+            self,
+            value,
+            unit,
+            timeline_id,
+            number_type=number_type,
+            rounding=rounding,
+            **data,
+        )
 
     @classmethod
     def from_coordinate(cls, coord: Coordinate, timeline_id: str) -> IdCoordinate:
@@ -3737,9 +3782,28 @@ class IdDuration(Duration, IdTimeScalar):
     # carried in field metadata rather than derived into the name.
     field_type_name = "DurationField"
 
-    # The constructor taking a timeline id; without this name the plain
-    # base, which precedes IdTimeScalar in the MRO, would supply its own.
-    __init__ = IdTimeScalar.__init__
+    # Passed on to IdTimeScalar by name: the plain base precedes it in the
+    # MRO and would otherwise supply its constructor without a timeline id.
+    def __init__(
+        self,
+        value: TimeScalarValue | None = None,
+        unit: TimeUnit | str | None = None,
+        timeline_id: str | None = None,
+        /,
+        *,
+        number_type: NumberType | str | None = None,
+        rounding: str = "round",
+        **data: Any,
+    ) -> None:
+        IdTimeScalar.__init__(
+            self,
+            value,
+            unit,
+            timeline_id,
+            number_type=number_type,
+            rounding=rounding,
+            **data,
+        )
 
     @classmethod
     def from_duration(cls, dur: Duration, timeline_id: str) -> IdDuration:

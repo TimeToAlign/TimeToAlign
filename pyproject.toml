@@ -163,6 +163,13 @@ ignore_imports = [
     "timetoalign.storage.events -> timetoalign.timelines",
 ]
 
+[tool.pyright]
+# Static type checking, run by hand with `pyright` from this directory. It covers
+# the core package only; a subpackage is added to `include` once it passes.
+include = ["timetoalign/core"]
+typeCheckingMode = "standard"
+pythonVersion = "3.11"
+
 [tool.coverage.run]
 source = ["timetoalign"]
 branch = true

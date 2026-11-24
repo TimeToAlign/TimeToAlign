@@ -4,7 +4,7 @@ This module defines the fundamental categorical types used throughout
 the library: temporal domains, time units, number types, and event types.
 
 The FancyStrEnum base class provides:
-- Lowercase member names (via auto() from StrEnum)
+- Lowercase member values (via auto() from StrEnum)
 - Abbreviation aliases (e.g., q = quarters, ms = milliseconds)
 - Flexible instantiation from any alias
 - get_abbreviations() for documentation
@@ -25,8 +25,9 @@ class FancyStrEnum(StrEnum):
         * list(FancyStrEnum) returns only non-aliases (canonical members)
         * FancyStrEnum.get_abbreviations() returns a mapping from names to abbreviations
         * A member whose Python name would shadow a ``str`` or ``Enum`` attribute takes
-          another name and an explicit value (``label = "name"``); ``str()``,
-          ``repr()`` and lookup use the value, never the member name
+          another name and an explicit value (``label = "name"``); ``str()`` and
+          ``repr()`` give the value; lookup by string takes a member's value (any
+          case) or an alias name, never a canonical member's Python name
 
     Example:
         class Vocabulary(FancyStrEnum):
@@ -36,17 +37,18 @@ class FancyStrEnum(StrEnum):
     """
 
     @classmethod
-    def _missing_(cls, value: object) -> "FancyStrEnum | None":
+    def _missing_(cls, value: object) -> FancyStrEnum:
         """Allow instantiation from values, including aliases.
 
         Args:
-            value: The value or name string to look up.
+            value: A member's value or an alias name, in any case.
 
         Returns:
-            The corresponding enum member, or None if not found.
+            The member with that value, or the member the alias names.
 
         Raises:
-            ValueError: If the value does not match any member or alias.
+            ValueError: If ``value`` is not a string, or matches no member's value
+                and no alias name.
         """
         if isinstance(value, str):
             lower_value = value.lower()
@@ -91,9 +93,6 @@ class FancyStrEnum(StrEnum):
 
     def __repr__(self) -> str:
         return f'"{self.value}"'
-
-    def __str__(self) -> str:
-        return self.value
 
 
 class Domain(FancyStrEnum):

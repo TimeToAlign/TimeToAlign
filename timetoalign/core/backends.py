@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 
 @contextmanager
-def suppressed_backend_warnings() -> Iterator[None]:
+def suppressed_backend_warnings() -> Generator[None, None, None]:
     """Suppress non-actionable warnings emitted by third-party backends.
 
     Partitura reports internal parsing progress and third-party deprecations

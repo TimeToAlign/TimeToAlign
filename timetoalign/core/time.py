@@ -67,7 +67,17 @@ import re
 from collections.abc import Iterable, Sequence
 from decimal import Decimal
 from fractions import Fraction
-from typing import Any, ClassVar, NamedTuple, Self, TypeVar, Union, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    NamedTuple,
+    Protocol,
+    Self,
+    TypeVar,
+    Union,
+    overload,
+)
 
 import numpy as np
 import pandas as pd
@@ -91,6 +101,9 @@ from .fields import (
     parse_metadata_blob,
     register_value_projector,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import TypeIs
 
 # ---------------------------------------------------------------------------
 # Type aliases & module constants
@@ -4470,6 +4483,33 @@ AxisScalarT = TypeVar("AxisScalarT", bound=BaseModel)
 """The scalar of a :class:`SharedAxisField`."""
 
 
+class AxisScalarLike(Protocol):
+    """A scalar that reads itself from a row whose numbers lie on one axis.
+
+    A :class:`SharedAxisField` stores each number as the number struct alone
+    and the axis once, in its metadata; a scalar of this shape puts the axis
+    back as it reads a row, and the field materialises its rows through it.
+    Not every shared-axis scalar has this shape: :class:`Interval` has no
+    ``from_row``, and :class:`IntervalField` reads its rows itself.
+    """
+
+    @classmethod
+    def from_row(
+        cls,
+        row: dict[str, Any] | None,
+        *,
+        unit: TimeUnit | str,
+        number_type: NumberType | str | None,
+    ) -> Self | None:
+        """Construct from *row* on the axis given; ``None`` for a null cell."""
+        ...
+
+
+def _reads_axis_rows(scalar: type) -> TypeIs[type[AxisScalarLike]]:
+    """Whether *scalar* reads its rows on one axis (:class:`AxisScalarLike`)."""
+    return hasattr(scalar, "from_row")
+
+
 def _as_unit(unit: TimeUnit | str | None) -> TimeUnit | None:
     """*unit* as a :class:`TimeUnit`; ``None`` stays ``None``."""
     return TimeUnit(unit) if isinstance(unit, str) else unit
@@ -4544,7 +4584,7 @@ class SharedAxisField(SemanticField[AxisScalarT]):
     @property
     def semantic_type(self) -> str:
         """Return the paired scalar's name."""
-        return self.scalar_cls.__name__
+        return self.paired_scalar().__name__
 
     def metadata_dict(self) -> dict[str, str]:
         """Return the semantic type and the shared axis."""
@@ -4620,7 +4660,7 @@ class SharedAxisField(SemanticField[AxisScalarT]):
         values = list(items)
         unit, number_type = cls._shared_axis(values, unit, number_type)
         return cls._of_struct_array(
-            build_struct_array(cls.scalar_cls, values),
+            build_struct_array(cls.paired_scalar(), values),
             name if name is not None else cls._default_name(),
             unit,
             number_type,
@@ -4681,13 +4721,23 @@ class SharedAxisField(SemanticField[AxisScalarT]):
         ).lower()
 
     def __getitem__(self, i: int) -> AxisScalarT | None:
-        """Materialize one scalar on the field's axis, or ``None``."""
+        """Materialize one scalar on the field's axis, or ``None``.
+
+        Raises:
+            TypeError: If the paired scalar does not read its rows on one
+                axis (:class:`AxisScalarLike`); the field of such a scalar
+                reads its rows itself, as :class:`IntervalField` does.
+        """
         cell = self._raw[i]
         if cell is None:
             return None
-        return self.scalar_cls.from_row(
-            cell, unit=self.unit, number_type=self.number_type
-        )
+        scalar = self.paired_scalar()
+        if not _reads_axis_rows(scalar):
+            raise TypeError(
+                f"{type(self).__name__} cannot materialise {scalar.__name__}: "
+                "it has no from_row on one axis"
+            )
+        return scalar.from_row(cell, unit=self.unit, number_type=self.number_type)
 
 
 # ---------------------------------------------------------------------------
@@ -4826,8 +4876,6 @@ class IntervalField(SharedAxisField[Interval]):
         number_type: Common endpoint number type.
         source_fields: Optional blueprint source-field declaration.
     """
-
-    scalar_cls = Interval
 
     @classmethod
     def from_intervals(

@@ -664,6 +664,11 @@ def _struct_array(array: pa.Array[Any] | pa.ChunkedArray[Any]) -> pa.StructArray
     return array
 
 
+def _member_fields(struct_type: pa.StructType) -> list[pa.Field[pa.DataType]]:
+    """The member fields of *struct_type*, in index order."""
+    return list(struct_type)
+
+
 class StructField(DataField):
     """A DataField backed by a struct array.
 
@@ -731,11 +736,10 @@ class StructField(DataField):
                 f"Struct field {self.name!r} has no sub-field {name!r}. Available: {self.field_names}"
             )
 
-        sub_pa_field = struct_type.field(sub_idx)
+        sub_pa_field = _member_fields(struct_type)[sub_idx]
 
-        if self._data is None:
-            sub_data = None
-        else:
+        sub_data: pa.Array[Any] | None = None
+        if self._data is not None:
             sub_data = _struct_array(self._data).field(name)
 
         if pa.types.is_integer(sub_pa_field.type) or pa.types.is_floating(
@@ -1352,8 +1356,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
 
         # Single-sub-field struct — pack the atomic source.
         if schema.num_fields == 1:
-            sub_field = schema.field(0)
-            sub_type = sub_field.type
+            sub_type = _member_fields(schema)[0].type
             if isinstance(source, pa.ChunkedArray):
                 source = source.combine_chunks()
             if not (
@@ -1465,8 +1468,7 @@ def _struct_types_match(actual: pa.DataType, expected: pa.StructType) -> bool:
         return False
     if actual.num_fields != expected.num_fields:
         return False
-    for i in range(expected.num_fields):
-        a, e = actual.field(i), expected.field(i)
+    for a, e in zip(_member_fields(actual), _member_fields(expected)):
         if a.name != e.name:
             return False
         if not a.type.equals(e.type):
@@ -1539,8 +1541,9 @@ def resolve_source_fields(
         )
 
     normalised: dict[str, Any] = {}
+    target_fields = _member_fields(target_schema)
     for i in range(target_schema.num_fields):
-        sub_field = target_schema.field(i)
+        sub_field = target_fields[i]
         sub_spec = source[sub_field.name]
         if pa.types.is_struct(sub_field.type):
             normalised[sub_field.name] = resolve_source_fields(sub_spec, sub_field.type)
@@ -1912,7 +1915,7 @@ class StructArrayBuilder:
     def from_model(cls, model_cls: type[BaseModel]) -> "StructArrayBuilder":
         """Build a builder driven by a pydantic ``BaseModel`` subclass."""
         target_schema = derive_arrow_struct(model_cls)
-        pa_fields: list[pa.Field[pa.DataType]] = list(target_schema)
+        pa_fields = _member_fields(target_schema)
         sub_blocks = _group_pa_fields_by_pydantic_field(model_cls, pa_fields)
 
         def _validate(obj: Any) -> None:
@@ -1968,7 +1971,7 @@ class StructArrayBuilder:
         sequence (with ``None`` for null rows) and returns a single
         ``pa.Array`` whose type matches the sub-field.
         """
-        pa_fields: list[pa.Field[pa.DataType]] = list(target_schema)
+        pa_fields = _member_fields(target_schema)
         expected = {f.name for f in pa_fields}
         if set(extractors.keys()) != expected:
             missing = sorted(expected - set(extractors.keys()))

@@ -4919,8 +4919,8 @@ class Projection(Event, frozen=True):
         """
         if row is None:
             return None
-        # ``start`` is a required member of the struct: a null cell is refused
-        # by the constructor, as a missing start is.
+        # ``start`` is a required member of the struct: a missing one raises
+        # ``KeyError`` here, a null one is refused by the constructor.
         start: dict[str, Any] = row["start"]
         return cls(
             id=row.get("id"),

@@ -2131,6 +2131,27 @@ This file also carries the `__init_subclass__` parity-check failure-path test (`
 
 ---
 
+### `test_fields_base.py` - A raw blueprint packs a plain sequence
+
+**Claim:** `IntField(name=...)` and `FloatField(name=...)` are blueprints
+whose `from_array` takes any sequence Arrow can pack, not only an Arrow
+array: a Python list, a tuple and a NumPy array each come back as a field
+of the blueprint's own class, under the blueprint's name, in its declared
+type (`int64`, `double`), with the same values and a `None` kept as a null
+row.
+
+**Why it needs its own case:** every caller inside the library passes an
+Arrow array, so a cast spelled as a method of the Arrow array would pass the
+whole suite while every plain-sequence call raised `AttributeError` (a
+`list` has no `cast`). The cases therefore use only non-Arrow inputs.
+
+**Expected values:** `[1, 2, None]` gives `[1, 2, None]` (`int64`) and
+`[1.0, 2.0, None]` (`double`); `(1, 2)` and `np.array([1, 2])` give
+`[1, 2]` and `[1.0, 2.0]`. The result's type is checked exactly, so a
+float blueprint cannot pass by answering integers.
+
+---
+
 ### `test_pitch_fields.py` - A null pitch row stays null
 
 **Claim:** every vectorized answer of a pitch field (`fifths`, `pitch_class`,

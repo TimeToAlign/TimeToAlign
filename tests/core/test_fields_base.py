@@ -8,6 +8,7 @@ import warnings
 from fractions import Fraction
 from typing import Any
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -15,6 +16,8 @@ from timetoalign.alignment import AlignmentBundle, MatchClaimField
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
 from timetoalign.core.events import EnharmonicPitchField
 from timetoalign.core.fields import (
+    FloatField,
+    IntField,
     MapField,
     NumericField,
     SemanticField,
@@ -105,6 +108,39 @@ class TestNumericField:
         assert nf.is_empty is True
         with pytest.raises(TypeError, match="Cannot compute length"):
             len(nf)
+
+    @pytest.mark.parametrize(
+        ("blueprint_cls", "source", "pa_type", "expected"),
+        [
+            (IntField, [1, 2, None], pa.int64(), [1, 2, None]),
+            (IntField, (1, 2), pa.int64(), [1, 2]),
+            (IntField, np.array([1, 2]), pa.int64(), [1, 2]),
+            (FloatField, [1, 2, None], pa.float64(), [1.0, 2.0, None]),
+            (FloatField, (1, 2), pa.float64(), [1.0, 2.0]),
+            (FloatField, np.array([1, 2]), pa.float64(), [1.0, 2.0]),
+        ],
+        ids=[
+            "int-list",
+            "int-tuple",
+            "int-ndarray",
+            "float-list",
+            "float-tuple",
+            "float-ndarray",
+        ],
+    )
+    def test_blueprint_from_array_packs_a_plain_sequence(
+        self,
+        blueprint_cls: type[NumericField],
+        source: Any,
+        pa_type: pa.DataType,
+        expected: list[Any],
+    ) -> None:
+        """A list, tuple or ndarray becomes a field of the blueprint's class and type."""
+        result = blueprint_cls(name="x").from_array(source)
+        assert type(result) is blueprint_cls
+        assert result.name == "x"
+        assert result.pa_type == pa_type
+        assert result.data.to_pylist() == expected
 
 
 # ---------------------------------------------------------------------------

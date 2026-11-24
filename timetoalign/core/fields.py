@@ -49,6 +49,7 @@ from typing import (
 )
 
 import pyarrow as pa
+import pyarrow.compute as pc
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
@@ -431,7 +432,7 @@ class DataField(ABC):
                 f"(empty DataField); this instance has live data"
             )
         out_name = name if name is not None else self.name
-        casted = source.cast(self.pa_type)
+        casted = pc.cast(source, self.pa_type)
         return type(self)(casted, pa.field(out_name, self.pa_type))
 
     # -- abstract factory ----------------------------------------------------

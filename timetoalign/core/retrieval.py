@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from fractions import Fraction
-from typing import Any, Literal, TypeAlias, TypeVar
+from typing import Any, Literal, TypeAlias, TypeVar, overload
 
 import numpy as np
 import pandas as pd
@@ -385,6 +385,45 @@ def _series_from_coordinates(
         return pd.Series(values, index=result_index, name=name, dtype="int64")
     except OverflowError:
         return pd.Series(values, index=result_index, name=name, dtype=object)
+
+
+@overload
+def format_coordinates(
+    coordinates: Sequence[IdCoordinate],
+    *,
+    format: CoordinateFormat = ...,
+    rounding: Rounding = ...,
+    scalar: Literal[True],
+    index: pd.Index | None = ...,
+    series_name: str | None = ...,
+    empty_number_type: NumberType | None = ...,
+) -> CoordinateResult | pd.Series: ...
+
+
+@overload
+def format_coordinates(
+    coordinates: Sequence[IdCoordinate],
+    *,
+    format: CoordinateFormat = ...,
+    rounding: Rounding = ...,
+    scalar: Literal[False],
+    index: pd.Index | None = ...,
+    series_name: str | None = ...,
+    empty_number_type: NumberType | None = ...,
+) -> list[CoordinateResult] | pd.Series: ...
+
+
+@overload
+def format_coordinates(
+    coordinates: Sequence[IdCoordinate],
+    *,
+    format: CoordinateFormat = ...,
+    rounding: Rounding = ...,
+    scalar: bool,
+    index: pd.Index | None = ...,
+    series_name: str | None = ...,
+    empty_number_type: NumberType | None = ...,
+) -> CoordinateResult | list[CoordinateResult] | pd.Series: ...
 
 
 def format_coordinates(

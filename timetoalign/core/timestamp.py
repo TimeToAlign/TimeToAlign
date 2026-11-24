@@ -28,10 +28,12 @@ from typing import (
     Any,
     Callable,
     ClassVar,
+    Generic,
     Iterator,
     NamedTuple,
     Protocol,
     Sequence,
+    TypeVar,
     runtime_checkable,
 )
 
@@ -342,7 +344,11 @@ def _row_html(row: _DisplayRow) -> str:
     )
 
 
-class Stamp(ABC):
+_SourceT = TypeVar("_SourceT")
+"""The kind of object a stamp's ``source`` is: a timeline, a group, a bundle."""
+
+
+class Stamp(ABC, Generic[_SourceT]):
     """Shared typed retrieval behavior for synchronized instant stamps."""
 
     _affordances: ClassVar[tuple[str, ...]]
@@ -352,7 +358,7 @@ class Stamp(ABC):
 
     coordinates: dict[str, Coordinate]
     source_id: str
-    source: object | None
+    source: _SourceT | None
     is_interpolated: bool
 
     def __str__(self) -> str:
@@ -504,9 +510,9 @@ class Stamp(ABC):
         """
         if timeline_id is not None:
             raise TypeError("Stamp.get_coordinate does not accept timeline_id")
-        branch = classify_dispatch_input(at, empty_is_keys=True)
-        if branch == "key":
+        if isinstance(at, str):
             return self.get_coordinate_for(at, format=format, rounding=rounding)
+        branch = classify_dispatch_input(at, empty_is_keys=True)
         if branch == "keys":
             return self.get_coordinates_for(at, format=format, rounding=rounding)
         raise TypeError(
@@ -840,7 +846,7 @@ class Stamp(ABC):
 
 
 @dataclass(frozen=True, slots=True)
-class TimeStamp(Stamp):
+class TimeStamp(Stamp[TimeStampSource]):
     """A synchronized instant across a timeline hierarchy.
 
     Lightweight view object over typed coordinates.
@@ -922,10 +928,14 @@ class TimeStamp(Stamp):
         self, timeline_id: str, unit: TimeUnit
     ) -> "list[ConversionMap[Any]]":
         """The source's maps into *unit* on *timeline_id* (a member or descendant)."""
+        if self.source is None:
+            return []
         return self.source._get_unit_maps_for_timeline(timeline_id, unit)
 
     def _number_type_for(self, timeline_id: str) -> str | None:
         """Get the numeric type name, retaining group compatibility."""
+        if self.source is None:
+            return None
         try:
             number_type = self.source._get_number_type_for_timeline(timeline_id)
         except AttributeError:
@@ -1397,6 +1407,7 @@ def _column_on_declared_axis(
     and uses nullable ``Int64`` only where the column actually has gaps.
     """
     import pyarrow as pa
+    import pyarrow.compute as pc
 
     declared = metadata.get("number_type")
     unit = metadata.get("unit")
@@ -1410,11 +1421,11 @@ def _column_on_declared_axis(
     if isinstance(column, pa.ChunkedArray):
         column = column.combine_chunks()
     valid = column.is_valid().to_pylist()
-    doubles = column.field("value").to_pylist()
+    doubles = pc.struct_field(column, "value").to_pylist()
 
     if number_type is NumberType.fraction:
-        numerators = column.field("numerator").to_pylist()
-        denominators = column.field("denominator").to_pylist()
+        numerators = pc.struct_field(column, "numerator").to_pylist()
+        denominators = pc.struct_field(column, "denominator").to_pylist()
         cells: list[Any] = []
         for position, is_valid in enumerate(valid):
             numerator = numerators[position]
@@ -1430,8 +1441,8 @@ def _column_on_declared_axis(
     if number_type is NumberType.int:
         # The integer side is stored exactly; reading it back through the
         # float mirror would round away magnitudes past 2**53.
-        numerators = column.field("numerator").to_pylist()
-        denominators = column.field("denominator").to_pylist()
+        numerators = pc.struct_field(column, "numerator").to_pylist()
+        denominators = pc.struct_field(column, "denominator").to_pylist()
         integers = [
             (
                 None

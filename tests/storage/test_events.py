@@ -19,12 +19,16 @@ from timetoalign.core import (
     BoundingBox,
     BoundingBoxField,
     Box,
+    BoxField,
     Coordinate,
     Duration,
     EventReference,
     IntervalPolicy,
+    Note,
+    NoteField,
     NumberType,
     Projection,
+    ProjectionField,
     Quadrilateral,
     QuadrilateralField,
     TimeUnit,
@@ -1160,6 +1164,93 @@ class TestBoxRows:
         assert corner == {"value": 1221.0, "numerator": 1221, "denominator": 1}
         assert held.table.schema.field("quadrilateral").metadata == (
             table.schema.field("quadrilateral").metadata
+        )
+
+
+class TestEventTypeFields:
+    """``get_field(<event type>)``: the events of that type, one per table row."""
+
+    THIRDS = BoundingBox.from_xywh(
+        Fraction(1, 3),
+        0,
+        Fraction(2, 3),
+        1,
+        unit="user_units",
+        number_type="fraction",
+    )
+
+    def _mixed(self) -> tuple[EventData, Box, Projection]:
+        box = Box.from_shape(self.THIRDS, id="thirds")
+        projection = Projection(
+            id="p",
+            start=Coordinate(Fraction(1, 2), "user_units", number_type="fraction"),
+        )
+        data = EventData.from_dicts(
+            [box, {"event_type": "Note", "start": 0, "duration": 1}, projection],
+            TimeUnit.user_units,
+            NumberType.fraction,
+        )
+        return data, box, projection
+
+    def test_a_field_per_event_type_row_aligned(self) -> None:
+        data, box, projection = self._mixed()
+        boxes = data.get_field(Box)
+        assert type(boxes) is BoxField
+        assert boxes.name == "box"
+        assert (boxes.unit, boxes.number_type) == (
+            TimeUnit.user_units,
+            NumberType.fraction,
+        )
+        assert list(boxes) == [box, None, None]
+        assert boxes[0].start.value == Fraction(1, 3)
+        assert type(boxes[0].start.value) is Fraction
+        assert boxes[0].duration.value == Fraction(2, 3)
+        projections = data.get_field(Projection)
+        assert type(projections) is ProjectionField
+        assert list(projections) == [None, None, projection]
+        assert projections[2].start.value == Fraction(1, 2)
+        assert projections[2].start.unit is TimeUnit.user_units
+
+    def test_a_float_table_reads_floats(self) -> None:
+        shape = BoundingBox.from_xywh(1.5, 0, 2.5, 1, unit="css_pixels")
+        box = Box.from_shape(shape, id="b")
+        data = EventData.from_dicts([box], TimeUnit.css_pixels, NumberType.float)
+        (read,) = data.get_field(Box)
+        assert read == box
+        assert read.start.value == 1.5
+        assert type(read.start.value) is float
+        assert type(read.bounding_box.width.value) is float
+
+    def test_every_spelling_of_the_call_gives_one_field(self) -> None:
+        data, _, _ = self._mixed()
+        boxes = data.get_field(Box)
+        assert data.get_field(BoxField) is boxes
+        assert data.get_field(Box, name="box") is boxes
+        assert data.has_field(BoxField)
+
+    def test_no_row_of_the_type_no_field(self) -> None:
+        data = EventData.from_dicts(
+            [{"event_type": "Note", "start": 0, "duration": 1}],
+            TimeUnit.user_units,
+            NumberType.fraction,
+        )
+        assert not data.has_field(BoxField)
+        with pytest.raises(KeyError) as refused:
+            data.get_field(Box)
+        assert refused.value.args[0] == (
+            "No field matching 'BoxField' found in table. Available columns: "
+            "['id', 'name', 'temporal_type', 'event_type', 'start', 'end', "
+            "'duration']"
+        )
+
+    def test_known_issue_a_note_keeps_its_pitch_outside_its_struct(self) -> None:
+        data, _, _ = self._mixed()
+        assert "pitch" in Note.model_fields
+        assert "pitch" not in NoteField.pa_schema.names
+        with pytest.raises(KeyError) as refused:
+            data.get_field(Note)
+        assert refused.value.args[0].startswith(
+            "No field matching 'NoteField' found in table."
         )
 
 

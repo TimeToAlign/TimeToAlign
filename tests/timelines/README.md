@@ -2827,6 +2827,74 @@ starts 0 and 930, durations 940 and 624.
   ['left', 'top']: a BoundingBox's keys are x, y, width and height, a
   Quadrilateral's top_left, top_right, bottom_right and bottom_left.`
 
+### `test_boxes_read_back.py` - A Box is read back by the calls that read any event
+
+**Purpose:** A Box is an event type like any other: what a timeline holds
+comes back by the calls that read every event type, and a Box added comes
+back equal to the Box added, through every form the timeline is written
+in. No call or parameter exists for Boxes alone.
+
+**The calls, established before any code.** From a timeline a user reaches
+its events by `get_events(event_type=, include_children=, min_coord=,
+max_coord=, **field_filters)` (an `EventData`; `events` is the timeline's
+own), `get_event(id)` (one row as a dict) and `get_events_at(position)`
+(rows as dicts, per timeline). An `EventData` gives rows (iteration,
+`to_dataframe`) and typed scalars by `get_field(<scalar class>)`, by its
+paired Field class, or by a column's name. Before this change none of these
+gave back a `Box` (or a `Note`) object: `get_field(Box)` and
+`get_field(Note)` both raised `No field matching ...`, and the only way from
+a row to the object was the scalar's `from_row` (`Note.from_row(row)`, which
+reads every position as quarters whatever the axis;
+`Box.from_row(row, unit=, number_type=)`, which needs the axis the row does
+not carry). A row of `get_events_at` holds bare numbers, which neither
+`from_row` reads. So the one call that can read any event type back on its
+axis is the field: `get_field(<event type>)` is now composed from the
+columns (`tests/storage/README.md`, "An event type's field").
+
+**What proves "the same calls"** (`TestTheSameCalls`, parametrised over
+the event types whose field holds all of their properties, `Box` and
+`Projection`; each case adds one event on a child at offset 866 of a
+`pixels` page, `seg_2` of the Thoresen example (`meta["box"]` x 7), and
+one Note to the page itself): every assertion is written once and run for
+both types.
+
+- `seg_2.get_events(event_type=T).get_field(T)` is `[added]`: the event
+  added (its minted or given ID included) comes back equal, `start` 378.
+- `seg_2.events.get_field(T)` gives the same list (the timeline's own
+  events).
+- On the page's `get_events()` (Note, then the child's row; the child's
+  row shifted by its offset as every event of a child is) `get_field(T)` is
+  `[None, event]` with `start` 1244 (866 + 378), every other property
+  equal to the event added: the field is row-aligned with the rows the
+  page reports.
+- `page.get_events(id=<its id>).get_field(T)` (a field filter) holds the
+  one event; `get_field(TField)` is the same object as `get_field(T)`.
+- **Known issue, a case of its own:** `get_field(Note)` keeps raising
+  `KeyError` (`No field matching 'NoteField' ...`): a Note's pitch is
+  represented once, outside the Note's struct, so a Note field composed
+  from the columns would lose it. A Note's way back is the Note type's to
+  give; nothing here works around it.
+
+**Round trips with exact values from real pages** (`TestRoundTrips`). The
+expected Boxes are built from the sources' own numbers, never from the
+loader's output: the two measure zones of the Anhalt chorale facsimile
+(MEI, `ulx, uly, lrx, lry` = `490, 344, 973, 877` and `944, 368, 1523,
+864`, one accolade from x 490: Boxes `BoundingBox.from_corners(...)` with
+`start` 0 and 454, `duration` 483 and 579, the zones' `xml:id`s as IDs)
+and the two measures of system 1 of the DMOS page (*Aimons-nous*, system
+from x 1221: quadrilaterals `start` 0 and 930, `duration` 940 and 624,
+minted IDs `box_1`, `box_2`), and a fraction case (the thirds Box on a
+`user_units` timeline). For each, the accolade's
+`get_events(event_type="Box").get_field(Box)` equals the expected Boxes,
+each `start.value`, `duration.value` and shape number of the type the axis
+declares (`int` on pixels, `Fraction` on fractions), and so do the Boxes
+read back after (a) the timeline's dict form, `Timeline.from_dict(
+page.to_dict(events=True))`, and (b) the package: an `AlignmentBundle`
+holding the page written with `to_file` (`boxes.parquet` beside the
+manifest) and read with `AlignmentBundle.from_file`. What would show it
+broken: a Box read back unequal to the one added (an ID, a number or its
+type changed on the way), or a form that loses the Boxes.
+
 ### `test_boxes_pages.py` - Cuts of pages and volumes
 
 **Purpose:** A scanned page is a segment line of accolades: each accolade

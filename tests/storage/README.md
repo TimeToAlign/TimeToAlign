@@ -335,6 +335,48 @@ so a shape is never converted or rounded on its way into a table.
   cell stating `2442/2` is held as `1221/1` after `EventData(table)`, the
   column's metadata kept.
 
+### `test_events.py` - An event type's field, composed from the table's columns
+
+**Purpose:** An event table holds each event as one row whose properties
+are spread over its columns (a Box's `id`, `start`, `duration`,
+`bounding_box`, `quadrilateral`). `get_field(<event type>)` (the scalar or
+its paired Field class, the call that reads any scalar back) gives the
+events of that type as a field: one row per table row, the event where the
+row's `event_type` is the type's name, null elsewhere, each number read on
+the table's axis. One mechanism serves every event type whose field holds
+all of its scalar's properties (`Box`, `Projection`, `Event`); nothing in
+it names a type.
+
+**What proves it** (`TestEventTypeFields`; the shapes of
+`tests/core/README.md`):
+
+- **Row-aligned, typed, exact.** A table of three rows (`from_dicts`, on
+  `user_units` as `fraction`): the thirds Box (`(1/3, 0, 2/3, 1)`, `start`
+  1/3, `duration` 2/3), a Note at 0 lasting 1, a Projection at 1/2.
+  `get_field(Box)` is a `BoxField` named `box`, on `user_units` and
+  `fraction`, `[box, None, None]` with `box` equal to the Box added and
+  its `start.value` the `Fraction(1, 3)`; `get_field(Projection)` is a
+  `ProjectionField` `[None, None, projection]`, the Projection's start
+  `Fraction(1, 2)` on `user_units`. A float table (`css_pixels`, the box
+  `(1.5, 0, 2.5, 1)`) gives `start.value` the float `1.5`, never a ratio.
+  What would show it broken: a field shorter than the table (the rows of
+  another type dropped, so index `i` no longer names row `i`), a number
+  in another number type than the table's, or a Box whose shape is
+  rounded.
+- **One field, every spelling of the call.** `get_field(BoxField)` and
+  `get_field(Box, name="box")` return the same object as `get_field(Box)`
+  (the field cache), and `has_field(BoxField)` is `True`.
+- **No rows of the type: no field, as before.** On a table without a Box
+  row `has_field(BoxField)` is `False` and `get_field(Box)` raises the
+  `KeyError` every class without a matching column raises (`No field
+  matching 'BoxField' found in table. Available columns: [...]`).
+- **A type keeping a property outside its struct has no composed field.**
+  A Note's pitch is represented once, in a column of its own
+  (`specific_pitch`, `midi`), and `NoteField`'s struct leaves it out; a
+  `NoteField` composed from the columns would read every Note as a rest.
+  So `get_field(Note)` keeps raising the `KeyError` it raised before
+  (known issue of the Note type, a test case of its own).
+
 ### `test_events.py` - One axis per table: number type kept, cells reduced
 
 **Purpose:** An `EventData` reads every cell in its one unit and number type,

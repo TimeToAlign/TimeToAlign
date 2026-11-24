@@ -37,9 +37,11 @@ from __future__ import annotations
 
 import enum
 import json
+import re
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
 from pydantic import BaseModel
 
 from timetoalign.core.fields import (
@@ -51,8 +53,12 @@ from timetoalign.core.fields import (
     StringField,
     StructField,
     _GenericField,
+    blob_metadata,
+    field_metadata,
     parse_metadata_blob,
 )
+
+from .schema import is_coordinate_type
 
 
 class MultipleFieldsError(KeyError):
@@ -434,6 +440,41 @@ def _discover_by_shape(
 # ---------------------------------------------------------------------------
 
 
+def _property_column(
+    table: pa.Table, member: pa.Field, axis: dict[str, Any]
+) -> pa.Array | None:
+    """The column of *table* holding the property *member* of an event type.
+
+    The column of the property's name, as it is stored; all null where the
+    table has none. A property held as a coordinate cell
+    (:data:`~timetoalign.core.time.COORDINATE_CELL_TYPE`) is made from the
+    column's number structs on the table's *axis* (``unit``,
+    ``number_type``). Any other column of another type is cast to the
+    property's type where the cast loses nothing.
+
+    Returns:
+        The column, or ``None`` where it cannot be read as the property's
+        type.
+    """
+    from timetoalign.core.time import COORDINATE_CELL_TYPE, axis_coordinate_cells
+
+    if member.name not in table.column_names:
+        return pa.nulls(table.num_rows, member.type)
+    column = table.column(member.name).combine_chunks()
+    if column.type == member.type:
+        return column
+    if member.type == COORDINATE_CELL_TYPE and is_coordinate_type(column.type):
+        if axis.get("unit") is None:
+            return None
+        return axis_coordinate_cells(
+            column, unit=axis["unit"], number_type=axis.get("number_type")
+        )
+    try:
+        return column.cast(member.type)
+    except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+        return None
+
+
 def _wrap_raw(col: pa.ChunkedArray | pa.Array, pa_field: pa.Field) -> DataField:
     """Wrap a field's array in the appropriate raw ``DataField`` subclass."""
     dt = pa_field.type
@@ -597,7 +638,9 @@ class SemanticFieldAccessMixin:
            Looks up the paired ``EnharmonicPitchField`` via the
            scalar→field registry, then delegates to form (2).  Pass
            ``name="col"`` to disambiguate when more than one column
-           holds the same scalar.
+           holds the same scalar.  An event type gives the events of
+           that type, one row per table row (``get_field(Box)``: the
+           Boxes, null on every row of another type).
         4. **Blueprint instance** -- ``get_field(EnharmonicPitchField(source_fields="midi_pitch"))``.
            Resolves the named field using the blueprint.
 
@@ -660,6 +703,11 @@ class SemanticFieldAccessMixin:
            This catches loader output that has not (yet) injected
            TTA metadata — e.g. raw ``midi_pitch`` /
            ``specific_pitch`` struct fields from the TSV loader.
+        4. **Afforded fields**: raw atomic columns the EventData declares
+           in :attr:`_afforded_fields`.
+        5. **Event types**: the field of an event type whose properties
+           are columns of the table (a ``Box``, a ``Projection``), composed
+           from them over the rows of that type (:meth:`_event_type_field`).
 
         Returns the first non-empty result; never falls through to a
         later strategy once an earlier strategy finds anything.  Order
@@ -728,7 +776,95 @@ class SemanticFieldAccessMixin:
         # A subclass may declare that a raw column (e.g. a bare MIDI
         # pitch int) affords a most-expressive semantic view; materialise
         # it lazily here so get_field / get_pitch_field surface it.
-        return self._discover_afforded(field_type, cache, strict=strict)
+        result = self._discover_afforded(field_type, cache, strict=strict)
+        if result:
+            return result
+
+        # Strategy 5: an event type, its properties spread over the table's
+        # columns (a Note, a Box): the field composed from them.
+        composed = self._event_type_field(field_type, cache)
+        return [] if composed is None else [composed]
+
+    def _event_type_field(
+        self,
+        field_type: type[SemanticField[Any]],
+        cache: dict[tuple[str, str], SemanticField[Any]],
+    ) -> SemanticField[Any] | None:
+        """The field of the event type *field_type* is paired with, composed
+        from the table's columns.
+
+        An event table holds an event as one row: its ``event_type`` is the
+        name of its scalar class (``Box``, ``Projection``) and each property
+        of the scalar is the column of that name. The field is one row per
+        table row, in table order: the event where the row's ``event_type``
+        is the scalar's, null on every other row. A property the table has
+        no column for is null. Each column is taken as it is stored, the
+        axis of every number the table's (its ``start`` column's unit and
+        number type, written into the field's metadata, so a field whose
+        scalar reads its numbers on one axis reads them exactly); a property
+        the field holds as a coordinate cell is made from the column's
+        number structs on that axis.
+
+        Only a field whose struct holds every property of its scalar is
+        composed: a scalar keeping a property outside its struct (``Note``,
+        whose pitch is represented once in a column of its own) has no
+        field here.
+
+        Returns:
+            The field (cached), or ``None`` where the field's struct lacks a
+            property of its scalar, the table holds no row of the event
+            type, or a column cannot be read as the property's type.
+        """
+        scalar_cls = field_type.scalar_cls
+        schema = field_type.pa_schema
+        table = self._table
+        if scalar_cls is None or schema is None:
+            return None
+        if "event_type" not in table.column_names:
+            return None
+        if not set(scalar_cls.model_fields) <= set(schema.names):
+            # A property kept outside the scalar's struct (a Note's pitch,
+            # represented once in a column of its own) would be lost.
+            return None
+        event_type = scalar_cls.__name__
+        name = re.sub(r"(?<!^)(?=[A-Z])", "_", event_type).lower()
+        cache_key = (name, field_type.__name__)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        types = table.column("event_type").combine_chunks()
+        rows = pc.fill_null(pc.equal(types, event_type), False)
+        if not pc.any(rows).as_py():
+            return None
+        axis = (
+            field_metadata(table.schema.field("start"))
+            if "start" in table.column_names
+            else {}
+        )
+        members = []
+        for member in schema:
+            column = _property_column(table, member, axis)
+            if column is None:
+                return None
+            members.append(column)
+        array = pa.StructArray.from_arrays(
+            members, fields=list(schema), mask=pc.invert(rows)
+        )
+        pa_field = pa.field(
+            name,
+            array.type,
+            metadata=blob_metadata(
+                field_type=field_type.field_type(),
+                unit=axis.get("unit"),
+                number_type=axis.get("number_type"),
+            ),
+        )
+        try:
+            field = field_type.from_field((array, pa_field))
+        except (TypeError, KeyError, ValueError):
+            return None
+        cache[cache_key] = field
+        return field
 
     def _discover_afforded(
         self,
@@ -942,7 +1078,8 @@ class SemanticFieldAccessMixin:
             if not pa.types.is_struct(self._table.schema.field(column).type):
                 return True
 
-        return False
+        # Strategy 5: an event type composed from the table's columns.
+        return self._event_type_field(field_type, self._field_cache) is not None
 
     # -- convenience accessors for default temporal fields -------------------
 

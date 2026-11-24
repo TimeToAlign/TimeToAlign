@@ -1551,6 +1551,20 @@ names pixel `0` and `1/200 · 300 = 1.5` names pixel `2`. Each expected value
 is also asserted with its Python type (`float`, `int`, `Fraction`), so a
 correct number in the wrong representation fails.
 
+**A group stamp declares each member's number type.** A stamp from a group
+holds one coordinate per member, and each coordinate states its member's
+declared number type, whichever member was queried and whether the position is
+a stored row or a computed one. Values of the right Python type are not enough
+to prove it: a coordinate could carry a correct value while naming a
+different number type, and the declared type is what a reader of `to_dict()`
+sees. So `test_group_definition.py::test_group_stamp_declares_member_number_types`
+queries the fixture above three times — A `Fraction(1, 3)` (computed), A `16` (the stored end row)
+and C `1` (computed, from the int member) — and asserts, for every member,
+the `number_type` of `get_coordinate_for(member, format="coordinate")`
+(`NumberType.fraction` for A, `NumberType.float` for B, `NumberType.int` for C)
+and the `number_type` written by `to_dict()` (`"fraction"`, `"float"`,
+`"int"`), beside the exact values of the table above.
+
 **A child member.** Root R is a `DiscreteGraphicalTimeline` of 5000 px with a
 child K of 2000 px at offset 1000; the group holds A′ (`Fraction(8)` quarters)
 and K. A′ `2` is a quarter of the way, so K `500`. R is no member, so the group

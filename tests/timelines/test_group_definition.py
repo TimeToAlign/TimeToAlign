@@ -14,7 +14,7 @@ from timetoshare import FORMAT_CONTEXT
 
 from tests.helpers import bare, filed, reading, refusal
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
+from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.time import express_as
 from timetoalign.timelines import SegmentLine, TimelineGroup
 from timetoalign.timelines.types import (
@@ -113,6 +113,31 @@ def test_linear_conversion_is_exact(
 
     assert result == expected
     assert type(result) is type(expected)
+
+
+@pytest.mark.parametrize(
+    ("source", "value", "expected"),
+    [
+        ("A", Fraction(1, 3), {"A": Fraction(1, 3), "B": 0.8333333333333334, "C": 100}),
+        ("A", 16, {"A": Fraction(16), "B": 40.0, "C": 4800}),
+        ("C", 1, {"A": Fraction(1, 300), "B": float(Fraction(1, 120)), "C": 1}),
+    ],
+)
+def test_group_stamp_declares_member_number_types(
+    source: str, value: Any, expected: dict[str, Any]
+) -> None:
+    """Every member's coordinate states that member's declared number type."""
+    declared = {"A": NumberType.fraction, "B": NumberType.float, "C": NumberType.int}
+    stamp = _three_types().get_timestamp_at(value, source)
+    written = stamp.to_dict()
+
+    assert set(written) == set(declared)
+    for member, number_type in declared.items():
+        coordinate = stamp.get_coordinate_for(member, format="coordinate")
+        assert coordinate.number_type is number_type
+        assert coordinate.value == expected[member]
+        assert type(coordinate.value) is type(expected[member])
+        assert written[member]["number_type"] == number_type.name
 
 
 def test_float_one_third_is_rounded_once() -> None:

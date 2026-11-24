@@ -37,6 +37,7 @@ from typing import (
     ClassVar,
     Literal,
     Self,
+    TypeGuard,
     TypeVar,
     Union,
     get_args,
@@ -208,17 +209,21 @@ _SPECIFIC_PITCH_STEPS = ("C", "D", "E", "F", "G", "A", "B")
 _StepLiteral = Literal["C", "D", "E", "F", "G", "A", "B"]
 
 
+def _is_step(value: str) -> TypeGuard[_StepLiteral]:
+    """Whether *value* is one of the seven step letters, in upper case."""
+    return value in _SPECIFIC_PITCH_STEPS
+
+
 def _step_alter_to_fifths(step: str, alter: int) -> int:
     """Compute line-of-fifths position from step and alter."""
     return _BASE_FIFTHS.get(step, 0) + (7 * alter)
 
 
-def _parse_pitch_label(label: str) -> tuple[str, int, int | None]:
+def _parse_pitch_label(label: str) -> tuple[_StepLiteral, int, int | None]:
     """Parse a pitch label string into (step, alter, octave_or_None)."""
     m = _PITCH_LABEL_RE.match(label.strip())
-    if m is None:
+    if m is None or not _is_step(step := m.group(1).upper()):
         raise ValueError(f"Cannot parse pitch label: {label!r}")
-    step = m.group(1).upper()
     acc_str = m.group(2)
     octave_str = m.group(3)
 
@@ -2540,11 +2545,13 @@ class SpecificPitch(TwelveTETPitchMixin, BaseModel):
         if "step" in row and row.get("step") is not None:
             cents_raw = row.get("cents")
             cents = float(cents_raw) if cents_raw is not None else None
-            return cls(
-                step=str(row["step"]),
-                alter=int(row.get("alter", 0) or 0),
-                octave=int(row["octave"]),
-                cents=cents,
+            return cls.model_validate(
+                {
+                    "step": str(row["step"]),
+                    "alter": int(row.get("alter", 0) or 0),
+                    "octave": int(row["octave"]),
+                    "cents": cents,
+                }
             )
         return None
 

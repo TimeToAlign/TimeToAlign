@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import copy
 import pickle
+from fractions import Fraction
 from typing import Any
 
 import pyarrow as pa
 import pytest
 
 from timetoalign.alignment import AlignmentBundle, MatchClaimField
-from timetoalign.core.enums import TimeUnit
+from timetoalign.core.enums import Domain, NumberType, TimeUnit
 from timetoalign.core.fields import (
     MapField,
     NumericField,
@@ -19,7 +20,13 @@ from timetoalign.core.fields import (
     StructField,
 )
 from timetoalign.core.protocols import CoordinateLike, SemanticTypeLike
-from timetoalign.core.time import Coordinate
+from timetoalign.core.time import (
+    Coordinate,
+    CoordinateField,
+    Duration,
+    Interval,
+    IntervalField,
+)
 
 # ---------------------------------------------------------------------------
 # Protocol Conformance
@@ -377,3 +384,107 @@ class TestDataFieldGeneral:
         nf = NumericField(None, field)
         with pytest.raises(TypeError, match="Cannot convert schema-only"):
             nf.to_pyarrow()
+
+
+# ---------------------------------------------------------------------------
+# Fields declared without data
+# ---------------------------------------------------------------------------
+
+
+def _coordinate_cells(*values: int) -> pa.Array:
+    return pa.array(
+        [{"value": float(v), "numerator": v, "denominator": 1} for v in values],
+        type=CoordinateField.pa_schema,
+    )
+
+
+def _bound_coordinate_field() -> CoordinateField:
+    return CoordinateField.from_field(
+        _coordinate_cells(0, 1),
+        unit=TimeUnit.quarters,
+        number_type=NumberType.fraction,
+        name="onset",
+    )
+
+
+def _bound_interval_field() -> IntervalField:
+    half = Coordinate(Fraction(1, 2), TimeUnit.quarters, number_type="fraction")
+    whole = Coordinate(Fraction(1), TimeUnit.quarters, number_type="fraction")
+    return IntervalField.from_intervals([Interval(start=half, end=whole)], name="iv")
+
+
+class TestUnboundAxisFields:
+    """A field declared by ``source_fields=`` answers and prints as unbound."""
+
+    @pytest.mark.parametrize(
+        ("field", "text"),
+        [
+            (
+                CoordinateField(source_fields="onset"),
+                "CoordinateField(name='onset', unbound, source_fields='onset')",
+            ),
+            (
+                IntervalField(source_fields="iv"),
+                "IntervalField(name='iv', unbound, source_fields='iv')",
+            ),
+        ],
+        ids=["coordinate", "interval"],
+    )
+    def test_unbound_field_answers_none_and_prints_unbound(
+        self, field: Any, text: str
+    ) -> None:
+        assert field.unit is None
+        assert field.domain is None
+        assert hasattr(field, "unit") is True
+        assert hasattr(field, "domain") is True
+        assert repr(field) == text
+        assert str(field) == text
+        name = type(field).__name__
+        assert field.metadata_dict() == {"field_type": name}
+        source = field.name
+        assert (
+            "<tr><td><b>Axis</b></td>"
+            f"<td>unbound, source_fields=&#x27;{source}&#x27;</td></tr>"
+        ) in field._repr_html_()
+
+    def test_unbound_coordinate_field_refuses_its_rows(self) -> None:
+        field = CoordinateField(source_fields="onset")
+        message = (
+            "CoordinateField 'onset' is unbound, source_fields='onset'; "
+            "it has no axis until it is read from a table"
+        )
+        with pytest.raises(TypeError) as indexed:
+            field[0]
+        assert str(indexed.value) == message
+        with pytest.raises(TypeError) as subtracted:
+            field - Duration(1, TimeUnit.quarters)
+        assert str(subtracted.value) == message
+
+    def test_bound_coordinate_field_answers_as_before(self) -> None:
+        field = _bound_coordinate_field()
+        assert field.unit is TimeUnit.quarters
+        assert field.domain is Domain.logical
+        assert repr(field) == (
+            "CoordinateField(name='onset', unit=quarters, "
+            "number_type=fraction, len=2)"
+        )
+        assert field.metadata_dict() == {
+            "field_type": "CoordinateField",
+            "unit": "quarters",
+            "domain": "logical",
+            "number_type": "fraction",
+        }
+        assert "<b>Axis</b>" not in field._repr_html_()
+
+    def test_bound_interval_field_answers_as_before(self) -> None:
+        field = _bound_interval_field()
+        assert field.unit is TimeUnit.quarters
+        assert field.domain is Domain.logical
+        assert repr(field) == "IntervalField(name='iv', raw=StructField, len=1)"
+        assert field.metadata_dict() == {
+            "field_type": "IntervalField",
+            "unit": "quarters",
+            "domain": "logical",
+            "number_type": "fraction",
+        }
+        assert "<b>Axis</b>" not in field._repr_html_()

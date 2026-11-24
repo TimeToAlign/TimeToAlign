@@ -64,6 +64,7 @@ import json
 import math
 import operator
 import re
+from abc import abstractmethod
 from collections.abc import Iterable, Sequence
 from decimal import Decimal
 from fractions import Fraction
@@ -2702,7 +2703,7 @@ def _scalar_binop_value_and_id(
     """
     self_tl = getattr(self, "_timeline_id", None)
     if isinstance(other, TimeScalar):
-        if self.unit != other.unit:
+        if self._bound_unit() != other.unit:
             raise TypeError(
                 f"Cannot {op} {type(self).__name__} and "
                 f"{type(other).__name__} with different units: "
@@ -2717,7 +2718,7 @@ def _scalar_binop_value_and_id(
             )
         return other.value, self_tl or other_tl
     if isinstance(other, TimeScalarField):
-        if self.unit != other.unit:
+        if self._bound_unit() != other._bound_unit():
             raise TypeError(
                 f"Cannot {op} {type(self).__name__} and "
                 f"{type(other).__name__} with different units: "
@@ -2766,7 +2767,95 @@ def _field_binop(
     )
 
 
-class TimeScalarField(SemanticField[TimeScalarT]):
+_AxisFieldScalarT = TypeVar("_AxisFieldScalarT", bound=BaseModel)
+"""The scalar of an :class:`_AxisField`."""
+
+
+class _AxisField(SemanticField[_AxisFieldScalarT]):
+    """A field whose numbers lie on one axis: one unit, one number type.
+
+    The common parent of :class:`TimeScalarField` (one number per row) and
+    :class:`SharedAxisField` (several numbers per row).  The axis is a
+    property of the field, never of a row.  A field declared without data
+    (``source_fields=``) is *unbound*: it names the column it will read, but
+    the axis comes from the table it is read from, so until then
+    :attr:`unit` and :attr:`domain` are ``None``, the field prints as
+    unbound, and :meth:`metadata_dict` states no axis.
+    """
+
+    @property
+    @abstractmethod
+    def unit(self) -> TimeUnit | None:
+        """The unit of every number; ``None`` while the field is unbound."""
+
+    @property
+    @abstractmethod
+    def number_type(self) -> NumberType:
+        """The number type every number is written in."""
+
+    @property
+    def domain(self) -> Domain | None:
+        """The domain implied by the unit; ``None`` while the field is unbound."""
+        unit = self.unit
+        return None if unit is None else unit.domain
+
+    def metadata_dict(self) -> dict[str, str]:
+        """Return the discriminator plus the axis (unit, domain, number type).
+
+        An unbound field has no axis yet, and states only the discriminator.
+        """
+        unit = self.unit
+        if unit is None:
+            return super().metadata_dict()
+        return {
+            **super().metadata_dict(),
+            "unit": unit.value,
+            "domain": unit.domain.value,
+            "number_type": self.number_type.name,
+        }
+
+    def _unbound_description(self) -> str:
+        """The one wording of an unbound field, for its repr, card and errors."""
+        return f"unbound, source_fields={self._blueprint_source_fields!r}"
+
+    def _unbound_error(self) -> TypeError:
+        """The error raised where an unbound field is asked for its rows."""
+        return TypeError(
+            f"{type(self).__name__} {self.name!r} is {self._unbound_description()}; "
+            "it has no axis until it is read from a table"
+        )
+
+    def _bound_unit(self) -> TimeUnit:
+        """The unit, for a path that needs the field bound.
+
+        Raises:
+            TypeError: If the field is unbound.
+        """
+        unit = self.unit
+        if unit is None:
+            raise self._unbound_error()
+        return unit
+
+    def __repr__(self) -> str:
+        if self.unit is None:
+            return f"{type(self).__name__}(name={self.name!r}, {self._unbound_description()})"
+        return self._repr_bound()
+
+    def _repr_bound(self) -> str:
+        """The repr of a bound field."""
+        return super().__repr__()
+
+    def _repr_rows(self) -> list[tuple[str, str]]:
+        """Add the ``Axis`` row to an unbound field's card."""
+        rows = super()._repr_rows()
+        if self.unit is None:
+            import html as _html
+
+            rows.insert(1, ("Axis", _html.escape(self._unbound_description())))
+        return rows
+
+
+class TimeScalarField(_AxisField[TimeScalarT]):
     """Abstract parent for ``Coordinate`` / ``Duration`` (+ Id) semantic fields.
 
     Provides the shared ``from_field`` / ``from_table`` / ``__repr__``
@@ -2847,9 +2936,14 @@ class TimeScalarField(SemanticField[TimeScalarT]):
     # -- forwarded properties from the raw layer ----------------------------
 
     @property
-    def unit(self) -> Any:
-        """The time unit bound to this field (via the inner ``DenominateNumberField``)."""
-        return None if self._raw is None else self._raw.unit
+    def unit(self) -> TimeUnit | None:
+        """The time unit bound to this field (via the inner ``DenominateNumberField``).
+
+        ``None`` while the field is unbound: a blueprint holds a plain
+        ``StructField`` in its place until it is read from a table.
+        """
+        raw = self._raw
+        return raw.unit if isinstance(raw, DenominateNumberField) else None
 
     @property
     def _unit(self) -> Any:
@@ -2860,11 +2954,6 @@ class TimeScalarField(SemanticField[TimeScalarT]):
         we do not have to rewrite every reference at once.
         """
         return self.unit
-
-    @property
-    def domain(self) -> Any:
-        """The temporal domain implied by the unit."""
-        return None if self._raw is None else self._raw.domain
 
     @property
     def number_type(self) -> Any:
@@ -2878,20 +2967,18 @@ class TimeScalarField(SemanticField[TimeScalarT]):
         # Concrete subclasses override with their scalar's name.
         return type(self).__name__.removesuffix("Field")
 
-    def metadata_dict(self) -> dict[str, str]:
-        """Return the discriminator plus the (unit, domain, number_type) triple."""
-        return {
-            **super().metadata_dict(),
-            "unit": self.unit.value,
-            "domain": self.domain.value,
-            "number_type": self._number_type.name,
-        }
-
     # -- materialisation ----------------------------------------------------
 
     def _materialise_value(self, i: int) -> TimeScalarValue | None:
-        """Extract the i-th element's value in this field's representation."""
-        cell = self._raw.cell(i)
+        """Extract the i-th element's value in this field's representation.
+
+        Raises:
+            TypeError: If the field is unbound.
+        """
+        raw = self._raw
+        if not isinstance(raw, DenominateNumberField):
+            raise self._unbound_error()
+        cell = raw.cell(i)
         if cell is None:
             return None
         return struct_to_coordinate(cell, self._number_type)
@@ -3191,7 +3278,7 @@ class TimeScalarField(SemanticField[TimeScalarT]):
     def __ge__(self, other: object) -> pa.Array:
         return self.greater_equal(other)  # type: ignore[arg-type]
 
-    def __repr__(self) -> str:
+    def _repr_bound(self) -> str:
         length = len(self) if not self.is_empty else 0
         return (
             f"{type(self).__name__}(name={self.name!r}, unit={self._unit}, "
@@ -4522,7 +4609,7 @@ def _as_number_type(number_type: NumberType | str | None) -> NumberType | None:
     return NumberType(number_type) if isinstance(number_type, str) else number_type
 
 
-class SharedAxisField(SemanticField[AxisScalarT]):
+class SharedAxisField(_AxisField[AxisScalarT]):
     """A field whose every number lies on one axis, declared once.
 
     The scalar holds several numbers (an interval's two ends, a shape's
@@ -4556,6 +4643,7 @@ class SharedAxisField(SemanticField[AxisScalarT]):
         if raw is None and source_fields is None:
             raise TypeError(f"{name} requires either a raw field or source_fields=")
         super().__init__(raw, source_fields=source_fields)
+        self._unit: TimeUnit | None
         if raw is None:
             self._unit = None
             self._number_type = NumberType.float
@@ -4569,14 +4657,9 @@ class SharedAxisField(SemanticField[AxisScalarT]):
         self._number_type = resolved_number_type
 
     @property
-    def unit(self) -> TimeUnit:
-        """Return the unit every number is in."""
+    def unit(self) -> TimeUnit | None:
+        """Return the unit every number is in; ``None`` while unbound."""
         return self._unit
-
-    @property
-    def domain(self) -> Domain:
-        """Return the domain implied by the unit."""
-        return self._unit.domain
 
     @property
     def number_type(self) -> NumberType:
@@ -4592,15 +4675,6 @@ class SharedAxisField(SemanticField[AxisScalarT]):
             # AttributeError, ``hasattr`` and runtime protocol checks answer False.
             raise AttributeError(f"{type(self).__name__} has no paired scalar")
         return scalar.__name__
-
-    def metadata_dict(self) -> dict[str, str]:
-        """Return the semantic type and the shared axis."""
-        return {
-            **super().metadata_dict(),
-            "unit": self.unit.value,
-            "domain": self.domain.value,
-            "number_type": self.number_type.name,
-        }
 
     @classmethod
     def _shared_axis(
@@ -4744,7 +4818,9 @@ class SharedAxisField(SemanticField[AxisScalarT]):
                 f"{type(self).__name__} cannot materialise {scalar.__name__}: "
                 "it has no from_row on one axis"
             )
-        return scalar.from_row(cell, unit=self.unit, number_type=self.number_type)
+        return scalar.from_row(
+            cell, unit=self._bound_unit(), number_type=self.number_type
+        )
 
 
 # ---------------------------------------------------------------------------

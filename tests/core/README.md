@@ -2270,6 +2270,28 @@ it for `__setstate__`, and delegating that question asks for the missing
   not the original's. (`tests/alignment/test_claim_back_reference.py` copies
   a bundle holding 303 MatchClaims and checks that they follow the copy.)
 
+**A field declared without data is unbound.** A coordinate, duration,
+interval, shape, note or event field declared by `source_fields=` names the
+column it will read, but not yet the unit and number type of its axis: those
+come from the table it is read from. Such a field must still answer and
+print, without inventing an axis. One `CoordinateField` (time-scalar family)
+and one `IntervalField` (shared-axis family) prove the one rule:
+
+- `unit` and `domain` are `None`, and `hasattr` answers `True` for both.
+- `repr()` and `str()` are exactly `CoordinateField(name='onset', unbound,
+  source_fields='onset')` (and the `IntervalField` analogue), so the reader
+  sees that the field is unbound and which column it waits for.
+- The HTML card carries the row `Axis` = `unbound, source_fields='onset'`.
+- `metadata_dict()` is exactly `{"field_type": "CoordinateField"}`: the
+  discriminator, and no unit, domain or number type, which nothing has stated.
+- Indexing the unbound `CoordinateField` raises `TypeError` naming it
+  unbound, as does subtracting a `Duration` from it (both raised before, as
+  an `AttributeError` about the stand-in raw field).
+- The same classes, bound, answer as they always did: unit, domain,
+  `metadata_dict()` with the axis triple, and their established `repr()`
+  (`CoordinateField(name=…, unit=…, number_type=…, len=…)`,
+  `IntervalField(name=…, raw=StructField, len=…)`), with no `Axis` row.
+
 ### `test_field_repr_html.py` - Field affordance `_repr_html_`
 
 Validates the rich-HTML affordance card every `DataField` / `SemanticField`

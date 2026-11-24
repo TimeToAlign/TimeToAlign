@@ -1,0 +1,7 @@
+# QuadrilateralField { #timetoalign.QuadrilateralField }
+
+```python
+QuadrilateralField(raw=None, unit=None, number_type=None, *, source_fields=None)
+```
+
+Paired Field for :class:`Quadrilateral`: four corners of ``{x, y}``.

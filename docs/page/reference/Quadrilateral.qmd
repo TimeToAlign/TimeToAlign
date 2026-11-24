@@ -1,0 +1,127 @@
+# Quadrilateral { #timetoalign.Quadrilateral }
+
+```python
+Quadrilateral()
+```
+
+A four-cornered area of an image, its corners in the canonical order.
+
+``top_left``, ``top_right``, ``bottom_right``, ``bottom_left``: the
+cyclic order SVG ``polygon`` and IIIF ``SvgSelector`` draw a box in
+(:data:`CORNER_ORDER`). Its sides may be skewed (a measure of a scanned
+page). All eight numbers are on one axis.
+
+The corners run clockwise (with y down) around a convex outline,
+starting at the top-left one: an outline whose sides cross is refused,
+so a polygon drawn from the corners is the area they bound. **The
+top-left corner is the corner of least x + y; of two such corners, the
+one of least y** (the upper). On an axis-aligned box it is the corner
+the name says; on a skewed one it is the corner nearest the image's
+origin along the diagonal. A list that runs clockwise but starts at
+another corner is refused by the constructor, saying which corner it
+starts at; :meth:`from_svg_points` reads a list in either direction
+from any corner and turns it into this order.
+
+For example, the diamond ``0,5 5,10 10,5 5,0`` (left, bottom, right,
+top: counter-clockwise with y down) has two corners of least
+``x + y`` = 5, (0, 5) and (5, 0); the upper, (5, 0), is the top-left
+corner, so :meth:`from_svg_points` reverses the list and starts it
+there: ``5,0 10,5 5,10 0,5``.
+
+Storage struct (derived): ``{top_left, top_right, bottom_right,
+bottom_left}``, each ``{x, y}`` of number structs; the axis is the
+field's (:class:`QuadrilateralField`).
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> measure = Quadrilateral.from_points(
+...     [(1221, 1589), (2151, 1589), (1221, 2266), (2161, 2266)],
+...     order=("top_left", "top_right", "bottom_left", "bottom_right"),
+...     unit="pixels",
+... )
+>>> measure.as_svg_points()
+'1221,1589 2151,1589 2161,2266 1221,2266'
+>>> Quadrilateral.from_svg_points("0,5 5,10 10,5 5,0", unit="pixels").as_svg_points()
+'5,0 10,5 5,10 0,5'
+```
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [corners](#timetoalign.Quadrilateral.corners) | The four corners: top-left, top-right, bottom-right, bottom-left. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_points](#timetoalign.Quadrilateral.from_points) | The quadrilateral of four points, each given the role *order* names. |
+| [from_svg_points](#timetoalign.Quadrilateral.from_svg_points) | The quadrilateral of an SVG ``points`` list, in the canonical order. |
+
+### from_points { #timetoalign.Quadrilateral.from_points }
+
+```python
+Quadrilateral.from_points(
+    points,
+    *,
+    order=CORNER_ORDER,
+    unit=None,
+    number_type=None,
+)
+```
+
+The quadrilateral of four points, each given the role *order* names.
+
+The roles must hold: the corners, put in the canonical order, run
+clockwise around a convex outline from the top-left corner (the
+corner of least x + y; of two, the upper).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                      | Description                                                                                                                                                     | Default        |
+|-------------|---------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|
+| points      | [Sequence](`collections.abc.Sequence`)\[[Any](`typing.Any`)\]             | Four points, each a :class:`Point` or a pair ``(x, y)`` of raw numbers or ``Coordinate``s.                                                                      | _required_     |
+| order       | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\]                    | The corner each point is, in the order given: a permutation of :data:`CORNER_ORDER` (DMOS writes a measure ``top_left, top_right, bottom_left, bottom_right``). | `CORNER_ORDER` |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None     | The unit of raw numbers; a scalar carries its own.                                                                                                              | `None`         |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`) \| [str](`str`) \| None | How the numbers are written.                                                                                                                                    | `None`         |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                           |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *order* is not the four corner names, the number of points is not four, a value is one the axis cannot hold exactly (never rounded), the corners are not clockwise around a convex outline, or they are but the one named ``top_left`` is not the top-left corner. |
+
+### from_svg_points { #timetoalign.Quadrilateral.from_svg_points }
+
+```python
+Quadrilateral.from_svg_points(text, *, unit, number_type=None)
+```
+
+The quadrilateral of an SVG ``points`` list, in the canonical order.
+
+SVG ``points`` (and MEI's ``@points``, IIIF's ``SvgSelector``) fix
+neither the corner a polygon starts at nor its direction, so four
+points of a convex outline are read in either direction from any
+corner and brought into the canonical order: a counter-clockwise
+list (y down) is reversed and the list is started at its top-left
+corner, the corner of least x + y (of two, the upper). A closed ring,
+the four points followed by the first again, is the same outline and
+reads as its four points.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                         |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *text* does not hold four points (or a closed ring of them), or the points do not bound a convex quadrilateral (an outline turning both ways), naming the points where it turns. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+A measure listed counter-clockwise from its bottom-right corner:
+
+```python
+>>> Quadrilateral.from_svg_points(
+...     "2161,2266 2151,1589 1221,1589 1221,2266", unit="pixels"
+... ).as_svg_points()
+'1221,1589 2151,1589 2161,2266 1221,2266'
+```

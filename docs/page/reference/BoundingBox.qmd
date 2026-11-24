@@ -1,0 +1,103 @@
+# BoundingBox { #timetoalign.BoundingBox }
+
+```python
+BoundingBox()
+```
+
+An axis-aligned box of an image: ``x``, ``y``, ``width``, ``height``.
+
+The members of the Media Fragments and IIIF ``xywh`` region: the
+top-left corner and the extent, x right and y down. ``width`` and
+``height`` are never negative (zero is kept). All four are on one axis.
+
+Storage struct (derived): ``{x, y, width, height}``, each the number
+struct; the axis is the field's (:class:`BoundingBoxField`).
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> box = BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels")
+>>> box.x_max
+Coordinate(524, pixels)
+```
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [bounding_box](#timetoalign.BoundingBox.bounding_box) | The box itself. |
+| [corners](#timetoalign.BoundingBox.corners) | The four corners: top-left, top-right, bottom-right, bottom-left. |
+| [x_max](#timetoalign.BoundingBox.x_max) | ``x + width``. |
+| [x_min](#timetoalign.BoundingBox.x_min) | ``x``. |
+| [y_max](#timetoalign.BoundingBox.y_max) | ``y + height``. |
+| [y_min](#timetoalign.BoundingBox.y_min) | ``y``. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_corners](#timetoalign.BoundingBox.from_corners) | The box from its upper-left and lower-right corners. |
+| [from_media_fragment](#timetoalign.BoundingBox.from_media_fragment) | The box a Media Fragments ``xywh`` selector names. |
+| [from_xywh](#timetoalign.BoundingBox.from_xywh) | The box at ``x``, ``y`` of extent ``width`` by ``height``. |
+
+### from_corners { #timetoalign.BoundingBox.from_corners }
+
+```python
+BoundingBox.from_corners(ulx, uly, lrx, lry, *, unit=None, number_type=None)
+```
+
+The box from its upper-left and lower-right corners.
+
+The corners are points (as MEI's ``ulx`` ... ``lry`` and ATON's
+origin plus extent state them): ``width`` is ``lrx - ulx``.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                              |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If a raw number comes without a unit.                                                                                                                    |
+|        | [ValueError](`ValueError`) | If the members lie on two axes, a lower-right coordinate lies before its upper-left one, or a value is one the axis cannot hold exactly (never rounded). |
+
+### from_media_fragment { #timetoalign.BoundingBox.from_media_fragment }
+
+```python
+BoundingBox.from_media_fragment(text, *, unit, number_type=None)
+```
+
+The box a Media Fragments ``xywh`` selector names.
+
+``xywh=x,y,w,h`` and ``xywh=pixel:x,y,w,h`` are read (a leading
+``#`` is allowed); ``xywh=percent:`` is refused, since it needs the
+image's size.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                            |
+|--------|----------------------------|--------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *text* is no ``xywh`` selector or is a percent one. |
+
+### from_xywh { #timetoalign.BoundingBox.from_xywh }
+
+```python
+BoundingBox.from_xywh(x, y, width, height, *, unit=None, number_type=None)
+```
+
+The box at ``x``, ``y`` of extent ``width`` by ``height``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                      | Description                                                                                                 | Default    |
+|-------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|------------|
+| x           | [Any](`typing.Any`)                                                       | The left edge: a raw number, a ``Coordinate`` or an ``IdCoordinate``.                                       | _required_ |
+| y           | [Any](`typing.Any`)                                                       | The top edge, likewise.                                                                                     | _required_ |
+| width       | [Any](`typing.Any`)                                                       | The extent along x: a raw number or a ``Duration``.                                                         | _required_ |
+| height      | [Any](`typing.Any`)                                                       | The extent along y, likewise.                                                                               | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None     | The unit of the raw numbers; a scalar carries its own.                                                      | `None`     |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`) \| [str](`str`) \| None | How the numbers are written; a scalar keeps its own and a raw number takes the unit's default when omitted. | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                   |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If a raw number comes without a unit.                                                                                                         |
+|        | [ValueError](`ValueError`) | If the members lie on two axes, an extent is negative, or a value is one the axis cannot hold exactly (``1.5`` on ``pixels``: never rounded). |

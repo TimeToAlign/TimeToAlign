@@ -1,0 +1,43 @@
+# BoxField { #timetoalign.BoxField }
+
+```python
+BoxField(raw=None, unit=None, number_type=None, *, source_fields=None)
+```
+
+Paired Field for :class:`Box`: every number on one declared axis.
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_boxes](#timetoalign.BoxField.from_boxes) | Build the field of *boxes*, in row order. |
+
+### from_boxes { #timetoalign.BoxField.from_boxes }
+
+```python
+BoxField.from_boxes(boxes, *, unit=None, number_type=None, name='box')
+```
+
+Build the field of *boxes*, in row order.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                   | Description                                          | Default    |
+|-------------|----------------------------------------------------------------------------------------|------------------------------------------------------|------------|
+| boxes       | [Sequence](`collections.abc.Sequence`)\[[Box](`timetoalign.core.events.Box`) \| None\] | The Boxes (``None`` for a null row).                 | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                  | Their unit; required for an empty or all-null input. | `None`     |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`) \| [str](`str`) \| None              | Their number type; required likewise.                | `None`     |
+| name        | [str](`str`)                                                                           | The field's name.                                    | `'box'`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                           | Description                                                 |
+|--------|------------------------------------------------|-------------------------------------------------------------|
+|        | [BoxField](`timetoalign.core.events.BoxField`) | The field, its struct ``{id, start, duration, bounding_box, |
+|        | [BoxField](`timetoalign.core.events.BoxField`) | quadrilateral}``.                                           |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                         |
+|--------|----------------------------|---------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the Boxes lie on two axes, or an explicit axis contradicts them. |

@@ -7,18 +7,55 @@ loader.AudioLoader()
 Load audio file metadata for creating physical timelines.
 
 AudioLoader extracts metadata from audio files without loading the actual
-sample data. This is efficient for creating seconds-based physical
-timelines that represent audio files in the TimeToAlign! framework.
+sample data. This is efficient for creating physical timelines that
+represent audio files in the TimeToAlign! framework.
 
 The loader automatically:
-- Detects the best available backend (soundfile > mutagen > wave)
+- Tries its backends in order, exact counts first: soundfile, then for WAV
+  files the built-in wave module and a RIFF header parser, then mutagen
 - Extracts sample count, sample rate, channels, and format info
-- Provides a timeline constructor over a continuous seconds axis
+- Creates a samples timeline with a SamplesToSeconds C-map
+  (``create_timeline``) or a seconds timeline with a SecondsToSamples
+  C-map (``create_continuous_timeline``)
 
 Supported formats depend on installed backends:
-- soundfile: WAV, FLAC, OGG, AIFF, and many more (via libsndfile)
-- mutagen: MP3, M4A, FLAC, OGG (metadata only, may not have exact sample count)
-- wave (builtin): WAV only
+- soundfile: WAV, FLAC, OGG, AIFF, MP3 (libsndfile >= 1.1), and many more
+- wave (builtin) and the RIFF header parser: WAV only
+- mutagen: MP3, M4A, FLAC, OGG, and more
+
+## Known issue {.doc-section .doc-section-known-issue}
+
+mutagen states only a duration, so its sample count is the estimate
+``round(duration * sample_rate)``. For an MP3 the duration counts whole
+MPEG frames, encoder delay and padding included, or, without a VBR
+header, is guessed from the file size and bitrate, so the estimate can
+miss the decoded count in either direction. It is used only when
+soundfile is not installed or cannot read the file;
+``audio_info.backend`` names the backend that answered, and the
+timeline's metadata carries it.
+
+An MP4 (M4A) file states its count: the loader reads the first sound
+track's boxes. The media duration (``mdhd``) counts every coded
+sample, the encoder's priming and padding included; a single edit of
+the media (``elst``) states the audio as played, and so does an
+``iTunSMPB`` tag where there is no edit list.
+``audio_info.extra["sample_count_from"]`` names the statement used.
+Where the file states neither, the media count stands: nothing is
+subtracted by rule, so a track whose priming is stated nowhere is
+counted with it. An edit list of several edits (an empty edit, more
+than one segment) is not interpreted and keeps the media count.
+
+The RIFF header parser derives the block size from the bit depth and
+channel count rather than reading the header's block align, so without
+a ``fact`` chunk it miscounts samples not packed in whole bytes.
+
+Where mutagen's stream info has no ``channels`` attribute the loader
+assumes 2; a stated 0, mutagen's default for several formats, is
+refused.
+
+A WAV truncated below the size its ``data`` chunk states gets a
+backend-dependent count: soundfile counts the frames present, the other
+backends answer the header's count.
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -26,7 +63,7 @@ Supported formats depend on installed backends:
 >>> loader = AudioLoader()
 >>> loader.load("recording.wav")
 >>> loader.n_samples
-7938048
+7938000
 >>> loader.sample_rate
 44100
 >>> loader.duration_seconds
@@ -37,9 +74,9 @@ Supported formats depend on installed backends:
 >>> # Create a timeline
 >>> timeline = loader.create_timeline(uid="my_audio")
 >>> timeline.unit
-<TimeUnit.seconds: 'seconds'>
+<TimeUnit.samples: 'samples'>
 >>> timeline.length
-Coordinate(180.0, seconds)
+Coordinate(7938000, samples)
 ```
 
 ## Attributes {.doc-section .doc-section-attributes}
@@ -52,9 +89,57 @@ Coordinate(180.0, seconds)
 
 | Name | Description |
 | --- | --- |
+| [create_continuous_timeline](#timetoalign.loader.AudioLoader.create_continuous_timeline) | Create a ContinuousPhysicalTimeline in seconds from the loaded audio. |
 | [create_samples_to_seconds_map](#timetoalign.loader.AudioLoader.create_samples_to_seconds_map) | Create a SamplesToSeconds conversion map for this audio. |
-| [create_timeline](#timetoalign.loader.AudioLoader.create_timeline) | Create a continuous seconds timeline from the loaded audio. |
+| [create_timeline](#timetoalign.loader.AudioLoader.create_timeline) | Create a DiscretePhysicalTimeline in samples from the loaded audio. |
 | [from_file](#timetoalign.loader.AudioLoader.from_file) | Load an audio file and return the loader (convenience constructor). |
+
+### create_continuous_timeline { #timetoalign.loader.AudioLoader.create_continuous_timeline }
+
+```python
+loader.AudioLoader.create_continuous_timeline(
+    uid=None,
+    name=None,
+    attach_cmap=True,
+)
+```
+
+Create a ContinuousPhysicalTimeline in seconds from the loaded audio.
+
+The timeline is created with:
+- unit=TimeUnit.seconds
+- length=duration_seconds
+- float coordinates
+- a SecondsToSamples C-map, unless ``attach_cmap`` is False
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                 | Description                                                                  | Default   |
+|-------------|----------------------|------------------------------------------------------------------------------|-----------|
+| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, uses filename.                  | `None`    |
+| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                 | `None`    |
+| attach_cmap | [bool](`bool`)       | If True, attach a SecondsToSamples conversion map at the file's sample rate. | `True`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                           | Description                                               |
+|--------|--------------------------------|-----------------------------------------------------------|
+|        | \'ContinuousPhysicalTimeline\' | A ContinuousPhysicalTimeline representing the audio file. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                           | Description                       |
+|--------|--------------------------------|-----------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no audio file has been loaded. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> loader = AudioLoader().load("song.wav")
+>>> timeline = loader.create_continuous_timeline()
+>>> timeline.unit
+<TimeUnit.seconds: 'seconds'>
+```
 
 ### create_samples_to_seconds_map { #timetoalign.loader.AudioLoader.create_samples_to_seconds_map }
 
@@ -82,26 +167,27 @@ Create a SamplesToSeconds conversion map for this audio.
 loader.AudioLoader.create_timeline(uid=None, name=None, attach_cmap=True)
 ```
 
-Create a continuous seconds timeline from the loaded audio.
+Create a DiscretePhysicalTimeline in samples from the loaded audio.
 
 The timeline is created with:
-- unit=TimeUnit.seconds
-- length=duration_seconds
-- float coordinates
+- unit=TimeUnit.samples
+- length=n_samples
+- integer coordinates
+- a SamplesToSeconds C-map, unless ``attach_cmap`` is False
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                 | Description                                                                               | Default   |
-|-------------|----------------------|-------------------------------------------------------------------------------------------|-----------|
-| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, uses filename.                               | `None`    |
-| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                              | `None`    |
-| attach_cmap | [bool](`bool`)       | Accepted for loader-call compatibility; seconds need no sample-to-seconds conversion map. | `True`    |
+| Name        | Type                 | Description                                                                  | Default   |
+|-------------|----------------------|------------------------------------------------------------------------------|-----------|
+| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, uses filename.                  | `None`    |
+| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                 | `None`    |
+| attach_cmap | [bool](`bool`)       | If True, attach a SamplesToSeconds conversion map at the file's sample rate. | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                           | Description                                                 |
-|--------|--------------------------------|-------------------------------------------------------------|
-|        | \'ContinuousPhysicalTimeline\' | A continuous physical timeline representing the audio file. |
+| Name   | Type                         | Description                                             |
+|--------|------------------------------|---------------------------------------------------------|
+|        | \'DiscretePhysicalTimeline\' | A DiscretePhysicalTimeline representing the audio file. |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -115,7 +201,7 @@ The timeline is created with:
 >>> loader = AudioLoader().load("song.wav")
 >>> timeline = loader.create_timeline()
 >>> timeline.unit
-<TimeUnit.seconds: 'seconds'>
+<TimeUnit.samples: 'samples'>
 ```
 
 ### from_file { #timetoalign.loader.AudioLoader.from_file }

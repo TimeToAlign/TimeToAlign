@@ -1,0 +1,201 @@
+# Shape { #timetoalign.Shape }
+
+```python
+Shape()
+```
+
+An area of an image, on one axis: a :class:`BoundingBox` or a
+:class:`Quadrilateral`.
+
+The shape is in image space (origin the top-left corner, x right, y
+down), every member in one unit and one number type. Everything a shape
+answers is derived here from :attr:`corners`, its four corners in the
+canonical order ``top_left, top_right, bottom_right, bottom_left`` (the
+order SVG and IIIF selectors draw a polygon in).
+
+Every number enters a shape as given, finite and never rounded: NaN and
+the infinities are refused on every axis; on an ``int`` axis a float is
+taken only when it is a whole number (``100.0`` is 100) and a ratio only
+when its denominator is 1, on a ``fraction`` axis a float only when it
+is a whole number, on a ``float`` axis a ratio only when it is a whole
+number; anything else is refused, naming the value and the axis. A
+constructor's refusal is a ``ValueError`` holding its message alone.
+
+A shape is written as a format writes it (:meth:`as_media_fragment`,
+:meth:`as_svg_points`, :meth:`as_mei_zone`) and read back from it; a
+value a format cannot write is refused, never rounded.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [bounding_box](#timetoalign.Shape.bounding_box) | The smallest box holding the shape. |
+| [corners](#timetoalign.Shape.corners) | The four corners: top-left, top-right, bottom-right, bottom-left. |
+| [number_type](#timetoalign.Shape.number_type) | The number type every member is written in. |
+| [unit](#timetoalign.Shape.unit) | The unit of every member. |
+| [x_max](#timetoalign.Shape.x_max) | The largest x of the corners. |
+| [x_min](#timetoalign.Shape.x_min) | The smallest x of the corners. |
+| [y_max](#timetoalign.Shape.y_max) | The largest y of the corners. |
+| [y_min](#timetoalign.Shape.y_min) | The smallest y of the corners. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [as_media_fragment](#timetoalign.Shape.as_media_fragment) | The shape's bounding box as a Media Fragments ``xywh`` selector. |
+| [as_mei_zone](#timetoalign.Shape.as_mei_zone) | The attributes of an MEI ``zone`` holding the shape. |
+| [as_svg_points](#timetoalign.Shape.as_svg_points) | The four corners in the syntax of SVG's ``points``. |
+| [from_dict](#timetoalign.Shape.from_dict) | The shape of a dict form (:meth:`to_dict`), on the axis given. |
+| [from_mei_zone](#timetoalign.Shape.from_mei_zone) | The shape an MEI ``zone`` states. |
+| [to_dict](#timetoalign.Shape.to_dict) | The shape as a dict of bare numbers, in its axis's number type. |
+
+### as_media_fragment { #timetoalign.Shape.as_media_fragment }
+
+```python
+Shape.as_media_fragment()
+```
+
+The shape's bounding box as a Media Fragments ``xywh`` selector.
+
+IIIF's image regions and selectors use the same form.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                            |
+|--------|----------------------------|--------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a member of the bounding box is not a whole number. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").as_media_fragment()
+'xywh=385,46,139,20'
+```
+
+### as_mei_zone { #timetoalign.Shape.as_mei_zone }
+
+```python
+Shape.as_mei_zone()
+```
+
+The attributes of an MEI ``zone`` holding the shape.
+
+``ulx``, ``uly``, ``lrx``, ``lry`` are the bounding box's corners
+(points, not pixel indices: ``lrx`` is ``x + width``); a
+:class:`Quadrilateral` adds its corners as ``points``.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a corner of the bounding box is not a whole number, or a point has no finite decimal expansion. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").as_mei_zone()
+{'ulx': '385', 'uly': '46', 'lrx': '524', 'lry': '66'}
+```
+
+### as_svg_points { #timetoalign.Shape.as_svg_points }
+
+```python
+Shape.as_svg_points()
+```
+
+The four corners in the syntax of SVG's ``points``.
+
+``x,y`` pairs in the canonical order, separated by spaces.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                             |
+|--------|----------------------------|---------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a value is a ratio with no finite decimal expansion. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").as_svg_points()
+'385,46 524,46 524,66 385,66'
+```
+
+### from_dict { #timetoalign.Shape.from_dict }
+
+```python
+Shape.from_dict(data, *, unit, number_type)
+```
+
+The shape of a dict form (:meth:`to_dict`), on the axis given.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                      | Description                                                                                                                  | Default    |
+|-------------|---------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|------------|
+| data        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                       | The dict; its keys decide the class.                                                                                         | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`)             | The unit of every number.                                                                                                    | _required_ |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`) \| [str](`str`) \| None | The number type the numbers are read in (:func:`~timetoalign.core.time.number_from_json`); the unit's default when ``None``. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                     | Description                                      |
+|--------|------------------------------------------|--------------------------------------------------|
+| A      | [Shape](`timetoalign.core.events.Shape`) | class:`BoundingBox` or a :class:`Quadrilateral`. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                  |
+|--------|----------------------------|----------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the keys are neither class's, or name a class that is not *cls* or one of its subclasses. |
+
+### from_mei_zone { #timetoalign.Shape.from_mei_zone }
+
+```python
+Shape.from_mei_zone(attributes, *, unit, number_type=None)
+```
+
+The shape an MEI ``zone`` states.
+
+With ``points``, a :class:`Quadrilateral` of those points (read by
+:meth:`Quadrilateral.from_svg_points`: four points of a convex
+outline in either direction from any corner, brought into the
+canonical order), whose bounding box must be the one ``ulx`` ...
+``lry`` state where they are given; without, the
+:class:`BoundingBox` from ``ulx``, ``uly``, ``lrx``, ``lry``. Other
+attributes are not read.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                      | Description                                          | Default    |
+|-------------|---------------------------------------------------------------------------|------------------------------------------------------|------------|
+| attributes  | [dict](`dict`)\[[str](`str`), [str](`str`)\]                              | The zone's attributes, as written.                   | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`)             | The unit of the coordinates.                         | _required_ |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`) \| [str](`str`) \| None | Their number type; the unit's default when ``None``. | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                      |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the zone states no complete box and no points, its points are not four corners of a convex outline, or its points and its box name two areas. |
+
+### to_dict { #timetoalign.Shape.to_dict }
+
+```python
+Shape.to_dict()
+```
+
+The shape as a dict of bare numbers, in its axis's number type.
+
+Each number is written by
+:func:`~timetoalign.core.time.number_to_json`: an ``int`` as an
+integer, a ``float`` as a number, a ``Fraction`` as a pair. The
+keys decide the class: ``x, y, width, height`` for a
+:class:`BoundingBox`, the four corners, each ``{x, y}``, for a
+:class:`Quadrilateral`.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels").to_dict()
+{'x': 385, 'y': 46, 'width': 139, 'height': 20}
+```

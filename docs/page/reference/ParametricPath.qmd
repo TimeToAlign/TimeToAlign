@@ -1,0 +1,67 @@
+# ParametricPath { #timetoalign.loader.graphical.ParametricPath }
+
+```python
+loader.graphical.ParametricPath(
+    x_func,
+    y_func,
+    t_start=0.0,
+    t_end=1.0,
+    samples=1000,
+    tolerance=10.0,
+)
+```
+
+Time axis defined by parametric functions x(t), y(t).
+
+For complex paths like spirals, curves, Bezier paths, etc.
+The parameter t is NOT directly the timeline coordinate - it's
+mapped via arc length parameterization.
+
+This class pre-computes an arc length table for efficient
+coordinate conversion.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name      | Type   | Description                                |
+|-----------|--------|--------------------------------------------|
+| x_func    |        | Function t -> x coordinate.                |
+| y_func    |        | Function t -> y coordinate.                |
+| t_start   |        | Starting parameter value.                  |
+| t_end     |        | Ending parameter value.                    |
+| tolerance |        | Distance tolerance for from_2d conversion. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> # Archimedean spiral: r = a + b*t
+>>> import math
+>>> a, b = 50, 10
+>>> x_func = lambda t: (a + b*t) * math.cos(t)
+>>> y_func = lambda t: (a + b*t) * math.sin(t)
+>>> path = ParametricPath(x_func, y_func, t_start=0, t_end=4*math.pi)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_2d](#timetoalign.loader.graphical.ParametricPath.from_2d) | Map (x, y) to timeline coordinate. |
+| [to_2d](#timetoalign.loader.graphical.ParametricPath.to_2d) | Map timeline coordinate (arc length) to (x, y). |
+
+### from_2d { #timetoalign.loader.graphical.ParametricPath.from_2d }
+
+```python
+loader.graphical.ParametricPath.from_2d(x, y)
+```
+
+Map (x, y) to timeline coordinate.
+
+Finds the closest point on the path and returns its arc length.
+
+### to_2d { #timetoalign.loader.graphical.ParametricPath.to_2d }
+
+```python
+loader.graphical.ParametricPath.to_2d(coord)
+```
+
+Map timeline coordinate (arc length) to (x, y).

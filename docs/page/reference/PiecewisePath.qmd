@@ -1,0 +1,143 @@
+# PiecewisePath { #timetoalign.loader.graphical.PiecewisePath }
+
+```python
+loader.graphical.PiecewisePath(pieces)
+```
+
+A time axis made of consecutive pieces, read one after the other.
+
+The path of a score page is piecewise: each accolade is one horizontal
+line, and the page's time runs along the first, then along the second,
+and so on. Each piece starts on the path where the pieces before it end
+(:attr:`offsets`); the path's length is the sum of its pieces' lengths.
+All numbers are the pieces' own: pieces of integers give an integer
+path.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                                                                       | Description                                                                                                  |
+|--------|--------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| pieces | [tuple](`tuple`)\[[TimeAxisPath](`timetoalign.loader.graphical.paths.TimeAxisPath`), ...\] | The pieces in reading order, at least one, none of them a ``PiecewisePath`` itself (pieces are listed flat). |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                              |
+|--------|----------------------------|----------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If there is no piece, or a piece is a ``PiecewisePath``. |
+
+## Examples {.doc-section .doc-section-examples}
+
+Two accolades of a page, 490 and 400 pixels long:
+
+```python
+>>> path = PiecewisePath(
+...     (
+...         HorizontalLinePath(x0=10, x1=500, y=100, tolerance=40),
+...         HorizontalLinePath(x0=20, x1=420, y=300, tolerance=40),
+...     )
+... )
+>>> path.length
+890
+>>> path.offsets
+(0, 490)
+>>> path.to_2d(489)
+(499, 100)
+>>> path.to_2d(490)
+(20, 300)
+>>> path.from_2d(120, 320)
+590
+>>> path.from_2d(120, 200) is None
+True
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [distance_to_path](#timetoalign.loader.graphical.PiecewisePath.distance_to_path) | The least distance from the point to a piece. |
+| [from_2d](#timetoalign.loader.graphical.PiecewisePath.from_2d) | Map image (x, y) to the path's coordinate. |
+| [piece_of](#timetoalign.loader.graphical.PiecewisePath.piece_of) | The index of the horizontal piece an area of the image lies on. |
+| [to_2d](#timetoalign.loader.graphical.PiecewisePath.to_2d) | Map a coordinate of the path to the image (x, y) of its piece. |
+
+### distance_to_path { #timetoalign.loader.graphical.PiecewisePath.distance_to_path }
+
+```python
+loader.graphical.PiecewisePath.distance_to_path(x, y)
+```
+
+The least distance from the point to a piece.
+
+### from_2d { #timetoalign.loader.graphical.PiecewisePath.from_2d }
+
+```python
+loader.graphical.PiecewisePath.from_2d(x, y)
+```
+
+Map image (x, y) to the path's coordinate.
+
+Of the pieces that answer for the point, the one whose line is
+nearest decides (the earlier of two equally near); its answer is
+counted from the start of the path.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                          | Description                                                 |
+|--------|---------------------------------------------------------------|-------------------------------------------------------------|
+|        | [Number](`timetoalign.loader.graphical.paths.Number`) \| None | The coordinate on the path, or None where no piece answers. |
+
+### piece_of { #timetoalign.loader.graphical.PiecewisePath.piece_of }
+
+```python
+loader.graphical.PiecewisePath.piece_of(shape)
+```
+
+The index of the horizontal piece an area of the image lies on.
+
+A shape lies on a :class:`HorizontalLinePath` piece when the piece's
+``[x0, x1]`` holds the shape's x extent and the piece's strip
+(``y ± tolerance``) holds the shape's vertical centre, the exact
+middle of its y extent. Where several pieces hold it (strips may
+overlap), the one whose ``y`` is nearest the centre is taken.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                              | Description                   | Default    |
+|--------|-----------------------------------|-------------------------------|------------|
+| shape  | [Shape](`timetoalign.core.Shape`) | An area in the image's space. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type         | Description                          |
+|--------|--------------|--------------------------------------|
+|        | [int](`int`) | The piece's index in :attr:`pieces`. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                          |
+|--------|----------------------------|--------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the shape lies on no piece, or two pieces holding it are equally near its centre. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import BoundingBox
+>>> path = PiecewisePath(
+...     (
+...         HorizontalLinePath(x0=10, x1=500, y=100, tolerance=40),
+...         HorizontalLinePath(x0=20, x1=420, y=300, tolerance=40),
+...     )
+... )
+>>> path.piece_of(BoundingBox.from_xywh(30, 280, 100, 50, unit="pixels"))
+1
+```
+
+### to_2d { #timetoalign.loader.graphical.PiecewisePath.to_2d }
+
+```python
+loader.graphical.PiecewisePath.to_2d(coord)
+```
+
+Map a coordinate of the path to the image (x, y) of its piece.
+
+A piece holds the coordinates from its offset up to, not including,
+the next piece's offset; the last piece also holds the path's end.

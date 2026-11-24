@@ -8,9 +8,16 @@ Load image metadata from IIIF Presentation API manifests.
 
 IIIF manifests contain canvas dimensions that represent image sizes.
 This loader extracts width/height for use with graphical timelines
-without needing to download or load the actual image files.
+without needing to download or load the actual image files. A timeline
+runs along the time path the caller gives for a canvas:
+:meth:`create_timelines` answers one timeline per canvas,
+:meth:`create_timeline` the whole volume, its pages laid end to end.
 
-Supports both IIIF Presentation API 2.x and 3.x formats.
+Supports both IIIF Presentation API 2.x and 3.x formats. Time-based
+Presentation 3 canvases (``duration`` without ``width``/``height``) are
+read and expose their duration; they have no pixels, so no time path
+runs through them and the single-image accessors refuse a manifest whose
+first canvas is one.
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -30,6 +37,17 @@ Individual canvases carry their own label and dimensions:
 display image: 4096x299400
 ```
 
+A piano roll is read from top to bottom, so its time path is a
+vertical line down the middle of the image:
+
+```python
+>>> from timetoalign.loader.graphical.paths import VerticalLinePath
+>>> path = VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048)
+>>> (roll,) = loader.create_timelines(path)
+>>> roll.length.value
+299400
+```
+
 ## Attributes {.doc-section .doc-section-attributes}
 
 | Name          | Type                                                                     | Description                                  |
@@ -40,7 +58,8 @@ display image: 4096x299400
 
 | Name | Description |
 | --- | --- |
-| [create_timeline](#timetoalign.loader.graphical.IIIFManifestLoader.create_timeline) | Create a graphical timeline from the loaded IIIF manifest. |
+| [create_timeline](#timetoalign.loader.graphical.IIIFManifestLoader.create_timeline) | Create the volume: the selected canvases laid end to end, in pixels. |
+| [create_timelines](#timetoalign.loader.graphical.IIIFManifestLoader.create_timelines) | Create one timeline in pixels per selected canvas, along its time path. |
 | [get_canvas](#timetoalign.loader.graphical.IIIFManifestLoader.get_canvas) | Get canvas information by index. |
 | [get_metadata](#timetoalign.loader.graphical.IIIFManifestLoader.get_metadata) | Get a metadata value by key. |
 
@@ -48,45 +67,152 @@ display image: 4096x299400
 
 ```python
 loader.graphical.IIIFManifestLoader.create_timeline(
+    paths,
+    *,
+    canvases=None,
     uid=None,
     name=None,
-    axis='height',
+    page_ids=None,
+    accolade_ids=None,
 )
 ```
 
-Create a graphical timeline from the loaded IIIF manifest.
+Create the volume: the selected canvases laid end to end, in pixels.
 
-The timeline length is determined by the image dimensions along the
-specified axis (height by default, for vertical piano rolls).
+Each selected canvas becomes one page along its time path, in
+manifest order, and the volume is the segment line of the pages, as
+long as all of them together. A page whose path is a
+:class:`~timetoalign.loader.graphical.paths.PiecewisePath` is itself
+a segment line of accolades, one per piece; any other path gives one
+plain timeline of the path's length. See :meth:`create_timelines`
+for what a page and an accolade state.
+
+The volume states the manifest it was read from as the property
+``dcterms:source`` (``{"id": <manifest id>}``; a manifest without an
+id states nothing). This property is provisional: it may change.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                 | Description                                                                                                                                | Default    |
-|--------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| uid    | [str](`str`) \| None | Unique identifier for the timeline. Auto-generated if None.                                                                                | `None`     |
-| name   | [str](`str`) \| None | Human-readable name. Uses manifest/canvas label if None.                                                                                   | `None`     |
-| axis   | [str](`str`)         | Which dimension to use as the timeline axis: - "height" (default): Timeline length = image height - "width": Timeline length = image width | `'height'` |
+| Name         | Type                                                                                                                                                                                                         | Description                                                                                                                                                                                        | Default    |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| paths        | [Mapping](`collections.abc.Mapping`)\[[int](`int`) \| [str](`str`), [TimeAxisPath](`timetoalign.loader.graphical.paths.TimeAxisPath`)\] \| [TimeAxisPath](`timetoalign.loader.graphical.paths.TimeAxisPath`) | The time path of each selected canvas: a mapping from a canvas, named by its position from 0 (as :meth:`get_canvas`) or by its id, to its path; or one path, where exactly one canvas is selected. | _required_ |
+| canvases     | [Sequence](`collections.abc.Sequence`)\[[int](`int`) \| [str](`str`)\] \| None                                                                                                                               | The canvases to read, by position or id; they are read in manifest order whatever order they are named in. None selects every canvas that states a width and a height.                             | `None`     |
+| uid          | [str](`str`) \| None                                                                                                                                                                                         | The volume's id. Minted (``dgt_N``) if None.                                                                                                                                                       | `None`     |
+| name         | [str](`str`) \| None                                                                                                                                                                                         | The volume's name. The manifest's label if None.                                                                                                                                                   | `None`     |
+| page_ids     | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| [str](`str`) \| None                                                                                                                               | The pages' ids: a sequence, one per page, or a template filled with ``page`` and ``n`` (``"p{page}"``). Minted if None.                                                                            | `None`     |
+| accolade_ids | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| [str](`str`) \| None                                                                                                                               | The accolades' ids: a sequence over the whole call, or a template filled with ``page``, ``accolade`` and ``n`` (``"p{page}_s{accolade}"``). Minted if None.                                        | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                           | Description                                         |
-|--------|--------------------------------------------------------------------------------|-----------------------------------------------------|
-|        | [DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`) | A DiscreteGraphicalTimeline representing the image. |
+| Name   | Type                                               | Description                                                    |
+|--------|----------------------------------------------------|----------------------------------------------------------------|
+|        | [SegmentLine](`timetoalign.timelines.SegmentLine`) | The locked volume: ``SegmentLine[SegmentLine[DiscreteGraphical |
+|        | [SegmentLine](`timetoalign.timelines.SegmentLine`) | Timeline]]`` where the pages are built of accolades, else      |
+|        | [SegmentLine](`timetoalign.timelines.SegmentLine`) | ``SegmentLine[DiscreteGraphicalTimeline]``.                    |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                         |
-|--------|--------------------------------|-------------------------------------|
-|        | [RuntimeError](`RuntimeError`) | If no manifest has been loaded.     |
-|        | [ValueError](`ValueError`)     | If axis is not "height" or "width". |
+| Name   | Type                           | Description                                                                                                                                                                                                                                       |
+|--------|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no manifest has been loaded.                                                                                                                                                                                                                   |
+|        | [TypeError](`TypeError`)       | If *canvases* is a bare string, or *paths* is neither a mapping nor a time path.                                                                                                                                                                  |
+|        | [KeyError](`KeyError`)         | If *canvases* names a canvas the manifest does not hold, or *paths* names a canvas that is unknown, time-based or not selected.                                                                                                                   |
+|        | [ValueError](`ValueError`)     | If a selected canvas has no path, one path is given for several canvases, a line leaves its canvas, no canvas is selected, some pages are built of accolades and others are not, or an ids argument does not fit the call. Nothing is built then. |
 
 #### Examples {.doc-section .doc-section-examples}
 
+Two pages of a printed score, each with two systems::
+
+    from timetoalign.loader.graphical.paths import (
+        HorizontalLinePath, PiecewisePath,
+    )
+
+    def systems(*lines):
+        return PiecewisePath(tuple(
+            HorizontalLinePath(x0=x0, x1=x1, y=y, tolerance=300)
+            for x0, x1, y in lines
+        ))
+
+    loader = IIIFManifestLoader().load("manifest.json")
+    volume = loader.create_timeline(
+        {
+            1: systems((1221, 4101, 1900), (971, 4112, 3300)),
+            2: systems((519, 3661, 900), (522, 3659, 2300)),
+        },
+        canvases=[1, 2],
+        uid="scan",
+    )
+    for _, offset, page in volume.iter_segments():
+        print(page.name, offset.value, page.length.value,
+              page.statements["dcterms:source"])
+
+### create_timelines { #timetoalign.loader.graphical.IIIFManifestLoader.create_timelines }
+
 ```python
->>> loader = IIIFManifestLoader()
->>> loader.load("manifest.json")
->>> timeline = loader.create_timeline(uid="dgt1_image")
+loader.graphical.IIIFManifestLoader.create_timelines(
+    paths,
+    *,
+    canvases=None,
+    page_ids=None,
+    accolade_ids=None,
+)
 ```
+
+Create one timeline in pixels per selected canvas, along its time path.
+
+A canvas whose path is a
+:class:`~timetoalign.loader.graphical.paths.PiecewisePath` becomes a
+segment line of accolades, one per piece in path order: an accolade
+along a horizontal piece is as long as the piece (``x1 - x0``) and
+states the strip it stands for in ``meta["box"]``. Any other path
+gives one plain timeline of the path's length, which must be a whole
+number of pixels: a piano roll is read along a ``VerticalLinePath``.
+
+Each page is named with its canvas's label and states the canvas it
+measures: its id in ``meta["image"]`` (the accolades too) and as the
+property ``dcterms:source`` (``{"id": <canvas id>}``; Presentation 2
+``@id``, Presentation 3 ``id``). A canvas without an id states
+nothing. This property is provisional: it may change.
+
+A horizontal or vertical line must lie on its canvas: ``0 <= x0``,
+``x1 <= width`` and ``0 <= y <= height`` (for a vertical line ``0 <=
+x <= width``, ``0 <= y0`` and ``y1 <= height``).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name         | Type                                                                                                                                                                                                         | Description                 | Default    |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|------------|
+| paths        | [Mapping](`collections.abc.Mapping`)\[[int](`int`) \| [str](`str`), [TimeAxisPath](`timetoalign.loader.graphical.paths.TimeAxisPath`)\] \| [TimeAxisPath](`timetoalign.loader.graphical.paths.TimeAxisPath`) | As :meth:`create_timeline`. | _required_ |
+| canvases     | [Sequence](`collections.abc.Sequence`)\[[int](`int`) \| [str](`str`)\] \| None                                                                                                                               | As :meth:`create_timeline`. | `None`     |
+| page_ids     | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| [str](`str`) \| None                                                                                                                               | As :meth:`create_timeline`. | `None`     |
+| accolade_ids | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| [str](`str`) \| None                                                                                                                               | As :meth:`create_timeline`. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                             | Description                                                      |
+|--------|--------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | The pages in manifest order, each locked; an empty list where no |
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | canvas is selected.                                              |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                           | Description                                                                                               |
+|--------|--------------------------------|-----------------------------------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no manifest has been loaded.                                                                           |
+|        | [TypeError](`TypeError`)       | As :meth:`create_timeline`.                                                                               |
+|        | [KeyError](`KeyError`)         | As :meth:`create_timeline`.                                                                               |
+|        | [ValueError](`ValueError`)     | As :meth:`create_timeline`, except that no canvas need be selected and the pages need not be of one kind. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+A piano roll, read from top to bottom::
+
+    from timetoalign.loader.graphical.paths import VerticalLinePath
+
+    loader = IIIFManifestLoader().load("manifest.json")
+    (roll,) = loader.create_timelines(
+        VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048)
+    )
 
 ### get_canvas { #timetoalign.loader.graphical.IIIFManifestLoader.get_canvas }
 

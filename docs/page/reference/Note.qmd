@@ -1,0 +1,74 @@
+# Note { #timetoalign.core.Note }
+
+```python
+core.Note()
+```
+
+A single note or rest event.
+
+A note holds what every note has, whether a score writes it or a
+performance plays it.  The staff and the voice a score writes a note
+on and in belong to :class:`ScoreNote`; a keyword this model does not
+declare is refused rather than dropped.
+
+``Note.pitch`` is annotated ``EnharmonicPitch | SpecificPitch | None``
+for materialised scalars — both are legitimate pitch representations
+on a note.  This union MUST NOT translate to Arrow ``dense_union``;
+instead, the field is dropped from the pa.Schema and pitch is
+represented exactly once on the EventData.  ``NoteEventData`` (a
+spelled score source) stores ``specific_pitch`` as the sole default
+semantic pitch field and keeps the source MIDI pitch as a
+non-default raw ``midi`` int that affords an ``EnharmonicPitch`` view
+on request.  Number-only sources store the bare number instead (as a
+raw ``pitch`` int or an ``EnharmonicPitch`` ``{midi_number}`` struct).
+See Contributing → §2.4 Architectural decision log
+(union-of-BaseModels rejected; columnar separation).
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_row](#timetoalign.core.Note.from_row) | Construct from a row of an event table whose numbers lie on one axis. |
+| [to_dict](#timetoalign.core.Note.to_dict) | Return a JSON-safe dictionary. |
+
+### from_row { #timetoalign.core.Note.from_row }
+
+```python
+core.Note.from_row(row, *, unit, number_type)
+```
+
+Construct from a row of an event table whose numbers lie on one axis.
+
+Each position (``start``, ``end``, ``duration``) is read from its
+number struct on the axis given, in *number_type*, exactly as a
+:class:`Box` reads its numbers; a position given as a coordinate
+dict (``to_dict``) or a scalar keeps the unit it states.  The pitch
+is read from the column representing it (``specific_pitch``, else
+``midi``, else ``pitch``).  Every column this type does not declare
+is ignored, so a row of a score is read as a plain ``Note`` as well
+as a :class:`ScoreNote`.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                      | Description                                   | Default    |
+|-------------|---------------------------------------------------------------------------|-----------------------------------------------|------------|
+| row         | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| None               | The row, or ``None`` for a null cell.         | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`)             | The unit of every position.                   | _required_ |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`) \| [str](`str`) \| None | The number type every position is written in. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                          | Description                                                     |
+|--------|-------------------------------|-----------------------------------------------------------------|
+|        | [Self](`typing.Self`) \| None | The note, or ``None`` for a null cell or a row without a start. |
+
+### to_dict { #timetoalign.core.Note.to_dict }
+
+```python
+core.Note.to_dict()
+```
+
+Return a JSON-safe dictionary.
+
+Pitch is intentionally absent — it is stored in a separate field
+on ``NoteEventData`` (columnar separation).

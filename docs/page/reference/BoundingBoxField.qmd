@@ -1,0 +1,7 @@
+# BoundingBoxField { #timetoalign.BoundingBoxField }
+
+```python
+BoundingBoxField(raw=None, unit=None, number_type=None, *, source_fields=None)
+```
+
+Paired Field for :class:`BoundingBox`: ``{x, y, width, height}``.

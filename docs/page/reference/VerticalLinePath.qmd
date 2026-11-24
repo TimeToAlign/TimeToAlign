@@ -1,0 +1,53 @@
+# VerticalLinePath { #timetoalign.loader.graphical.VerticalLinePath }
+
+```python
+loader.graphical.VerticalLinePath(x, y0, y1, tolerance=10.0)
+```
+
+Time axis as a vertical line at fixed x.
+
+Useful for vertical timelines where y maps to time.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name      | Type                                                  | Description                                                                                                                                                      |
+|-----------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| x         | [Number](`timetoalign.loader.graphical.paths.Number`) | Fixed x coordinate.                                                                                                                                              |
+| y0        | [Number](`timetoalign.loader.graphical.paths.Number`) | Starting y coordinate (top).                                                                                                                                     |
+| y1        | [Number](`timetoalign.loader.graphical.paths.Number`) | Ending y coordinate (bottom).                                                                                                                                    |
+| tolerance | [Number](`timetoalign.loader.graphical.paths.Number`) | The half-breadth of the strip the line stands for: the strip spans ``x - tolerance`` to ``x + tolerance``, and :meth:`from_2d` answers for the points within it. |
+
+Every number is kept as given: integers (and ``Fraction`` values) give
+exact answers.
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [distance_to_path](#timetoalign.loader.graphical.VerticalLinePath.distance_to_path) | Distance calculation for vertical line. |
+| [from_2d](#timetoalign.loader.graphical.VerticalLinePath.from_2d) | Map (x, y) to timeline coordinate (None outside the strip or the line). |
+| [to_2d](#timetoalign.loader.graphical.VerticalLinePath.to_2d) | Map timeline coordinate to (x, y). |
+
+### distance_to_path { #timetoalign.loader.graphical.VerticalLinePath.distance_to_path }
+
+```python
+loader.graphical.VerticalLinePath.distance_to_path(x, y)
+```
+
+Distance calculation for vertical line.
+
+### from_2d { #timetoalign.loader.graphical.VerticalLinePath.from_2d }
+
+```python
+loader.graphical.VerticalLinePath.from_2d(x, y)
+```
+
+Map (x, y) to timeline coordinate (None outside the strip or the line).
+
+### to_2d { #timetoalign.loader.graphical.VerticalLinePath.to_2d }
+
+```python
+loader.graphical.VerticalLinePath.to_2d(coord)
+```
+
+Map timeline coordinate to (x, y).

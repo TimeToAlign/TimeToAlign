@@ -1,0 +1,61 @@
+# Event { #timetoalign.Event }
+
+```python
+Event()
+```
+
+An event of a timeline: its ID and its position on the timeline's axis.
+
+The base of the event types that are scalars of their own
+(:class:`Projection`, :class:`Box`). ``start`` and ``duration`` are on
+one axis: the duration has the start's unit and number type. An instant
+has no duration. An event made without an ID has ``id`` ``None`` until
+the timeline it is added to mints one (:meth:`Timeline.add_events`).
+
+Storage struct (derived): ``{id, start, duration}``, the positions as
+number structs on the axis :class:`EventField` declares.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> Event(start=Coordinate(3, "samples")).to_event_row()
+{'event_type': 'Event', 'start': Coordinate(3, samples), 'duration': None}
+```
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [end](#timetoalign.Event.end) | ``start + duration``; ``None`` for an instant. |
+| [number_type](#timetoalign.Event.number_type) | The number type of the event's axis. |
+| [semantic_type](#timetoalign.Event.semantic_type) | The event type the event is stored under: its class name. |
+| [unit](#timetoalign.Event.unit) | The unit of the event's axis. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [to_event_row](#timetoalign.Event.to_event_row) | The event as an event row of a timeline. |
+
+### to_event_row { #timetoalign.Event.to_event_row }
+
+```python
+Event.to_event_row()
+```
+
+The event as an event row of a timeline.
+
+The row :meth:`Timeline.add_events` and
+:meth:`~timetoalign.storage.EventData.from_dicts` take: ``event_type``
+(:attr:`semantic_type`), ``id`` only where the event holds one, then
+every further property in field order, the positions and shapes as
+the scalars they are.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> row = Projection(id="p", start=Coordinate(3, TimeUnit.samples)).to_event_row()
+>>> row["event_type"], row["id"], row["start"], row["duration"]
+('Projection', 'p', Coordinate(3, samples), None)
+```

@@ -188,6 +188,14 @@ quartodoc:
         - EventField
         - Box
         - BoxField
+        - name: Note
+          package: timetoalign.core
+        - name: NoteField
+          package: timetoalign.core
+        - name: ScoreNote
+          package: timetoalign.core
+        - name: ScoreNoteField
+          package: timetoalign.core
         - OptionalCoordinate
         - ResolvedCoordinate
         - resolve_coordinate_spec
@@ -412,6 +420,18 @@ quartodoc:
         - name: DmosLoader
           package: timetoalign.loader.graphical
         - name: MeiFacsimileLoader
+          package: timetoalign.loader.graphical
+        - name: TimeAxisPath
+          package: timetoalign.loader.graphical
+        - name: HorizontalLinePath
+          package: timetoalign.loader.graphical
+        - name: VerticalLinePath
+          package: timetoalign.loader.graphical
+        - name: DiagonalLinePath
+          package: timetoalign.loader.graphical
+        - name: ParametricPath
+          package: timetoalign.loader.graphical
+        - name: PiecewisePath
           package: timetoalign.loader.graphical
         - name: ATONLoader
           package: timetoalign.loader.graphical.aton

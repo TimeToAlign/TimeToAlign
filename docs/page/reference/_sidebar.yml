@@ -11,6 +11,22 @@ website:
       - reference/IdCoordinate.qmd
       - reference/Interval.qmd
       - reference/IntervalField.qmd
+      - reference/Point.qmd
+      - reference/PointField.qmd
+      - reference/Shape.qmd
+      - reference/ShapeField.qmd
+      - reference/BoundingBox.qmd
+      - reference/BoundingBoxField.qmd
+      - reference/Quadrilateral.qmd
+      - reference/QuadrilateralField.qmd
+      - reference/Event.qmd
+      - reference/EventField.qmd
+      - reference/Box.qmd
+      - reference/BoxField.qmd
+      - reference/Note.qmd
+      - reference/NoteField.qmd
+      - reference/ScoreNote.qmd
+      - reference/ScoreNoteField.qmd
       - reference/OptionalCoordinate.qmd
       - reference/ResolvedCoordinate.qmd
       - reference/resolve_coordinate_spec.qmd
@@ -132,6 +148,14 @@ website:
       - reference/ScoreMidiLoader.qmd
       - reference/GraphicalLoader.qmd
       - reference/IIIFManifestLoader.qmd
+      - reference/DmosLoader.qmd
+      - reference/MeiFacsimileLoader.qmd
+      - reference/TimeAxisPath.qmd
+      - reference/HorizontalLinePath.qmd
+      - reference/VerticalLinePath.qmd
+      - reference/DiagonalLinePath.qmd
+      - reference/ParametricPath.qmd
+      - reference/PiecewisePath.qmd
       - reference/ATONLoader.qmd
       - reference/ScoreWarpLoader.qmd
       - reference/MatchfileLoader.qmd

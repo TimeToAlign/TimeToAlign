@@ -1,0 +1,19 @@
+# NoteField { #timetoalign.core.NoteField }
+
+```python
+core.NoteField(raw=None, unit=None, number_type=None, *, source_fields=None)
+```
+
+Paired Field for :class:`Note`: every position on one axis, declared once.
+
+``EventData.get_field(Note)`` composes it from an event table: the
+Note's members from the columns of their names, the axis from the
+table's, and the pitch from the column representing it, carried under
+that column's own name (``specific_pitch``, ``midi`` or ``pitch``), so
+that each item is the note the table holds.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [is_rest](#timetoalign.core.NoteField.is_rest) | Vectorized rest predicate. |

@@ -1,0 +1,7 @@
+# PointField { #timetoalign.PointField }
+
+```python
+PointField(raw=None, unit=None, number_type=None, *, source_fields=None)
+```
+
+Paired Field for :class:`Point`: ``{x, y}`` on one declared axis.

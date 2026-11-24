@@ -1,0 +1,66 @@
+# DiagonalLinePath { #timetoalign.loader.graphical.DiagonalLinePath }
+
+```python
+loader.graphical.DiagonalLinePath(start, end, tolerance=10.0)
+```
+
+Time axis as a diagonal (arbitrary straight) line.
+
+Useful for rotated segments, skewed timelines, or any straight
+line that isn't perfectly horizontal or vertical.
+
+The timeline coordinate maps to arc length along the line,
+so length equals the Euclidean distance between endpoints.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name      | Type                                                   | Description                                |
+|-----------|--------------------------------------------------------|--------------------------------------------|
+| start     | [tuple](`tuple`)\[[float](`float`), [float](`float`)\] | (x, y) starting point.                     |
+| end       | [tuple](`tuple`)\[[float](`float`), [float](`float`)\] | (x, y) ending point.                       |
+| tolerance | [float](`float`)                                       | Distance tolerance for from_2d conversion. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> path = DiagonalLinePath(start=(0, 0), end=(300, 400))
+>>> path.length  # sqrt(300^2 + 400^2) = 500
+500.0
+>>> path.to_2d(250)  # Halfway point
+(150.0, 200.0)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [distance_to_path](#timetoalign.loader.graphical.DiagonalLinePath.distance_to_path) | Perpendicular distance to line segment. |
+| [from_2d](#timetoalign.loader.graphical.DiagonalLinePath.from_2d) | Map (x, y) to timeline coordinate. |
+| [to_2d](#timetoalign.loader.graphical.DiagonalLinePath.to_2d) | Map timeline coordinate (arc length) to (x, y). |
+
+### distance_to_path { #timetoalign.loader.graphical.DiagonalLinePath.distance_to_path }
+
+```python
+loader.graphical.DiagonalLinePath.distance_to_path(x, y)
+```
+
+Perpendicular distance to line segment.
+
+### from_2d { #timetoalign.loader.graphical.DiagonalLinePath.from_2d }
+
+```python
+loader.graphical.DiagonalLinePath.from_2d(x, y)
+```
+
+Map (x, y) to timeline coordinate.
+
+Projects the point onto the line and returns the arc length
+if the projection falls within the segment.
+
+### to_2d { #timetoalign.loader.graphical.DiagonalLinePath.to_2d }
+
+```python
+loader.graphical.DiagonalLinePath.to_2d(coord)
+```
+
+Map timeline coordinate (arc length) to (x, y).

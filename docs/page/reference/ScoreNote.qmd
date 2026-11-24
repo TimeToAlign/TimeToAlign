@@ -1,0 +1,27 @@
+# ScoreNote { #timetoalign.core.ScoreNote }
+
+```python
+core.ScoreNote()
+```
+
+A note or rest of a score: a :class:`Note` written on a staff, in a voice.
+
+``voice`` and ``staff`` are the source's numbers (an MEI ``<layer>`` and
+``<staff>``, a MuseScore voice and staff, partitura's ``voice`` and
+``staff``); a performance states neither, so they are not members of
+:class:`Note`.  Every other member, and the represent-once storage of
+the pitch, is the Note's.
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [to_dict](#timetoalign.core.ScoreNote.to_dict) | Return the Note's JSON-safe dictionary with ``voice`` and ``staff``. |
+
+### to_dict { #timetoalign.core.ScoreNote.to_dict }
+
+```python
+core.ScoreNote.to_dict()
+```
+
+Return the Note's JSON-safe dictionary with ``voice`` and ``staff``.

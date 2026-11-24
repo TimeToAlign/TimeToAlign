@@ -1,0 +1,16 @@
+# ScoreNoteField { #timetoalign.core.ScoreNoteField }
+
+```python
+core.ScoreNoteField(
+    raw=None,
+    unit=None,
+    number_type=None,
+    *,
+    source_fields=None,
+)
+```
+
+Paired Field for :class:`ScoreNote`.
+
+A ``NoteField`` whose struct adds ``voice`` and ``staff``; the vectorized
+members are NoteField's own.

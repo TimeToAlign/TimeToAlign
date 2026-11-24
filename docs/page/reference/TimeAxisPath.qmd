@@ -1,0 +1,176 @@
+# TimeAxisPath { #timetoalign.loader.graphical.TimeAxisPath }
+
+```python
+loader.graphical.TimeAxisPath()
+```
+
+Abstract definition of a time axis path through 2D space.
+
+A TimeAxisPath maps 1D timeline coordinates to 2D image coordinates.
+The path has a defined length (in timeline units, typically pixels)
+and provides bidirectional coordinate conversion.
+
+Subclasses implement specific geometric shapes:
+- HorizontalLinePath: x = time, y = constant
+- DiagonalLinePath: arbitrary straight line
+- ParametricPath: x(t), y(t) functions for curves/spirals
+- PiecewisePath: consecutive pieces, such as the accolades of a page
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [length](#timetoalign.loader.graphical.TimeAxisPath.length) | Total length of this path in timeline units. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [distance_to_path](#timetoalign.loader.graphical.TimeAxisPath.distance_to_path) | Compute perpendicular distance from point to path. |
+| [from_2d](#timetoalign.loader.graphical.TimeAxisPath.from_2d) | Map image (x, y) to timeline coordinate. |
+| [from_boxes](#timetoalign.loader.graphical.TimeAxisPath.from_boxes) | Make the time path of one page from the areas drawn on it. |
+| [is_point_on_path](#timetoalign.loader.graphical.TimeAxisPath.is_point_on_path) | Check if a point is close enough to the path. |
+| [to_2d](#timetoalign.loader.graphical.TimeAxisPath.to_2d) | Map timeline coordinate to image (x, y). |
+
+### distance_to_path { #timetoalign.loader.graphical.TimeAxisPath.distance_to_path }
+
+```python
+loader.graphical.TimeAxisPath.distance_to_path(x, y)
+```
+
+Compute perpendicular distance from point to path.
+
+Default implementation samples the path and finds minimum distance.
+Subclasses may override with analytical solutions.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                  | Description            | Default    |
+|--------|-------------------------------------------------------|------------------------|------------|
+| x      | [Number](`timetoalign.loader.graphical.paths.Number`) | X coordinate in image. | _required_ |
+| y      | [Number](`timetoalign.loader.graphical.paths.Number`) | Y coordinate in image. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                  | Description         |
+|--------|-------------------------------------------------------|---------------------|
+|        | [Number](`timetoalign.loader.graphical.paths.Number`) | Distance in pixels. |
+
+### from_2d { #timetoalign.loader.graphical.TimeAxisPath.from_2d }
+
+```python
+loader.graphical.TimeAxisPath.from_2d(x, y)
+```
+
+Map image (x, y) to timeline coordinate.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                  | Description            | Default    |
+|--------|-------------------------------------------------------|------------------------|------------|
+| x      | [Number](`timetoalign.loader.graphical.paths.Number`) | X coordinate in image. | _required_ |
+| y      | [Number](`timetoalign.loader.graphical.paths.Number`) | Y coordinate in image. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                          | Description                                               |
+|--------|---------------------------------------------------------------|-----------------------------------------------------------|
+|        | [Number](`timetoalign.loader.graphical.paths.Number`) \| None | Timeline coordinate, or None if point is not on the path. |
+
+### from_boxes { #timetoalign.loader.graphical.TimeAxisPath.from_boxes }
+
+```python
+loader.graphical.TimeAxisPath.from_boxes(boxes, *, accolades=None)
+```
+
+Make the time path of one page from the areas drawn on it.
+
+Each accolade becomes one :class:`HorizontalLinePath` spanning its
+boxes exactly: ``x0`` is their least and ``x1`` their greatest x,
+``y`` the middle of their y extent and ``tolerance`` half of that
+extent, so the line's strip is the accolade's y extent. The middle
+and the half are exact: an ``int`` where whole, else a ``Fraction``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                                                         | Description                                                                                                                                                                                                | Default    |
+|-----------|--------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| boxes     | [Iterable](`collections.abc.Iterable`)\[[Shape](`timetoalign.core.Shape`) \| [Box](`timetoalign.core.Box`)\] | The areas of ONE page in reading order: shapes, or Box events (read through their shape), all of one unit and number type.                                                                                 | _required_ |
+| accolades | [Sequence](`collections.abc.Sequence`)\[[int](`int`)\] \| None                                               | Per box, a label of its accolade (one label per box); the accolades follow each other in the order of their first box. When omitted, :func:`group_into_accolades` assigns them from the boxes' left edges. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                | Description                                                  |
+|--------|---------------------------------------------------------------------|--------------------------------------------------------------|
+|        | [PiecewisePath](`timetoalign.loader.graphical.paths.PiecewisePath`) | The path, one piece per accolade (a ``PiecewisePath`` of one |
+|        | [PiecewisePath](`timetoalign.loader.graphical.paths.PiecewisePath`) | piece too).                                                  |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                         |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If no box is given, the boxes lie on two units or number types, *accolades* does not hold one label per box, or an accolade has no x extent (the message names it by its position, counted from 1). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Three measures, the third on a second line:
+
+```python
+>>> from timetoalign.core import BoundingBox
+>>> measures = [
+...     BoundingBox.from_corners(100, 50, 300, 90, unit="pixels"),
+...     BoundingBox.from_corners(300, 52, 520, 95, unit="pixels"),
+...     BoundingBox.from_corners(90, 150, 400, 190, unit="pixels"),
+... ]
+>>> path = TimeAxisPath.from_boxes(measures)
+>>> path.pieces[0]
+HorizontalLinePath(x0=100, x1=520, y=Fraction(145, 2), tolerance=Fraction(45, 2))
+>>> path.pieces[1]
+HorizontalLinePath(x0=90, x1=400, y=170, tolerance=20)
+>>> path.offsets, path.length
+((0, 420), 730)
+>>> path.piece_of(measures[2])
+1
+```
+
+### is_point_on_path { #timetoalign.loader.graphical.TimeAxisPath.is_point_on_path }
+
+```python
+loader.graphical.TimeAxisPath.is_point_on_path(x, y, tolerance=5.0)
+```
+
+Check if a point is close enough to the path.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                  | Description                 | Default    |
+|-----------|-------------------------------------------------------|-----------------------------|------------|
+| x         | [Number](`timetoalign.loader.graphical.paths.Number`) | X coordinate in image.      | _required_ |
+| y         | [Number](`timetoalign.loader.graphical.paths.Number`) | Y coordinate in image.      | _required_ |
+| tolerance | [Number](`timetoalign.loader.graphical.paths.Number`) | Maximum distance in pixels. | `5.0`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type           | Description                                    |
+|--------|----------------|------------------------------------------------|
+|        | [bool](`bool`) | True if point is within tolerance of the path. |
+
+### to_2d { #timetoalign.loader.graphical.TimeAxisPath.to_2d }
+
+```python
+loader.graphical.TimeAxisPath.to_2d(coord)
+```
+
+Map timeline coordinate to image (x, y).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                  | Description                         | Default    |
+|--------|-------------------------------------------------------|-------------------------------------|------------|
+| coord  | [Number](`timetoalign.loader.graphical.paths.Number`) | Timeline coordinate in [0, length]. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                                                             | Description                              |
+|--------|----------------------------------------------------------------------------------------------------------------------------------|------------------------------------------|
+|        | [tuple](`tuple`)\[[Number](`timetoalign.loader.graphical.paths.Number`), [Number](`timetoalign.loader.graphical.paths.Number`)\] | (x, y) tuple in image pixel coordinates. |

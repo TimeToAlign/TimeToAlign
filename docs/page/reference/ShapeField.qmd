@@ -1,0 +1,65 @@
+# ShapeField { #timetoalign.ShapeField }
+
+```python
+ShapeField(raw=None, unit=None, number_type=None, *, source_fields=None)
+```
+
+The field of one kind of shape: every number on one declared axis.
+
+Each number is stored as the number struct alone, both sides filled; the
+unit and the number type are the field's metadata, as an
+:class:`~timetoalign.core.time.IntervalField` holds them.
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_shapes](#timetoalign.ShapeField.from_shapes) | Build the field of *shapes*, in row order. |
+| [x_max](#timetoalign.ShapeField.x_max) | Per row the shape's largest x, a number struct (null on a null row). |
+| [x_min](#timetoalign.ShapeField.x_min) | Per row the shape's smallest x, a number struct (null on a null row). |
+
+### from_shapes { #timetoalign.ShapeField.from_shapes }
+
+```python
+ShapeField.from_shapes(shapes, *, unit=None, number_type=None, name=None)
+```
+
+Build the field of *shapes*, in row order.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                         | Description                                                           | Default    |
+|-------------|----------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|------------|
+| shapes      | [Sequence](`collections.abc.Sequence`)\[[ShapeT](`timetoalign.core.events.ShapeT`) \| None\] | Shapes of the field's class (``None`` for a null row).                | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                        | The shapes' unit; required for an empty or all-null input.            | `None`     |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`) \| [str](`str`) \| None                    | Their number type; required likewise.                                 | `None`     |
+| name        | [str](`str`) \| None                                                                         | The field's name: ``bounding_box`` or ``quadrilateral`` when omitted. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                             | Description   |
+|--------|--------------------------------------------------------------------------------------------------|---------------|
+|        | [ShapeField](`timetoalign.core.events.ShapeField`)\[[ShapeT](`timetoalign.core.events.ShapeT`)\] | The field.    |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                          |
+|--------|----------------------------|----------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If a shape is not of the field's class.                              |
+|        | [ValueError](`ValueError`) | If the shapes lie on two axes, or an explicit axis contradicts them. |
+
+### x_max { #timetoalign.ShapeField.x_max }
+
+```python
+ShapeField.x_max()
+```
+
+Per row the shape's largest x, a number struct (null on a null row).
+
+### x_min { #timetoalign.ShapeField.x_min }
+
+```python
+ShapeField.x_min()
+```
+
+Per row the shape's smallest x, a number struct (null on a null row).

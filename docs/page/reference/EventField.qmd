@@ -1,0 +1,7 @@
+# EventField { #timetoalign.EventField }
+
+```python
+EventField(raw=None, unit=None, number_type=None, *, source_fields=None)
+```
+
+Paired Field for :class:`Event`: ``{id, start, duration}`` on one axis.

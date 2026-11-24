@@ -1,0 +1,43 @@
+# Point { #timetoalign.Point }
+
+```python
+Point()
+```
+
+A point of an image: its ``x`` and ``y``, on one axis.
+
+Image space: the origin is the image's top-left corner, x runs right
+and y down. Both coordinates have one unit and one number type.
+
+Storage struct (derived): ``{x, y}``, each the number struct; the unit
+and number type are the field's (:class:`PointField`).
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> Point(x=Coordinate(1221, "pixels"), y=Coordinate(1589, "pixels"))
+Point(x=Coordinate(1221, pixels), y=Coordinate(1589, pixels))
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [of](#timetoalign.Point.of) | A point given as a ``Point`` or as a pair ``(x, y)``. |
+
+### of { #timetoalign.Point.of }
+
+```python
+Point.of(point, *, unit=None, number_type=None)
+```
+
+A point given as a ``Point`` or as a pair ``(x, y)``.
+
+Each member of a pair is a raw number (in *unit*), a ``Coordinate``
+or an ``IdCoordinate``.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                               |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a pair does not have two members, or a member is a value the axis cannot hold exactly (never rounded). |

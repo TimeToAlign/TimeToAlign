@@ -663,15 +663,22 @@ timeline, each side one of:
 - an event dict stating a position: ``start``, and ``end`` for a
   span, each a number on the timeline's axis or a
   :class:`~timetoalign.core.Coordinate` in any unit one of the
-  timeline's C-Maps converts, and optionally ``name``. A
-  **Projection** stands for the side there, on the timeline's axis
+  timeline's C-Maps converts, and optionally ``name``. On a
+  timeline counting samples a position is an ``int`` or a
+  ``Coordinate``, never a bare float. A span runs forward (``end``
+  at or after ``start``). A **Projection** stands for the side
+  there, on the timeline's axis
   (:meth:`Timeline.add_projections`): under the dict's ``id`` (an
   event the bundle does not hold, ``projection_of`` null), or,
   without one, naming the other side's event in ``projection_of``
   when the other side is an event its timeline holds (null when both
   sides are positions). The timeline keeps one Projection per event
   and position: a second call with the same pairs reuses every
-  Projection the first added;
+  Projection the first added. An ``id`` the timeline already holds
+  names that event; given with ``start``/``end``, they must be the
+  event's own span. The ``name`` is the claim's name of the
+  Projection: the name the first claim on a Projection recorded is
+  the one every later claim on it shows;
 - ``None``, the NOMATCH sentinel, on one side at most.
 
 The MatchClaim is then made between the two events, on the two
@@ -681,12 +688,17 @@ claim for the other side's event (:meth:`MatchClaim.nomatch`). The
 claims join the bundle (:meth:`add_match_claims`), which mints their
 ids.
 
-Every pair is checked before any Projection is added: the timelines
-are the bundle's, an id names an event of its timeline, at most one
-side is ``None``, every position is placed on its timeline's axis.
-Known limit: a Projection beyond the end of a locked timeline is
-refused when its timeline's Projections are added, after those of
-the timelines before it.
+Every pair is checked before any Projection is added, so a refusal
+leaves the bundle and its timelines unchanged: the timelines are the
+bundle's, an id names an event of its timeline, at most one side is
+``None``, every position is placed on its timeline's axis. A
+Projection never lengthens a locked timeline (a loader locks a
+timeline whose source states its length, such as a recording's):
+a position past its end is refused. An unlocked timeline grows to
+hold it where its parent contains the new end (a parent never grows
+with its child); a position past an end the parent cannot contain is
+refused, as is one past where the parent ends a child of unknown
+length.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -708,10 +720,10 @@ the timelines before it.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                         |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, an event ID names no one event (the timeline does not hold it and two of its descendants do), a dict naming no held event states no ``start``, a position cannot be placed on its timeline's axis, or *date* is given without *actor* or is no calendar date. |
-|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline.                                                                                                                             |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, an event ID names no one event (the timeline does not hold it and two of its descendants do), a dict naming no held event states no ``start``, a position is a float on a timeline counting samples, a span runs backwards, a position lies past where its timeline can reach (the end of a locked timeline, or an end its parent cannot contain), an ``id`` the timeline holds is given with a span not its own, a position cannot be placed on its timeline's axis, or *date* is given without *actor* or is no calendar date. |
+|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline.                                                                                                                                                                                                                                                                                                                                                                                                |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -2306,14 +2318,15 @@ Write the package: the manifest and, beside it, the bundle's tables.
 
 As :meth:`ManifestFileMixin.to_file
 <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
-a manifest, with the MatchClaim table and the Projections table
-(:meth:`_write_tables`) written between a first writing of the
-manifest, which validates and serializes it before any file is
-written, and the writing that names them. A manifest never names an
-event's ID: where the bundle writes a table, its Projections lie in
-``projections.parquet`` alone and the events of its timelines are
-not written into the manifest, so writing event rows (``events``,
-given or as read) is refused before any file is written.
+a manifest, with the MatchClaim table and the event tables, of
+Projections and of Boxes (:meth:`_write_tables`), written between a
+first writing of the manifest, which validates and serializes it
+before any file is written, and the writing that names them. A
+manifest never names an event's ID: where the bundle writes a table,
+its Projections and Boxes lie in their tables alone and the events
+of its timelines are not written into the manifest, so writing event
+rows (``events``, given or as read) is refused before any file is
+written.
 
 #### Raises {.doc-section .doc-section-raises}
 

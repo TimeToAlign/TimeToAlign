@@ -1,0 +1,69 @@
+# Box { #timetoalign.Box }
+
+```python
+Box()
+```
+
+An area of an image as an interval event of a timeline along its x.
+
+A Box holds exactly one shape, a :class:`BoundingBox` or a
+:class:`Quadrilateral`, in the image's space, and the interval of the
+shape's x extent on its timeline: ``start`` is the shape's ``x_min``
+less the x at which the timeline stands in the image, ``duration`` the
+shape's x extent (``x_max - x_min``). The shape is on the start's axis
+(one unit, one number type).
+
+Storage struct (derived): ``{id, start, duration, bounding_box,
+quadrilateral}``, the shape not held null; every number on the axis
+:class:`BoxField` declares. In a timeline's events, ``bounding_box`` and
+``quadrilateral`` are two columns.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> box = BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels")
+>>> rect = Box.from_shape(box, origin=7, id="rect_h2")
+>>> rect.start, rect.duration
+(Coordinate(378, pixels), Duration(139, pixels))
+```
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [shape](#timetoalign.Box.shape) | The shape the Box holds. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_shape](#timetoalign.Box.from_shape) | The Box of *shape* on a timeline standing at x *origin* of the image. |
+
+### from_shape { #timetoalign.Box.from_shape }
+
+```python
+Box.from_shape(shape, *, origin=0, id=None)
+```
+
+The Box of *shape* on a timeline standing at x *origin* of the image.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                                                                                     | Description                                                                                                                                                 | Default    |
+|--------|--------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| shape  | [Shape](`timetoalign.core.events.Shape`)                                                                                 | A :class:`BoundingBox` or a :class:`Quadrilateral`.                                                                                                         | _required_ |
+| origin | [Coordinate](`timetoalign.core.time.Coordinate`) \| [int](`int`) \| [float](`float`) \| [Fraction](`fractions.Fraction`) | The image's x at which the timeline starts (a raw number in the shape's unit, or a ``Coordinate``); 0 for a timeline spanning its image from the left edge. | `0`        |
+| id     | [str](`str`) \| None                                                                                                     | The Box's ID; minted by the timeline when ``None``.                                                                                                         | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                 | Description                                                   |
+|--------|--------------------------------------|---------------------------------------------------------------|
+|        | [Box](`timetoalign.core.events.Box`) | The Box: ``start`` = ``shape.x_min - origin``, ``duration`` = |
+|        | [Box](`timetoalign.core.events.Box`) | ``shape.x_max - shape.x_min``.                                |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *origin* is in another unit than the shape, or is a value the shape's axis cannot hold exactly (``7.5`` on ``pixels``: never rounded). |

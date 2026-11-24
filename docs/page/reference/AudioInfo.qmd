@@ -11,24 +11,26 @@ loader.AudioInfo(
     bits_per_sample=None,
     source_path=None,
     extra=dict(),
+    backend=None,
 )
 ```
 
 Metadata for an audio file.
 
 This dataclass holds all relevant information about an audio file
-that is needed to create a continuous physical timeline.
+that is needed to create a physical timeline.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name             | Type                                                | Description                                                  |
-|------------------|-----------------------------------------------------|--------------------------------------------------------------|
-| n_samples        | [int](`int`)                                        | Total number of samples in the file (frames).                |
-| sample_rate      | [int](`int`)                                        | Sample rate in Hz (e.g., 44100, 48000).                      |
-| channels         | [int](`int`)                                        | Number of audio channels (1=mono, 2=stereo).                 |
-| duration_seconds | [float](`float`)                                    | Duration in seconds (computed from n_samples/sample_rate).   |
-| format           | [str](`str`)                                        | Audio format/codec (e.g., "WAV", "FLAC", "MP3").             |
-| subtype          | [str](`str`) \| None                                | Audio subtype/encoding (e.g., "PCM_16", "PCM_24", "VORBIS"). |
-| bits_per_sample  | [int](`int`) \| None                                | Bit depth (e.g., 16, 24, 32). May be None for lossy formats. |
-| source_path      | [Path](`pathlib.Path`) \| None                      | Path to the source file.                                     |
-| extra            | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional format-specific metadata.                         |
+| Name             | Type                                                                                  | Description                                                                                                                                                                                                                                   |
+|------------------|---------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| n_samples        | [int](`int`)                                                                          | Total number of samples in the file (frames). Exact from the soundfile, wave and riff backends and, on the mutagen backend, for an MP4 file (the count its boxes state); estimated from the stated duration on the mutagen backend otherwise. |
+| sample_rate      | [int](`int`)                                                                          | Sample rate in Hz (e.g., 44100, 48000).                                                                                                                                                                                                       |
+| channels         | [int](`int`)                                                                          | Number of audio channels (1=mono, 2=stereo).                                                                                                                                                                                                  |
+| duration_seconds | [float](`float`)                                                                      | Duration in seconds: ``n_samples / sample_rate`` where the count is exact, the duration the file states where mutagen's count is an estimate.                                                                                                 |
+| format           | [str](`str`)                                                                          | Audio format/codec (e.g., "WAV", "FLAC", "MP3").                                                                                                                                                                                              |
+| subtype          | [str](`str`) \| None                                                                  | Audio subtype/encoding (e.g., "PCM_16", "PCM_24", "VORBIS").                                                                                                                                                                                  |
+| bits_per_sample  | [int](`int`) \| None                                                                  | Bit depth (e.g., 16, 24, 32). May be None for lossy formats.                                                                                                                                                                                  |
+| source_path      | [Path](`pathlib.Path`) \| None                                                        | Path to the source file.                                                                                                                                                                                                                      |
+| extra            | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                   | Additional format-specific metadata.                                                                                                                                                                                                          |
+| backend          | [Literal](`typing.Literal`)\[\'soundfile\', \'wave\', \'riff\', \'mutagen\'\] \| None | The backend that read the file: ``"soundfile"``, ``"wave"``, ``"riff"`` or ``"mutagen"``; None for metadata not read by the loader.                                                                                                           |

@@ -14,6 +14,22 @@ Fundamental types for coordinates, units, domains, and cross-section timestamps.
 | [IdCoordinate](IdCoordinate.qmd#timetoalign.IdCoordinate) | A ``Coordinate`` that carries the ID of the timeline it belongs to. |
 | [Interval](Interval.qmd#timetoalign.Interval) | A non-decreasing interval between two plain coordinates. |
 | [IntervalField](IntervalField.qmd#timetoalign.IntervalField) | Semantic field storing intervals with shared axis metadata. |
+| [Point](Point.qmd#timetoalign.Point) | A point of an image: its ``x`` and ``y``, on one axis. |
+| [PointField](PointField.qmd#timetoalign.PointField) | Paired Field for :class:`Point`: ``{x, y}`` on one declared axis. |
+| [Shape](Shape.qmd#timetoalign.Shape) | An area of an image, on one axis: a :class:`BoundingBox` or a |
+| [ShapeField](ShapeField.qmd#timetoalign.ShapeField) | The field of one kind of shape: every number on one declared axis. |
+| [BoundingBox](BoundingBox.qmd#timetoalign.BoundingBox) | An axis-aligned box of an image: ``x``, ``y``, ``width``, ``height``. |
+| [BoundingBoxField](BoundingBoxField.qmd#timetoalign.BoundingBoxField) | Paired Field for :class:`BoundingBox`: ``{x, y, width, height}``. |
+| [Quadrilateral](Quadrilateral.qmd#timetoalign.Quadrilateral) | A four-cornered area of an image, its corners in the canonical order. |
+| [QuadrilateralField](QuadrilateralField.qmd#timetoalign.QuadrilateralField) | Paired Field for :class:`Quadrilateral`: four corners of ``{x, y}``. |
+| [Event](Event.qmd#timetoalign.Event) | An event of a timeline: its ID and its position on the timeline's axis. |
+| [EventField](EventField.qmd#timetoalign.EventField) | Paired Field for :class:`Event`: ``{id, start, duration}`` on one axis. |
+| [Box](Box.qmd#timetoalign.Box) | An area of an image as an interval event of a timeline along its x. |
+| [BoxField](BoxField.qmd#timetoalign.BoxField) | Paired Field for :class:`Box`: every number on one declared axis. |
+| [Note](Note.qmd#timetoalign.core.Note) | A single note or rest event. |
+| [NoteField](NoteField.qmd#timetoalign.core.NoteField) | Paired Field for :class:`Note`: every position on one axis, declared once. |
+| [ScoreNote](ScoreNote.qmd#timetoalign.core.ScoreNote) | A note or rest of a score: a :class:`Note` written on a staff, in a voice. |
+| [ScoreNoteField](ScoreNoteField.qmd#timetoalign.core.ScoreNoteField) | Paired Field for :class:`ScoreNote`. |
 | [OptionalCoordinate](OptionalCoordinate.qmd#timetoalign.OptionalCoordinate) |  |
 | [ResolvedCoordinate](ResolvedCoordinate.qmd#timetoalign.ResolvedCoordinate) | Decomposed form of a CoordinateSpec input. |
 | [resolve_coordinate_spec](resolve_coordinate_spec.qmd#timetoalign.resolve_coordinate_spec) | Decompose a coordinate specification without converting its unit. |
@@ -170,6 +186,14 @@ Data ingestion from various file formats.
 | [ScoreMidiLoader](ScoreMidiLoader.qmd#timetoalign.loader.midi.score.ScoreMidiLoader) | Load score MIDI files using partitura or a mido fast path. |
 | [GraphicalLoader](GraphicalLoader.qmd#timetoalign.loader.graphical.GraphicalLoader) | Factory for building GraphicalStore objects. |
 | [IIIFManifestLoader](IIIFManifestLoader.qmd#timetoalign.loader.graphical.IIIFManifestLoader) | Load image metadata from IIIF Presentation API manifests. |
+| [DmosLoader](DmosLoader.qmd#timetoalign.loader.graphical.DmosLoader) | Load the pages, systems and measures of a DMOS JSON file. |
+| [MeiFacsimileLoader](MeiFacsimileLoader.qmd#timetoalign.loader.graphical.MeiFacsimileLoader) | Load the surfaces and zones of an MEI file's facsimile. |
+| [TimeAxisPath](TimeAxisPath.qmd#timetoalign.loader.graphical.TimeAxisPath) | Abstract definition of a time axis path through 2D space. |
+| [HorizontalLinePath](HorizontalLinePath.qmd#timetoalign.loader.graphical.HorizontalLinePath) | Time axis as a horizontal line at fixed y. |
+| [VerticalLinePath](VerticalLinePath.qmd#timetoalign.loader.graphical.VerticalLinePath) | Time axis as a vertical line at fixed x. |
+| [DiagonalLinePath](DiagonalLinePath.qmd#timetoalign.loader.graphical.DiagonalLinePath) | Time axis as a diagonal (arbitrary straight) line. |
+| [ParametricPath](ParametricPath.qmd#timetoalign.loader.graphical.ParametricPath) | Time axis defined by parametric functions x(t), y(t). |
+| [PiecewisePath](PiecewisePath.qmd#timetoalign.loader.graphical.PiecewisePath) | A time axis made of consecutive pieces, read one after the other. |
 | [ATONLoader](ATONLoader.qmd#timetoalign.loader.graphical.aton.ATONLoader) | Load ATON format files (piano roll analysis data). |
 | [ScoreWarpLoader](ScoreWarpLoader.qmd#timetoalign.loader.graphical.ScoreWarpLoader) | Load the time axis drawn into a ScoreWarp SVG. |
 | [MatchfileLoader](MatchfileLoader.qmd#timetoalign.loader.alignment.matchfile.MatchfileLoader) | Load Vienna Match (.match) alignment files via partitura. |

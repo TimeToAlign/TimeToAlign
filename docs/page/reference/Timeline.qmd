@@ -152,7 +152,6 @@ subclass, use :meth:`to_typed`.
 | [has_child](#timetoalign.timelines.Timeline.has_child) | Check if a child with the given ID exists. |
 | [has_flow_map](#timetoalign.timelines.Timeline.has_flow_map) | Check if a FlowMap with the given id is attached. |
 | [has_region](#timetoalign.timelines.Timeline.has_region) | Check if a region exists. |
-| [is_segment_line](#timetoalign.timelines.Timeline.is_segment_line) | Return whether children exactly and contiguously cover this timeline. |
 | [iter_children](#timetoalign.timelines.Timeline.iter_children) | Iterate over child timelines. |
 | [iter_regions](#timetoalign.timelines.Timeline.iter_regions) | Iterate over all regions in insertion order. |
 | [list_children](#timetoalign.timelines.Timeline.list_children) | List child timeline IDs. |
@@ -388,16 +387,31 @@ A Projection (``event_type`` ``"Projection"``) holds ``id``, its
 position and ``projection_of``, the event of another timeline it
 stands for, as a dict ``{"timeline_id": ..., "event_id": ...}`` or an
 :class:`~timetoalign.core.EventReference` (``None`` where none is
-known); it repeats nothing else of that event. A
-:class:`~timetoalign.core.Projection` object may be given in place of
-its row, alone or in the list.
+known); it repeats nothing else of that event.
+
+A Box (``event_type`` ``"Box"``) is an area of the image the
+timeline runs along: its shape, in the image's space, and the
+interval of its x extent on the timeline. Its shape must be on the
+timeline's axis (its unit and number type; a shape is never
+converted), and its start must be the shape's ``x_min`` less the x
+at which the timeline stands in its image: the ``x_min`` of the
+shape ``meta["box"]`` states, 0 where it states none. A shape given
+as the memory cell of its column is read through the shape's
+constructor, as every shape's numbers are (never rounded). A Box row
+may state ``unit``, ``number_type`` and ``timeline_id``, as a
+package's Box table does: they must name this timeline and its axis,
+and are not stored.
+
+An :class:`~timetoalign.core.Event` object (a
+:class:`~timetoalign.core.Projection`, a :class:`~timetoalign.core.Box`)
+may be given in place of its row, alone or in the list.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                                                                                                                        | Description                                                                                                                                                                                                                                                     | Default    |
-|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| rows            | [Projection](`timetoalign.core.Projection`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Projection](`timetoalign.core.Projection`)\] | Event dictionaries or Projections (one or a list). Required keys of a dictionary: - event_type: class name (e.g. ``"Beat"``, ``"Note"``,   ``"Projection"``) - instant: coordinate (for instant events), **or** - start, end: coordinates (for interval events) | _required_ |
-| allow_expansion | [bool](`bool`)                                                                                                                                                                              | If True, expand timeline if events exceed length.                                                                                                                                                                                                               | `False`    |
+| Name            | Type                                                                                                                                                                    | Description                                                                                                                                                                                                                                                | Default    |
+|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| rows            | [Event](`timetoalign.core.Event`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Event](`timetoalign.core.Event`)\] | Event dictionaries or events (one or a list). Required keys of a dictionary: - event_type: class name (e.g. ``"Beat"``, ``"Note"``,   ``"Projection"``) - instant: coordinate (for instant events), **or** - start, end: coordinates (for interval events) | _required_ |
+| allow_expansion | [bool](`bool`)                                                                                                                                                          | If True, expand timeline if events exceed length.                                                                                                                                                                                                          | `False`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -407,9 +421,9 @@ its row, alone or in the list.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                            |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If an ID is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an ID is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box's shape is off the timeline's axis (or its row's ``unit``, ``number_type`` or ``timeline_id`` names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1099,8 +1113,18 @@ Create a child timeline from a region (partitioning).
 
 The child's length = region duration, offset = region start.
 The child's class matches the parent's concrete class, and its name
-is the region's name. If copy_events, events in [start, end) are
-copied with adjusted coordinates.
+is the region's name. If copy_events, the events starting in
+[start, end) are copied whole with adjusted coordinates (the child
+grows to hold one running past the region's end). Where this
+timeline holds Boxes, the child states the part of its area of an
+image (``meta["box"]``, ``meta["image"]``) over the region, as
+:meth:`get_slice` states it, so a Box keeps its shape and its start
+moves with the child's origin.
+
+A locked timeline gives a child from a region as an unlocked one
+does: the child lies inside the fixed length, which it leaves as it
+is. A region reaching past the end of a locked timeline gives no
+child, since the child would end past that end.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -1119,11 +1143,10 @@ copied with adjusted coordinates.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                                                                                |
-|--------|--------------------------------|--------------------------------------------------------------------------------------------|
-|        | [KeyError](`KeyError`)         | If region_id not found.                                                                    |
-|        | [RuntimeError](`RuntimeError`) | If timeline is locked.                                                                     |
-|        | [ValueError](`ValueError`)     | With *measures*, if this timeline has no measure map or the measure map refuses the slice. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                               |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If region_id not found.                                                                                                                                                                                                                                                                                                                                                   |
+|        | [ValueError](`ValueError`) | If this timeline is locked and the child would end past its length; with *measures*, if this timeline has no measure map or the measure map refuses the slice; if this timeline holds Boxes and its ``meta["box"]`` is no shape; or if it states no ``meta["box"]`` and a Box would move that a descendant holds, or one of its own while the region does not start at 0. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1512,6 +1535,12 @@ Create a SegmentLine by segmenting at boundary coordinates.
 
 Given k+1 sorted coordinates, produces a new SegmentLine with k
 contiguous segments. Each segment's class matches self's class.
+Each segment takes the events starting in its span, whole (it grows
+to hold one running past its end), and, where this timeline holds
+Boxes, the part of its area of an image (``meta["box"]``,
+``meta["image"]``) over its span, as
+:meth:`~timetoalign.timelines.Timeline.get_slice` states it, so a Box
+keeps its shape and its start moves with the segment.
 
 Does NOT modify self. Returns a new independent SegmentLine.
 
@@ -1530,9 +1559,9 @@ Does NOT modify self. Returns a new independent SegmentLine.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                 |
-|--------|----------------------------|-------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If fewer than 2 boundaries or not monotonically increasing. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                        |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If fewer than 2 boundaries or not monotonically increasing; if this timeline holds Boxes and its ``meta["box"]`` is no shape; or if it states no ``meta["box"]`` and a Box would move that a descendant holds, or one of its own into a segment not starting at 0. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1996,9 +2025,10 @@ Create a Timeline from an existing EventData.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                             | Description                            |
-|--------|----------------------------------|----------------------------------------|
-|        | [Self](`typing_extensions.Self`) | A new Timeline wrapping the EventData. |
+| Name   | Type                             | Description                                                     |
+|--------|----------------------------------|-----------------------------------------------------------------|
+|        | [Self](`typing_extensions.Self`) | A new Timeline holding the events in its own ``EventData`` over |
+|        | [Self](`typing_extensions.Self`) | the same table: adding events to it leaves *data* unchanged.    |
 
 ### from_events { #timetoalign.timelines.Timeline.from_events }
 
@@ -2493,6 +2523,14 @@ a deeper descendant), at every depth; the timeline's own events
 leave it null. Segment events (internal bookkeeping) are always
 excluded.
 
+A bound written as a float is compared as a key, with the float
+side of each event's ``start``: on a ``fraction`` axis
+``min_coord=0.1`` keeps an event starting at ``1/10``, on an
+``int`` axis ``min_coord=10.5`` leaves out an event starting at 10
+and ``max_coord=10.5`` keeps it, and ``max_coord=math.inf`` keeps
+every event. An exact bound (an ``int``, a ``Fraction``) is compared
+exactly on an ``int`` or ``fraction`` axis, never rounded.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name             | Type                                                             | Description                                                                                                                                 | Default   |
@@ -2500,15 +2538,22 @@ excluded.
 | temporal_type    | [Literal](`typing.Literal`)\[\'instant\', \'interval\'\] \| None | Filter by "instant" or "interval".                                                                                                          | `None`    |
 | event_type       | [str](`str`) \| None                                             | Filter by event type name.                                                                                                                  | `None`    |
 | include_children | [bool](`bool`)                                                   | If True (default), include events from all children with root-relative coordinates.                                                         | `True`    |
-| min_coord        | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None      | Minimum coordinate (inclusive). Can be a float in native units or a `Coordinate` with a different unit (converted via inverse C-Map).       | `None`    |
+| min_coord        | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None      | Minimum coordinate (inclusive). Can be a number in native units or a `Coordinate` with a different unit (converted via inverse C-Map).      | `None`    |
 | max_coord        | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None      | Maximum coordinate (exclusive). Same conversion rules as min_coord.                                                                         | `None`    |
 | **field_filters  | [Any](`typing.Any`)                                              | Additional field equality filters. Each kwarg name is a field name, and the value is the required value (or a list of values for OR logic). | `{}`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                         | Description                                    |
-|--------|----------------------------------------------|------------------------------------------------|
-|        | [EventData](`timetoalign.storage.EventData`) | A filtered EventData with all matching events. |
+| Name   | Type                                         | Description                                                   |
+|--------|----------------------------------------------|---------------------------------------------------------------|
+|        | [EventData](`timetoalign.storage.EventData`) | A filtered EventData with all matching events, a table of its |
+| own    | [EventData](`timetoalign.storage.EventData`) | changing it changes nothing on the timeline.                  |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                  |
+|--------|----------------------------|--------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a bound is NaN, or cannot be resolved onto this timeline. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -2547,6 +2592,19 @@ is within tolerance of the query coordinate.
 For interval events, an event is "active" if the coordinate falls
 within [start, end).
 
+A *coord* written as a float is compared as a key, with the float
+side of the stored positions: on a ``fraction`` axis
+``get_events_at(0.1)`` finds an event at ``1/10``, on an ``int``
+axis ``get_events_at(11.5)`` finds an event spanning ``[11, 12)``.
+An exact *coord* (an ``int``, a ``Fraction``) is compared exactly on
+an ``int`` or ``fraction`` axis, never rounded. A float axis
+compares floats whatever the query. Children are decided on this
+axis too: their positions and boundaries are placed here by exact
+offsets and compared with the query, so a position lies on the same
+side of a child's boundary as in ``get_events(min_coord=,
+max_coord=)``, and a boundary two adjoining children share belongs
+to the one starting there.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name             | Type                                                | Description                                       | Default    |
@@ -2561,6 +2619,12 @@ within [start, end).
 |--------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
 |        | [dict](`dict`)\[[str](`str`), [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\]\] | Dict mapping timeline_id to list of events active at that coordinate. |
 |        | [dict](`dict`)\[[str](`str`), [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\]\] | Child events have coordinates in their local coordinate system.       |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                  |
+|--------|----------------------------|--------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *coord* is NaN, or cannot be resolved onto this timeline. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -2785,15 +2849,33 @@ coordinates shifted by -start.
 Slicing creates a new timeline that is a structural copy of the
 specified interval of the source.
 
+A timeline holding Boxes (itself or a descendant) stands for an area
+of an image (``meta["box"]``): the slice states the part of that
+area over its x extent (the area as written where the slice covers
+the whole timeline), and ``meta["image"]`` is carried over, so a Box
+keeps its shape, in the image's space, and its start moves with the
+slice's origin. ``meta`` is otherwise free-form: a timeline holding
+no Box gives the slice none of it.
+
+Known issues: a Box crossing a slice boundary cannot be clipped (its
+interval would contradict its shape), so with *truncate_events* the
+slice is refused; slice with ``truncate_events=False`` to leave such
+a Box out (the flag holds for the slices of the children too). The
+area of a proper slice of a quadrilateral area is the slice of its
+bounding box. A timeline holding Boxes that states no area moves a
+Box of its own only into a slice starting at 0; its children are
+sliced by this rule in turn, so a page made of accolades is sliced
+accolade by accolade, each slice stating its own area.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name             | Type                                                | Description                                                                                                                                              | Default    |
-|------------------|-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| start            | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | Start coordinate (inclusive).                                                                                                                            | _required_ |
-| end              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | End coordinate (exclusive).                                                                                                                              | _required_ |
-| truncate_events  | [bool](`bool`)                                      | If True (default), interval events straddling the slice boundaries are clipped to [start, end). If False, events must be fully contained to be included. | `True`     |
-| include_children | [bool](`bool`)                                      | If True (default), child timelines whose span overlaps [start, end) are recursively sliced and included.                                                 | `True`     |
-| copy_cmaps       | [bool](`bool`)                                      | If True (default), ConversionMaps are bounded-copied for the slice range.                                                                                | `True`     |
+| Name             | Type                                                | Description                                                                                                                                                                         | Default    |
+|------------------|-----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| start            | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | Start coordinate (inclusive).                                                                                                                                                       | _required_ |
+| end              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | End coordinate (exclusive).                                                                                                                                                         | _required_ |
+| truncate_events  | [bool](`bool`)                                      | If True (default), interval events straddling the slice boundaries are clipped to [start, end). If False, events must be fully contained to be included. Children are sliced alike. | `True`     |
+| include_children | [bool](`bool`)                                      | If True (default), child timelines whose span overlaps [start, end) are recursively sliced and included.                                                                            | `True`     |
+| copy_cmaps       | [bool](`bool`)                                      | If True (default), ConversionMaps are bounded-copied for the slice range.                                                                                                           | `True`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2804,9 +2886,9 @@ specified interval of the source.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                   |
-|--------|----------------------------|---------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If start >= end or either is outside timeline bounds. The end is not bounded on a timeline of unknown length. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                           |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If start >= end or either is outside timeline bounds (the end is not bounded on a timeline of unknown length); if a Box crosses a boundary and *truncate_events* is set; if this timeline holds Boxes and its ``meta["box"]`` is no shape; or if a Box would move while this timeline states no ``meta["box"]`` and *start* is not 0. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -3235,14 +3317,6 @@ Check if a region exists.
 |--------|----------------|----------------------------|
 |        | [bool](`bool`) | True if the region exists. |
 
-### is_segment_line { #timetoalign.timelines.Timeline.is_segment_line }
-
-```python
-timelines.Timeline.is_segment_line()
-```
-
-Return whether children exactly and contiguously cover this timeline.
-
 ### iter_children { #timetoalign.timelines.Timeline.iter_children }
 
 ```python
@@ -3622,8 +3696,10 @@ canonical YAML, without event rows or external references. An
 or Projections writes its tables beside the manifest and names them
 in its ``resources``: its manifest is written (validated and
 serialized) once before any table, and once more naming the tables
-written. The manifest is validated with its styling even where
-``styling=False`` leaves the styling out of the file.
+written. The manifest validated is the one the file holds: without
+its styling where ``styling=False`` leaves the styling out, so a
+manifest whose styling the format refuses (a named timestamp beyond
+the length its timeline was given since) is written without it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

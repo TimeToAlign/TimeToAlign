@@ -1,0 +1,76 @@
+# HorizontalLinePath { #timetoalign.loader.graphical.HorizontalLinePath }
+
+```python
+loader.graphical.HorizontalLinePath(x0, x1, y, tolerance=10.0)
+```
+
+Time axis as a horizontal line at fixed y.
+
+The simplest case: x directly maps to time coordinate.
+This is the typical case for musical scores, spectrograms,
+and most graphical analyses.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name      | Type                                                  | Description                                                                                                                                                      |
+|-----------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| x0        | [Number](`timetoalign.loader.graphical.paths.Number`) | Starting x coordinate (left edge).                                                                                                                               |
+| x1        | [Number](`timetoalign.loader.graphical.paths.Number`) | Ending x coordinate (right edge).                                                                                                                                |
+| y         | [Number](`timetoalign.loader.graphical.paths.Number`) | Fixed y coordinate (vertical position of the line).                                                                                                              |
+| tolerance | [Number](`timetoalign.loader.graphical.paths.Number`) | The half-breadth of the strip the line stands for: the strip spans ``y - tolerance`` to ``y + tolerance``, and :meth:`from_2d` answers for the points within it. |
+
+Every number is kept as given: integers (and ``Fraction`` values) give
+exact answers.
+
+## Examples {.doc-section .doc-section-examples}
+
+Pixel coordinates stay integral, so the geometry answers in whole
+pixels rather than widening to float:
+
+```python
+>>> path = HorizontalLinePath(x0=10, x1=500, y=100)
+>>> path.length
+490
+>>> path.to_2d(0)
+(10, 100)
+>>> path.to_2d(245)
+(255, 100)
+>>> path.from_2d(255, 100)
+245
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [distance_to_path](#timetoalign.loader.graphical.HorizontalLinePath.distance_to_path) | Distance is simply \|y - self.y\| if x is in range. |
+| [from_2d](#timetoalign.loader.graphical.HorizontalLinePath.from_2d) | Map (x, y) to timeline coordinate. |
+| [to_2d](#timetoalign.loader.graphical.HorizontalLinePath.to_2d) | Map timeline coordinate to (x, y). |
+
+### distance_to_path { #timetoalign.loader.graphical.HorizontalLinePath.distance_to_path }
+
+```python
+loader.graphical.HorizontalLinePath.distance_to_path(x, y)
+```
+
+Distance is simply |y - self.y| if x is in range.
+
+### from_2d { #timetoalign.loader.graphical.HorizontalLinePath.from_2d }
+
+```python
+loader.graphical.HorizontalLinePath.from_2d(x, y)
+```
+
+Map (x, y) to timeline coordinate.
+
+Returns None if:
+- y is outside the strip ``y ± tolerance``
+- x is outside the [x0, x1] range
+
+### to_2d { #timetoalign.loader.graphical.HorizontalLinePath.to_2d }
+
+```python
+loader.graphical.HorizontalLinePath.to_2d(coord)
+```
+
+Map timeline coordinate to (x, y).

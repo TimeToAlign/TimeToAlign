@@ -1,0 +1,229 @@
+# MeiFacsimileLoader { #timetoalign.loader.graphical.MeiFacsimileLoader }
+
+```python
+loader.graphical.MeiFacsimileLoader()
+```
+
+Load the surfaces and zones of an MEI file's facsimile.
+
+Each ``surface`` holding zones becomes a page: a segment line of its
+accolades, in ``pixels`` (``int``). An accolade is one horizontal piece
+of the page's time path, a :class:`DiscreteGraphicalTimeline` as long as
+the piece, stating the area it stands for in ``meta["box"]`` and its
+image in ``meta["image"]``. Each zone taking part is a
+:class:`~timetoalign.core.Box` event of the accolade it lies on, holding
+the zone's shape in the image's pixels. :attr:`facs` keeps which zones
+each element of the encoding points to.
+
+For a Box on an accolade, ``start`` is the zone's least x minus the x of
+the accolade's ``meta["box"]`` and ``duration`` is the zone's x extent,
+so the box, the shape and the interval agree.
+
+:meth:`create_timeline` gives the whole facsimile as one volume (a
+segment line of the pages), :meth:`create_timelines` one root per page,
+:meth:`create_paths` the time paths made from the zones.
+
+Known limits: only the first ``graphic`` of a surface is read, and zone
+coordinates are taken as its pixels (the surface's own ``@ulx`` ..
+``@lry`` are not read, so a surface whose corners measure another space
+than the graphic's pixels has its zones placed as if they were the
+graphic's pixels); a graphic size in a unit other than pixels (``cm``,
+``in``, ...) states no pixel size and is not read; MEI states no
+accolades, so they are found from the zones' left edges unless paths
+are given, and a page whose zones are not listed accolade by accolade
+needs a path; a zone without ``xml:id`` is minted ``box_N`` on its
+accolade and cannot be pointed to; an element without ``xml:id`` is
+left out of :attr:`facs`, and a zone stating no coordinates out of the
+timelines (:attr:`zones_without_coordinates` lists those with an id). A
+zone whose ``@points`` are not four points bounding a convex area (five
+points, a concave or crossed outline) cannot be a
+:class:`~timetoalign.core.Quadrilateral` and refuses the file, the
+message naming the zone and the reason. The volume takes no name from
+the file's title.
+
+## Examples {.doc-section .doc-section-examples}
+
+The pages of an MEI file as timelines, the measures of the first
+accolade, and the zones a measure points to::
+
+    loader = MeiFacsimileLoader.from_file("chorale_facsimile.mei")
+    (page,) = loader.create_timelines(zone_types="measure")
+    accolade = page.get_child(page.list_children()[0])
+    boxes = accolade.get_events().table.to_pylist()
+    zones = loader.facs["m-43"]
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [facs](#timetoalign.loader.graphical.MeiFacsimileLoader.facs) | Per element ``xml:id``, the zone ids its ``@facs`` names, in order. |
+| [zones_without_coordinates](#timetoalign.loader.graphical.MeiFacsimileLoader.zones_without_coordinates) | The ids of the zones stating neither corners nor points. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [clear](#timetoalign.loader.graphical.MeiFacsimileLoader.clear) | Forget the loaded file. |
+| [create_paths](#timetoalign.loader.graphical.MeiFacsimileLoader.create_paths) | Make each surface's time path from its zones. |
+| [create_timeline](#timetoalign.loader.graphical.MeiFacsimileLoader.create_timeline) | Create the facsimile as one volume: a segment line of its pages. |
+| [create_timelines](#timetoalign.loader.graphical.MeiFacsimileLoader.create_timelines) | Create one root timeline per surface, in document order. |
+
+### clear { #timetoalign.loader.graphical.MeiFacsimileLoader.clear }
+
+```python
+loader.graphical.MeiFacsimileLoader.clear()
+```
+
+Forget the loaded file.
+
+### create_paths { #timetoalign.loader.graphical.MeiFacsimileLoader.create_paths }
+
+```python
+loader.graphical.MeiFacsimileLoader.create_paths(zone_types=None)
+```
+
+Make each surface's time path from its zones.
+
+The zones taking part are grouped into accolades in document order
+(:meth:`~timetoalign.loader.graphical.paths.TimeAxisPath.from_boxes`):
+a zone whose left edge lies left of the previous zone's by more than
+half the span of all left edges begins the next accolade. Each
+accolade is one horizontal piece from its zones' least x to their
+greatest, its strip the zones' y extent. These are the paths
+:meth:`create_timeline` and :meth:`create_timelines` use where none
+is given; a path that needs correcting can be rewritten and passed
+to them as ``paths``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                               | Description                                                                                     | Default   |
+|------------|------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|-----------|
+| zone_types | [str](`str`) \| [Collection](`collections.abc.Collection`)\[[str](`str`)\] \| None | The ``@type`` of the zones taking part (one, or several); None for every zone with coordinates. | `None`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                                                | Description                                                    |
+|--------|---------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`) \| [int](`int`), [PiecewisePath](`timetoalign.loader.graphical.paths.PiecewisePath`)\] | Per surface with a zone taking part, in document order, its    |
+|        | [dict](`dict`)\[[str](`str`) \| [int](`int`), [PiecewisePath](`timetoalign.loader.graphical.paths.PiecewisePath`)\] | path; a surface is named by its ``xml:id``, or by its position |
+|        | [dict](`dict`)\[[str](`str`) \| [int](`int`), [PiecewisePath](`timetoalign.loader.graphical.paths.PiecewisePath`)\] | in the file (from 0) where it has none.                        |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                           | Description                                                                   |
+|--------|--------------------------------|-------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no file has been loaded.                                                   |
+|        | [ValueError](`ValueError`)     | If no path can be made from a surface's zones (an accolade without x extent). |
+
+### create_timeline { #timetoalign.loader.graphical.MeiFacsimileLoader.create_timeline }
+
+```python
+loader.graphical.MeiFacsimileLoader.create_timeline(
+    uid=None,
+    name=None,
+    paths=None,
+    zone_types=None,
+    page_ids=None,
+    accolade_ids=None,
+    box_ids=None,
+)
+```
+
+Create the facsimile as one volume: a segment line of its pages.
+
+The pages are those of :meth:`create_timelines`, in document order,
+each a segment of the volume; the volume's length is the sum of
+theirs. The volume is locked.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name         | Type                                                                               | Description                                  | Default   |
+|--------------|------------------------------------------------------------------------------------|----------------------------------------------|-----------|
+| uid          | [str](`str`) \| None                                                               | The volume's id; minted ``dgt_N`` when None. | `None`    |
+| name         | [str](`str`) \| None                                                               | The volume's name.                           | `None`    |
+| paths        | [Paths](`timetoalign.loader.graphical.mei_facsimile.Paths`)                        | As :meth:`create_timelines`.                 | `None`    |
+| zone_types   | [str](`str`) \| [Collection](`collections.abc.Collection`)\[[str](`str`)\] \| None | As :meth:`create_timelines`.                 | `None`    |
+| page_ids     | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | As :meth:`create_timelines`.                 | `None`    |
+| accolade_ids | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | As :meth:`create_timelines`.                 | `None`    |
+| box_ids      | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | As :meth:`create_timelines`.                 | `None`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                               | Description                                                           |
+|--------|----------------------------------------------------|-----------------------------------------------------------------------|
+|        | [SegmentLine](`timetoalign.timelines.SegmentLine`) | The volume, a ``SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]`` |
+|        | [SegmentLine](`timetoalign.timelines.SegmentLine`) | (a ``SegmentLine[DiscreteGraphicalTimeline]`` where every page is     |
+|        | [SegmentLine](`timetoalign.timelines.SegmentLine`) | one line given in ``paths``).                                         |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                           | Description                                                                                                                    |
+|--------|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no file has been loaded.                                                                                                    |
+|        | [KeyError](`KeyError`)         | As :meth:`create_timelines`.                                                                                                   |
+|        | [ValueError](`ValueError`)     | As :meth:`create_timelines`; also if no surface has a time path, or some pages are built of accolades and others are one line. |
+
+### create_timelines { #timetoalign.loader.graphical.MeiFacsimileLoader.create_timelines }
+
+```python
+loader.graphical.MeiFacsimileLoader.create_timelines(
+    paths=None,
+    zone_types=None,
+    page_ids=None,
+    accolade_ids=None,
+    box_ids=None,
+)
+```
+
+Create one root timeline per surface, in document order.
+
+A surface's page is a locked segment line of its accolades, in
+``pixels`` (``int``): its id the surface's ``xml:id`` (minted
+``dgt_N`` where it has none), its name the surface's ``@n``
+(``page_N`` by its position in the call, from 1, where it has
+none), its length the sum of its accolades', ``meta["image"]`` the
+graphic's ``@target``. It states no ``meta["box"]``: its axis is a
+concatenation of accolades, not an area, and the graphic's size is
+on no timeline.
+
+The accolades are the pieces of the surface's time path, made from
+the zones taking part (:meth:`create_paths`) unless ``paths`` gives
+one. Each is a :class:`DiscreteGraphicalTimeline` named
+``accolade_K`` (K from 1 on its page) whose length is its piece's
+``x1 - x0``, with ``meta["box"]`` the piece's strip (``x0``, ``y -
+tolerance``, ``x1 - x0``, ``2 * tolerance``) and ``meta["image"]``.
+
+Each zone taking part is a Box event of its accolade: the one it was
+grouped into or, on a given path, the piece it lies on (the piece
+whose x extent holds the zone's and whose strip holds the zone's
+vertical centre; of several the nearest). Its id is the zone's
+``xml:id`` (minted ``box_N`` on its accolade where it has none); its
+shape is the zone's coordinates as written; its start is the shape's
+least x less the accolade's ``x0``.
+
+A surface without a zone taking part and without a given path is
+left out.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name         | Type                                                                               | Description                                                                                                                                                                                                                                                                                                        | Default   |
+|--------------|------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| paths        | [Paths](`timetoalign.loader.graphical.mei_facsimile.Paths`)                        | Time paths replacing those made from the zones: one path where the file holds one surface, or a mapping from a surface's ``xml:id`` or position in the file (from 0) to its path. Where zones take part, a path is a ``HorizontalLinePath`` (the page is then one plain timeline along it) or a ``PiecewisePath``. | `None`    |
+| zone_types   | [str](`str`) \| [Collection](`collections.abc.Collection`)\[[str](`str`)\] \| None | The ``@type`` of the zones taking part (one, or several); None for every zone with coordinates.                                                                                                                                                                                                                    | `None`    |
+| page_ids     | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | The pages' ids, replacing the surfaces' ``xml:id``: one id per page in document order, or a template filled with ``str.format`` from ``page`` (the page's position in the call, from 1) and ``n`` (the running count).                                                                                             | `None`    |
+| accolade_ids | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | The accolades' ids (minted ``dgt_N`` when None): one id per accolade in document order, or a template filled from ``page``, ``accolade`` (its position on its page) and ``n``.                                                                                                                                     | `None`    |
+| box_ids      | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | The Boxes' ids, replacing the zones' ``xml:id`` (see :attr:`facs`): one id per zone taking part in document order, or a template filled from ``page``, ``accolade``, ``box`` (its position in its accolade) and ``n`` (the zone's position among those taking part in the call): ``box_ids="m{n}"``.               | `None`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                             | Description           |
+|--------|--------------------------------------------------------------------------------------------------|-----------------------|
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | The pages' timelines. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                           | Description                                                                                                                                                                                                                                                                                                                                                                    |
+|--------|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no file has been loaded.                                                                                                                                                                                                                                                                                                                                                    |
+|        | [KeyError](`KeyError`)         | If ``paths`` names a surface the file does not hold.                                                                                                                                                                                                                                                                                                                           |
+|        | [ValueError](`ValueError`)     | If one path is given for a file of several surfaces or a surface is given two; zones take part on a path that is neither a horizontal line nor a ``PiecewisePath``; a zone lies on no piece of its surface's path; an ids argument does not fit the call or gives one id to two timelines; or a path holds a number the pixel axis cannot hold exactly. Nothing is built then. |

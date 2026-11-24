@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from timetoalign.storage.store import EventStore
 
 from .segment import GraphicalSegment
-from .source import ImageSource
+from .source import ImageSource, _Canvas
 
 if TYPE_CHECKING:
     from timetoalign.timelines import DiscreteGraphicalTimeline
@@ -250,12 +250,10 @@ class GraphicalStore(EventStore):
         if source_index >= len(self.sources):
             raise IndexError(f"Source index {source_index} out of range")
 
-        result = self.sources[source_index].copy()
-
+        canvas = _Canvas(self.sources[source_index].copy())
         for seg in self.get_segments_for_source(source_index):
-            result = result.draw_path(seg.path, color=color, line_width=line_width)
-
-        return result
+            canvas.path(seg.path, color, line_width, samples=100)
+        return canvas.result()
 
     def draw_interval(
         self,
@@ -277,8 +275,8 @@ class GraphicalStore(EventStore):
         Returns:
             List of ImageSource objects with interval drawn.
         """
-        # Find which sources are affected
-        affected_sources: dict[int, ImageSource] = {}
+        # One canvas per affected source: every line is drawn on one copy
+        canvases: dict[int, _Canvas] = {}
 
         for seg in self.segments:
             # Check if segment overlaps with interval
@@ -292,10 +290,9 @@ class GraphicalStore(EventStore):
             if overlap_start >= overlap_end:
                 continue  # No overlap
 
-            # Get or create source copy
             src_idx = seg.source_index
-            if src_idx not in affected_sources:
-                affected_sources[src_idx] = self.sources[src_idx].copy()
+            if src_idx not in canvases:
+                canvases[src_idx] = _Canvas(self.sources[src_idx].copy())
 
             # Draw the overlapping portion
             # Sample points along the path within the overlap
@@ -308,22 +305,17 @@ class GraphicalStore(EventStore):
                 points.append((x, y))
 
             # Draw lines between consecutive points
-            img = affected_sources[src_idx]
+            canvas = canvases[src_idx]
             for i in range(len(points) - 1):
                 x0, y0 = points[i]
                 x1, y1 = points[i + 1]
-                img = img.draw_line(x0, y0, x1, y1, color=color, line_width=line_width)
-            affected_sources[src_idx] = img
+                canvas.line(x0, y0, x1, y1, color, line_width)
 
         # Return all sources (unaffected ones unchanged)
-        result = []
-        for i, src in enumerate(self.sources):
-            if i in affected_sources:
-                result.append(affected_sources[i])
-            else:
-                result.append(src.copy())
-
-        return result
+        return [
+            canvases[i].result() if i in canvases else src.copy()
+            for i, src in enumerate(self.sources)
+        ]
 
     def draw_rectangle_at_coord(
         self,

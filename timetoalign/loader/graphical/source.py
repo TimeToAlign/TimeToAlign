@@ -51,6 +51,37 @@ def _image_draw() -> ModuleType:
     return ImageDraw
 
 
+def _pixmap_to_image(pixmap: "pymupdf.Pixmap") -> "PIL.Image.Image":
+    """Convert a whole pixmap to a new Pillow image in RGB or RGBA to draw on."""
+    image = pixmap.pil_image()
+    if image.mode not in ("RGB", "RGBA"):
+        image = image.convert("RGB")
+    return image
+
+
+def _image_to_pixmap(image: "PIL.Image.Image") -> "pymupdf.Pixmap":
+    """Convert a whole RGB or RGBA Pillow image to a pixmap from its raw samples.
+
+    A pixmap stores colour multiplied by alpha, as one read from a PNG file
+    does, so the colour of an RGBA image is multiplied by its alpha here.
+    """
+    pymupdf = _get_pymupdf()
+    alpha = image.mode == "RGBA"
+    pixmap = pymupdf.Pixmap(
+        pymupdf.csRGB, image.width, image.height, image.tobytes(), alpha
+    )
+    if alpha:
+        pixmap.set_alpha(image.getchannel("A").tobytes(), premultiply=True)
+    return pixmap
+
+
+def _is_translucent(image: "PIL.Image.Image") -> bool:
+    """Whether an image has pixels that are neither transparent nor opaque."""
+    if image.mode != "RGBA":
+        return False
+    return any(image.getchannel("A").histogram()[1:255])
+
+
 # region ImageMetadata
 
 
@@ -126,7 +157,9 @@ class ImageSource:
             pixmap: The pymupdf Pixmap containing image data.
             metadata: Metadata about the image source.
         """
-        self._pixmap = pixmap
+        self._pixmap: pymupdf.Pixmap | None = pixmap
+        # A drawing whose pixmap is built only when it is needed.
+        self._drawing: PIL.Image.Image | None = None
         self._metadata = metadata
         self._logger = module_logger.getChild("ImageSource")
 
@@ -278,16 +311,39 @@ class ImageSource:
 
         return cls(pix, metadata)
 
+    @classmethod
+    def _from_drawing(
+        cls, image: "PIL.Image.Image", metadata: ImageMetadata, translucent: bool
+    ) -> "ImageSource":
+        """Wrap a finished drawing, which stays an image until its pixmap is needed.
+
+        A ``translucent`` drawing (see :class:`_Canvas`) becomes its pixmap at
+        once, so that drawing on it again starts, as it always did, from the
+        pixmap's colour.
+        """
+        if translucent:
+            return cls(_image_to_pixmap(image), metadata)
+        source = cls.__new__(cls)
+        source._pixmap = None
+        source._drawing = image
+        source._metadata = metadata
+        source._logger = module_logger.getChild("ImageSource")
+        return source
+
     # --- Properties ---
 
     @property
     def width(self) -> int:
         """Image width in pixels."""
+        if self._pixmap is None:
+            return self._drawing.width
         return self._pixmap.width
 
     @property
     def height(self) -> int:
         """Image height in pixels."""
+        if self._pixmap is None:
+            return self._drawing.height
         return self._pixmap.height
 
     @property
@@ -298,9 +354,24 @@ class ImageSource:
     @property
     def pixmap(self) -> pymupdf.Pixmap:
         """Underlying pymupdf Pixmap."""
-        return self._pixmap
+        pixmap = self._materialized()
+        # The pixmap handed out may be changed in place: it is the image now.
+        self._drawing = None
+        return pixmap
 
     # --- Conversion Methods ---
+
+    def _materialized(self) -> "pymupdf.Pixmap":
+        """The pixmap, built once from a pending drawing."""
+        if self._pixmap is None:
+            self._pixmap = _image_to_pixmap(self._drawing)
+        return self._pixmap
+
+    def _drawable(self) -> "PIL.Image.Image":
+        """A new RGB or RGBA Pillow image of this source, to draw on."""
+        if self._drawing is not None:
+            return self._drawing.copy()
+        return _pixmap_to_image(self._pixmap)
 
     def to_pil(self) -> "PIL.Image.Image":
         """Convert to PIL Image for advanced operations.
@@ -310,7 +381,7 @@ class ImageSource:
         Returns:
             PIL Image object.
         """
-        return self._pixmap.pil_image()
+        return self._materialized().pil_image()
 
     def to_bytes(self, format: str = "png") -> bytes:
         """Convert to bytes in specified format.
@@ -321,7 +392,7 @@ class ImageSource:
         Returns:
             Image data as bytes.
         """
-        return self._pixmap.tobytes(output=format)
+        return self._materialized().tobytes(output=format)
 
     # --- I/O Methods ---
 
@@ -338,7 +409,7 @@ class ImageSource:
             ext = path.suffix.lower().lstrip(".")
             format = ext if ext else "png"
 
-        self._pixmap.save(str(path), output=format)
+        self._materialized().save(str(path), output=format)
         self._logger.debug(f"Saved image to {path}")
 
     # --- Visualization Methods ---
@@ -352,7 +423,7 @@ class ImageSource:
         pymupdf = _get_pymupdf()
 
         # Create new pixmap with same properties
-        new_pix = pymupdf.Pixmap(self._pixmap)
+        new_pix = pymupdf.Pixmap(self._materialized())
 
         return ImageSource(new_pix, self._metadata)
 
@@ -383,45 +454,9 @@ class ImageSource:
         Returns:
             New ImageSource with rectangle drawn.
         """
-        ImageDraw = _image_draw()
-
-        # Convert to PIL
-        pil_img = self.to_pil()
-
-        # Ensure we have an RGB or RGBA image
-        if pil_img.mode not in ("RGB", "RGBA"):
-            pil_img = pil_img.convert("RGB")
-
-        draw = ImageDraw.Draw(pil_img)
-
-        x0, y0 = int(x), int(y)
-        x1, y1 = int(x + width), int(y + height)
-
-        if fill:
-            # Semi-transparent fill
-            fill_color = (*color, 64)
-            if pil_img.mode != "RGBA":
-                pil_img = pil_img.convert("RGBA")
-                draw = ImageDraw.Draw(pil_img)
-            draw.rectangle(
-                [x0, y0, x1, y1], fill=fill_color, outline=color, width=line_width
-            )
-        else:
-            draw.rectangle([x0, y0, x1, y1], outline=color, width=line_width)
-
-        # Convert back to pymupdf Pixmap
-        pymupdf = _get_pymupdf()
-
-        # Save to bytes and reload
-        import io
-
-        buf = io.BytesIO()
-        pil_img.save(buf, format="PNG")
-        buf.seek(0)
-
-        new_pix = pymupdf.Pixmap(buf.getvalue())
-
-        return ImageSource(new_pix, self._metadata)
+        canvas = _Canvas(self)
+        canvas.rectangle(x, y, width, height, color, line_width, fill)
+        return canvas.result()
 
     def draw_line(
         self,
@@ -443,29 +478,9 @@ class ImageSource:
         Returns:
             New ImageSource with line drawn.
         """
-        ImageDraw = _image_draw()
-
-        pil_img = self.to_pil()
-        if pil_img.mode not in ("RGB", "RGBA"):
-            pil_img = pil_img.convert("RGB")
-
-        draw = ImageDraw.Draw(pil_img)
-        draw.line(
-            [(int(x0), int(y0)), (int(x1), int(y1))],
-            fill=color,
-            width=line_width,
-        )
-
-        pymupdf = _get_pymupdf()
-        import io
-
-        buf = io.BytesIO()
-        pil_img.save(buf, format="PNG")
-        buf.seek(0)
-
-        new_pix = pymupdf.Pixmap(buf.getvalue())
-
-        return ImageSource(new_pix, self._metadata)
+        canvas = _Canvas(self)
+        canvas.line(x0, y0, x1, y1, color, line_width)
+        return canvas.result()
 
     def draw_path(
         self,
@@ -490,17 +505,104 @@ class ImageSource:
         Returns:
             New ImageSource with path drawn.
         """
+        canvas = _Canvas(self)
+        canvas.path(path, color, line_width, samples)
+        return canvas.result()
+
+    def __repr__(self) -> str:
+        return (
+            f"ImageSource({self.width}x{self.height}, "
+            f"source={self._metadata.source_type})"
+        )
+
+
+# endregion
+
+# region Drawing
+
+
+class _Canvas:
+    """A copy of an ImageSource that any number of shapes are drawn on.
+
+    The page is converted to a Pillow image once, before the first shape,
+    and :meth:`result` wraps the drawing in a new ImageSource whose pixmap is
+    built once, when it is needed; the source is never changed.
+
+    A pixmap stores colour multiplied by alpha, so every conversion out and
+    back in multiplies a semi-transparent pixel once more. On a translucent
+    image (one with such pixels, or with a filled rectangle drawn) the image
+    is therefore converted out and back in between two shapes: the pixels
+    are those of drawing each shape on the pixmap the one before left. On
+    any other image the conversion changes no pixel and is left out.
+    """
+
+    def __init__(self, source: ImageSource) -> None:
+        self._image_draw = _image_draw()
+        self._source = source
+        self._image: PIL.Image.Image | None = None
+        self._translucent = False
+
+    def _draw(self, color: tuple[int, ...]) -> Any:
+        """The drawing context for the next shape, drawn in ``color``."""
+        if self._image is None:
+            self._image = self._source._drawable()
+            self._translucent = _is_translucent(self._image)
+        elif self._translucent:
+            self._image = _pixmap_to_image(_image_to_pixmap(self._image))
+        if len(color) > 3:
+            self._translucent = True
+        return self._image_draw.Draw(self._image)
+
+    def rectangle(
+        self,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+        color: tuple[int, int, int],
+        line_width: int,
+        fill: bool,
+    ) -> None:
+        """Draw a rectangle outline, filled at alpha 64 when ``fill``."""
+        draw = self._draw(color)
+        x0, y0 = int(x), int(y)
+        x1, y1 = int(x + width), int(y + height)
+        if fill:
+            if self._image.mode != "RGBA":
+                self._image = self._image.convert("RGBA")
+                draw = self._image_draw.Draw(self._image)
+            self._translucent = True
+            draw.rectangle(
+                [x0, y0, x1, y1], fill=(*color, 64), outline=color, width=line_width
+            )
+        else:
+            draw.rectangle([x0, y0, x1, y1], outline=color, width=line_width)
+
+    def line(
+        self,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        color: tuple[int, int, int],
+        line_width: int,
+    ) -> None:
+        """Draw a straight line."""
+        self._draw(color).line(
+            [(int(x0), int(y0)), (int(x1), int(y1))], fill=color, width=line_width
+        )
+
+    def path(
+        self,
+        path: "TimeAxisPath",
+        color: tuple[int, int, int],
+        line_width: int,
+        samples: int,
+    ) -> None:
+        """Draw a time path, a ``PiecewisePath`` piece by piece."""
         from .paths import PiecewisePath
 
-        ImageDraw = _image_draw()
-
-        pil_img = self.to_pil()
-        if pil_img.mode not in ("RGB", "RGBA"):
-            pil_img = pil_img.convert("RGB")
-
-        draw = ImageDraw.Draw(pil_img)
-
-        # Sample each piece and draw its line segments
+        draw = self._draw(color)
         pieces = path.pieces if isinstance(path, PiecewisePath) else (path,)
         for piece in pieces:
             points = []
@@ -508,25 +610,15 @@ class ImageSource:
                 t = (i / samples) * piece.length
                 x, y = piece.to_2d(t)
                 points.append((int(x), int(y)))
-
             if len(points) >= 2:
                 draw.line(points, fill=color, width=line_width)
 
-        pymupdf = _get_pymupdf()
-        import io
-
-        buf = io.BytesIO()
-        pil_img.save(buf, format="PNG")
-        buf.seek(0)
-
-        new_pix = pymupdf.Pixmap(buf.getvalue())
-
-        return ImageSource(new_pix, self._metadata)
-
-    def __repr__(self) -> str:
-        return (
-            f"ImageSource({self.width}x{self.height}, "
-            f"source={self._metadata.source_type})"
+    def result(self) -> ImageSource:
+        """A new ImageSource of the drawing; a copy of the source if none was drawn."""
+        if self._image is None:
+            return self._source.copy()
+        return ImageSource._from_drawing(
+            self._image, self._source.metadata, self._translucent
         )
 
 

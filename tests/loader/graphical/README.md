@@ -701,3 +701,63 @@ against the hand-derived numbers above:
 
 A diagonal of length 500.0 (300, 400) is a page of 500 pixels; one of length
 141.42… (100, 100) is refused: lengths are never rounded.
+
+## Drawing on a page image (`test_drawing.py`)
+
+`ImageSource.draw_rectangle`, `draw_line` and `draw_path` and the drawing
+methods of `GraphicalStore` (`draw_segments_on_source`, `draw_interval`,
+`draw_rectangle_at_coord`) draw with Pillow on a copy of the page. A page
+is converted from its pixmap to a Pillow image once, any number of shapes
+are drawn on that image, and the image becomes a pixmap once, from its raw
+samples, when the pixmap is needed (`pixmap`, `to_pil`, `to_bytes`,
+`save`, `copy`). Drawing on the result of a drawing starts from the image
+held, without a conversion.
+
+A pixmap stores colour multiplied by alpha, so every conversion out and
+back in multiplies a semi-transparent pixel once more. On a translucent
+image (an alpha channel with values other than 0 and 255, or a filled
+rectangle drawn) the conversion is therefore kept between two shapes; on
+every other image it changes no pixel and is left out.
+
+What proves it:
+
+1. *The pixels are those of drawing shape by shape through a PNG file.* The
+   test keeps, as its reference, the drawing route that converts the whole
+   page for every shape: pixmap to Pillow image, one shape, PNG encoding, a
+   pixmap read from the PNG bytes (and, for the store, a `copy()` of the
+   page first, which adds an alpha channel). The same shapes (rectangles
+   outlined and filled, lines, a `PiecewisePath`, a chain of four calls with
+   a fill in the middle, the four segments of a store, an interval) are
+   drawn by both routes and the results compared whole: width, height,
+   number of components, alpha, colorspace, resolution and the sample
+   bytes, exactly. Pages: a synthetic grey page (Pillow mode `L`, so the
+   conversion to RGB is covered) and a synthetic RGB page, both 100 x 100,
+   and two real page images of the `ieee1599` corpus: the scan of *Serie
+   in 9/8* (greyscale JPEG, 1248 x 1745 at 600 dpi) and Satie's first
+   *Gymnopédie* (RGBA PNG, 475 x 638 at 300 dpi, 2,218 semi-transparent
+   pixels), so the translucent case is pinned on real data. Run against the
+   drawing code that converted once per shape, these comparisons pass: the
+   reference is that code.
+2. *The number of conversions is counted, not timed.* Both conversion
+   functions of `timetoalign.loader.graphical.source` are wrapped by
+   counting spies. One shape and then the pixmap: one in, one out; reading
+   the pixmap again or `to_bytes` converts nothing more. A chain of 27
+   public calls (the nine measure zones of a chorale page as rectangles,
+   then two diagonals each) saved to a file: one in, one out. The four
+   segments of a store, and an interval of 67.5 pixels (67 lines) on one of
+   three pages: one in, one out. On the RGBA page the four segments convert
+   four times each way.
+3. *The source drawn on is unchanged and each call returns a new
+   `ImageSource`*: the source's samples are compared before and after, two
+   drawings from one drawing are each equal to the reference drawn on it,
+   and the three results differ.
+4. *Nothing to draw, nothing converted*: `draw_segments_on_source` on a
+   page without segments returns the `copy()` it always returned (grey with
+   an alpha channel) without a conversion, and `draw_interval` copies the
+   pages it does not touch.
+
+`draw_interval` reaches a segment's end only when the interval ends inside
+that segment (`GraphicalSegment.to_image` refuses the end of its own span),
+so every interval tested lies within one segment.
+
+No timing is measured anywhere: a timing assertion fails under load.

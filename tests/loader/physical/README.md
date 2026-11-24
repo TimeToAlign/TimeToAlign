@@ -4,7 +4,7 @@ Tests for the physical-domain loaders in `timetoalign.loader.physical`.
 
 ## Test Files
 
-### `test_audio.py` (51 tests)
+### `test_audio.py` (62 tests)
 
 Tests for `AudioLoader` against minimal in-memory WAV files and one MP3 specimen.
 
@@ -19,7 +19,8 @@ fixed order, exact counts first, and records the one that answered in
    chunk, else the `data` chunk size over the block size) for WAV encodings
    `wave` rejects, such as IEEE float;
 3. `mutagen`, which states only a **duration**: its count is the estimate
-   `round(duration * sample_rate)`.
+   `round(duration * sample_rate)`, except for an MP4 file, whose count is read
+   from the container (below).
 
 A backend that is not installed or cannot read the file hands it on to the
 next; any other exception propagates. On the three exact paths
@@ -121,6 +122,61 @@ Further known issues, documented and not pinned:
 - a WAV truncated below the size its `data` chunk states loads with a
   backend-dependent count: soundfile counts the frames present, while `wave`,
   `riff` and `mutagen` answer the header's count.
+
+**MP4: the count the container states** (`TestAudioLoaderMP4Count`). An MP4
+(or M4A) audio track states its media length as an integer, `mdhd`'s duration
+in the media timescale, which counts every coded frame: the encoder's priming
+samples at the start and its padding at the end included. The audio as played
+is stated by the track's edit list (`elst`): one edit that plays the media from
+`media_time` (media timescale) for `segment_duration` (movie timescale, `mvhd`).
+Read that way, the played samples are those whose onset lies in
+`[media_time, media_time + segment_duration)`, the media's end being the last:
+`min(media end, ceil(edit end)) − media_time`, computed with exact fractions
+(a count of the integers in a half-open interval, never a float product).
+Without an edit list, an `iTunSMPB` tag states the encoder delay, the padding
+and the original sample count, and the count is taken from it. With neither,
+the media's own count stands: the file states nothing that separates priming
+or padding from audio, and nothing is subtracted by rule. The count is
+recorded as `audio_info.extra["sample_count_from"]` (`"elst"`, `"iTunSMPB"`,
+`"mdhd"`; `"duration"` on every other mutagen path), and `duration_seconds` is
+`n_samples / sample_rate` as on the exact paths. What must hold, on MP4 files
+built byte by byte in `tmp_path` (`ftyp`, `moov` with `mvhd`, one sound `trak`
+with `mdhd`, `hdlr`, an `mp4a` sample entry, optionally `edts/elst` and an
+`iTunSMPB` free-form tag; no `mdat`, since only the boxes are read):
+
+- the shape FFmpeg writes (movie timescale 1000, media timescale 44100, media
+  7370134 samples, one edit from 1024 for 167100 ms) loads as **7369110**
+  samples from `"elst"`: the edit's end is the media's end exactly
+  (167100 × 44.1 = 7369110 = 7370134 − 1024). The count of the mutagen
+  estimate, 7370134, is one AAC frame too long; it is what the six videos of
+  the CollabScore corpus were given before;
+- on a 5120-sample media from 1024: an edit of 50 ms gives **2205** (the edit
+  ends on a sample), one of 51 ms **2250** (the edit ends at 3273.1, so sample
+  3273 is the last played), one of 200 ms **4096** (the edit runs past the
+  media, whose end is the last);
+- no edit list and an `iTunSMPB` tag stating delay 2112, padding 1008 and
+  count 2000 gives **2000** from `"iTunSMPB"`;
+- neither gives the media's **5120** from `"mdhd"`, and so does an edit list
+  of two edits (an empty edit before the media), which the loader does not
+  interpret (a known limit);
+- a media timescale (1000) whose duration (1001) is no whole number of samples
+  at 44100 Hz states no integer count: the estimate stands,
+  `round(1.001 × 44100)` = **44144** from `"duration"`.
+
+Two real files of corpus `audio` pin the reading (`hard_techno/`, soundfile
+declines both, so `backend == "mutagen"`): `Bye Bye.m4a` has an edit from 0
+of 294267 ms, past its media end, so its count stays the media's **12977142**;
+`Ao Céu.m4a` has an edit from 2048 of 279336 ms (edit end 12320765.6), so its
+count is **12318718** where the media holds 12320768. Both agree with FFmpeg's
+reading of the same edit lists (`ffprobe` `duration_ts`, FFmpeg 7, measured
+when the tests were written), an independent oracle the tests do not call.
+
+Known limit: an edit list other than one edit of the media at rate 1 (an
+empty edit, several segments, a dwell) is not interpreted; such a track keeps
+the media count. A media timescale other than the sample rate is read when it
+converts to whole samples; otherwise, and where a box is cut short, the
+duration estimate stands. MP3 is
+unchanged: without soundfile its count stays the duration estimate above.
 
 **Two timelines per file.** A file's native axis is its sample count, so
 `create_timeline()` must give a `DiscretePhysicalTimeline` in `samples`, `int`,

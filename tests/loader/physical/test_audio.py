@@ -490,6 +490,163 @@ class TestAudioLoaderSampleCount:
 # endregion
 
 
+# region MP4 Count
+
+HARD_TECHNO = ensure_data("audio") / "hard_techno"
+
+
+def _box(kind: bytes, *children: bytes, body: bytes = b"") -> bytes:
+    """One ISO media box: size, type, *body*, then *children*."""
+    payload = body + b"".join(children)
+    return struct.pack(">I4s", 8 + len(payload), kind) + payload
+
+
+_FULL = bytes(4)  # version 0, no flags
+
+
+def create_mp4_file(
+    path: Path,
+    media_duration: int,
+    *,
+    media_scale: int = 44100,
+    movie_scale: int = 1000,
+    edits: list[tuple[int, int]] | None = None,
+    itunsmpb: str | None = None,
+    sample_rate: int = 44100,
+) -> Path:
+    """Write the boxes of an MP4 sound track that state its length; no ``mdat``.
+
+    Args:
+        path: Path to write the file.
+        media_duration: ``mdhd`` duration, in *media_scale* units.
+        media_scale: ``mdhd`` timescale.
+        movie_scale: ``mvhd`` timescale, the unit of an edit's segment duration.
+        edits: ``elst`` entries as (segment duration, media time); None for no
+            edit list.
+        itunsmpb: The text of an ``iTunSMPB`` free-form tag, if any.
+        sample_rate: The ``mp4a`` sample entry's rate.
+    """
+    mvhd = _box(
+        b"mvhd", body=_FULL + struct.pack(">4I", 0, 0, movie_scale, 0) + bytes(80)
+    )
+    mdhd = _box(
+        b"mdhd",
+        body=_FULL + struct.pack(">4I2H", 0, 0, media_scale, media_duration, 0, 0),
+    )
+    hdlr = _box(b"hdlr", body=_FULL + struct.pack(">I4s", 0, b"soun") + bytes(13))
+    mp4a = _box(
+        b"mp4a",
+        _box(b"free"),
+        body=bytes(6)
+        + struct.pack(">H", 1)
+        + bytes(8)
+        + struct.pack(">4HI", 2, 16, 0, 0, sample_rate << 16),
+    )
+    stsd = _box(b"stsd", mp4a, body=_FULL + struct.pack(">I", 1))
+    mdia = _box(b"mdia", mdhd, hdlr, _box(b"minf", _box(b"stbl", stsd)))
+    trak = [mdia]
+    if edits is not None:
+        entries = b"".join(struct.pack(">IihH", seg, time, 1, 0) for seg, time in edits)
+        elst = _box(b"elst", body=_FULL + struct.pack(">I", len(edits)) + entries)
+        trak.insert(0, _box(b"edts", elst))
+    moov = [mvhd, _box(b"trak", *trak)]
+    if itunsmpb is not None:
+        freeform = _box(
+            b"----",
+            _box(b"mean", body=_FULL + b"com.apple.iTunes"),
+            _box(b"name", body=_FULL + b"iTunSMPB"),
+            _box(b"data", body=struct.pack(">II", 1, 0) + itunsmpb.encode()),
+        )
+        meta_hdlr = _box(
+            b"hdlr", body=_FULL + struct.pack(">I4s", 0, b"mdir") + bytes(13)
+        )
+        meta = _box(b"meta", meta_hdlr, _box(b"ilst", freeform), body=_FULL)
+        moov.append(_box(b"udta", meta))
+    ftyp = _box(b"ftyp", body=b"M4A " + bytes(4) + b"M4A isom")
+    path.write_bytes(ftyp + _box(b"moov", *moov))
+    return path
+
+
+class TestAudioLoaderMP4Count:
+    """An MP4's count is the one its boxes state for the audio as played."""
+
+    @pytest.mark.parametrize(
+        "media_duration,edits,itunsmpb,n_samples,count_from",
+        [
+            (7370134, [(167100, 1024)], None, 7369110, "elst"),
+            (5120, [(50, 1024)], None, 2205, "elst"),
+            (5120, [(51, 1024)], None, 2250, "elst"),
+            (5120, [(200, 1024)], None, 4096, "elst"),
+            (
+                5120,
+                None,
+                " 00000000 00000840 000003F0 00000000000007D0",
+                2000,
+                "iTunSMPB",
+            ),
+            (5120, None, None, 5120, "mdhd"),
+            (5120, [(10, -1), (100, 0)], None, 5120, "mdhd"),
+        ],
+        ids=[
+            "priming-to-end",
+            "edit-ends-on-a-sample",
+            "edit-ends-between-samples",
+            "edit-past-the-media",
+            "itunsmpb",
+            "media-only",
+            "two-edits",
+        ],
+    )
+    def test_stated_count(
+        self,
+        tmp_path: Path,
+        media_duration: int,
+        edits: list[tuple[int, int]] | None,
+        itunsmpb: str | None,
+        n_samples: int,
+        count_from: str,
+    ):
+        path = create_mp4_file(
+            tmp_path / "track.m4a", media_duration, edits=edits, itunsmpb=itunsmpb
+        )
+
+        loader = AudioLoader().load(path)
+        assert loader.audio_info.backend == "mutagen"
+        assert loader.audio_info.extra["sample_count_from"] == count_from
+        assert loader.n_samples == n_samples
+        assert loader.duration_seconds == n_samples / 44100
+        assert loader.create_timeline().length.value == n_samples
+
+    def test_no_whole_number_of_samples(self, tmp_path: Path):
+        path = create_mp4_file(tmp_path / "track.m4a", 1001, media_scale=1000)
+
+        loader = AudioLoader().load(path)
+        assert loader.audio_info.extra["sample_count_from"] == "duration"
+        assert loader.n_samples == 44144
+        assert loader.duration_seconds == 1.001
+
+    @pytest.mark.parametrize(
+        "name,n_samples", [("Bye Bye.m4a", 12977142), ("Ao Céu.m4a", 12318718)]
+    )
+    def test_specimen(self, name: str, n_samples: int):
+        loader = AudioLoader().load(HARD_TECHNO / name)
+
+        assert loader.audio_info.backend == "mutagen"
+        assert loader.audio_info.extra["sample_count_from"] == "elst"
+        assert loader.n_samples == n_samples
+        assert loader.sample_rate == 44100
+        assert loader.duration_seconds == n_samples / 44100
+
+    def test_estimate_is_named(self, tmp_path: Path):
+        wav_path = create_wav_file(tmp_path / "fifteen.wav", n_samples=15)
+
+        info = AudioLoader()._load_with_mutagen(wav_path)
+        assert info.extra["sample_count_from"] == "duration"
+
+
+# endregion
+
+
 # region Backend Chain
 
 

@@ -19,16 +19,19 @@ Backend Support:
     soundfile (libsndfile's frame count, WAV, FLAC, OGG, MP3 and more), then for
     WAV files Python's built-in wave module and a RIFF header parser, then
     mutagen (MP3, M4A and more), which states only a duration and so yields an
-    estimated count.
+    estimated count, except for MP4, whose count is read from the container.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import os
+import struct
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Literal, TypeVar
 
@@ -118,6 +121,174 @@ def _muted_native_stderr() -> Iterator[None]:
 # endregion
 
 
+# region MP4 sample count
+
+
+def _mp4_boxes(data: bytes, start: int, end: int) -> Iterator[tuple[bytes, int, int]]:
+    """Yield ``(type, body start, box end)`` of the ISO media boxes in ``data[start:end]``."""
+    while start + 8 <= end:
+        size, kind = struct.unpack_from(">I4s", data, start)
+        body = start + 8
+        if size == 1 and body + 8 <= end:
+            size = struct.unpack_from(">Q", data, body)[0]
+            body += 8
+        elif size == 0:
+            size = end - start
+        if size < body - start or start + size > end:
+            return
+        yield kind, body, start + size
+        start += size
+
+
+def _mp4_find(
+    data: bytes, start: int, end: int, *path: bytes
+) -> tuple[int, int] | None:
+    """Return ``(body start, box end)`` of the first box along *path*, or None."""
+    for kind in path:
+        for found, body, box_end in _mp4_boxes(data, start, end):
+            if found == kind:
+                start, end = body, box_end
+                break
+        else:
+            return None
+    return start, end
+
+
+def _mp4_moov(path: Path) -> bytes | None:
+    """Return the body of the file's ``moov`` box, reading no other box's body."""
+    with path.open("rb") as handle:
+        file_end = handle.seek(0, os.SEEK_END)
+        position = 0
+        while position + 8 <= file_end:
+            handle.seek(position)
+            header = handle.read(16)
+            size, kind = struct.unpack_from(">I4s", header)
+            head = 8
+            if size == 1 and len(header) == 16:
+                size, head = struct.unpack_from(">Q", header, 8)[0], 16
+            elif size == 0:
+                size = file_end - position
+            if size < head:
+                return None
+            if kind == b"moov":
+                handle.seek(position + head)
+                return handle.read(size - head)
+            position += size
+    return None
+
+
+def _mp4_scale_and_duration(data: bytes, start: int) -> tuple[int, int]:
+    """Read ``timescale`` and ``duration`` of an ``mvhd`` or ``mdhd`` body."""
+    if data[start] == 1:
+        return struct.unpack_from(">IQ", data, start + 20)
+    return struct.unpack_from(">II", data, start + 12)
+
+
+def _mp4_edits(data: bytes, start: int) -> list[tuple[int, int, int, int]]:
+    """Read the ``elst`` entries: segment duration, media time, rate integer and fraction."""
+    version = data[start]
+    (count,) = struct.unpack_from(">I", data, start + 4)
+    layout, width = (">QqhH", 20) if version == 1 else (">IihH", 12)
+    return [
+        struct.unpack_from(layout, data, start + 8 + index * width)
+        for index in range(count)
+    ]
+
+
+def _itunsmpb_count(value: bytes | str | None, media_end: int) -> int | None:
+    """Return the original sample count an ``iTunSMPB`` tag states, or None.
+
+    The tag is hexadecimal fields: a zero, the encoder delay, the padding and
+    the original sample count. A count that does not fit after the delay in
+    the media's samples is not the audio's and is ignored.
+    """
+    if value is None:
+        return None
+    text = value.decode("ascii", "replace") if isinstance(value, bytes) else value
+    fields = text.split()
+    try:
+        delay, count = int(fields[1], 16), int(fields[3], 16)
+    except (IndexError, ValueError):
+        return None
+    return count if 0 < count <= media_end - delay else None
+
+
+def _mp4_sample_count(
+    path: Path, sample_rate: int, itunsmpb: bytes | str | None
+) -> tuple[int, str] | None:
+    """Return the sample count an MP4 file states for its audio as played.
+
+    Reads the first sound track (the one mutagen describes). Its ``mdhd``
+    duration counts every coded sample, the encoder's priming and padding
+    included. A single edit of the media at rate 1 (``elst``) states what is
+    played: the samples whose onset lies in ``[media_time, media_time +
+    segment_duration)``, the media's end being the last. Without an edit
+    list, an ``iTunSMPB`` tag states the original count. Otherwise the
+    media's own count stands; nothing is subtracted by rule.
+
+    Args:
+        path: The MP4 file.
+        sample_rate: The sample rate of the track, as mutagen states it.
+        itunsmpb: The value of the file's ``iTunSMPB`` tag, if any.
+
+    Returns:
+        The count and the box or tag that stated it (``"elst"``,
+        ``"iTunSMPB"``, ``"mdhd"``), or None where the file states no whole
+        number of samples (no ``moov``, no sound track, a media timescale
+        that does not convert to whole samples).
+    """
+    moov = _mp4_moov(path)
+    if moov is None:
+        return None
+    mvhd = _mp4_find(moov, 0, len(moov), b"mvhd")
+    for kind, body, end in _mp4_boxes(moov, 0, len(moov)):
+        hdlr = _mp4_find(moov, body, end, b"mdia", b"hdlr") if kind == b"trak" else None
+        if (
+            hdlr is not None
+            and struct.unpack_from(">4s", moov, hdlr[0] + 8)[0] == b"soun"
+        ):
+            break
+    else:
+        return None
+    mdhd = _mp4_find(moov, body, end, b"mdia", b"mdhd")
+    if mdhd is None:
+        return None
+    media_scale, media_duration = _mp4_scale_and_duration(moov, mdhd[0])
+    if media_scale == 0:
+        return None
+    media_end = Fraction(media_duration * sample_rate, media_scale)
+    if media_end.denominator != 1:
+        return None
+    elst = _mp4_find(moov, body, end, b"edts", b"elst")
+    edits = _mp4_edits(moov, elst[0]) if elst is not None else []
+    if len(edits) == 1 and mvhd is not None:
+        segment, media_time, rate, rate_fraction = edits[0]
+        movie_scale = _mp4_scale_and_duration(moov, mvhd[0])[0]
+        start = Fraction(media_time * sample_rate, media_scale)
+        if (
+            media_time >= 0
+            and (rate, rate_fraction) == (1, 0)
+            and movie_scale
+            and start.denominator == 1
+            and start <= media_end
+        ):
+            # The samples whose onset lies in the edit; a segment duration of
+            # 0 states no end, so the media's end is the last
+            stop = media_end
+            if segment:
+                edit_end = start + Fraction(segment * sample_rate, movie_scale)
+                stop = min(stop, math.ceil(edit_end))
+            return int(stop - start), "elst"
+    if not edits:
+        count = _itunsmpb_count(itunsmpb, int(media_end))
+        if count is not None:
+            return count, "iTunSMPB"
+    return int(media_end), "mdhd"
+
+
+# endregion
+
+
 # region AudioInfo
 
 
@@ -130,13 +301,14 @@ class AudioInfo:
 
     Attributes:
         n_samples: Total number of samples in the file (frames). Exact from the
-            soundfile, wave and riff backends; estimated from the stated
-            duration on the mutagen backend.
+            soundfile, wave and riff backends and, on the mutagen backend,
+            for an MP4 file (the count its boxes state); estimated from the
+            stated duration on the mutagen backend otherwise.
         sample_rate: Sample rate in Hz (e.g., 44100, 48000).
         channels: Number of audio channels (1=mono, 2=stereo).
         duration_seconds: Duration in seconds: ``n_samples / sample_rate`` where
-            the count is exact, the duration the file states on the mutagen
-            backend.
+            the count is exact, the duration the file states where mutagen's
+            count is an estimate.
         format: Audio format/codec (e.g., "WAV", "FLAC", "MP3").
         subtype: Audio subtype/encoding (e.g., "PCM_16", "PCM_24", "VORBIS").
         bits_per_sample: Bit depth (e.g., 16, 24, 32). May be None for lossy formats.
@@ -208,6 +380,17 @@ class AudioLoader(Loader[AudioInfo]):
         soundfile is not installed or cannot read the file;
         ``audio_info.backend`` names the backend that answered, and the
         timeline's metadata carries it.
+
+        An MP4 (M4A) file states its count: the loader reads the first sound
+        track's boxes. The media duration (``mdhd``) counts every coded
+        sample, the encoder's priming and padding included; a single edit of
+        the media (``elst``) states the audio as played, and so does an
+        ``iTunSMPB`` tag where there is no edit list.
+        ``audio_info.extra["sample_count_from"]`` names the statement used.
+        Where the file states neither, the media count stands: nothing is
+        subtracted by rule, so a track whose priming is stated nowhere is
+        counted with it. An edit list of several edits (an empty edit, more
+        than one segment) is not interpreted and keeps the media count.
 
         The RIFF header parser derives the block size from the bit depth and
         channel count rather than reading the header's block align, so without
@@ -358,7 +541,9 @@ class AudioLoader(Loader[AudioInfo]):
         the stated duration. For an MP3 the duration counts whole MPEG frames,
         encoder delay and padding included, or, without a VBR header, is
         guessed from the file size and bitrate, so the estimate can miss the
-        decoded count in either direction.
+        decoded count in either direction. An MP4 file states a whole number
+        of samples in its boxes (``_mp4_sample_count``): that count is taken,
+        and ``duration_seconds`` is ``n_samples / sample_rate``.
 
         Raises:
             _CannotRead: If mutagen is not installed, cannot parse the file,
@@ -388,8 +573,23 @@ class AudioLoader(Loader[AudioInfo]):
         if duration is None:
             raise _CannotRead("mutagen states no duration")
 
-        # The duration is a double, so the nearest count, never a truncation
-        n_samples = round(duration * sample_rate)
+        # An MP4 states its count in its boxes (a box cut short states none);
+        # elsewhere the duration is a double, so the nearest count, never a
+        # truncation
+        mp4 = optional_module("mutagen.mp4")
+        stated = None
+        if mp4 is not None and isinstance(audio, mp4.MP4):
+            itunsmpb = (audio.tags or {}).get("----:com.apple.iTunes:iTunSMPB")
+            try:
+                stated = _mp4_sample_count(
+                    path, sample_rate, itunsmpb[0] if itunsmpb else None
+                )
+            except struct.error:
+                stated = None
+        if stated is None:
+            n_samples, count_from = round(duration * sample_rate), "duration"
+        else:
+            (n_samples, count_from), duration = stated, stated[0] / sample_rate
 
         # Channels
         channels = getattr(info, "channels", 2)
@@ -422,6 +622,7 @@ class AudioLoader(Loader[AudioInfo]):
             extra={
                 "bitrate": getattr(info, "bitrate", None),
                 "codec": getattr(info, "codec", None),
+                "sample_count_from": count_from,
             },
             backend="mutagen",
         )
@@ -476,7 +677,6 @@ class AudioLoader(Loader[AudioInfo]):
             _CannotRead: If the file is not a valid RIFF/WAV file, or its header
                 states a sample rate or channel count that is not positive.
         """
-        import struct
 
         format_names = {
             1: "PCM",

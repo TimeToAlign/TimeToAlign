@@ -631,3 +631,36 @@ what it made.
 The child's standard output must be exactly those lines, and its exit code 0;
 before the fix both calls raised `RuntimeError: Timeline creation requires
 timetoalign.timelines`.
+
+### `test_field_type_map.py` - the field-type map stored columns are read back through
+
+**What would prove it:** a stored column names its paired field class in its
+metadata (`field_type`), and `storage.mixins._get_field_type_map()` turns that
+name back into the class; its iteration order also decides which class claims
+a struct column by shape and the order of `get_fields_satisfying`. Every
+paired `XField(SemanticField[X])` declared anywhere in the package registers
+itself in `core.fields` when its class is created, and the map is a live view
+of that registry after a fixed head of core classes: a pair declared after the
+first lookup (`MatchClaimField`, declared when `timetoalign.alignment` loads)
+joins it at the next lookup. Whether the map is complete therefore depends on
+which modules an interpreter has loaded, never on the order it loaded them in.
+A test inside the pytest process cannot see either property, since some other
+test has always imported every subpackage already, so each check runs a fresh
+interpreter (`sys.executable -c`) and prints the map as `name module.Class`
+lines, in iteration order.
+
+- After `import timetoalign` and nothing else: the 42 entries of the pinned
+  list without `MatchClaimField` (the child first asserts that
+  `timetoalign.alignment` is not loaded, otherwise the check would prove
+  nothing); after then importing `timetoalign.alignment`, the same lookup
+  yields all 43, `MatchClaimField` last.
+- For four first imports (`timetoalign`, `timetoalign.storage.mixins`,
+  `timetoalign.alignment`, `timetoalign.timelines`): one lookup right after
+  that import, then every subpackage of `timetoalign` imported (in reverse
+  order, so the first import is not always the same one again), then a second
+  lookup. The second lookup returns the same dictionary object and exactly
+  the pinned 43 entries in the pinned order every time.
+
+The pinned list is the map as captured on the code base before the core stopped
+patching this function from outside the storage layer; that refactor had to
+leave it identical. Every key equals its class's name (`field_type()`).

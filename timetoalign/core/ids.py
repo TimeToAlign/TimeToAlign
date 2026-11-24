@@ -227,7 +227,7 @@ def _is_arrow_column(value: object) -> TypeGuard[pa.Array[Any] | pa.ChunkedArray
 
 
 def id_column(
-    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str],
+    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str | None],
 ) -> pa.Array[pa.Scalar[StringType]]:
     """Read the ids held in a scope as one string array without nulls.
 
@@ -254,7 +254,7 @@ def id_column(
 
 def mint_ids(
     prefix: str,
-    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str],
+    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str | None],
     count: int,
 ) -> pa.Array[pa.Scalar[StringType]]:
     """Mint *count* ids ``{prefix}_{N}``, the N above the highest held.
@@ -292,7 +292,7 @@ def mint_ids(
 
 
 def mint_id(
-    prefix: str, taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str]
+    prefix: str, taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str | None]
 ) -> str:
     """Mint one id ``{prefix}_{N}``, N above the highest held (:func:`mint_ids`).
 

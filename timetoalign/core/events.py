@@ -5148,7 +5148,7 @@ class MidiEvent(BaseModel):
     storage stays minimal.
     """
 
-    model_config = ConfigDict(frozen=True, slots=True)
+    model_config = ConfigDict(frozen=True)
 
     pitch: EnharmonicPitch | None = None
     velocity: int | None = None

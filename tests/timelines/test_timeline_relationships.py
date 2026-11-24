@@ -458,14 +458,15 @@ class TestCreateChildFromRegion:
         with pytest.raises(KeyError, match="not found"):
             tl.create_child_from_region("NonExistent")
 
-    def test_create_child_from_region_locked_timeline_raises(self):
-        """create_child_from_region raises RuntimeError on locked timeline."""
-        tl = Timeline(length=100, unit=TimeUnit.seconds)
+    def test_create_child_from_region_on_a_locked_timeline(self):
+        """A locked timeline gives a child from a region within its length."""
+        tl = Timeline(length=100, unit=TimeUnit.seconds, locked=True)
         tl.create_region(0, 10, id="Test", name="Test")
-        tl._locked = True
 
-        with pytest.raises(RuntimeError, match="locked"):
-            tl.create_child_from_region("Test")
+        child = tl.create_child_from_region("Test")
+
+        assert child.length.value == 10
+        assert (tl.length.value, tl.is_locked) == (100, True)
 
 
 # endregion

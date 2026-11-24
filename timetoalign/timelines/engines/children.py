@@ -1097,6 +1097,11 @@ class ChildrenMixin:
         :meth:`get_slice` states it, so a Box keeps its shape and its start
         moves with the child's origin.
 
+        A locked timeline gives a child from a region as an unlocked one
+        does: the child lies inside the fixed length, which it leaves as it
+        is. A region reaching past the end of a locked timeline gives no
+        child, since the child would end past that end.
+
         Args:
             region_id: Id of an existing region.
             copy_events: Copy events within the region to the child.
@@ -1109,9 +1114,9 @@ class ChildrenMixin:
 
         Raises:
             KeyError: If region_id not found.
-            RuntimeError: If timeline is locked.
-            ValueError: With *measures*, if this timeline has no measure map
-                or the measure map refuses the slice; if this timeline holds
+            ValueError: If this timeline is locked and the child would end
+                past its length; with *measures*, if this timeline has no
+                measure map or the measure map refuses the slice; if this timeline holds
                 Boxes and its ``meta["box"]`` is no shape; or if it states
                 no ``meta["box"]`` and a Box would move that a descendant
                 holds, or one of its own while the region does not start
@@ -1130,7 +1135,6 @@ class ChildrenMixin:
                 f"Available regions: {list(self._regions.keys())}"
             )
 
-        self._check_not_locked("create child from region")
         measured = (
             self._measure_slice(region.start, region.duration.value)
             if measures

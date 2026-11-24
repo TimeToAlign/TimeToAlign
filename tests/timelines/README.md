@@ -1943,6 +1943,32 @@ so a test cannot pass by restating the implementation:
   unlocked and one locked keeps `is_locked` `False` and `True` on the
   slices of the two.
 
+### `test_locked_region_child.py` - Children from Regions of a Locked Timeline
+
+A lock fixes a timeline's length and nothing more. A child made from one of
+its Regions lies inside that length, so making it changes nothing the lock
+protects, exactly as `add_child` of a child within the length is allowed on
+a locked timeline. What proves it:
+
+- **The child is made.** A locked quarters timeline of length 16 (exact
+  `Fraction` axis) holding a Region `[5/2, 10)` gives a child whose offset
+  is `5/2` and whose length is `15/2`, both exact, the child's events
+  shifted by the offset (a note at `3` reads `1/2` in the child). The
+  parent's length stays `16` and `is_locked` stays `True`; the child is
+  locked as every child `add_child` embeds by default. The same holds with
+  `measures=True`: a measure map of four 4/4 bars sliced over a Region
+  `[4, 12)` gives the child two measures of 4 quarters.
+- **A Region reaching past the locked end gives no child.** Regions are
+  annotations and are not bounded by the length (a Region `[12, 20)` on the
+  locked 16 is created). A child from it would end at 20, past the fixed
+  end, so `add_child`'s capacity check refuses it with `ValueError`
+  ("exceeds timeline length 16. Timeline is locked."); the parent is left
+  as it was: no child, the same Segment rows, length 16, still locked.
+  An unlocked timeline holding the same Region grows to 20 (the contrast
+  that shows the refusal comes from the lock).
+- **The other guards stay.** `append_child` on a locked timeline raises
+  `RuntimeError` (appending lengthens), and setting the length does too.
+
 ## Test Files
 
 ### `test_coordinate_resolution.py` - Public Coordinate Resolution
@@ -3844,9 +3870,9 @@ measures.
      `create_regions_from_boundaries([0, 40, 100], prefix="sec")` yields
      `sec_1 [0, 40)` and `sec_2 [40, 100)`; and
      `create_regions_by_splitting("breaks", prefix="mov")` on an event-free
-     timeline yields the single whole-span region `mov_1 [0, 100)`. (Distinct
-     from `create_child_from_region`, which remains lock-guarded — see the
-     create_child_from_region group below.)
+     timeline yields the single whole-span region `mov_1 [0, 100)`. A child
+     from such a region is made on a locked timeline too, as long as it ends
+     within the length (see the create_child_from_region group below).
 
 3. **Region creation — create_region() / add_region()** (5 tests)
    - `create_region(start, end, id=…, name=…)` creates and registers a Region
@@ -3876,7 +3902,9 @@ measures.
    - Adjusts event coordinates relative to child origin
    - copy_events=False creates empty child
    - Raises KeyError for nonexistent region
-   - Raises RuntimeError on locked timeline
+   - On a locked timeline of 100 s, a region `[0, 10)` gives a child of
+     length 10; the timeline keeps 100 and its lock (the full account in
+     `test_locked_region_child.py`)
 
 8. **Children and regions — create_children_from_regions()** (3 tests)
    - Creates children for all or specified regions

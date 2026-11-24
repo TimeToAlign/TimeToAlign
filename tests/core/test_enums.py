@@ -347,7 +347,10 @@ class TestMembersNamedApartFromValue:
         self, cls: type, member_name: str, value: str
     ) -> None:
         """The Python name is not a second accepted spelling of the value."""
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError,
+            match=rf"^'{member_name}' is not a valid {cls.__name__}\. Available values are: ",
+        ):
             cls(member_name)
 
     @pytest.mark.parametrize(("cls", "member_name", "value"), RENAMED_MEMBERS)

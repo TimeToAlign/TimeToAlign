@@ -536,6 +536,48 @@ canvases expose their durations and no width or height, `dimensions`,
 time-based message, `repr` works, and a canvas with neither extent nor
 duration is refused at parsing.
 
+### Manifests without `@context`
+
+The synchronisation manifests Neuma publishes for CollabScore are
+Presentation 3 in their structure (`id`, `type`, language maps, canvases in
+`items`) but state no `@context`, which the specifications require. The
+loader read every manifest without a Presentation 3 context as
+Presentation 2: one with `metadata` raised `TypeError: unhashable type:
+'dict'` (a Presentation 3 metadata label is a language map, used as a
+Presentation 2 key), one without raised `Manifest contains no canvases`
+(its `items` were never read). Readers accept valid data, so the version is
+told from the structure where `@context` names none. What proves it:
+
+- **The failing shape opens.** A reduced copy of
+  `royaumont_concert/concert_C130_0/combined_manifest.json` (Neuma, *Tristesse*;
+  kept: `id`, `type`, `label`, the four `metadata` pairs with their language
+  maps, and the one canvas with its `label`, `width`, `height`, `duration`,
+  its painting annotations of a `Video` and an `Image`, and one synchronisation
+  annotation of its `annotations`; the summary, rights, thumbnail and the other
+  annotations dropped) is written to `tmp_path` with no `@context`. It loads
+  as Presentation 3: manifest label `[Tristesse] `, metadata `title`
+  `[Tristesse] ` and `creator` `Camille  Saint-Saëns (1835, 1921)` (two spaces,
+  verbatim); one canvas, id
+  `https://neuma.huma-num.fr/home/opus/all:collabscore:royaumont:concert:C130_0/canvas`,
+  4772 wide, 6248 high, `duration` 167.0, label `Combined image-audio
+  canvas`, spatial. A Presentation 2 reading could give none of these values.
+- **`@context` still decides where it names one version.** The existing
+  manifests with a Presentation 2 or 3 context load as before (SUPRA, Gallica,
+  the BnF disc above). A Presentation 2 manifest with `sequences` and no
+  `@context` loads as Presentation 2 (two canvases, 100 x 200 and 300 x 400,
+  labels `1` and `2`).
+- **A manifest that fits neither is refused, naming what was looked for.**
+  The shape of `royaumont_concert/concert_C144_0/reverie_audio_manifest.json`
+  (Neuma's frame list: `opus_ref`, `source_ref`, `nb_frames`, `time_frames`;
+  no IIIF manifest) raises `ValueError`: `Cannot tell the IIIF Presentation
+  version of <path>: its @context names none, and it lists neither 'items'
+  (Presentation 3) nor 'sequences' (Presentation 2)`. One listing both raises
+  the same message with `both 'items' (Presentation 3) and 'sequences'
+  (Presentation 2)`: either reading would drop the other's canvases.
+
+Annotations and the bodies of a canvas are not read: a canvas is what it
+states (`width`, `height`, `duration`), as for every manifest.
+
 ## Time paths and pages
 
 `test_paths.py` covers `loader/graphical/paths.py` (the accolade rule,

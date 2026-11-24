@@ -6,10 +6,12 @@ to construct graphical timelines without loading the full image data. An
 image has no time axis of its own: the caller gives each canvas the time
 path that runs through it (:mod:`timetoalign.loader.graphical.paths`).
 
-This loader supports IIIF Presentation API 2.x and 3.x manifests. A
-Presentation 3 manifest may also hold time-based canvases (sound or video
-with a ``duration``); they are read, and have no pixel extent of their own
-unless the canvas states a width and height.
+This loader supports IIIF Presentation API 2.x and 3.x manifests; a
+manifest whose ``@context`` names neither version, or that states none, is
+read by its structure (Presentation 3 lists its canvases in ``items``,
+Presentation 2 in ``sequences``). A Presentation 3 manifest may also hold
+time-based canvases (sound or video with a ``duration``); they are read, and
+have no pixel extent of their own unless the canvas states a width and height.
 """
 
 from __future__ import annotations
@@ -157,7 +159,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
 
         with open(source, encoding="utf-8") as f:
             manifest_data = json.load(f)
-        return self._parse_manifest(manifest_data)
+        return self._parse_manifest(manifest_data, source)
 
     def _accept_source(
         self,
@@ -174,32 +176,53 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
             f"{len(self._manifest_info.canvases)} canvas(es)"
         )
 
-    def _parse_manifest(self, data: dict[str, Any]) -> IIIFManifestInfo:
+    def _parse_manifest(self, data: dict[str, Any], source: Path) -> IIIFManifestInfo:
         """Parse manifest data into structured info.
 
-        Handles both IIIF Presentation API 2.x and 3.x formats.
+        Handles IIIF Presentation API 2.x and 3.x. The version is the one
+        ``@context`` names. Where it names neither, or the manifest states no
+        ``@context``, the structure tells: Presentation 3 lists its canvases
+        in ``items``, Presentation 2 in ``sequences``.
 
         Args:
             data: Raw manifest dictionary from JSON.
+            source: The manifest file, named in a refusal.
 
         Returns:
             Parsed IIIFManifestInfo.
 
         Raises:
-            ValueError: If manifest structure is invalid.
+            ValueError: If the version cannot be told (no version in
+                ``@context``, and both ``items`` and ``sequences`` or
+                neither), or the manifest structure is invalid.
         """
-        # Detect API version
-        context = data.get("@context", "")
-        if isinstance(context, list):
-            # IIIF 3.x uses a list of contexts
-            is_v3 = any("presentation/3" in str(c) for c in context)
-        else:
-            is_v3 = "presentation/3" in str(context)
-
-        if is_v3:
+        contexts = data.get("@context")
+        if not isinstance(contexts, list):
+            contexts = [contexts]
+        named = {
+            version
+            for version in (2, 3)
+            for context in contexts
+            if f"presentation/{version}" in str(context)
+        }
+        if len(named) != 1:
+            named = {
+                version
+                for version, key in ((3, "items"), (2, "sequences"))
+                if isinstance(data.get(key), list)
+            }
+        if named == {3}:
             return self._parse_v3_manifest(data)
-        else:
+        if named == {2}:
             return self._parse_v2_manifest(data)
+        if named:
+            lists = "both 'items' (Presentation 3) and 'sequences' (Presentation 2)"
+        else:
+            lists = "neither 'items' (Presentation 3) nor 'sequences' (Presentation 2)"
+        raise ValueError(
+            f"Cannot tell the IIIF Presentation version of {source}: its @context "
+            f"names none, and it lists {lists}"
+        )
 
     def _parse_v2_manifest(self, data: dict[str, Any]) -> IIIFManifestInfo:
         """Parse IIIF Presentation API 2.x manifest.

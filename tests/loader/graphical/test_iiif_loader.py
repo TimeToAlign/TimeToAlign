@@ -291,6 +291,211 @@ class TestUnloadedState:
 # region Test: IIIF 3.x Format
 
 
+_NEUMA = "https://neuma.huma-num.fr/home/opus/all:collabscore:royaumont:concert:C130_0"
+
+
+def _fr(text: str) -> dict[str, list[str]]:
+    return {"fr": [text]}
+
+
+#: Neuma's synchronisation manifest of *Tristesse* (C130_0), reduced: no
+#: ``@context``, Presentation 3 language maps and ``items``.
+NEUMA_COMBINED: dict[str, Any] = {
+    "id": _NEUMA,
+    "type": "Manifest",
+    "label": _fr("[Tristesse] "),
+    "metadata": [
+        {"label": _fr("title"), "value": _fr("[Tristesse] ")},
+        {"label": _fr("creator"), "value": _fr("Camille  Saint-Saëns (1835, 1921)")},
+        {
+            "label": _fr("MusicXML"),
+            "value": _fr(
+                "https://neuma.huma-num.fr//rest/collections/"
+                "all:collabscore:royaumont:concert:C130_0/_sources/musicxml/_file/"
+            ),
+        },
+        {
+            "label": _fr("MEI"),
+            "value": _fr(
+                "https://neuma.huma-num.fr//rest/collections/"
+                "all:collabscore:royaumont:concert:C130_0/_sources/mei/_file/"
+            ),
+        },
+    ],
+    "items": [
+        {
+            "id": f"{_NEUMA}/canvas",
+            "type": "Canvas",
+            "label": _fr("Combined image-audio canvas"),
+            "height": 6248,
+            "width": 4772,
+            "duration": 167.0,
+            "items": [
+                {
+                    "id": f"{_NEUMA}/list-media",
+                    "type": "AnnotationPage",
+                    "items": [
+                        {
+                            "id": f"{_NEUMA}/video",
+                            "type": "Annotation",
+                            "motivation": "painting",
+                            "body": {
+                                "id": "https://mediaserver.lecnam.net/downloads/file/"
+                                "v126b13dde87aoc3161j/?url=media_1080_gbLK8JPpJe.mp4",
+                                "type": "Video",
+                                "duration": 167.0,
+                                "format": "video/mpeg",
+                            },
+                            "target": f"{_NEUMA}/canvas",
+                        },
+                        {
+                            "id": f"{_NEUMA}/img3",
+                            "type": "Annotation",
+                            "motivation": "painting",
+                            "body": {
+                                "id": "https://gallica.bnf.fr/iiif/ark:/12148/"
+                                "bpt6k11619682/f3/full/full/0/native.jpg",
+                                "type": "Image",
+                                "height": 6248,
+                                "width": 4772,
+                                "format": "image/jpeg",
+                            },
+                            "target": f"{_NEUMA}/canvas#t=0.0,43.50492598474121",
+                        },
+                    ],
+                }
+            ],
+            "annotations": [
+                {
+                    "id": f"{_NEUMA}/synchro",
+                    "type": "AnnotationPage",
+                    "items": [
+                        {
+                            "id": f"{_NEUMA}/m1",
+                            "type": "Annotation",
+                            "motivation": "highlighting",
+                            "body": {"type": "TextualBody", "value": "resource"},
+                            "target": {
+                                "type": "SpecificResource",
+                                "source": f"{_NEUMA}/list-media",
+                                "selector": [
+                                    {
+                                        "type": "SvgSelector",
+                                        "value": '<svg xmlns="http://www.w3.org/2000/svg">'
+                                        '<polygon points="1060,2049 2172,2049 1060,2852 '
+                                        '2176,2852"/></svg>',
+                                    },
+                                    {
+                                        "type": "FragmentSelector",
+                                        "conformsTo": "https://www.w3.org/TR/media-frags/",
+                                        "value": "t=0.0,6.167964144958496",
+                                    },
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+    ],
+}
+
+
+def _version_refusal(path: Path, lists: str) -> str:
+    return re.escape(
+        f"Cannot tell the IIIF Presentation version of {path}: its @context names "
+        f"none, and it lists {lists}"
+    )
+
+
+class TestManifestWithoutContext:
+    """A manifest stating no ``@context`` is read by its structure."""
+
+    def test_neuma_combined_manifest(self, tmp_path: Path) -> None:
+        path = tmp_path / "combined_manifest.json"
+        path.write_text(json.dumps(NEUMA_COMBINED), encoding="utf-8")
+
+        loader = IIIFManifestLoader.from_file(path)
+        info = loader.manifest_info
+        assert info.id == _NEUMA
+        assert info.label == "[Tristesse] "
+        assert info.metadata["title"] == "[Tristesse] "
+        assert info.metadata["creator"] == "Camille  Saint-Saëns (1835, 1921)"
+        assert [
+            (c.id, c.width, c.height, c.duration, c.label, c.is_spatial)
+            for c in info.canvases
+        ] == [
+            (
+                f"{_NEUMA}/canvas",
+                4772,
+                6248,
+                167.0,
+                "Combined image-audio canvas",
+                True,
+            )
+        ]
+        assert loader.dimensions == {"width": 4772, "height": 6248}
+
+    def test_presentation_2_by_its_sequences(self, tmp_path: Path) -> None:
+        path = tmp_path / "v2.json"
+        canvases = [
+            {
+                "@id": f"http://example.org/canvas/{n}",
+                "label": str(n),
+                "width": w,
+                "height": h,
+            }
+            for n, w, h in ((1, 100, 200), (2, 300, 400))
+        ]
+        path.write_text(
+            json.dumps(
+                {"@id": "http://example.org/m", "sequences": [{"canvases": canvases}]}
+            )
+        )
+
+        info = IIIFManifestLoader.from_file(path).manifest_info
+        assert [(c.id, c.width, c.height, c.label) for c in info.canvases] == [
+            ("http://example.org/canvas/1", 100, 200, "1"),
+            ("http://example.org/canvas/2", 300, 400, "2"),
+        ]
+
+    def test_neither_structure_refused(self, tmp_path: Path) -> None:
+        path = tmp_path / "reverie_audio_manifest.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "opus_ref": "C144_0",
+                    "source_ref": "audio",
+                    "nb_frames": 0,
+                    "time_frames": [],
+                }
+            )
+        )
+        with pytest.raises(
+            ValueError,
+            match="^"
+            + _version_refusal(
+                path,
+                "neither 'items' (Presentation 3) nor 'sequences' (Presentation 2)",
+            )
+            + "$",
+        ):
+            IIIFManifestLoader.from_file(path)
+
+    def test_both_structures_refused(self, tmp_path: Path) -> None:
+        path = tmp_path / "both.json"
+        path.write_text(json.dumps({"items": [], "sequences": []}))
+        with pytest.raises(
+            ValueError,
+            match="^"
+            + _version_refusal(
+                path, "both 'items' (Presentation 3) and 'sequences' (Presentation 2)"
+            )
+            + "$",
+        ):
+            IIIFManifestLoader.from_file(path)
+
+
 class TestIIIF3Format:
     """Tests for IIIF Presentation API 3.x format support."""
 

@@ -4584,7 +4584,12 @@ class SharedAxisField(SemanticField[AxisScalarT]):
     @property
     def semantic_type(self) -> str:
         """Return the paired scalar's name."""
-        return self.paired_scalar().__name__
+        scalar = type(self).scalar_cls
+        if scalar is None:
+            # An unpaired field (ShapeField itself) has no semantic type; as an
+            # AttributeError, ``hasattr`` and runtime protocol checks answer False.
+            raise AttributeError(f"{type(self).__name__} has no paired scalar")
+        return scalar.__name__
 
     def metadata_dict(self) -> dict[str, str]:
         """Return the semantic type and the shared axis."""

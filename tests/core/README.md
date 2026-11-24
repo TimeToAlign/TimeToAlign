@@ -840,6 +840,21 @@ sides with the axis once in its metadata.
   metadata declares the unit `pixels` and the number type `int`, and
   indexing gives back `m1` and `m2`. `BoundingBoxField.from_shapes` of the
   Thoresen box and a null row gives `x_max()` cells 524 and null.
+- **An unpaired field answers the builtin questions.** `ShapeField` is the
+  shared-axis field of no particular shape: it has no paired scalar, hence
+  no semantic type. User code and the runtime-checkable protocols of
+  `timetoalign.core.protocols` (all derived from `SemanticTypeLike`) ask
+  for one with `hasattr`, `getattr(..., default)` and `isinstance`, so the
+  absence must be an `AttributeError`, which those builtins read as "not
+  there"; any other exception would escape from a question that has an
+  answer. `ShapeField.from_field` over the raw column of
+  `BoundingBoxField.from_shapes` (the Thoresen box and a null row), with
+  `unit="pixels"` and `number_type="int"`, gives an instance for which
+  `hasattr(field, "semantic_type")` is `False`, `getattr(field,
+  "semantic_type", None)` is `None`, `isinstance(field, SemanticTypeLike)`
+  is `False`, and reading `field.semantic_type` raises `AttributeError`;
+  the paired `BoundingBoxField` it was built from still answers
+  `"BoundingBox"` and satisfies `SemanticTypeLike`.
 - **An MEI zone** (Anhalt chorale book, no. 061, zone
   `zone_01M7DF2DF4MQT5E96R26XFVEYG`, `ulx=520 uly=390 lrx=874 lry=1019`):
   `BoundingBox.from_corners(520, 390, 874, 1019, unit="pixels")` is (520,

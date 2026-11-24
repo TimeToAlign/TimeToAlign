@@ -22,9 +22,11 @@ from timetoalign.core import (
     Quadrilateral,
     QuadrilateralField,
     Shape,
+    ShapeField,
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
+from timetoalign.core.protocols import SemanticTypeLike
 from timetoalign.core.time import RATIONAL_STRUCT_TYPE
 
 #: Thoresen, ``thoresen_test.tsv``, row ``rect_h2``.
@@ -372,6 +374,20 @@ class TestFields:
         ]
         assert field.x_min().to_pylist()[1] is None
         assert field[1] is None
+
+    def test_an_unpaired_field_answers_the_builtin_questions(self) -> None:
+        paired = BoundingBoxField.from_shapes(
+            [BoundingBox.from_xywh(*THORESEN, unit="pixels"), None]
+        )
+        unpaired = ShapeField.from_field(paired._raw, unit="pixels", number_type="int")
+        assert type(unpaired) is ShapeField
+        assert hasattr(unpaired, "semantic_type") is False
+        assert getattr(unpaired, "semantic_type", None) is None
+        assert isinstance(unpaired, SemanticTypeLike) is False
+        with pytest.raises(AttributeError):
+            unpaired.semantic_type
+        assert paired.semantic_type == "BoundingBox"
+        assert isinstance(paired, SemanticTypeLike) is True
 
 
 class TestMeiZone:

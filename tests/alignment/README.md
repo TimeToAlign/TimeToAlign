@@ -405,6 +405,46 @@ claim on a sibling.
 | `track_hi` at 2000 (sibling anchor) | `track` 1000, `score` 56; `scan` unreached (outside claim 2 and the WarpMap's hull); stated pair `(track, score)`; `is_interpolated` True (False on `track` at 1000) |
 | plural getter and table, `track_hi` at `[2088, 2000]` | rows as the two singular questions; the table's `score` cells `5180/87` and `56`, `scan` `32` and null |
 
+### The display never raises; a value asked for still does
+
+A stamp's claim rows are recomputed when it is shown, from the bundle's
+groups as they are then. If the groups were edited after the stamp was
+made, a claim the stamp read on a sibling may hold none of the query's
+current positions. `str`, `repr` and `_repr_html_` must not raise
+(debuggers, logs and test reports call them), so that claim's row is left
+out, as a C-Map failing at the coordinate is; a getter asking for a value
+keeps raising, since a queried path that cannot resolve raises.
+
+The proof: with claim 3, the stamp on `track` at 1044 lists claims 1, 2, 3,
+claim 3 read on `track_hi`. Then `track_hi` is removed from the group. The
+stamp's `repr` is then exactly the one before minus the claim 3 entry, its
+`str` lists the five coordinates and the claim rows 1 and 2 (claim 3's row
+`track_hi<->video` absent, the others keeping their numbers), and its
+`_repr_html_` has eight table rows (the header, five coordinates, two
+claims) and no `track_hi<->video`. The stamp's coordinates are untouched (`video` `188`
+still among them: the stamp holds what was read when it was made).
+`get_coordinates_for(["score"])` and `_ambiguous_interval_candidates()`
+raise `ValueError` naming `claim_3` and the position it no longer holds
+(`['track']`), exactly as before the change, which proves the tolerance is
+the display's alone. Before the change, `repr` and `str` raised this same
+`ValueError`.
+
+### An interval claim between two siblings of one group
+
+The group says `track` 1044 is `track_hi` 2088. A claim between the two
+members states another counterpart: `track [1000, 1087] ↔ track_hi [3000,
+3174]` (an offset of 2000 samples where the group gives a factor of 2). Asked
+on the first member, `track` at 1044, the stamp holds what the claim gives,
+not the group: coordinates `track` `1044`, `track_hi` `3088` (`3000 + 44/87
+· 174`, exact), in that order; `interval_claims` `[claim_1]`; no stated
+pair; the inferred pair `(track, track_hi)`; `is_interpolated` True; one
+display row, `claim 1 track<->track_hi: track_hi=3088 samples`; no
+ambiguity; and the table row the same two cells. The claim is read once
+although both members' positions seed the reading: it is relevant on
+`track`, the queried timeline, and listed there only. A value
+`3088` that no group conversion can give is what proves the claim, not the
+group, answered.
+
 ---
 
 ## A Claim's Bundle Is Never Copied With It (`test_claim_back_reference.py`)

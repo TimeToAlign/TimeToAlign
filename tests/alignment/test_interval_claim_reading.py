@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+import pytest
+
 from timetoalign.alignment import MatchClaim
 from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.graph import MatchStamp
@@ -281,4 +283,111 @@ class TestReadingFromAGroupSibling:
                 "track": {"value": 1000.0, "numerator": 1000, "denominator": 1},
                 "track_hi": {"value": 2000.0, "numerator": 2000, "denominator": 1},
             },
+        ]
+
+
+class TestDisplayAfterTheGroupsChanged:
+    """A claim the stamp can no longer read leaves the display, never breaks it."""
+
+    @staticmethod
+    def _stamp_then_ungroup() -> tuple[MatchStamp, str]:
+        bundle = _bundle(video=True)
+        stamp = bundle.get_matchstamp_at(1044, "track")
+        before = repr(stamp)
+        bundle.get_group("group_1").remove_timeline("track_hi")
+        return stamp, before
+
+    def test_repr_drops_only_the_unreadable_claim(self) -> None:
+        stamp, before = self._stamp_then_ungroup()
+
+        assert _claim_ids(stamp) == ["claim_1", "claim_2", "claim_3"]
+        assert before == (
+            "MatchStamp(track=1044 samples, track_hi=2088 samples, "
+            "score=5180/87 quarters, scan=32 pixels, video=188 frames, "
+            "claim 1 track<->score: score=5180/87 quarters, "
+            "claim 2 track<->scan: scan=32 pixels, "
+            "claim 3 track_hi<->video: video=188 frames)"
+        )
+        assert repr(stamp) == (
+            "MatchStamp(track=1044 samples, track_hi=2088 samples, "
+            "score=5180/87 quarters, scan=32 pixels, video=188 frames, "
+            "claim 1 track<->score: score=5180/87 quarters, "
+            "claim 2 track<->scan: scan=32 pixels)"
+        )
+
+    def test_str_and_html_without_the_row(self) -> None:
+        stamp, _ = self._stamp_then_ungroup()
+
+        assert str(stamp).splitlines() == [
+            "MatchStamp (5 timelines, 4 edges)",
+            "  track              1044 samples  inferred",
+            "  track_hi           2088 samples  inferred",
+            "  score          5180/87 quarters  inferred",
+            "  scan                  32 pixels  inferred",
+            "  video                188 frames  inferred",
+            "  track<->score  5180/87 quarters  interval claim 1 (score)",
+            "  track<->scan          32 pixels  interval claim 2 (scan)",
+        ]
+        html = stamp._repr_html_()
+        assert html.count("<tr") == 8
+        assert html.count("track&lt;-&gt;score") == 1
+        assert html.count("track&lt;-&gt;scan") == 1
+        assert "track_hi&lt;-&gt;video" not in html
+        assert stamp.coordinates["video"] == FRAMES(188)
+
+    def test_a_value_asked_for_still_raises(self) -> None:
+        stamp, _ = self._stamp_then_ungroup()
+        message = "Interval claim 'claim_3' holds none of the positions ['track']"
+
+        with pytest.raises(ValueError) as caught:
+            stamp.get_coordinates_for(["score"])
+        assert str(caught.value) == message
+        with pytest.raises(ValueError) as caught:
+            stamp._ambiguous_interval_candidates()
+        assert str(caught.value) == message
+
+
+class TestClaimBetweenTwoSiblings:
+    """An interval claim joining two members of one group, asked on the first."""
+
+    @staticmethod
+    def _bundle() -> AlignmentBundle:
+        bundle = AlignmentBundle(id="siblings")
+        bundle.add_timeline(_timeline("track", 2000, TimeUnit.samples, NumberType.int))
+        bundle.add_timeline(
+            _timeline("track_hi", 4000, TimeUnit.samples, NumberType.int),
+            grouped_with="track",
+        )
+        bundle.add_match_claims(
+            [
+                _interval_claim(
+                    "track",
+                    (SAMPLES(1000), SAMPLES(1087)),
+                    "track_hi",
+                    (SAMPLES(3000), SAMPLES(3174)),
+                )
+            ]
+        )
+        return bundle
+
+    def test_the_claim_answers_not_the_group(self) -> None:
+        bundle = self._bundle()
+        stamp = bundle.get_matchstamp_at(1044, "track")
+
+        assert stamp.coordinates == {"track": SAMPLES(1044), "track_hi": SAMPLES(3088)}
+        assert list(stamp.coordinates) == ["track", "track_hi"]
+        assert _claim_ids(stamp) == ["claim_1"]
+        assert stamp.stated_pairs == []
+        assert stamp.inferred_pairs == [("track", "track_hi")]
+        assert stamp.is_interpolated is True
+        assert stamp._ambiguous_interval_candidates() == {}
+        assert repr(stamp) == (
+            "MatchStamp(track=1044 samples, track_hi=3088 samples, "
+            "claim 1 track<->track_hi: track_hi=3088 samples)"
+        )
+        assert bundle.get_matchstamp_table([1044], "track").to_pylist() == [
+            {
+                "track": {"value": 1044.0, "numerator": 1044, "denominator": 1},
+                "track_hi": {"value": 3088.0, "numerator": 3088, "denominator": 1},
+            }
         ]

@@ -202,26 +202,68 @@ class MatchStamp(Stamp):
         object.__setattr__(self, "interval_claims", normalized_claims)
 
     def _interval_candidate_rows(
-        self,
+        self, *, for_display: bool = False
     ) -> list[tuple[MatchClaim, str, Coordinate | None]]:
         """Return every interval claim's mapped counterpart candidate.
 
         Each claim is mapped from the timeline the stamp read it on: the
         queried one, or a member of its groups at the query's position there
-        (``AlignmentBundle._interval_readings``).
+        (``AlignmentBundle._interval_readings``). The positions are those of
+        the bundle's groups now, so a claim may no longer be readable, for
+        instance when the groups were edited after the stamp was made.
+
+        Args:
+            for_display: Leave out the row of a claim that cannot be read
+                (whatever it raises), as :meth:`_conversion_rows` leaves out
+                a C-Map failing at the coordinate: the rows then serve
+                ``str``, ``repr`` and ``_repr_html_``, which must not raise.
+                Without it, as on every getter asking for a value, the
+                failure propagates.
+
+        Raises:
+            ValueError: Without *for_display*, if a claim holds none of the
+                query's current positions.
         """
         if not self.interval_claims or self.source is None:
             return []
         query = self.coordinates[self.source_id]
-        positions = self.source._group_positions(self.source_id, query)
+        try:
+            positions = self.source._group_positions(self.source_id, query)
+        except Exception:
+            if not for_display:
+                raise
+            positions = {self.source_id: query}
         rows: list[tuple[MatchClaim, str, Coordinate | None]] = []
         for claim in self.interval_claims:
-            read_id, read_at = self.source._interval_claim_reading(claim, positions)
-            target_id, coordinate, _ = self.source._interval_claim_candidate(
-                claim, read_id, read_at
-            )
+            try:
+                read_id, read_at = self.source._interval_claim_reading(claim, positions)
+                target_id, coordinate, _ = self.source._interval_claim_candidate(
+                    claim, read_id, read_at
+                )
+            except Exception:
+                if not for_display:
+                    raise
+                continue
             rows.append((claim, target_id, coordinate))
         return rows
+
+    def _displayed_claims(
+        self,
+    ) -> list[tuple[int, MatchClaim, str, Coordinate | None]]:
+        """The candidate rows the displays show, each with its claim's number.
+
+        The number is the claim's place in :attr:`interval_claims`, from 1,
+        so a claim left out of the display does not renumber the others.
+        """
+        number = {
+            id(claim): index for index, claim in enumerate(self.interval_claims, 1)
+        }
+        return [
+            (number[id(claim)], claim, timeline_id, coordinate)
+            for claim, timeline_id, coordinate in self._interval_candidate_rows(
+                for_display=True
+            )
+        ]
 
     def _ambiguous_interval_candidates(
         self,
@@ -508,9 +550,7 @@ class MatchStamp(Stamp):
         ]
         entries.extend(
             self._claim_candidate_text(index, claim, timeline_id, coordinate)
-            for index, (claim, timeline_id, coordinate) in enumerate(
-                self._interval_candidate_rows(), 1
-            )
+            for index, claim, timeline_id, coordinate in self._displayed_claims()
         )
         return f"MatchStamp({', '.join(entries)})"
 
@@ -535,11 +575,13 @@ class MatchStamp(Stamp):
         return rows
 
     def _claim_rows(self) -> list[_DisplayRow]:
-        """One row per interval claim: its counterpart, or ``MISSING``."""
+        """One row per interval claim: its counterpart, or ``MISSING``.
+
+        A claim the stamp can no longer read has no row
+        (:meth:`_interval_candidate_rows`).
+        """
         rows: list[_DisplayRow] = []
-        for index, (claim, timeline_id, coordinate) in enumerate(
-            self._interval_candidate_rows(), 1
-        ):
+        for index, claim, timeline_id, coordinate in self._displayed_claims():
             value = (
                 "MISSING"
                 if coordinate is None

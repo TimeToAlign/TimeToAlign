@@ -4108,8 +4108,12 @@ def cell_coordinate(cell: dict[str, Any], scalar: type[TimeScalarT]) -> TimeScal
 
 
 @overload
+def cell_coordinate(cell: dict[str, Any] | None) -> Coordinate | None: ...
+
+
+@overload
 def cell_coordinate(
-    cell: dict[str, Any] | None, scalar: type[TimeScalarT] = ...
+    cell: dict[str, Any] | None, scalar: type[TimeScalarT]
 ) -> TimeScalarT | None: ...
 
 

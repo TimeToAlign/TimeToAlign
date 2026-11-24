@@ -60,3 +60,13 @@ repos:
       - "--per-file-ignores=__init__.py:F401,docs/howto-notebooks/*.py:E402"
   ## You can add flake8 plugins via `additional_dependencies`:
   #  additional_dependencies: [flake8-bugbear]
+
+- repo: local
+  hooks:
+  - id: import-linter
+    name: import-linter (subpackage layers, pyproject [tool.importlinter])
+    entry: lint-imports
+    language: python
+    additional_dependencies: ["import-linter==2.17"]
+    pass_filenames: false
+    files: '^timetoalign/.*\.py$|^pyproject\.toml$'

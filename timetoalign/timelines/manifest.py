@@ -71,11 +71,12 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import timetoshare
+from pydantic import BaseModel
 from timetoshare import FORMAT_CONTEXT, load_catalogue, loads
 from timetoshare.serialization import Serialization
 from timetoshare.tables import TableError, projection_problems
 
-from timetoalign.core import Coordinate, Event, NumberType, Projection, TimeUnit
+from timetoalign.core import Coordinate, NumberType, Projection, TimeUnit
 from timetoalign.core.fields import derive_arrow_schema
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import (
@@ -337,7 +338,7 @@ INTEGRITY_ALGORITHMS: tuple[str, ...] = tuple(
 PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 """The media type of the Parquet tables a package holds."""
 
-TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection", "Box")
+TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection", "Box", "Note")
 """The resource types a manifest names at most once: its package tables."""
 
 _MEDIA_TYPE = re.compile(_RESOURCE_SCHEMA["media_type"]["pattern"])
@@ -619,8 +620,16 @@ PROJECTIONS_FILE_NAME = "projections.parquet"
 BOXES_FILE_NAME = "boxes.parquet"
 """The file name of a package's Box table beside its manifest."""
 
+NOTES_FILE_NAME = "notes.parquet"
+"""The file name of a package's Note table beside its manifest."""
+
 #: The columns an event table writes before the properties of its event type.
 _EVENT_TABLE_HEADER = ("id", "timeline_id", "unit", "number_type")
+
+#: The columns of a timeline's events an event table holds without writing
+#: them: it is the table of one event type, and an event's temporal type and
+#: end follow from its ``start`` and ``duration``.
+_IMPLIED_EVENT_COLUMNS = frozenset({"event_type", "temporal_type", "end"})
 
 
 def _package_type(type_: pa.DataType) -> pa.DataType:
@@ -635,12 +644,15 @@ def _package_type(type_: pa.DataType) -> pa.DataType:
     return type_
 
 
-def event_table_schema(event_type: type[Event]) -> pa.Schema:
+def event_table_schema(event_type: type[BaseModel]) -> pa.Schema:
     """The columns of the package table of *event_type*.
 
     ``id``, ``timeline_id``, ``unit`` and ``number_type`` (strings), then
-    every property of the event type after ``id``, in field order, as the
-    type derives it, each number in it written as the package number
+    every property of the event type after ``id`` that its struct holds
+    (a property kept in a column of its own, a Note's pitch, is not one;
+    nor is ``end``, which follows from ``start`` and ``duration``), in
+    field order, as the type derives it, each number in it written as the
+    package number
     (:data:`~timetoalign.core.time.PACKAGE_NUMBER_TYPE`): the unit and the
     number type are stated once per row. For :class:`~timetoalign.core.Projection`
     it is TimeToShare's Projections table
@@ -648,15 +660,17 @@ def event_table_schema(event_type: type[Event]) -> pa.Schema:
 
     Args:
         event_type: An event type (:class:`~timetoalign.core.Event` or a
-            subclass).
+            subclass, :class:`~timetoalign.core.Note`).
 
     Returns:
         The schema.
 
     Examples:
-        >>> from timetoalign.core import Box
+        >>> from timetoalign.core import Box, Note
         >>> event_table_schema(Box).names
         ['id', 'timeline_id', 'unit', 'number_type', 'start', 'duration', 'bounding_box', 'quadrilateral']
+        >>> event_table_schema(Note).names
+        ['id', 'timeline_id', 'unit', 'number_type', 'start', 'duration', 'velocity', 'instrument']
     """
     derived = derive_arrow_schema(event_type)
     return pa.schema(
@@ -665,10 +679,20 @@ def event_table_schema(event_type: type[Event]) -> pa.Schema:
             *(
                 pa.field(field.name, _package_type(field.type))
                 for field in derived
-                if field.name != "id"
+                if field.name != "id" and field.name not in _IMPLIED_EVENT_COLUMNS
             ),
         ]
     )
+
+
+def _held_elsewhere(event_type: type[BaseModel]) -> bool:
+    """Whether *event_type* keeps a property outside its struct, in a column
+    of its own (a Note's pitch: ``specific_pitch``, ``midi`` or ``pitch``),
+    so that its table cannot name every column its rows hold."""
+    return not set(event_type.model_fields) <= {
+        *derive_arrow_schema(event_type).names,
+        "id",
+    }
 
 
 def _packaged(
@@ -700,14 +724,8 @@ def _packaged(
     )
 
 
-#: The columns of a timeline's events an event table holds without writing
-#: them: it is the table of one event type, and an event's temporal type and
-#: end follow from its ``start`` and ``duration``.
-_IMPLIED_EVENT_COLUMNS = frozenset({"event_type", "temporal_type", "end"})
-
-
 def _refuse_unwritten_columns(
-    rows: pa.Table, schema: pa.Schema, event_type: type[Event], timeline_id: str
+    rows: pa.Table, schema: pa.Schema, event_type: type[BaseModel], timeline_id: str
 ) -> None:
     """Refuse *rows* (one timeline's events of *event_type*) when one of them
     gives a value in a column the event table of *schema* does not have.
@@ -732,7 +750,24 @@ def _refuse_unwritten_columns(
         )
 
 
-def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Table:
+def _further_columns(rows: pa.Table, schema: pa.Schema) -> list[pa.Field]:
+    """The columns of *rows* outside the event table of *schema* that give a
+    value in a row, by name (a timeline's column order is no part of its
+    events, so a table read back is written in the same order): a table's
+    further columns."""
+    return sorted(
+        (
+            pa.field(field.name, field.type)
+            for field in rows.schema
+            if field.name not in schema.names
+            and field.name not in _IMPLIED_EVENT_COLUMNS
+            and rows.column(field.name).null_count < rows.num_rows
+        ),
+        key=lambda field: field.name,
+    )
+
+
+def event_table(timelines: Iterable[Timeline], event_type: type[BaseModel]) -> pa.Table:
     """The package table of *event_type*: every such event each timeline holds itself.
 
     One row per event, timeline by timeline in the order given and in each
@@ -744,13 +779,21 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
     :func:`~timetoalign.core.time.package_numbers`), however deep it lies
     (a Box's shape). Nothing passes through a float that is not one.
 
-    The table holds what the event type holds, and nothing is dropped: a
-    row of a timeline's events giving a value in a column the table does
-    not have (an event's ``name``, a further column such as ``staff``) is
-    refused, naming the column, the event type and the timeline. The
-    columns the table states by being of one type (``event_type``) or
-    derives from ``start`` and ``duration`` (``temporal_type``, ``end``)
-    are not written.
+    The table holds what the event type holds, and nothing is dropped. A
+    type whose struct holds every property it has (a Box, a Projection)
+    states every column its table has: a row of a timeline's events giving
+    a value in a column the table does not have (an event's ``name``, a
+    further column such as ``staff``) is refused, naming the column, the
+    event type and the timeline. A type keeping a property in a column of
+    its own (a Note's pitch, ``specific_pitch``, ``midi`` or ``pitch`` as
+    the source states it) cannot name its table's columns in advance: its
+    table holds, after the type's columns, every further column its rows
+    give a value in, as the timeline stores it (the pitch, a score's
+    ``staff`` and ``voice``, its measure columns), by name, a column some
+    timelines lack null on their rows (integers of two widths in the
+    wider). The columns the table states by being of one type
+    (``event_type``) or derives from ``start`` and ``duration``
+    (``temporal_type``, ``end``) are not written.
 
     Args:
         timelines: The timelines, each once.
@@ -761,10 +804,13 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
         The table, empty when no timeline holds such an event.
 
     Raises:
-        ValueError: If a row gives a value in a column the table does not
-            have.
+        ValueError: If a row of a type holding every property in its struct
+            gives a value in a column the table does not have, or two
+            timelines hold one further column in types no column holds both
+            of.
     """
     schema = event_table_schema(event_type)
+    open_table = _held_elsewhere(event_type)
     parts = []
     for timeline in timelines:
         events = timeline.events.table
@@ -774,7 +820,9 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
         n = rows.num_rows
         if n == 0:
             continue
-        _refuse_unwritten_columns(rows, schema, event_type, timeline.id)
+        further = _further_columns(rows, schema) if open_table else []
+        if not open_table:
+            _refuse_unwritten_columns(rows, schema, event_type, timeline.id)
         number_type = NumberType(timeline.number_type)
         types = pa.array([number_type.name] * n, pa.string())
         header = {
@@ -797,13 +845,49 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
                         )
                     )
                     for field in schema
-                ],
-                schema=schema,
+                ]
+                + [rows.column(field.name).combine_chunks() for field in further],
+                schema=pa.schema([*schema, *further]),
             )
         )
     if not parts:
         return schema.empty_table()
-    return pa.concat_tables(parts)
+    _refuse_further_columns_apart(parts, schema, event_type)
+    return pa.concat_tables(parts, promote_options="permissive")
+
+
+def _refuse_further_columns_apart(
+    parts: list[pa.Table], schema: pa.Schema, event_type: type[BaseModel]
+) -> None:
+    """Refuse the timelines' tables *parts* when two hold one further column
+    in types no one column holds (an integer and a string), naming both.
+
+    Raises:
+        ValueError: Naming the column, the two timelines and their types.
+    """
+    held: dict[str, tuple[str, pa.Field]] = {}
+    for part in parts:
+        timeline_id = part.column("timeline_id")[0].as_py()
+        for column in part.schema:
+            if column.name in schema.names:
+                continue
+            if column.name not in held:
+                held[column.name] = (timeline_id, column)
+                continue
+            first_id, first = held[column.name]
+            try:
+                (unified,) = pa.unify_schemas(
+                    [pa.schema([first]), pa.schema([column])],
+                    promote_options="permissive",
+                )
+            except (pa.ArrowInvalid, pa.ArrowTypeError):
+                raise ValueError(
+                    f"The {event_type.__name__} table holds the column "
+                    f"{column.name!r} once: timeline {quote_id(first_id)} holds it "
+                    f"as {first.type}, timeline {quote_id(timeline_id)} as "
+                    f"{column.type}, which no one column holds."
+                ) from None
+            held[column.name] = (first_id, unified)
 
 
 def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
@@ -885,15 +969,22 @@ def _from_package(array: Any, number_types: pa.Array, where: str) -> pa.Array:
     return pa.StructArray.from_arrays(members, names=names, mask=array.is_null())
 
 
-def _event_tables_by_timeline(table: pa.Table, what: str) -> dict[str, pa.Table]:
+def _event_tables_by_timeline(
+    table: pa.Table, what: str, columns: Collection[str] | None = None
+) -> dict[str, pa.Table]:
     """The rows of an event table in memory, by the ID of the timeline holding
     them, in row order: ``timeline_id`` dropped, every other column kept and
-    each number read by its row's number type (*what* names the table in a
-    message)."""
+    each number of the *columns* named (every column where ``None``) read by
+    its row's number type, any other column as it stands (*what* names the
+    table in a message)."""
     number_types = table.column("number_type").combine_chunks()
     memory = pa.table(
         {
-            name: _from_package(table.column(name), number_types, f"{what} '{name}")
+            name: (
+                _from_package(table.column(name), number_types, f"{what} '{name}")
+                if columns is None or name in columns
+                else table.column(name)
+            )
             for name in table.column_names
         }
     )
@@ -905,12 +996,15 @@ def _event_tables_by_timeline(table: pa.Table, what: str) -> dict[str, pa.Table]
     }
 
 
-def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
+def read_event_table(
+    path: str | PathLike[str], event_type: type[BaseModel]
+) -> dict[str, pa.Table]:
     """Read an event table: the rows of each timeline, in memory, in row order.
 
     The inverse of :func:`event_table`: per timeline ID, the table of its
     rows (``id``, ``unit``, ``number_type`` and the properties), each number
-    read in the number type its row states
+    of the columns of *event_type*'s table (:func:`event_table_schema`) read
+    in the number type its row states
     (:func:`~timetoalign.core.time.numbers_from_package`), both sides filled
     as memory holds them, however deep it lies; a further column is kept as
     it stands. An event type's ``from_row(row, unit=row["unit"],
@@ -918,6 +1012,7 @@ def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
 
     Args:
         path: The file.
+        event_type: The event type the table holds.
 
     Returns:
         The rows by the ID of the timeline holding them.
@@ -926,7 +1021,52 @@ def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
         ValueError: If a number does not hold its value as its row's number
             type says, naming the file, the column and the row.
     """
-    return _event_tables_by_timeline(pq.read_table(path), Path(path).name)
+    return _event_tables_by_timeline(
+        pq.read_table(path),
+        Path(path).name,
+        event_table_schema(event_type).names,
+    )
+
+
+def event_rows_of(
+    rows: pa.Table, timeline: Timeline, event_type: type[BaseModel]
+) -> list[dict[str, Any]]:
+    """The rows of *timeline* read from the table of *event_type*, as the event
+    rows :meth:`Timeline.add_events <timetoalign.timelines.Timeline.add_events>`
+    adds: every column but ``unit`` and ``number_type``, which must name the
+    timeline's axis, with ``event_type`` the type's name; a row whose ID the
+    timeline already holds is left out (an event the manifest's event rows
+    gave).
+
+    Args:
+        rows: One timeline's rows, as :func:`read_event_table` gives them.
+        timeline: The timeline they belong to.
+        event_type: The event type of the table.
+
+    Returns:
+        The event rows, in row order.
+
+    Raises:
+        ValueError: If a row states another unit or number type than the
+            timeline's.
+    """
+    unit = TimeUnit(timeline.unit).value
+    number_type = NumberType(timeline.number_type).name
+    held = set(timeline.events.table.column("id").to_pylist())
+    kind = event_type.__name__
+    result = []
+    for row in rows.to_pylist():
+        if (row["unit"], row["number_type"]) != (unit, number_type):
+            raise ValueError(
+                f"{kind} {quote_id(row['id'])} of timeline {quote_id(timeline.id)} "
+                f"is in {row['unit']} as {row['number_type']} in the {kind} table, "
+                f"but the timeline is in {unit} as {number_type}."
+            )
+        if row["id"] in held:
+            continue
+        del row["unit"], row["number_type"]
+        result.append({**row, "event_type": kind})
+    return result
 
 
 def read_projection_table(

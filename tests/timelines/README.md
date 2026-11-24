@@ -797,10 +797,14 @@ tables are absent, is one more byte-identical round trip.
   serializations, and so are its two variants holding only one of the keys:
   the file's keys decide what is written, each independently, so a writer
   that dropped the rows, or wrote both keys whenever it found one, fails.
-  `to_file(events=False)` on the full literal writes it without `events`.
+  `to_file(events=False)` on the full literal writes it without `events`,
+  its Note `e2` in the Note table beside it, which the manifest names
+  (`resource_1`, `Note`, `take_1`, `notes.parquet`, size and digest those
+  of the file: `tests/alignment/README.md`, "The Note table").
   An object built in code with the same timelines, events and references
-  writes neither key by default (the literal without them) and, with
-  `events=True, external_references=True`, the full literal's bytes.
+  writes, with `events=True, external_references=True`, the full literal's
+  bytes (the Note in the event rows, no Note table), and then by default
+  neither key (the literal without them, naming the Note table).
 - **A drawing written is a drawing read.** A `points` page of length
   `932.2326510101616` holding a child at offset `76.70371459980326` of length
   `855.5289364103584` (built in code, accepted there because the child ends
@@ -2878,11 +2882,15 @@ axis is the field: `get_field(<event type>)` is now composed from the
 columns (`tests/storage/README.md`, "An event type's field").
 
 **What proves "the same calls"** (`TestTheSameCalls`, parametrised over
-the event types whose field holds all of their properties, `Box` and
-`Projection`; each case adds one event on a child at offset 866 of a
-`pixels` page, `seg_2` of the Thoresen example (`meta["box"]` x 7), and
-one Note to the page itself): every assertion is written once and run for
-both types.
+`Box`, `Projection`, `Note` and `ScoreNote`; each case adds one event on a
+child at offset 866 of a `pixels` page, `seg_2` of the Thoresen example
+(`meta["box"]` x 7), and one Beat `b1` to the page itself): every
+assertion is written once and run for every type. The Note is the row
+`{event_type: Note, id: n_378, start: 378, duration: 4, pitch:
+{midi_number: 60}}`, the ScoreNote the same row with `staff` 1 and `voice`
+2 (rows keep `event_type` `Note`; the ScoreNote is read on them because the
+table states its `staff` and `voice`); each comes back as the Note built
+from those numbers on `pixels`.
 
 - `seg_2.get_events(event_type=T).get_field(T)` is `[added]`: the event
   added (its minted or given ID included) comes back equal, `start` 378.
@@ -2895,11 +2903,37 @@ both types.
   page reports.
 - `page.get_events(id=<its id>).get_field(T)` (a field filter) holds the
   one event; `get_field(TField)` is the same object as `get_field(T)`.
-- **Known issue, a case of its own:** `get_field(Note)` keeps raising
-  `KeyError` (`No field matching 'NoteField' ...`): a Note's pitch is
-  represented once, outside the Note's struct, so a Note field composed
-  from the columns would lose it. A Note's way back is the Note type's to
-  give; nothing here works around it.
+  For a Note the child's row is shifted whole: `start` 1244, `end` 1248.
+
+**Scores read back** (`TestScoresReadBack`). The expected notes are built
+from the sources, never from the loader's output, and compared whole
+(`==` on the scalars, so pitch, positions, `staff` and `voice` at once):
+
+- *ms3, Chopin Op. 10 No. 3* (`vienna_1x22`, `ms3/chopin_op10_no3.notes.tsv`,
+  498 rows). Each TSV row read with `csv`: `start` the `quarterbeats`
+  fraction, `duration` the `duration` fraction (whole notes) times 4, `end`
+  their sum, all `Fraction` on `quarters` (the four grace notes, duration
+  0, rows 158, 170, 492, 493, are instants: no end, no duration); the
+  pitch `cents` 0.0, as the score's pitch column writes it; the pitch
+  `SpecificPitch(step, alter, octave)` from `name` (letter, then `#` +1 and
+  `b` -1 each) and `octave`; `staff`, `voice` the columns. `Ms3Loader`'s
+  timeline, `get_events(event_type="Note").get_field(ScoreNote)`: the 498
+  notes in that order, none a rest; `get_field(Note)` the same notes as
+  plain `Note`s. First note: B3 at 0, duration 1/2, staff 1, voice 1.
+- *MEI through Verovio, Reger Op. 13 No. 4* (`mpm_toolbox`, 106 `<note>`s,
+  25 of them tied, no grace note). From the XML: per note `(step, alter,
+  octave, staff, layer)`, `step` the upper-cased `pname`, `alter` from
+  `accid` or else `accid.ges` (`f` -1, `s` +1, `n` 0, absent 0), `octave`
+  `oct`, `staff` and `layer` the `n` of the enclosing `<staff>` and
+  `<layer>`. The read back field (`get_field(ScoreNote)` on the timeline's
+  events) holds 106 notes and one null row (the tempo indication), its
+  `(step, alter, octave, staff, voice)` multiset that of the XML, every
+  position a `Fraction` on `quarters`; the first two notes as their `dur`
+  states them: `n1` E♭5 at 0 lasting 1/4 (a sixteenth), `n4` A♭4 at 0
+  lasting 3/4 (a dotted eighth), on staff 1, voices 1 and 2.
+
+A reader assuming quarters, dropping the pitch, or reading a row of
+another type as a note fails these.
 
 **Round trips with exact values from real pages** (`TestRoundTrips`). The
 expected Boxes are built from the sources' own numbers, never from the

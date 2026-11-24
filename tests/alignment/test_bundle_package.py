@@ -41,18 +41,25 @@ from timetoalign.core import (
     Coordinate,
     Duration,
     EventReference,
+    Note,
     Projection,
     Provenance,
     Quadrilateral,
+    ScoreNote,
+    SpecificPitch,
     TimeUnit,
 )
 from timetoalign.core.time import number_to_json, struct_to_rational
+from timetoalign.loader.midi import ScoreMidiLoader
+from timetoalign.loader.score.ms3 import Ms3Loader
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.manifest import (
     PARQUET_MEDIA_TYPE,
     Integrity,
     Manifest,
     Resource,
+    event_table,
     event_table_schema,
     projection_table,
 )
@@ -71,7 +78,12 @@ _TABLES = fixture_path("manifest.yaml").parent
     path for path in fixture_paths() if path.name == "bundle_resources.yaml"
 ]
 
-FILES = ["match_claims.parquet", "package.yaml", "projections.parquet"]
+FILES = [
+    "match_claims.parquet",
+    "notes.parquet",
+    "package.yaml",
+    "projections.parquet",
+]
 
 
 def _manifest(**extra: Any) -> dict[str, Any]:
@@ -423,6 +435,7 @@ class TestWriting:
                     "match_claims.parquet",
                 ),
                 ("Projection", ("audio", "pcm"), "projections.parquet"),
+                ("Note", ("part", "score"), "notes.parquet"),
             ],
             start=1,
         ):
@@ -635,6 +648,11 @@ class TestWriting:
 
         assert read.timelines["pcm"].n_events == 3
         assert read.timelines["audio"].n_events == 2
+        # The Note table's rows of IDs the manifest's rows gave are not added.
+        notes = read.timelines["score"].get_events(
+            event_type="Note", include_children=False
+        )
+        assert notes.column_values("id") == ["n1", "n2"]
 
     def test_an_entry_read_keeps_its_id_and_location(self, tmp_path: Path) -> None:
         bundle = _bundle()
@@ -647,6 +665,7 @@ class TestWriting:
         assert sorted(
             path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")
         ) == [
+            "notes.parquet",
             "package.yaml",
             "projections.parquet",
             "tables",
@@ -660,6 +679,7 @@ class TestWriting:
                 "tables/claims.parquet",
             ),
             ("resource_8", "Projection", ("audio", "pcm"), "projections.parquet"),
+            ("resource_9", "Note", ("part", "score"), "notes.parquet"),
         ]
 
     def test_a_url_with_a_scheme_is_refused(self, tmp_path: Path) -> None:
@@ -828,8 +848,9 @@ class TestWriting:
         assert [(row["id"], row["start"]) for row in held] == [
             ("projection_1", {"value": 1.5, "numerator": 3, "denominator": 2})
         ]
-        # The package holds no Note (a manifest names no event), so the score
-        # read holds the Projection alone, and get-or-add names it again.
+        # The score read holds the Projection (the Projections table is read
+        # first) and the Note n1 (from the Note table), and get-or-add names
+        # the Projection again.
         again = AlignmentBundle.from_file(tmp_path / "package.yaml").get_timeline(
             "score"
         )
@@ -838,7 +859,7 @@ class TestWriting:
             projection_of=EventReference(timeline_id="audio", event_id="o1"),
         )
         assert again.add_projections([projection]) == ["projection_1"]
-        assert len(again.events) == 1
+        assert again.events.column_values("id") == ["projection_1", "n1"]
 
         read.to_file(tmp_path / "package.yaml")
         assert _bytes(tmp_path) == first
@@ -1633,6 +1654,193 @@ def _written_twice(
     return read
 
 
+#: The ms3 notes of Chopin's Op. 10 No. 3 (498 Notes).
+CHOPIN_NOTES = ensure_data("vienna_1x22") / "ms3" / "chopin_op10_no3.notes.tsv"
+#: The columns the Chopin score's Notes give a value in, beyond the Note's.
+CHOPIN_FURTHER = [
+    "chord_id",
+    "gracenote",
+    "mc",
+    "mc_onset",
+    "midi",
+    "mn",
+    "mn_onset",
+    "name",
+    "octave",
+    "part_id",
+    "specific_pitch",
+    "staff",
+    "tied",
+    "tpc",
+    "voice",
+]
+_NOTE_REFUSAL = (
+    "A package's manifest names no event ID: the bundle writes its "
+    "MatchClaim table and its event tables beside the manifest, so its "
+    "event rows are not written into it; write it with events=False."
+)
+
+
+def _chopin() -> Timeline:
+    return Ms3Loader.from_file(CHOPIN_NOTES).create_timeline()
+
+
+def _one_note(uid: str, unit: Any, start: Any, **further: Any) -> Timeline:
+    """A timeline of *unit* holding the Note ``n1`` at *start*, with *further*."""
+    if unit == "quarters":
+        timeline: Timeline = ContinuousLogicalTimeline(length=Fraction(8), uid=uid)
+    else:
+        timeline = ContinuousPhysicalTimeline(length=60.0, uid=uid)
+    timeline.add_events([{"id": "n1", "start": start, "event_type": "Note", **further}])
+    return timeline
+
+
+class TestNotes:
+    def test_the_table_s_columns(self) -> None:
+        number = pa.struct(NUMBER_TYPE)
+        assert event_table_schema(Note) == pa.schema(
+            [
+                pa.field("id", pa.string()),
+                pa.field("timeline_id", pa.string()),
+                pa.field("unit", pa.string()),
+                pa.field("number_type", pa.string()),
+                pa.field("start", number),
+                pa.field("duration", number),
+                pa.field("velocity", pa.int64()),
+                pa.field("instrument", pa.string()),
+            ]
+        )
+        table = event_table([_chopin()], Note)
+        assert table.num_rows == 498
+        assert table.column_names == [*event_table_schema(Note).names, *CHOPIN_FURTHER]
+        first = table.slice(0, 1).to_pylist()[0]
+        assert {
+            name: first[name]
+            for name in [
+                "id",
+                "timeline_id",
+                "unit",
+                "number_type",
+                "start",
+                "duration",
+            ]
+        } == {
+            "id": "clt_1:note:000001",
+            "timeline_id": "clt_1",
+            "unit": "quarters",
+            "number_type": "fraction",
+            "start": _number(0, 1),
+            "duration": _number(1, 2),
+        }
+        assert (first["velocity"], first["instrument"]) == (None, None)
+        assert {
+            name: first[name]
+            for name in ("name", "specific_pitch", "midi", "staff", "voice")
+        } == {
+            "name": "B3",
+            "specific_pitch": {"step": "B", "alter": 0, "octave": 3, "cents": 0.0},
+            "midi": 59,
+            "staff": 1,
+            "voice": 1,
+        }
+
+    def test_written_and_read_back(self, tmp_path: Path) -> None:
+        score = _chopin()
+        bundle = AlignmentBundle(id="chopin")
+        bundle.add_timeline(score)
+
+        read = _written_twice(bundle, tmp_path, "chopin.yaml")
+
+        assert sorted(p.name for p in (tmp_path / "first").iterdir()) == [
+            "chopin.yaml",
+            "notes.parquet",
+        ]
+        assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
+            ("resource_1", "Note", ("clt_1",), "notes.parquet")
+        ]
+        read_score = read.get_timeline("clt_1")
+        notes = list(read_score.get_events(event_type="Note").get_field(ScoreNote))
+        assert len(notes) == 498
+        assert notes == list(score.get_events(event_type="Note").get_field(ScoreNote))
+        assert {type(note.start.value) for note in notes} == {Fraction}
+        assert notes[0].pitch == SpecificPitch(step="B", alter=0, octave=3, cents=0.0)
+        compared = ["id", "name", "mc", "mn", "mc_onset", "specific_pitch", "midi"]
+        compared += ["tpc", "chord_id", "staff", "voice"]
+        assert (
+            read_score.events.table.select(compared).to_pylist()
+            == score.events.table.select(compared).to_pylist()
+        )
+
+    def test_integers_of_two_widths_join(self, tmp_path: Path) -> None:
+        directory = ensure_data("vienna_1x22")
+        midi = ScoreMidiLoader.from_file(
+            directory / "Chopin_op10_no3_p01.mid"
+        ).create_timeline()
+        assert midi.events.table.schema.field("staff").type == pa.int8()
+        table = event_table([_chopin(), midi], Note)
+        assert table.schema.field("staff").type == pa.int64()
+        assert table.num_rows == 498 + 451
+
+    def test_a_further_column_in_two_types_is_refused(self, tmp_path: Path) -> None:
+        bundle = AlignmentBundle(id="two")
+        bundle.add_timeline(_one_note("score", "quarters", Fraction(0), staff=1))
+        bundle.add_timeline(_one_note("los", "seconds", 0.0, staff="P1_staff1"))
+
+        with pytest.raises(ValueError) as refused:
+            bundle.to_file(tmp_path / "two.yaml")
+
+        assert str(refused.value) == (
+            "The Note table holds the column 'staff' once: timeline 'los' holds it "
+            "as string, timeline 'score' as int64, which no one column holds."
+        )
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_row_on_another_axis_is_refused_on_reading(self, tmp_path: Path) -> None:
+        bundle = AlignmentBundle(id="one")
+        bundle.add_timeline(_one_note("score", "quarters", Fraction(1, 2)))
+        bundle.to_file(tmp_path / "one.yaml")
+        table = pq.read_table(tmp_path / "notes.parquet")
+        table = table.set_column(
+            table.schema.get_field_index("unit"), "unit", pa.array(["seconds"])
+        ).set_column(
+            table.schema.get_field_index("number_type"),
+            "number_type",
+            pa.array(["float"]),
+        )
+        table = table.set_column(
+            table.schema.get_field_index("start"),
+            "start",
+            pa.array([_number(value=0.5)], table.schema.field("start").type),
+        )
+        pq.write_table(table, tmp_path / "notes.parquet")
+
+        with pytest.raises(ValueError) as refused:
+            AlignmentBundle.from_file(tmp_path / "one.yaml")
+
+        assert str(refused.value) == (
+            "Note 'n1' of timeline 'score' is in seconds as float in the Note "
+            "table, but the timeline is in quarters as fraction."
+        )
+
+    def test_notes_travel_in_the_event_rows_on_request(self, tmp_path: Path) -> None:
+        bundle = AlignmentBundle(id="one")
+        bundle.add_timeline(_one_note("score", "quarters", Fraction(1, 2)))
+
+        bundle.to_file(tmp_path / "one.yaml", events=True)
+
+        assert [p.name for p in tmp_path.iterdir()] == ["one.yaml"]
+        assert bundle.resources == []
+        read = AlignmentBundle.from_file(tmp_path / "one.yaml").get_timeline("score")
+        assert read.events.column_values("id") == ["n1"]
+        bundle.add_timeline(_one_note("score_2", "quarters", Fraction(1, 2)))
+        bundle.get_timeline("score_2").add_projections(
+            [Projection(start=Coordinate(Fraction(1), TimeUnit.quarters))]
+        )
+        with pytest.raises(ValueError, match=f"^{re.escape(_NOTE_REFUSAL)}$"):
+            bundle.to_file(tmp_path / "two.yaml", events=True)
+        assert [p.name for p in tmp_path.iterdir()] == ["one.yaml"]
+
+
 class TestEventTablesBesideOtherEvents:
     def test_one_projection_beside_notes(self, tmp_path: Path) -> None:
         score = _score_with_notes()
@@ -1651,6 +1859,7 @@ class TestEventTablesBesideOtherEvents:
 
         first = tmp_path / "first"
         assert sorted(p.name for p in first.iterdir()) == [
+            "notes.parquet",
             "one.yaml",
             "projections.parquet",
         ]
@@ -1666,7 +1875,8 @@ class TestEventTablesBesideOtherEvents:
             }
         ]
         assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
-            ("resource_1", "Projection", ("score",), "projections.parquet")
+            ("resource_1", "Projection", ("score",), "projections.parquet"),
+            ("resource_2", "Note", ("score",), "notes.parquet"),
         ]
         assert _projection_rows(read._known_timelines()["score"]) == [
             ("projection_1", Fraction(1, 3), Fraction(2, 3), None)
@@ -1702,6 +1912,7 @@ class TestEventTablesBesideOtherEvents:
         assert sorted(p.name for p in first.iterdir()) == [
             "boxes.parquet",
             "boxes.yaml",
+            "notes.parquet",
         ]
 
         def box(x: int, y: int, width: int, height: int) -> dict[str, Any]:
@@ -1763,6 +1974,7 @@ class TestEventTablesBesideOtherEvents:
         assert [(r.type, r.timelines) for r in bundle.resources] == [
             ("MatchClaim", ("pcm", "score")),
             ("Projection", ("score",)),
+            ("Note", ("pcm", "score")),
         ]
         assert _projection_rows(read._known_timelines()["score"]) == [
             ("projection_1", Fraction(0), Fraction(4), reference)

@@ -38,6 +38,7 @@ from timetoalign.core import (
     CoordinateValue,
     IdCoordinate,
     Interval,
+    Note,
     Provenance,
     SupportPolicy,
     TimeUnit,
@@ -84,11 +85,13 @@ from timetoalign.timelines.groups import (
 )
 from timetoalign.timelines.manifest import (
     BOXES_FILE_NAME,
+    NOTES_FILE_NAME,
     PROJECTIONS_FILE_NAME,
     TABLE_RESOURCE_TYPES,
     Manifest,
     ManifestFileMixin,
     Resource,
+    event_rows_of,
     event_table,
     projection_table,
     read_event_table,
@@ -392,6 +395,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     # Whether the manifest read held a ``graphical`` object, written back
     # even with every member at its default.
     _has_graphical: bool = field(default=False, init=False, repr=False, compare=False)
+    #: Whether the manifest being written holds the event rows (its Notes
+    #: then travel there, and no Note table is written).
+    _event_rows_written: ClassVar[bool] = False
     # The band orders of the manifest read, keyed by timeline id, kept as
     # given beside the styling and written back with their timelines.
     _band_orders: dict[str, Any] = field(
@@ -4610,7 +4616,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         added to its timeline (:meth:`Timeline.add_events
         <timetoalign.timelines.Timeline.add_events>`), so each Box is
         checked against its timeline's axis and image as any Box added is.
-        Then the MatchClaim table, added as
+        Then the Note table: each timeline's rows added to it as event rows
+        of type ``Note`` (:meth:`Timeline.add_events
+        <timetoalign.timelines.Timeline.add_events>`), further columns
+        included, an event whose ID the timeline already holds (one read
+        from the manifest's event rows) not added again. Then the MatchClaim table, added as
         :meth:`add_match_claim_field` adds a field, every ID kept, its
         further columns kept as read (:meth:`MatchClaimField.from_table`). A table
         the manifest names that does not lie there is not read: the
@@ -4640,7 +4650,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if "Box" in named:
             path = named["Box"].path_in(directory)
             if path.is_file():
-                for timeline_id, rows in read_event_table(path).items():
+                for timeline_id, rows in read_event_table(path, Box).items():
                     try:
                         boxes = [
                             Box.from_row(
@@ -4652,19 +4662,26 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         # The Box's own refusal, as add_events gives it.
                         raise _refusal_of(error) from None
                     self._require_known_timeline(timeline_id).add_events(boxes)
+        if "Note" in named:
+            path = named["Note"].path_in(directory)
+            if path.is_file():
+                for timeline_id, rows in read_event_table(path, Note).items():
+                    timeline = self._require_known_timeline(timeline_id)
+                    timeline.add_events(event_rows_of(rows, timeline, Note))
         if "MatchClaim" in named:
             path = named["MatchClaim"].path_in(directory)
             if path.is_file():
                 self.add_match_claim_field(MatchClaimField.from_parquet(path))
 
-    def _event_tables(self) -> dict[str, pa.Table]:
+    def _event_tables(self, *, notes: bool = True) -> dict[str, pa.Table]:
         """The package's event tables by resource type, each holding a row.
 
         The Projections table
-        (:func:`~timetoalign.timelines.manifest.projection_table`) and the
-        Box table (:func:`~timetoalign.timelines.manifest.event_table`) of
-        every timeline of the bundle's trees, sorted by ID; a table without
-        a row is left out.
+        (:func:`~timetoalign.timelines.manifest.projection_table`), the
+        Box table and, with *notes*, the Note table
+        (:func:`~timetoalign.timelines.manifest.event_table`) of every
+        timeline of the bundle's trees, sorted by ID; a table without a row
+        is left out.
 
         Raises:
             ValueError: As :func:`~timetoalign.timelines.manifest.projection_table`
@@ -4676,6 +4693,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             "Projection": projection_table(timelines),
             "Box": event_table(timelines, Box),
         }
+        if notes:
+            tables["Note"] = event_table(timelines, Note)
         return {kind: table for kind, table in tables.items() if table.num_rows}
 
     def to_file(
@@ -4693,14 +4712,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         As :meth:`ManifestFileMixin.to_file
         <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
         a manifest, with the MatchClaim table and the event tables, of
-        Projections and of Boxes (:meth:`_write_tables`), written between a
-        first writing of the manifest, which validates and serializes it
-        before any file is written, and the writing that names them. A
-        manifest never names an event's ID: where the bundle writes a table,
-        its Projections and Boxes lie in their tables alone and the events
-        of its timelines are not written into the manifest, so writing event
-        rows (``events``, given or as read) is refused before any file is
-        written.
+        Projections, of Boxes and of Notes (:meth:`_write_tables`), written
+        between a first writing of the manifest, which validates and
+        serializes it before any file is written, and the writing that names
+        them. A manifest never names an event's ID: where the bundle writes
+        a MatchClaim, Projections or Box table, its Projections and Boxes lie
+        in their tables alone and the events of its timelines are not
+        written into the manifest, so writing event rows (``events``, given
+        or as read) is refused before any file is written. Notes alone
+        travel either way: written with the event rows, they are in the
+        manifest and no Note table is written; without, they are in the Note
+        table.
 
         Raises:
             ValueError: If event rows would be written beside a table, or as
@@ -4713,21 +4735,27 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             if events is not None
             else (self._file_form is not None and self._file_form.events)
         )
-        if writes_events and (len(self.match_claim_table) or self._event_tables()):
+        if writes_events and (
+            len(self.match_claim_table) or self._event_tables(notes=False)
+        ):
             raise ValueError(
                 "A package's manifest names no event ID: the bundle writes its "
                 "MatchClaim table and its event tables beside the manifest, so "
                 "its event rows are not written into it; write it with "
                 "events=False."
             )
-        return super().to_file(
-            path,
-            minimal=minimal,
-            styling=styling,
-            serialization=serialization,
-            events=events,
-            external_references=external_references,
-        )
+        self._event_rows_written = bool(writes_events)
+        try:
+            return super().to_file(
+                path,
+                minimal=minimal,
+                styling=styling,
+                serialization=serialization,
+                events=events,
+                external_references=external_references,
+            )
+        finally:
+            self._event_rows_written = False
 
     def _write_tables(self, directory: Path) -> bool:
         """Write the package tables into *directory* and name them in :attr:`resources`.
@@ -4739,18 +4767,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         writes the Projections table of every timeline of its trees, sorted
         by timeline ID
         (:func:`~timetoalign.timelines.manifest.projection_table`), and one
-        of whose timelines holds Boxes writes their Box table likewise
-        (:func:`~timetoalign.timelines.manifest.event_table`). Each
+        of whose timelines holds Boxes, or Notes, writes their Box or Note
+        table likewise (:func:`~timetoalign.timelines.manifest.event_table`;
+        the Note table not where the manifest holds the event rows). Each
         lies where its entry read with the manifest places it, else beside
         the manifest (``match_claims.parquet``, ``projections.parquet``,
-        ``boxes.parquet``);
+        ``boxes.parquet``, ``notes.parquet``);
         its entry keeps its ID (a new one is minted, ``resource_N``) and
         names the timelines it holds data for (sorted, or in the order the
         entry read lists them where it lists the same), the Parquet media
         type, the file's size and its SHA-256 digest. An entry of either
         type whose table is not written stays where its file lies in
-        *directory* and goes where it does not. A bundle holding neither
-        MatchClaims nor Projections nor Boxes writes no table and keeps its
+        *directory* and goes where it does not. A bundle holding none of
+        MatchClaims, Projections, Boxes and Notes writes no table and keeps its
         :attr:`resources` as they are: a manifest read without its tables
         names them still.
 
@@ -4765,7 +4794,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 file is written.
         """
         claims = self.match_claim_table
-        event_tables = self._event_tables()
+        event_tables = self._event_tables(notes=not self._event_rows_written)
         if len(claims) == 0 and not event_tables:
             return False
         named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
@@ -4792,7 +4821,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         # Every place is resolved (a URL refused) before the first file is written.
         if len(claims):
             claim_place = place("MatchClaim", MatchClaimField.file_name)
-        file_names = {"Projection": PROJECTIONS_FILE_NAME, "Box": BOXES_FILE_NAME}
+        file_names = {
+            "Projection": PROJECTIONS_FILE_NAME,
+            "Box": BOXES_FILE_NAME,
+            "Note": NOTES_FILE_NAME,
+        }
         event_places = {kind: place(kind, file_names[kind]) for kind in event_tables}
         kept = {
             table_type

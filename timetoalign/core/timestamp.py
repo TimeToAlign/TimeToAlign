@@ -1237,7 +1237,7 @@ def _table_cell_values(values: Any) -> Any:
 
 def timestamp_table_to_dataframe(
     table: "pa.Table",
-    fields: "ColumnNaming | Callable[[str, dict], str] | list[str] | None" = None,
+    fields: "ColumnNaming | Callable[[str, dict[str, Any]], str] | list[str] | None" = None,
     units: bool = True,
 ) -> "pd.DataFrame":
     """Convert a PyArrow timestamp table to a pandas DataFrame with proper formatting.

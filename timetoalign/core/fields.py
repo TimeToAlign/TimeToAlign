@@ -1490,7 +1490,9 @@ def resolve_source_fields(
 # field expands to three storage fields ``{value, numerator, denominator}``
 # inside the Arrow struct.  An empty list drops the field entirely
 # (used to keep e.g. ``Note.pitch`` out of the pa.Schema).
-_ValueProjector = Callable[[type[BaseModel], str, FieldInfo], list[pa.Field]]
+_ValueProjector = Callable[
+    [type[BaseModel], str, FieldInfo], "list[pa.Field[pa.DataType]]"
+]
 
 _VALUE_PROJECTORS: dict[tuple[type[BaseModel], str], _ValueProjector] = {}
 

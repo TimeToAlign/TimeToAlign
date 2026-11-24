@@ -1166,8 +1166,8 @@ def express_scalar_as(
 
 
 def combine_number_columns(
-    left: pa.Array,
-    right: pa.Array | int | float | Fraction,
+    left: pa.Array[Any] | pa.ChunkedArray[Any],
+    right: pa.Array[Any] | pa.ChunkedArray[Any] | int | float | Fraction,
     operation: str,
     number_type: NumberType,
     *,
@@ -1320,7 +1320,9 @@ def compare_number_column(
 
 
 def _combine_float_columns(
-    left: pa.Array, right: pa.Array | int | float | Fraction, operation: str
+    left: pa.Array[Any] | pa.ChunkedArray[Any],
+    right: pa.Array[Any] | pa.ChunkedArray[Any] | int | float | Fraction,
+    operation: str,
 ) -> pa.StructArray:
     """The ``float`` lane of :func:`combine_number_columns`: PyArrow kernels."""
     left_values = _float_side(left)
@@ -1350,8 +1352,8 @@ _INT64_PRODUCT_BOUND = float(2**61)
 
 
 def _combine_exact_columns(
-    left: pa.Array,
-    right: pa.Array | int | float | Fraction,
+    left: pa.Array[Any] | pa.ChunkedArray[Any],
+    right: pa.Array[Any] | pa.ChunkedArray[Any] | int | float | Fraction,
     operation: str,
     number_type: NumberType,
     *,

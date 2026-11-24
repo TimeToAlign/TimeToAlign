@@ -31,6 +31,7 @@ import sys
 from abc import ABC, abstractmethod
 from fractions import Fraction
 from functools import lru_cache
+from importlib.abc import Loader
 from importlib.machinery import PathFinder
 from typing import (
     Any,
@@ -98,7 +99,7 @@ def _install_paired_field_registry_import_hook() -> None:
     ):
         return
 
-    class _RegistryLoader:
+    class _RegistryLoader(Loader):
         def __init__(self, loader: Any) -> None:
             self._loader = loader
 
@@ -555,7 +556,7 @@ class IntField(NumericField):
     the field type via the :class:`NumericField` base.
     """
 
-    _blueprint_pa_type: ClassVar[pa.DataType] = pa.int64()
+    _blueprint_pa_type = pa.int64()
 
 
 class FloatField(NumericField):
@@ -567,7 +568,7 @@ class FloatField(NumericField):
     :class:`NumericField` base.
     """
 
-    _blueprint_pa_type: ClassVar[pa.DataType] = pa.float64()
+    _blueprint_pa_type = pa.float64()
 
 
 class StringField(DataField):
@@ -585,7 +586,7 @@ class StringField(DataField):
         TypeError: If the field type is not string-like.
     """
 
-    _blueprint_pa_type: ClassVar[pa.DataType] = pa.string()
+    _blueprint_pa_type = pa.string()
 
     def __init__(
         self,
@@ -637,6 +638,21 @@ class StringField(DataField):
         return cls(data, field)
 
 
+def _struct_array(array: pa.Array | pa.ChunkedArray) -> pa.StructArray:
+    """*array*, a column of structs, as one contiguous ``pa.StructArray``.
+
+    A chunked column is combined first.
+
+    Raises:
+        TypeError: If *array* is not a struct column.
+    """
+    if isinstance(array, pa.ChunkedArray):
+        array = array.combine_chunks()
+    if not isinstance(array, pa.StructArray):
+        raise TypeError(f"Expected a struct column, got {array.type}")
+    return array
+
+
 class StructField(DataField):
     """A DataField backed by a struct array.
 
@@ -662,15 +678,23 @@ class StructField(DataField):
         name: str | None = None,
     ) -> None:
         super().__init__(data, field, name=name)
-        if not pa.types.is_struct(self._field.type):
-            raise TypeError(
-                f"StructField requires a struct type, got {self._field.type}"
-            )
+        self._struct_type()
+
+    def _struct_type(self) -> pa.StructType:
+        """The struct type of this field.
+
+        Raises:
+            TypeError: If the field type is not a struct.
+        """
+        struct_type = self._field.type
+        if not pa.types.is_struct(struct_type):
+            raise TypeError(f"StructField requires a struct type, got {struct_type}")
+        return struct_type
 
     @property
     def field_names(self) -> list[str]:
         """Names of the sub-fields in this struct."""
-        struct_type: pa.StructType = self._field.type
+        struct_type = self._struct_type()
         return [struct_type.field(i).name for i in range(struct_type.num_fields)]
 
     def get_sub_field(self, name: str) -> DataField:
@@ -690,7 +714,7 @@ class StructField(DataField):
             KeyError: If *name* is not a sub-field of this struct.
             TypeError: If this field has no data.
         """
-        struct_type: pa.StructType = self._field.type
+        struct_type = self._struct_type()
         sub_idx = struct_type.get_field_index(name)
         if sub_idx < 0:
             raise KeyError(
@@ -702,12 +726,7 @@ class StructField(DataField):
         if self._data is None:
             sub_data = None
         else:
-            arr = (
-                self.to_pyarrow()
-                if isinstance(self._data, pa.ChunkedArray)
-                else self._data
-            )
-            sub_data = arr.field(name)
+            sub_data = _struct_array(self._data).field(name)
 
         if pa.types.is_integer(sub_pa_field.type) or pa.types.is_floating(
             sub_pa_field.type
@@ -722,9 +741,6 @@ class StructField(DataField):
         if pa.types.is_map(sub_pa_field.type):
             return MapField(sub_data, sub_pa_field)
         return _GenericField(sub_data, sub_pa_field)
-
-    def __getitem__(self, i: int) -> dict[str, Any] | None:
-        return super().__getitem__(i)
 
     @classmethod
     def from_field(
@@ -1107,7 +1123,8 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         :data:`TIMETOALIGN_METADATA_KEY`.  Metadata entries owned by
         anyone else are carried over untouched.
         """
-        metadata = dict(self._field.metadata or {})
+        existing = self._field.metadata
+        metadata: dict[bytes | str, bytes | str] = {**existing} if existing else {}
         metadata[TIMETOALIGN_METADATA_KEY] = metadata_blob_from_dict(
             self.metadata_dict()
         )

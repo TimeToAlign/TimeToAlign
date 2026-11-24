@@ -3882,8 +3882,26 @@ def _placed(value: Any, timeline: Any, where: str) -> Coordinate:
     The one placement (:func:`_on_timeline`): a number is written in the
     timeline's unit and number type, a coordinate in another unit goes
     through the timeline's C-Map. A coordinate left in another number type
-    is refused here, before anything is added.
+    is refused here, before anything is added, and so is a bare float on a
+    samples axis: a sample position is a count, and a float there is either
+    a count given in the wrong number type or a position in seconds.
+
+    Raises:
+        ValueError: If *value* is a float and the timeline counts samples,
+            or the position cannot be placed on the timeline's axis.
     """
+    if isinstance(value, (float, np.floating)) and TimeUnit(timeline.unit) is (
+        TimeUnit.samples
+    ):
+        raise ValueError(
+            f"{where} is the float {value!r}, but timeline "
+            f"{quote_id(timeline.id)} counts samples, which are whole counts. "
+            f"Either {value!r} is a sample count given in the wrong number type "
+            f"(give it as an int), or it is a position in seconds that needs "
+            f"converting (give Coordinate({value!r}, 'seconds'), which the "
+            f"timeline's C-Map converts). Give positions as Coordinates, which "
+            f"state their unit."
+        )
     coordinate = _on_timeline(_event_coordinate(value), timeline, where)
     _refuse_off_axis(
         coordinate.unit,
@@ -3914,6 +3932,7 @@ def _claims_between_events(
     synchronous: bool = True,
     certainty: float = 1.0,
     provenance: Provenance | None = None,
+    earlier: MatchClaimField | None = None,
 ) -> list[MatchClaim]:
     """MatchClaims between events, a Projection standing for a side without one.
 
@@ -3942,11 +3961,16 @@ def _claims_between_events(
     gives :meth:`MatchClaim.nomatch` for the other side's event. A second
     call with the same pairs adds no Projection: it reuses every one.
 
+    A side's ``name`` is the claim's name of the Projection: the name the
+    first claim on a Projection recorded (in *earlier*, else in this call)
+    is the one every later claim on it shows.
+
     Every pair is resolved and every position placed and checked before any
-    Projection is added; the Projections of one timeline are then added in
-    one call (known limit: a Projection beyond the end of a locked timeline
-    is refused when its timeline's turn comes, after the Projections of the
-    timelines before it were added).
+    Projection is added: a float on a samples axis, a span running
+    backwards, a position past the end of a locked timeline and a held
+    event named with a span not its own are refused, so a refusal leaves
+    every timeline unchanged. The Projections of one timeline are then
+    added in one call.
 
     Args:
         pairs: ``(side_a, timeline_a, side_b, timeline_b)`` per claim, the
@@ -3956,6 +3980,8 @@ def _claims_between_events(
             pair is never synchronous.
         certainty: How certain every claim is, in [0, 1].
         provenance: How the claims were made and who believes them.
+        earlier: MatchClaims already stated, whose names of Projections
+            the new claims keep.
 
     Returns:
         The claims, in pair order, without ids (the bundle they join mints
@@ -3964,8 +3990,10 @@ def _claims_between_events(
     Raises:
         KeyError: If an id names no event of its timeline.
         ValueError: If both sides of a pair are ``None``, a dict naming no
-            held event states no ``start``, its end is in another unit than
-            its start, or a position cannot be placed on its timeline's axis.
+            held event states no ``start``, a position is a float on a
+            samples axis, a span runs backwards, a position lies past the end
+            of a locked timeline, a held event is named with a span not its
+            own, or a position cannot be placed on its timeline's axis.
         TypeError: If a side is neither a string, a dict nor ``None``.
     """
     pairs = list(pairs)
@@ -4026,10 +4054,14 @@ def _claims_between_events(
         for key, (timeline, projections) in projected.items()
     }
 
+    claimed = [
+        (_claimed_event(side_a, projection_ids), _claimed_event(side_b, projection_ids))
+        for side_a, side_b in resolved
+    ]
+    _kept_names(resolved, claimed, earlier)
+
     claims: list[MatchClaim] = []
-    for side_a, side_b in resolved:
-        event_a = _claimed_event(side_a, projection_ids)
-        event_b = _claimed_event(side_b, projection_ids)
+    for (side_a, side_b), (event_a, event_b) in zip(resolved, claimed, strict=True):
         if event_a is None or event_b is None:
             event, side, other = (
                 (event_a, side_a, side_b)
@@ -4071,11 +4103,27 @@ def _resolved_side(
     other_event: dict[str, Any] | None,
     index: int,
 ) -> _Side:
-    """Resolve one side: its held event, or the Projection standing for it."""
-    if side is None or event is not None:
+    """Resolve one side: its held event, or the Projection standing for it.
+
+    Every stated position is placed on the timeline's axis (:func:`_placed`)
+    and checked before anything is added: a span runs forward, a locked
+    timeline is not passed, and a held event named by its ID is given its
+    own span or none.
+
+    Raises:
+        ValueError: If a dict naming no held event states no ``start``, a
+            span runs backwards, a position lies past the end of a locked
+            timeline, a held event is named with a span not its own, or a
+            position cannot be placed.
+    """
+    if side is None:
+        return _Side(timeline, None, None, None)
+    where = f"Pair {index}: the side on timeline {quote_id(timeline.id)}"
+    if event is not None:
+        if isinstance(side, dict):
+            _refuse_other_span(side, timeline, event, where)
         return _Side(timeline, event, None, None)
     assert isinstance(side, dict)
-    where = f"Pair {index}: the side on timeline {quote_id(timeline.id)}"
     if side.get("start") is None:
         raise ValueError(
             f"{where} names no event of it and states no 'start': a side of a "
@@ -4083,12 +4131,26 @@ def _resolved_side(
             f"for one."
         )
     start = _placed(side["start"], timeline, f"{where}, its start")
-    duration = None
+    end = duration = None
     if side.get("end") is not None:
         end = _placed(side["end"], timeline, f"{where}, its end")
+        if end.value < start.value:
+            raise ValueError(
+                f"{where} runs backwards: its end "
+                f"{_as_given(side['end'], end)} lies before its start "
+                f"{_as_given(side['start'], start)}. A span ends at or after "
+                f"its start: swap the two if they were given in the wrong "
+                f"order, or correct the one that is wrong."
+            )
         duration = Duration(
             end.value - start.value, start.unit, number_type=start.number_type
         )
+    _refuse_past_locked_end(
+        side["start" if end is None else "end"],
+        start if end is None else end,
+        timeline,
+        where,
+    )
     given = side.get("id")
     reference = (
         EventReference(timeline_id=other_timeline.id, event_id=str(other_event["id"]))
@@ -4103,6 +4165,185 @@ def _resolved_side(
     )
     name = side.get("name")
     return _Side(timeline, None, projection, None if name is None else str(name))
+
+
+def _as_given(value: Any, placed: Coordinate) -> str:
+    """A stated position spelled as given, with its place on the axis.
+
+    A coordinate in another unit is followed by the coordinate it was
+    converted to; a number is spelled as written, in the timeline's unit.
+    """
+    given = _event_coordinate(value)
+    if isinstance(given, IdCoordinate):
+        given = given.to_coordinate()
+    if isinstance(given, Coordinate):
+        if given.unit is placed.unit:
+            return str(given)
+        return f"{given} ({placed} on the timeline)"
+    return f"{given} {placed.unit.value}"
+
+
+def _refuse_past_locked_end(
+    given: Any, last: Coordinate, timeline: Any, where: str
+) -> None:
+    """Refuse a stated position past the end of a locked timeline.
+
+    A locked timeline's length is fixed, so the Projection standing there
+    could only be added by lengthening it, which a MatchClaim never does. An
+    unlocked timeline grows to hold it, and a locked one of unknown length
+    bounds nothing.
+
+    Args:
+        given: The farthest position as the side states it.
+        last: That position placed on the timeline's axis.
+        timeline: The timeline.
+        where: Which side it is, for the message.
+
+    Raises:
+        ValueError: If the timeline is locked, its length known, and *last*
+            lies beyond it.
+    """
+    length = timeline.length
+    if not timeline.is_locked or length is None or not last.value > length.value:
+        return
+    raise ValueError(
+        f"{where} reaches {_as_given(given, last)}, past the end of timeline "
+        f"{quote_id(timeline.id)} at {length}. The timeline is locked: its length "
+        f"is fixed, as a loader fixes a length its source states, and a "
+        f"MatchClaim never lengthens it. Correct the "
+        f"span; or, if the source is known to be longer than the timeline "
+        f"states, make the timeline with the source's length."
+    )
+
+
+def _refuse_other_span(
+    side: dict[str, Any], timeline: Any, event: dict[str, Any], where: str
+) -> None:
+    """Refuse a held event named by its ID with a span that is not its own.
+
+    A side naming an event the timeline holds is that event: stating its own
+    span with the ID, or no span, names it; stating another span would claim
+    a position the event does not have.
+
+    Raises:
+        ValueError: If the side states a ``start`` or an ``end`` other than
+            the event's (an instant stated for an event with an end counts as
+            another span, and the reverse).
+    """
+    if side.get("start") is None and side.get("end") is None:
+        return
+    own_start = _event_position(event.get("start"), timeline)
+    own_end = _event_position(event.get("end"), timeline)
+    start = (
+        None
+        if side.get("start") is None
+        else _placed(side["start"], timeline, f"{where}, its start")
+    )
+    end = (
+        None
+        if side.get("end") is None
+        else _placed(side["end"], timeline, f"{where}, its end")
+    )
+    if end is None:
+        same_end = start is None or own_end is None
+    else:
+        same_end = own_end is not None and end.value == own_end
+    if same_end and (start is None or start.value == own_start):
+        return
+
+    def spelled(first: Any, second: Any) -> str:
+        if first is None:
+            return f"the end {second}"
+        return f"from {first} to {second}" if second is not None else f"at {first}"
+
+    def on_axis(value: Any) -> Coordinate | None:
+        if value is None:
+            return None
+        return Coordinate(value, timeline.unit, number_type=timeline.number_type)
+
+    raise ValueError(
+        f"{where} names the event {quote_id(str(event['id']))} it holds, which "
+        f"lies {spelled(on_axis(own_start), on_axis(own_end))}, and states "
+        f"{spelled(start, end)}: an event named by its ID is given its own span "
+        f"or none. Give its own span or leave out 'start' and 'end'; for another "
+        f"span, leave out the ID (or give a new one), so that a Projection "
+        f"stands there."
+    )
+
+
+def _is_projection(side: _Side) -> bool:
+    """Whether a Projection stands for *side*: one to add, or one held."""
+    if side.projection is not None:
+        return True
+    return side.event is not None and side.event.get("event_type") == "Projection"
+
+
+def _recorded_names(
+    earlier: MatchClaimField, keys: Collection[tuple[str, str]]
+) -> dict[tuple[str, str], str]:
+    """The names earlier MatchClaims recorded for the events *keys* name.
+
+    Each key is ``(timeline_id, event_id)``; its name is the first non-null
+    name a claim of *earlier* gives that event, in row order (side A before
+    side B within a row). Read column-wise: only the rows naming one of the
+    wanted event IDs with a name are materialised.
+    """
+    if not keys or len(earlier) == 0:
+        return {}
+    wanted = set(keys)
+    event_ids = pa.array(sorted({event_id for _, event_id in wanted}), pa.string())
+    table = earlier.table
+    found: list[tuple[int, str, tuple[str, str], str]] = []
+    for side in ("a", "b"):
+        names = table.column(f"event_{side}_name").combine_chunks()
+        ids = table.column(f"event_{side}_id").combine_chunks()
+        mask = pc.fill_null(
+            pc.and_(pc.is_valid(names), pc.is_in(ids, value_set=event_ids)), False
+        )
+        rows = pa.array(np.flatnonzero(mask.to_numpy(zero_copy_only=False)))
+        timeline_ids = table.column(f"timeline_{side}_id").combine_chunks().take(rows)
+        for row, timeline_id, event_id, name in zip(
+            rows.to_pylist(),
+            timeline_ids.to_pylist(),
+            ids.take(rows).to_pylist(),
+            names.take(rows).to_pylist(),
+            strict=True,
+        ):
+            found.append((row, side, (timeline_id, event_id), name))
+    recorded: dict[tuple[str, str], str] = {}
+    for _, _, key, name in sorted(found):
+        if key in wanted:
+            recorded.setdefault(key, name)
+    return recorded
+
+
+def _kept_names(
+    resolved: Sequence[tuple[_Side, _Side]],
+    claimed: Sequence[tuple[dict[str, Any] | None, dict[str, Any] | None]],
+    earlier: MatchClaimField | None,
+) -> None:
+    """Give every claim on a Projection the name it was first claimed under.
+
+    A Projection holds no name: the name a side states is the claim's name of
+    the event. The first MatchClaim recording a name for a Projection (in
+    *earlier*, else the first pair of this call stating one) decides it, and
+    every later claim on that Projection shows it, whether it states the
+    name again, states none, or states another. The event dicts in
+    *claimed* are changed in place.
+    """
+    projected = [
+        (side, event)
+        for sides, events in zip(resolved, claimed, strict=True)
+        for side, event in zip(sides, events, strict=True)
+        if event is not None and _is_projection(side)
+    ]
+    keys = [(side.timeline.id, str(event["id"])) for side, event in projected]
+    recorded = {} if earlier is None else _recorded_names(earlier, keys)
+    for key, (_, event) in zip(keys, projected, strict=True):
+        if key in recorded:
+            event["name"] = recorded[key]
+        elif event["name"] is not None:
+            recorded[key] = event["name"]
 
 
 def _claimed_event(

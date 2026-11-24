@@ -1518,15 +1518,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         - an event dict stating a position: ``start``, and ``end`` for a
           span, each a number on the timeline's axis or a
           :class:`~timetoalign.core.Coordinate` in any unit one of the
-          timeline's C-Maps converts, and optionally ``name``. A
-          **Projection** stands for the side there, on the timeline's axis
+          timeline's C-Maps converts, and optionally ``name``. On a
+          timeline counting samples a position is an ``int`` or a
+          ``Coordinate``, never a bare float. A span runs forward (``end``
+          at or after ``start``). A **Projection** stands for the side
+          there, on the timeline's axis
           (:meth:`Timeline.add_projections`): under the dict's ``id`` (an
           event the bundle does not hold, ``projection_of`` null), or,
           without one, naming the other side's event in ``projection_of``
           when the other side is an event its timeline holds (null when both
           sides are positions). The timeline keeps one Projection per event
           and position: a second call with the same pairs reuses every
-          Projection the first added;
+          Projection the first added. An ``id`` the timeline already holds
+          names that event; given with ``start``/``end``, they must be the
+          event's own span. The ``name`` is the claim's name of the
+          Projection: the name the first claim on a Projection recorded is
+          the one every later claim on it shows;
         - ``None``, the NOMATCH sentinel, on one side at most.
 
         The MatchClaim is then made between the two events, on the two
@@ -1536,12 +1543,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         claims join the bundle (:meth:`add_match_claims`), which mints their
         ids.
 
-        Every pair is checked before any Projection is added: the timelines
-        are the bundle's, an id names an event of its timeline, at most one
-        side is ``None``, every position is placed on its timeline's axis.
-        Known limit: a Projection beyond the end of a locked timeline is
-        refused when its timeline's Projections are added, after those of
-        the timelines before it.
+        Every pair is checked before any Projection is added, so a refusal
+        leaves the bundle and its timelines unchanged: the timelines are the
+        bundle's, an id names an event of its timeline, at most one side is
+        ``None``, every position is placed on its timeline's axis. A
+        Projection never lengthens a locked timeline (a loader locks a
+        timeline whose source states its length, such as a recording's):
+        a position past its end is refused. An unlocked timeline grows to
+        hold it.
 
         Args:
             event_pairs: The pairs, ``(event_a, timeline_a_id, event_b,
@@ -1569,9 +1578,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ValueError: If both sides of a pair are ``None``, an event ID
                 names no one event (the timeline does not hold it and two
                 of its descendants do), a dict naming no held event states
-                no ``start``, a position cannot be placed on its timeline's
-                axis, or *date* is given without *actor* or is no calendar
-                date.
+                no ``start``, a position is a float on a timeline counting
+                samples, a span runs backwards, a position lies past the end
+                of a locked timeline, an ``id`` the timeline holds is given
+                with a span not its own, a position cannot be placed on its
+                timeline's axis, or *date* is given without *actor* or is no
+                calendar date.
             KeyError: If a timeline id names no timeline of the bundle's
                 trees (a nested timeline is found whether or not it was
                 registered), or an id string names no event of its timeline.
@@ -1643,6 +1655,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             synchronous=synchronous,
             certainty=certainty,
             provenance=provenance,
+            earlier=self.match_claim_table,
         )
         if claims:
             self.add_match_claims(claims)

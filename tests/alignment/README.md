@@ -3427,3 +3427,73 @@ Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score +
 | `TestMatchClaimEventStorage` | 12 | The events a claim names: `from_events()` keeps both event IDs and names (a missing name is `None`; an event dict without an ID is refused, `event_a names no event id`); a position without an event is given a Projection by `create_match_claims` (`projection_1`, no name, `projection_of` naming the source event, its coordinate on the target axis); `nomatch()` names one event and `None` on the other side; IDs and names displayed in `__str__`/`_repr_html_` and round-tripped by `to_dict()`/`from_dict()`; direct construction |
 | `TestTransferDocstring` | 1 | `transfer()` docstring no longer says "primary user-facing" |
 | `TestTopLevelExports` | 4 | `MatchGraph`, `MatchStamp`, `ClaimFilter` importable from top-level |
+
+---
+
+## `create_match_claims` refusals (`test_create_match_claims_refusals.py`)
+
+`AlignmentBundle.create_match_claims` places every stated position on its
+timeline's axis before anything is added. Five rules decide what a side may
+state; each is proved by the refusal itself (exception type and the three
+parts of the message: the value given, the cause, the remedy), by the
+accepted neighbour that differs from it in one respect only, and by the
+bundle and timelines being unchanged after a refusal (no claim, no
+Projection: `len(bundle.match_claim_table)` and the timeline's
+`n_events` as before the call). A test that asserted only the exception
+would pass for a refusal raised for another reason; the neighbour is what
+shows the rule is drawn where it is stated.
+
+The fixture: a score in quarters (`score`, length 16, fraction, holding
+the Note `n1` at 4), a recording in samples (`audio`, `DiscretePhysicalTimeline`,
+length 44100 at 44100 Hz with its samples → seconds C-Map, so
+`Coordinate(0.5, seconds)` is the sample 22050 and `Coordinate(1.0,
+seconds)` 44100), one in seconds (`clock`, length 230.0, float), each its
+own group of one bundle. Locked timelines are built with `locked=True`;
+an unlocked one with `locked=False`.
+
+1. **A float on a samples axis.** `{"start": 10.5}` on `audio` is a
+   `ValueError` naming `10.5`, `samples`, both causes (`a sample count`,
+   given `as an int`; `a position in seconds`, to be converted) and the
+   remedy `Coordinate`; `{"start": 22050.0}`, a float holding a whole
+   number, is refused alike (the rule is about the number type, not the
+   value). Accepted neighbours: the `int` `22050` gives the anchor
+   coordinate `22050` samples, `int`; `Coordinate(0.5, "seconds")` gives
+   exactly `22050` samples, `int` (the C-Map route). The rule is the
+   samples axis's alone: `10.5` on a ticks timeline is not refused (it
+   lands on `10`, as before; not asserted beyond that it is accepted).
+2. **A backwards span.** `{"start": 226.08, "end": 201.18}` on `clock`
+   (the case of a source whose last span runs backwards) is a `ValueError`
+   naming `201.18`, `226.08`, `backwards` and the remedy (swap or correct);
+   on `score` `{"start": 8, "end": 4}` likewise (every axis). Accepted:
+   `{"start": 201.18, "end": 226.08}` gives an interval claim whose anchors
+   on `clock` are `201.18` and `226.08`. An end equal to the start is
+   accepted as before: a Projection of duration `0` (`temporal_type`
+   `interval`) and an interval claim whose two anchors are equal.
+3. **Past the end of a locked timeline.** On a locked `audio`
+   `{"start": 44000, "end": 50000}` is a `ValueError` naming `50000`, the
+   end `44100`, `locked` and both remedies (correct the span; make the
+   timeline with the source's length), and the timeline's length stays
+   `44100`. An instant past the end (`{"start": 50000}`) is refused alike.
+   Accepted: a span ending exactly at the end (`{"start": 44000, "end":
+   44100}`). On an UNLOCKED timeline the same span is accepted and grows
+   the timeline to `50000` (unchanged behaviour). Atomicity across
+   timelines: a call whose first pair projects onto `score` and whose
+   second pair reaches past the locked `audio` adds no Projection to
+   `score` either (the refusal comes before the first add).
+4. **An existing ID with another span.** A first call projects
+   `{"id": "m1", "start": 0, "end": 4}` on `score`; a second side
+   `{"id": "m1", "start": 2, "end": 6}` is a `ValueError` naming `m1`,
+   both spans (`0` to `4`, `2` to `6`) and the remedy. A held Note named
+   with a span not its own (`{"id": "n1", "start": 5}`, the Note at 4) is
+   refused alike. Accepted: `{"id": "m1", "start": 0, "end": 4}` (same
+   span) and `{"id": "m1"}` (no span) both claim the Projection `m1` with
+   the anchors `0` and `4`, and `score` holds `m1` once.
+5. **A side's name is kept.** A first claim states `{"start": 1, "name":
+   "bar 1"}` on `score`; a second call claims the same position without a
+   name, a third names the Projection by its ID (`"projection_1"`): both
+   claims show `event_a_name == "bar 1"`. Within one call the same holds
+   (the second pair on the same Projection without a name shows the name of
+   the first). A later side giving another name (`"first bar"`) shows the
+   first name, `"bar 1"`: the name a Projection was first claimed under is
+   the one every claim on it shows (the claim table holds one name per
+   Projection). A Note's name is its own and stays untouched by this rule.

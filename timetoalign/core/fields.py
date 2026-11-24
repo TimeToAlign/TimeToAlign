@@ -49,7 +49,6 @@ from typing import (
 )
 
 import pyarrow as pa
-import pyarrow.compute as pc
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
@@ -145,9 +144,29 @@ def _is_data_shaped(member: Any) -> bool:
     return False
 
 
+def _is_tuple(value: object) -> TypeGuard[tuple[Any, ...]]:
+    """Whether *value* is a tuple; its items are not inspected."""
+    return isinstance(value, tuple)
+
+
 def _is_list(value: object) -> TypeGuard[list[Any]]:
     """Whether *value* is a list; its items are not inspected."""
     return isinstance(value, list)
+
+
+def _is_dict(value: object) -> TypeGuard[dict[Any, Any]]:
+    """Whether *value* is a dict; its keys and values are not inspected."""
+    return isinstance(value, dict)
+
+
+def _is_arrow_field(value: object) -> TypeGuard[pa.Field[pa.DataType]]:
+    """Whether *value* is a PyArrow field descriptor, of any data type."""
+    return isinstance(value, pa.Field)
+
+
+def _is_arrow_column(value: object) -> TypeGuard[pa.Array[Any] | pa.ChunkedArray[Any]]:
+    """Whether *value* is a PyArrow array, chunked or not, of any value type."""
+    return isinstance(value, (pa.Array, pa.ChunkedArray))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1242,19 +1261,19 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
             name = cls.__name__.removesuffix("Field").lower() or "value"
         raw_cls = cls._raw_cls
 
-        if isinstance(source, tuple):
+        if _is_tuple(source):
             data, pa_field = source
             raw = raw_cls(data, pa_field)
             return cls(raw)
 
-        if isinstance(source, pa.Field):
+        if _is_arrow_field(source):
             raw = raw_cls(None, source)
             return cls(raw)
 
         if isinstance(source, StructField):
             return cls(source)
 
-        if isinstance(source, (pa.Array, pa.ChunkedArray)):
+        if _is_arrow_column(source):
             pa_field = pa.field(name, source.type)
             raw = raw_cls(source, pa_field)
             return cls(raw)
@@ -1319,7 +1338,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
                 "cannot materialise from an array"
             )
         out_name = name if name is not None else self.name
-        field_names = [schema.field(i).name for i in range(schema.num_fields)]
+        field_names = schema.names
 
         # Canonical number shape — build through the one number builder.
         if field_names == ["value", "numerator", "denominator"]:
@@ -1342,13 +1361,11 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
                 or pa.types.is_integer(source.type)
                 or pa.types.is_floating(source.type)
             ):
-                source = pc.cast(source, pa.string())
+                source = source.cast(pa.string())
             if pa.types.is_integer(sub_type) or pa.types.is_floating(sub_type):
-                casted = pc.cast(source, sub_type)
+                casted = source.cast(sub_type)
             elif pa.types.is_string(sub_type):
-                casted = (
-                    source if source.type == sub_type else pc.cast(source, sub_type)
-                )
+                casted = source if source.type == sub_type else source.cast(sub_type)
             else:
                 raise TypeError(
                     f"{cls.__name__}.from_array: unsupported sub-field type {sub_type!r}"
@@ -1401,12 +1418,10 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         ):
             blob = pa_field.metadata[TIMETOALIGN_METADATA_KEY]
             try:
-                if isinstance(blob, bytes):
-                    blob = blob.decode("utf-8")
-                meta = json.loads(blob)
+                meta: object = json.loads(blob.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 meta = {}
-            if isinstance(meta, dict) and meta.get("field_type") == cls.__name__:
+            if _is_dict(meta) and meta.get("field_type") == cls.__name__:
                 return True
 
         # Structural identification — exact struct-shape match.
@@ -1459,7 +1474,7 @@ def _struct_types_match(actual: pa.DataType, expected: pa.StructType) -> bool:
 
 
 def resolve_source_fields(
-    source: "str | dict[str, Any]",
+    source: object,
     target_schema: pa.StructType,
 ) -> "str | dict[str, Any]":
     """Validate and normalise a ``source_fields`` blueprint specification.
@@ -1505,15 +1520,13 @@ def resolve_source_fields(
             raise ValueError("source_fields string must be non-empty")
         return source
 
-    if not isinstance(source, dict):
+    if not _is_dict(source):
         raise TypeError(
             "source_fields must be a string or a dict mapping target "
             f"sub-field names to sub-specs, got {type(source).__name__}"
         )
 
-    expected_names = {
-        target_schema.field(i).name for i in range(target_schema.num_fields)
-    }
+    expected_names = set(target_schema.names)
     got_names = set(source.keys())
     if got_names != expected_names:
         missing = sorted(expected_names - got_names)
@@ -2075,7 +2088,7 @@ def _build_field_arrays(
 
         return [build_number_struct_array(values, number_type=NumberType.fraction)]
     if pa.types.is_struct(pa_type) and all(
-        pa_type.field(i).name == f"_{i}" for i in range(pa_type.num_fields)
+        name == f"_{i}" for i, name in enumerate(pa_type.names)
     ):
         n = pa_type.num_fields
         rows: list[Any] = []
@@ -2272,7 +2285,7 @@ def parse_metadata_blob(blob: bytes | str | None) -> dict[str, Any]:
     if not blob:
         return {}
     payload = json.loads(blob)
-    if not isinstance(payload, dict):
+    if not _is_dict(payload):
         raise ValueError(
             f"TimeToAlign! metadata blob must be a JSON object, got "
             f"{type(payload).__name__}"

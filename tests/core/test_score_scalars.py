@@ -609,6 +609,19 @@ class TestDcmlHarmony:
         )
         assert isinstance(h, DcmlHarmonyLike)
 
+    @pytest.mark.parametrize(("label", "form"), [("VM6", "M"), ("V+M6", "+M")])
+    def test_from_label_refuses_a_label_without_chord_type(
+        self, label: str, form: str
+    ) -> None:
+        """A seventh-chord form with a triad's figured bass names no chord type."""
+        with pytest.raises(ValueError) as exc_info:
+            DcmlHarmony.from_label(label)
+        assert exc_info.type is ValueError
+        assert str(exc_info.value) == (
+            f"Cannot parse DCML label: {label!r} (form {form!r} names a seventh "
+            "chord, which cannot have figured bass '6')"
+        )
+
     def test_semantic_type(self) -> None:
         """DcmlHarmony.semantic_type == 'DcmlHarmony'."""
         h = DcmlHarmony(label="V")

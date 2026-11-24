@@ -3108,7 +3108,13 @@ class DcmlHarmony(ScalarVocabulary, BaseModel):
         globalkey: str = "C",
         localkey: str = "I",
     ) -> DcmlHarmony:
-        """Construct a fully populated ``DcmlHarmony`` from a DCML label string."""
+        """Construct a fully populated ``DcmlHarmony`` from a DCML label string.
+
+        Raises:
+            ValueError: If the label does not match the DCML syntax, or names
+                no chord type (a seventh-chord form with a triad's figured
+                bass, such as ``"VM6"``).
+        """
         from ms3.expand_dcml import features2type
         from ms3.utils import fifths2pc, roman_numeral2fifths
         from ms3.utils.constants import DCML_REGEX
@@ -3125,6 +3131,11 @@ class DcmlHarmony(ScalarVocabulary, BaseModel):
         pedal = parts.get("pedal")
 
         chord_type = features2type(numeral, form, figbass) if numeral else ""
+        if chord_type is None:
+            raise ValueError(
+                f"Cannot parse DCML label: {label!r} (form {form!r} names a seventh "
+                f"chord, which cannot have figured bass {figbass!r})"
+            )
         inv = figbass_to_inversion(figbass or "")
         inversion = int(inv) if inv is not None else None
 

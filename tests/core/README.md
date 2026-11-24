@@ -1427,6 +1427,16 @@ ValidationError)` — the concrete class, not a bare `Exception`.
 quarter for the note, `1` for the rest), compared by value, never by
 presence.
 
+**A label without a chord type is refused like any unparsable label.**
+`DcmlHarmony.from_label` derives the chord type from the numeral, the form
+and the figured bass; a seventh-chord form (`M`, `+M`, `%`) with a triad's
+figured bass (`6`, `64`) matches the DCML syntax but names no chord type.
+`"VM6"` and `"V+M6"` must raise exactly `ValueError` (the class itself, not
+pydantic's `ValidationError` subclass, which would mean the missing chord
+type reached the model) with the message `Cannot parse DCML label: 'VM6'
+(form 'M' names a seventh chord, which cannot have figured bass '6')`, and
+the same with `'V+M6'` and form `'+M'`, compared as whole strings.
+
 ---
 
 ### `test_score_scalars.py` - `ScoreNote`: a note of a score

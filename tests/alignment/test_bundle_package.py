@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shutil
+import warnings
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,11 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.time import number_to_json, struct_to_rational
+from timetoalign.loader.alignment.ieee1599 import Ieee1599Loader
+from timetoalign.loader.midi import ScoreMidiLoader
+from timetoalign.loader.physical.eep_notes import EepNotesLoader
+from timetoalign.loader.score.ms3 import Ms3Loader
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.manifest import (
     PARQUET_MEDIA_TYPE,
@@ -1771,3 +1777,69 @@ class TestEventTablesBesideOtherEvents:
             (claim.id, claim.event_a_id, claim.timeline_a_id, claim.event_b_id)
             for claim in read.get_match_claims()
         ] == [("claim_1", "projection_1", "score", "o1")]
+
+
+def _eep_beside_midi() -> list[Timeline]:
+    score = ensure_data("score") / "beethoven_op18-4iv_multimodal"
+    eep = EepNotesLoader.from_file(
+        score
+        / "StringQuartetEEP_I_Normal"
+        / "StringQuartetEEP_I_Normal_align_vln1.notes"
+    ).create_timeline(uid="eep")
+    midi = ScoreMidiLoader.from_file(
+        ensure_data("midi") / "score" / "beethoven_op18.mid"
+    ).create_timeline(uid="midi")
+    return [eep, midi]
+
+
+def _ieee_beside_ms3() -> list[Timeline]:
+    (ieee,) = [
+        timeline
+        for timeline in Ieee1599Loader.from_file(
+            ensure_data("ieee1599") / "bach_artefuga_01.xml"
+        ).create_timelines()
+        if timeline.id == "los:dlt_2"
+    ]
+    ms3 = Ms3Loader.from_file(
+        ensure_data("vienna_1x22") / "ms3" / "chopin_op10_no3.notes.tsv"
+    ).create_timeline(uid="ms3")
+    return [ieee, ms3]
+
+
+class TestLoadedNotesWriteNoTable:
+    """Loaded notes whose columns disagree in type write as any timelines do."""
+
+    @pytest.mark.parametrize(
+        ("timelines", "column", "types"),
+        [
+            pytest.param(_eep_beside_midi, "pitch", ("string", "int64"), id="EEP+MIDI"),
+            pytest.param(_ieee_beside_ms3, "staff", ("string", "int64"), id="IEEE+ms3"),
+        ],
+    )
+    def test_written_without_a_note_table(
+        self,
+        tmp_path: Path,
+        timelines: Any,
+        column: str,
+        types: tuple[str, str],
+    ) -> None:
+        loaded = timelines()
+        assert (
+            tuple(
+                str(timeline.get_events(event_type="Note").schema.field(column).type)
+                for timeline in loaded
+            )
+            == types
+        )
+        bundle = AlignmentBundle(id="mix")
+        for timeline in loaded:
+            bundle.add_timeline(timeline)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            path = bundle.to_file(tmp_path / "mix.yaml")
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["mix.yaml"]
+        manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
+        timetoshare.validate(manifest)
+        assert "resources" not in manifest
+        read = AlignmentBundle.from_file(path)
+        assert sorted(read.timeline_ids) == sorted(t.id for t in loaded)

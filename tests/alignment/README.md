@@ -2172,6 +2172,25 @@ then fails to load. Each test pins one of these with exact values.
   - The byte-equal fixture tests above (`test_the_package_is_written_back`,
     `TestTimeToShareFixturePackage`), whose timelines hold Projections
     alone, are unchanged and stay green.
+- **Loaded notes write no table, whatever columns they bring**
+  (`TestLoadedNotesWriteNoTable`). A package has no Note table: notes
+  travel in the manifest's event rows when asked (`events=True`), else they
+  stay with their source. So timelines whose note columns disagree in type
+  are written as any timelines are, and nothing about their notes is
+  refused or warned of. Two bundles of loaded timelines, each written with
+  `to_file` under `warnings.simplefilter("error")` (any warning fails the
+  test): *EEP beside MIDI*, the EEP note file of the first violin
+  (`score`, `beethoven_op18-4iv_multimodal/StringQuartetEEP_I_Normal/
+  StringQuartetEEP_I_Normal_align_vln1.notes`, `pitch` a name string)
+  and `ScoreMidiLoader`'s `midi/score/beethoven_op18.mid` (`pitch` an
+  integer); *IEEE 1599 beside ms3*, `ieee1599/bach_artefuga_01.xml`'s
+  timeline `los:dlt_2` (`staff` and `voice` text identifiers) and
+  `Ms3Loader`'s Chopin Op. 10 No. 3 notes (`staff` and `voice` integers).
+  Each directory then holds exactly the manifest, the manifest has no
+  `resources` key and validates (`timetoshare.validate`), and
+  `AlignmentBundle.from_file` reads it back with the two timeline IDs. What
+  would show it broken: a `ValueError` naming the column, a warning, a
+  `notes.parquet` or a `Note` resource.
 
 ### Conformance with TimeToShare's fixture package
 

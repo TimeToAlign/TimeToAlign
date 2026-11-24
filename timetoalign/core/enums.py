@@ -82,7 +82,7 @@ class FancyStrEnum(StrEnum):
             abbreviations[name] = sorted(values, key=lambda x: len(x), reverse=True)[1:]
         if not string:
             return abbreviations
-        str_components = []
+        str_components: list[str] = []
         for name, values in abbreviations.items():
             if not values:
                 str_components.append(name)
@@ -692,7 +692,7 @@ class FlowControlElement(FancyStrEnum):
         Returns:
             List of corresponding FlowControlElements.
         """
-        result = []
+        result: list[FlowControlElement] = []
         if start_repeat:
             result.append(cls.repeat_start)
         if end_repeat:

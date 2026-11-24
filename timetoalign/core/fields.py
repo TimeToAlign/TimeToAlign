@@ -39,6 +39,7 @@ from typing import (
     ClassVar,
     Generic,
     Literal,
+    Self,
     Sequence,
     TypeVar,
     get_args,
@@ -467,7 +468,7 @@ class DataField(ABC):
 
     @classmethod
     @abstractmethod
-    def from_field(cls, source: Any, **kw: Any) -> "DataField":
+    def from_field(cls, source: Any, **kw: Any) -> Self:
         """Construct a DataField from a source.
 
         Subclasses define what *source* means (e.g., a ``pa.Table``
@@ -1171,7 +1172,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         return raw
 
     @classmethod
-    def from_field(cls, source: Any, **kw: Any) -> "SemanticField[T]":
+    def from_field(cls, source: Any, **kw: Any) -> Self:
         """Construct a SemanticField from a source.
 
         Default implementation accepts the four common source shapes

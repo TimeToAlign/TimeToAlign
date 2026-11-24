@@ -109,7 +109,7 @@ def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
     quot = pc.divide(arr, n)
     r = pc.subtract(arr, pc.multiply(quot, n))
     # Adjust to non-negative when r is negative.
-    return pc.if_else(pc.less(r, 0), pc.add(r, n), r)
+    return pc.if_else(pc.less(r, pa.scalar(0)), pc.add(r, n), r)
 
 
 def _member(field: SemanticField[Any], name: str) -> pa.Array:
@@ -303,7 +303,7 @@ def canonical_pitch_names(names: pd.Series, *, sep: str | None = None) -> pd.Ser
     if isinstance(dtype, pd.CategoricalDtype):
         return _respelled_categorical(names, sep)
     if isinstance(dtype, pd.ArrowDtype) and pa.types.is_dictionary(dtype.pyarrow_dtype):
-        return _respelled_dictionary(names, sep)
+        return _respelled_dictionary(names, dtype.pyarrow_dtype, sep)
     respelled: dict[str, str] = {}
     for value in names.dropna().unique():
         new = _respelled_cell(value, sep)
@@ -322,8 +322,10 @@ def _respelled_categorical(names: pd.Series, sep: str | None) -> pd.Series:
     import pandas as pd
 
     categories = names.cat.categories
-    new = [_respelled_cell(value, sep) for value in categories]
-    merged = pd.Index(new, dtype=categories.dtype).unique()
+    new = pd.Index(
+        [_respelled_cell(value, sep) for value in categories], dtype=categories.dtype
+    )
+    merged = new.unique()
     positions = merged.get_indexer(new)
     codes = names.cat.codes.to_numpy()
     new_codes = np.where(codes >= 0, positions[codes] if len(positions) else codes, -1)
@@ -333,11 +335,12 @@ def _respelled_categorical(names: pd.Series, sep: str | None) -> pd.Series:
     return pd.Series(respelled, index=names.index, name=names.name)
 
 
-def _respelled_dictionary(names: pd.Series, sep: str | None) -> pd.Series:
+def _respelled_dictionary(
+    names: pd.Series, dictionary_type: pa.DictionaryType, sep: str | None
+) -> pd.Series:
     """Respell the dictionary of an Arrow dictionary column, merging equal results."""
     import pandas as pd
 
-    dictionary_type = names.dtype.pyarrow_dtype
     column = pa.array(names.array)
     chunks = []
     for chunk in getattr(column, "chunks", [column]):
@@ -2129,7 +2132,7 @@ class SpecificPitchClassField(SemanticField[SpecificPitchClass]):
                 marker = "♯" * n
             else:
                 marker = "♭" * abs(n)
-            mask = pc.equal(alter, n)
+            mask = pc.equal(alter, pa.scalar(n))
             out = pc.if_else(mask, pa.scalar(marker, type=pa.string()), out)
         return pc.binary_join_element_wise(step, out, "")
 
@@ -2280,7 +2283,6 @@ class EnharmonicPitchField(SemanticField[EnharmonicPitch]):
         if target_scalar_cls is MidiPitch:
             # Metadata-only retype: same struct, different scalar_cls.
             arr = self.to_pyarrow()
-            pa_field = self.field.with_metadata(None) if self.field else None
             new_pa_field = pa.field(self.name, arr.type)
             return MidiPitchField.from_field((arr, new_pa_field))
         if target_scalar_cls is EnharmonicPitchClass:
@@ -2651,7 +2653,7 @@ class SpecificPitchField(SemanticField[SpecificPitch]):
                 marker = "♯" * n
             else:
                 marker = "♭" * abs(n)
-            mask = pc.equal(alter, n)
+            mask = pc.equal(alter, pa.scalar(n))
             out = pc.if_else(mask, pa.scalar(marker, type=pa.string()), out)
         return pc.binary_join_element_wise(
             pc.binary_join_element_wise(step, out, ""), octave_str, ""

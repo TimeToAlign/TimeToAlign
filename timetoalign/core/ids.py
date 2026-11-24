@@ -21,7 +21,7 @@ from collections.abc import Container, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeGuard
 
 import numpy as np
 import pyarrow as pa
@@ -29,6 +29,9 @@ import pyarrow.compute as pc
 import timetoshare
 
 from .enums import TimeUnit
+
+if TYPE_CHECKING:
+    from pyarrow.lib import StringType
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,7 +150,7 @@ class ScopedId:
 _REFUSED_ID_CHARACTERS = re.compile(r"[\x00-\x1f]")
 
 
-def validate_id(element_id: str) -> str:
+def validate_id(element_id: object) -> str:
     """Return *element_id* if it is a valid given id, else raise.
 
     An id is any non-empty string without a control character (U+0000 to
@@ -205,7 +208,7 @@ def quote_id(element_id: str) -> str:
 _MINTED_DIGITS = 18
 
 
-def _highest_minted_number(prefix: str, taken: pa.Array) -> int:
+def _highest_minted_number(prefix: str, taken: pa.Array[pa.Scalar[StringType]]) -> int:
     """The highest N among the ids ``{prefix}_{N}`` in *taken*, 0 for none.
 
     Read column-wise: no id of *taken* becomes a Python object.
@@ -215,10 +218,17 @@ def _highest_minted_number(prefix: str, taken: pa.Array) -> int:
     if not len(minted):
         return 0
     numbers = pc.utf8_slice_codeunits(minted, start=len(prefix) + 1)
-    return pc.max(pc.cast(numbers, pa.int64())).as_py()
+    return pc.max(numbers.cast(pa.int64())).as_py()
 
 
-def id_column(taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> pa.Array:
+def _is_arrow_column(value: object) -> TypeGuard[pa.Array[Any] | pa.ChunkedArray[Any]]:
+    """Whether *value* is a PyArrow array, chunked or not, of any value type."""
+    return isinstance(value, (pa.Array, pa.ChunkedArray))
+
+
+def id_column(
+    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str],
+) -> pa.Array[pa.Scalar[StringType]]:
     """Read the ids held in a scope as one string array without nulls.
 
     This is how :func:`mint_ids` reads its *taken* ids; a caller minting
@@ -235,18 +245,18 @@ def id_column(taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> pa.Array:
         >>> id_column(["note_1", None, "note_3"]).to_pylist()
         ['note_1', 'note_3']
     """
-    if isinstance(taken, pa.ChunkedArray):
-        taken = taken.combine_chunks()
-    if not isinstance(taken, pa.Array):
-        taken = pa.array(list(taken), pa.string())
-    return pc.drop_null(pc.cast(taken, pa.string()))
+    if _is_arrow_column(taken):
+        column = taken.combine_chunks() if isinstance(taken, pa.ChunkedArray) else taken
+    else:
+        column = pa.array(list(taken), pa.string())
+    return pc.drop_null(column.cast(pa.string()))
 
 
 def mint_ids(
     prefix: str,
-    taken: pa.Array | pa.ChunkedArray | Iterable[str],
+    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str],
     count: int,
-) -> pa.Array:
+) -> pa.Array[pa.Scalar[StringType]]:
     """Mint *count* ids ``{prefix}_{N}``, the N above the highest held.
 
     This is the one id generator of the library, for timelines, maps,
@@ -277,11 +287,13 @@ def mint_ids(
     first = _highest_minted_number(prefix, id_column(taken)) + 1
     numbers = pa.array(np.arange(first, first + count, dtype=np.int64))
     return pc.utf8_replace_slice(
-        pc.cast(numbers, pa.string()), start=0, stop=0, replacement=f"{prefix}_"
+        numbers.cast(pa.string()), start=0, stop=0, replacement=f"{prefix}_"
     )
 
 
-def mint_id(prefix: str, taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> str:
+def mint_id(
+    prefix: str, taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str]
+) -> str:
     """Mint one id ``{prefix}_{N}``, N above the highest held (:func:`mint_ids`).
 
     Args:
@@ -482,7 +494,7 @@ class _IdentifiedElement(_OpenObject):
     _minted: bool = field(default=False, kw_only=True, repr=False, compare=False)
     # A field, so that a copy made with ``dataclasses.replace`` keeps it.
     _unknown_keys: Mapping[str, Any] = field(
-        default_factory=dict, kw_only=True, repr=False, compare=False
+        default_factory=dict[str, Any], kw_only=True, repr=False, compare=False
     )
 
     def __post_init__(self) -> None:

@@ -67,7 +67,7 @@ import re
 from collections.abc import Iterable, Sequence
 from decimal import Decimal
 from fractions import Fraction
-from typing import Any, ClassVar, NamedTuple, TypeVar, Union
+from typing import Any, ClassVar, NamedTuple, Self, TypeVar, Union, overload
 
 import numpy as np
 import pandas as pd
@@ -82,6 +82,7 @@ from .fields import (
     ScalarVocabulary,
     SemanticField,
     StructField,
+    _struct_array,
     _struct_types_match,
     build_struct_array,
     data_shaped,
@@ -375,7 +376,9 @@ def number_cell(
     if number_type is None:
         number_type = NumberType.from_number(number)
     canonical = to_canonical(number, number_type, rounding=rounding)
-    if number_type is NumberType.float:
+    # A float field's canonical value is a float, an int or fraction field's
+    # an int or a Fraction.
+    if isinstance(canonical, float):
         numerator, denominator = _pair_from_float(canonical)
         return {
             "value": canonical,
@@ -579,8 +582,8 @@ def is_fraction_json(value: object) -> bool:
     """
     if not isinstance(value, list) or len(value) != 2:
         return False
-    members = [_integral_member(component) for component in value]
-    return None not in members and members[1] > 0
+    numerator, denominator = (_integral_member(component) for component in value)
+    return numerator is not None and denominator is not None and denominator > 0
 
 
 def number_from_json(
@@ -1265,29 +1268,32 @@ def compare_number_column(
     Raises:
         ValueError: If *number* is NaN, which names no position.
     """
-    column = _combined(column)
+    column = _struct_array(column)
     valid = column.is_valid()
     kernel = _COMPARISON_KERNELS[comparison]
-    as_floats = number_type is NumberType.float
+    # The ratio side of *number*; ``None`` where it compares as a float key.
+    ratio: tuple[Any, Any] | None
     if isinstance(number, (pa.Array, pa.ChunkedArray)):
-        number = _combined(number)
+        number = _struct_array(number)
         valid = pc.and_(valid, number.is_valid())
         float_side: Any = number.field("value")
-        numerator: Any = number.field("numerator")
-        denominator: Any = number.field("denominator")
+        ratio = number.field("numerator"), number.field("denominator")
     elif isinstance(number, float):
         if math.isnan(number):
             raise ValueError("NaN names no position: it compares with no cell")
         float_side = pa.scalar(number, pa.float64())
-        as_floats = True
+        ratio = None
     else:
         exact = Fraction(number)
         float_side = pa.scalar(float(exact))
-        numerator = pa.scalar(Decimal(exact.numerator), _CROSS_MULTIPLICATION_TYPE)
-        denominator = pa.scalar(Decimal(exact.denominator), _CROSS_MULTIPLICATION_TYPE)
-    if as_floats:
+        ratio = (
+            pa.scalar(Decimal(exact.numerator), _CROSS_MULTIPLICATION_TYPE),
+            pa.scalar(Decimal(exact.denominator), _CROSS_MULTIPLICATION_TYPE),
+        )
+    if ratio is None or number_type is NumberType.float:
         compared = kernel(column.field("value"), float_side)
     else:
+        numerator, denominator = ratio
         wide = _CROSS_MULTIPLICATION_TYPE
         left = pc.multiply(
             pc.cast(column.field("numerator"), wide), pc.cast(denominator, wide)
@@ -1298,13 +1304,6 @@ def compare_number_column(
         compared = kernel(left, right)
     # A struct's own nulls do not reach its members; carry them over.
     return pc.if_else(valid, compared, pa.scalar(None, type=pa.bool_()))
-
-
-def _combined(array: pa.Array | pa.ChunkedArray) -> pa.Array:
-    """*array* as one contiguous array."""
-    if isinstance(array, pa.ChunkedArray):
-        return array.combine_chunks()
-    return array
 
 
 def _combine_float_columns(
@@ -1322,7 +1321,7 @@ def _combine_float_columns(
 
 def _float_side(array: pa.Array | pa.ChunkedArray) -> pa.Array:
     """The float side of a storage column, null where a cell is null."""
-    array = _combined(array)
+    array = _struct_array(array)
     return pc.if_else(
         array.is_valid(),
         pc.cast(array.field("value"), pa.float64()),
@@ -1355,14 +1354,15 @@ def _combine_exact_columns(
     past the bound) is computed one at a time, exactly, by
     :func:`combine_numbers` itself.
     """
-    left = _combined(left)
+    left = _struct_array(left)
     left_n, left_d, left_complete = _ratio_sides(left, number_type)
     valid = left.is_valid().to_numpy(zero_copy_only=False)
-    right_column = isinstance(right, (pa.Array, pa.ChunkedArray))
-    if right_column:
-        right = _combined(right)
-        right_n, right_d, right_complete = _ratio_sides(right, number_type)
-        valid = valid & right.is_valid().to_numpy(zero_copy_only=False)
+    right_column = (
+        _struct_array(right) if isinstance(right, (pa.Array, pa.ChunkedArray)) else None
+    )
+    if right_column is not None:
+        right_n, right_d, right_complete = _ratio_sides(right_column, number_type)
+        valid = valid & right_column.is_valid().to_numpy(zero_copy_only=False)
     else:
         operand = _exact_operand(right, operation, number_type, rounding)
         right_n = np.full(len(left), 0 if operand is None else operand.numerator)
@@ -1412,11 +1412,11 @@ def _combine_exact_columns(
         numerator, denominator = _lowest_terms(numerator, denominator)
         values = _ratio_values(numerator, denominator)
 
-    for position in np.flatnonzero(valid & ~fast):
+    for position in np.flatnonzero(valid & ~fast).tolist():
         left_value = struct_to_coordinate(left[position].as_py(), number_type)
         right_value = (
-            struct_to_coordinate(right[position].as_py(), number_type)
-            if right_column
+            struct_to_coordinate(right_column[position].as_py(), number_type)
+            if right_column is not None
             else right
         )
         result = combine_numbers(
@@ -1453,7 +1453,7 @@ def _combine_exact_columns(
 
 
 def _ratio_sides(
-    column: pa.Array, number_type: NumberType
+    column: pa.StructArray, number_type: NumberType
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The ratio members of a storage column, and where they are complete.
 
@@ -1612,7 +1612,7 @@ class RedundantNumberField(NumberField):
     """
 
     PA_SCHEMA: ClassVar[pa.StructType] = RATIONAL_STRUCT_TYPE
-    _blueprint_pa_type: ClassVar[pa.DataType] = RATIONAL_STRUCT_TYPE
+    _blueprint_pa_type = RATIONAL_STRUCT_TYPE
 
     def __init__(
         self,
@@ -2856,9 +2856,9 @@ class TimeScalarField(SemanticField):
     @staticmethod
     def _resolve_metadata(
         pa_field: pa.Field,
-        unit_override: Any,
-        nt_override: Any,
-    ) -> tuple[Any, Any]:
+        unit_override: TimeUnit | str | None,
+        nt_override: NumberType | str | None,
+    ) -> tuple[TimeUnit | None, NumberType]:
         """Extract unit and number_type from a ``pa.Field``'s metadata."""
         meta: dict[str, Any] = {}
         raw_meta = pa_field.metadata
@@ -2906,7 +2906,7 @@ class TimeScalarField(SemanticField):
         number_type: NumberType | str | None,
         name: str,
         extra_resolved: dict[str, Any] | None = None,
-    ) -> TimeScalarField:
+    ) -> Self:
         """Construct ``cls`` from one of the supported source shapes.
 
         ``extra_resolved`` is a hook for Id-subclasses to inject already-
@@ -2964,13 +2964,13 @@ class TimeScalarField(SemanticField):
             | pa.ChunkedArray
             | StructField
             | pa.Field
-            | tuple[pa.Array | None, pa.Field]
+            | tuple[pa.Array | pa.ChunkedArray | None, pa.Field]
         ),
         *,
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
         name: str | None = None,
-    ) -> TimeScalarField:
+    ) -> Self:
         if name is None:
             name = cls.__name__.removesuffix("Field").lower() or "value"
         return cls._from_field_impl(
@@ -2985,7 +2985,7 @@ class TimeScalarField(SemanticField):
         *,
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
-    ) -> TimeScalarField:
+    ) -> Self:
         if field is None:
             candidates = [
                 f.name
@@ -3033,7 +3033,7 @@ class TimeScalarField(SemanticField):
         consumes this method's output sees ``None`` at null positions
         and agrees element-wise with the scalar dispatch.
         """
-        arr = self.to_pyarrow()
+        arr = _struct_array(self.to_pyarrow())
         value_arr = arr.field("value")
         outer_valid = arr.is_valid()
         return pc.if_else(outer_valid, value_arr, pa.scalar(None, type=value_arr.type))
@@ -3062,15 +3062,15 @@ class TimeScalarField(SemanticField):
 
     def is_zero(self) -> pa.Array:
         """Vectorized ``pc.equal(value, 0)`` predicate."""
-        return pc.equal(self._value_array(), 0)
+        return pc.equal(self._value_array(), pa.scalar(0))
 
     def is_positive(self) -> pa.Array:
         """Vectorized ``pc.greater(value, 0)`` predicate."""
-        return pc.greater(self._value_array(), 0)
+        return pc.greater(self._value_array(), pa.scalar(0))
 
     def is_negative(self) -> pa.Array:
         """Vectorized ``pc.less(value, 0)`` predicate."""
-        return pc.less(self._value_array(), 0)
+        return pc.less(self._value_array(), pa.scalar(0))
 
     # -- comparison mirrors -------------------------------------------------
     #
@@ -3300,6 +3300,12 @@ class CoordinateField(TimeScalarField):
             )
         struct, tl = _field_binop(self, other, "add", "add")
         return _coord_field_from_value(struct, self._unit, self._number_type, tl)
+
+    @overload
+    def __sub__(self, other: Coordinate | CoordinateField) -> DurationField: ...
+
+    @overload
+    def __sub__(self, other: object) -> CoordinateField | DurationField: ...
 
     def __sub__(self, other: object) -> CoordinateField | DurationField:
         struct, tl = _field_binop(self, other, "subtract", "subtract")
@@ -3558,7 +3564,7 @@ class IdCoordinate(Coordinate, IdTimeScalar):
     # An IdCoordinate is stored by CoordinateField (the timeline id lives
     # in field metadata, not in the row), so the discriminator is the
     # plain coordinate one rather than the derived "IdCoordinateField".
-    field_type_name: ClassVar[str] = "CoordinateField"
+    field_type_name = "CoordinateField"
 
     def __init__(
         self,
@@ -3665,7 +3671,7 @@ class IdCoordinateField(CoordinateField):
             | pa.ChunkedArray
             | StructField
             | pa.Field
-            | tuple[pa.Array | None, pa.Field]
+            | tuple[pa.Array | pa.ChunkedArray | None, pa.Field]
         ),
         *,
         unit: TimeUnit | str | None = None,
@@ -3724,7 +3730,7 @@ class IdDuration(Duration, IdTimeScalar):
 
     # Mirrors IdCoordinate: stored by DurationField, with the timeline id
     # carried in field metadata rather than derived into the name.
-    field_type_name: ClassVar[str] = "DurationField"
+    field_type_name = "DurationField"
 
     def __init__(
         self,
@@ -3830,7 +3836,7 @@ class IdDurationField(DurationField):
             | pa.ChunkedArray
             | StructField
             | pa.Field
-            | tuple[pa.Array | None, pa.Field]
+            | tuple[pa.Array | pa.ChunkedArray | None, pa.Field]
         ),
         *,
         unit: TimeUnit | str | None = None,
@@ -4025,16 +4031,18 @@ def coordinate_cells(coordinates: Iterable[TimeScalar | None]) -> pa.StructArray
         [(1, 3), None, (1, 2)]
     """
     items = list(coordinates)
-    rows_of_axis: dict[tuple[TimeUnit, NumberType], list[int]] = {}
+    rows_of_axis: dict[tuple[TimeUnit, NumberType], list[tuple[int, TimeScalar]]] = {}
     for index, coordinate in enumerate(items):
         if coordinate is not None:
             axis = (coordinate.unit, coordinate.number_type)
-            rows_of_axis.setdefault(axis, []).append(index)
-    order = [index for rows in rows_of_axis.values() for index in rows]
+            rows_of_axis.setdefault(axis, []).append((index, coordinate))
+    order = [index for rows in rows_of_axis.values() for index, _ in rows]
     nulls = [index for index, coordinate in enumerate(items) if coordinate is None]
     parts = [
         axis_coordinate_cells(
-            [items[index].value for index in rows], unit=unit, number_type=number_type
+            [coordinate.value for _, coordinate in rows],
+            unit=unit,
+            number_type=number_type,
         )
         for (unit, number_type), rows in rows_of_axis.items()
     ]
@@ -4044,7 +4052,7 @@ def coordinate_cells(coordinates: Iterable[TimeScalar | None]) -> pa.StructArray
     position[np.asarray(order + nulls, dtype=np.int64)] = np.arange(
         len(items), dtype=np.int64
     )
-    return cells.take(pa.array(position))
+    return cells.take(position)
 
 
 def cell_coordinate(
@@ -4157,9 +4165,9 @@ def _members(array: Any, members: Sequence[str], what: str) -> dict[str, pa.Arra
 _EXACT_DOUBLE_INT = 2**53
 
 
-def _is(number_types: pa.Array, name: str) -> pa.Array:
+def _is(number_types: pa.Array, name: str) -> pa.BooleanArray:
     """Mask: the rows whose number type is *name* (a null type is no type)."""
-    return pc.fill_null(pc.equal(number_types, name), False)
+    return pc.fill_null(pc.equal(number_types, pa.scalar(name)), pa.scalar(False))
 
 
 def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
@@ -4190,9 +4198,7 @@ def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
     sides = _members(numbers, _NUMBER_MEMBERS, "A number column")
     if isinstance(number_types, pa.ChunkedArray):
         number_types = number_types.combine_chunks()
-    if isinstance(numbers, pa.ChunkedArray):
-        numbers = numbers.combine_chunks()
-    valid = numbers.is_valid()
+    valid = _struct_array(numbers).is_valid()
     is_int = _is(number_types, "int")
     is_fraction = _is(number_types, "fraction")
     is_float = _is(number_types, "float")
@@ -4254,11 +4260,9 @@ def numbers_from_package(
         [{'value': 3.0, 'numerator': 3, 'denominator': 1}]
     """
     sides = _members(numbers, _NUMBER_MEMBERS, where)
-    if isinstance(numbers, pa.ChunkedArray):
-        numbers = numbers.combine_chunks()
     if isinstance(number_types, pa.ChunkedArray):
         number_types = number_types.combine_chunks()
-    valid = numbers.is_valid()
+    valid = _struct_array(numbers).is_valid()
     numerator, denominator, value = (sides[name] for name in _NUMBER_MEMBERS)
     has_numerator = numerator.is_valid()
     has_denominator = denominator.is_valid()
@@ -4276,14 +4280,16 @@ def numbers_from_package(
                 is_fraction,
                 pc.and_(
                     pc.and_(has_numerator, pc.invert(has_value)),
-                    pc.fill_null(pc.greater_equal(denominator, 1), False),
+                    pc.fill_null(
+                        pc.greater_equal(denominator, pa.scalar(1)), pa.scalar(False)
+                    ),
                 ),
             ),
             pc.and_(
                 is_float,
                 pc.and_(
                     pc.invert(pc.or_(has_numerator, has_denominator)),
-                    pc.fill_null(pc.is_finite(value), False),
+                    pc.fill_null(pc.is_finite(value), pa.scalar(False)),
                 ),
             ),
         ),
@@ -4347,9 +4353,7 @@ def package_cells(cells: Any) -> pa.StructArray:
     members = _members(
         cells, list(COORDINATE_CELL_TYPE.names), "A coordinate cell column"
     )
-    if isinstance(cells, pa.ChunkedArray):
-        cells = cells.combine_chunks()
-    valid = cells.is_valid()
+    valid = _struct_array(cells).is_valid()
     numbers = pa.StructArray.from_arrays(
         [members[name] for name in RATIONAL_STRUCT_TYPE.names],
         fields=list(RATIONAL_STRUCT_TYPE),
@@ -4384,9 +4388,7 @@ def cells_from_package(
             names no unit.
     """
     members = _members(cells, list(PACKAGE_COORDINATE_CELL_TYPE.names), where)
-    if isinstance(cells, pa.ChunkedArray):
-        cells = cells.combine_chunks()
-    valid = cells.is_valid()
+    valid = _struct_array(cells).is_valid()
     unitless = pc.and_(valid, members["unit"].is_null())
     if pc.any(unitless).as_py():
         raise ValueError(
@@ -4537,7 +4539,7 @@ class SharedAxisField(SemanticField[AxisScalarT]):
     @classmethod
     def _of_struct_array(
         cls, array: pa.StructArray, name: str, unit: TimeUnit, number_type: NumberType
-    ) -> SharedAxisField[AxisScalarT]:
+    ) -> Self:
         """The field of *array*, named *name*, on the axis given."""
         return cls(StructField(array, pa.field(name, array.type)), unit, number_type)
 
@@ -4548,7 +4550,7 @@ class SharedAxisField(SemanticField[AxisScalarT]):
         unit: TimeUnit | str | None,
         number_type: NumberType | str | None,
         name: str | None,
-    ) -> SharedAxisField[AxisScalarT]:
+    ) -> Self:
         """The field of the scalars *items* (``None`` for a null row), in order.
 
         The one body of the ``from_*`` builders of fields whose scalar's
@@ -4583,7 +4585,7 @@ class SharedAxisField(SemanticField[AxisScalarT]):
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
         name: str | None = None,
-    ) -> SharedAxisField[AxisScalarT]:
+    ) -> Self:
         """Build the field from an Arrow or raw field source.
 
         Args:
@@ -4838,9 +4840,7 @@ class IntervalField(SharedAxisField[Interval]):
         )
 
     def _endpoint(self, name: str) -> CoordinateField:
-        array = self.to_pyarrow()
-        if isinstance(array, pa.ChunkedArray):
-            array = array.combine_chunks()
+        array = _struct_array(self.to_pyarrow())
         child = array.field(name)
         outer_valid = array.is_valid()
         child = pc.if_else(outer_valid, child, pa.scalar(None, type=child.type))

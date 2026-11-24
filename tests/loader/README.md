@@ -1208,3 +1208,27 @@ What proves it (`test_aton_loader.py`, class `TestHoleEventIds`):
   (`Event id 'hole_K0_N1_tracker6' is given twice in one call to add_events
   on timeline 'dgt_1'`). The loader does not decide that a repeated block
   is one hole.
+
+## Loaded timelines are locked where the source states their length
+
+A loader that reads a recording whose source states its length returns a
+**locked** timeline (`is_locked`), so content added later never lengthens
+it silently (a MatchClaim, an event, a child past the end is refused unless
+`allow_expansion=True` is stated). A loader that only infers a length from
+its last event leaves the timeline unlocked: its length is no fact of the
+source. What proves it (`test_loaded_timelines_locked.py`), one case per
+loader family, each on a real specimen:
+
+* **Audio** (`AudioLoader`, `_create_audio_timeline`, both timelines).
+  `Bass Kick.mp3`: the samples timeline and the seconds timeline are
+  locked, and their lengths are exactly the counts the loader states
+  (`n_samples`, `duration_seconds`; asserted against the loader's own
+  values, the one statement of the file's length).
+* **The lock bites**: an onset one sample past the end of the samples
+  timeline is refused (`ValueError`) and the length stays the file's; with
+  `allow_expansion=True` it is added and the length becomes that sample.
+* **Inferred lengths stay unlocked**: `PerformanceMidiLoader`
+  (`rachmaninoff_perf.mid`), `ScoreMidiLoader` (`beethoven_op18.mid`), a
+  `TsvLoader` over WoO 71's notes TSV, and `Ms3Loader` given the notes TSV
+  alone (no measure structure: `measure_map` is `None`). Each length is the
+  last event's end, so none is locked.

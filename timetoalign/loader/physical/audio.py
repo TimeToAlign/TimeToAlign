@@ -743,6 +743,9 @@ class AudioLoader(Loader[AudioInfo]):
     ) -> _PhysicalTimelineT:
         """Create a timeline of ``timeline_cls`` named after and describing the file.
 
+        The timeline is locked: the file states its length, so nothing added
+        later lengthens it unless ``allow_expansion=True`` is stated.
+
         Args:
             timeline_cls: The physical timeline class to instantiate.
             length: Length of the timeline in ``unit``.
@@ -761,7 +764,12 @@ class AudioLoader(Loader[AudioInfo]):
             name = info.source_path.name
 
         timeline = timeline_cls(
-            uid=uid, name=name, length=length, unit=unit, number_type=number_type
+            uid=uid,
+            name=name,
+            length=length,
+            unit=unit,
+            number_type=number_type,
+            locked=True,
         )
         timeline._metadata = {
             "source_path": str(info.source_path) if info.source_path else None,

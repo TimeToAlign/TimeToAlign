@@ -41,6 +41,7 @@ from typing import (
     Mapping,
     Self,
     Sequence,
+    TypeGuard,
     TypeVar,
     cast,
     get_args,
@@ -142,6 +143,11 @@ def _is_data_shaped(member: Any) -> bool:
     if inner is not None and getattr(inner, "__data_shaped__", False):
         return True
     return False
+
+
+def _is_list(value: object) -> TypeGuard[list[Any]]:
+    """Whether *value* is a list; its items are not inspected."""
+    return isinstance(value, list)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -259,12 +265,7 @@ class DataField(ABC):
         raw = self._field.metadata
         if not raw:
             return {}
-        return {
-            (k.decode("utf-8") if isinstance(k, bytes) else k): (
-                v.decode("utf-8") if isinstance(v, bytes) else v
-            )
-            for k, v in raw.items()
-        }
+        return {k.decode("utf-8"): v.decode("utf-8") for k, v in raw.items()}
 
     # -- dunder methods ------------------------------------------------------
 
@@ -411,7 +412,7 @@ class DataField(ABC):
                 f"(empty DataField); this instance has live data"
             )
         out_name = name if name is not None else self.name
-        casted = pc.cast(source, self.pa_type)
+        casted = source.cast(self.pa_type)
         return type(self)(casted, pa.field(out_name, self.pa_type))
 
     # -- abstract factory ----------------------------------------------------
@@ -498,17 +499,18 @@ class NumericField(DataField):
                 f"NumericField requires a numeric type, got {self._field.type}"
             )
 
-    def __getitem__(self, i: int) -> int | float:
+    def __getitem__(self, i: int) -> int | float | None:
         """Return the *i*-th element as ``int`` or ``float``.
 
         Args:
             i: Zero-based index.
 
         Returns:
-            An ``int`` for integer types, ``float`` for floating-point types.
+            An ``int`` for integer types, ``float`` for floating-point types,
+            ``None`` for a null element.
         """
         value = super().__getitem__(i)
-        return value  # type: ignore[return-value]
+        return value
 
     @classmethod
     def from_field(
@@ -608,7 +610,7 @@ class StringField(DataField):
         if pa.types.is_string(source.type) or pa.types.is_large_string(source.type):
             casted = source
         else:
-            casted = pc.cast(source, pa.string())
+            casted = source.cast(pa.string())
         return StringField(casted, pa.field(out_name, pa.string()))
 
     def __getitem__(self, i: int) -> str | None:
@@ -683,8 +685,7 @@ class StructField(DataField):
     @property
     def field_names(self) -> list[str]:
         """Names of the sub-fields in this struct."""
-        struct_type = self._struct_type()
-        return [struct_type.field(i).name for i in range(struct_type.num_fields)]
+        return self._struct_type().names
 
     def get_sub_field(self, name: str) -> DataField:
         """Extract a sub-field as a new ``DataField``.
@@ -773,9 +774,9 @@ class MapField(DataField):
         raw = super().__getitem__(i)
         if raw is None:
             return None
-        if isinstance(raw, list):
+        if _is_list(raw):
             return dict(raw)
-        return raw  # type: ignore[return-value]
+        return raw
 
     @classmethod
     def from_field(

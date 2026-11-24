@@ -22,6 +22,8 @@ from timetoalign.core import (
     BoxField,
     Coordinate,
     Duration,
+    EnharmonicPitch,
+    Event,
     EventReference,
     IntervalPolicy,
     Note,
@@ -31,6 +33,8 @@ from timetoalign.core import (
     ProjectionField,
     Quadrilateral,
     QuadrilateralField,
+    ScoreNote,
+    ScoreNoteField,
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
@@ -1243,15 +1247,127 @@ class TestEventTypeFields:
             "'duration']"
         )
 
-    def test_known_issue_a_note_keeps_its_pitch_outside_its_struct(self) -> None:
+    def test_a_note_without_a_pitch_column_is_a_rest(self) -> None:
         data, _, _ = self._mixed()
-        assert "pitch" in Note.model_fields
-        assert "pitch" not in NoteField.pa_schema.names
-        with pytest.raises(KeyError) as refused:
-            data.get_field(Note)
-        assert refused.value.args[0].startswith(
-            "No field matching 'NoteField' found in table."
+        notes = data.get_field(Note)
+        assert type(notes) is NoteField
+        zero, one = Fraction(0), Fraction(1)
+        assert list(notes) == [
+            None,
+            Note(
+                start=Coordinate(zero, "user_units", number_type="fraction"),
+                end=Coordinate(one, "user_units", number_type="fraction"),
+                duration=Duration(one, "user_units", number_type="fraction"),
+            ),
+            None,
+        ]
+        assert type(notes[1].start.value) is Fraction
+        assert notes[1].pitch is None
+
+
+#: The text of the refusal of a field the table cannot give.
+NO_SCORE_NOTE = "No field matching 'ScoreNoteField' found in table."
+
+
+class TestANoteField:
+    """A Note's pitch from its own column; a ScoreNote on the rows of a Note."""
+
+    @staticmethod
+    def _seconds(value: float) -> Coordinate:
+        return Coordinate(value, "seconds", number_type="float")
+
+    def test_the_pitch_from_its_own_column(self) -> None:
+        data = EventData.from_dicts(
+            [
+                {
+                    "event_type": "Note",
+                    "start": 0.5,
+                    "duration": 0.25,
+                    "pitch": {"midi_number": 60},
+                },
+                {"event_type": "Rest", "start": 0.75, "duration": 0.25},
+                {
+                    "event_type": "Note",
+                    "start": 1.0,
+                    "duration": 0.5,
+                    "pitch": {"midi_number": 62},
+                },
+            ],
+            TimeUnit.seconds,
+            NumberType.float,
         )
+        columns = data.table.schema
+        notes = data.get_field(Note)
+        assert type(notes) is NoteField
+        assert (notes.unit, notes.number_type) == (TimeUnit.seconds, NumberType.float)
+
+        def note(start: float, duration: float, midi: int) -> Note:
+            return Note(
+                start=self._seconds(start),
+                end=self._seconds(start + duration),
+                duration=Duration(duration, "seconds", number_type="float"),
+                pitch=EnharmonicPitch(midi_number=midi),
+            )
+
+        assert list(notes) == [note(0.5, 0.25, 60), None, note(1.0, 0.5, 62)]
+        assert notes[0].start.unit is TimeUnit.seconds
+        assert type(notes[0].start.value) is float
+        assert data.table.schema == columns
+        assert notes.get_raw().field.type.names == [*NoteField.pa_schema.names, "pitch"]
+
+    @staticmethod
+    def _score(**columns: Any) -> EventData:
+        row = {
+            "event_type": "Note",
+            "start": Fraction(0),
+            "duration": Fraction(1, 2),
+            "pitch": {"midi_number": 60},
+        }
+        return EventData.from_dicts(
+            [{**row, **columns}], TimeUnit.quarters, NumberType.fraction
+        )
+
+    def test_a_score_note_on_the_rows_of_a_note(self) -> None:
+        data = self._score(staff=1, voice=2)
+        members = {
+            "start": Coordinate(Fraction(0), "quarters"),
+            "end": Coordinate(Fraction(1, 2), "quarters"),
+            "duration": Duration(Fraction(1, 2), "quarters"),
+            "pitch": EnharmonicPitch(midi_number=60),
+        }
+        score_notes = data.get_field(ScoreNote)
+        assert type(score_notes) is ScoreNoteField
+        assert list(score_notes) == [ScoreNote(**members, voice=2, staff=1)]
+        (plain,) = data.get_field(Note)
+        assert type(plain) is Note
+        assert plain == Note(**members)
+
+    @pytest.mark.parametrize(
+        "columns",
+        [
+            pytest.param({"staff": 1}, id="staff alone"),
+            pytest.param({"staff": "P1_staff1", "voice": "P1_voice1"}, id="text ids"),
+            pytest.param({"staff": None, "voice": None}, id="null"),
+        ],
+    )
+    def test_what_is_no_score_note(self, columns: dict[str, Any]) -> None:
+        data = self._score(**columns)
+        assert not data.has_field(ScoreNoteField)
+        with pytest.raises(KeyError) as refused:
+            data.get_field(ScoreNote)
+        assert refused.value.args[0].startswith(NO_SCORE_NOTE)
+        (note,) = data.get_field(Note)
+        assert note.pitch == EnharmonicPitch(midi_number=60)
+
+    def test_a_base_row_is_no_box(self) -> None:
+        event = Event(
+            id="e", start=Coordinate(0, "pixels"), duration=Duration(1, "pixels")
+        )
+        data = EventData.from_dicts([event], TimeUnit.pixels, NumberType.int)
+        assert data.table.column("event_type").to_pylist() == ["Event"]
+        with pytest.raises(KeyError) as refused:
+            data.get_field(Box)
+        assert refused.value.args[0].startswith("No field matching 'BoxField'")
 
 
 class TestOneAxisPerTable:

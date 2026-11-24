@@ -317,7 +317,7 @@ class TestNote:
             "number_type": "fraction",
             "value": [2, 3],
         }
-        restored = Note.from_row(data)
+        restored = Note.from_row(data, unit="quarters", number_type="fraction")
         assert restored is not None
         assert restored.start.value == Fraction(1, 3)
         assert restored.duration is not None
@@ -400,7 +400,9 @@ class TestScoreNote:
         assert ScoreNoteField.field_type() == "ScoreNoteField"
         assert ScoreNoteField.is_rest is NoteField.is_rest
         with pytest.raises(NotImplementedError) as exc_info:
-            ScoreNoteField(name="notes").is_rest
+            ScoreNoteField.from_field(
+                pa.field("notes", ScoreNoteField.pa_schema), unit="quarters"
+            ).is_rest
         assert str(exc_info.value) == (
             "NoteField.is_rest requires access to the represent-once pitch "
             "columns on NoteEventData (the default specific_pitch field and "
@@ -432,7 +434,9 @@ class TestScoreNote:
     def test_row_round_trip(self) -> None:
         note = _score_note()
         row = {**note.to_dict(), "midi": 59}
-        assert ScoreNote.from_row(row) == ScoreNote(
+        assert ScoreNote.from_row(
+            row, unit="quarters", number_type="fraction"
+        ) == ScoreNote(
             start=note.start,
             end=note.end,
             duration=note.duration,
@@ -446,8 +450,8 @@ class TestScoreNote:
     def test_note_reads_the_same_row(self) -> None:
         note = _score_note()
         row = {**note.to_dict(), "midi": 59}
-        plain = Note.from_row(row)
-        score = ScoreNote.from_row(row)
+        plain = Note.from_row(row, unit="quarters", number_type="fraction")
+        score = ScoreNote.from_row(row, unit="quarters", number_type="fraction")
         assert type(plain) is Note
         assert type(score) is ScoreNote
         assert {n: getattr(plain, n) for n in NOTE_MEMBERS} == {
@@ -455,7 +459,12 @@ class TestScoreNote:
         }
 
     def test_row_without_start(self) -> None:
-        assert ScoreNote.from_row({"voice": 1, "staff": 1}) is None
+        assert (
+            ScoreNote.from_row(
+                {"voice": 1, "staff": 1}, unit="quarters", number_type="fraction"
+            )
+            is None
+        )
 
 
 # ---------------------------------------------------------------------------

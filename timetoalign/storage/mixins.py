@@ -38,7 +38,8 @@ from __future__ import annotations
 import enum
 import json
 import re
-from typing import Any
+from types import UnionType
+from typing import Any, Union, get_args, get_origin
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -794,26 +795,32 @@ class SemanticFieldAccessMixin:
         from the table's columns.
 
         An event table holds an event as one row: its ``event_type`` is the
-        name of its scalar class (``Box``, ``Projection``) and each property
-        of the scalar is the column of that name. The field is one row per
-        table row, in table order: the event where the row's ``event_type``
-        is the scalar's, null on every other row. A property the table has
-        no column for is null. Each column is taken as it is stored, the
-        axis of every number the table's (its ``start`` column's unit and
-        number type, written into the field's metadata, so a field whose
-        scalar reads its numbers on one axis reads them exactly); a property
-        the field holds as a coordinate cell is made from the column's
-        number structs on that axis.
+        name of its scalar class (``Box``, ``Note``) and each property of
+        the scalar is the column of that name. The field is one row per
+        table row, in table order: the event on each row of the type, null
+        on every other row. A property the table has no column for is
+        null. Each column is taken as it is stored, the axis of every
+        number the table's (its ``start`` column's unit and number type,
+        written into the field's metadata, so a field whose scalar reads its
+        numbers on one axis reads them exactly); a property the field holds
+        as a coordinate cell is made from the column's number structs on
+        that axis.
 
-        Only a field whose struct holds every property of its scalar is
-        composed: a scalar keeping a property outside its struct (``Note``,
-        whose pitch is represented once in a column of its own) has no
-        field here.
+        A property the field's struct leaves out is represented once, in a
+        column of its own: the struct carries, under their own names, the
+        columns holding a field of the property's type (a Note's pitch:
+        ``specific_pitch``, ``midi``, a ``pitch`` number), from which the
+        scalar's ``from_row`` reads it (:meth:`_columns_representing`).
+
+        The rows of the type are those whose ``event_type`` names its
+        scalar; where none does, those of its nearest base type holding a
+        row, when every property the type adds to that base is stated on
+        them (:meth:`_rows_of`).
 
         Returns:
-            The field (cached), or ``None`` where the field's struct lacks a
-            property of its scalar, the table holds no row of the event
-            type, or a column cannot be read as the property's type.
+            The field (cached), or ``None`` where the table holds no row of
+            the event type or a column cannot be read as the property's
+            type.
         """
         scalar_cls = field_type.scalar_cls
         schema = field_type.pa_schema
@@ -822,33 +829,39 @@ class SemanticFieldAccessMixin:
             return None
         if "event_type" not in table.column_names:
             return None
-        if not set(scalar_cls.model_fields) <= set(schema.names):
-            # A property kept outside the scalar's struct (a Note's pitch,
-            # represented once in a column of its own) would be lost.
-            return None
-        event_type = scalar_cls.__name__
-        name = re.sub(r"(?<!^)(?=[A-Z])", "_", event_type).lower()
+        name = re.sub(r"(?<!^)(?=[A-Z])", "_", scalar_cls.__name__).lower()
         cache_key = (name, field_type.__name__)
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
-        types = table.column("event_type").combine_chunks()
-        rows = pc.fill_null(pc.equal(types, event_type), False)
-        if not pc.any(rows).as_py():
-            return None
         axis = (
             field_metadata(table.schema.field("start"))
             if "start" in table.column_names
             else {}
         )
-        members = []
+        members: dict[str, pa.Array] = {}
         for member in schema:
             column = _property_column(table, member, axis)
             if column is None:
                 return None
-            members.append(column)
+            members[member.name] = column
+        rows = self._rows_of(scalar_cls, members)
+        if rows is None:
+            return None
+        fields = list(schema)
+        for prop in scalar_cls.model_fields:
+            if prop in members:
+                continue
+            for column_name in self._columns_representing(scalar_cls, prop):
+                if column_name in members:
+                    continue
+                column = table.column(column_name).combine_chunks()
+                members[column_name] = column
+                fields.append(pa.field(column_name, column.type))
         array = pa.StructArray.from_arrays(
-            members, fields=list(schema), mask=pc.invert(rows)
+            [members[field.name] for field in fields],
+            fields=fields,
+            mask=pc.invert(rows),
         )
         pa_field = pa.field(
             name,
@@ -865,6 +878,77 @@ class SemanticFieldAccessMixin:
             return None
         cache[cache_key] = field
         return field
+
+    def _rows_of(
+        self, scalar_cls: type[BaseModel], members: dict[str, pa.Array]
+    ) -> pa.Array | None:
+        """The rows of the event type *scalar_cls*, as a boolean mask.
+
+        The rows whose ``event_type`` is the scalar's class name. Where no
+        row is, the rows of its nearest base type that holds one, provided
+        the table states every property the type adds to that base (a
+        value of each in *members*, the properties read as the field's
+        types, on one of those rows): a score note is a ``ScoreNote`` on a
+        row typed ``Note`` where the table holds its ``staff`` and
+        ``voice``, read as integers. A column that cannot be read as the
+        property's type has stopped the field before (:func:`_property_column`).
+
+        Returns:
+            The mask, or ``None`` where the type has no row.
+        """
+        types = self._table.column("event_type").combine_chunks()
+        for kind in scalar_cls.__mro__:
+            if not issubclass(kind, BaseModel) or kind is BaseModel:
+                continue
+            rows = pc.fill_null(pc.equal(types, kind.__name__), False)
+            if not pc.any(rows).as_py():
+                continue
+            if kind is scalar_cls:
+                return rows
+            added = [
+                column
+                for prop, column in members.items()
+                if prop in scalar_cls.model_fields and prop not in kind.model_fields
+            ]
+            stated = bool(added) and all(
+                pc.any(pc.and_(rows, column.is_valid())).as_py() for column in added
+            )
+            return rows if stated else None
+        return None
+
+    def _columns_representing(
+        self, scalar_cls: type[BaseModel], prop: str
+    ) -> list[str]:
+        """The columns representing the property *prop* of *scalar_cls*, which
+        its field's struct leaves out (represented once, in a column of its
+        own).
+
+        For each type the property may hold (each arm of its annotation that
+        has a paired field), the columns this table holds a field of that
+        type in (by every discovery strategy of :meth:`get_fields`), in the
+        annotation's order, each once; then the column of the property's own
+        name, as it is stored (a bare MIDI ``pitch`` number on a table that
+        declares no view of it). None where the table holds neither: the
+        property is null throughout.
+        """
+        annotation = scalar_cls.model_fields[prop].annotation
+        arms = (
+            get_args(annotation)
+            if isinstance(annotation, UnionType) or get_origin(annotation) is Union
+            else (annotation,)
+        )
+        paired = _get_scalar_to_field_map()
+        names: list[str] = []
+        for arm in arms:
+            field_cls = paired.get(arm) if isinstance(arm, type) else None
+            if field_cls is None:
+                continue
+            for field in self.get_fields(field_cls):
+                if field.name in self._table.column_names and field.name not in names:
+                    names.append(field.name)
+        if prop in self._table.column_names and prop not in names:
+            names.append(prop)
+        return names
 
     def _discover_afforded(
         self,

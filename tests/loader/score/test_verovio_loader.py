@@ -641,14 +641,15 @@ class TestStaffAndPitch:
         assert chords == {"c1a": "c1", "c1b": "c1"}
 
     def test_rows_read_as_score_notes(self, events: dict[str, dict]) -> None:
-        notes = {i: ScoreNote.from_row(events[i]) for i in ("c1a", "c1b", "r1")}
+        axis = {"unit": "quarters", "number_type": "fraction"}
+        notes = {i: ScoreNote.from_row(events[i], **axis) for i in ("c1a", "c1b", "r1")}
         assert {i: (n.staff, n.voice) for i, n in notes.items()} == {
             "c1a": (2, 1),
             "c1b": (2, 1),
             "r1": (1, 1),
         }
         assert (notes["c1a"].is_rest, notes["r1"].is_rest) == (False, True)
-        plain = Note.from_row(events["c1a"])
+        plain = Note.from_row(events["c1a"], **axis)
         assert type(plain) is Note
         assert plain.model_dump() == notes["c1a"].model_dump(exclude={"voice", "staff"})
 

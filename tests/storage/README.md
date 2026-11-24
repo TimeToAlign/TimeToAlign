@@ -370,12 +370,60 @@ it names a type.
   row `has_field(BoxField)` is `False` and `get_field(Box)` raises the
   `KeyError` every class without a matching column raises (`No field
   matching 'BoxField' found in table. Available columns: [...]`).
-- **A type keeping a property outside its struct has no composed field.**
-  A Note's pitch is represented once, in a column of its own
-  (`specific_pitch`, `midi`), and `NoteField`'s struct leaves it out; a
-  `NoteField` composed from the columns would read every Note as a rest.
-  So `get_field(Note)` keeps raising the `KeyError` it raised before
-  (known issue of the Note type, a test case of its own).
+- **A type keeping a property outside its struct is composed too**: the
+  next section.
+
+### `test_events.py` - A Note's field: the pitch from its own column, a ScoreNote on a Note's rows
+
+**Purpose:** A Note is read back by the call that reads every event type,
+`get_field(Note)`, though its pitch is represented once, in a column of its
+own (`specific_pitch` on a spelled score, a bare `pitch` number, an
+`EnharmonicPitch` struct), which `NoteField`'s struct leaves out. One rule,
+stated for fields in general: a property the field's struct leaves out is
+read from the columns holding a field of the property's type (each arm of
+its annotation with a paired field, by every discovery strategy), else from
+the column of the property's own name; those columns ride in the composed
+struct under their own names, so the scalar's `from_row` reads them, and
+the stored table still holds the pitch once. A subtype is read on the rows
+of its base's name (`ScoreNote` on rows typed `Note`) when the table
+states every property it adds, read as the field's types; nothing in the
+rule names a type.
+
+**What proves it** (`TestANoteField`):
+
+- **The pitch from its own column, the positions on the table's axis.** A
+  `seconds`/`float` table of three rows (`from_dicts`): a Note at 0.5
+  lasting 0.25 with the pitch `{midi_number: 60}`, a Rest at 0.75, a Note
+  at 1.0 lasting 0.5 with `{midi_number: 62}`. `get_field(Note)` is a
+  `NoteField` on `seconds`/`float`, `[Note(0.5, end 0.75, duration 0.25,
+  EnharmonicPitch(60)), None, Note(1.0, end 1.5, duration 0.5,
+  EnharmonicPitch(62))]`, every position a `float` in `seconds` (a reader
+  assuming quarters gives `quarters`; one that dropped the pitch gives
+  rests). The table's columns are the same before and after the call (no
+  second pitch column is stored), the field's struct holds `pitch` once,
+  after the Note's members.
+- **A Note without a pitch column is a rest.** The three-row table above
+  (`user_units`, `fraction`): `get_field(Note)` is `[None, Note(start 0,
+  end 1, duration 1), None]`, each number a `Fraction`, `pitch` `None`.
+- **A ScoreNote on the rows of a Note.** A `quarters`/`fraction` table of
+  one Note row (start 0, duration 1/2, pitch `{midi_number: 60}`, `staff`
+  1, `voice` 2): `get_field(ScoreNote)` is a `ScoreNoteField` holding
+  `ScoreNote(..., voice=2, staff=1)`; `get_field(Note)` on the same table
+  the plain `Note` (staff and voice not read, as `from_row` ignores the
+  columns a type does not declare).
+- **What is no ScoreNote.** Each answers as `get_field` answers for any
+  field the table cannot give (`KeyError` `No field matching
+  'ScoreNoteField' found in table. ...`, `has_field` `False`), while
+  `get_field(Note)` reads the notes: a table holding `staff` alone (the
+  shape of a performance whose `staff` numbers an instrument, EEP, RepoVizz:
+  no `voice`); a table whose `staff` and `voice` are text identifiers
+  (`"P1_staff1"`, as IEEE 1599 writes them: they do not cast to the
+  integer members); a table whose `staff` and `voice` columns are null on
+  every Note row.
+- **A base type's row is no subtype's event.** A table holding one
+  `Event` row (`Event(id="e", start=0, duration=1)`, its shape columns
+  null): `get_field(Box)` raises the `KeyError`; a Box adds a shape, which
+  the row does not state.
 
 ### `test_events.py` - One axis per table: number type kept, cells reduced
 

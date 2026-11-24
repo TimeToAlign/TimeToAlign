@@ -3281,70 +3281,65 @@ class Note(ScalarVocabulary, BaseModel):
         return d
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> Self | None:
-        """Construct from a ``NoteEventData`` row dict (trust-boundary regime).
+    def from_row(
+        cls,
+        row: dict[str, Any] | None,
+        *,
+        unit: TimeUnit | str,
+        number_type: NumberType | str | None,
+    ) -> Self | None:
+        """Construct from a row of an event table whose numbers lie on one axis.
 
-        Reads the columns this type declares and ignores every other one,
-        so a row of a score is read as a plain ``Note`` as well as a
-        :class:`ScoreNote`.  Returns ``None`` for a row without a start.
+        Each position (``start``, ``end``, ``duration``) is read from its
+        number struct on the axis given, in *number_type*, exactly as a
+        :class:`Box` reads its numbers; a position given as a coordinate
+        dict (``to_dict``) or a scalar keeps the unit it states.  The pitch
+        is read from the column representing it (``specific_pitch``, else
+        ``midi``, else ``pitch``).  Every column this type does not declare
+        is ignored, so a row of a score is read as a plain ``Note`` as well
+        as a :class:`ScoreNote`.
+
+        Args:
+            row: The row, or ``None`` for a null cell.
+            unit: The unit of every position.
+            number_type: The number type every position is written in.
+
+        Returns:
+            The note, or ``None`` for a null cell or a row without a start.
         """
-        values = cls._values_from_row(row)
+        if row is None:
+            return None
+        axis = TimeUnit(unit)
+        values = cls._values_from_row(row, axis, axis.resolve_number_type(number_type))
         return None if values is None else cls(**values)
 
     @classmethod
-    def _values_from_row(cls, row: dict[str, Any]) -> dict[str, Any] | None:
+    def _values_from_row(
+        cls, row: dict[str, Any], unit: TimeUnit, number_type: NumberType
+    ) -> dict[str, Any] | None:
         """Return the constructor keywords read from *row*, ``None`` without a start.
 
         Subtypes extend the mapping with the columns they add, so that every
         type of the hierarchy reads a row the same way.
         """
-        from .enums import TimeUnit
         from .retrieval import coordinate_from_dict
 
-        start_raw = row.get("start")
-        if start_raw is None:
-            return None
-
-        def _coerce_coord(raw: Any) -> Coordinate | None:
-            if raw is None:
-                return None
-            if isinstance(raw, Coordinate):
+        def _position(raw: Any, kind: type[TimeScalar]) -> TimeScalar | None:
+            if raw is None or isinstance(raw, kind):
                 return raw
-            if isinstance(raw, dict):
-                if raw.get("value") is None:
-                    return None
-                if "number_type" in raw:
-                    return coordinate_from_dict(raw)
-                unit = raw.get("unit", TimeUnit.quarters)
-                return Coordinate(struct_to_rational(raw), unit)
-            return None
-
-        def _coerce_duration(raw: Any) -> Duration | None:
-            if raw is None:
+            if isinstance(raw, TimeScalar):
+                return kind(raw.value, raw.unit, number_type=raw.number_type)
+            if not isinstance(raw, dict) or raw.get("value") is None:
                 return None
-            if isinstance(raw, Duration):
-                return raw
-            if isinstance(raw, Coordinate):
-                return Duration(raw.value, raw.unit)
-            if isinstance(raw, dict):
-                if raw.get("value") is None:
-                    return None
-                if "number_type" in raw:
-                    coordinate = coordinate_from_dict(raw)
-                    return Duration(
-                        coordinate.value,
-                        coordinate.unit,
-                        number_type=coordinate.number_type,
-                    )
-                unit = raw.get("unit", TimeUnit.quarters)
-                return Duration(struct_to_rational(raw), unit)
-            return None
+            if "number_type" in raw:
+                return _position(coordinate_from_dict(raw), kind)
+            return _axis_value(kind, raw, unit, number_type)
 
-        start = _coerce_coord(start_raw)
+        start = _position(row.get("start"), Coordinate)
         if start is None:
             return None
-        end = _coerce_coord(row.get("end"))
-        duration = _coerce_duration(row.get("duration"))
+        end = _position(row.get("end"), Coordinate)
+        duration = _position(row.get("duration"), Duration)
 
         # Represent-once resolution.  A spelled source stores the full
         # ``specific_pitch`` (the most-expressive faithful type); prefer
@@ -3396,8 +3391,15 @@ class Note(ScalarVocabulary, BaseModel):
 register_value_projector(Note, "pitch", drop_from_schema)
 
 
-class NoteField(SemanticField[Note]):
-    """Field wrapper for ``Note`` (paired Field)."""
+class NoteField(SharedAxisField[Note]):
+    """Paired Field for :class:`Note`: every position on one axis, declared once.
+
+    ``EventData.get_field(Note)`` composes it from an event table: the
+    Note's members from the columns of their names, the axis from the
+    table's, and the pitch from the column representing it, carried under
+    that column's own name (``specific_pitch``, ``midi`` or ``pitch``), so
+    that each item is the note the table holds.
+    """
 
     @property
     def is_rest(self) -> pa.Array:
@@ -3442,8 +3444,10 @@ class ScoreNote(Note):
         return {**super().to_dict(), "voice": self.voice, "staff": self.staff}
 
     @classmethod
-    def _values_from_row(cls, row: dict[str, Any]) -> dict[str, Any] | None:
-        values = super()._values_from_row(row)
+    def _values_from_row(
+        cls, row: dict[str, Any], unit: TimeUnit, number_type: NumberType
+    ) -> dict[str, Any] | None:
+        values = super()._values_from_row(row, unit, number_type)
         if values is None:
             return None
         return {**values, "voice": row.get("voice"), "staff": row.get("staff")}

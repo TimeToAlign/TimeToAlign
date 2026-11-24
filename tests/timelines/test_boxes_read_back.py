@@ -7,12 +7,16 @@ read any event").
 
 from __future__ import annotations
 
+import csv
 import json
+import xml.etree.ElementTree as ET
+from collections import Counter
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
@@ -20,14 +24,23 @@ from timetoalign.core import (
     Box,
     BoxField,
     Coordinate,
-    Event,
+    Duration,
+    EnharmonicPitch,
     Note,
+    NoteField,
     NumberType,
     Projection,
     ProjectionField,
     Quadrilateral,
+    ScoreNote,
+    ScoreNoteField,
+    SpecificPitch,
+    TimeUnit,
 )
 from timetoalign.loader.graphical import DmosLoader, MeiFacsimileLoader
+from timetoalign.loader.score import VerovioLoader
+from timetoalign.loader.score.ms3 import Ms3Loader
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
     DiscreteGraphicalTimeline,
@@ -64,29 +77,71 @@ THIRDS = BoundingBox.from_xywh(
 )
 
 
-def _projection() -> Projection:
-    return Projection(id="p1", start=Coordinate(378, "pixels"))
+def _projection() -> tuple[Projection, Projection]:
+    projection = Projection(id="p1", start=Coordinate(378, "pixels"))
+    return projection, projection
 
 
-def _box() -> Box:
-    return Box.from_shape(RECT_H2, origin=7, id="rect_h2")
+def _box() -> tuple[Box, Box]:
+    box = Box.from_shape(RECT_H2, origin=7, id="rect_h2")
+    return box, box
 
 
-#: The event types whose field holds every property of their scalar.
+#: A Note on ``seg_2`` as a row: its ID, position and pitch.
+NOTE_ROW = {
+    "event_type": "Note",
+    "id": "n_378",
+    "start": 378,
+    "duration": 4,
+    "pitch": {"midi_number": 60},
+}
+#: The members of that Note, on ``seg_2``'s axis.
+NOTE_MEMBERS = {
+    "start": Coordinate(378, "pixels"),
+    "end": Coordinate(382, "pixels"),
+    "duration": Duration(4, "pixels"),
+    "pitch": EnharmonicPitch(midi_number=60),
+}
+
+
+def _note() -> tuple[dict[str, Any], Note]:
+    return NOTE_ROW, Note(**NOTE_MEMBERS)
+
+
+def _score_note() -> tuple[dict[str, Any], ScoreNote]:
+    return {**NOTE_ROW, "staff": 1, "voice": 2}, ScoreNote(
+        **NOTE_MEMBERS, voice=2, staff=1
+    )
+
+
+#: Every event type, each with how to make the event added (an event or its
+#: row) and the event it is read back as.
 EVENT_TYPES = [
     pytest.param(Box, BoxField, _box, id="Box"),
     pytest.param(Projection, ProjectionField, _projection, id="Projection"),
+    pytest.param(Note, NoteField, _note, id="Note"),
+    pytest.param(ScoreNote, ScoreNoteField, _score_note, id="ScoreNote"),
 ]
 
 
-def _page_with(event: Event) -> tuple[Timeline, Timeline]:
-    """A page holding a Note, and *event* on its child ``seg_2`` at 866."""
+def _page_with(event: Any) -> tuple[Timeline, Timeline]:
+    """A page holding a Beat, and *event* on its child ``seg_2`` at 866."""
     page = DiscreteGraphicalTimeline(length=2000, uid="page")
     seg_2 = DiscreteGraphicalTimeline(length=867, uid="seg_2", meta={"box": CROP_2})
     page.add_child(seg_2, CROP_2_OFFSET)
-    page.add_events([{"event_type": "Note", "id": "n1", "start": 0, "duration": 5}])
-    seg_2.add_events(event)
+    page.add_events([{"event_type": "Beat", "id": "b1", "start": 0}])
+    seg_2.add_events([event] if isinstance(event, dict) else event)
     return page, seg_2
+
+
+def _shifted(event: Any, by: int) -> dict[str, Coordinate]:
+    """The positions of *event* moved by *by* pixels: ``start``, and ``end``
+    where the type holds it as a member."""
+    return {
+        name: Coordinate(getattr(event, name).value + by, "pixels")
+        for name in ("start", "end")
+        if name in type(event).model_fields
+    }
 
 
 class TestTheSameCalls:
@@ -94,50 +149,46 @@ class TestTheSameCalls:
 
     @pytest.mark.parametrize(("event_type", "field_class", "make"), EVENT_TYPES)
     def test_the_events_of_a_type(
-        self, event_type: type[Event], field_class: type, make: Any
+        self, event_type: type[BaseModel], field_class: type, make: Any
     ) -> None:
-        added = make()
+        added, expected = make()
         _, seg_2 = _page_with(added)
-        field = seg_2.get_events(event_type=event_type.__name__).get_field(event_type)
+        kind = added["event_type"] if isinstance(added, dict) else type(added).__name__
+        field = seg_2.get_events(event_type=kind).get_field(event_type)
         assert type(field) is field_class
-        assert list(field) == [added]
+        assert list(field) == [expected]
         assert field[0].start.value == 378
-        assert list(seg_2.events.get_field(event_type)) == [added]
+        assert list(seg_2.events.get_field(event_type)) == [expected]
 
     @pytest.mark.parametrize(("event_type", "field_class", "make"), EVENT_TYPES)
     def test_a_child_s_event_on_its_parent(
-        self, event_type: type[Event], field_class: type, make: Any
+        self, event_type: type[BaseModel], field_class: type, make: Any
     ) -> None:
-        added = make()
+        added, expected = make()
         page, _ = _page_with(added)
         events = page.get_events()
-        assert events.column_values("id") == ["n1", added.id]
+        event_id = events.column_values("id")[1]
+        assert events.column_values("id") == ["b1", event_id]
         field = events.get_field(event_type)
         assert field[0] is None
         read = field[1]
         assert type(read) is event_type
         assert read.start == Coordinate(CROP_2_OFFSET + 378, "pixels")
-        assert read == added.model_copy(update={"start": read.start})
+        assert read == expected.model_copy(update=_shifted(expected, CROP_2_OFFSET))
 
     @pytest.mark.parametrize(("event_type", "field_class", "make"), EVENT_TYPES)
     def test_a_field_filter_and_the_field_class(
-        self, event_type: type[Event], field_class: type, make: Any
+        self, event_type: type[BaseModel], field_class: type, make: Any
     ) -> None:
-        added = make()
+        added, expected = make()
         page, _ = _page_with(added)
-        events = page.get_events(id=added.id)
+        event_id = added["id"] if isinstance(added, dict) else added.id
+        events = page.get_events(id=event_id)
         field = events.get_field(event_type)
         assert len(field) == 1
-        assert field[0].id == added.id
+        assert events.column_values("id") == [event_id]
+        assert field[0].start == Coordinate(CROP_2_OFFSET + 378, "pixels")
         assert events.get_field(field_class) is field
-
-    def test_known_issue_a_note_is_not_read_back_as_a_field(self) -> None:
-        page, _ = _page_with(_box())
-        with pytest.raises(KeyError) as refused:
-            page.get_events(event_type="Note").get_field(Note)
-        assert refused.value.args[0].startswith(
-            "No field matching 'NoteField' found in table."
-        )
 
 
 def _mei(tmp_path: Path) -> Path:
@@ -313,3 +364,132 @@ class TestRoundTrips:
         assert read == expected
         assert {type(value) for box in read for value in _numbers(box)} == {number_type}
         assert read_page.number_type is page.number_type is NumberType(number_type)
+
+
+#: The ms3 notes of Chopin's Op. 10 No. 3, and Reger's Op. 13 No. 4 in MEI.
+CHOPIN_NOTES = ensure_data("vienna_1x22") / "ms3" / "chopin_op10_no3.notes.tsv"
+REGER_MEI = (
+    ensure_data("mpm_toolbox")
+    / "Max Reger - Moment Musical (MPM Toolbox Tutorial)"
+    / "Reger - Moment Musical op 13 no 4.mei"
+)
+MEI = "{http://www.music-encoding.org/ns/mei}"
+#: An MEI accidental as the alteration it writes.
+ALTER = {"f": -1, "s": 1, "n": 0, "ff": -2, "ss": 2}
+
+
+def _tsv_score_notes() -> list[ScoreNote]:
+    """The notes of the ms3 TSV, built from its own columns (``cents`` 0, as
+    the score's pitch column writes an equal-tempered spelled pitch)."""
+    with CHOPIN_NOTES.open(newline="", encoding="utf-8") as file:
+        rows = list(csv.DictReader(file, delimiter="\t"))
+    notes = []
+    for row in rows:
+        start = Fraction(row["quarterbeats"])
+        duration = Fraction(row["duration"]) * 4
+        accidentals = row["name"][1:].removesuffix(row["octave"])
+        # A grace note (duration 0) is an instant: no end, no duration.
+        span = duration != 0
+        notes.append(
+            ScoreNote(
+                start=Coordinate(start, "quarters"),
+                end=Coordinate(start + duration, "quarters") if span else None,
+                duration=Duration(duration, "quarters") if span else None,
+                pitch=SpecificPitch(
+                    step=row["name"][0],
+                    alter=accidentals.count("#") - accidentals.count("b"),
+                    octave=int(row["octave"]),
+                    cents=0.0,
+                ),
+                voice=int(row["voice"]),
+                staff=int(row["staff"]),
+            )
+        )
+    return notes
+
+
+def _mei_pitches() -> Counter[tuple[str, int, int, int, int]]:
+    """Each note of the MEI file: step, alter, octave, staff, layer."""
+    found: Counter[tuple[str, int, int, int, int]] = Counter()
+    for staff in ET.parse(REGER_MEI).getroot().iter(f"{MEI}staff"):
+        for layer in staff.iter(f"{MEI}layer"):
+            for note in layer.iter(f"{MEI}note"):
+                accid = note.get("accid", note.get("accid.ges"))
+                found[
+                    (
+                        note.get("pname").upper(),
+                        ALTER.get(accid, 0),
+                        int(note.get("oct")),
+                        int(staff.get("n")),
+                        int(layer.get("n")),
+                    )
+                ] += 1
+    return found
+
+
+class TestScoresReadBack:
+    """A loaded score's notes come back as the notes its source writes."""
+
+    def test_ms3(self) -> None:
+        expected = _tsv_score_notes()
+        assert len(expected) == 498
+        events = (
+            Ms3Loader.from_file(CHOPIN_NOTES)
+            .create_timeline()
+            .get_events(event_type="Note")
+        )
+        read = list(events.get_field(ScoreNote))
+        assert read == expected
+        assert all(note.pitch is not None for note in read)
+        assert {type(note.start.value) for note in read} == {Fraction}
+        assert (read[0].pitch, read[0].start.value, read[0].staff, read[0].voice) == (
+            SpecificPitch(step="B", alter=0, octave=3, cents=0.0),
+            0,
+            1,
+            1,
+        )
+        plain = list(events.get_field(Note))
+        assert {type(note) for note in plain} == {Note}
+        assert plain == [
+            Note(**{name: getattr(note, name) for name in Note.model_fields})
+            for note in expected
+        ]
+
+    def test_mei_through_verovio(self) -> None:
+        events = VerovioLoader.from_file(REGER_MEI).create_timeline().get_events()
+        field = events.get_field(ScoreNote)
+        read = [note for note in field if note is not None]
+        assert (len(field), len(read)) == (107, 106)
+        assert all(note.pitch is not None for note in read)
+        assert (
+            Counter(
+                (
+                    note.pitch.step,
+                    note.pitch.alter,
+                    note.pitch.octave,
+                    note.staff,
+                    note.voice,
+                )
+                for note in read
+            )
+            == _mei_pitches()
+        )
+        assert {type(n.start.value) for n in read} == {Fraction}
+        assert {n.start.unit for n in read} == {TimeUnit.quarters}
+        by_id = dict(zip(events.column_values("id"), field, strict=True))
+        assert by_id["n1"] == ScoreNote(
+            start=Coordinate(Fraction(0), "quarters"),
+            end=Coordinate(Fraction(1, 4), "quarters"),
+            duration=Duration(Fraction(1, 4), "quarters"),
+            pitch=SpecificPitch(step="E", alter=-1, octave=5, cents=0.0),
+            voice=1,
+            staff=1,
+        )
+        assert by_id["n4"] == ScoreNote(
+            start=Coordinate(Fraction(0), "quarters"),
+            end=Coordinate(Fraction(3, 4), "quarters"),
+            duration=Duration(Fraction(3, 4), "quarters"),
+            pitch=SpecificPitch(step="A", alter=-1, octave=4, cents=0.0),
+            voice=2,
+            staff=1,
+        )

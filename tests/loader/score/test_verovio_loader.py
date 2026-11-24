@@ -1534,3 +1534,95 @@ class TestGuards:
         for create in ("create_timeline", "create_physical_timeline"):
             with pytest.raises(ValueError, match="No score loaded"):
                 getattr(VerovioLoader(), create)()
+
+
+_HEADER = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1">'
+    "<meiHead><fileDesc><titleStmt><title>Header only</title></titleStmt><pubStmt/>"
+    "</fileDesc></meiHead>{music}</mei>"
+)
+_SCORE_DEF = (
+    '<scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5" '
+    'clef.shape="G" clef.line="2"/></staffGrp></scoreDef>'
+)
+_NO_TIMELINE = (
+    "An encoding without measures or staves describes a work but can give no "
+    "timeline; load an MEI file that encodes the music itself."
+)
+_NO_REASON = "Verovio gave no reason (its messages, if any, are on standard error)"
+
+
+class TestWithoutMusic:
+    @pytest.mark.parametrize(
+        "music,detail",
+        [
+            ("", "it has no <music> element"),
+            ('<music xml:id="g-3"/>', "its <music> holds no <body>"),
+            ("<music><body/></music>", "its <body> holds no <mdiv>"),
+            ("<music><body><mdiv/></body></music>", "its <mdiv> holds no <score>"),
+            (
+                f"<music><body><mdiv><score>{_SCORE_DEF}</score></mdiv></body></music>",
+                "its <score> holds no <section>",
+            ),
+            (
+                f"<music><body><mdiv><score>{_SCORE_DEF}<section/></score></mdiv>"
+                "</body></music>",
+                "its <section> holds no <measure> and no <staff>",
+            ),
+        ],
+        ids=["no-music", "music", "body", "mdiv", "score", "section"],
+    )
+    def test_header_only(self, tmp_path: Path, music: str, detail: str) -> None:
+        path = tmp_path / "header.mei"
+        path.write_text(_HEADER.format(music=music), encoding="utf-8")
+        with pytest.raises(ValueError) as raised:
+            VerovioLoader.from_file(path)
+        assert str(raised.value) == (
+            f"{path} holds an MEI header and no music: {detail}. {_NO_TIMELINE}"
+        )
+
+    def test_without_header(self, tmp_path: Path) -> None:
+        path = tmp_path / "bare.mei"
+        path.write_text(
+            '<mei xmlns="http://www.music-encoding.org/ns/mei"><music/></mei>',
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError) as raised:
+            VerovioLoader.from_file(path)
+        assert str(raised.value) == (
+            f"{path} holds no music: its <music> holds no <body>. {_NO_TIMELINE}"
+        )
+
+    def test_unidentified_xml(self, tmp_path: Path) -> None:
+        path = tmp_path / "foo.xml"
+        path.write_text('<?xml version="1.0"?><foo/>', encoding="utf-8")
+        with pytest.raises(ValueError) as raised:
+            VerovioLoader.from_file(path)
+        assert str(raised.value) == f"Verovio could not load {path}: {_NO_REASON}"
+
+    @pytest.mark.parametrize(
+        "log,reason", [("", _NO_REASON), ("[Error] Stated\n", "[Error] Stated")]
+    )
+    def test_reason_of_a_stub(self, log: str, reason: str) -> None:
+        module = importlib.import_module("timetoalign.loader.score.verovio")
+
+        class Stub:
+            def setOptions(self, options: dict) -> None:
+                pass
+
+            def loadFile(self, path: str) -> bool:
+                return False
+
+            def getLog(self) -> str:
+                return log
+
+            def renderToTimemap(self, options: dict) -> list:
+                return []
+
+        with pytest.raises(ValueError) as raised:
+            module._load_file(Stub(), Path("x.mei"), {})
+        assert str(raised.value) == f"Verovio could not load x.mei: {reason}"
+        with pytest.raises(ValueError) as raised:
+            module._timemap(Stub(), Path("x.mei"))
+        assert str(raised.value) == f"Verovio's timemap of x.mei is empty: {reason}"

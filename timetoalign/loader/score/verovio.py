@@ -561,6 +561,13 @@ class VerovioLoader(ScoreLoader):
         no longer states the printed score; it raises.
         Verovio 6.4.1 crashes the process in ``renderToTimemap`` when it
         expands the repeats of some files; ``expandNever`` reads them.
+        An MEI file whose ``<music>`` holds no ``<measure>`` and no
+        ``<staff>`` (a header describing a work, ``<music/>`` empty) can give
+        no timeline: the loader reads the file before Verovio does and
+        raises, naming the element that is missing or empty. Verovio's
+        Python binding writes its reasons to standard error, not to
+        ``getLog()``; where Verovio declines another file, the message says
+        that it gave no reason.
 
     Examples:
         >>> loader = VerovioLoader.from_file("score.mei")
@@ -616,6 +623,7 @@ class VerovioLoader(ScoreLoader):
                 "no longer states the printed score; the default expands the timemap "
                 "only"
             )
+        _refuse_without_music(source)
         _load_file(toolkit, source, options)
         mei = toolkit.getMEI()
         score = _read_score(mei)
@@ -1067,14 +1075,78 @@ def _load_file(
         toolkit.setOptions({**options, "inputFrom": "mei"})
         loaded = toolkit.loadData(data)
     if not loaded:
-        raise ValueError(f"Verovio could not load {source}: {toolkit.getLog()}")
+        raise ValueError(f"Verovio could not load {source}: {_verovio_reason(toolkit)}")
+
+
+def _verovio_reason(toolkit: Any) -> str:
+    """Return the toolkit's log, or say that it is empty.
+
+    Verovio's Python binding writes its messages to standard error, so the
+    log of the latest operation is mostly empty.
+    """
+    return toolkit.getLog().strip() or (
+        "Verovio gave no reason (its messages, if any, are on standard error)"
+    )
+
+
+#: The elements that lead from ``<music>`` to the measures of a score.
+_MUSIC_PATH = ("music", "body", "mdiv", "score", "section")
+
+
+def _refuse_without_music(source: Path) -> None:
+    """Raise if *source* is MEI whose ``<music>`` holds no measure and no staff.
+
+    Such a file can give no timeline. Verovio declines most of its shapes
+    without a reason its Python binding returns, and loads a ``<score>``
+    with a ``<scoreDef>`` and no ``<section>`` only to crash the process in
+    ``renderToTimemap``; so the file is read here first. Reading stops at
+    the first ``<measure>`` or ``<staff>`` inside ``<music>``. A file that is
+    not MEI XML is left to Verovio.
+    """
+    stack: list[str] = []
+    seen: set[str] = set()
+    head = False
+    try:
+        with source.open("rb") as handle:
+            for event, element in ET.iterparse(handle, events=("start", "end")):
+                name = _local(element.tag)
+                if event == "end":
+                    stack.pop()
+                    continue
+                if not stack and name != "mei":
+                    return
+                if "music" in stack or name == "music":
+                    if name in ("measure", "staff"):
+                        return
+                    seen.add(name)
+                head = head or name == "meiHead"
+                stack.append(name)
+    except (ET.ParseError, UnicodeDecodeError):
+        return
+    reached = 0
+    while reached < len(_MUSIC_PATH) and _MUSIC_PATH[reached] in seen:
+        reached += 1
+    if not reached:
+        detail = "it has no <music> element"
+    elif reached == len(_MUSIC_PATH):
+        detail = "its <section> holds no <measure> and no <staff>"
+    else:
+        detail = f"its <{_MUSIC_PATH[reached - 1]}> holds no <{_MUSIC_PATH[reached]}>"
+    holds = "an MEI header and no music" if head else "no music"
+    raise ValueError(
+        f"{source} holds {holds}: {detail}. An encoding without measures or staves "
+        "describes a work but can give no timeline; load an MEI file that encodes "
+        "the music itself."
+    )
 
 
 def _timemap(toolkit: Any, source: Path) -> list[dict[str, Any]]:
     """Return the toolkit's exact timemap, cross-checked against the float one."""
     timemap = toolkit.renderToTimemap({**_TIMEMAP_OPTIONS, "useFractions": True})
     if not timemap:
-        raise ValueError(f"Verovio's timemap of {source} is empty: {toolkit.getLog()}")
+        raise ValueError(
+            f"Verovio's timemap of {source} is empty: {_verovio_reason(toolkit)}"
+        )
     _check_against_qstamps(timemap, toolkit.renderToTimemap(_TIMEMAP_OPTIONS))
     return timemap
 

@@ -833,6 +833,35 @@ from them, so:
 Each case uses a fresh loader, since a loader's minted ids count across its
 calls.
 
+### Encodings without music
+
+An MEI file can hold a header (`<meiHead>`) that describes a work and no music: the six
+header-only reference files of the CollabScore corpus end in `<music xml:id="g-3"/>`
+(none of them is test data). Verovio 6.4.1 declines most such shapes, but its Python binding
+writes the reason to standard error, so `getLog()` is empty and the refusal used to end after
+its colon; a `<score>` holding only a `<scoreDef>` loads and then crashes the process in
+`renderToTimemap`. What proves the refusal is useful and the reader still accepts music:
+
+- **Every shape names its element.** One header-only MEI per shape is written into
+  `tmp_path`: no `<music>`, `<music/>` empty, `<body/>` empty, `<mdiv/>` empty, a `<score>`
+  with a `<scoreDef>` and no `<section>`, an empty `<section>`. Each raises `ValueError`
+  whose whole message is pinned: the file holds an MEI header and no music, the named element
+  (`it has no <music> element`, `its <music> holds no <body>`, `its <body> holds no <mdiv>`,
+  `its <mdiv> holds no <score>`, `its <score> holds no <section>`, `its <section> holds no
+  <measure> and no <staff>`), and that such an encoding describes a work but can give no
+  timeline. A generic message, or one naming the wrong element, fails. The `<scoreDef>` case
+  also proves the file is read before Verovio renders it: otherwise the worker crashes.
+- **Without a header** (`<mei><music/></mei>`) the message says "holds no music", not "an MEI
+  header and no music": the loader states only what the file holds.
+- **A refusal Verovio gives without a reason** says so instead of ending after the colon: an
+  XML file Verovio cannot identify (`<foo/>`) raises `Verovio could not load <path>: Verovio
+  gave no reason (its messages, if any, are on standard error)`, through the real toolkit.
+  The same wording ends an empty timemap's message; a toolkit stub whose log is empty and whose
+  timemap is `[]` pins it, and one whose log holds a line pins that the line is passed on.
+- **Music still loads.** The fixtures above hold measures and load unchanged; the check stops
+  at the first `<measure>` or `<staff>` inside `<music>`, and a file that is not MEI XML
+  (MusicXML, Humdrum) is left to Verovio, which the provisioned specimens exercise.
+
 ### Guards
 
 Without `verovio` the lazy export raises `ImportError` naming `timetoalign[verovio]`. A toolkit

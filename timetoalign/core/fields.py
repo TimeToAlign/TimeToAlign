@@ -189,8 +189,8 @@ class DataField(ABC):
 
     def __init__(
         self,
-        data: pa.Array | pa.ChunkedArray | None = None,
-        field: pa.Field | None = None,
+        data: pa.Array[Any] | pa.ChunkedArray[Any] | None = None,
+        field: pa.Field[pa.DataType] | None = None,
         *,
         name: str | None = None,
     ) -> None:
@@ -224,12 +224,12 @@ class DataField(ABC):
     # -- properties ----------------------------------------------------------
 
     @property
-    def data(self) -> pa.Array | pa.ChunkedArray | None:
+    def data(self) -> pa.Array[Any] | pa.ChunkedArray[Any] | None:
         """The underlying PyArrow array, or ``None`` if schema-only."""
         return self._data
 
     @property
-    def field(self) -> pa.Field:
+    def field(self) -> pa.Field[pa.DataType]:
         """The PyArrow field descriptor (name, type, metadata)."""
         return self._field
 
@@ -355,7 +355,7 @@ class DataField(ABC):
 
     # -- conversion helpers --------------------------------------------------
 
-    def to_pyarrow(self) -> pa.Array:
+    def to_pyarrow(self) -> pa.Array[Any]:
         """Return data as a contiguous ``pa.Array``.
 
         If the underlying storage is a ``ChunkedArray``, it is combined
@@ -372,7 +372,7 @@ class DataField(ABC):
             return self._data.combine_chunks()
         return self._data
 
-    def to_field(self) -> pa.Field:
+    def to_field(self) -> pa.Field[pa.DataType]:
         """Return the ``pa.Field`` descriptor (with metadata)."""
         return self._field
 
@@ -380,7 +380,7 @@ class DataField(ABC):
 
     def from_array(
         self,
-        source: pa.Array | pa.ChunkedArray,
+        source: pa.Array[Any] | pa.ChunkedArray[Any],
         *,
         name: str | None = None,
     ) -> "DataField":
@@ -484,8 +484,8 @@ class NumericField(DataField):
 
     def __init__(
         self,
-        data: pa.Array | pa.ChunkedArray | None = None,
-        field: pa.Field | None = None,
+        data: pa.Array[Any] | pa.ChunkedArray[Any] | None = None,
+        field: pa.Field[pa.DataType] | None = None,
         *,
         name: str | None = None,
     ) -> None:
@@ -512,7 +512,11 @@ class NumericField(DataField):
 
     @classmethod
     def from_field(
-        cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
+        cls,
+        source: tuple[
+            pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]
+        ],
+        **kw: Any,
     ) -> "NumericField":
         """Create a NumericField from a ``(data, field)`` tuple.
 
@@ -570,8 +574,8 @@ class StringField(DataField):
 
     def __init__(
         self,
-        data: pa.Array | pa.ChunkedArray | None = None,
-        field: pa.Field | None = None,
+        data: pa.Array[Any] | pa.ChunkedArray[Any] | None = None,
+        field: pa.Field[pa.DataType] | None = None,
         *,
         name: str | None = None,
     ) -> None:
@@ -586,7 +590,7 @@ class StringField(DataField):
 
     def from_array(
         self,
-        source: pa.Array | pa.ChunkedArray,
+        source: pa.Array[Any] | pa.ChunkedArray[Any],
         *,
         name: str | None = None,
     ) -> "StringField":
@@ -612,14 +616,18 @@ class StringField(DataField):
 
     @classmethod
     def from_field(
-        cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
+        cls,
+        source: tuple[
+            pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]
+        ],
+        **kw: Any,
     ) -> "StringField":
         cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
 
 
-def _struct_array(array: pa.Array | pa.ChunkedArray) -> pa.StructArray:
+def _struct_array(array: pa.Array[Any] | pa.ChunkedArray[Any]) -> pa.StructArray:
     """*array*, a column of structs, as one contiguous ``pa.StructArray``.
 
     A chunked column is combined first.
@@ -653,8 +661,8 @@ class StructField(DataField):
 
     def __init__(
         self,
-        data: pa.Array | pa.ChunkedArray | None = None,
-        field: pa.Field | None = None,
+        data: pa.Array[Any] | pa.ChunkedArray[Any] | None = None,
+        field: pa.Field[pa.DataType] | None = None,
         *,
         name: str | None = None,
     ) -> None:
@@ -725,7 +733,11 @@ class StructField(DataField):
 
     @classmethod
     def from_field(
-        cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
+        cls,
+        source: tuple[
+            pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]
+        ],
+        **kw: Any,
     ) -> "StructField":
         cls._warn_ignored_keywords(kw)
         data, field = source
@@ -748,8 +760,8 @@ class MapField(DataField):
 
     def __init__(
         self,
-        data: pa.Array | pa.ChunkedArray | None = None,
-        field: pa.Field | None = None,
+        data: pa.Array[Any] | pa.ChunkedArray[Any] | None = None,
+        field: pa.Field[pa.DataType] | None = None,
         *,
         name: str | None = None,
     ) -> None:
@@ -767,7 +779,11 @@ class MapField(DataField):
 
     @classmethod
     def from_field(
-        cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
+        cls,
+        source: tuple[
+            pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]
+        ],
+        **kw: Any,
     ) -> "MapField":
         cls._warn_ignored_keywords(kw)
         data, field = source
@@ -779,7 +795,11 @@ class _GenericField(DataField):
 
     @classmethod
     def from_field(
-        cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
+        cls,
+        source: tuple[
+            pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]
+        ],
+        **kw: Any,
     ) -> "_GenericField":
         cls._warn_ignored_keywords(kw)
         data, field = source
@@ -1099,7 +1119,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
             f"raw={type(self._raw).__name__}, len={length})"
         )
 
-    def to_field(self) -> pa.Field:
+    def to_field(self) -> pa.Field[pa.DataType]:
         """Return the ``pa.Field`` descriptor carrying the versioned TTA blob.
 
         Every SemanticField stamps exactly once, here: the payload from
@@ -1262,7 +1282,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
 
     def from_array(
         self,
-        source: pa.Array | pa.ChunkedArray,
+        source: pa.Array[Any] | pa.ChunkedArray[Any],
         *,
         name: str | None = None,
     ) -> "SemanticField[T]":
@@ -1350,7 +1370,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         return cls.from_field((struct_arr, pa_field))
 
     @classmethod
-    def matches_pa_field(cls, pa_field: pa.Field) -> bool:
+    def matches_pa_field(cls, pa_field: pa.Field[pa.DataType]) -> bool:
         """Return True iff *pa_field* is a field this class can wrap.
 
         Two checks, applied in order:
@@ -1582,7 +1602,7 @@ def register_value_projector(
 
 def drop_from_schema(
     _model_cls: type[BaseModel], _name: str, _info: object
-) -> list[pa.Field]:
+) -> list[pa.Field[pa.DataType]]:
     """A value projector leaving a scalar's property out of its derived schema.
 
     Registered with :func:`register_value_projector` for a property that is
@@ -1719,7 +1739,9 @@ def _unwrap_optional(py_type: Any) -> tuple[Any, bool]:
 
 
 @lru_cache(maxsize=None)
-def _derive_arrow_fields(model_cls: type[BaseModel]) -> tuple[pa.Field, ...]:
+def _derive_arrow_fields(
+    model_cls: type[BaseModel],
+) -> tuple[pa.Field[pa.DataType], ...]:
     """Translate a pydantic model class into a tuple of ``pa.Field``.
 
     Cached per class — derivation runs exactly once per scalar.  Computed
@@ -1732,7 +1754,7 @@ def _derive_arrow_fields(model_cls: type[BaseModel]) -> tuple[pa.Field, ...]:
     the ``pa.Schema`` describes fielded storage where nulls are
     first-class.
     """
-    out: list[pa.Field] = []
+    out: list[pa.Field[pa.DataType]] = []
     for name, info in model_cls.model_fields.items():
         proj = _lookup_value_projector(model_cls, name)
         if proj is not None:
@@ -1860,9 +1882,9 @@ class StructArrayBuilder:
         self,
         *,
         target_schema: pa.StructType,
-        pa_fields: list[pa.Field],
+        pa_fields: list[pa.Field[pa.DataType]],
         validate_obj: "Callable[[Any], None] | None",
-        emit_sub_arrays: "Callable[[Sequence[Any | None]], list[pa.Array]]",
+        emit_sub_arrays: "Callable[[Sequence[Any | None]], list[pa.Array[Any]]]",
     ) -> None:
         self._target_schema = target_schema
         self._pa_fields = pa_fields
@@ -1875,7 +1897,7 @@ class StructArrayBuilder:
     def from_model(cls, model_cls: type[BaseModel]) -> "StructArrayBuilder":
         """Build a builder driven by a pydantic ``BaseModel`` subclass."""
         target_schema = derive_arrow_struct(model_cls)
-        pa_fields: list[pa.Field] = list(target_schema)
+        pa_fields: list[pa.Field[pa.DataType]] = list(target_schema)
         sub_blocks = _group_pa_fields_by_pydantic_field(model_cls, pa_fields)
 
         def _validate(obj: Any) -> None:
@@ -1887,8 +1909,8 @@ class StructArrayBuilder:
                     f"{type(obj).__name__}"
                 )
 
-        def _emit(objects: Sequence[Any | None]) -> list[pa.Array]:
-            arrays: list[pa.Array] = []
+        def _emit(objects: Sequence[Any | None]) -> list[pa.Array[Any]]:
+            arrays: list[pa.Array[Any]] = []
             for py_field_name, pa_block in sub_blocks.items():
                 if py_field_name is None:
                     raise TypeError(
@@ -1922,7 +1944,7 @@ class StructArrayBuilder:
     def from_schema_and_extractors(
         cls,
         target_schema: pa.StructType,
-        extractors: "dict[str, Callable[[Sequence[Any | None]], pa.Array]]",
+        extractors: "dict[str, Callable[[Sequence[Any | None]], pa.Array[Any]]]",
     ) -> "StructArrayBuilder":
         """Build a builder driven by an explicit schema and per-sub-field extractors.
 
@@ -1931,7 +1953,7 @@ class StructArrayBuilder:
         sequence (with ``None`` for null rows) and returns a single
         ``pa.Array`` whose type matches the sub-field.
         """
-        pa_fields: list[pa.Field] = list(target_schema)
+        pa_fields: list[pa.Field[pa.DataType]] = list(target_schema)
         expected = {f.name for f in pa_fields}
         if set(extractors.keys()) != expected:
             missing = sorted(expected - set(extractors.keys()))
@@ -1942,7 +1964,7 @@ class StructArrayBuilder:
                 f"unexpected: {extra}."
             )
 
-        def _emit(objects: Sequence[Any | None]) -> list[pa.Array]:
+        def _emit(objects: Sequence[Any | None]) -> list[pa.Array[Any]]:
             return [extractors[f.name](objects) for f in pa_fields]
 
         return cls(
@@ -1977,14 +1999,14 @@ class StructArrayBuilder:
 
 def _group_pa_fields_by_pydantic_field(
     model_cls: type[BaseModel],
-    pa_fields: list[pa.Field],
-) -> "dict[str | None, list[pa.Field]]":
+    pa_fields: list[pa.Field[pa.DataType]],
+) -> "dict[str | None, list[pa.Field[pa.DataType]]]":
     """Map each ``pa.Field`` back to the pydantic field that produced it."""
     pyd_names = list(model_cls.model_fields.keys())
     pyd_name_set = set(pyd_names)
-    out: dict[str | None, list[pa.Field]] = {n: [] for n in pyd_names}
+    out: dict[str | None, list[pa.Field[pa.DataType]]] = {n: [] for n in pyd_names}
 
-    matched_pa: list[pa.Field] = []
+    matched_pa: list[pa.Field[pa.DataType]] = []
     for pf in pa_fields:
         if pf.name in pyd_name_set:
             out[pf.name].append(pf)
@@ -2018,9 +2040,9 @@ def _build_field_arrays(
     model_cls: type[BaseModel],
     field_name: str,
     field_info: Any,
-    pa_subfields: list[pa.Field],
+    pa_subfields: list[pa.Field[pa.DataType]],
     values: list[Any],
-) -> list[pa.Array]:
+) -> list[pa.Array[Any]]:
     """Produce one or more ``pa.Array`` for a single pydantic field's slot."""
     if not pa_subfields:
         return []
@@ -2188,7 +2210,7 @@ def parquet_metadata_for_model(
     return metadata
 
 
-def field_metadata(pa_field: pa.Field) -> dict[str, Any]:
+def field_metadata(pa_field: pa.Field[pa.DataType]) -> dict[str, Any]:
     """Return the TimeToAlign! payload attached to *pa_field*, or ``{}``.
 
     The one way to read a field's unit, representation or timeline id.

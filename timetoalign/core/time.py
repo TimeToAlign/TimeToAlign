@@ -2178,6 +2178,39 @@ class TimeScalar(ScalarVocabulary, BaseModel):
     value: TimeScalarValue
     unit: TimeUnit
 
+    def __init__(
+        self,
+        value: TimeScalarValue | dict[str, Any] | None = None,
+        unit: TimeUnit | str | None = None,
+        /,
+        *,
+        number_type: NumberType | str | None = None,
+        rounding: str = "round",
+        **data: Any,
+    ) -> None:
+        """The constructor of ``Coordinate`` and ``Duration``.
+
+        Takes the value and the unit positionally or as keywords, never both,
+        and settles the value under the scalar construction protocol
+        (:func:`_apply_construction_protocol`).
+        """
+        if type(self) is TimeScalar:
+            raise TypeError(
+                "TimeScalar is abstract; construct Coordinate, Duration, "
+                "IdCoordinate or IdDuration"
+            )
+        if value is not None or unit is not None:
+            if "value" in data or "unit" in data:
+                raise TypeError(
+                    f"{type(self).__name__} received conflicting positional "
+                    "and keyword arguments"
+                )
+            data = {"value": value, "unit": unit, **data}
+        data = _apply_construction_protocol(
+            data, number_type=number_type, rounding=rounding
+        )
+        super().__init__(**data)
+
     # -- validators ---------------------------------------------------------
 
     @model_validator(mode="after")
@@ -2443,7 +2476,7 @@ class TimeScalar(ScalarVocabulary, BaseModel):
         Preserves ``timeline_id`` for Id-variants.
         """
         tl_id = self._id_or_none()
-        if tl_id is not None:
+        if isinstance(self, IdTimeScalar) and tl_id is not None:
             return type(self)(value, unit, tl_id)
         return type(self)(value, unit)
 
@@ -2480,12 +2513,45 @@ class IdTimeScalar(TimeScalar):
 
     timeline_id: str
 
-    def __init__(self, *args: Any, **data: Any) -> None:
+    def __init__(
+        self,
+        value: TimeScalarValue | None = None,
+        unit: TimeUnit | str | None = None,
+        timeline_id: str | None = None,
+        /,
+        *,
+        number_type: NumberType | str | None = None,
+        rounding: str = "round",
+        **data: Any,
+    ) -> None:
+        """The constructor of ``IdCoordinate`` and ``IdDuration``.
+
+        Takes the value, the unit and the timeline id positionally or as
+        keywords, never one of them both ways, and settles the value under
+        the scalar construction protocol (:func:`_apply_construction_protocol`).
+        """
         if type(self) is IdTimeScalar:
             raise TypeError(
                 "IdTimeScalar is abstract; construct IdCoordinate or IdDuration"
             )
-        super().__init__(*args, **data)
+        positional = {
+            k: v
+            for k, v in (
+                ("value", value),
+                ("unit", unit),
+                ("timeline_id", timeline_id),
+            )
+            if v is not None
+        }
+        if positional and any(k in data for k in positional):
+            raise TypeError(
+                f"{type(self).__name__} received conflicting positional and "
+                "keyword arguments"
+            )
+        data = _apply_construction_protocol(
+            {**positional, **data}, number_type=number_type, rounding=rounding
+        )
+        BaseModel.__init__(self, **data)
 
     @field_validator("timeline_id", mode="before")
     @classmethod
@@ -3144,27 +3210,9 @@ class Coordinate(TimeScalar):
         Duration(120, ticks)
     """
 
-    def __init__(
-        self,
-        value: TimeScalarValue | dict[str, Any] | None = None,
-        unit: TimeUnit | str | None = None,
-        /,
-        *,
-        number_type: NumberType | str | None = None,
-        rounding: str = "round",
-        **data: Any,
-    ) -> None:
-        if value is not None or unit is not None:
-            if "value" in data or "unit" in data:
-                raise TypeError(
-                    f"{type(self).__name__} received conflicting positional "
-                    "and keyword arguments"
-                )
-            data = {"value": value, "unit": unit, **data}
-        data = _apply_construction_protocol(
-            data, number_type=number_type, rounding=rounding
-        )
-        super().__init__(**data)
+    # The base's constructor, named here so that type checkers see it
+    # rather than the keyword-only one they derive for a pydantic model.
+    __init__ = TimeScalar.__init__
 
     def __index__(self) -> int:
         if isinstance(self.value, int) and not isinstance(self.value, bool):
@@ -3382,27 +3430,9 @@ class Duration(TimeScalar):
         unit: The time unit (e.g., seconds, quarters, ticks).
     """
 
-    def __init__(
-        self,
-        value: TimeScalarValue | dict[str, Any] | None = None,
-        unit: TimeUnit | str | None = None,
-        /,
-        *,
-        number_type: NumberType | str | None = None,
-        rounding: str = "round",
-        **data: Any,
-    ) -> None:
-        if value is not None or unit is not None:
-            if "value" in data or "unit" in data:
-                raise TypeError(
-                    f"{type(self).__name__} received conflicting positional "
-                    "and keyword arguments"
-                )
-            data = {"value": value, "unit": unit, **data}
-        data = _apply_construction_protocol(
-            data, number_type=number_type, rounding=rounding
-        )
-        super().__init__(**data)
+    # The base's constructor, named here so that type checkers see it
+    # rather than the keyword-only one they derive for a pydantic model.
+    __init__ = TimeScalar.__init__
 
     @property
     def semantic_type(self) -> str:
@@ -3566,34 +3596,9 @@ class IdCoordinate(Coordinate, IdTimeScalar):
     # plain coordinate one rather than the derived "IdCoordinateField".
     field_type_name = "CoordinateField"
 
-    def __init__(
-        self,
-        value: TimeScalarValue | None = None,
-        unit: TimeUnit | str | None = None,
-        timeline_id: str | None = None,
-        /,
-        *,
-        number_type: NumberType | str | None = None,
-        rounding: str = "round",
-        **data: Any,
-    ) -> None:
-        positional = {
-            k: v
-            for k, v in (
-                ("value", value),
-                ("unit", unit),
-                ("timeline_id", timeline_id),
-            )
-            if v is not None
-        }
-        if positional and any(k in data for k in positional):
-            raise TypeError(
-                "IdCoordinate received conflicting positional and keyword arguments"
-            )
-        data = _apply_construction_protocol(
-            {**positional, **data}, number_type=number_type, rounding=rounding
-        )
-        BaseModel.__init__(self, **data)
+    # The constructor taking a timeline id; without this name the plain
+    # base, which precedes IdTimeScalar in the MRO, would supply its own.
+    __init__ = IdTimeScalar.__init__
 
     @classmethod
     def from_coordinate(cls, coord: Coordinate, timeline_id: str) -> IdCoordinate:
@@ -3732,34 +3737,9 @@ class IdDuration(Duration, IdTimeScalar):
     # carried in field metadata rather than derived into the name.
     field_type_name = "DurationField"
 
-    def __init__(
-        self,
-        value: TimeScalarValue | None = None,
-        unit: TimeUnit | str | None = None,
-        timeline_id: str | None = None,
-        /,
-        *,
-        number_type: NumberType | str | None = None,
-        rounding: str = "round",
-        **data: Any,
-    ) -> None:
-        positional = {
-            k: v
-            for k, v in (
-                ("value", value),
-                ("unit", unit),
-                ("timeline_id", timeline_id),
-            )
-            if v is not None
-        }
-        if positional and any(k in data for k in positional):
-            raise TypeError(
-                "IdDuration received conflicting positional and keyword arguments"
-            )
-        data = _apply_construction_protocol(
-            {**positional, **data}, number_type=number_type, rounding=rounding
-        )
-        BaseModel.__init__(self, **data)
+    # The constructor taking a timeline id; without this name the plain
+    # base, which precedes IdTimeScalar in the MRO, would supply its own.
+    __init__ = IdTimeScalar.__init__
 
     @classmethod
     def from_duration(cls, dur: Duration, timeline_id: str) -> IdDuration:

@@ -2785,6 +2785,11 @@ class _AxisField(SemanticField[_AxisFieldScalarT]):
     unbound, and :meth:`metadata_dict` states no axis.
     """
 
+    def __repr__(self) -> str:
+        if self.unit is None:
+            return f"{type(self).__name__}(name={self.name!r}, {self._unbound_description()})"
+        return self._repr_bound()
+
     @property
     @abstractmethod
     def unit(self) -> TimeUnit | None:
@@ -2838,11 +2843,6 @@ class _AxisField(SemanticField[_AxisFieldScalarT]):
             raise self._unbound_error()
         return unit
 
-    def __repr__(self) -> str:
-        if self.unit is None:
-            return f"{type(self).__name__}(name={self.name!r}, {self._unbound_description()})"
-        return self._repr_bound()
-
     def _repr_bound(self) -> str:
         """The repr of a bound field."""
         return super().__repr__()
@@ -2860,8 +2860,9 @@ class _AxisField(SemanticField[_AxisFieldScalarT]):
 class TimeScalarField(_AxisField[TimeScalarT]):
     """Abstract parent for ``Coordinate`` / ``Duration`` (+ Id) semantic fields.
 
-    Provides the shared ``from_field`` / ``from_table`` / ``__repr__``
-    machinery for ``CoordinateField`` and ``DurationField``. Concrete
+    Provides the shared ``from_field`` / ``from_table`` machinery for
+    ``CoordinateField`` and ``DurationField``; the axis accessors and the
+    repr come from :class:`_AxisField`. Concrete
     subclasses pin the scalar (``TimeScalarField[Coordinate]``, which drives
     ``scalar_cls`` and ``pa_schema`` caching through
     ``SemanticField.__init_subclass__``), then optionally override

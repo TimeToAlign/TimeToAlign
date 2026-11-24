@@ -919,8 +919,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
            ``XField``.
 
         Intermediate abstract classes that do not pin ``T`` (e.g.
-        ``TimeScalarField`` extends ``SemanticField[TimeScalarT]``, a type
-        variable) leave ``scalar_cls`` / ``pa_schema`` as ``None``; their
+        ``TimeScalarField``, whose parameter is a type variable) leave ``scalar_cls`` / ``pa_schema`` as ``None``; their
         concrete children resolve normally.
         """
         super().__init_subclass__(**kw)
@@ -1403,9 +1402,9 @@ def _resolve_scalar_cls(cls: type) -> type[BaseModel] | None:
 
     Returns the pydantic ``BaseModel`` subclass ``T`` when found, or
     ``None`` when the class is an intermediate abstract subclass that
-    does not pin ``T`` (e.g. ``TimeScalarField`` extends
-    ``SemanticField[TimeScalarT]``, a type variable; its children
-    ``CoordinateField`` and ``DurationField`` pin it).
+    does not pin ``T`` (e.g. ``TimeScalarField``, whose parameter is a
+    type variable; its children ``CoordinateField`` and ``DurationField``
+    pin it).
     """
     for base in getattr(cls, "__orig_bases__", ()) or ():
         origin = get_origin(base)

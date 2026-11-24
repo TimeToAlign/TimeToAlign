@@ -306,10 +306,12 @@ Locked: |
   a locked timeline, setting length, append_child() and append_segment()
   raise RuntimeError, and content, a child or a MatchClaim position
   (AlignmentBundle.create_match_claims()) past its end is refused with a
-  ValueError before anything is added; create_child_from_region() gives a
-  child of any region within its length. A loader locks a timeline whose
-  source states its length: AudioLoader a recording at the file's length, a
-  score loader a score whose measures state every length, at their sum.
+  ValueError before anything is added, unless add_events() or add_child() is
+  given allow_expansion=True; create_child_from_region() gives a child of any
+  region within its length. A loader locks a timeline whose source states its
+  length: AudioLoader a recording at the file's length, a score loader a score
+  whose measures all state their length, at the end of its last measure or of
+  its last event, whichever is later.
 
 Marker: |
   A named position in a timeline's flow control that a Jump can target, such

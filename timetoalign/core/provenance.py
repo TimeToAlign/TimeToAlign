@@ -360,7 +360,7 @@ class ProvenanceField(SemanticField[Provenance]):
     ) -> ProvenanceField:
         """Build a field from entries (``None`` for a row stating none)."""
         array = provenance_array(values)
-        return cls.from_field((array, pa.field(name, cls.pa_schema)))
+        return cls.from_field((array, pa.field(name, array.type)))
 
     def passes_belief_filter(
         self,
@@ -466,10 +466,10 @@ def belief_mask(
     n = 0 if provenance is None else len(provenance)
     if believer is None:
         return pa.array(np.ones(n, dtype=bool), type=pa.bool_())
-    if n == 0:
+    if provenance is None or n == 0:
         return pa.array([], type=pa.bool_())
-    # ``flatten`` carries a null entry over to its beliefs.
-    held = provenance.flatten()[provenance.type.get_field_index("beliefs")]
+    # ``struct_field`` carries a null entry over to its beliefs.
+    held = pc.struct_field(provenance, "beliefs")
     stated = pc.list_flatten(held)
     owners = pc.cast(pc.list_parent_indices(held), pa.int64())
     # Each row's state is the believer's belief where the row holds one,
@@ -477,8 +477,11 @@ def belief_mask(
     # written, but two spellings of one actor (``ex:ana`` and the IRI it
     # expands to) name one believer only under *context*: the row then
     # takes the most critical of them, in :data:`_CRITICAL_FIRST` order.
-    own = pc.fill_null(_names_actor(stated.field("actor"), believer, context), False)
-    beliefs_held = stated.field("belief").filter(own)
+    own = pc.fill_null(
+        _names_actor(pc.struct_field(stated, "actor"), believer, context),
+        pa.scalar(False),
+    )
+    beliefs_held = pc.struct_field(stated, "belief").filter(own)
     # One rank per row, the most critical belief held; a row holding none
     # keeps the rank past the last belief, which reads as "undecided".
     rank = np.full(n, len(_CRITICAL_FIRST), dtype=np.int64)
@@ -502,11 +505,15 @@ def _names_actor(
     """
     distinct = pc.unique(actors)
     names = pa.array(
-        [actor_iri(actor, context) for actor in distinct.to_pylist()], pa.string()
+        [
+            None if actor is None else actor_iri(actor, context)
+            for actor in distinct.to_pylist()
+        ],
+        pa.string(),
     )
     return pc.equal(
         pc.take(names, pc.index_in(actors, value_set=distinct)),
-        actor_iri(believer, context),
+        pa.scalar(actor_iri(believer, context), pa.string()),
     )
 
 

@@ -271,6 +271,16 @@ class TestHeldIdWithAnotherSpan:
             "leave out the ID (or give a new one)",
         )
 
+    def test_a_held_span_named_with_its_start_only_is_refused(self) -> None:
+        bundle = self._with_m1()
+        _refused(
+            bundle,
+            [({"id": "m1", "start": 0}, "score", {"start": 1.0}, "clock")],
+            "Pair 0: the side on timeline 'score' names the event 'm1' it holds, which "
+            "lies from 0 quarters to 4 quarters, and states at 0 quarters",
+            "Give its own span or leave out 'start' and 'end'",
+        )
+
     def test_a_note_named_with_another_position_is_refused(self) -> None:
         bundle = _bundle()
         _refused(

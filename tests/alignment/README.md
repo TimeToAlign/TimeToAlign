@@ -3581,7 +3581,14 @@ an unlocked one with `locked=False`.
    with a span not its own (`{"id": "n1", "start": 5}`, the Note at 4) is
    refused alike. Accepted: `{"id": "m1", "start": 0, "end": 4}` (same
    span) and `{"id": "m1"}` (no span) both claim the Projection `m1` with
-   the anchors `0` and `4`, and `score` holds `m1` once.
+   the anchors `0` and `4`, and `score` holds `m1` once. **A dict side with
+   `start` alone states an instant**, so the held span `m1` named with its
+   own start only (`{"id": "m1", "start": 0}`) is refused, the message
+   naming the span `from 0 quarters to 4 quarters` and the instant `at 0
+   quarters`: a matching start is not enough, since the side would claim
+   an instant the event is not. Its neighbour, differing only by stating
+   the end `4` as well, is the accepted same-span case, which returns `m1`
+   (an interval claim with the anchors `0` and `4`).
 5. **A side's name is kept.** A first claim states `{"start": 1, "name":
    "bar 1"}` on `score`; a second call claims the same position without a
    name, a third names the Projection by its ID (`"projection_1"`): both

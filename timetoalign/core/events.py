@@ -4738,7 +4738,7 @@ class EventReference(ScalarVocabulary, BaseModel):
         return validate_id(value)
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> EventReference | None:
+    def from_row(cls, row: dict[str, Any] | None) -> EventReference | None:
         """Construct from a storage-row dict; ``None`` for a null cell."""
         if row is None:
             return None
@@ -4759,7 +4759,7 @@ class EventReferenceField(SemanticField[EventReference]):
     """
 
 
-class Event(_OnOneAxis, ScalarVocabulary, BaseModel):
+class Event(_OnOneAxis, ScalarVocabulary, BaseModel, frozen=True):
     """An event of a timeline: its ID and its position on the timeline's axis.
 
     The base of the event types that are scalars of their own
@@ -4776,7 +4776,7 @@ class Event(_OnOneAxis, ScalarVocabulary, BaseModel):
         {'event_type': 'Event', 'start': Coordinate(3, samples), 'duration': None}
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     id: str | None = None  # noqa: A003 - the event's ID, a column of its table
     start: Coordinate
@@ -4868,7 +4868,7 @@ class EventField(SharedAxisField[Event]):
     """Paired Field for :class:`Event`: ``{id, start, duration}`` on one axis."""
 
 
-class Projection(Event):
+class Projection(Event, frozen=True):
     """An event standing on a timeline for an event not held there.
 
     A Projection is an event type of its own (``event_type`` ``"Projection"``
@@ -4981,7 +4981,7 @@ class ProjectionField(SemanticField[Projection]):
         return cls.from_field((array, pa_field))
 
 
-class Box(Event):
+class Box(Event, frozen=True):
     """An area of an image as an interval event of a timeline along its x.
 
     A Box holds exactly one shape, a :class:`BoundingBox` or a
@@ -5003,7 +5003,7 @@ class Box(Event):
         (Coordinate(378, pixels), Duration(139, pixels))
     """
 
-    duration: Duration
+    duration: Duration = Field(...)
     bounding_box: BoundingBox | None = None
     quadrilateral: Quadrilateral | None = None
 
@@ -5085,9 +5085,11 @@ class Box(Event):
     @property
     def shape(self) -> Shape:
         """The shape the Box holds."""
-        return (
+        shape = (
             self.bounding_box if self.bounding_box is not None else self.quadrilateral
         )
+        assert shape is not None, "a Box holds exactly one shape (its validator)"
+        return shape
 
 
 class BoxField(SharedAxisField[Box]):

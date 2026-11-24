@@ -386,9 +386,16 @@ own (`specific_pitch` on a spelled score, a bare `pitch` number, an
 stated for fields in general: a property the field's struct leaves out is
 read from the columns holding a field of the property's type (each arm of
 its annotation with a paired field, by every discovery strategy), else from
-the column of the property's own name; those columns ride in the composed
-struct under their own names, so the scalar's `from_row` reads them, and
-the stored table still holds the pitch once. A subtype is read on the rows
+the column of the property's own name where its type is one the scalar
+reads (a struct casting to the struct of one of the arms, or a number
+standing for an arm whose struct holds one number); those columns ride in
+the composed struct under their own names, so the scalar's `from_row` reads
+them, and the stored table still holds the pitch once. Such a property
+needs a representing column whether the scalar requires it or not: a table
+of Notes without one states its pitches in a form the scalar cannot read
+(a pitch name string, a spelling split over raw columns) or not at all,
+and gives no field, as before the composition existed; read as Notes, every
+one of its notes would come back a rest. A subtype is read on the rows
 of its base's name (`ScoreNote` on rows typed `Note`) when the table
 states every property it adds, read as the field's types; nothing in the
 rule names a type.
@@ -406,9 +413,23 @@ rule names a type.
   rests). The table's columns are the same before and after the call (no
   second pitch column is stored), the field's struct holds `pitch` once,
   after the Note's members.
-- **A Note without a pitch column is a rest.** The three-row table above
-  (`user_units`, `fraction`): `get_field(Note)` is `[None, Note(start 0,
-  end 1, duration 1), None]`, each number a `Fraction`, `pitch` `None`.
+- **No column the scalar reads a pitch from: no field.** Each table below
+  answers `get_field(Note)` with the `KeyError` every field the table
+  cannot give raises (`No field matching 'NoteField' found in table.
+  Available columns: [...]`) and `has_field(NoteField)` with `False`,
+  exactly as `get_field(Note)` answered on every table before an event
+  type's field was composed: the three-row table of the previous section
+  (its Note row has no pitch column at all); one Note row whose `pitch` is
+  the name string `"E♭5"` (as the EEP note files state it); one Note row
+  with a bare `midi` integer on a base `EventData`, which declares no view
+  of a `midi` column (only a score's `NoteEventData` does); one Note row
+  spelling its pitch in raw `step`, `octave` and `actual_accidental`
+  columns (as IEEE 1599 states it). What would show it broken: a
+  `NoteField` whose items are all rests. The same row with `pitch` the
+  integer 63 gives `[Note(..., EnharmonicPitch(63))]`: the own-name
+  column counts where it is a number. The corpus tables these shapes come
+  from are read in `tests/timelines/README.md`, "A field only where the
+  table holds the type's data".
 - **A ScoreNote on the rows of a Note.** A `quarters`/`fraction` table of
   one Note row (start 0, duration 1/2, pitch `{midi_number: 60}`, `staff`
   1, `voice` 2): `get_field(ScoreNote)` is a `ScoreNoteField` holding

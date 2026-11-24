@@ -1247,22 +1247,46 @@ class TestEventTypeFields:
             "'duration']"
         )
 
-    def test_a_note_without_a_pitch_column_is_a_rest(self) -> None:
-        data, _, _ = self._mixed()
-        notes = data.get_field(Note)
-        assert type(notes) is NoteField
-        zero, one = Fraction(0), Fraction(1)
-        assert list(notes) == [
-            None,
-            Note(
-                start=Coordinate(zero, "user_units", number_type="fraction"),
-                end=Coordinate(one, "user_units", number_type="fraction"),
-                duration=Duration(one, "user_units", number_type="fraction"),
+    @staticmethod
+    def _one_note(**columns: Any) -> EventData:
+        row = {"event_type": "Note", "start": Fraction(0), "duration": Fraction(1)}
+        return EventData.from_dicts(
+            [{**row, **columns}], TimeUnit.quarters, NumberType.fraction
+        )
+
+    @pytest.mark.parametrize(
+        "columns",
+        [
+            pytest.param(None, id="no pitch column"),
+            pytest.param({"pitch": "E♭5"}, id="pitch name string"),
+            pytest.param({"midi": 63}, id="bare midi on a base EventData"),
+            pytest.param(
+                {"step": "E", "octave": 5, "actual_accidental": "flat"},
+                id="raw spelling columns",
             ),
-            None,
-        ]
-        assert type(notes[1].start.value) is Fraction
-        assert notes[1].pitch is None
+        ],
+    )
+    def test_no_column_the_pitch_is_read_from_no_field(
+        self, columns: dict[str, Any] | None
+    ) -> None:
+        data = self._mixed()[0] if columns is None else self._one_note(**columns)
+        assert type(data) is EventData
+        assert not data.has_field(NoteField)
+        with pytest.raises(KeyError) as refused:
+            data.get_field(Note)
+        assert refused.value.args[0] == (
+            "No field matching 'NoteField' found in table. "
+            f"Available columns: {data.table.column_names}"
+        )
+
+    def test_a_pitch_number_of_its_own_name_is_read(self) -> None:
+        (note,) = self._one_note(pitch=63).get_field(Note)
+        assert note == Note(
+            start=Coordinate(Fraction(0), "quarters"),
+            end=Coordinate(Fraction(1), "quarters"),
+            duration=Duration(Fraction(1), "quarters"),
+            pitch=EnharmonicPitch(midi_number=63),
+        )
 
 
 #: The text of the refusal of a field the table cannot give.

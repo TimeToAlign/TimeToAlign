@@ -476,6 +476,37 @@ def _property_column(
         return None
 
 
+def _reads_as_one_of(
+    type_: pa.DataType, fields: list[type[SemanticField[Any]]]
+) -> bool:
+    """Whether a column of *type_* holds values of one of the *fields*' scalars.
+
+    A struct that casts to the struct of one of the fields, member by
+    member; a number (an integer or a float) where one of the fields' structs
+    holds one number, the value it stands for (a bare MIDI pitch for
+    ``{midi_number}``). A string, or a struct of other members, holds none.
+    """
+    for field_cls in fields:
+        struct = field_cls.pa_schema
+        if struct is None:
+            continue
+        if pa.types.is_struct(type_):
+            try:
+                pa.array([], type_).cast(pa.struct(list(struct)))
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+                continue
+            return True
+        if (pa.types.is_integer(type_) or pa.types.is_floating(type_)) and (
+            len(struct) == 1
+            and (
+                pa.types.is_integer(struct.field(0).type)
+                or pa.types.is_floating(struct.field(0).type)
+            )
+        ):
+            return True
+    return False
+
+
 def _wrap_raw(col: pa.ChunkedArray | pa.Array, pa_field: pa.Field) -> DataField:
     """Wrap a field's array in the appropriate raw ``DataField`` subclass."""
     dt = pa_field.type
@@ -706,8 +737,9 @@ class SemanticFieldAccessMixin:
            ``specific_pitch`` struct fields from the TSV loader.
         4. **Afforded fields**: raw atomic columns the EventData declares
            in :attr:`_afforded_fields`.
-        5. **Event types**: the field of an event type whose required
-           properties are columns of the table (a ``Box``, a ``Note``),
+        5. **Event types**: the field of an event type whose data the table
+           holds (:meth:`_holds_properties`: a ``Box``, a ``Note`` whose
+           pitch is in a column the ``Note`` reads),
            composed from them over the rows of that type
            (:meth:`_event_type_field`).
 
@@ -895,15 +927,25 @@ class SemanticFieldAccessMixin:
 
         Every property the scalar requires must be a column of the table: of
         its own name where the field's struct holds it, else one of the
-        columns representing it (:meth:`_columns_representing`). A scalar
+        columns representing it (:meth:`_columns_representing`). A property
+        the struct leaves out, represented once in a column of its own (a
+        Note's pitch), needs such a column whether it is required or not:
+        without one, the table states the property in a form the scalar
+        cannot read (a pitch name string, a spelling split over raw
+        columns), and every event would read as if it had none. A scalar
         requiring none of its properties is held only where every property
         is: any row whatsoever would otherwise read as one, its data null.
-        An optional property without a column is one no row states.
+        Any other optional property without a column is one no row states.
         """
         properties = scalar_cls.model_fields
         needed = [
             prop for prop, info in properties.items() if info.is_required()
         ] or list(properties)
+        needed += [
+            prop
+            for prop in properties
+            if prop not in schema.names and prop not in needed
+        ]
         columns = self._table.column_names
         return all(
             (
@@ -962,9 +1004,12 @@ class SemanticFieldAccessMixin:
         has a paired field), the columns this table holds a field of that
         type in (by every discovery strategy of :meth:`get_fields`), in the
         annotation's order, each once; then the column of the property's own
-        name, as it is stored (a bare MIDI ``pitch`` number on a table that
-        declares no view of it). None where the table holds neither: the
-        property is null throughout.
+        name, as it is stored, where its type is one the scalar reads
+        (:func:`_reads_as_one_of`): the struct of one of those types (a
+        ``pitch`` held as ``{midi_number}``), or a number standing for a
+        type whose struct holds one number (a bare MIDI ``pitch`` on a
+        table that declares no view of it), never a string such as a pitch
+        name. None where the table holds neither.
         """
         annotation = scalar_cls.model_fields[prop].annotation
         arms = (
@@ -973,15 +1018,19 @@ class SemanticFieldAccessMixin:
             else (annotation,)
         )
         paired = _get_scalar_to_field_map()
+        fields = [
+            paired[arm] for arm in arms if isinstance(arm, type) and arm in paired
+        ]
         names: list[str] = []
-        for arm in arms:
-            field_cls = paired.get(arm) if isinstance(arm, type) else None
-            if field_cls is None:
-                continue
+        for field_cls in fields:
             for field in self.get_fields(field_cls):
                 if field.name in self._table.column_names and field.name not in names:
                     names.append(field.name)
-        if prop in self._table.column_names and prop not in names:
+        if (
+            prop in self._table.column_names
+            and prop not in names
+            and _reads_as_one_of(self._table.schema.field(prop).type, fields)
+        ):
             names.append(prop)
         return names
 

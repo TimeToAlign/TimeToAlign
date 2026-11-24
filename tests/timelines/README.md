@@ -2970,6 +2970,23 @@ data as absent, so these are the cases that would show it broken:
   (`BoxField.from_field` made to raise `ValueError("broken")` for the
   test), `get_field(Box)` raises that `ValueError`, never `No field
   matching ...`.
+- *Notes whose pitch the scalar cannot read*. A property the field's
+  struct leaves out (a Note's pitch, represented once in a column of its
+  own) needs a column the scalar reads it from, required or not; else
+  every note would come back a rest. Two loaded tables state pitches only
+  in such forms, and answer `get_field(Note)` and `get_field(ScoreNote)`
+  as every `get_field(Note)` answered before an event type's field was
+  composed: `KeyError` starting `"No field matching 'NoteField' found in
+  table"` (`'ScoreNoteField'` for the ScoreNote), `has_field(NoteField)`
+  `False`. *EEP*, `score`, `beethoven_op18-4iv_multimodal/
+  StringQuartetEEP_I_Normal/StringQuartetEEP_I_Normal_align_vln1.notes`
+  (`EepNotesLoader`): 1,266 Note rows, `pitch` a string column (the first
+  row's value read from the file's first note line); *IEEE 1599*,
+  `ieee1599/bach_artefuga_01.xml` (`Ieee1599Loader`), timeline
+  `los:dlt_2`: 1,038 Note rows, no `pitch`, `specific_pitch` or `midi`
+  column, the spelling in the raw `step`, `octave` and
+  `actual_accidental` columns. What would show it broken: a field of
+  1,266 or 1,038 notes, every one a rest.
 
 **Round trips with exact values from real pages** (`TestRoundTrips`). The
 expected Boxes are built from the sources' own numbers, never from the

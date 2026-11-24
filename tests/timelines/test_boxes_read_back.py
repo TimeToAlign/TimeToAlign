@@ -15,6 +15,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
 import pytest
 from pydantic import BaseModel
 
@@ -42,8 +43,11 @@ from timetoalign.core import (
     SpecificPitch,
     TimeUnit,
 )
+from timetoalign.core.events import canonical_pitch_name
+from timetoalign.loader.alignment.ieee1599 import Ieee1599Loader
 from timetoalign.loader.alignment.tilia import TiliaJsonLoader
 from timetoalign.loader.graphical import DmosLoader, MeiFacsimileLoader
+from timetoalign.loader.physical.eep_notes import EepNotesLoader
 from timetoalign.loader.score import VerovioLoader
 from timetoalign.loader.score.ms3 import Ms3Loader
 from timetoalign.testdata import ensure_data
@@ -502,6 +506,18 @@ class TestScoresReadBack:
         )
 
 
+#: The EEP note file of the first violin, String Quartet Op. 18 No. 4: 1,266
+#: notes, each pitch a name (``Eb5``).
+EEP_VLN1 = (
+    ensure_data("score")
+    / "beethoven_op18-4iv_multimodal"
+    / "StringQuartetEEP_I_Normal"
+    / "StringQuartetEEP_I_Normal_align_vln1.notes"
+)
+#: Bach, The Art of Fugue, Contrapunctus 1, in IEEE 1599; its timeline
+#: ``los:dlt_2`` spells each of its 1,038 notes in raw columns.
+IEEE_BACH = ensure_data("ieee1599") / "bach_artefuga_01.xml"
+
 #: TiLiA's export of Bruckner 5, Scherzo; its timeline ``cpt_4`` ("Takte")
 #: holds 1,146 beats as rows typed ``Beat`` and no ``index`` column.
 TILIA_BRUCKNER = (
@@ -591,3 +607,42 @@ class TestTypesNotHeld:
         monkeypatch.setattr(BoxField, "from_field", classmethod(broken))
         with pytest.raises(ValueError, match="^broken$"):
             seg_2.get_events().get_field(Box)
+
+    @staticmethod
+    def _eep_notes() -> Timeline:
+        return EepNotesLoader.from_file(EEP_VLN1).create_timeline()
+
+    @staticmethod
+    def _ieee_notes() -> Timeline:
+        (timeline,) = [
+            timeline
+            for timeline in Ieee1599Loader.from_file(IEEE_BACH).create_timelines()
+            if timeline.id == "los:dlt_2"
+        ]
+        return timeline
+
+    @pytest.mark.parametrize(
+        ("load", "rows"),
+        [
+            pytest.param("_eep_notes", 1266, id="EEP pitch names"),
+            pytest.param("_ieee_notes", 1038, id="IEEE 1599 raw spelling"),
+        ],
+    )
+    def test_notes_whose_pitch_the_scalar_cannot_read(
+        self, load: str, rows: int
+    ) -> None:
+        events = getattr(self, load)().get_events(event_type="Note")
+        assert len(events) == rows
+        assert not {"specific_pitch", "midi"} & set(events.schema.names)
+        if load == "_eep_notes":
+            assert events.schema.field("pitch").type == pa.string()
+            first = EEP_VLN1.read_text(encoding="utf-8").split()[2]
+            assert events.column_values("pitch")[0] == canonical_pitch_name(first)
+        else:
+            assert "pitch" not in events.schema.names
+            assert {"step", "octave", "actual_accidental"} <= set(events.schema.names)
+        for scalar, field_class in ((Note, NoteField), (ScoreNote, ScoreNoteField)):
+            with pytest.raises(KeyError) as raised:
+                events.get_field(scalar)
+            assert raised.value.args[0].startswith(_no_field(field_class))
+            assert events.has_field(field_class) is False

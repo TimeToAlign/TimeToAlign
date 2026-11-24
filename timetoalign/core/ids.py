@@ -276,7 +276,9 @@ def mint_ids(
     """
     first = _highest_minted_number(prefix, id_column(taken)) + 1
     numbers = pa.array(np.arange(first, first + count, dtype=np.int64))
-    return pc.binary_join_element_wise(f"{prefix}_", pc.cast(numbers, pa.string()), "")
+    return pc.utf8_replace_slice(
+        pc.cast(numbers, pa.string()), start=0, stop=0, replacement=f"{prefix}_"
+    )
 
 
 def mint_id(prefix: str, taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> str:

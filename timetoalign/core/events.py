@@ -4919,9 +4919,12 @@ class Projection(Event, frozen=True):
         """
         if row is None:
             return None
+        # ``start`` is a required member of the struct: a null cell is refused
+        # by the constructor, as a missing start is.
+        start: dict[str, Any] = row["start"]
         return cls(
             id=row.get("id"),
-            start=cell_coordinate(row["start"]),
+            start=cell_coordinate(start),
             duration=cell_coordinate(row.get("duration"), Duration),
             projection_of=EventReference.from_row(row.get("projection_of")),
         )

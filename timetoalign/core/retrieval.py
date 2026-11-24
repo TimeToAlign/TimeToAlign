@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from fractions import Fraction
-from typing import Any, Literal, TypeAlias, TypeVar, overload
+from typing import Any, Literal, TypeAlias, TypeGuard, TypeVar, overload
 
 import numpy as np
 import pandas as pd
@@ -141,16 +141,13 @@ def collection_values(value: object) -> tuple[list[object], pd.Index | None]:
         TypeError: If the value is not an accepted finite, one-dimensional
             collection.
     """
-    if isinstance(value, (str, bytes, bytearray, Mapping, Set, Iterator)):
-        raise TypeError(
-            f"Unsupported collection type: {type(value).__name__}; expected a "
-            "finite one-dimensional sequence, NumPy array, pandas Index, or Series"
-        )
-    if isinstance(value, pd.Series):
+    if _is_refused_collection(value):
+        raise _unsupported_collection(value)
+    if _is_series(value):
         return [_python_numeric(item) for item in value.array], value.index
-    if isinstance(value, pd.Index):
+    if _is_index(value):
         return [_python_numeric(item) for item in value], value
-    if isinstance(value, np.ndarray):
+    if _is_ndarray(value):
         if value.ndim != 1:
             raise TypeError("NumPy coordinate collections must be one-dimensional")
         if value.dtype.kind not in "biufO":
@@ -158,17 +155,53 @@ def collection_values(value: object) -> tuple[list[object], pd.Index | None]:
                 f"Unsupported NumPy dtype {value.dtype}; expected numeric or object"
             )
         return [_python_numeric(item) for item in value], None
-    if isinstance(value, Sequence):
+    if _is_sequence(value):
         return list(value), None
-    raise TypeError(
+    raise _unsupported_collection(value)
+
+
+def _is_refused_collection(value: object) -> bool:
+    """Whether *value* is refused although iterable: a string, a mapping, a
+    set or a one-shot iterator."""
+    return isinstance(value, (str, bytes, bytearray, Mapping, Set, Iterator))
+
+
+def _unsupported_collection(value: object) -> TypeError:
+    """The error refusing *value* as a coordinate or key collection."""
+    return TypeError(
         f"Unsupported collection type: {type(value).__name__}; expected a "
         "finite one-dimensional sequence, NumPy array, pandas Index, or Series"
     )
 
 
+def _is_series(value: object) -> TypeGuard[pd.Series[Any]]:
+    """Whether *value* is a pandas Series, of any dtype."""
+    return isinstance(value, pd.Series)
+
+
+def _is_index(value: object) -> TypeGuard[pd.Index[Any]]:
+    """Whether *value* is a pandas Index, of any dtype."""
+    return isinstance(value, pd.Index)
+
+
+def _is_ndarray(value: object) -> TypeGuard[np.ndarray[Any, np.dtype[Any]]]:
+    """Whether *value* is a NumPy array, of any shape and dtype."""
+    return isinstance(value, np.ndarray)
+
+
+def _is_sequence(value: object) -> TypeGuard[Sequence[object]]:
+    """Whether *value* is a sequence, of any item type."""
+    return isinstance(value, Sequence)
+
+
+def _is_numpy_scalar(value: object) -> TypeGuard[np.generic[Any]]:
+    """Whether *value* is a NumPy scalar, of any dtype."""
+    return isinstance(value, np.generic)
+
+
 def _python_numeric(value: object) -> object:
     """Normalize a NumPy scalar to the corresponding Python scalar."""
-    return value.item() if isinstance(value, np.generic) else value
+    return value.item() if _is_numpy_scalar(value) else value
 
 
 def validate_coordinate_collection(
@@ -505,7 +538,12 @@ def coordinate_to_dict(coordinate: TimeScalar) -> dict[str, object]:
     }
 
 
-def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
+def _is_mapping(value: object) -> TypeGuard[Mapping[Any, Any]]:
+    """Whether *value* is a mapping, of any key and value types."""
+    return isinstance(value, Mapping)
+
+
+def coordinate_from_dict(entry: object) -> Coordinate:
     """Restore one coordinate from the TimeToShare representation.
 
     Args:
@@ -514,7 +552,7 @@ def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
     Returns:
         The exact coordinate declared by the entry.
     """
-    if not isinstance(entry, Mapping):
+    if not _is_mapping(entry):
         raise ValueError(f"coordinate must be an object, got {entry!r}")
     for key in ("unit", "number_type", "value"):
         if key not in entry:

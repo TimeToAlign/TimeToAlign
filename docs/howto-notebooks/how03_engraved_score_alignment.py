@@ -389,9 +389,10 @@ page.list_children()
 # writes the bundle as a package: a
 # {{< glossary "TimeToShare manifest" >}} holding the timelines, their
 # children and conversion maps and the score's measures, and beside it the
-# MatchClaim table and the recording's Projections table, which the
-# manifest names in its `resources`. A manifest names no event: the claims
-# name the score's notes by their `xml:id`, which the MEI file holds. The
+# MatchClaim table, the recording's Projections table and the score's Note
+# table (`notes.parquet`, experimental), which the manifest names in its
+# `resources`. A manifest names no event: the claims name the score's
+# notes by their `xml:id`, which the Note table holds beside the MEI file. The
 # file opens with the manifest's inline JSON-LD `@context`; the cell below
 # lists the directory, where the MAPS file and the SVG are this guide's
 # own, and prints the manifest from `timelines` on.
@@ -405,8 +406,8 @@ print(sorted(path.name for path in FILES.iterdir()))
 print("\n".join(text[start:][:24]))
 
 # %% [markdown]
-# `from_file()` reads the package back, the claims and the recording's
-# Projections with it, and the bundle answers as before: the drawing's
+# `from_file()` reads the package back, the claims, the recording's
+# Projections and the score's notes with it, and the bundle answers as before: the drawing's
 # point at x = 258 is still 2.08 seconds, and the septuplet note still
 # warps to the same time.
 

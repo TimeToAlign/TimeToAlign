@@ -107,6 +107,13 @@ conformance = [
     "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
     # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
 ]
+# Type information the type checker needs beside the library's own
+# dependencies: PyArrow ships none, so without these stubs every
+# `pyarrow.compute` function is unknown to pyright. Check-time only; install
+# with `pip install --group typing`.
+typing = [
+    "pyarrow-stubs>=20",
+]
 
 [project.urls]
 Homepage = "https://github.com/timetoalign/timetoalign"
@@ -164,8 +171,9 @@ ignore_imports = [
 ]
 
 [tool.pyright]
-# Static type checking, run by hand with `pyright` from this directory. It covers
-# the core package only; a subpackage is added to `include` once it passes.
+# Static type checking, run by hand with `pyright` from this directory after
+# `pip install --group typing`. It covers the core package only; a subpackage is
+# added to `include` once it passes.
 include = ["timetoalign/core"]
 typeCheckingMode = "standard"
 pythonVersion = "3.11"

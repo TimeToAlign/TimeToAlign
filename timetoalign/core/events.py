@@ -89,6 +89,9 @@ from .time import (
 if TYPE_CHECKING:
     import pandas as pd
 
+#: A position or an extent: the two scalars a number of a shape or an event is.
+_PositionOrExtentT = TypeVar("_PositionOrExtentT", Coordinate, Duration)
+
 
 def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
     """Vectorized Python-semantics integer modulo (``a mod n``, n > 0).
@@ -477,13 +480,13 @@ def _axis_value(kind: Any, cell: Any, unit: TimeUnit, number_type: NumberType) -
 
 def _on_axis(
     value: Any,
-    kind: type[TimeScalar],
+    kind: type[_PositionOrExtentT],
     *,
     what: str,
     unit: TimeUnit | str | None,
     number_type: NumberType | str | None,
     owner: str = "A shape",
-) -> TimeScalar:
+) -> _PositionOrExtentT:
     """*value* as a ``Coordinate`` or ``Duration`` (*kind*) of a shape.
 
     The one entry of every number into a shape (and of a Box's origin). A
@@ -833,10 +836,11 @@ class Shape(_OnOneAxis, ScalarVocabulary, BaseModel):
         written = axis.resolve_number_type(number_type)
         names = ("ulx", "uly", "lrx", "lry")
         given = [attributes.get(name) for name in names]
+        stated = [value for value in given if value is not None]
         box = None
-        if None not in given:
+        if len(stated) == len(names):
             box = BoundingBox.from_corners(
-                *(_read_number(value, written) for value in given),
+                *(_read_number(value, written) for value in stated),
                 unit=axis,
                 number_type=written,
             )
@@ -3241,7 +3245,7 @@ class Note(ScalarVocabulary, BaseModel):
 
     @field_validator("duration", mode="before")
     @classmethod
-    def _coerce_duration_from_coordinate(cls, v: object) -> Duration | None:
+    def _coerce_duration_from_coordinate(cls, v: object) -> object:
         if v is None or isinstance(v, Duration):
             return v
         if isinstance(v, Coordinate):
@@ -3326,7 +3330,9 @@ class Note(ScalarVocabulary, BaseModel):
         """
         from .retrieval import coordinate_from_dict
 
-        def _position(raw: Any, kind: type[TimeScalar]) -> TimeScalar | None:
+        def _position(
+            raw: Any, kind: type[_PositionOrExtentT]
+        ) -> _PositionOrExtentT | None:
             if raw is None or isinstance(raw, kind):
                 return raw
             if isinstance(raw, TimeScalar):

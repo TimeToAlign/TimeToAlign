@@ -43,12 +43,12 @@ JSON blob), NOT in the struct.
 Paired-field hierarchy::
 
     SemanticField (Generic[T])
-    └── TimeScalarField  (abstract; _raw_cls = DenominateNumberField;
+    └── TimeScalarField[TimeScalarT]  (abstract; _raw_cls = DenominateNumberField;
                           consolidates the from_field / from_table /
                           metadata-resolve / repr plumbing)
-        ├── CoordinateField   (scalar_cls = Coordinate)
+        ├── CoordinateField   (TimeScalarField[Coordinate])
         │   └── IdCoordinateField (scalar_cls = IdCoordinate, carries timeline_id)
-        └── DurationField     (scalar_cls = Duration)
+        └── DurationField     (TimeScalarField[Duration])
             └── IdDurationField   (scalar_cls = IdDuration, carries timeline_id)
 
 The inner raw field is a ``DenominateNumberField`` (a ``RedundantNumberField``
@@ -2751,12 +2751,13 @@ def _field_binop(
     )
 
 
-class TimeScalarField(SemanticField):
+class TimeScalarField(SemanticField[TimeScalarT]):
     """Abstract parent for ``Coordinate`` / ``Duration`` (+ Id) semantic fields.
 
     Provides the shared ``from_field`` / ``from_table`` / ``__repr__``
     machinery for ``CoordinateField`` and ``DurationField``. Concrete
-    subclasses set ``scalar_cls`` (which drives ``pa_schema`` caching through
+    subclasses pin the scalar (``TimeScalarField[Coordinate]``, which drives
+    ``scalar_cls`` and ``pa_schema`` caching through
     ``SemanticField.__init_subclass__``), then optionally override
     ``semantic_type``, ``metadata_dict``, and ``__getitem__``.
 
@@ -2782,7 +2783,7 @@ class TimeScalarField(SemanticField):
     _raw_cls = DenominateNumberField  # type: ignore[assignment]
 
     # ``scalar_cls`` is intentionally left as ``None`` here — concrete
-    # leaves set it.
+    # leaves pin it.
 
     def __init__(
         self,
@@ -2880,22 +2881,18 @@ class TimeScalarField(SemanticField):
             return None
         return struct_to_coordinate(cell, self._number_type)
 
-    def __getitem__(self, i: int):
+    def __getitem__(self, i: int) -> TimeScalarT | None:
         """Materialise the i-th scalar instance.
 
-        Default implementation builds ``cls.scalar_cls(value, unit)``.
-        Id-variants override to thread the field's ``_timeline_id``
-        into the result.
+        Default implementation builds the paired scalar from
+        ``(value, unit)``. Id-variants override to thread the field's
+        ``_timeline_id`` into the result.
         """
         value = self._materialise_value(i)
         if value is None:
             return None
-        cls = type(self).scalar_cls
-        if cls is None:  # pragma: no cover - guarded by __init_subclass__
-            raise TypeError(
-                f"{type(self).__name__} has no scalar_cls; cannot materialise scalar"
-            )
-        return cls(value, self.unit, number_type=self._number_type)
+        scalar = type(self).paired_scalar()
+        return scalar(value, self.unit, number_type=self._number_type)
 
     # -- unit / number_type resolution helpers ------------------------------
 
@@ -3310,7 +3307,7 @@ class Coordinate(TimeScalar):
 # ---------------------------------------------------------------------------
 
 
-class CoordinateField(TimeScalarField):
+class CoordinateField(TimeScalarField[Coordinate]):
     """Semantic field for coordinate fields.
 
     Wraps a ``StructField`` containing the coordinate struct
@@ -3335,8 +3332,6 @@ class CoordinateField(TimeScalarField):
         >>> cf[0]
         Coordinate(1.5, seconds)
     """
-
-    scalar_cls = Coordinate
 
     @property
     def semantic_type(self) -> str:
@@ -3530,15 +3525,13 @@ class Duration(TimeScalar):
 # ---------------------------------------------------------------------------
 
 
-class DurationField(TimeScalarField):
+class DurationField(TimeScalarField[Duration]):
     """Semantic field for duration fields.
 
     Uses the same coordinate struct ``{value, numerator, denominator}``
     as :class:`CoordinateField`; the distinction is semantic.
     Pairs with :class:`Duration`.
     """
-
-    scalar_cls = Duration
 
     @property
     def semantic_type(self) -> str:

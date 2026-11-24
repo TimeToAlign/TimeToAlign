@@ -1943,6 +1943,45 @@ so a test cannot pass by restating the implementation:
   unlocked and one locked keeps `is_locked` `False` and `True` on the
   slices of the two.
 
+### `test_locked_segment.py` - A Locked Timeline Placed in Another
+
+A timeline whose length its source states arrives locked (a loaded
+recording, a score whose measures state every length). The question is what
+becomes of that fixed length when the timeline is placed in another one.
+Two rules answer it, and the tests prove each on the route that applies:
+
+- **As a child, the lock is kept.** Every route that embeds a timeline as a
+  child of a timeline that is no segment line — `add_child` with the default
+  `locked=None`, `add_child(..., locked=False)` (which keeps the child's own
+  state) and `append_child` — leaves a locked timeline locked. The lock is
+  then observable in three ways, each computed by hand: `is_locked` is
+  `True` and the length is the one it had; content past the end is refused
+  by the timeline's own lock, `Adding content ending at 5 exceeds timeline
+  length 4. Timeline is locked. Use allow_expansion=True to override.`; and a
+  MatchClaim past the end is refused by `create_match_claims` with the
+  message that names the lock (`... past the end of timeline 'rec' at 4
+  seconds. The timeline is locked: ...`). After each refusal the length is
+  still 4 and nothing was added. Writing the parent and reading it again
+  gives a child that is still locked and 4 long. A child left unlocked
+  stays unlocked and round-trips unlocked; that is pinned under
+  `test_unlocked_child.py` ("Reading and writing `locked`", "`add_child`").
+- **As a plain segment, the line's boundaries fix the length.** A segment
+  of a segment line that is no segment line itself is never locked (see
+  "Segments are never locked" above): a locked 4 s recording `A` and a
+  locked 2 s recording `B` appended with `append_segment` to an empty line
+  read `is_locked` `False`. Their lengths are nevertheless fixed while the
+  line's length is known, and more firmly than by a lock: content past the
+  end of `A` (`[0, 5]`) and of `B` (`[0, 3]`) is refused by contiguity
+  (`Segment 'A' cannot end at 5: its successor 'B' starts at 4.`, `Segment
+  'B' cannot end at 7: the line 'line' ends at 6.`) even with
+  `allow_expansion=True`, which would override a lock; and a MatchClaim at
+  5 s on `A` or 3 s on `B` is refused because the timeline cannot grow
+  inside its line, with the contiguity message inside. After each refusal
+  the lengths are 4, 2 and 6 and the bundle holds no MatchClaim. The last
+  segment of a line of unknown length is the one case where this does not
+  hold; it is pinned, as it stands, under "An unlocked segment still keeps
+  the line contiguous" above.
+
 ### `test_locked_region_child.py` - Children from Regions of a Locked Timeline
 
 A lock fixes a timeline's length and nothing more. A child made from one of

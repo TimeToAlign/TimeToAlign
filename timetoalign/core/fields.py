@@ -1172,6 +1172,23 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         return raw
 
     @classmethod
+    def struct_schema(cls) -> pa.StructType:
+        """Return the derived storage struct of this paired field class.
+
+        Every concrete ``XField(SemanticField[X])`` has one; only an
+        intermediate class that does not pin its scalar lacks it.
+
+        Raises:
+            TypeError: If the class has no derived ``pa_schema``.
+        """
+        schema = cls.pa_schema
+        if schema is None:
+            raise TypeError(
+                f"{cls.__name__} has no derived pa_schema; check Generic parametrisation"
+            )
+        return schema
+
+    @classmethod
     def from_field(cls, source: Any, **kw: Any) -> Self:
         """Construct a SemanticField from a source.
 

@@ -4419,8 +4419,7 @@ class MeasureNumberField(SemanticField[MeasureNumber]):
         """
         if isinstance(source, pa.ChunkedArray):
             source = source.combine_chunks()
-        schema = type(self).pa_schema
-        assert schema is not None
+        schema = type(self).struct_schema()
         label_type = schema.field(schema.get_field_index("mn")).type
         labels = source if source.type == label_type else pc.cast(source, label_type)
         arrays = [
@@ -4972,7 +4971,7 @@ class ProjectionField(SemanticField[Projection]):
                     EventReference, [p and p.projection_of for p in items]
                 ),
             ],
-            fields=list(cls.pa_schema),
+            fields=list(cls.struct_schema()),
             mask=pa.array([not flag for flag in present], pa.bool_()),
         )
         pa_field = pa.field(

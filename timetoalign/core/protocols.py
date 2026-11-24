@@ -31,7 +31,7 @@ The ``TwelveTETPitchMixin`` is a concrete mixin (not a Protocol) that adds
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import ClassVar, Protocol, TypeVar, runtime_checkable
 
 from .enums import Domain, NumberType, TimeUnit
 from .fields import ScalarVocabulary
@@ -524,7 +524,7 @@ class TwelveTETPitchMixin(ScalarVocabulary):
     """
 
     #: Short repr prefix.  No sensible default -- each concrete scalar sets it.
-    _REPR_ABBR: str
+    _REPR_ABBR: ClassVar[str]
 
     def __str__(self) -> str:
         return self.get()

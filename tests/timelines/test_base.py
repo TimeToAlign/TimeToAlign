@@ -671,7 +671,7 @@ class TestLocking:
         assert line.is_locked is True
         assert line.list_segments() == ["a", "b", "c"]
         assert line.length == Coordinate(12, TimeUnit.quarters)
-        assert line.is_segment_line() is True
+        assert line.is_segment_line is True
         with pytest.raises(RuntimeError) as appended:
             line.append_segment(self._quarters(1, "d"))
         assert str(appended.value) == (

@@ -292,8 +292,8 @@ grandchild_round_trip
 # starting at it, and the last child keeps its parent's end.
 
 # %%
-piece_is_segment_line = piece.is_segment_line()
-movement_is_segment_line = movement.is_segment_line()
+piece_is_segment_line = piece.is_segment_line
+movement_is_segment_line = movement.is_segment_line
 children_here = movement.get_children_at(movement_again)
 children_here_ids = [child.id for child in children_here]
 development_end_value = development_offset.value + development.length.value

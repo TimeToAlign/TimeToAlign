@@ -3924,7 +3924,7 @@ measures.
     - First segment must start at 0
     - get_segment_by_index()
     - get_segment_at() finds segment by coordinate
-    - `is_segment_line()` uses exact structural coverage, including
+    - `is_segment_line` uses exact structural coverage, including
       zero-length children, and rejects an empty child collection
     - `as_segment_line()` preserves content while enforcing contiguity and a
       homogeneous child class; its segments are copies of the children,
@@ -4013,6 +4013,22 @@ These tests ensure:
    API of their parameter timeline class
 
 ---
+
+#### `is_segment_line` is a read-only property
+
+`Timeline.is_segment_line` is a property, like the other `is_*` answers of a
+timeline (`is_locked`, `is_length_known`) and like the `is_segment_line` key of
+the dictionary form. Written as a method, `timeline.is_segment_line` without a
+call was a bound method and therefore always true, so the tests prove the
+property by comparing with `is True` / `is False`: a bound method is neither,
+and every such assertion fails if the attribute ever becomes a method again.
+`TestSegmentLineCasting.test_is_segment_line_is_a_read_only_property` adds
+three facts the comparisons cannot show: the class attribute is a `property`;
+a timeline whose children leave a gap answers `False` without being called;
+and assigning to the attribute raises `AttributeError`, since the answer is
+derived from the children and never stored. The answer is structural for
+every class: a plain `Timeline` that tiles answers `True`, and the
+`SegmentLine` cast of it (`as_segment_line()`) answers the same.
 
 ### Real Data Validation (`TestUnifiedAPIWithRealData`)
 

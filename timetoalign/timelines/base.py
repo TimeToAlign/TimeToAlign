@@ -802,6 +802,18 @@ class Timeline(
         return self._locked
 
     @property
+    def is_segment_line(self) -> bool:
+        """Whether children exactly and contiguously cover this timeline.
+
+        The answer is structural: a timeline of any class whose children tile
+        it without gap or overlap is one, and a timeline without children is
+        not. A child of unknown length ends at its successor's offset; the
+        last child's end is compared with the length only when both are known.
+        :meth:`as_segment_line` casts such a timeline to a ``SegmentLine``.
+        """
+        return self._segment_line_structure_error() is None
+
+    @property
     def meta(self) -> dict[str, Any]:
         """Metadata dictionary."""
         return dict(self._meta)
@@ -1532,10 +1544,6 @@ class Timeline(
                 f"got {_format_coordinate_value(float(self._length.value))}"
             )
         return None
-
-    def is_segment_line(self) -> bool:
-        """Return whether children exactly and contiguously cover this timeline."""
-        return self._segment_line_structure_error() is None
 
     def as_segment_line(self) -> "Timeline":
         """Cast a structurally contiguous hierarchy to a parameterized line.

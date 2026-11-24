@@ -531,7 +531,7 @@ def _line_with_unknown_middle() -> SegmentLine:
 def test_a_segment_of_unknown_length_ends_at_its_successors_offset() -> None:
     line = _line_with_unknown_middle()
     assert line.length is None
-    assert line.is_segment_line() is True
+    assert line.is_segment_line is True
     assert line.get_timestamp_at(7).coordinates == {
         "line": Coordinate(7, Q),
         "b": Coordinate(3, Q),
@@ -542,7 +542,7 @@ def test_a_segment_of_unknown_length_ends_at_its_successors_offset() -> None:
     }
     assert [child.id for child in line.get_children_at(11)] == ["c"]
     line.length = 12
-    assert line.is_segment_line() is True
+    assert line.is_segment_line is True
 
 
 def _passes(uid: str, end: int, bound: int) -> str:
@@ -595,7 +595,7 @@ def test_a_plain_hierarchy_with_an_unknown_segment_casts_to_a_line() -> None:
     plain.add_child(_q(4, uid="a"), 0)
     plain.add_child(_q(uid="b"), 4)
     plain.add_child(_q(2, uid="c"), 10)
-    assert plain.is_segment_line() is True
+    assert plain.is_segment_line is True
     line = plain.as_segment_line()
     assert line.list_segments() == ["a", "b", "c"]
     assert line.length == Coordinate(12, Q)
@@ -605,7 +605,7 @@ def test_contiguity_between_known_values_is_still_checked() -> None:
     plain = _q(12, uid="plain")
     plain.add_child(_q(4, uid="a"), 0)
     plain.add_child(_q(uid="b"), 5)
-    assert plain.is_segment_line() is False
+    assert plain.is_segment_line is False
 
 
 # endregion

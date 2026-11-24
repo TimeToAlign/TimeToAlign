@@ -825,7 +825,7 @@ class TestCreateChildrenFromBoundaries:
         assert extents == [(0.0, 30.0), (30.0, 60.0), (60.0, 90.0)]
         assert extents[0][0] == 0.0
         assert extents[-1][1] == parent.length.value
-        assert parent.is_segment_line() is True
+        assert parent.is_segment_line is True
 
 
 # endregion

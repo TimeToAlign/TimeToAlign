@@ -924,11 +924,11 @@ class TestSegmentLineCasting:
     def test_is_segment_line_exact_empty_and_zero_length_semantics(self):
         """Coverage uses exact arithmetic; empty differs from one zero child."""
         empty = Timeline(length=0.0, unit=TimeUnit.seconds)
-        assert empty.is_segment_line() is False
+        assert empty.is_segment_line is False
 
         zero_child = Timeline(length=0.0, unit=TimeUnit.seconds, uid="zero")
         empty.add_child(zero_child, offset=0.0)
-        assert empty.is_segment_line() is True
+        assert empty.is_segment_line is True
 
         exact = Timeline(
             length=Fraction(3, 10),
@@ -953,7 +953,24 @@ class TestSegmentLineCasting:
             ),
             offset=Fraction(1, 10),
         )
-        assert exact.is_segment_line() is True
+        assert exact.is_segment_line is True
+
+    def test_is_segment_line_is_a_read_only_property(self):
+        """The answer is read without a call, derived, and the same after a cast."""
+        assert isinstance(Timeline.__dict__["is_segment_line"], property)
+
+        gapped = Timeline(length=4, unit=TimeUnit.quarters, uid="gapped")
+        gapped.add_child(Timeline(length=1, unit=TimeUnit.quarters, uid="a"), offset=0)
+        gapped.add_child(Timeline(length=2, unit=TimeUnit.quarters, uid="b"), offset=2)
+        assert gapped.is_segment_line is False
+        with pytest.raises(AttributeError):
+            gapped.is_segment_line = True
+
+        tiled = Timeline(length=3.0, unit=TimeUnit.seconds, uid="tiled")
+        tiled.add_child(ContinuousPhysicalTimeline(length=1.0, uid="c"), offset=0.0)
+        tiled.add_child(ContinuousPhysicalTimeline(length=2.0, uid="d"), offset=1.0)
+        assert tiled.is_segment_line is True
+        assert tiled.as_segment_line().is_segment_line is True
 
     def test_as_segment_line_preserves_content_and_copies_the_children(self):
         """A valid homogeneous hierarchy casts to its dynamic line class."""
@@ -1008,7 +1025,7 @@ class TestSegmentLineCasting:
             names=["opening", "development", "closing"],
         )
 
-        assert parent.is_segment_line() is True
+        assert parent.is_segment_line is True
 
         segment_line = parent.as_segment_line()
 

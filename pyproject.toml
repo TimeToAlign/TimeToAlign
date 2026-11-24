@@ -177,6 +177,15 @@ ignore_imports = [
 include = ["timetoalign/core"]
 typeCheckingMode = "standard"
 pythonVersion = "3.11"
+# Modules held to strict mode; the list grows module by module.
+strict = [
+    "timetoalign/core/__init__.py",
+    "timetoalign/core/backends.py",
+    "timetoalign/core/enums.py",
+    "timetoalign/core/ids.py",
+    "timetoalign/core/protocols.py",
+    "timetoalign/core/retrieval.py",
+]
 
 [tool.coverage.run]
 source = ["timetoalign"]

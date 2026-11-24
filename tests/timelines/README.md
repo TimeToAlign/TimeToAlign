@@ -2935,6 +2935,42 @@ from the sources, never from the loader's output, and compared whole
 A reader assuming quarters, dropping the pitch, or reading a row of
 another type as a note fails these.
 
+**A field only where the table holds the type's data** (`TestTypesNotHeld`).
+`get_field(<event type>)` composes a field only where every property the
+scalar cannot do without (a required property) is a column of the table,
+or, for a scalar that can do without every property (`Measure`,
+`MidiEvent`), where every property is; an optional property whose column
+is absent (no row states it: a Box's second shape, `projection_of`) is
+null. Otherwise there is no field and the call raises the `KeyError` every
+class without a matching column raises. A field of nulls would read present
+data as absent, so these are the cases that would show it broken:
+
+- *TiLiA, Bruckner 5, Scherzo* (`score`,
+  `bruckner5_scherzo/harnoncourt/Bruckner5_Scherzo.json`), timeline
+  `cpt_4` ("Takte"): its events hold 1,146 rows, every one typed `Beat`,
+  and no `index` column (the beat's number is in `beat` and `measure`).
+  `get_field(Beat)` raises `KeyError` starting `"No field matching
+  'BeatField' found in table"`, `has_field(BeatField)` is `False`.
+- *A Measure row*: a `quarters` timeline holding the row `{event_type:
+  Measure, id: m1, start: 0, end: 4}`. `get_field(Measure)` raises
+  `KeyError` starting `"No field matching 'MeasureField' found in
+  table"`: `Measure` requires none of its properties, and `count`,
+  `qstamp`, `number` and the others are no columns (`id` and `name` are,
+  as on every event table, which proves nothing).
+- *Side by side, one table*: a `pixels` timeline holding, in this order, a
+  Beat (`b1` at 0), the Box `rect_h2`, the Projection `p1` at 378, an Event
+  `e1` at 10 lasting 5, the Note `n_378` and a Measure `m1` at 30.
+  `get_field(T)` for `Box`, `Projection`, `Event`, `Note` is a field of 6
+  rows, the event added on its own row (index 1 to 4, equal to the event
+  added) and `None` on every other; on the same table `get_field(Beat)`
+  and `get_field(Measure)` raise the `KeyError` above. The Box holds a
+  bounding box and no quadrilateral, the Projection no `projection_of`:
+  optional properties, null where no row states them.
+- *A defect is no absence*: where the field's own construction fails
+  (`BoxField.from_field` made to raise `ValueError("broken")` for the
+  test), `get_field(Box)` raises that `ValueError`, never `No field
+  matching ...`.
+
 **Round trips with exact values from real pages** (`TestRoundTrips`). The
 expected Boxes are built from the sources' own numbers, never from the
 loader's output: the two measure zones of the Anhalt chorale facsimile

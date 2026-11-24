@@ -20,12 +20,17 @@ from pydantic import BaseModel
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
+    Beat,
+    BeatField,
     BoundingBox,
     Box,
     BoxField,
     Coordinate,
     Duration,
     EnharmonicPitch,
+    Event,
+    Measure,
+    MeasureField,
     Note,
     NoteField,
     NumberType,
@@ -37,12 +42,14 @@ from timetoalign.core import (
     SpecificPitch,
     TimeUnit,
 )
+from timetoalign.loader.alignment.tilia import TiliaJsonLoader
 from timetoalign.loader.graphical import DmosLoader, MeiFacsimileLoader
 from timetoalign.loader.score import VerovioLoader
 from timetoalign.loader.score.ms3 import Ms3Loader
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
+    ContinuousLogicalTimeline,
     DiscreteGraphicalTimeline,
     Timeline,
 )
@@ -493,3 +500,94 @@ class TestScoresReadBack:
             voice=2,
             staff=1,
         )
+
+
+#: TiLiA's export of Bruckner 5, Scherzo; its timeline ``cpt_4`` ("Takte")
+#: holds 1,146 beats as rows typed ``Beat`` and no ``index`` column.
+TILIA_BRUCKNER = (
+    ensure_data("score")
+    / "bruckner5_scherzo"
+    / "harnoncourt"
+    / "Bruckner5_Scherzo.json"
+)
+
+
+def _no_field(field_class: type) -> str:
+    """The start of the message ``get_field`` raises where no field matches."""
+    return f"No field matching '{field_class.__name__}' found in table"
+
+
+class TestTypesNotHeld:
+    """A field only where the table holds the type's data; a field's own
+    defect is no absence."""
+
+    def test_tilia_beats_hold_no_beat_index(self) -> None:
+        loader = TiliaJsonLoader()
+        loader.load(TILIA_BRUCKNER)
+        events = loader.create_timeline("cpt_4").get_events()
+        assert len(events) == 1146
+        assert set(events.column_values("event_type")) == {"Beat"}
+        assert "index" not in events.schema.names
+        with pytest.raises(KeyError) as raised:
+            events.get_field(Beat)
+        assert raised.value.args[0].startswith(_no_field(BeatField))
+        assert events.has_field(BeatField) is False
+
+    def test_a_measure_row_holds_no_measure(self) -> None:
+        timeline = ContinuousLogicalTimeline(length=8, uid="score")
+        timeline.add_events(
+            [{"event_type": "Measure", "id": "m1", "start": 0, "end": 4}]
+        )
+        events = timeline.get_events()
+        with pytest.raises(KeyError) as raised:
+            events.get_field(Measure)
+        assert raised.value.args[0].startswith(_no_field(MeasureField))
+
+    def test_side_by_side(self) -> None:
+        box, _ = _box()
+        projection, _ = _projection()
+        event = Event(
+            id="e1", start=Coordinate(10, "pixels"), duration=Duration(5, "pixels")
+        )
+        _, note = _note()
+        page = DiscreteGraphicalTimeline(length=2000, uid="page", meta={"box": CROP_2})
+        page.add_events([{"event_type": "Beat", "id": "b1", "start": 0}])
+        page.add_events([box])
+        page.add_events([projection])
+        page.add_events(
+            [{"event_type": "Event", "id": "e1", "start": 10, "duration": 5}]
+        )
+        page.add_events([NOTE_ROW])
+        page.add_events([{"event_type": "Measure", "id": "m1", "start": 30}])
+        events = page.get_events()
+        assert events.column_values("id") == [
+            "b1",
+            "rect_h2",
+            "p1",
+            "e1",
+            "n_378",
+            "m1",
+        ]
+        served = {Box: box, Projection: projection, Event: event, Note: note}
+        for row, (event_type, expected) in enumerate(served.items(), start=1):
+            nulls: list[Any] = [None] * 6
+            nulls[row] = expected
+            assert list(events.get_field(event_type)) == nulls, event_type.__name__
+        assert box.quadrilateral is None
+        assert projection.projection_of is None
+        for event_type, field_class in ((Beat, BeatField), (Measure, MeasureField)):
+            with pytest.raises(KeyError) as raised:
+                events.get_field(event_type)
+            assert raised.value.args[0].startswith(_no_field(field_class))
+
+    def test_a_defect_of_the_field_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def broken(cls: type, source: Any, **kw: Any) -> None:
+            raise ValueError("broken")
+
+        box, _ = _box()
+        _, seg_2 = _page_with([box])
+        monkeypatch.setattr(BoxField, "from_field", classmethod(broken))
+        with pytest.raises(ValueError, match="^broken$"):
+            seg_2.get_events().get_field(Box)

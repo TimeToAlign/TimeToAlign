@@ -706,9 +706,10 @@ class SemanticFieldAccessMixin:
            ``specific_pitch`` struct fields from the TSV loader.
         4. **Afforded fields**: raw atomic columns the EventData declares
            in :attr:`_afforded_fields`.
-        5. **Event types**: the field of an event type whose properties
-           are columns of the table (a ``Box``, a ``Projection``), composed
-           from them over the rows of that type (:meth:`_event_type_field`).
+        5. **Event types**: the field of an event type whose required
+           properties are columns of the table (a ``Box``, a ``Note``),
+           composed from them over the rows of that type
+           (:meth:`_event_type_field`).
 
         Returns the first non-empty result; never falls through to a
         later strategy once an earlier strategy finds anything.  Order
@@ -798,8 +799,10 @@ class SemanticFieldAccessMixin:
         name of its scalar class (``Box``, ``Note``) and each property of
         the scalar is the column of that name. The field is one row per
         table row, in table order: the event on each row of the type, null
-        on every other row. A property the table has no column for is
-        null. Each column is taken as it is stored, the axis of every
+        on every other row. The table must hold the type's data
+        (:meth:`_holds_properties`): every property the scalar requires is a
+        column; an optional property the table has no column for (no row
+        states it) is null. Each column is taken as it is stored, the axis of every
         number the table's (its ``start`` column's unit and number type,
         written into the field's metadata, so a field whose scalar reads its
         numbers on one axis reads them exactly); a property the field holds
@@ -819,9 +822,16 @@ class SemanticFieldAccessMixin:
 
         Returns:
             The field (cached), or ``None`` where the table holds no row of
-            the event type or a column cannot be read as the property's
-            type.
+            the event type, does not hold its data, has no axis for a field
+            whose numbers lie on one, or a column cannot be read as the
+            property's type.
+
+        Raises:
+            Exception: Whatever the field's own construction raises: a
+                defect of the field is no absence of it.
         """
+        from timetoalign.core.time import SharedAxisField
+
         scalar_cls = field_type.scalar_cls
         schema = field_type.pa_schema
         table = self._table
@@ -834,11 +844,15 @@ class SemanticFieldAccessMixin:
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
+        if not self._holds_properties(scalar_cls, schema):
+            return None
         axis = (
             field_metadata(table.schema.field("start"))
             if "start" in table.column_names
             else {}
         )
+        if issubclass(field_type, SharedAxisField) and axis.get("unit") is None:
+            return None
         members: dict[str, pa.Array] = {}
         for member in schema:
             column = _property_column(table, member, axis)
@@ -872,12 +886,33 @@ class SemanticFieldAccessMixin:
                 number_type=axis.get("number_type"),
             ),
         )
-        try:
-            field = field_type.from_field((array, pa_field))
-        except (TypeError, KeyError, ValueError):
-            return None
+        field = field_type.from_field((array, pa_field))
         cache[cache_key] = field
         return field
+
+    def _holds_properties(self, scalar_cls: type[BaseModel], schema: pa.Schema) -> bool:
+        """Whether the table holds the data of the event type *scalar_cls*.
+
+        Every property the scalar requires must be a column of the table: of
+        its own name where the field's struct holds it, else one of the
+        columns representing it (:meth:`_columns_representing`). A scalar
+        requiring none of its properties is held only where every property
+        is: any row whatsoever would otherwise read as one, its data null.
+        An optional property without a column is one no row states.
+        """
+        properties = scalar_cls.model_fields
+        needed = [
+            prop for prop, info in properties.items() if info.is_required()
+        ] or list(properties)
+        columns = self._table.column_names
+        return all(
+            (
+                prop in columns
+                if prop in schema.names
+                else bool(self._columns_representing(scalar_cls, prop))
+            )
+            for prop in needed
+        )
 
     def _rows_of(
         self, scalar_cls: type[BaseModel], members: dict[str, pa.Array]

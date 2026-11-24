@@ -343,9 +343,13 @@ are spread over its columns (a Box's `id`, `start`, `duration`,
 its paired Field class, the call that reads any scalar back) gives the
 events of that type as a field: one row per table row, the event where the
 row's `event_type` is the type's name, null elsewhere, each number read on
-the table's axis. One mechanism serves every event type whose field holds
-all of its scalar's properties (`Box`, `Projection`, `Event`); nothing in
-it names a type.
+the table's axis. One mechanism serves every event type whose data the
+table holds: every property the scalar requires is a column (for a scalar
+requiring none, every property is), an optional property whose column is
+absent being null (`Box`, `Projection`, `Event`, `Note`, `ScoreNote`, a
+`Tempo` stating `bpm`; not a `Beat` without `index`, nor a `Measure` row
+without the measure's columns: `tests/timelines/README.md`, "A field only
+where the table holds the type's data"); nothing in it names a type.
 
 **What proves it** (`TestEventTypeFields`; the shapes of
 `tests/core/README.md`):

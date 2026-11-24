@@ -14,8 +14,9 @@ Sections (in file order):
 * Pitch scalars + paired Fields (7 pairs)
 * Harmony scalars + paired Fields (5 pairs) — plus the DCML import
   schemas (``DcmlStorageSchema`` etc.) and the ``Inversion`` enum.
-* Event scalars + paired Fields (Note, Measure, MeasureNumber, Id,
-  EventReference, and the ``Event`` base of Projection and Box)
+* Event scalars + paired Fields (Note and its ``ScoreNote`` subclass,
+  Measure, MeasureNumber, Id, EventReference, and the ``Event`` base of
+  Projection and Box)
 * MIDI event scalars + paired Fields (``MidiEvent`` base +
   ``ScoreMidiEvent`` subclass).
 """
@@ -35,6 +36,7 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    Self,
     TypeVar,
     Union,
     get_args,
@@ -3207,6 +3209,11 @@ class DcmlHarmonyField(SemanticField[DcmlHarmony]):
 class Note(ScalarVocabulary, BaseModel):
     """A single note or rest event.
 
+    A note holds what every note has, whether a score writes it or a
+    performance plays it.  The staff and the voice a score writes a note
+    on and in belong to :class:`ScoreNote`; a keyword this model does not
+    declare is refused rather than dropped.
+
     ``Note.pitch`` is annotated ``EnharmonicPitch | SpecificPitch | None``
     for materialised scalars — both are legitimate pitch representations
     on a note.  This union MUST NOT translate to Arrow ``dense_union``;
@@ -3221,14 +3228,12 @@ class Note(ScalarVocabulary, BaseModel):
     (union-of-BaseModels rejected; columnar separation).
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     start: Coordinate
     end: Coordinate | None = None
     duration: Duration | None = None
     pitch: EnharmonicPitch | SpecificPitch | None = None
-    voice: int | None = None
-    staff: int | None = None
     velocity: int | None = None
     instrument: str | None = None
 
@@ -3248,7 +3253,7 @@ class Note(ScalarVocabulary, BaseModel):
 
     @property
     def semantic_type(self) -> str:
-        return "Note"
+        return type(self).__name__
 
     def metadata_dict(self) -> dict[str, str]:
         return {
@@ -3267,8 +3272,6 @@ class Note(ScalarVocabulary, BaseModel):
         d: dict[str, object] = {
             "start": coordinate_to_dict(self.start),
             "end": coordinate_to_dict(self.end) if self.end is not None else None,
-            "voice": self.voice,
-            "staff": self.staff,
             "velocity": self.velocity,
             "instrument": self.instrument,
         }
@@ -3278,8 +3281,23 @@ class Note(ScalarVocabulary, BaseModel):
         return d
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> Note | None:
-        """Construct from a ``NoteEventData`` row dict (trust-boundary regime)."""
+    def from_row(cls, row: dict[str, Any]) -> Self | None:
+        """Construct from a ``NoteEventData`` row dict (trust-boundary regime).
+
+        Reads the columns this type declares and ignores every other one,
+        so a row of a score is read as a plain ``Note`` as well as a
+        :class:`ScoreNote`.  Returns ``None`` for a row without a start.
+        """
+        values = cls._values_from_row(row)
+        return None if values is None else cls(**values)
+
+    @classmethod
+    def _values_from_row(cls, row: dict[str, Any]) -> dict[str, Any] | None:
+        """Return the constructor keywords read from *row*, ``None`` without a start.
+
+        Subtypes extend the mapping with the columns they add, so that every
+        type of the hierarchy reads a row the same way.
+        """
         from .enums import TimeUnit
         from .retrieval import coordinate_from_dict
 
@@ -3350,20 +3368,21 @@ class Note(ScalarVocabulary, BaseModel):
             elif isinstance(pitch_raw, (int, float)):
                 pitch = EnharmonicPitch(midi_number=int(pitch_raw))
 
-        return cls(
-            start=start,
-            end=end,
-            duration=duration,
-            pitch=pitch,
-            voice=row.get("voice"),
-            staff=row.get("staff"),
-            velocity=row.get("velocity"),
-            instrument=row.get("instrument"),
-        )
+        return {
+            "start": start,
+            "end": end,
+            "duration": duration,
+            "pitch": pitch,
+            "velocity": row.get("velocity"),
+            "instrument": row.get("instrument"),
+        }
 
     def __repr__(self) -> str:
         pitch_str = repr(self.pitch) if self.pitch is not None else "rest"
-        return f"Note(start={self.start}, duration={self.duration}, pitch={pitch_str})"
+        return (
+            f"{type(self).__name__}(start={self.start}, duration={self.duration}, "
+            f"pitch={pitch_str})"
+        )
 
     def __str__(self) -> str:
         pitch_str = str(self.pitch) if self.pitch is not None else "rest"
@@ -3403,6 +3422,41 @@ class NoteField(SemanticField[Note]):
             "the raw midi number), not available on the bare Note struct "
             "field."
         )
+
+
+class ScoreNote(Note):
+    """A note or rest of a score: a :class:`Note` written on a staff, in a voice.
+
+    ``voice`` and ``staff`` are the source's numbers (an MEI ``<layer>`` and
+    ``<staff>``, a MuseScore voice and staff, partitura's ``voice`` and
+    ``staff``); a performance states neither, so they are not members of
+    :class:`Note`.  Every other member, and the represent-once storage of
+    the pitch, is the Note's.
+    """
+
+    voice: int | None = None
+    staff: int | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the Note's JSON-safe dictionary with ``voice`` and ``staff``."""
+        return {**super().to_dict(), "voice": self.voice, "staff": self.staff}
+
+    @classmethod
+    def _values_from_row(cls, row: dict[str, Any]) -> dict[str, Any] | None:
+        values = super()._values_from_row(row)
+        if values is None:
+            return None
+        return {**values, "voice": row.get("voice"), "staff": row.get("staff")}
+
+
+class ScoreNoteField(NoteField):
+    """Paired Field for :class:`ScoreNote`.
+
+    A ``NoteField`` whose struct adds ``voice`` and ``staff``; the vectorized
+    members are NoteField's own.
+    """
+
+    scalar_cls = ScoreNote
 
 
 # ---------------------------------------------------------------------------

@@ -107,6 +107,8 @@ from .events import (
     RomanNumeralSchema,
     ScoreMidiEvent,
     ScoreMidiEventField,
+    ScoreNote,
+    ScoreNoteField,
     Shape,
     ShapeField,
     SpecificPitch,
@@ -389,6 +391,8 @@ __all__ = [
     "NoteField",
     "ScoreMidiEvent",
     "ScoreMidiEventField",
+    "ScoreNote",
+    "ScoreNoteField",
     # Timestamps
     "TimeStamp",
     "TimeIntervalStamp",

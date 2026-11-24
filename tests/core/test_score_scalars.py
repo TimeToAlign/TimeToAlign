@@ -1,9 +1,10 @@
-"""Tests for the score scalars: MidiPitch, SpecificPitch, Note, Measure, DcmlHarmony."""
+"""Tests for the score scalars: MidiPitch, SpecificPitch, Note, ScoreNote, Measure, DcmlHarmony."""
 
 from __future__ import annotations
 
 from fractions import Fraction
 
+import pyarrow as pa
 import pytest
 from pydantic import ValidationError
 
@@ -13,6 +14,9 @@ from timetoalign.core.events import (
     Measure,
     MidiPitch,
     Note,
+    NoteField,
+    ScoreNote,
+    ScoreNoteField,
     SpecificPitch,
     SpecificPitchClass,
 )
@@ -23,6 +27,7 @@ from timetoalign.core.protocols import (
     HarmonyLabelLike,
     MeasureLike,
     NoteLike,
+    ScoreNoteLike,
     SemanticTypeLike,
 )
 from timetoalign.core.time import Coordinate
@@ -211,16 +216,12 @@ class TestNote:
             end=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             duration=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             pitch=pitch,
-            voice=1,
-            staff=1,
             velocity=None,
         )
         assert note.start == start
         assert note.pitch is not None
         assert note.pitch.midi_number == 59
         assert note.duration.value == Fraction(1, 2)
-        assert note.voice == 1
-        assert note.staff == 1
 
     def test_construction_rest_no_pitch(self) -> None:
         """Construct a rest (Note with pitch=None)."""
@@ -230,8 +231,6 @@ class TestNote:
             end=Coordinate(Fraction(2), TimeUnit.quarters),
             duration=Coordinate(Fraction(1), TimeUnit.quarters),
             pitch=None,
-            voice=1,
-            staff=1,
             velocity=None,
         )
         assert rest.pitch is None
@@ -245,8 +244,6 @@ class TestNote:
             end=Coordinate(Fraction(1, 8), TimeUnit.quarters),
             duration=Coordinate(Fraction(1, 8), TimeUnit.quarters),
             pitch=MidiPitch(midi_number=60),
-            voice=1,
-            staff=1,
             velocity=80,
         )
         assert isinstance(note, NoteLike)
@@ -259,8 +256,6 @@ class TestNote:
             end=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             duration=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             pitch=MidiPitch(midi_number=60),
-            voice=1,
-            staff=1,
             velocity=None,
         )
         assert note.semantic_type == "Note"
@@ -273,8 +268,6 @@ class TestNote:
             end=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             duration=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             pitch=MidiPitch(midi_number=60),
-            voice=1,
-            staff=1,
             velocity=None,
         )
         with pytest.raises(ValidationError) as exc_info:
@@ -291,8 +284,6 @@ class TestNote:
             end=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             duration=Coordinate(Fraction(1, 2), TimeUnit.quarters),
             pitch=MidiPitch(midi_number=60),
-            voice=1,
-            staff=1,
             velocity=80,
             instrument="violin",
         )
@@ -306,8 +297,6 @@ class TestNote:
             end=None,
             duration=None,
             pitch=None,
-            voice=None,
-            staff=None,
             velocity=None,
         )
         assert note.instrument is None
@@ -333,6 +322,140 @@ class TestNote:
         assert restored.start.value == Fraction(1, 3)
         assert restored.duration is not None
         assert restored.duration.value == Fraction(2, 3)
+
+
+# ---------------------------------------------------------------------------
+# ScoreNote
+# ---------------------------------------------------------------------------
+
+NOTE_MEMBERS = ["start", "end", "duration", "pitch", "velocity", "instrument"]
+
+
+def _score_note() -> ScoreNote:
+    return ScoreNote(
+        start=Coordinate(Fraction(1, 3), TimeUnit.quarters),
+        end=Coordinate(Fraction(1, 2), TimeUnit.quarters),
+        duration=Coordinate(Fraction(1, 6), TimeUnit.quarters),
+        pitch=MidiPitch(midi_number=59),
+        velocity=64,
+        instrument="piano",
+        voice=2,
+        staff=1,
+    )
+
+
+class TestNoteHoldsNoStaffOrVoice:
+    """A plain Note has what every note has; staff and voice are a score's."""
+
+    def test_members(self) -> None:
+        assert list(Note.model_fields) == NOTE_MEMBERS
+
+    @pytest.mark.parametrize("key", ["staff", "voice"])
+    def test_refused(self, key: str) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            Note(start=Coordinate(Fraction(0), TimeUnit.quarters), **{key: 1})
+        errors = exc_info.value.errors()
+        assert [(e["type"], e["loc"], e["input"]) for e in errors] == [
+            ("extra_forbidden", (key,), 1)
+        ]
+
+    def test_field_struct(self) -> None:
+        assert NoteField.pa_schema.names == [
+            "start",
+            "end",
+            "duration",
+            "velocity",
+            "instrument",
+        ]
+
+    def test_protocol(self) -> None:
+        note = Note(start=Coordinate(Fraction(0), TimeUnit.quarters))
+        assert isinstance(note, NoteLike)
+        assert not isinstance(note, ScoreNoteLike)
+        assert "staff" not in vars(NoteLike)
+        assert "voice" not in vars(NoteLike)
+
+
+class TestScoreNote:
+    """ScoreNote is a Note written on a staff, in a voice."""
+
+    def test_subtype_and_members(self) -> None:
+        assert issubclass(ScoreNote, Note)
+        assert list(ScoreNote.model_fields) == [*NOTE_MEMBERS, "voice", "staff"]
+        note = _score_note()
+        assert (note.voice, note.staff) == (2, 1)
+        assert note.start == Coordinate(Fraction(1, 3), TimeUnit.quarters)
+
+    def test_field_struct(self) -> None:
+        schema = ScoreNoteField.pa_schema
+        assert schema.names == [*NoteField.pa_schema.names, "voice", "staff"]
+        assert schema.field("voice").type == pa.int64()
+        assert schema.field("staff").type == pa.int64()
+        for name in NoteField.pa_schema.names:
+            assert schema.field(name) == NoteField.pa_schema.field(name)
+
+    def test_field_hierarchy(self) -> None:
+        assert issubclass(ScoreNoteField, NoteField)
+        assert ScoreNoteField.scalar_cls is ScoreNote
+        assert ScoreNoteField.field_type() == "ScoreNoteField"
+        assert ScoreNoteField.is_rest is NoteField.is_rest
+        with pytest.raises(NotImplementedError) as exc_info:
+            ScoreNoteField(name="notes").is_rest
+        assert str(exc_info.value) == (
+            "NoteField.is_rest requires access to the represent-once pitch "
+            "columns on NoteEventData (the default specific_pitch field and "
+            "the raw midi number), not available on the bare Note struct field."
+        )
+
+    def test_protocols(self) -> None:
+        note = _score_note()
+        assert isinstance(note, ScoreNoteLike)
+        assert isinstance(note, NoteLike)
+        assert isinstance(note, SemanticTypeLike)
+
+    def test_semantic_type(self) -> None:
+        assert _score_note().semantic_type == "ScoreNote"
+        assert (
+            Note(start=Coordinate(Fraction(0), TimeUnit.quarters)).semantic_type
+            == "Note"
+        )
+
+    def test_frozen(self) -> None:
+        with pytest.raises(ValidationError):
+            _score_note().staff = 2  # type: ignore[misc]
+
+    def test_to_dict_is_the_notes_plus_staff_and_voice(self) -> None:
+        note = _score_note()
+        plain = Note(**{name: getattr(note, name) for name in NOTE_MEMBERS})
+        assert note.to_dict() == {**plain.to_dict(), "voice": 2, "staff": 1}
+
+    def test_row_round_trip(self) -> None:
+        note = _score_note()
+        row = {**note.to_dict(), "midi": 59}
+        assert ScoreNote.from_row(row) == ScoreNote(
+            start=note.start,
+            end=note.end,
+            duration=note.duration,
+            pitch=note.pitch,
+            velocity=64,
+            instrument="piano",
+            voice=2,
+            staff=1,
+        )
+
+    def test_note_reads_the_same_row(self) -> None:
+        note = _score_note()
+        row = {**note.to_dict(), "midi": 59}
+        plain = Note.from_row(row)
+        score = ScoreNote.from_row(row)
+        assert type(plain) is Note
+        assert type(score) is ScoreNote
+        assert {n: getattr(plain, n) for n in NOTE_MEMBERS} == {
+            n: getattr(score, n) for n in NOTE_MEMBERS
+        }
+
+    def test_row_without_start(self) -> None:
+        assert ScoreNote.from_row({"voice": 1, "staff": 1}) is None
 
 
 # ---------------------------------------------------------------------------

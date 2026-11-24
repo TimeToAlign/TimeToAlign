@@ -12,6 +12,7 @@ Hierarchy Overview::
     │   ├── InstantEventLike              Single-instant events
     │   └── IntervalEventLike             Interval [start, end) events
     │       ├── NoteLike                  Notes/rests
+    │       │   └── ScoreNoteLike         + staff, voice (notes of a score)
     │       └── MeasureLike               Measures
     ├── HarmonyLabelLike                   Harmonic content (no temporal binding)
     │   └── PitchBasedHarmonyLike          (modelled after OHR)
@@ -303,8 +304,6 @@ class NoteLike(IntervalEventLike, Protocol):
 
     Attributes:
         pitch: The pitch of the note, or ``None`` for rests.
-        voice: Voice number, or ``None``.
-        staff: Staff number, or ``None``.
         velocity: MIDI velocity (0-127), or ``None``.
         instrument: Instrument name/identifier, or ``None``.
         is_rest: ``True`` if this event is a rest.
@@ -313,16 +312,6 @@ class NoteLike(IntervalEventLike, Protocol):
     @property
     def pitch(self) -> GenericPitchLike | None:
         """The pitch of the note, or ``None`` for rests."""
-        ...
-
-    @property
-    def voice(self) -> int | None:
-        """Voice number, or ``None``."""
-        ...
-
-    @property
-    def staff(self) -> int | None:
-        """Staff number, or ``None``."""
         ...
 
     @property
@@ -338,6 +327,28 @@ class NoteLike(IntervalEventLike, Protocol):
     @property
     def is_rest(self) -> bool:
         """``True`` if this event is a rest (no pitch)."""
+        ...
+
+
+@runtime_checkable
+class ScoreNoteLike(NoteLike, Protocol):
+    """Protocol for the notes and rests of a score.
+
+    A note as a score writes it: on a staff, in a voice.
+
+    Attributes:
+        voice: Voice number, or ``None``.
+        staff: Staff number, or ``None``.
+    """
+
+    @property
+    def voice(self) -> int | None:
+        """Voice number, or ``None``."""
+        ...
+
+    @property
+    def staff(self) -> int | None:
+        """Staff number, or ``None``."""
         ...
 
 

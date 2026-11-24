@@ -18,6 +18,7 @@ from .conftest import FLOW_CONTROL_DIR, PARANGONAR_DIR, SCORE_DIR, VIENNA_DIR
 verovio = pytest.importorskip("verovio")
 
 from timetoalign.core.enums import FlowMode  # noqa: E402
+from timetoalign.core.events import Note, ScoreNote  # noqa: E402
 from timetoalign.core.time import struct_to_rational  # noqa: E402
 from timetoalign.loader._xml import XML_ID  # noqa: E402
 from timetoalign.loader.score import Music21Loader, VerovioLoader  # noqa: E402
@@ -638,6 +639,18 @@ class TestStaffAndPitch:
         assert (events["r1"]["staff"], events["r1"]["voice"]) == (1, 1)
         chords = {i: row["chord_id"] for i, row in events.items() if row["chord_id"]}
         assert chords == {"c1a": "c1", "c1b": "c1"}
+
+    def test_rows_read_as_score_notes(self, events: dict[str, dict]) -> None:
+        notes = {i: ScoreNote.from_row(events[i]) for i in ("c1a", "c1b", "r1")}
+        assert {i: (n.staff, n.voice) for i, n in notes.items()} == {
+            "c1a": (2, 1),
+            "c1b": (2, 1),
+            "r1": (1, 1),
+        }
+        assert (notes["c1a"].is_rest, notes["r1"].is_rest) == (False, True)
+        plain = Note.from_row(events["c1a"])
+        assert type(plain) is Note
+        assert plain.model_dump() == notes["c1a"].model_dump(exclude={"voice", "staff"})
 
     def test_spelling(self, events: dict[str, dict], mei: dict[str, Path]) -> None:
         flat = events["c1b"]

@@ -1429,6 +1429,46 @@ presence.
 
 ---
 
+### `test_score_scalars.py` - `ScoreNote`: a note of a score
+
+**Purpose:** a staff and a voice are what a score writes a note on and in; a
+performance has neither. `Note` therefore holds only what every note has, and
+`ScoreNote(Note)` adds `voice` and `staff`, paired with
+`ScoreNoteField(NoteField)`. What proves the split:
+
+- **Note holds no staff and no voice.** `Note.model_fields` lists exactly
+  `start, end, duration, pitch, velocity, instrument`; `Note(staff=1)` and
+  `Note(voice=1)` are refused by pydantic with one `extra_forbidden` error at
+  the given key (the error type and location asserted, not a message
+  fragment), so a staff given to a plain note is never dropped silently.
+  `NoteField.pa_schema` names exactly `start, end, duration, velocity,
+  instrument` (pitch is stored once, outside the struct), and `NoteLike`
+  declares neither member.
+- **ScoreNote is a Note with both.** `issubclass(ScoreNote, Note)`;
+  `ScoreNote.model_fields` is Note's list followed by `voice, staff`;
+  `ScoreNoteField.pa_schema` is `NoteField.pa_schema` followed by `voice`,
+  `staff`, both `int64`. A ScoreNote satisfies `ScoreNoteLike` and `NoteLike`;
+  a Note satisfies `NoteLike` and not `ScoreNoteLike`. `semantic_type` is the
+  class name (`"Note"`, `"ScoreNote"`).
+- **One field hierarchy.** `issubclass(ScoreNoteField, NoteField)`, its
+  `scalar_cls` is `ScoreNote`, and `is_rest` on it is NoteField's own member
+  (the same function object, not a copy): it raises the same
+  `NotImplementedError` as on NoteField.
+- **Rows read alike.** `to_dict` of a ScoreNote is Note's dictionary plus
+  `voice` and `staff`; `ScoreNote.from_row(score_note.to_dict())` equals the
+  original exactly (exact Fractions kept). `Note.from_row` of that same row
+  equals the ScoreNote on every field Note has and ignores the row's
+  `voice` and `staff` columns: both read one row the same way, so a table
+  holding both kinds is read by either type.
+
+**Loader parity** (`tests/loader/score/test_verovio_loader.py::TestStaffAndPitch`):
+the loader tables keep their `staff` and `voice` columns and their values;
+reading the cross-staff chord note `c1a` back with `ScoreNote.from_row` gives
+`staff == 2`, `voice == 1`, the values the table holds, and the rest `r1`
+gives `(1, 1)`.
+
+---
+
 ### `test_column_builder.py` - The store-builder dumps no row
 
 **Purpose:** `build_struct_array` assembles a struct array column by column

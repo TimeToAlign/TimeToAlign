@@ -65,7 +65,6 @@ from .fields import (
     build_struct_array,
     data_shaped,
     drop_from_schema,
-    install_paired_field_registry,
     register_value_projector,
 )
 from .ids import quote_id, validate_id
@@ -1594,9 +1593,6 @@ class QuadrilateralField(ShapeField[Quadrilateral]):
             for name in Quadrilateral.CORNER_ORDER
         ]
         return columns, columns
-
-
-install_paired_field_registry()
 
 
 # ---------------------------------------------------------------------------

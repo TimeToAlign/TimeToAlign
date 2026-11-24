@@ -31,8 +31,6 @@ import sys
 from abc import ABC, abstractmethod
 from fractions import Fraction
 from functools import lru_cache
-from importlib.abc import Loader
-from importlib.machinery import PathFinder
 from typing import (
     Any,
     Callable,
@@ -66,65 +64,14 @@ def _register_paired_semantic_field(cls: type["SemanticField[Any]"]) -> None:
         _PAIRED_SEMANTIC_FIELDS.setdefault(scalar_cls, cls)
 
 
-def install_paired_field_registry() -> None:
-    """Expose core-declared scalar/field pairs to the storage field registry.
+def paired_semantic_fields() -> tuple[type["SemanticField[Any]"], ...]:
+    """Return every paired field class declared so far, in declaration order.
 
-    The storage registry is lazy to avoid its import cycle with ``core``.
-    Extending it at lookup time keeps subsequently declared core pairs in
-    the scalar-to-field lookup without maintaining a second static list.
+    A concrete ``XField(SemanticField[X])`` registers itself when its class
+    is created, the first one declared for a scalar winning; the storage
+    layer reads stored ``field_type`` names back through this registry.
     """
-    mixins = sys.modules.get("timetoalign.storage.mixins")
-    if mixins is None or not hasattr(mixins, "_get_field_type_map"):
-        _install_paired_field_registry_import_hook()
-        return
-
-    get_field_type_map = mixins._get_field_type_map
-    if getattr(get_field_type_map, "_uses_paired_field_registry", False):
-        return
-
-    def registered_field_type_map() -> dict[str, type[SemanticField[Any]]]:
-        field_type_map = get_field_type_map()
-        for field_cls in _PAIRED_SEMANTIC_FIELDS.values():
-            field_type_map.setdefault(field_cls.field_type(), field_cls)
-        return field_type_map
-
-    registered_field_type_map._uses_paired_field_registry = True  # type: ignore[attr-defined]
-    mixins._get_field_type_map = registered_field_type_map
-
-
-def _install_paired_field_registry_import_hook() -> None:
-    """Install the registry bridge after the storage mixin finishes loading."""
-    if any(
-        getattr(finder, "_paired_field_registry_hook", False)
-        for finder in sys.meta_path
-    ):
-        return
-
-    class _RegistryLoader(Loader):
-        def __init__(self, loader: Any) -> None:
-            self._loader = loader
-
-        def create_module(self, spec: Any) -> Any:
-            create_module = getattr(self._loader, "create_module", None)
-            return create_module(spec) if create_module is not None else None
-
-        def exec_module(self, module: Any) -> None:
-            self._loader.exec_module(module)
-            install_paired_field_registry()
-
-    class _RegistryFinder:
-        _paired_field_registry_hook = True
-
-        def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> Any:
-            if fullname != "timetoalign.storage.mixins":
-                return None
-            spec = PathFinder.find_spec(fullname, path, target)
-            if spec is not None and spec.loader is not None:
-                spec.loader = _RegistryLoader(spec.loader)
-                sys.meta_path.remove(self)
-            return spec
-
-    sys.meta_path.insert(0, _RegistryFinder())
+    return tuple(_PAIRED_SEMANTIC_FIELDS.values())
 
 
 def data_shaped(fn: Any) -> Any:

@@ -38,7 +38,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 from timetoshare.statements import MATCHES, METHODS, expand_iri
 
-from .fields import SemanticField, data_shaped, install_paired_field_registry
+from .fields import SemanticField, data_shaped
 
 BeliefValue = Literal["true", "false", "unlikely"]
 """What an actor believes of an item."""
@@ -375,9 +375,6 @@ class ProvenanceField(SemanticField[Provenance]):
         decided by :func:`belief_mask`.
         """
         return belief_mask(self._raw.data, believer, beliefs, context=context)
-
-
-install_paired_field_registry()
 
 
 def provenance_array(values: Sequence[Provenance | None]) -> pa.StructArray:

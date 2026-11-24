@@ -56,6 +56,7 @@ from timetoalign.core.fields import (
     _GenericField,
     blob_metadata,
     field_metadata,
+    paired_semantic_fields,
     parse_metadata_blob,
 )
 
@@ -106,15 +107,25 @@ _FIELD_TYPE_MAP: dict[str, type[SemanticField[Any]]] | None = None
 
 
 def _get_field_type_map() -> dict[str, type[SemanticField[Any]]]:
-    """Return the field_type string -> class mapping, building it on first call.
+    """Return the field_type string -> class mapping.
 
     Each paired ``XField(SemanticField[X])`` owns exactly one entry here.
-    No umbrella classes, no legacy aliases.
+    No umbrella classes, no legacy aliases. The core classes below head
+    the mapping in a fixed order; every other pair registered in
+    :func:`~timetoalign.core.fields.paired_semantic_fields` follows in
+    declaration order, a pair declared after an earlier call joining at
+    the next one.
     """
     global _FIELD_TYPE_MAP
-    if _FIELD_TYPE_MAP is not None:
-        return _FIELD_TYPE_MAP
+    if _FIELD_TYPE_MAP is None:
+        _FIELD_TYPE_MAP = _core_field_type_map()
+    for field_cls in paired_semantic_fields():
+        _FIELD_TYPE_MAP.setdefault(field_cls.field_type(), field_cls)
+    return _FIELD_TYPE_MAP
 
+
+def _core_field_type_map() -> dict[str, type[SemanticField[Any]]]:
+    """The fixed head of :func:`_get_field_type_map`, imported lazily."""
     from timetoalign.core.events import (
         BeatField,
         BeatPolicyField,
@@ -142,7 +153,7 @@ def _get_field_type_map() -> dict[str, type[SemanticField[Any]]]:
         IdDurationField,
     )
 
-    _FIELD_TYPE_MAP = {
+    return {
         # Coordinate / Duration (plus Id-variants)
         "CoordinateField": CoordinateField,
         "DurationField": DurationField,
@@ -170,7 +181,6 @@ def _get_field_type_map() -> dict[str, type[SemanticField[Any]]]:
         "MeasureNumberField": MeasureNumberField,
         "NoteField": NoteField,
     }
-    return _FIELD_TYPE_MAP
 
 
 _SCALAR_TO_FIELD_MAP: dict[type[BaseModel], type[SemanticField[Any]]] | None = None

@@ -40,6 +40,7 @@ from typing import (
     Self,
     Sequence,
     TypeVar,
+    cast,
     get_args,
     get_origin,
 )
@@ -872,18 +873,20 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
 
         1. If the subclass declares ``scalar_cls`` in its own ``__dict__``
            (concrete override), use that directly.  This is the escape
-           hatch for paired fields that inherit through a non-parametrised
-           intermediate (e.g. ``CoordinateField`` inherits through
-           ``TimeScalarField`` and supplies ``scalar_cls = Coordinate``
-           directly).
+           hatch for paired fields that inherit through a paired field
+           and narrow its scalar (e.g. ``IdCoordinateField`` inherits
+           through ``CoordinateField`` and supplies
+           ``scalar_cls = IdCoordinate`` directly).
         2. Otherwise walk ``__orig_bases__`` for a parametrised
-           ``SemanticField[T]`` whose ``T`` is a pydantic ``BaseModel``.
-           This is the common path used by every paired ``XField``.
+           ``SemanticField[T]`` (or a parametrised subclass of it, such as
+           ``TimeScalarField[Coordinate]``) whose ``T`` is a pydantic
+           ``BaseModel``.  This is the common path used by every paired
+           ``XField``.
 
         Intermediate abstract classes that do not pin ``T`` (e.g.
-        ``TimeScalarField`` extends ``SemanticField`` unparametrised)
-        leave ``scalar_cls`` / ``pa_schema`` as ``None``; their concrete
-        children resolve normally.
+        ``TimeScalarField`` extends ``SemanticField[TimeScalarT]``, a type
+        variable) leave ``scalar_cls`` / ``pa_schema`` as ``None``; their
+        concrete children resolve normally.
         """
         super().__init_subclass__(**kw)
         own_scalar = cls.__dict__.get("scalar_cls")
@@ -1136,6 +1139,26 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         return schema
 
     @classmethod
+    def paired_scalar(cls) -> type[T]:
+        """Return the scalar class this paired field class materialises.
+
+        Every concrete ``XField(SemanticField[X])`` has one; only an
+        intermediate class that does not pin its scalar lacks it.
+
+        Raises:
+            TypeError: If the class has no paired scalar.
+        """
+        scalar = cls.scalar_cls
+        if scalar is None:
+            raise TypeError(
+                f"{cls.__name__} has no scalar_cls; cannot materialise scalar"
+            )
+        # ``__init_subclass__`` resolves ``scalar_cls`` from the class's own
+        # ``SemanticField[T]`` argument (or the class body's narrower pin), and
+        # a class variable cannot carry ``T``.
+        return cast("type[T]", scalar)
+
+    @classmethod
     def from_field(cls, source: Any, **kw: Any) -> Self:
         """Construct a SemanticField from a source.
 
@@ -1275,11 +1298,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
             return cls.from_field((struct_arr, pa_field))
 
         # Generic fallback: row-wise validate + column-builder.
-        scalar_cls = cls.scalar_cls
-        if scalar_cls is None:
-            raise TypeError(
-                f"{cls.__name__}.from_array fallback requires a paired scalar_cls"
-            )
+        scalar_cls = cls.paired_scalar()
         if isinstance(source, pa.ChunkedArray):
             source = source.combine_chunks()
         objects: list[Any] = []
@@ -1344,9 +1363,9 @@ def _resolve_scalar_cls(cls: type) -> type[BaseModel] | None:
 
     Returns the pydantic ``BaseModel`` subclass ``T`` when found, or
     ``None`` when the class is an intermediate abstract subclass that
-    does not pin ``T`` (e.g. ``TimeScalarField`` extends ``SemanticField``
-    without a concrete parametrisation; its children ``CoordinateField``
-    and ``DurationField`` set ``scalar_cls`` in their bodies).
+    does not pin ``T`` (e.g. ``TimeScalarField`` extends
+    ``SemanticField[TimeScalarT]``, a type variable; its children
+    ``CoordinateField`` and ``DurationField`` pin it).
     """
     for base in getattr(cls, "__orig_bases__", ()) or ():
         origin = get_origin(base)

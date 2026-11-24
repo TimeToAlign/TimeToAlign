@@ -4035,10 +4035,24 @@ def coordinate_cells(coordinates: Iterable[TimeScalar | None]) -> pa.StructArray
     return cells.take(position)
 
 
+@overload
+def cell_coordinate(cell: dict[str, Any]) -> Coordinate: ...
+
+
+@overload
+def cell_coordinate(cell: dict[str, Any], scalar: type[TimeScalarT]) -> TimeScalarT: ...
+
+
+@overload
+def cell_coordinate(
+    cell: dict[str, Any] | None, scalar: type[TimeScalarT] = ...
+) -> TimeScalarT | None: ...
+
+
 def cell_coordinate(
     cell: dict[str, Any] | None,
-    scalar: type[TimeScalarT] = Coordinate,  # type: ignore[assignment]
-) -> TimeScalarT | None:
+    scalar: type[TimeScalar] = Coordinate,
+) -> TimeScalar | None:
     """Read the coordinate a coordinate cell holds, on the axis it names.
 
     The side the cell's ``number_type`` names is read, so an exact value

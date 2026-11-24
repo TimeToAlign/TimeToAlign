@@ -559,14 +559,6 @@ class Stamp(ABC, Generic[_SourceT]):
             declared = unit.default_number_type
         return Coordinate(express_as(value, declared), unit, number_type=declared)
 
-    def _number_type_for(self, timeline_id: str) -> str | None:
-        """Name of the declared numeric type of *timeline_id*, if it has one.
-
-        Subclasses that know their source's timelines override this; the
-        base has nothing to look in, so it declines.
-        """
-        return None
-
     def _unit_for(self, timeline_id: str) -> TimeUnit | None:
         """Return the stored unit for a timeline, when present."""
         coordinate = self.coordinates.get(timeline_id)
@@ -909,21 +901,6 @@ class TimeStamp(Stamp[TimeStampSource]):
         if self.source is None:
             return []
         return self.source._get_unit_maps_for_timeline(timeline_id, unit)
-
-    def _number_type_for(self, timeline_id: str) -> str | None:
-        """Get the numeric type name, retaining group compatibility."""
-        if self.source is None:
-            return None
-        try:
-            number_type = self.source._get_number_type_for_timeline(timeline_id)
-        except AttributeError:
-            try:
-                timelines = self.source._timelines  # type: ignore[attr-defined]
-            except AttributeError:
-                return None
-            timeline = timelines.get(timeline_id)
-            number_type = timeline.number_type if timeline is not None else None
-        return number_type.name if number_type is not None else None
 
     def _coordinate_rows(self) -> list[_DisplayRow]:
         """The source's coordinate (``axis``), then every other (``child``)."""

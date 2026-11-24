@@ -66,7 +66,11 @@ from timetoalign.core.retrieval import (
     validate_key_collection,
     validate_table_format,
 )
-from timetoalign.core.time import cell_coordinate, shift_number
+from timetoalign.core.time import (
+    cell_coordinate,
+    exact_coordinate_value,
+    shift_number,
+)
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.engines.events import _refusal_of
@@ -2176,12 +2180,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             beliefs=beliefs,
         )
 
-    def _axis_on(self, coordinate: float, timeline_id: str) -> int | float | Fraction:
-        """Express a query coordinate the way *timeline_id* writes numbers.
+    def _axis_on(
+        self, coordinate: CoordinateValue, timeline_id: str
+    ) -> int | float | Fraction:
+        """Express a computed coordinate the way *timeline_id* writes numbers.
 
-        The bundle's own lookups — graph node keys, WarpMap feeds, anchor
-        comparisons — run on floats, so a query stays float internally. The
-        axis a stamp reports is a different thing: it has crossed onto a
+        The WarpMap feeds run on floats; a position mapped through an
+        interval claim is exact whenever its inputs are. The axis a stamp
+        reports is a different thing from either: it has crossed onto a
         timeline's axis, and an axis writes every number in its declared
         representation. Without this, the same position answered differently
         depending on whether the caller happened to pass a float or a
@@ -2213,6 +2219,113 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             self._claims_naming(timeline_id, belief_key).at(timeline_id, coordinate)
         )
 
+    def _group_positions(
+        self, timeline_id: str, query: Coordinate
+    ) -> dict[str, Coordinate]:
+        """A position on one timeline and on every member of its groups.
+
+        The members are reached through shared groups as
+        :meth:`_group_component` reaches them, the groups of each member in
+        id order and their members in group order; every position is the
+        group's exact conversion (:meth:`_get_group_timestamp`), on the
+        member's own axis. A member the position lies outside of is left
+        out.
+
+        Returns:
+            The queried timeline first, then each member reached, in that
+            order.
+        """
+        positions = {timeline_id: query}
+        pending = [timeline_id]
+        while pending:
+            member_id = pending.pop(0)
+            for group in self.get_groups_for_timeline(member_id):
+                if len(group.timeline_ids) < 2:
+                    continue
+                converted = self._get_group_timestamp(
+                    group,
+                    positions[member_id].value,
+                    member_id,
+                    conversion_maps=False,
+                )
+                for other_id, value in converted.items():
+                    if other_id in positions or value is None:
+                        continue
+                    other = self.get_timeline(other_id)
+                    positions[other_id] = Coordinate(
+                        value, other.unit, number_type=other.number_type
+                    )
+                    pending.append(other_id)
+        return positions
+
+    @staticmethod
+    def _interval_claim_reading(
+        claim: MatchClaim, positions: Mapping[str, Coordinate]
+    ) -> tuple[str, Coordinate]:
+        """The timeline an interval claim is read on, with the position there.
+
+        The first of *positions* (see :meth:`_group_positions`) that the
+        claim names and whose span on that timeline holds the position,
+        closed, as :meth:`_relevant_claims_at` selects it.
+
+        Raises:
+            ValueError: If no position is held by the claim.
+        """
+        for member_id, position in positions.items():
+            if member_id not in claim.timelines:
+                continue
+            span = claim.get_interval_for(member_id)
+            if span.start.value <= position.value <= span.end.value:
+                return member_id, position
+        raise ValueError(
+            f"Interval claim {claim.id!r} holds none of the positions "
+            f"{list(positions)}"
+        )
+
+    def _interval_readings(
+        self,
+        timeline_id: str,
+        query: Coordinate,
+        belief_key: _BeliefKey = _ALL_BELIEFS,
+    ) -> list[tuple[MatchClaim, str, Coordinate]]:
+        """The interval claims a matchstamp reads, each with where it reads it.
+
+        A position on one member of a group is the same instant on every
+        other member, so the claims relevant at the query are those relevant
+        at the queried position and those relevant at its position on each
+        member of the queried timeline's groups (:meth:`_group_positions`).
+        Each claim is listed once, at the first of those timelines it is
+        relevant on (:meth:`_interval_claim_reading`): the queried
+        timeline's claims first, in table order, then each member's. The
+        members' positions are computed and read only when an interval claim
+        names one of them, so a bundle of instant claims does no more work.
+
+        Returns:
+            ``(claim, timeline_id, position)`` per claim: the timeline the
+            claim is read on and the query's position there.
+        """
+
+        def names_interval_claims(member_id: str) -> bool:
+            rows = self._claims_naming(member_id, belief_key)._struct_array()
+            return rows.field("end_anchor").null_count < len(rows)
+
+        positions: dict[str, Coordinate] = {timeline_id: query}
+        if any(
+            names_interval_claims(member_id)
+            for member_id in self._group_component(timeline_id)
+            if member_id != timeline_id
+        ):
+            positions = self._group_positions(timeline_id, query)
+        readings: list[tuple[MatchClaim, str, Coordinate]] = []
+        read: set[str | None] = set()
+        for member_id, position in positions.items():
+            for claim in self._relevant_claims_at(member_id, position, belief_key):
+                if not claim.is_interval or claim.id in read:
+                    continue
+                read.add(claim.id)
+                readings.append((claim, member_id, position))
+        return readings
+
     def _interval_claim_candidate(
         self,
         claim: MatchClaim,
@@ -2221,10 +2334,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     ) -> tuple[str, Coordinate | None, bool]:
         """Map one query through an interval claim onto its counterpart axis.
 
-        Exact endpoints are returned directly. Interior arithmetic stays in the
-        operands' numeric domain, then crosses the counterpart timeline's axis
-        boundary exactly once. A point on the queried side paired with a
-        nonzero counterpart interval has no single mapped coordinate.
+        Exact endpoints are returned directly. An interior position is mapped
+        affinely, in exact rational arithmetic when the query and the four
+        span bounds are all exact (ints, Fractions), so that 44/87 of a span
+        of 7 quarters is 308/87, never the binary ratio of a double; a float
+        among them makes it double arithmetic. The result crosses the
+        counterpart timeline's axis boundary exactly once, written as that
+        axis declares. A point on the queried side paired with a nonzero
+        counterpart interval has no single mapped coordinate.
 
         Returns:
             Counterpart timeline ID, mapped coordinate or ``None``, and whether
@@ -2255,6 +2372,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         elif query_value == queried_end:
             mapped = counterpart_end
         else:
+            operands = (
+                query_value,
+                queried_start,
+                queried_end,
+                counterpart_start,
+                counterpart_end,
+            )
+            exact = [exact_coordinate_value(operand) for operand in operands]
+            if all(value is not None for value in exact):
+                query_value, queried_start, queried_end = exact[:3]
+                counterpart_start, counterpart_end = exact[3:]
             mapped = counterpart_start + (
                 (query_value - queried_start) / (queried_end - queried_start)
             ) * (counterpart_end - counterpart_start)
@@ -2804,19 +2932,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         queried = query_coordinate.value
 
         belief_key = _belief_key(believer, beliefs)
-        relevant_claims = self._relevant_claims_at(
-            timeline_id, query_coordinate, belief_key
-        )
-        interval_claims = [claim for claim in relevant_claims if claim.is_interval]
-        candidate_groups: dict[
-            str, list[tuple[MatchClaim, Coordinate | None, bool]]
-        ] = {}
-        for claim in interval_claims:
+        readings = self._interval_readings(timeline_id, query_coordinate, belief_key)
+        interval_claims = [claim for claim, _, _ in readings]
+        candidate_groups: dict[str, list[tuple[str, Coordinate | None, bool]]] = {}
+        for claim, read_id, read_at in readings:
             target_id, candidate, is_anchor = self._interval_claim_candidate(
-                claim, timeline_id, query_coordinate
+                claim, read_id, read_at
             )
             candidate_groups.setdefault(target_id, []).append(
-                (claim, candidate, is_anchor)
+                (read_id, candidate, is_anchor)
             )
 
         interval_coordinates: dict[str, CoordinateValue] = {}
@@ -2834,11 +2958,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             if len(unique) != 1:
                 continue
             interval_coordinates[target_id] = unique[0].value
-            edge = (timeline_id, target_id)
-            if any(is_anchor for _, _, is_anchor in candidates):
-                interval_stated_pairs.append(edge)
-            else:
-                interval_inferred_pairs.append(edge)
+            # One edge per timeline the claims were read on: the queried
+            # timeline, or a member of its groups.
+            for read_id in dict.fromkeys(read_id for read_id, _, _ in candidates):
+                edge = (read_id, target_id)
+                if any(
+                    is_anchor
+                    for candidate_read_id, _, is_anchor in candidates
+                    if candidate_read_id == read_id
+                ):
+                    interval_stated_pairs.append(edge)
+                else:
+                    interval_inferred_pairs.append(edge)
 
         policy = (
             self.support_policy
@@ -2860,12 +2991,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     interval_coordinates
                 ),
                 query_has_interval_anchor=any(
-                    query_coordinate.value
-                    in (
-                        claim.get_interval_for(timeline_id).start.value,
-                        claim.get_interval_for(timeline_id).end.value,
-                    )
-                    for claim in interval_claims
+                    is_anchor
+                    for candidates in candidate_groups.values()
+                    for read_id, _, is_anchor in candidates
+                    if read_id == timeline_id
                 ),
             )
         )

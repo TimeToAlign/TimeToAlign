@@ -119,8 +119,11 @@ class MatchStamp(Stamp):
         is_interpolated: Whether the stamp used interpolated transfer.
         conversion_maps: Conversion maps available to unit lookup and display.
             Opt-in: defaults to ``False``.
-        interval_claims: The interval claims covering the queried position,
-            in relevance order: the claims themselves, never copies.
+        interval_claims: The interval claims the stamp's coordinates were
+            read through, each once: those covering the queried position, in
+            relevance order, then those covering its position on each member
+            of the queried timeline's groups; the claims themselves, never
+            copies.
 
     Examples:
         >>> stamp = MatchStamp(
@@ -201,14 +204,21 @@ class MatchStamp(Stamp):
     def _interval_candidate_rows(
         self,
     ) -> list[tuple[MatchClaim, str, Coordinate | None]]:
-        """Return every interval claim's mapped counterpart candidate."""
+        """Return every interval claim's mapped counterpart candidate.
+
+        Each claim is mapped from the timeline the stamp read it on: the
+        queried one, or a member of its groups at the query's position there
+        (``AlignmentBundle._interval_readings``).
+        """
         if not self.interval_claims or self.source is None:
             return []
         query = self.coordinates[self.source_id]
+        positions = self.source._group_positions(self.source_id, query)
         rows: list[tuple[MatchClaim, str, Coordinate | None]] = []
         for claim in self.interval_claims:
+            read_id, read_at = self.source._interval_claim_reading(claim, positions)
             target_id, coordinate, _ = self.source._interval_claim_candidate(
-                claim, self.source_id, query
+                claim, read_id, read_at
             )
             rows.append((claim, target_id, coordinate))
         return rows

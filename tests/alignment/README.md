@@ -344,6 +344,69 @@ ordering expectations; no tolerance or approximate comparison is used.
 
 ---
 
+## Interval Claims Read Exactly, from Any Member of a Group (`test_interval_claim_reading.py`)
+
+### What We're Validating
+
+Two properties of a position read through an interval MatchClaim.
+
+**Exact interior mapping.** An interior position maps affinely,
+`cs + (q - qs) / (qe - qs) · (ce - cs)`. When the query and the claim's four
+bounds are exact (ints, Fractions) the arithmetic is exact, and the result is
+written once, as the counterpart axis declares. The proof is a value no
+double can carry: `5180/87` has an odd denominator, so a path that went
+through binary64 yields a dyadic ratio (`2094885602530457/35184372088832`)
+and an equality with `Fraction(5180, 87)` (type `Fraction`) shows that no
+double was on the way. On an int axis the proof is a tie: `7/10 · 45` is
+exactly `63/2`, which binary64 computes as `31.499999999999996`; the exact
+ratio rounds half to even onto `32`, the double would have given `31`, so the
+cell shows the rounding happened once, on the exact ratio. A float axis keeps
+double arithmetic: floats in, a `float` out, its value the double the
+formula gives (`59.54022988505747`), never a `Fraction`.
+
+**Reading from a group sibling.** A position on one member of a group is
+the same instant on every other member. A question started on a member that
+carries no claims must read the interval claims of its siblings at its
+position there, exactly as the question on the claim-carrying member does.
+Before, it listed no claim, and the counterpart came from a WarpMap built on
+the claim's anchors (double interpolation): the counterpart `5180/87` on the
+sibling question proves that the claim, not the WarpMap, gave it. The
+questions are compared on everything they must share: the coordinate on
+every timeline, `interval_claims` (claim ids in a stated order), the
+per-claim display rows, the plural getter and the table. The order is the
+queried timeline's claims first (table order), then each sibling's, each
+claim once. A question started on the claim-carrying member is unchanged,
+pairs included. `is_interpolated` stays a property of the query node: a
+sibling's anchor makes the edge it reads a stated pair, but the sibling
+question itself carries no anchor and stays interpolated, as with an instant
+claim on a sibling.
+
+### Fixture
+
+- `track`: samples, int, length 2000; `track_hi`: samples, int, length 4000,
+  grouped with `track` (position `p` on `track` is `2p` on `track_hi`).
+- `score`: quarters, fraction, length 200; `scan`: pixels, int, length 2000;
+  `video`: frames, int, length 2000.
+- Claim 1 `track [1000, 1087] ↔ score [56, 63]`; claim 2
+  `track [1037, 1047] ↔ scan [0, 45]`; claim 3 (one test only)
+  `track_hi [2000, 2174] ↔ video [100, 274]`.
+- A float pair: `mix` and `take`, seconds, float, length 200, one claim
+  `mix [0.0, 87.0] ↔ take [56.0, 63.0]`.
+
+### Exact Expected Values
+
+| Question | Expected |
+|---|---|
+| `track` at 1044 | `score` `5180/87` (`56 + 44/87 · 7`), `scan` `32`, `track_hi` `2088`; claims `[claim_1, claim_2]`; inferred pairs `(track, score)`, `(track, scan)`, `(track, track_hi)` |
+| `track_hi` at 2088 | the same coordinates and claims; inferred pairs `(track, score)`, `(track, scan)`, `(track_hi, track)` |
+| `mix` at 44.0 | `take` `59.54022988505747`, a `float` |
+| with claim 3: `track` at 1044 | `video` `188`; claims `[claim_1, claim_2, claim_3]` |
+| with claim 3: `track_hi` at 2088 | the same coordinates; claims `[claim_3, claim_1, claim_2]` |
+| `track_hi` at 2000 (sibling anchor) | `track` 1000, `score` 56; `scan` unreached (outside claim 2 and the WarpMap's hull); stated pair `(track, score)`; `is_interpolated` True (False on `track` at 1000) |
+| plural getter and table, `track_hi` at `[2088, 2000]` | rows as the two singular questions; the table's `score` cells `5180/87` and `56`, `scan` `32` and null |
+
+---
+
 ## A Claim's Bundle Is Never Copied With It (`test_claim_back_reference.py`)
 
 ### What We're Validating

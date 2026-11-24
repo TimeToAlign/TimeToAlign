@@ -5085,11 +5085,9 @@ class Box(Event, frozen=True):
     @property
     def shape(self) -> Shape:
         """The shape the Box holds."""
-        shape = (
+        return (
             self.bounding_box if self.bounding_box is not None else self.quadrilateral
         )
-        assert shape is not None, "a Box holds exactly one shape (its validator)"
-        return shape
 
 
 class BoxField(SharedAxisField[Box]):

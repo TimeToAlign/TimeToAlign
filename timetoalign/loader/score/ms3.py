@@ -756,9 +756,6 @@ class Ms3Loader(ScoreLoader):
             if name is not None:
                 timeline.name = name
 
-        if timeline.measure_map is not None:
-            notated_length = timeline.measure_map.total_actual_length or Fraction(0)
-            timeline.length = max(timeline.length.value, notated_length)
         return timeline
 
     def _load_measures(self, df: pd.DataFrame, source: Path) -> ScoreStore:

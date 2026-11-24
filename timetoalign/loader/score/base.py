@@ -342,17 +342,30 @@ class ScoreLoader(EventLoader):
         measure counts and therefore measure ids. Such a store raises instead
         of producing a timeline without its measure structure.
 
+        Measures whose actual lengths are all stated state the score's
+        length: the timeline spans at least their sum (the notated extent,
+        not just the last event's end), and is then locked, so that content
+        added later never lengthens it silently. A score without measures,
+        or whose measures leave a length unstated, keeps the length its last
+        event gives and stays unlocked.
+
         Raises:
             ValueError: If the stored measures cannot form a ``MeasureMap``.
         """
         if len(self._store.measures) == 0:
             return
 
-        timeline.add_measure_map(self._measure_map())
+        measure_map = self._measure_map()
+        timeline.add_measure_map(measure_map)
 
         timeline.flow_control._absorb(
             self.create_flow_controller().get_flow_control_registry()
         )
+
+        notated_length = measure_map.total_actual_length
+        if notated_length is not None:
+            timeline.length = max(timeline.length.value, notated_length)
+            timeline.lock()
 
     # region Flow Control
 

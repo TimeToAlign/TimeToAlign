@@ -1232,3 +1232,37 @@ loader family, each on a real specimen:
   `TsvLoader` over WoO 71's notes TSV, and `Ms3Loader` given the notes TSV
   alone (no measure structure: `measure_map` is `None`). Each length is the
   last event's end, so none is locked.
+* **A locked recording gives children from its Regions.** On the
+  `Bass Kick.mp3` samples timeline, a Region over its first half
+  (`[0, n_samples // 2)`) gives a child at offset 0 of that length in
+  samples; the recording keeps its length and its lock.
+
+### Scores with a measure structure are locked
+
+A score whose source states its measures states its length: the sum of the
+measures' actual lengths (`MeasureMap.total_actual_length`). Every score
+loader with measures passes one site that attaches them, and there the
+timeline's length becomes the larger of that sum and the last event's end,
+then the timeline is locked. The lengths are those the loaders gave before
+the lock (measured before the change), so the lock alone is new:
+
+* `Ms3Loader` on WoO 71's notes and measures TSVs, and on the measures TSV
+  alone: 882 quarters, locked.
+* `PartituraLoader` on WoO 71's MusicXML: 882 quarters, locked.
+* `Music21Loader` and `PartituraLoader` on Chopin Op. 10 No. 3's MusicXML
+  (`vienna_1x22`; WoO 71 does not load through music21, whose tuplet
+  positions pass through a float): 83/2 quarters, locked.
+* `MeasureMapLoader` on WoO 71's `.mm.json`: 882 quarters, locked.
+* `VerovioLoader`: an MEI that Verovio expands (WoO 71's `.mei`) bypasses
+  that site; the root's length is the end of the last rendered measure,
+  equal to the rendered measure map's `total_actual_length` (1056 quarters:
+  the expanded repeats), which is a length the measures state, so it is
+  locked where the rendered measures are attached. An MEI without repeats
+  (one movement, two 4/4 bars of one whole note each, written to
+  `tmp_path`) passes the common site: 8 quarters, locked.
+* **The lock bites on a score**: a note added past WoO 71's end (Ms3) is
+  refused with `ValueError`, the length stays 882; with
+  `allow_expansion=True` it is added and the length grows to its end.
+* **A loaded score gives a child from a Region**: WoO 71 (Ms3) with a
+  Region `[0, 12)` gives a child of length 12 at offset 0; the score keeps
+  882 and its lock.

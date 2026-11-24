@@ -984,7 +984,12 @@ class VerovioLoader(ScoreLoader):
     def _attach_rendered_structure(
         self, timeline: Timeline, rendering: _Rendering
     ) -> None:
-        """Attach the rendered measures and the playback-order FlowMaps."""
+        """Attach the rendered measures and the playback-order FlowMaps.
+
+        The timeline ends where the last rendered measure ends, the length
+        the rendered measures state, so it is locked: content added later
+        never lengthens it silently.
+        """
         from timetoalign.timelines import MeasureMap
         from timetoalign.timelines.flow import FlowMap
 
@@ -1026,6 +1031,7 @@ class VerovioLoader(ScoreLoader):
         )
         timeline.add_flow_map(forward, id="forward_verovio")
         timeline.add_flow_map(forward.inverse(), id="source")
+        timeline.lock()
 
 
 def _timeline(

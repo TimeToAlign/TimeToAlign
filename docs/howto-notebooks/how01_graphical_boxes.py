@@ -542,12 +542,13 @@ box_table(dmos_page.get_child("p1_s1"))
 # lengths and offsets and the same measure shapes.
 
 # %%
+system_events = dmos_page.get_child("p1_s1").get_events(event_type="Box")
 (
     segment_table(dmos_page)[["offset", "length"]].equals(
         segment_table(page)[["offset", "length"]]
     ),
-    [box.shape for box in dmos_page.get_child("p1_s1").get_events().get_field(Box)]
-    == [box.shape for box in system_1.get_events().get_field(Box)],
+    [box.shape for box in system_events.get_field(Box)]
+    == [box.shape for box in system_1.get_events(event_type="Box").get_field(Box)],
 )
 
 # %% [markdown]
@@ -566,7 +567,10 @@ print(scan.get_timestamp_for("m4"))
 {
     root.id: {
         accolade_id: [
-            box.id for box in root.get_child(accolade_id).get_events().get_field(Box)
+            box.id
+            for box in root.get_child(accolade_id)
+            .get_events(event_type="Box")
+            .get_field(Box)
         ]
         for accolade_id in root.list_children()
     }
@@ -695,7 +699,8 @@ mei.facs
 # The zone written from measure 1 reads back as the same quadrilateral.
 
 # %%
-gallica_page.get_child("p2_a1").get_events().get_field(Box)[0].shape == measure_1
+accolade_boxes = gallica_page.get_child("p2_a1").get_events(event_type="Box")
+accolade_boxes.get_field(Box)[0].shape == measure_1
 
 # %% [markdown]
 # Where the rule of the left edges does not find a page's accolades (zones
@@ -829,8 +834,10 @@ read_page = read.timelines["page"]
 [
     (
         accolade.id,
-        list(read_page.get_child(accolade.id).get_events().get_field(Box))
-        == list(accolade.get_events().get_field(Box)),
+        list(
+            read_page.get_child(accolade.id).get_events(event_type="Box").get_field(Box)
+        )
+        == list(accolade.get_events(event_type="Box").get_field(Box)),
         read_page.get_child(accolade.id).meta == accolade.meta,
     )
     for accolade in (system_1, system_2)

@@ -531,31 +531,14 @@ class Stamp(ABC, Generic[_SourceT]):
             for timeline_id, coordinate in self.coordinates.items()
         }
 
-    def _on_axis(self, value: Any, timeline_id: str) -> "Coordinate":
-        """Express *value* in the declared representation of *timeline_id*.
-
-        Every coordinate this stamp hands out crosses an axis boundary, and
-        the axis decides how its numbers are written — the same rule whether
-        the value was queried, offset-computed, converted or interpolated.
-        Preserving the declared type is what lets a caller reason about a
-        fraction-canonical timeline without inspecting each value's kind;
-        whether a position was estimated is a separate question, answered by
-        ``is_interpolated`` rather than by a number's type.
-        """
-        unit = self._unit_for(timeline_id)
-        declared = self._number_type_enum_for(timeline_id)
-        if declared is None:
-            declared = unit.default_number_type
-        return Coordinate(express_as(value, declared), unit, number_type=declared)
-
     @staticmethod
     def _on_unit(
         value: Any, unit: TimeUnit, cmap: "ConversionMap[Any] | None" = None
     ) -> Coordinate:
         """Express a conversion result on the axis *unit* names.
 
-        The sibling of :meth:`_on_axis` for a value crossing into a unit
-        rather than onto a named timeline. **The target decides alone**: the
+        :func:`express_as` applied to a value crossing into a unit rather
+        than onto a named timeline. **The target decides alone**: the
         map's own declared output representation where it has one, else the
         target unit's default. Where the value came from does not enter into
         it -- carrying the source axis's representation across a conversion
@@ -575,11 +558,6 @@ class Stamp(ABC, Generic[_SourceT]):
         if declared is None:
             declared = unit.default_number_type
         return Coordinate(express_as(value, declared), unit, number_type=declared)
-
-    def _number_type_enum_for(self, timeline_id: str) -> "NumberType | None":
-        """The declared :class:`NumberType` of *timeline_id*, if it has one."""
-        name = self._number_type_for(timeline_id)
-        return None if name is None else NumberType(name)
 
     def _number_type_for(self, timeline_id: str) -> str | None:
         """Name of the declared numeric type of *timeline_id*, if it has one.
@@ -1392,7 +1370,7 @@ def _column_on_declared_axis(
 ) -> "pd.Series":
     """Decode one timestamp column into the representation its axis declares.
 
-    The axis-level counterpart of :meth:`Stamp._on_axis`, applied to a whole
+    The column-level counterpart of :func:`express_as`, applied to a whole
     column: an int-locked axis yields whole numbers, a fraction-canonical one
     yields exact ratios, a float-canonical one yields doubles. Without it a
     group's frame reported ``12473.0`` pixels where a stamp from the same

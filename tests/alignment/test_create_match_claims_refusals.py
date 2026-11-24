@@ -18,6 +18,7 @@ from timetoalign.timelines.types import (
     ContinuousPhysicalTimeline,
     DiscreteLogicalTimeline,
     DiscretePhysicalTimeline,
+    SegmentLine,
 )
 
 
@@ -334,3 +335,178 @@ class TestNameKept:
             [("n1", "score", {"start": 1.0}, "clock")]
         )
         assert claim.event_a_name is None
+
+
+def _own_projections(
+    bundle: AlignmentBundle, timeline_id: str
+) -> list[tuple[str, Fraction]]:
+    """The Projections a timeline holds itself (not its children), as (id, start)."""
+    table = bundle.get_timeline(timeline_id).events.table
+    return [
+        (row["id"], Fraction(row["start"]["numerator"], row["start"]["denominator"]))
+        for row in table.select(["id", "event_type", "start"]).to_pylist()
+        if row["event_type"] == "Projection"
+    ]
+
+
+class TestPastWhereANestedTimelineReaches:
+    """An unlocked child grows only to an end its parent contains."""
+
+    @staticmethod
+    def _nested() -> AlignmentBundle:
+        root = ContinuousLogicalTimeline(length=10, uid="root")
+        root.add_child(
+            ContinuousLogicalTimeline(length=5, uid="kid"), offset=0, locked=False
+        )
+        other = ContinuousLogicalTimeline(length=20, uid="other")
+        bundle = AlignmentBundle()
+        bundle.add_timeline(root, as_group="root")
+        bundle.add_timeline(other, as_group="other")
+        return bundle
+
+    @staticmethod
+    def _snapshot(bundle: AlignmentBundle) -> tuple:
+        timelines = [bundle.get_timeline(t) for t in ("root", "kid", "other")]
+        return (
+            bundle.match_claim_table.table,
+            *((t.events.table, t.length) for t in timelines),
+        )
+
+    @staticmethod
+    def _pairs(kid_start: int) -> list:
+        return [
+            ({"start": 1}, "other", {"start": 2}, "root"),
+            ({"start": 3}, "other", {"start": kid_start}, "kid"),
+        ]
+
+    def test_a_child_growing_past_its_parent_is_refused_first(self) -> None:
+        bundle = self._nested()
+        before = self._snapshot(bundle)
+        assert [t.num_rows for t, _ in before[1:]] == [1, 0, 0]
+        with pytest.raises(ValueError) as caught:
+            bundle.create_match_claims(self._pairs(12))
+        message = str(caught.value)
+        for part in (
+            "Pair 1: the side on timeline 'kid' reaches 12 quarters, past the end of "
+            "timeline 'kid' at 5 quarters, and the timeline cannot grow to hold it: "
+            "Timeline 'kid' cannot end at 12 on its parent 'root', which ends at 10.",
+            "a parent never grows with its child",
+            "Correct the span; or, if the position lies beyond the timeline, state it "
+            "on its parent 'root'.",
+        ):
+            assert part in message, (part, message)
+        after = self._snapshot(bundle)
+        assert after[0].equals(before[0])
+        assert len(after[0]) == 0
+        for (table_after, length_after), (table_before, length_before) in zip(
+            after[1:], before[1:], strict=True
+        ):
+            assert table_after.equals(table_before)
+            assert length_after == length_before
+
+    def test_a_child_within_its_length_is_accepted(self) -> None:
+        bundle = self._nested()
+        claims = bundle.create_match_claims(self._pairs(4))
+        assert [
+            (c.timeline_b_id, c.start_anchor.coordinate_b.value) for c in claims
+        ] == [
+            ("root", Fraction(2)),
+            ("kid", Fraction(4)),
+        ]
+        assert bundle.get_timeline("kid").length == Coordinate(5, "quarters")
+        assert {t: _own_projections(bundle, t) for t in ("root", "kid", "other")} == {
+            "root": [("projection_3", 2)],
+            "kid": [("projection_4", 4)],
+            "other": [("projection_1", 1), ("projection_2", 3)],
+        }
+
+
+class TestPastWhereASegmentReaches:
+    """A segment's end is its successor's offset; a MatchClaim never moves it."""
+
+    @staticmethod
+    def _line() -> AlignmentBundle:
+        line = SegmentLine[ContinuousLogicalTimeline](length=0, uid="line")
+        line.append_segment(ContinuousLogicalTimeline(length=4, uid="a"))
+        line.append_segment(ContinuousLogicalTimeline(length=None, uid="b"))
+        line.length = 9
+        other = ContinuousLogicalTimeline(length=20, uid="other")
+        bundle = AlignmentBundle()
+        bundle.add_timeline(line, as_group="line")
+        bundle.add_timeline(other, as_group="other")
+        return bundle
+
+    @staticmethod
+    def _pairs(segment: str, start: int) -> list:
+        return [
+            ({"start": 1}, "other", {"start": 2}, "line"),
+            ({"start": 3}, "other", {"start": start}, segment),
+        ]
+
+    @staticmethod
+    def _snapshot(bundle: AlignmentBundle) -> tuple:
+        timelines = [bundle.get_timeline(t) for t in ("line", "a", "b", "other")]
+        return (
+            bundle.match_claim_table.table,
+            *((t.events.table, t.length) for t in timelines),
+        )
+
+    @pytest.mark.parametrize(
+        ("segment", "start", "parts"),
+        [
+            (
+                "b",
+                6,
+                (
+                    "Pair 1: the side on timeline 'b' reaches 6 quarters, past the end of "
+                    "timeline 'b' at 5 quarters, where its parent 'line' ends it while its "
+                    "length is unknown; a MatchClaim never moves that end.",
+                    "state it on its parent 'line'.",
+                ),
+            ),
+            (
+                "a",
+                5,
+                (
+                    "Pair 1: the side on timeline 'a' reaches 5 quarters, past the end of "
+                    "timeline 'a' at 4 quarters, and the timeline cannot grow to hold it: "
+                    "SegmentLine requires contiguous segments. Segment 'a' cannot end at 5: "
+                    "its successor 'b' starts at 4. A MatchClaim",
+                ),
+            ),
+        ],
+        ids=["unknown-length", "known-length"],
+    )
+    def test_past_the_segment_is_refused_first(
+        self, segment: str, start: int, parts: tuple[str, ...]
+    ) -> None:
+        bundle = self._line()
+        before = self._snapshot(bundle)
+        with pytest.raises(ValueError) as caught:
+            bundle.create_match_claims(self._pairs(segment, start))
+        for part in parts:
+            assert part in str(caught.value), (part, str(caught.value))
+        after = self._snapshot(bundle)
+        assert after[0].equals(before[0])
+        for (table_after, length_after), (table_before, length_before) in zip(
+            after[1:], before[1:], strict=True
+        ):
+            assert table_after.equals(table_before)
+            assert length_after == length_before
+
+    @pytest.mark.parametrize(
+        ("segment", "start", "length"),
+        [("b", 5, None), ("a", 4, Coordinate(4, "quarters"))],
+        ids=["unknown-length", "known-length"],
+    )
+    def test_up_to_the_segment_end_is_accepted(
+        self, segment: str, start: int, length: Coordinate | None
+    ) -> None:
+        bundle = self._line()
+        claims = bundle.create_match_claims(self._pairs(segment, start))
+        assert [c.start_anchor.coordinate_b.value for c in claims] == [
+            Fraction(2),
+            Fraction(start),
+        ]
+        assert bundle.get_timeline(segment).length == length
+        assert [p[1] for p in _own_projections(bundle, segment)] == [Fraction(start)]

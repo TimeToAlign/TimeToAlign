@@ -1554,7 +1554,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Projection never lengthens a locked timeline (a loader locks a
         timeline whose source states its length, such as a recording's):
         a position past its end is refused. An unlocked timeline grows to
-        hold it.
+        hold it where its parent contains the new end (a parent never grows
+        with its child); a position past an end the parent cannot contain is
+        refused, as is one past where the parent ends a child of unknown
+        length.
 
         Args:
             event_pairs: The pairs, ``(event_a, timeline_a_id, event_b,
@@ -1583,11 +1586,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 names no one event (the timeline does not hold it and two
                 of its descendants do), a dict naming no held event states
                 no ``start``, a position is a float on a timeline counting
-                samples, a span runs backwards, a position lies past the end
-                of a locked timeline, an ``id`` the timeline holds is given
-                with a span not its own, a position cannot be placed on its
-                timeline's axis, or *date* is given without *actor* or is no
-                calendar date.
+                samples, a span runs backwards, a position lies past where
+                its timeline can reach (the end of a locked timeline, or an
+                end its parent cannot contain), an ``id`` the timeline holds
+                is given with a span not its own, a position cannot be placed
+                on its timeline's axis, or *date* is given without *actor* or
+                is no calendar date.
             KeyError: If a timeline id names no timeline of the bundle's
                 trees (a nested timeline is found whether or not it was
                 registered), or an id string names no event of its timeline.

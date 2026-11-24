@@ -3543,6 +3543,37 @@ an unlocked one with `locked=False`.
    timelines: a call whose first pair projects onto `score` and whose
    second pair reaches past the locked `audio` adds no Projection to
    `score` either (the refusal comes before the first add).
+   **A nested timeline reaches only as far as its parent contains it.** A
+   parent never grows with its child, so an unlocked child grows only to an
+   end its parent contains, which is checked before the first add too.
+   Its own fixture: `root` (quarters, length 10) holding the child `kid`
+   (length 5, at offset 0, added with `locked=False`), and `other`
+   (quarters, length 20), each tree its own group. The pairs `({"start":
+   1}, other, {"start": 2}, root)` and `({"start": 3}, other, {"start":
+   12}, kid)` are a `ValueError` naming the side (`Pair 1`, `kid`), the
+   value `12 quarters`, the end it passes (`kid` at `5 quarters`; on
+   `root`, which ends at `10`) and the remedy (correct the span, or state
+   it on the parent `root`). After it, the full event tables of `root`,
+   `kid` and `other` (Segment rows included, compared as Arrow tables),
+   their lengths and the bundle's MatchClaim table are exactly as before
+   the call: when the refusal came only as the child grew, `other` had
+   received two Projections and `root` one, so comparing the whole tables
+   is what proves the refusal now comes first. Accepted neighbour, the same
+   pairs with `{"start": 4}` on `kid`: two claims, `kid` holds one
+   Projection at `4` and keeps its length `5`, `root` one Projection at
+   `2`, `other` two, at `1` and `3`. The same rule on a segment line,
+   whose parent decides a segment's end: `line` (quarters, length 9) holds
+   `a` (length 4, at 0) and `b` (unknown length, at 4, so it ends at `5`
+   on its own axis, where the line ends). A position at `6` on `b` is
+   refused (`past the end of timeline 'b' at 5 quarters, where its parent
+   'line' ends it`); one at `5` on `a` is refused because `a` would end at
+   `5` while its successor `b` starts at `4` (the line's own contiguity
+   message, quoted in the refusal). Both leave `line`, `a`, `b`, `other`
+   and the MatchClaim table exactly as before (whole tables compared), as
+   the same pairs did not when the refusal came only as the segment grew.
+   Accepted neighbours: `5` on `b` (its length stays unknown) and `4` on
+   `a` (its length stays `4`), each holding the one Projection at that
+   position.
 4. **An existing ID with another span.** A first call projects
    `{"id": "m1", "start": 0, "end": 4}` on `score`; a second side
    `{"id": "m1", "start": 2, "end": 6}` is a `ValueError` naming `m1`,

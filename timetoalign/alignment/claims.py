@@ -3967,9 +3967,10 @@ def _claims_between_events(
 
     Every pair is resolved and every position placed and checked before any
     Projection is added: a float on a samples axis, a span running
-    backwards, a position past the end of a locked timeline and a held
-    event named with a span not its own are refused, so a refusal leaves
-    every timeline unchanged. The Projections of one timeline are then
+    backwards, a position past where its timeline can reach (the end of a
+    locked timeline, or an end its parent cannot contain) and a held event
+    named with a span not its own are refused, so a refusal leaves every
+    timeline unchanged. The Projections of one timeline are then
     added in one call.
 
     Args:
@@ -3991,9 +3992,11 @@ def _claims_between_events(
         KeyError: If an id names no event of its timeline.
         ValueError: If both sides of a pair are ``None``, a dict naming no
             held event states no ``start``, a position is a float on a
-            samples axis, a span runs backwards, a position lies past the end
-            of a locked timeline, a held event is named with a span not its
-            own, or a position cannot be placed on its timeline's axis.
+            samples axis, a span runs backwards, a position lies past where
+            its timeline can reach (the end of a locked timeline, or an end
+            its parent cannot contain), a held event is named with a span
+            not its own, or a position cannot be placed on its timeline's
+            axis.
         TypeError: If a side is neither a string, a dict nor ``None``.
     """
     pairs = list(pairs)
@@ -4106,14 +4109,14 @@ def _resolved_side(
     """Resolve one side: its held event, or the Projection standing for it.
 
     Every stated position is placed on the timeline's axis (:func:`_placed`)
-    and checked before anything is added: a span runs forward, a locked
-    timeline is not passed, and a held event named by its ID is given its
-    own span or none.
+    and checked before anything is added: a span runs forward, the
+    timeline can be made to hold it (:func:`_refuse_past_the_end`), and a
+    held event named by its ID is given its own span or none.
 
     Raises:
         ValueError: If a dict naming no held event states no ``start``, a
-            span runs backwards, a position lies past the end of a locked
-            timeline, a held event is named with a span not its own, or a
+            span runs backwards, a position lies past where its timeline
+            can reach, a held event is named with a span not its own, or a
             position cannot be placed.
     """
     if side is None:
@@ -4145,7 +4148,7 @@ def _resolved_side(
         duration = Duration(
             end.value - start.value, start.unit, number_type=start.number_type
         )
-    _refuse_past_locked_end(
+    _refuse_past_the_end(
         side["start" if end is None else "end"],
         start if end is None else end,
         timeline,
@@ -4183,15 +4186,20 @@ def _as_given(value: Any, placed: Coordinate) -> str:
     return f"{given} {placed.unit.value}"
 
 
-def _refuse_past_locked_end(
+def _refuse_past_the_end(
     given: Any, last: Coordinate, timeline: Any, where: str
 ) -> None:
-    """Refuse a stated position past the end of a locked timeline.
+    """Refuse a stated position the timeline cannot be made to hold.
 
-    A locked timeline's length is fixed, so the Projection standing there
-    could only be added by lengthening it, which a MatchClaim never does. An
-    unlocked timeline grows to hold it, and a locked one of unknown length
-    bounds nothing.
+    Adding the Projection standing there is decided as the timeline decides
+    any content it is given, so the refusal comes here, before anything is
+    added, instead of halfway through the call. A position within the
+    timeline's length is held. Past it, a locked timeline refuses, its
+    length being fixed; an unlocked one grows to the position, provided its
+    parent contains the new end (asked of the parent itself, which never
+    grows with its child, so no ancestor further up is affected). A timeline
+    of unknown length is unbounded, except where its parent ends it (a
+    segment ends at its successor's offset); that end never moves.
 
     Args:
         given: The farthest position as the side states it.
@@ -4200,20 +4208,50 @@ def _refuse_past_locked_end(
         where: Which side it is, for the message.
 
     Raises:
-        ValueError: If the timeline is locked, its length known, and *last*
-            lies beyond it.
+        ValueError: If *last* lies past the end of a locked timeline, past
+            where the parent ends a timeline of unknown length, or past an
+            unlocked timeline's end where its parent cannot contain the
+            timeline grown to it.
     """
     length = timeline.length
-    if not timeline.is_locked or length is None or not last.value > length.value:
+    parent = timeline._parent
+    if length is None:
+        bound = timeline._extent
+        if bound is None or not last.value > bound:
+            return
+        raise ValueError(
+            f"{where} reaches {_as_given(given, last)}, past the end of timeline "
+            f"{quote_id(timeline.id)} at "
+            f"{Coordinate(bound, timeline.unit, number_type=timeline.number_type)}, "
+            f"where its parent {quote_id(parent.id)} ends it while its length is "
+            f"unknown; a MatchClaim never moves that end. Correct the span; or, if "
+            f"the position lies beyond the timeline, state it on its parent "
+            f"{quote_id(parent.id)}."
+        )
+    if not last.value > length.value:
         return
-    raise ValueError(
-        f"{where} reaches {_as_given(given, last)}, past the end of timeline "
-        f"{quote_id(timeline.id)} at {length}. The timeline is locked: its length "
-        f"is fixed, as a loader fixes a length its source states, and a "
-        f"MatchClaim never lengthens it. Correct the "
-        f"span; or, if the source is known to be longer than the timeline "
-        f"states, make the timeline with the source's length."
-    )
+    if timeline.is_locked:
+        raise ValueError(
+            f"{where} reaches {_as_given(given, last)}, past the end of timeline "
+            f"{quote_id(timeline.id)} at {length}. The timeline is locked: its "
+            f"length is fixed, as a loader fixes a length its source states, and a "
+            f"MatchClaim never lengthens it. Correct the "
+            f"span; or, if the source is known to be longer than the timeline "
+            f"states, make the timeline with the source's length."
+        )
+    if parent is None:
+        return
+    try:
+        parent._check_child_length(timeline.id, last)
+    except ValueError as refusal:
+        raise ValueError(
+            f"{where} reaches {_as_given(given, last)}, past the end of timeline "
+            f"{quote_id(timeline.id)} at {length}, and the timeline cannot grow to "
+            f"hold it: {str(refusal).rstrip('.')}. A MatchClaim lengthens an unlocked timeline only "
+            f"where its parent contains the new end, and a parent never grows with "
+            f"its child. Correct the span; or, if the position lies beyond the "
+            f"timeline, state it on its parent {quote_id(parent.id)}."
+        ) from refusal
 
 
 def _refuse_other_span(

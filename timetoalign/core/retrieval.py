@@ -11,7 +11,7 @@ import pandas as pd
 
 from .enums import NumberType, TimeUnit
 from .events import Address
-from .time import Coordinate, IdCoordinate, number_from_json, number_to_json
+from .time import Coordinate, IdCoordinate, TimeScalar, number_from_json, number_to_json
 
 CoordinateInput: TypeAlias = (
     int | float | Fraction | Coordinate | IdCoordinate | Address
@@ -487,11 +487,13 @@ def format_coordinates(
     return projected[0] if scalar else projected
 
 
-def coordinate_to_dict(coordinate: Coordinate) -> dict[str, object]:
-    """Serialize one coordinate using the TimeToShare representation.
+def coordinate_to_dict(coordinate: TimeScalar) -> dict[str, object]:
+    """Serialize one time scalar using the TimeToShare representation.
 
     Args:
-        coordinate: Coordinate to serialize.
+        coordinate: Time scalar to serialize: a ``Coordinate`` or a ``Duration``
+            (or their timeline-bound variants); only its unit, number type and
+            value are written.
 
     Returns:
         A typed coordinate dictionary.

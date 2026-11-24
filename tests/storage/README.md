@@ -632,35 +632,67 @@ The child's standard output must be exactly those lines, and its exit code 0;
 before the fix both calls raised `RuntimeError: Timeline creation requires
 timetoalign.timelines`.
 
-### `test_field_type_map.py` - the field-type map stored columns are read back through
+### `test_field_type_map.py` - the two maps stored columns and scalars are read back through
 
 **What would prove it:** a stored column names its paired field class in its
 metadata (`field_type`), and `storage.mixins._get_field_type_map()` turns that
 name back into the class; its iteration order also decides which class claims
-a struct column by shape and the order of `get_fields_satisfying`. Every
-paired `XField(SemanticField[X])` declared anywhere in the package registers
-itself in `core.fields` when its class is created, and the map is a live view
-of that registry after a fixed head of core classes: a pair declared after the
-first lookup (`MatchClaimField`, declared when `timetoalign.alignment` loads)
-joins it at the next lookup. Whether the map is complete therefore depends on
-which modules an interpreter has loaded, never on the order it loaded them in.
-A test inside the pytest process cannot see either property, since some other
+a struct column by shape and the order of `get_fields_satisfying`. The second
+map, `_get_scalar_to_field_map()`, turns a scalar class back into its paired
+field: `EventData.get_field(<scalar class>)` and the union arms of a scalar's
+property (`_columns_representing`) go through it. Every paired
+`XField(SemanticField[X])` declared anywhere in the package registers itself
+in `core.fields` when its class is created. The field-type map is a live view
+of that registry after a fixed head of core classes, and the scalar map is
+derived from the field-type map: each field class keyed by its scalar. A pair
+declared after the first lookup (`MatchClaimField`, declared when
+`timetoalign.alignment` loads) therefore joins both maps at the next lookup.
+Whether a map is complete depends on which modules an interpreter has loaded,
+never on which lookups ran before. The scalar map once broke this: it was
+built on its first call and kept, so an interpreter whose first scalar lookup
+preceded `import timetoalign.alignment` never found `MatchClaim`
+(`KeyError: No paired SemanticField registered for scalar 'MatchClaim'`),
+while one that loaded alignment first did.
+
+A test inside the pytest process cannot see any of this, since some other
 test has always imported every subpackage already, so each check runs a fresh
-interpreter (`sys.executable -c`) and prints the map as `name module.Class`
-lines, in iteration order.
+interpreter (`sys.executable -c`) and prints each map as lines in iteration
+order: `name module.Class` for the field-type map, `module.Scalar
+module.Field` for the scalar map. Both are pinned. The scalar map is the
+field-type map's 43 classes, in the same order, each keyed by its scalar;
+every scalar has exactly one paired field.
 
-- After `import timetoalign` and nothing else: the 42 entries of the pinned
-  list without `MatchClaimField` (the child first asserts that
-  `timetoalign.alignment` is not loaded, otherwise the check would prove
-  nothing); after then importing `timetoalign.alignment`, the same lookup
-  yields all 43, `MatchClaimField` last.
-- For four first imports (`timetoalign`, `timetoalign.storage.mixins`,
-  `timetoalign.alignment`, `timetoalign.timelines`): one lookup right after
-  that import, then every subpackage of `timetoalign` imported (in reverse
-  order, so the first import is not always the same one again), then a second
-  lookup. The second lookup returns the same dictionary object and exactly
-  the pinned 43 entries in the pinned order every time.
+- After `import timetoalign` and nothing else: both maps hold the 42 pinned
+  entries without `MatchClaim` / `MatchClaimField` (the child first asserts
+  that `timetoalign.alignment` is not loaded, otherwise the check would prove
+  nothing). After then importing `timetoalign.alignment`, the same lookups
+  yield all 43, `MatchClaim` / `MatchClaimField` last, and
+  `_get_field_class_for_scalar(MatchClaim)` answers `MatchClaimField`. This
+  is the sequence that raised `KeyError` while the scalar map was kept from
+  its first call.
+- For seven first imports (`timetoalign`, `timetoalign.storage`,
+  `timetoalign.storage.mixins`, `timetoalign.core.fields`,
+  `timetoalign.core.events`, `timetoalign.alignment.claims`,
+  `timetoalign.timelines`), each run twice: once with both maps read right
+  after that import, once without that early read. Then every subpackage of
+  `timetoalign` is imported (in reverse order, so the first import is not
+  always the same one again) and both maps are read again. The late read
+  gives exactly the pinned 43 entries of each map, in the pinned order, every
+  time; where there was an early read, the late field-type map is the same
+  dictionary object, and the early read gave the pinned entries without
+  `MatchClaim` / `MatchClaimField` exactly where `timetoalign.alignment` was
+  not yet loaded (the child prints whether it was), else all of them.
 
-The pinned list is the map as captured on the code base before the core stopped
-patching this function from outside the storage layer; that refactor had to
-leave it identical. Every key equals its class's name (`field_type()`).
+What the first imports can and cannot vary: every `timetoalign.*` import runs
+the package root first, and the root imports `timetoalign.core` before
+`timetoalign.storage`, so no first import can make the storage layer look the
+registry up before the core has registered its pairs. The seven first imports
+vary which subpackages follow the core, and whether the first lookup comes
+before alignment loads; the early-read variant is what discriminates a map
+kept from its first call from a live one.
+
+The pinned lists are the maps as captured on the code base before the core
+stopped patching the field-type map from outside the storage layer (that
+refactor had to leave it identical) and, for the scalar map, as it was built
+when its first call came after every module was loaded. Every field-type key
+equals its class's name (`field_type()`).

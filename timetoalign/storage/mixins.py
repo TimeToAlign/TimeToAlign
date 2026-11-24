@@ -183,48 +183,21 @@ def _core_field_type_map() -> dict[str, type[SemanticField[Any]]]:
     }
 
 
-_SCALAR_TO_FIELD_MAP: dict[type[BaseModel], type[SemanticField[Any]]] | None = None
-
-
 def _get_scalar_to_field_map() -> dict[type[BaseModel], type[SemanticField[Any]]]:
     """Return the pydantic-scalar-class → paired Field-class mapping.
 
-    Derived from :func:`_get_field_type_map` on first call.  Each entry
+    Derived from :func:`_get_field_type_map` at each call, in its order,
+    so a pair declared after an earlier call (``MatchClaimField``, when
+    ``timetoalign.alignment`` loads) is found at the next one. Each entry
     is ``scalar_cls`` (the pydantic ``BaseModel`` subclass) → its paired
-    ``XField`` class.
+    ``XField`` class; where two field classes shared a scalar, the first
+    would win.
     """
-    global _SCALAR_TO_FIELD_MAP
-    if _SCALAR_TO_FIELD_MAP is not None:
-        return _SCALAR_TO_FIELD_MAP
     mapping: dict[type[BaseModel], type[SemanticField[Any]]] = {}
     for field_cls in _get_field_type_map().values():
         scalar = field_cls.scalar_cls
-        if scalar is None:
-            continue
-        # First registration wins; later entries (for shared scalars)
-        # do not overwrite.  Coordinate / IdCoordinate are distinct
-        # scalars so no collision occurs there.
-        mapping.setdefault(scalar, field_cls)
-    # Manually connect the TimeScalar pair (CoordinateField / DurationField
-    # ship via core.time and are already in the field-type map).  Also
-    # connect IdCoordinate / IdDuration, which carry distinct scalar_cls
-    # but share a struct shape with their non-Id parents.
-    from timetoalign.core.time import (
-        CoordinateField,
-        DurationField,
-        IdCoordinate,
-        IdCoordinateField,
-        IdDuration,
-        IdDurationField,
-    )
-
-    mapping[IdCoordinate] = IdCoordinateField
-    mapping[IdDuration] = IdDurationField
-    # CoordinateField / DurationField already registered via the
-    # _get_field_type_map path.  Confirm presence (defensive).
-    mapping.setdefault(CoordinateField.scalar_cls, CoordinateField)
-    mapping.setdefault(DurationField.scalar_cls, DurationField)
-    _SCALAR_TO_FIELD_MAP = mapping
+        if scalar is not None:
+            mapping.setdefault(scalar, field_cls)
     return mapping
 
 

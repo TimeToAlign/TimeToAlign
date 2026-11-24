@@ -1813,9 +1813,7 @@ then fails to load. Each test pins one of these with exact values.
   `onset_a` on `audio` ↔ 22050 on `pcm` (both sides positions),
   `claim_4` `p1` (the child's note) ↔ 9.0 s on `audio`, `claim_5` a NOMATCH
   of `n2` towards `audio`. `to_file(dir / "package.yaml")` leaves exactly
-  four files (the manifest, `match_claims.parquet`, `projections.parquet`
-  and `notes.parquet`, which holds `n1`, `n2` on `score` and `p1` on
-  `part`). The Projections table holds five rows, timelines sorted by
+  three files. The Projections table holds five rows, timelines sorted by
   ID and each timeline's Projections in the order they were added:
   `onset_a` on `audio` (no source), `projection_4` on `audio` (of
   `part`/`p1`), `projection_1` on `pcm` (of `score`/`n1`), `projection_2`
@@ -1837,8 +1835,7 @@ then fails to load. Each test pins one of these with exact values.
   (`check_match_claims`), and so does the Projections table
   (`projection_problems` is empty). `bundle.resources` and the
   manifest name `resource_1` (`MatchClaim`, timelines `audio`, `part`,
-  `pcm`, `score`), `resource_2` (`Projection`, `audio`, `pcm`) and
-  `resource_3` (`Note`, `part`, `score`), each
+  `pcm`, `score`) and `resource_2` (`Projection`, `audio`, `pcm`), each
   with the Parquet media type, and `size` and `integrity` equal to the
   file's byte count and the SHA-256 of its bytes, computed in the test from
   the file itself (a Parquet file's bytes depend on the writing library's
@@ -1847,7 +1844,7 @@ then fails to load. Each test pins one of these with exact values.
   `match_claim_table` equals the written one row for row (provenance
   included), whose timelines hold the same Projections (`projection_table`
   of the bundle read equals the file's table), and whose `to_dict()` equals
-  the writer's. Written again into a fresh directory, all four files are
+  the writer's. Written again into a fresh directory, all three files are
   byte for byte the first ones.
 - **The actor context survives the package.** The synthetic package with
   `add_prefix("orcid", "https://orcid.org/")` on the bundle and the belief
@@ -1880,7 +1877,7 @@ then fails to load. Each test pins one of these with exact values.
   its own files succeeds and changes no byte. A bundle holding only
   `claim_1`–`claim_4` of those claims, written over them, is refused (`The
   new MatchClaim table lacks the MatchClaim 'claim_5' of the existing
-  one: ...`) before anything is written: the four files keep their bytes.
+  one: ...`) before anything is written: the three files keep their bytes.
 - **No claims and no Projections, no table.** A bundle with timelines and
   neither MatchClaims nor Projections writes the manifest alone, which
   holds no `resources`.
@@ -1909,7 +1906,7 @@ then fails to load. Each test pins one of these with exact values.
   ("score",), "tables/claims.parquet")]` the table is written to
   `tables/claims.parquet`, the entry keeps `resource_7` and its URL and
   names the four timelines the claims name; the Projections table, new,
-  gets `resource_8` beside the manifest, the Note table `resource_9`. A URL with a scheme
+  gets `resource_8` beside the manifest. A URL with a scheme
   (`https://example.org/claims.parquet`) is refused.
 - **Merged claims keep their ids.** `from_bundles` of `source_a` and
   `source_b`, each holding a score (quarters) and a samples timeline with
@@ -1951,13 +1948,12 @@ then fails to load. Each test pins one of these with exact values.
   it: its `match_claim_table` equals the writer's and `score` holds one
   Projection, `projection_1` at `Coordinate(3/2, quarters)` (cell
   `{1.5, 3, 2}`). `add_projections` of the Projection of `audio`/`o1` at
-  `Coordinate(3/2, quarters)` on the `score` read (which holds the
-  Projection, read first, and `n1` from the Note table) returns
-  `["projection_1"]` and `score` still holds those two events,
-  `projection_1` and `n1`: get-or-add matches a cell read as `6/4` with
-  one placed as `3/2`. Written
+  `Coordinate(3/2, quarters)` on the `score` read (the package holds no
+  Note: a manifest names no event, so the Projection is its one event)
+  returns `["projection_1"]` and `score` still holds one event: get-or-add
+  matches a cell read as `6/4` with one placed as `3/2`. Written
   back over the rewritten files (the succession rule compares values, so
-  the file's `6/4` is the bundle's `3/2`), the four files are byte for byte
+  the file's `6/4` is the bundle's `3/2`), the three files are byte for byte
   the ones first written (a writer respells reduced).
 - **A Projections table that breaks the format** (a row naming the
   timeline `ghost`) makes `from_file` raise TimeToShare's `TableError`.
@@ -2144,20 +2140,19 @@ then fails to load. Each test pins one of these with exact values.
     60) and `n2` (start 3/2, `midi` 62), then one Projection added by
     `add_projections` (start 1/3, duration 2/3; minted `projection_1`). The
     bundle `one` holds `score` alone; `to_file` writes exactly
-    `one.yaml`, `notes.parquet` (`n1`, `n2`; resource `resource_2`) and
-    `projections.parquet`, whose one row is `{id:
+    `one.yaml` and `projections.parquet`, whose one row is `{id:
     projection_1, timeline_id: score, unit: quarters, number_type:
     fraction, start: {1, 3, null}, duration: {2, 3, null}, projection_of:
     null}`; the resource is `resource_1`, type `"Projection"`, timelines
     `["score"]`, URL `projections.parquet`. Read back, `score` holds that
-    Projection (start 1/3, duration 2/3, `projection_of` null: the
-    manifest names no Note) and, from the Note table, the two Notes.
+    Projection alone (start 1/3, duration 2/3, `projection_of` null: the
+    manifest names no Note).
   - *Two Boxes beside a Note.* `seg_2` (pixels, int, length 867,
     `meta["box"]` x 7) holds the Note `note_1` (start 0, duration 10,
     `midi` 60), `rect_h2` (the bounding box (385, 46, 139, 20): start 378,
     duration 139) and `rect_b` (the bounding box (400, 100, 50, 30): start
-    393, duration 50). `to_file` writes exactly the manifest,
-    `notes.parquet` (`note_1`) and `boxes.parquet`, whose rows are `rect_h2` and `rect_b` on `seg_2`,
+    393, duration 50). `to_file` writes exactly the manifest and
+    `boxes.parquet`, whose rows are `rect_h2` and `rect_b` on `seg_2`,
     `pixels`/`int`, starts `{378, null, null}` and `{393, null, null}`,
     durations `{139, null, null}` and `{50, null, null}`, bounding boxes as
     given, `quadrilateral` null; read back, `seg_2` holds those two Boxes,
@@ -2171,90 +2166,12 @@ then fails to load. Each test pins one of these with exact values.
     projection_1, timeline_id: score, unit: quarters, number_type:
     fraction, start: {0, 1, null}, duration: {4, 1, null}, projection_of:
     {timeline_id: pcm, event_id: o1}}`; the Projection resource names
-    `["score"]` alone, the Note resource `["pcm", "score"]`. Read back, `score` holds that Projection with its
+    `["score"]` alone. Read back, `score` holds that Projection with its
     reference, and the bundle holds the one MatchClaim, `claim_1`, from
     `projection_1` on `score` to `o1` on `pcm`.
   - The byte-equal fixture tests above (`test_the_package_is_written_back`,
     `TestTimeToShareFixturePackage`), whose timelines hold Projections
     alone, are unchanged and stay green.
-
-### The Note table (`TestNotes`)
-
-**Purpose:** A bundle's Notes are written beside its manifest in one more
-event table, `notes.parquet` (resource type `Note`, experimental as the Box
-table is), through the one event-table writer and reader, and read back as
-the notes they were. A Note keeps its pitch in a column of its own
-(`specific_pitch`, `midi`, `pitch`, as its source states it), so its table
-cannot name every column in advance: after the type's columns it holds
-every further column its rows give a value in, as the timeline stores it
-(the pitch, a score's `staff` and `voice`, its measure columns), where the
-Box table refuses one (its type names every column). Rows keep
-`event_type` `Note`; ScoreNotes share the table, their `staff` and `voice`
-being further columns where the bundle's notes have them.
-
-**What proves it:**
-
-- **The table's columns.** `event_table_schema(Note)` is exactly `id`,
-  `timeline_id`, `unit`, `number_type` (strings), `start`, `duration` (the
-  package number), `velocity` (int64), `instrument` (string): the Note's
-  struct members, `end` left out as for every event table (it follows from
-  `start` and `duration`). The table of the ms3 Chopin Op. 10 No. 3 score
-  (`vienna_1x22`, `Ms3Loader`, 498 Notes, one timeline `clt_1`) has those
-  columns, then the score's further columns by name (a timeline's column
-  order is no part of its events, and a timeline read back holds its
-  columns in another order, so the written order is the names'):
-  `chord_id`, `gracenote`, `mc`, `mc_onset`, `midi`, `mn`, `mn_onset`,
-  `name`, `octave`, `part_id`, `specific_pitch`, `staff`, `tied`, `tpc`,
-  `voice` (a column null on every Note row is no value and not written;
-  `velocity` and `instrument`, the type's own, are null: the score states
-  neither). First row: `clt_1:note:000001`, `quarters`,
-  `fraction`, start `{0, 1, null}`, duration `{1, 2, null}`, `name` `B3`,
-  `specific_pitch` `{B, 0, 3, 0.0}`, `midi` 59, `staff` 1, `voice` 1.
-- **Written and read back, equal by value and type.** The bundle `chopin`
-  holding that timeline writes exactly `notes.parquet` and the manifest
-  (validated by the format on writing), named by `resource_1` (`Note`,
-  `["clt_1"]`, `notes.parquet`). Read back, the timeline's
-  `get_events(event_type="Note").get_field(ScoreNote)` equals the
-  original's, 498 ScoreNotes, every position a `Fraction` on `quarters`,
-  and the further columns hold the same values row for row (`name`, `mc`,
-  `mn`, `mc_onset`, `specific_pitch`, `midi`, `tpc`, `chord_id`, `staff`,
-  `voice`); written again into a fresh directory, both files are byte for
-  byte the first ones.
-- **Two timelines, one further column in two types no column holds.** A
-  bundle of `score` (quarters, `staff` 1 as an integer) and `los`
-  (seconds, `staff` `"P1_staff1"`, the text identifier IEEE 1599 writes):
-  `to_file` refuses before any file is written, `The Note table holds the
-  column 'staff' once: timeline 'los' holds it as string, timeline 'score'
-  as int64, which no one column holds.`, and the directory stays empty.
-  Integers of two widths join in the wider: the Chopin score beside the
-  partitura reading of its first performance's MIDI file
-  (`ScoreMidiLoader`, `Chopin_op10_no3_p01.mid`, `staff` `int8`, 451
-  Notes) gives one table of 949 rows whose `staff` is `int64`.
-- **A row on another axis than its timeline's is refused on reading.** The
-  table of a `quarters`/`fraction` timeline `score` rewritten with `unit`
-  `seconds`, `number_type` `float` on its row: `from_file` raises `Note
-  'n1' of timeline 'score' is in seconds as float in the Note table, but
-  the timeline is in quarters as fraction.`
-- **Event rows of the manifest and the table give each Note once.** The
-  synthetic package's manifest written by hand with its event rows: `score`
-  holds `n1`, `n2` once each (the table's rows of an ID the timeline holds
-  are not added again).
-- **A package without Notes is unchanged.** Its table set and bytes are
-  what they were: the TimeToShare fixture package (no Note) is written back
-  byte for byte (`test_the_package_is_written_back`,
-  `TestTimeToShareFixturePackage`), the Box packages of
-  `tests/timelines/test_boxes_read_back.py` write exactly `boxes.parquet`
-  and the manifest, and a bundle of timelines without events writes the
-  manifest alone.
-- **Notes in the event rows on request.** A Note is an event a manifest's
-  event rows have always carried, so `to_file(..., events=True)` of a
-  bundle whose only events are Notes (`score`, `n1` at 1/2) writes the
-  manifest alone, its rows holding the Note, and no Note table and no
-  resource (the event rows and a Note table never both hold a Note); read
-  back, `score` holds `n1`. As before, a Projection (or a MatchClaim, a
-  Box) beside them makes the same call refused before any file is written
-  (`A package's manifest names no event ID: ... write it with
-  events=False.`).
 
 ### Conformance with TimeToShare's fixture package
 

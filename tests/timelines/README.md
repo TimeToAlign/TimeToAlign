@@ -797,14 +797,10 @@ tables are absent, is one more byte-identical round trip.
   serializations, and so are its two variants holding only one of the keys:
   the file's keys decide what is written, each independently, so a writer
   that dropped the rows, or wrote both keys whenever it found one, fails.
-  `to_file(events=False)` on the full literal writes it without `events`,
-  its Note `e2` in the Note table beside it, which the manifest names
-  (`resource_1`, `Note`, `take_1`, `notes.parquet`, size and digest those
-  of the file: `tests/alignment/README.md`, "The Note table").
+  `to_file(events=False)` on the full literal writes it without `events`.
   An object built in code with the same timelines, events and references
-  writes, with `events=True, external_references=True`, the full literal's
-  bytes (the Note in the event rows, no Note table), and then by default
-  neither key (the literal without them, naming the Note table).
+  writes neither key by default (the literal without them) and, with
+  `events=True, external_references=True`, the full literal's bytes.
 - **A drawing written is a drawing read.** A `points` page of length
   `932.2326510101616` holding a child at offset `76.70371459980326` of length
   `855.5289364103584` (built in code, accepted there because the child ends

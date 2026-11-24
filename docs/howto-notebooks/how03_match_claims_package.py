@@ -20,10 +20,8 @@
 # MatchClaims that relate them are data and live beside it, in the
 # **MatchClaim table** (`match_claims.parquet`), and the events that stand
 # in for an event a timeline does not hold live in the **Projections
-# table** (`projections.parquet`); the timelines' notes live in the **Note
-# table** (`notes.parquet`, experimental). The manifest names these files
-# in its `resources`; the manifest and the files it names make a
-# **package**.
+# table** (`projections.parquet`). The manifest names both files in its
+# `resources`; the manifest and the files it names make a **package**.
 #
 # This guide states MatchClaims between the events of a score and a
 # recording, gives a side without an event a Projection, records who
@@ -279,14 +277,13 @@ claim_rows(bundle.get_match_claims())
 # %% [markdown]
 # ## Write the package
 #
-# `to_file()` writes the MatchClaim table, the Projections table and the
-# Note table beside the manifest, then the manifest naming them. A
-# manifest names no event: the claims name the score's notes and the
-# recording's onsets by their ids. The notes travel in the Note table, the
-# Projections the package made in their own table; the onsets, events of
-# no table type, stay with the onset list they came from. Writing event
-# rows into the manifest of a package (`events=True`) is therefore
-# refused.
+# `to_file()` writes the MatchClaim table and the Projections table beside
+# the manifest, then the manifest naming them. A manifest names no event:
+# the claims name the score's notes and the recording's onsets by their
+# ids, and those events stay with the sources they came from, here the
+# score and the onset list. The package holds the events it made itself,
+# the Projections, in their own table. Writing event rows into the manifest
+# of a package (`events=True`) is therefore refused.
 
 # %%
 package = FILES / "song"
@@ -296,7 +293,7 @@ files(package)
 
 # %% [markdown]
 # The manifest's `resources` names each table: its `id`, its `type` (what
-# its rows are: `MatchClaim`, `Projection` or `Note`), the `timelines` it holds
+# its rows are: `MatchClaim` or `Projection`), the `timelines` it holds
 # data for, its `url` relative to the manifest, and its media type, size in
 # bytes and SHA-256 digest.
 
@@ -339,13 +336,11 @@ pq.read_table(package / "projections.parquet").to_pylist()
 # ## Read the package
 #
 # `from_file()` reads the manifest, then the tables it names: each
-# Projection onto its timeline, each note onto its timeline, then the
-# MatchClaim table. The bundle read
+# Projection onto its timeline, then the MatchClaim table. The bundle read
 # holds the same claims and the same manifest, and its belief filter gives
-# the same answers. Its timelines hold their Projections and the score its
-# four notes, but not the onsets, which no table carries (the score read
-# holds five events: its Projection and the notes). Each claim keeps the
-# coordinates of its two
+# the same answers. Its timelines hold their Projections but not the notes
+# and onsets, which the manifest does not carry (the score read holds one
+# event, its Projection). Each claim keeps the coordinates of its two
 # events, so MatchStamps need no event: under the editor's beliefs the
 # third note, at quarter 2, still lies at 1.75 seconds.
 

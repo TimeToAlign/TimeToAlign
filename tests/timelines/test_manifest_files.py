@@ -24,12 +24,11 @@ from timetoshare import (
     minimal,
     validate,
     with_context,
-    with_file_ids,
 )
 
 from tests.helpers import refusal
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.timelines import Resource, Timeline, TimelineGroup
+from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.types import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -144,19 +143,6 @@ WITH_TABLES = {
     ],
 }
 """A bundle whose timeline objects hold ``events`` and ``external_references``."""
-
-
-def _with_note_table(manifest: dict[str, Any], directory: Path) -> dict[str, Any]:
-    """*manifest* naming the Note table written into *directory*: the Note
-    ``e2`` of ``take_1``, its events left out of the manifest."""
-    resource = Resource.of_file(
-        directory / "notes.parquet",
-        id="resource_1",
-        type="Note",
-        timelines=("take_1",),
-        url="notes.parquet",
-    )
-    return {**manifest, **with_file_ids({"resources": [resource.to_dict()]})}
 
 
 def _without(manifest: dict[str, Any], *keys: str) -> dict[str, Any]:
@@ -342,13 +328,10 @@ def test_an_object_built_in_code_is_written_minimal_styled_in_yaml(
 
 
 def test_event_rows_are_left_out_on_request(tmp_path: Path) -> None:
-    """``events=False`` writes a file read with event rows without them; the
-    Note among them goes into the Note table beside it."""
+    """``events=False`` writes a file read with event rows without them."""
     source = _write(tmp_path / "bundle.yaml", dumps(WITH_TABLES))
     target = AlignmentBundle.from_file(source).to_file(tmp_path / "out", events=False)
-    assert _read(target) == dumps(
-        _with_note_table(_without(WITH_TABLES, "events"), tmp_path)
-    )
+    assert _read(target) == dumps(_without(WITH_TABLES, "events"))
 
 
 def test_an_object_built_in_code_writes_event_rows_on_request(
@@ -378,16 +361,12 @@ def test_an_object_built_in_code_writes_event_rows_on_request(
     bundle = AlignmentBundle()
     bundle.add_timeline(ContinuousLogicalTimeline(length=Fraction(32), uid="score"))
     bundle.add_timeline(take)
+    plain = bundle.to_file(tmp_path / "plain.yaml")
+    assert _read(plain) == dumps(_without(WITH_TABLES, "events", "external_references"))
     tables = bundle.to_file(
         tmp_path / "tables.yaml", events=True, external_references=True
     )
     assert _read(tables) == dumps(WITH_TABLES)
-    plain = bundle.to_file(tmp_path / "plain.yaml")
-    assert _read(plain) == dumps(
-        _with_note_table(
-            _without(WITH_TABLES, "events", "external_references"), tmp_path
-        )
-    )
 
 
 def test_a_drawing_written_is_a_drawing_read(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import pickle
+import warnings
 from fractions import Fraction
 from typing import Any
 
@@ -12,6 +13,7 @@ import pytest
 
 from timetoalign.alignment import AlignmentBundle, MatchClaimField
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
+from timetoalign.core.events import EnharmonicPitchField
 from timetoalign.core.fields import (
     MapField,
     NumericField,
@@ -24,6 +26,7 @@ from timetoalign.core.time import (
     Coordinate,
     CoordinateField,
     Duration,
+    IdCoordinateField,
     Interval,
     IntervalField,
 )
@@ -488,3 +491,91 @@ class TestUnboundAxisFields:
             "number_type": "fraction",
         }
         assert "<b>Axis</b>" not in field._repr_html_()
+
+
+# ---------------------------------------------------------------------------
+# Keywords from_field() does not use
+# ---------------------------------------------------------------------------
+
+
+def _pitch_cells() -> tuple[pa.Array, pa.Field]:
+    schema = EnharmonicPitchField.pa_schema
+    return (
+        pa.array([{"midi_number": 60}], type=schema),
+        pa.field("pitch", schema),
+    )
+
+
+def _interval_cells() -> tuple[pa.Array, pa.Field]:
+    field = _bound_interval_field()
+    return field.to_pyarrow(), pa.field("iv", field.pa_type)
+
+
+def _same_field(left: Any, right: Any) -> None:
+    assert type(left) is type(right)
+    assert left.name == right.name
+    assert left.to_pyarrow().to_pylist() == right.to_pyarrow().to_pylist()
+    if isinstance(left, SemanticField):
+        assert left.metadata_dict() == right.metadata_dict()
+
+
+_INT_CELLS = (pa.array([1, 2], type=pa.int64()), pa.field("n", pa.int64()))
+_QUARTERS = {"unit": TimeUnit.quarters, "number_type": NumberType.fraction}
+
+_BUILDS: dict[str, tuple[Any, Any, dict[str, Any]]] = {
+    "raw": (NumericField, lambda: _INT_CELLS, {}),
+    "semantic": (EnharmonicPitchField, _pitch_cells, {}),
+    "time_scalar": (CoordinateField, lambda: _coordinate_cells(0, 1), _QUARTERS),
+    "id_time_scalar": (
+        IdCoordinateField,
+        lambda: _coordinate_cells(0, 1),
+        {**_QUARTERS, "timeline_id": "clt_1"},
+    ),
+    "shared_axis": (IntervalField, _interval_cells, _QUARTERS),
+}
+
+
+class TestFromFieldIgnoredKeywords:
+    """Every ``from_field()`` warns once, naming the keywords it ignores."""
+
+    @pytest.mark.parametrize("family", list(_BUILDS))
+    def test_one_warning_naming_the_ignored_keywords(self, family: str) -> None:
+        field_cls, source, used = _BUILDS[family]
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            built = field_cls.from_field(source(), foo=1, bar=None, **used)
+        assert len(caught) == 1
+        assert caught[0].category is UserWarning
+        assert str(caught[0].message) == (
+            f"{field_cls.__name__}.from_field() ignores unknown keyword "
+            "argument(s): bar, foo"
+        )
+        assert caught[0].filename == __file__
+        _same_field(built, field_cls.from_field(source(), **used))
+
+    @pytest.mark.parametrize("family", list(_BUILDS))
+    def test_no_warning_for_the_keywords_used(self, family: str) -> None:
+        field_cls, source, used = _BUILDS[family]
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            field_cls.from_field(source(), **used)
+
+    def test_no_warning_through_from_table(self) -> None:
+        table = pa.table({"onset": _coordinate_cells(0, 1)})
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            field = CoordinateField.from_table(table, "onset", **_QUARTERS)
+        assert repr(field) == (
+            "CoordinateField(name='onset', unit=quarters, "
+            "number_type=fraction, len=2)"
+        )
+
+    def test_no_warning_through_the_interval_endpoints(self) -> None:
+        field = _bound_interval_field()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            start = field.start
+        assert repr(start) == (
+            "CoordinateField(name='start', unit=quarters, "
+            "number_type=fraction, len=1)"
+        )

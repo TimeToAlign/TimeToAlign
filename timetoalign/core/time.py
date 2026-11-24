@@ -1658,6 +1658,7 @@ class RedundantNumberField(NumberField):
     def from_field(
         cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
     ) -> "RedundantNumberField":
+        cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
 
@@ -1912,6 +1913,7 @@ class DenominateNumberField(RedundantNumberField):
         **kw: Any,
     ) -> "DenominateNumberField":
         """Construct from a ``(data, pa.Field)`` tuple."""
+        cls._warn_ignored_keywords(kw)
         data, field = source
         if unit is None:
             unit = cls._resolve_unit(field, None)
@@ -3135,7 +3137,9 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
         name: str | None = None,
+        **kw: Any,
     ) -> Self:
+        cls._warn_ignored_keywords(kw)
         if name is None:
             name = cls.__name__.removesuffix("Field").lower() or "value"
         return cls._from_field_impl(
@@ -3823,7 +3827,9 @@ class IdCoordinateField(CoordinateField):
         number_type: NumberType | str | None = None,
         timeline_id: str | None = None,
         name: str | None = None,
+        **kw: Any,
     ) -> IdCoordinateField:
+        cls._warn_ignored_keywords(kw)
         if name is None:
             name = "id_coordinate"
         resolved_tl_id = _resolve_timeline_id(source, timeline_id)
@@ -3982,7 +3988,9 @@ class IdDurationField(DurationField):
         number_type: NumberType | str | None = None,
         timeline_id: str | None = None,
         name: str | None = None,
+        **kw: Any,
     ) -> IdDurationField:
+        cls._warn_ignored_keywords(kw)
         if name is None:
             name = "id_duration"
         resolved_tl_id = _resolve_timeline_id(source, timeline_id)
@@ -4761,6 +4769,7 @@ class SharedAxisField(_AxisField[AxisScalarT]):
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
         name: str | None = None,
+        **kw: Any,
     ) -> Self:
         """Build the field from an Arrow or raw field source.
 
@@ -4770,10 +4779,13 @@ class SharedAxisField(_AxisField[AxisScalarT]):
             number_type: Number type override; else the metadata's.
             name: Field name for a bare array; the class's default name
                 when omitted.
+            **kw: Keywords this method does not use; ignored, with a
+                warning naming them.
 
         Returns:
             A live or blueprint field.
         """
+        cls._warn_ignored_keywords(kw)
         if isinstance(source, tuple):
             data, field = source
             return cls(StructField(data, field), unit, number_type)

@@ -28,6 +28,7 @@ import enum
 import inspect
 import json
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from fractions import Fraction
 from functools import lru_cache
@@ -37,6 +38,7 @@ from typing import (
     ClassVar,
     Generic,
     Literal,
+    Mapping,
     Self,
     Sequence,
     TypeVar,
@@ -420,17 +422,45 @@ class DataField(ABC):
         """Construct a DataField from a source.
 
         Subclasses define what *source* means (e.g., a ``pa.Table``
-        field, a ``pa.Field`` + ``pa.Array`` pair, etc.).
+        field, a ``pa.Field`` + ``pa.Array`` pair, etc.) and which
+        keywords they use.  Every implementation accepts keywords it does
+        not use, ignores them, and says so with one ``UserWarning`` per
+        call (:meth:`_warn_ignored_keywords`).
 
         Args:
             source: The data source.
-            **kw: Additional keyword arguments for subclass-specific
-                construction logic.
+            **kw: Keyword arguments the subclass does not use; ignored,
+                with a warning naming them.
 
         Returns:
             A new DataField instance.
         """
         ...
+
+    @classmethod
+    def _warn_ignored_keywords(cls, ignored: Mapping[str, object]) -> None:
+        """Warn that :meth:`from_field` ignores the keywords *ignored*.
+
+        The one check behind every ``from_field``: called once, by the
+        ``from_field`` the caller called, with the keywords that method
+        does not use.  Nothing is reported when *ignored* is empty.  The
+        warning points at the line that called ``from_field``.
+
+        Args:
+            ignored: The keyword arguments the caller's ``from_field``
+                does not use.
+
+        Warns:
+            UserWarning: Naming the class and the ignored keywords, sorted.
+        """
+        if not ignored:
+            return
+        warnings.warn(
+            f"{cls.__name__}.from_field() ignores unknown keyword argument(s): "
+            f"{', '.join(sorted(ignored))}",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 class NumericField(DataField):
@@ -492,6 +522,7 @@ class NumericField(DataField):
         Returns:
             A new NumericField.
         """
+        cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
 
@@ -583,6 +614,7 @@ class StringField(DataField):
     def from_field(
         cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
     ) -> "StringField":
+        cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
 
@@ -695,6 +727,7 @@ class StructField(DataField):
     def from_field(
         cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
     ) -> "StructField":
+        cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
 
@@ -736,6 +769,7 @@ class MapField(DataField):
     def from_field(
         cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
     ) -> "MapField":
+        cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
 
@@ -747,6 +781,7 @@ class _GenericField(DataField):
     def from_field(
         cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
     ) -> "_GenericField":
+        cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
 
@@ -1159,7 +1194,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         return cast("type[T]", scalar)
 
     @classmethod
-    def from_field(cls, source: Any, **kw: Any) -> Self:
+    def from_field(cls, source: Any, *, name: str | None = None, **kw: Any) -> Self:
         """Construct a SemanticField from a source.
 
         Default implementation accepts the four common source shapes
@@ -1171,7 +1206,10 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
 
         Args:
             source: One of the accepted source shapes.
-            **kw: Subclass-specific keyword arguments (e.g. ``name``).
+            name: Field name for a bare array; derived from the class name
+                when omitted.
+            **kw: Keywords this method does not use; ignored, with a
+                warning naming them.
 
         Returns:
             A new SemanticField instance.
@@ -1179,7 +1217,9 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         Raises:
             TypeError: If *source* is not a recognised shape.
         """
-        name = kw.pop("name", cls.__name__.removesuffix("Field").lower() or "value")
+        cls._warn_ignored_keywords(kw)
+        if name is None:
+            name = cls.__name__.removesuffix("Field").lower() or "value"
         raw_cls = cls._raw_cls
 
         if isinstance(source, tuple):

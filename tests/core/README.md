@@ -2292,6 +2292,24 @@ and one `IntervalField` (shared-axis family) prove the one rule:
   (`CoordinateField(name=…, unit=…, number_type=…, len=…)`,
   `IntervalField(name=…, raw=StructField, len=…)`), with no `Axis` row.
 
+**`from_field()` names the keywords it ignores.** Every `from_field()`
+accepts keywords it does not use, ignores them, and warns once per call, a
+`UserWarning` reading `<Class>.from_field() ignores unknown keyword
+argument(s): <names, sorted>`. A silent drop let a caller believe that, for
+example, `unit=` changed a pitch field. Pinned on one class of each family: a
+raw `NumericField`, a semantic `EnharmonicPitchField`, a time-scalar
+`CoordinateField` (and its `IdCoordinateField`, whose body hands over to a
+shared implementation and its constructor) and a shared-axis `IntervalField`:
+
+- exactly one warning per call, its category `UserWarning` and its text
+  exact, the names sorted (`bar, foo`);
+- the warning points at the caller's line (its `filename` is the test file);
+- no warning when every keyword is one the method uses (`unit`,
+  `number_type`, `name`, `timeline_id`), nor through `from_table()`, which
+  hands its own keywords on to `from_field()`;
+- the field returned equals the one built without the ignored keyword:
+  same class, rows (`to_pylist()`), name and `metadata_dict()`.
+
 ### `test_field_repr_html.py` - Field affordance `_repr_html_`
 
 Validates the rich-HTML affordance card every `DataField` / `SemanticField`

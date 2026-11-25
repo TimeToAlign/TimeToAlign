@@ -16,6 +16,7 @@ from typing_extensions import Self
 from timetoalign.core import TimeUnit
 from timetoalign.core.enums import FlowManifestation
 from timetoalign.loader.base import EventLoader
+from timetoalign.storage import EventData
 
 from .store import ScoreStore
 from .stores.notes import NoteEventData
@@ -143,9 +144,7 @@ class ScoreLoader(EventLoader):
         """The primary event data (notes), for compatibility."""
         return self._store.notes
 
-    def get_events(
-        self, properties: bool | str | tuple[str, ...] = True
-    ) -> NoteEventData:
+    def get_events(self, properties: bool | str | tuple[str, ...] = True) -> EventData:
         """Return note events with field control.
 
         Overrides the base ``Loader.get_events`` because ``ScoreLoader``
@@ -500,7 +499,12 @@ class ScoreLoader(EventLoader):
             end = bounds[row["mc"]][1]
             if "section" in _names(row.get("breaks")):
                 draft.add(SectionBreak, end)
-            manifestation = self._barline_manifestations.get(row.get("barline"))
+            barline = row.get("barline")
+            manifestation = (
+                self._barline_manifestations.get(barline)
+                if barline is not None
+                else None
+            )
             if manifestation is not None:
                 draft.add(Barline, end, manifestation=manifestation)
 

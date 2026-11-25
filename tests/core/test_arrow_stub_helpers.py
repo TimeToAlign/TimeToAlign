@@ -16,7 +16,7 @@ from timetoalign.core.fields import (
     _compared,
     _ComparisonKernel,
     _dictionary_chunked_array,
-    _filled_mask,
+    _filled,
     _joined_strings,
     _null_column,
     _struct_array_from,
@@ -54,20 +54,36 @@ def test_valid_struct_cell_is_a_dict() -> None:
     assert result == {"a": 1, "b": "x"}
 
 
-def test_filled_mask_is_a_boolean_array() -> None:
-    result = _filled_mask(pa.array([True, None, False]), pa.scalar(False))
+def test_filled_boolean_mask_is_a_boolean_array() -> None:
+    result = _filled(pa.array([True, None, False]), pa.scalar(False))
     assert type(result) is pa.BooleanArray
     assert result.to_pylist() == [True, False, False]
     assert result.null_count == 0
 
 
-def test_filled_mask_of_a_chunked_column_is_chunked() -> None:
+def test_filled_chunked_mask_is_chunked() -> None:
     chunked = pa.chunked_array([pa.array([True, None]), pa.array([False])])
-    result = _filled_mask(chunked, pa.scalar(False))
+    result = _filled(chunked, pa.scalar(False))
     assert type(result) is pa.ChunkedArray
     assert result.type == pa.bool_()
     assert result.to_pylist() == [True, False, False]
     assert result.null_count == 0
+
+
+def test_filled_column_of_no_chunks_is_chunked() -> None:
+    result = _filled(pa.chunked_array([], type=pa.bool_()), pa.scalar(False))
+    assert type(result) is pa.ChunkedArray
+    assert result.type == pa.bool_()
+    assert result.num_chunks == 0
+
+
+def test_filled_strings_are_a_string_array() -> None:
+    result = _filled(pa.array(["C", None]), pa.scalar(""))
+    assert type(result) is pa.StringArray
+    assert result.to_pylist() == ["C", ""]
+    only_nulls = _filled(pa.nulls(2, pa.string()), pa.scalar(""))
+    assert type(only_nulls) is pa.StringArray
+    assert only_nulls.to_pylist() == ["", ""]
 
 
 def test_joined_strings_is_a_string_array() -> None:
@@ -86,7 +102,7 @@ def test_struct_if_else_is_a_struct_array() -> None:
 
 
 def test_row_wise_helpers_on_no_rows_keep_their_class() -> None:
-    mask = _filled_mask(pa.array([], pa.bool_()), pa.scalar(False))
+    mask = _filled(pa.array([], pa.bool_()), pa.scalar(False))
     assert type(mask) is pa.BooleanArray
     assert len(mask) == 0
     joined = _joined_strings(pa.array([], pa.string()), pa.array([], pa.string()), "")

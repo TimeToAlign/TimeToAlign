@@ -26,7 +26,7 @@ from timetoalign.core import (
     struct_to_coordinate,
 )
 from timetoalign.core.fields import (
-    _filled_mask,
+    _filled,
     _struct_array,
     _struct_if_else,
     _struct_members,
@@ -528,7 +528,7 @@ class EventsMixin:
         if "event_type" not in table.column_names:
             return
         event_types = table.column("event_type").combine_chunks()
-        is_box = _filled_mask(
+        is_box = _filled(
             pc.equal(event_types, pa.scalar(BOX_EVENT_TYPE)), pa.scalar(False)
         )
         if not pc.any(is_box).as_py():

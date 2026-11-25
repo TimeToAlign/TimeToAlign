@@ -19,7 +19,7 @@ from timetoalign.core import (
     Shape,
     TimeUnit,
 )
-from timetoalign.core.fields import _filled_mask
+from timetoalign.core.fields import _filled
 from timetoalign.core.ids import mint_id, quote_id, timeline_id_prefix
 from timetoalign.core.time import (
     compare_number_column,
@@ -276,7 +276,7 @@ class ChildrenMixin:
                     below, compare_number_column(positions, end, "equal", number_type)
                 )
             within = pc.and_(within, below)
-        return _filled_mask(within, pa.scalar(False))
+        return _filled(within, pa.scalar(False))
 
     def _set_length(self, length: Coordinate | None) -> None:
         """Set this timeline's length, which its parent must contain.

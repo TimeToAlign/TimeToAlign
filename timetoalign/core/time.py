@@ -97,7 +97,7 @@ from .fields import (
     StructField,
     _compared,
     _ComparisonKernel,
-    _filled_mask,
+    _filled,
     _is_arrow_column,
     _is_arrow_field,
     _is_dict,
@@ -4523,9 +4523,7 @@ _EXACT_DOUBLE_INT = 2**53
 
 def _is(number_types: pa.Array[Any], name: str) -> pa.BooleanArray:
     """Mask: the rows whose number type is *name* (a null type is no type)."""
-    return _filled_mask(
-        _compared("equal", number_types, pa.scalar(name)), pa.scalar(False)
-    )
+    return _filled(_compared("equal", number_types, pa.scalar(name)), pa.scalar(False))
 
 
 def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
@@ -4638,7 +4636,7 @@ def numbers_from_package(
                 is_fraction,
                 pc.and_(
                     pc.and_(has_numerator, pc.invert(has_value)),
-                    _filled_mask(
+                    _filled(
                         _compared("greater_equal", denominator, pa.scalar(1)),
                         pa.scalar(False),
                     ),
@@ -4648,7 +4646,7 @@ def numbers_from_package(
                 is_float,
                 pc.and_(
                     pc.invert(pc.or_(has_numerator, has_denominator)),
-                    _filled_mask(pc.is_finite(value), pa.scalar(False)),
+                    _filled(pc.is_finite(value), pa.scalar(False)),
                 ),
             ),
         ),

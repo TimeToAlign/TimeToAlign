@@ -46,7 +46,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
-from timetoalign.core.fields import _compared, _filled_mask, _struct_child
+from timetoalign.core.fields import _compared, _filled, _struct_child
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.provenance import Belief, BeliefValue
 from timetoalign.core.retrieval import (
@@ -255,7 +255,7 @@ def _refuse_shared_claim_ids(bundles: Sequence["AlignmentBundle"]) -> None:
     places = [
         index
         for index, ids in enumerate(held)
-        if pc.any(_filled_mask(pc.equal(ids, claim_id), pa.scalar(False))).as_py()
+        if pc.any(_filled(pc.equal(ids, claim_id), pa.scalar(False))).as_py()
     ]
     first, second = places[0], places[1]
     raise ValueError(
@@ -1825,7 +1825,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
         table = self.match_claim_table
         held_rows = pc.indices_nonzero(
-            _filled_mask(_compared("equal", table._ids, claim_id), pa.scalar(False))
+            _filled(_compared("equal", table._ids, claim_id), pa.scalar(False))
         )
         # An index is never null.
         rows = [row for row in held_rows.to_pylist() if row is not None]

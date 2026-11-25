@@ -743,35 +743,23 @@ def _valid_struct_cell(scalar: pa.StructScalar) -> dict[str, Any]:
     return cast("dict[str, Any]", scalar.as_py())
 
 
-@overload
-def _filled_mask(
-    mask: pa.BooleanArray, fill_value: pa.BooleanScalar
-) -> pa.BooleanArray: ...
+_ColumnT = TypeVar("_ColumnT", bound="pa.Array[Any] | pa.ChunkedArray[Any]")
+"""An array or a chunked array, kept as the same kind by :func:`_filled`."""
 
 
-@overload
-def _filled_mask(
-    mask: pa.ChunkedArray[pa.BooleanScalar], fill_value: pa.BooleanScalar
-) -> pa.ChunkedArray[pa.BooleanScalar]: ...
-
-
-def _filled_mask(
-    mask: pa.BooleanArray | pa.ChunkedArray[pa.BooleanScalar],
-    fill_value: pa.BooleanScalar,
-) -> pa.BooleanArray | pa.ChunkedArray[pa.BooleanScalar]:
-    """``pc.fill_null(mask, fill_value)``.
+def _filled(array: _ColumnT, fill_value: pa.Scalar[Any]) -> _ColumnT:
+    """``pc.fill_null(array, fill_value)``.
 
     pyarrow-stubs 20.0 declares ``pc.fill_null`` as ``coalesce``, whose one
-    type variable joins the array and the scalar into
-    ``BooleanArray | BooleanScalar``; PyArrow returns a ``pa.BooleanArray``
-    for a boolean array and a chunked array for a chunked array. Remove once
-    pyarrow-stubs declares ``pc.fill_null`` as returning the type of its first
-    argument; call ``pc.fill_null`` directly then.
+    type variable joins the array and the scalar into a union of both (for a
+    boolean mask ``BooleanArray | BooleanScalar``); PyArrow returns an array
+    of the input's class for an array (a ``pa.BooleanArray`` for a boolean
+    mask, a ``pa.StringArray`` for strings) and a chunked array for a
+    chunked array. Remove once pyarrow-stubs declares ``pc.fill_null`` as
+    returning the type of its first argument; call ``pc.fill_null`` directly
+    then.
     """
-    return cast(
-        "pa.BooleanArray | pa.ChunkedArray[pa.BooleanScalar]",
-        pc.fill_null(mask, fill_value),
-    )
+    return cast(_ColumnT, pc.fill_null(array, fill_value))
 
 
 def _null_column(size: int, type: pa.DataType) -> pa.Array[Any]:

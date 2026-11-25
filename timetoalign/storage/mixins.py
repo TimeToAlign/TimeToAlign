@@ -53,7 +53,7 @@ from timetoalign.core.fields import (
     SemanticField,
     StringField,
     StructField,
-    _filled_mask,
+    _filled,
     _GenericField,
     blob_metadata,
     field_metadata,
@@ -963,9 +963,7 @@ class SemanticFieldAccessMixin:
         for kind in scalar_cls.__mro__:
             if not issubclass(kind, BaseModel) or kind is BaseModel:
                 continue
-            rows = _filled_mask(
-                pc.equal(types, pa.scalar(kind.__name__)), pa.scalar(False)
-            )
+            rows = _filled(pc.equal(types, pa.scalar(kind.__name__)), pa.scalar(False))
             if not pc.any(rows).as_py():
                 continue
             if kind is scalar_cls:

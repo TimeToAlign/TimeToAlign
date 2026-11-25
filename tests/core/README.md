@@ -2787,21 +2787,26 @@ helper's annotation is false and its test fails.
   second row null.
 - **Valid struct cell.** The first cell of that array: a `dict` equal to the
   row it was built from.
-- **Filled mask.** `[True, None, False]` filled with `False`: a
-  `pa.BooleanArray` `[True, False, False]` without nulls. Its callers also
-  fill the comparison of a table column with a scalar, which is chunked; the
-  helper states a chunked mask for a chunked one. The same rows as a chunked
-  column of two chunks (`[True, None]`, `[False]`): a `pa.ChunkedArray` of
-  type bool, values `[True, False, False]`, no nulls (how PyArrow lays out its
-  chunks is not part of the stated type and is not asserted). This proves the
-  chunked case of the stated overloads is the one a table column reaches.
+- **Filled.** `pc.fill_null` keeps the class of what it fills, and its
+  callers fill boolean masks (with `False` or `True`), table columns, which
+  are chunked, and string columns (with `""`). `[True, None, False]` filled
+  with `False`: a `pa.BooleanArray` `[True, False, False]` without nulls.
+  The same rows as a chunked column of two chunks (`[True, None]`,
+  `[False]`): a `pa.ChunkedArray` of type bool, values
+  `[True, False, False]`, no nulls (how PyArrow lays out its chunks is not
+  part of the stated type and is not asserted). A chunked boolean column of
+  zero chunks: a `pa.ChunkedArray` of type bool, zero chunks. A string
+  array `["C", None]` filled with `""`: a `pa.StringArray` `["C", ""]`, and
+  a string array of nulls only filled the same way: a `pa.StringArray` of
+  `""` each. This proves the stated kind follows the input kind, for every
+  value type and shape a caller fills.
 - **Joined strings.** `["C", None]` and `["4", "5"]` joined by `""`: a
   `pa.StringArray` `["C4", None]`.
 - **Struct if-else.** Choosing between two struct arrays by `[True, False]`:
   a `pa.StructArray` holding the first array's first row and the second's
   second row.
-- **No rows for the row-wise helpers.** The library calls the filled mask,
-  the joined strings and the struct if-else on fields without rows (a
+- **No rows for the row-wise helpers.** The library calls the filled
+  helper, the joined strings and the struct if-else on fields without rows (a
   number-type mask of an empty column, `x_min` / `x_max` of a shape field
   without rows, the pitch names of a pitch field without rows). With
   zero-length inputs each still returns the class it states, of length 0:

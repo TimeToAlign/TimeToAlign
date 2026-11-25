@@ -55,7 +55,7 @@ from timetoalign.core import (
 from timetoalign.core.fields import (
     ONE_OR_SEVERAL_SUFFIX,
     SemanticField,
-    _filled_mask,
+    _filled,
     _joined_strings,
     _member_fields,
     _struct_array,
@@ -195,7 +195,7 @@ def projection_ids(events: pa.Table) -> pa.Array:
     """
     if events.num_rows == 0 or "event_type" not in events.column_names:
         return pa.array([], pa.string())
-    rows = _filled_mask(
+    rows = _filled(
         pc.equal(events.column("event_type"), pa.scalar(PROJECTION_EVENT_TYPE)),
         pa.scalar(False),
     )
@@ -663,7 +663,7 @@ def _inconsistent_rows(
     equal = compare_number_column(
         duration.take(selected), expected, "equal", number_type
     )
-    inconsistent[selected] = ~_filled_mask(equal, pa.scalar(True)).to_numpy(
+    inconsistent[selected] = ~_filled(equal, pa.scalar(True)).to_numpy(
         zero_copy_only=False
     )
     return inconsistent
@@ -2325,7 +2325,7 @@ class EventData(SemanticFieldAccessMixin):
         names = table.schema.names
         if "event_type" not in names or "id" not in names:
             return self
-        mask = _filled_mask(
+        mask = _filled(
             pc.and_kleene(
                 pc.equal(table.column("event_type"), pa.scalar("Segment")),
                 pc.equal(table.column("id"), pa.scalar(old_id)),

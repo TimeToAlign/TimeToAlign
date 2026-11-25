@@ -77,7 +77,7 @@ from timetoalign.core.fields import (
     SemanticField,
     StructField,
     _compared,
-    _filled_mask,
+    _filled,
     _struct_array,
     _struct_array_of,
     _struct_child,
@@ -2635,7 +2635,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             ),
         )
         for check, reason in checks:
-            mask = _filled_mask(check, pa.scalar(False))
+            mask = _filled(check, pa.scalar(False))
             if pc.any(mask).as_py():
                 row = pc.index(mask, True).as_py()
                 raise ValueError(f"MatchClaim table row {row} {reason}.")
@@ -3162,7 +3162,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                     ),
                 ),
             )
-            off = _filled_mask(off, pa.scalar(False))
+            off = _filled(off, pa.scalar(False))
             if pc.any(off).as_py():
                 row = pc.index(off, True).as_py()
                 timeline_id = timeline_ids[row].as_py()
@@ -3576,7 +3576,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             before = old.column(name).combine_chunks()
             after = new.column(name).combine_chunks()
             same = pc.or_(
-                _filled_mask(_compared("equal", before, after), pa.scalar(False)),
+                _filled(_compared("equal", before, after), pa.scalar(False)),
                 pc.and_(pc.is_null(before), pc.is_null(after)),
             )
             if not pc.all(same).as_py():
@@ -3786,7 +3786,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             pc.cast(pc.is_valid(data.field("event_a_id")), pa.int8()),
             pc.cast(pc.is_valid(data.field("event_b_id")), pa.int8()),
         )
-        return _filled_mask(
+        return _filled(
             pc.and_(
                 pc.invert(data.field("is_synchronous")),
                 pc.equal(n_events, pa.scalar(1)),
@@ -4497,7 +4497,7 @@ def _recorded_names(
     for side in ("a", "b"):
         names = table.column(f"event_{side}_name").combine_chunks()
         ids = table.column(f"event_{side}_id").combine_chunks()
-        mask = _filled_mask(
+        mask = _filled(
             pc.and_(pc.is_valid(names), pc.is_in(ids, value_set=event_ids)),
             pa.scalar(False),
         )

@@ -48,7 +48,7 @@ from .fields import (
     SemanticField,
     _cast_column,
     _compared,
-    _filled_mask,
+    _filled,
     _struct_array_of,
     _struct_member,
     data_shaped,
@@ -492,7 +492,7 @@ def belief_mask(
     # written, but two spellings of one actor (``ex:ana`` and the IRI it
     # expands to) name one believer only under *context*: the row then
     # takes the most critical of them, in :data:`_CRITICAL_FIRST` order.
-    own = _filled_mask(
+    own = _filled(
         _names_actor(_struct_member(stated, "actor"), believer, context),
         pa.scalar(False),
     )

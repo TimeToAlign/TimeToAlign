@@ -106,13 +106,14 @@ class _MeasureView(ConversionMap[Any]):
         records = tuple(measure_map.measures)
         if not records:
             raise ValueError(f"A {type(self).__name__} requires at least one measure")
-        if any(record.qstamp is None for record in records):
+        qstamps = [r.qstamp for r in records if r.qstamp is not None]
+        if len(qstamps) != len(records):
             raise ValueError(
                 f"A {type(self).__name__} requires every measure to state its qstamp"
             )
         self._measure_map = measure_map
         self._records = records
-        self._starts = np.array([float(r.qstamp) for r in records], dtype=np.float64)
+        self._starts = np.array([float(q) for q in qstamps], dtype=np.float64)
 
     @property
     def measure_map(self) -> MeasureMap:
@@ -147,10 +148,20 @@ class _MeasureView(ConversionMap[Any]):
     def _number(self, index: int) -> int:
         """The number of the measure at *index*: its count where it states none."""
         record = self._records[index]
-        return record.number if record.number is not None else record.count
+        if record.number is not None:
+            return record.number
+        # A MeasureMap counts every measure in printed order.
+        assert record.count is not None
+        return record.count
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
-        """Write the view naming its measure map's id."""
+        """Write the view naming its measure map's id.
+
+        Raises:
+            ValueError: For a view whose type has no TimeToShare form.
+        """
+        if self._manifest_type is None:
+            raise self._no_form("its type has no TimeToShare form")
         return self._map_object(
             self._manifest_type,
             {"measure_map": entries.id_of(self._measure_map)},
@@ -265,7 +276,10 @@ class MeasureBeatMap(_MeasureView):
         """Return the number of the measure holding *value* and the beat in it."""
         index = self._index(value)
         exact = value if isinstance(value, Fraction) else Fraction(float(value))
-        beat = exact - self._records[index].qstamp + 1
+        qstamp = self._records[index].qstamp
+        # The constructor refuses a measure stating no qstamp.
+        assert qstamp is not None
+        beat = exact - qstamp + 1
         return {"number": self._number(index), "beat": beat}
 
     def _convert_array(

@@ -1102,6 +1102,7 @@ def bundle_diagram(
         # Build the list to render (with truncation)
         if len(standalone_tls) <= max_standalone:
             to_render = list(enumerate(standalone_tls))
+            last = []
             omitted = 0
         else:
             first_count = (max_standalone + 1) // 2

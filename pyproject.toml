@@ -186,6 +186,7 @@ strict = [
     "timetoalign/core/ids.py",
     "timetoalign/core/protocols.py",
     "timetoalign/core/retrieval.py",
+    "timetoalign/core/time.py",
 ]
 
 [tool.coverage.run]

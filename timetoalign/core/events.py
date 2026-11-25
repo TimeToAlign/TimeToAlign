@@ -62,7 +62,9 @@ from .fields import (
     ScalarVocabulary,
     SemanticField,
     _dictionary_chunked_array,
+    _is_dict,
     _joined_strings,
+    _member_fields,
     _struct_array_from,
     _struct_if_else,
     blob_metadata,
@@ -3380,7 +3382,7 @@ class Note(ScalarVocabulary, BaseModel):
                 return raw
             if isinstance(raw, TimeScalar):
                 return kind(raw.value, raw.unit, number_type=raw.number_type)
-            if not isinstance(raw, dict) or raw.get("value") is None:
+            if not _is_dict(raw) or raw.get("value") is None:
                 return None
             if "number_type" in raw:
                 return _position(coordinate_from_dict(raw), kind)
@@ -3402,14 +3404,14 @@ class Note(ScalarVocabulary, BaseModel):
         # so at most one of these is populated.
         pitch: EnharmonicPitch | SpecificPitch | None = None
         sp_raw = row.get("specific_pitch")
-        if isinstance(sp_raw, dict):
+        if _is_dict(sp_raw):
             pitch = SpecificPitch.from_row(sp_raw)
         if pitch is None:
             midi_raw = row.get("midi")
             pitch_raw = row.get("pitch")
             if isinstance(midi_raw, (int, float)):
                 pitch = EnharmonicPitch(midi_number=int(midi_raw))
-            elif isinstance(pitch_raw, dict):
+            elif _is_dict(pitch_raw):
                 pitch = EnharmonicPitch.from_row(pitch_raw)
             elif isinstance(pitch_raw, (int, float)):
                 pitch = EnharmonicPitch(midi_number=int(pitch_raw))
@@ -4432,9 +4434,9 @@ class MeasureNumber(Address):
     section: str | None = None
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> MeasureNumber | None:
+    def from_row(cls, row: object) -> MeasureNumber | None:
         """Rebuild a :class:`MeasureNumber` from a storage row."""
-        if not isinstance(row, dict):
+        if not _is_dict(row):
             return None
         mn = row.get("mn")
         if mn is None:
@@ -4501,13 +4503,14 @@ class MeasureNumberField(SemanticField[MeasureNumber]):
         if isinstance(source, pa.ChunkedArray):
             source = source.combine_chunks()
         schema = type(self).struct_schema()
-        label_type = schema.field(schema.get_field_index("mn")).type
+        members = _member_fields(schema)
+        label_type = members[schema.get_field_index("mn")].type
         labels = source if source.type == label_type else source.cast(label_type)
-        arrays = [
+        arrays: list[pa.Array[Any]] = [
             labels if field.name == "mn" else pa.nulls(len(labels), type=field.type)
-            for field in schema
+            for field in members
         ]
-        struct_arr = pa.StructArray.from_arrays(arrays, fields=list(schema))
+        struct_arr = _struct_array_from(arrays, members)
         out_name = name if name is not None else self.name
         return type(self).from_field((struct_arr, pa.field(out_name, schema)))
 
@@ -4557,7 +4560,7 @@ class MeasureId(Address):
     value: int | str
 
     @classmethod
-    def count(cls, value: int) -> MeasureId:
+    def count(cls, value: object) -> MeasureId:
         """Address the *value*-th measure-like unit.
 
         Args:
@@ -4574,7 +4577,7 @@ class MeasureId(Address):
         return cls(value=value)
 
     @classmethod
-    def identifier(cls, value: str) -> MeasureId:
+    def identifier(cls, value: object) -> MeasureId:
         """Address the measure whose identifier is *value*.
 
         Args:
@@ -4658,16 +4661,16 @@ class Beat(Address):
     level: int = 0
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> Beat | None:
+    def from_row(cls, row: object) -> Beat | None:
         """Rebuild a :class:`Beat` from a storage row."""
-        if not isinstance(row, dict):
+        if not _is_dict(row):
             return None
         index = row.get("index")
         if index is None:
             return None
         policy_row = row.get("policy")
         policy: BeatPolicy | None = None
-        if isinstance(policy_row, dict) and policy_row.get("grouping") is not None:
+        if _is_dict(policy_row) and policy_row.get("grouping") is not None:
             policy = BeatPolicy(
                 grouping=tuple(int(entry) for entry in policy_row["grouping"]),
                 division=Fraction(struct_to_rational(policy_row["division"])),
@@ -4764,8 +4767,8 @@ class Id(BaseModel):
     value: str
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> Id | None:
-        if not isinstance(row, dict):
+    def from_row(cls, row: object) -> Id | None:
+        if not _is_dict(row):
             return None
         v = row.get("value")
         if v is None:
@@ -5046,7 +5049,7 @@ class ProjectionField(SemanticField[Projection]):
         """
         items = list(projections)
         present = [projection is not None for projection in items]
-        array = pa.StructArray.from_arrays(
+        array = _struct_array_from(
             [
                 pa.array([p and p.id for p in items], pa.string()),
                 coordinate_cells([p and p.start for p in items]),
@@ -5055,7 +5058,7 @@ class ProjectionField(SemanticField[Projection]):
                     EventReference, [p and p.projection_of for p in items]
                 ),
             ],
-            fields=list(cls.struct_schema()),
+            _member_fields(cls.struct_schema()),
             mask=pa.array([not flag for flag in present], pa.bool_()),
         )
         pa_field = pa.field(
@@ -5240,7 +5243,7 @@ class MidiEvent(BaseModel):
     program: int | None = None
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "MidiEvent | None":
+    def from_row(cls, row: dict[str, Any] | None) -> "MidiEvent | None":
         """Reconstruct a :class:`MidiEvent` from a storage-row dict.
 
         Accepts the dict shape produced by ``pa.StructArray.to_pylist()``
@@ -5256,7 +5259,7 @@ class MidiEvent(BaseModel):
         if row is None:
             return None
         pitch_raw = row.get("pitch")
-        if isinstance(pitch_raw, dict):
+        if _is_dict(pitch_raw):
             pitch = EnharmonicPitch.from_row(pitch_raw)
         elif pitch_raw is None:
             pitch = None
@@ -5326,7 +5329,7 @@ class ScoreMidiEvent(MidiEvent):
     part_id: str | None = None
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "ScoreMidiEvent | None":
+    def from_row(cls, row: dict[str, Any] | None) -> "ScoreMidiEvent | None":
         """Reconstruct a :class:`ScoreMidiEvent` from a storage-row dict.
 
         Accepts the wider 10-field dict shape produced by
@@ -5337,7 +5340,7 @@ class ScoreMidiEvent(MidiEvent):
         if row is None:
             return None
         pitch_raw = row.get("pitch")
-        if isinstance(pitch_raw, dict):
+        if _is_dict(pitch_raw):
             pitch = EnharmonicPitch.from_row(pitch_raw)
         elif pitch_raw is None:
             pitch = None

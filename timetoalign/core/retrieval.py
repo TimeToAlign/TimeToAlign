@@ -493,6 +493,7 @@ def format_coordinates(
         )
 
     def project(coordinate: IdCoordinate) -> CoordinateResult:
+        """Return *coordinate* in the requested scalar *format*."""
         if format == "id_coordinate":
             return coordinate
         if format == "coordinate":

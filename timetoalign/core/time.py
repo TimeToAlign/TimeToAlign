@@ -1709,6 +1709,18 @@ class RedundantNumberField(NumberField):
         ],
         **kw: Any,
     ) -> "RedundantNumberField":
+        """Create a field from a ``(data, field)`` tuple.
+
+        Args:
+            source: A tuple of ``(pa.Array | None, pa.Field)``; the field
+                must have the number struct schema.
+
+        Returns:
+            A new field of this class.
+
+        Raises:
+            TypeError: If the field type is not the number struct schema.
+        """
         cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
@@ -1832,6 +1844,7 @@ class DenominateNumber(ScalarVocabulary, BaseModel):
         }
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the discriminator plus the (unit, domain, number_type) triple."""
         return {
             **super().metadata_dict(),
             "unit": self.unit.value,
@@ -2371,6 +2384,11 @@ class TimeScalar(ScalarVocabulary, BaseModel):
 
     @property
     def number_type(self) -> NumberType:
+        """The representation the value is held in, read off its Python type.
+
+        Raises:
+            TypeError: If the value is a ``bool`` or not a number.
+        """
         v = self.value
         if isinstance(v, bool):
             raise TypeError("Boolean values are not valid time-scalar values")
@@ -2384,6 +2402,7 @@ class TimeScalar(ScalarVocabulary, BaseModel):
 
     @property
     def domain(self) -> Domain:
+        """The temporal domain implied by the unit."""
         return self.unit.domain
 
     @property
@@ -2529,14 +2548,17 @@ class TimeScalar(ScalarVocabulary, BaseModel):
 
     @data_shaped
     def is_zero(self) -> bool:
+        """Whether the value equals zero."""
         return self.value == 0
 
     @data_shaped
     def is_positive(self) -> bool:
+        """Whether the value is greater than zero."""
         return self.value > 0
 
     @data_shaped
     def is_negative(self) -> bool:
+        """Whether the value is less than zero."""
         return self.value < 0
 
     # -- mutators (copy-on-write) ------------------------------------------
@@ -2984,6 +3006,10 @@ class TimeScalarField(_AxisField[TimeScalarT]):
 
     @property
     def semantic_type(self) -> str:
+        """Name of the scalar this field materialises.
+
+        The class name without ``Field``; concrete subclasses override it.
+        """
         # Concrete subclasses override with their scalar's name.
         return type(self).__name__.removesuffix("Field")
 
@@ -3115,6 +3141,34 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         name: str | None = None,
         **kw: Any,
     ) -> Self:
+        """Create a field from an Arrow column, a ``pa.Field`` or a ``StructField``.
+
+        A ``pa.Field`` or a ``(data, field)`` tuple supplies the unit and
+        number type through the field's metadata; *unit* and *number_type*
+        override it. A bare array, chunked array or ``StructField`` carries no
+        metadata, so both must be passed. A ``pa.Field`` alone gives a
+        schema-only field.
+
+        Args:
+            source: A ``(pa.Array | None, pa.Field)`` tuple, a ``pa.Field``, a
+                ``StructField``, or a bare ``pa.Array`` / ``pa.ChunkedArray``
+                of number structs.
+            unit: The time unit; overrides the metadata.
+            number_type: The declared representation; overrides the
+                metadata. A tuple or ``pa.Field`` source whose metadata names
+                none declares ``float``.
+            name: Column name given to a bare array; defaults to the class
+                name without ``Field``, lower-cased.
+            **kw: Unused keywords; ignored, with a warning naming them.
+
+        Returns:
+            A new field of this class.
+
+        Raises:
+            ValueError: If the unit (or, for a bare source, the number type)
+                cannot be determined.
+            TypeError: If *source* is none of the supported shapes.
+        """
         cls._warn_ignored_keywords(kw)
         if name is None:
             name = cls.__name__.removesuffix("Field").lower() or "value"
@@ -3131,6 +3185,23 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
     ) -> Self:
+        """Create a field from one column of a table.
+
+        Args:
+            table: The table holding the column.
+            field: Name of the column; may be omitted when exactly one struct
+                column carries a timetoalign metadata blob.
+            unit: The time unit; overrides the column's metadata.
+            number_type: The declared representation; overrides the column's
+                metadata.
+
+        Returns:
+            A new field of this class over the column.
+
+        Raises:
+            ValueError: If *field* is omitted and no single candidate column
+                is found, or the unit cannot be determined.
+        """
         if field is None:
             schema_fields: list[pa.Field[pa.DataType]] = list(table.schema)
             candidates = [
@@ -3399,6 +3470,7 @@ class Coordinate(TimeScalar):
 
     @property
     def semantic_type(self) -> str:
+        """Canonical name of this type: ``"Coordinate"``."""
         return "Coordinate"
 
     # -- arithmetic ---------------------------------------------------------
@@ -3506,6 +3578,7 @@ class CoordinateField(TimeScalarField[Coordinate]):
 
     @property
     def semantic_type(self) -> str:
+        """Name of the scalar this field materialises: ``"Coordinate"``."""
         return "Coordinate"
 
     def __getitem__(self, i: int) -> Coordinate | None:
@@ -3628,6 +3701,7 @@ class Duration(TimeScalar):
 
     @property
     def semantic_type(self) -> str:
+        """Canonical name of this type: ``"Duration"``."""
         return "Duration"
 
     # -- arithmetic ---------------------------------------------------------
@@ -3706,6 +3780,7 @@ class DurationField(TimeScalarField[Duration]):
 
     @property
     def semantic_type(self) -> str:
+        """Name of the scalar this field materialises: ``"Duration"``."""
         return "Duration"
 
     def __getitem__(self, i: int) -> Duration | None:
@@ -3811,12 +3886,15 @@ class IdCoordinate(Coordinate, IdTimeScalar):
 
     @classmethod
     def from_coordinate(cls, coord: Coordinate, timeline_id: str) -> IdCoordinate:
+        """Bind *coord*'s value and unit to the timeline *timeline_id*."""
         return cls(coord.value, coord.unit, timeline_id)
 
     def to_coordinate(self) -> Coordinate:
+        """Return this value and unit as a plain :class:`Coordinate`."""
         return Coordinate(self.value, self.unit)
 
     def with_timeline(self, timeline_id: str) -> IdCoordinate:
+        """Return this value and unit bound to the timeline *timeline_id* instead."""
         return IdCoordinate(self.value, self.unit, timeline_id)
 
     def __repr__(self) -> str:
@@ -3859,10 +3937,12 @@ class IdCoordinateField(CoordinateField):
 
     @property
     def timeline_id(self) -> str:
+        """The ID of the timeline every element of this field belongs to."""
         return self._timeline_id
 
     @property
     def semantic_type(self) -> str:
+        """Name of the scalar this field materialises: ``"IdCoordinate"``."""
         return "IdCoordinate"
 
     def metadata_dict(self) -> dict[str, str]:
@@ -3894,6 +3974,25 @@ class IdCoordinateField(CoordinateField):
         name: str | None = None,
         **kw: Any,
     ) -> IdCoordinateField:
+        """Create a field bound to one timeline; see :meth:`TimeScalarField.from_field`.
+
+        Args:
+            source: As for :meth:`TimeScalarField.from_field`.
+            unit: The time unit; overrides the metadata.
+            number_type: The declared representation; overrides the metadata.
+            timeline_id: The timeline the field belongs to; overrides the
+                ``timeline_id`` in the field's timetoalign metadata blob.
+            name: Column name given to a bare array; defaults to
+                ``"id_coordinate"``.
+            **kw: Unused keywords; ignored, with a warning naming them.
+
+        Returns:
+            A new IdCoordinateField.
+
+        Raises:
+            ValueError: If no timeline id is passed or found in the metadata,
+                or the unit (or number type) cannot be determined.
+        """
         cls._warn_ignored_keywords(kw)
         if name is None:
             name = "id_coordinate"
@@ -3907,6 +4006,7 @@ class IdCoordinateField(CoordinateField):
         )
 
     def with_unit(self, unit: TimeUnit) -> IdCoordinateField:
+        """Return a field over the same data with *unit* (no value conversion)."""
         return IdCoordinateField(self._raw, unit, self._number_type, self._timeline_id)
 
     @classmethod
@@ -3973,12 +4073,15 @@ class IdDuration(Duration, IdTimeScalar):
 
     @classmethod
     def from_duration(cls, dur: Duration, timeline_id: str) -> IdDuration:
+        """Bind *dur*'s value and unit to the timeline *timeline_id*."""
         return cls(dur.value, dur.unit, timeline_id)
 
     def to_duration(self) -> Duration:
+        """Return this value and unit as a plain :class:`Duration`."""
         return Duration(self.value, self.unit)
 
     def with_timeline(self, timeline_id: str) -> IdDuration:
+        """Return this value and unit bound to the timeline *timeline_id* instead."""
         return IdDuration(self.value, self.unit, timeline_id)
 
     def __repr__(self) -> str:
@@ -4020,10 +4123,12 @@ class IdDurationField(DurationField):
 
     @property
     def timeline_id(self) -> str:
+        """The ID of the timeline every element of this field belongs to."""
         return self._timeline_id
 
     @property
     def semantic_type(self) -> str:
+        """Name of the scalar this field materialises: ``"IdDuration"``."""
         return "IdDuration"
 
     def metadata_dict(self) -> dict[str, str]:
@@ -4055,6 +4160,25 @@ class IdDurationField(DurationField):
         name: str | None = None,
         **kw: Any,
     ) -> IdDurationField:
+        """Create a field bound to one timeline; see :meth:`TimeScalarField.from_field`.
+
+        Args:
+            source: As for :meth:`TimeScalarField.from_field`.
+            unit: The time unit; overrides the metadata.
+            number_type: The declared representation; overrides the metadata.
+            timeline_id: The timeline the field belongs to; overrides the
+                ``timeline_id`` in the field's timetoalign metadata blob.
+            name: Column name given to a bare array; defaults to
+                ``"id_duration"``.
+            **kw: Unused keywords; ignored, with a warning naming them.
+
+        Returns:
+            A new IdDurationField.
+
+        Raises:
+            ValueError: If no timeline id is passed or found in the metadata,
+                or the unit (or number type) cannot be determined.
+        """
         cls._warn_ignored_keywords(kw)
         if name is None:
             name = "id_duration"
@@ -4068,6 +4192,7 @@ class IdDurationField(DurationField):
         )
 
     def with_unit(self, unit: TimeUnit) -> IdDurationField:
+        """Return a field over the same data with *unit* (no value conversion)."""
         return IdDurationField(self._raw, unit, self._number_type, self._timeline_id)
 
     @classmethod

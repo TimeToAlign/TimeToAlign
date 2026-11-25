@@ -662,6 +662,18 @@ class StringField(DataField):
         ],
         **kw: Any,
     ) -> "StringField":
+        """Create a StringField from a ``(data, field)`` tuple.
+
+        Args:
+            source: A tuple of ``(pa.Array | None, pa.Field)``; ``None`` as
+                the data gives a schema-only field.
+
+        Returns:
+            A new StringField.
+
+        Raises:
+            TypeError: If the field type is not string-like.
+        """
         cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
@@ -1005,6 +1017,18 @@ class StructField(DataField):
         ],
         **kw: Any,
     ) -> "StructField":
+        """Create a StructField from a ``(data, field)`` tuple.
+
+        Args:
+            source: A tuple of ``(pa.Array | None, pa.Field)``; ``None`` as
+                the data gives a schema-only field.
+
+        Returns:
+            A new StructField.
+
+        Raises:
+            TypeError: If the field type is not a struct.
+        """
         cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
@@ -1051,6 +1075,18 @@ class MapField(DataField):
         ],
         **kw: Any,
     ) -> "MapField":
+        """Create a MapField from a ``(data, field)`` tuple.
+
+        Args:
+            source: A tuple of ``(pa.Array | None, pa.Field)``; ``None`` as
+                the data gives a schema-only field.
+
+        Returns:
+            A new MapField.
+
+        Raises:
+            TypeError: If the field type is not a map.
+        """
         cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)
@@ -1067,6 +1103,14 @@ class _GenericField(DataField):
         ],
         **kw: Any,
     ) -> "_GenericField":
+        """Create a field of any Arrow type from a ``(data, field)`` tuple.
+
+        Args:
+            source: A tuple of ``(pa.Array | None, pa.Field)``.
+
+        Returns:
+            A new _GenericField.
+        """
         cls._warn_ignored_keywords(kw)
         data, field = source
         return cls(data, field)

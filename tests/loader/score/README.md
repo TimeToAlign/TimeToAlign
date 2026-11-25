@@ -573,6 +573,24 @@ start, and one Jump has one destination per place); a `play_until` and a `jump_f
 marker no measure carries; a `jump_fwd` without `play_until`; and a To Coda in the measure of
 its own leap.
 
+## Flows written from a loaded score
+
+`Timeline.create_flow_maps_from_flow_control()` is proved on synthetic flow control in
+`tests/timelines/README.md` ("Atomic sections and computed FlowMaps"). What that cannot show
+is that the Regions and FlowMaps written for a real score are the ones its gold file states,
+since the gold tests above compare the engine's runs and never what is written. So for Op. 18
+no. 4 and WoO 71, loaded from their ms3 tables:
+
+- the atomic-section Regions, turned into measure counts, equal the file's `atomic` rows, each
+  Region's name being the row's letter;
+- the chunks of the `default` and of the `single` FlowMap, read as the names of the Regions
+  they list, equal the `atomic_segments` of the file's `default` and `single` rows, in order
+  (20 and 10 chunks for Op. 18 no. 4, 37 and 25 for WoO 71; the file's rows end at section
+  breaks, which does not change the sequence of letters);
+- the timeline's whole manifest, with measure map, flow control, the Regions and the three
+  FlowMaps, is accepted by `timetoshare.validate`; read back it holds equal Regions, FlowMaps
+  and flow control and writes the same manifest again.
+
 ## The order a source states
 
 Two kinds of source state the order of their measures beside the signs: an ms3 measures table

@@ -2,8 +2,9 @@
 
 A piece's source is loaded, its timeline's flow control is played by the
 engine, and the flow is stated in measure counts and compared with the rows
-of the piece's ``.flow.csv`` file. See ``README.md``, "Gold flows" and
-"Signs written as flow control".
+of the piece's ``.flow.csv`` file. See ``README.md``, "Gold flows", "Flows
+written from a loaded score", "The order a source states" and "Signs
+written as flow control".
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import timetoshare
 
 from timetoalign.core import Coordinate
 from timetoalign.core.enums import (
@@ -185,6 +187,57 @@ def test_the_repaired_stress_score_plays_its_gold_flow(convention: str) -> None:
     assert ranges == gold[convention]
     assert result.findings == ()
     assert atomic_ranges(timeline, registry=registry) == gold["atomic"]
+
+
+# endregion
+
+# region Flows written from a loaded score
+
+
+@pytest.mark.parametrize(
+    ("specimen", "chunks"),
+    [("op18_no4_mov4_flow", (20, 10)), ("WoO71", (37, 25))],
+)
+def test_the_flows_written_for_a_loaded_score_are_the_gold_file_s(
+    specimen: str, chunks: tuple[int, int]
+) -> None:
+    timeline, gold = _timeline(specimen), gold_flows(specimen)
+    written = timeline.create_flow_maps_from_flow_control()
+
+    sections = written.sections
+    assert all(region.is_atomic_section for region in sections)
+    in_counts = measure_ranges(
+        [region.as_interval for region in sections], timeline.measure_map
+    )
+    assert [
+        MeasureRange(row.start, row.end, (region.name,))
+        for row, region in zip(in_counts, sections, strict=True)
+    ] == list(gold["atomic"])
+
+    name = {region.id: region.name for region in sections}
+    flow_maps = {str(flow_map.convention): flow_map for flow_map in written.flow_maps}
+    assert sorted(flow_maps) == ["default", "printed", "single"]
+    for convention, expected in zip(("default", "single"), chunks, strict=True):
+        letters = [name[chunk] for chunk in flow_maps[convention].chunks]
+        assert letters == [
+            letter for row in gold[convention] for letter in row.sections
+        ]
+        assert len(letters) == expected
+
+    manifest = timeline.to_dict()
+    timetoshare.validate(manifest)
+    assert [flow_map["convention"] for flow_map in manifest["flow_maps"]] == [
+        "default",
+        "single",
+        "printed",
+    ]
+    again = Timeline.from_dict(manifest)
+    assert again.to_dict() == manifest
+    assert [again.get_region(id) for id in again.list_regions()] == list(sections)
+    assert [again.get_flow_map(id) for id in again.list_flow_maps()] == list(
+        written.flow_maps
+    )
+    assert again.flow_control.to_dict() == timeline.flow_control.to_dict()
 
 
 # endregion

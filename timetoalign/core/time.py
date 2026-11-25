@@ -95,6 +95,8 @@ from .fields import (
     ScalarVocabulary,
     SemanticField,
     StructField,
+    _compared,
+    _ComparisonKernel,
     _filled_mask,
     _is_arrow_column,
     _is_arrow_field,
@@ -108,6 +110,7 @@ from .fields import (
     _struct_array_from,
     _struct_array_of,
     _struct_child,
+    _struct_members,
     _struct_types_match,
     _valid_struct_cell,
     build_struct_array,
@@ -975,7 +978,7 @@ def _pass_number_struct_array(values: Any) -> pa.StructArray | None:
         return None
     valid = values.is_valid()
     # flatten() applies the slice offset and nulls every side of a null cell.
-    sides: list[pa.Array[Any]] = list(values.flatten())
+    sides = _struct_members(values)
     incomplete = pc.and_(valid, pc.or_(sides[1].is_null(), sides[2].is_null()))
     if pc.any(incomplete).as_py():
         return None
@@ -1275,11 +1278,11 @@ _OPERATION_SYMBOLS: dict[str, str] = {
 }
 
 
-_COMPARISON_KERNELS: dict[str, Callable[[Any, Any], Any]] = {
-    "equal": pc.equal,
-    "less": pc.less,
-    "less_equal": pc.less_equal,
-    "greater_equal": pc.greater_equal,
+_COMPARISON_KERNELS: dict[str, _ComparisonKernel] = {
+    "equal": "equal",
+    "less": "less",
+    "less_equal": "less_equal",
+    "greater_equal": "greater_equal",
 }
 
 # Wide enough for an int64 numerator or denominator; the product of two such
@@ -1343,7 +1346,7 @@ def compare_number_column(
             pa.scalar(Decimal(exact.denominator), _CROSS_MULTIPLICATION_TYPE),
         )
     if ratio is None or number_type is NumberType.float:
-        compared = kernel(_struct_child(column, "value"), float_side)
+        compared = _compared(kernel, _struct_child(column, "value"), float_side)
     else:
         numerator, denominator = ratio
         wide = _CROSS_MULTIPLICATION_TYPE
@@ -1353,7 +1356,7 @@ def compare_number_column(
         right = pc.multiply(
             _struct_child(column, "denominator").cast(wide), numerator.cast(wide)
         )
-        compared = kernel(left, right)
+        compared = _compared(kernel, left, right)
     # A struct's own nulls do not reach its members; carry them over.
     return pc.if_else(valid, compared, pa.scalar(None, type=pa.bool_()))
 
@@ -1521,7 +1524,7 @@ def _ratio_sides(
     placeholders.
     """
     members: dict[str, pa.Array[Any]] = dict(
-        zip(column.type.names, column.flatten(), strict=True)
+        zip(column.type.names, _struct_members(column), strict=True)
     )
     numerator, denominator = members["numerator"], members["denominator"]
     complete = pc.and_(numerator.is_valid(), denominator.is_valid()).to_numpy(
@@ -3205,15 +3208,15 @@ class TimeScalarField(_AxisField[TimeScalarT]):
 
     def is_zero(self) -> pa.BooleanArray:
         """Vectorized ``pc.equal(value, 0)`` predicate."""
-        return pc.equal(self._value_array(), pa.scalar(0))
+        return _compared("equal", self._value_array(), pa.scalar(0))
 
     def is_positive(self) -> pa.BooleanArray:
         """Vectorized ``pc.greater(value, 0)`` predicate."""
-        return pc.greater(self._value_array(), pa.scalar(0))
+        return _compared("greater", self._value_array(), pa.scalar(0))
 
     def is_negative(self) -> pa.BooleanArray:
         """Vectorized ``pc.less(value, 0)`` predicate."""
-        return pc.less(self._value_array(), pa.scalar(0))
+        return _compared("less", self._value_array(), pa.scalar(0))
 
     # -- comparison mirrors -------------------------------------------------
     #
@@ -3227,23 +3230,27 @@ class TimeScalarField(_AxisField[TimeScalarT]):
 
     def less_than(self, other: TimeScalar | int | float | Fraction) -> pa.BooleanArray:
         """Vectorized ``pc.less(value, other)``."""
-        return pc.less(self._value_array(), _scalar_compare_value(other))
+        return _compared("less", self._value_array(), _scalar_compare_value(other))
 
     def less_equal(self, other: TimeScalar | int | float | Fraction) -> pa.BooleanArray:
         """Vectorized ``pc.less_equal(value, other)``."""
-        return pc.less_equal(self._value_array(), _scalar_compare_value(other))
+        return _compared(
+            "less_equal", self._value_array(), _scalar_compare_value(other)
+        )
 
     def greater_than(
         self, other: TimeScalar | int | float | Fraction
     ) -> pa.BooleanArray:
         """Vectorized ``pc.greater(value, other)``."""
-        return pc.greater(self._value_array(), _scalar_compare_value(other))
+        return _compared("greater", self._value_array(), _scalar_compare_value(other))
 
     def greater_equal(
         self, other: TimeScalar | int | float | Fraction
     ) -> pa.BooleanArray:
         """Vectorized ``pc.greater_equal(value, other)``."""
-        return pc.greater_equal(self._value_array(), _scalar_compare_value(other))
+        return _compared(
+            "greater_equal", self._value_array(), _scalar_compare_value(other)
+        )
 
     # Parity-mirror dunders.  Python protocol requires ``bool`` returns;
     # use the explicit ``less_than`` / ``less_equal`` / ``greater_than``
@@ -4382,7 +4389,9 @@ _EXACT_DOUBLE_INT = 2**53
 
 def _is(number_types: pa.Array[Any], name: str) -> pa.BooleanArray:
     """Mask: the rows whose number type is *name* (a null type is no type)."""
-    return _filled_mask(pc.equal(number_types, pa.scalar(name)), pa.scalar(False))
+    return _filled_mask(
+        _compared("equal", number_types, pa.scalar(name)), pa.scalar(False)
+    )
 
 
 def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
@@ -4496,7 +4505,8 @@ def numbers_from_package(
                 pc.and_(
                     pc.and_(has_numerator, pc.invert(has_value)),
                     _filled_mask(
-                        pc.greater_equal(denominator, pa.scalar(1)), pa.scalar(False)
+                        _compared("greater_equal", denominator, pa.scalar(1)),
+                        pa.scalar(False),
                     ),
                 ),
             ),
@@ -4576,7 +4586,7 @@ def package_cells(cells: Any) -> pa.StructArray:
     )
     written = package_numbers(numbers, members["number_type"])
     return _struct_array_from(
-        [*written.flatten(), members["unit"], members["number_type"]],
+        [*_struct_members(written), members["unit"], members["number_type"]],
         fields=_member_fields(PACKAGE_COORDINATE_CELL_TYPE),
         mask=pc.invert(valid),
     )
@@ -4616,7 +4626,7 @@ def cells_from_package(
     )
     read = numbers_from_package(numbers, members["number_type"], where=where)
     return _struct_array_from(
-        [*read.flatten(), members["unit"], members["number_type"]],
+        [*_struct_members(read), members["unit"], members["number_type"]],
         fields=_member_fields(COORDINATE_CELL_TYPE),
         mask=pc.invert(valid),
     )

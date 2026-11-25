@@ -47,6 +47,7 @@ from timetoshare.statements import MATCHES, METHODS, expand_iri
 from .fields import (
     SemanticField,
     _cast_column,
+    _compared,
     _filled_mask,
     _struct_array_of,
     data_shaped,
@@ -524,7 +525,8 @@ def _names_actor(
         ],
         pa.string(),
     )
-    return pc.equal(
+    return _compared(
+        "equal",
         pc.take(names, pc.index_in(actors, value_set=distinct)),
         pa.scalar(actor_iri(believer, context), pa.string()),
     )

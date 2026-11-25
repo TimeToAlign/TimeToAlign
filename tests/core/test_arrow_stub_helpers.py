@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
+import pytest
 
 from timetoalign.core.fields import (
     _cast_column,
+    _compared,
+    _ComparisonKernel,
     _dictionary_chunked_array,
     _filled_mask,
     _joined_strings,
@@ -19,8 +23,10 @@ from timetoalign.core.fields import (
     _struct_child,
     _struct_if_else,
     _struct_member,
+    _struct_members,
     _valid_struct_cell,
 )
+from timetoalign.core.time import RATIONAL_STRUCT_TYPE
 
 PAIR = pa.struct([pa.field("a", pa.int64()), pa.field("b", pa.string())])
 
@@ -174,3 +180,110 @@ def test_struct_array_from_is_a_struct_array() -> None:
     masked = _struct_array_from(members, fields=fields, mask=pa.array([False, True]))
     assert type(masked) is pa.StructArray
     assert masked.to_pylist() == [{"a": 1, "b": "x"}, None]
+
+
+def _rational_column() -> pa.StructArray:
+    """Three rational cells, the second masked over the placeholders 9.0, 9, 1."""
+    return _struct_array_from(
+        [
+            pa.array([0.5, 9.0, 2.0]),
+            pa.array([1, 9, 2]),
+            pa.array([2, 1, None]),
+        ],
+        fields=list(RATIONAL_STRUCT_TYPE),
+        mask=pa.array([False, True, False]),
+    )
+
+
+def test_struct_members_are_typed_arrays_with_the_struct_nulls() -> None:
+    result = _struct_members(_rational_column())
+    assert type(result) is list
+    assert [type(member) for member in result] == [
+        pa.DoubleArray,
+        pa.Int64Array,
+        pa.Int64Array,
+    ]
+    assert [member.to_pylist() for member in result] == [
+        [0.5, None, 2.0],
+        [1, None, 2],
+        [2, None, None],
+    ]
+
+
+def test_struct_members_of_a_slice_apply_the_offset() -> None:
+    result = _struct_members(_rational_column()[1:])
+    assert [type(member) for member in result] == [
+        pa.DoubleArray,
+        pa.Int64Array,
+        pa.Int64Array,
+    ]
+    assert [member.to_pylist() for member in result] == [
+        [None, 2.0],
+        [None, 2],
+        [None, None],
+    ]
+
+
+def test_struct_members_of_no_rows_keep_their_class() -> None:
+    combined = pa.chunked_array([], type=RATIONAL_STRUCT_TYPE).combine_chunks()
+    assert type(combined) is pa.StructArray
+    result = _struct_members(combined)
+    assert type(result) is list
+    assert [type(member) for member in result] == [
+        pa.DoubleArray,
+        pa.Int64Array,
+        pa.Int64Array,
+    ]
+    assert [len(member) for member in result] == [0, 0, 0]
+
+
+@pytest.mark.parametrize(
+    ("kernel", "expected"),
+    [
+        ("equal", [False, True, False, None]),
+        ("less", [True, False, False, None]),
+        ("less_equal", [True, True, False, None]),
+        ("greater", [False, False, True, None]),
+        ("greater_equal", [False, True, True, None]),
+    ],
+)
+def test_compared_is_the_kernel_as_a_boolean_array(
+    kernel: _ComparisonKernel, expected: list[bool | None]
+) -> None:
+    left = pa.array([-1, 0, 1, None])
+    result = _compared(kernel, left, pa.scalar(0))
+    assert type(result) is pa.BooleanArray
+    assert result.to_pylist() == expected
+    assert result.equals(pc.call_function(kernel, [left, pa.scalar(0)]))
+    assert result.equals(getattr(pc, kernel)(left, pa.scalar(0)))
+
+
+def test_compared_with_a_python_number_is_a_boolean_array() -> None:
+    left = pa.array([0.5, 2.0, None])
+    as_int = _compared("less", left, 1)
+    assert type(as_int) is pa.BooleanArray
+    assert as_int.to_pylist() == [True, False, None]
+    as_float = _compared("greater_equal", left, 2.0)
+    assert type(as_float) is pa.BooleanArray
+    assert as_float.to_pylist() == [False, True, None]
+
+
+def test_compared_with_a_string_scalar_is_a_boolean_array() -> None:
+    result = _compared("equal", pa.array(["int", "float", None]), pa.scalar("int"))
+    assert type(result) is pa.BooleanArray
+    assert result.to_pylist() == [True, False, None]
+
+
+def test_compared_with_a_second_array_is_a_boolean_array() -> None:
+    wide = pa.decimal256(37, 0)
+    left = pa.array([1, 2, None], pa.int64()).cast(wide)
+    right = pa.array([2, 2, 3], pa.int64()).cast(wide)
+    result = _compared("less", left, right)
+    assert type(result) is pa.BooleanArray
+    assert result.to_pylist() == [True, False, None]
+
+
+def test_compared_on_no_rows_is_a_boolean_array() -> None:
+    result = _compared("equal", pa.array([], pa.int64()), pa.scalar(0))
+    assert type(result) is pa.BooleanArray
+    assert len(result) == 0

@@ -860,6 +860,43 @@ def _struct_array_from(
     return pa.StructArray.from_arrays(arrays, fields=fields, mask=mask)
 
 
+def _struct_members(array: pa.StructArray) -> list[pa.Array[Any]]:
+    """``array.flatten()``.
+
+    Every member in index order, with the struct's own nulls and slice
+    offset applied. pyarrow-stubs 20.0 declares ``StructArray.flatten`` as
+    returning ``list[Array]`` with a bare ``Array``, a partially unknown
+    type; PyArrow returns a list of the members' typed arrays. Remove once
+    pyarrow-stubs parametrises that return type; call ``array.flatten()``
+    directly then.
+    """
+    return cast("list[pa.Array[Any]]", array.flatten())
+
+
+_ComparisonKernel = Literal["equal", "less", "less_equal", "greater", "greater_equal"]
+"""The comparison kernels :func:`_compared` calls, by their PyArrow name."""
+
+
+def _compared(
+    kernel: _ComparisonKernel,
+    left: pa.Array[Any],
+    right: pa.Array[Any] | pa.Scalar[Any] | int | float,
+) -> pa.BooleanArray:
+    """``pc.<kernel>(left, right)``, e.g. ``pc.equal(left, right)``.
+
+    Made as ``pc.call_function(kernel, [left, right])``, the call each of
+    PyArrow's kernel wrappers makes for arguments that are not expressions.
+    pyarrow-stubs 20.0 declares ``pc.equal``, ``pc.less``, ``pc.less_equal``,
+    ``pc.greater`` and ``pc.greater_equal`` with overloads over bare
+    ``Scalar`` / ``Array`` / ``ChunkedArray`` parameters, so each function's
+    type is partially unknown; PyArrow returns a ``pa.BooleanArray`` for an
+    array on the left. One helper with the kernel's name, rather than one per
+    kernel, keeps the stated type in one cast. Remove once pyarrow-stubs
+    parametrises those overloads; call ``pc.equal`` etc. directly then.
+    """
+    return cast(pa.BooleanArray, pc.call_function(kernel, [left, right]))
+
+
 class StructField(DataField):
     """A DataField backed by a struct array.
 

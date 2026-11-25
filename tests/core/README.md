@@ -2744,6 +2744,31 @@ helper's annotation is false and its test fails.
   kind follows the input kind, with or without rows.
 - **Struct array from arrays.** Two member arrays with fields, with and
   without a mask: a `pa.StructArray`, the masked row null.
+- **Struct members.** `StructArray.flatten` returns every member with the
+  struct's own nulls applied; the number core reads the members of a
+  number column (value, numerator, denominator) and of the package forms
+  through it, always from one contiguous struct array (each caller
+  combines a chunked column first). A rational column whose second row is
+  masked while its children hold `9.0`, `9`, `1`: a Python `list` of a
+  `pa.DoubleArray` and two `pa.Int64Array`s, in member order, the masked
+  row null in each and the third row's own null member kept. The same
+  column sliced from its second row: the slice offset applied, two rows
+  per member. A zero-chunk chunked column combined, as the callers pass
+  it: three members, each of its class and of length 0. This proves the
+  stated `list` of typed arrays holds for every shape a caller passes,
+  with or without rows.
+- **Compared.** One helper serves the five comparison kernels (`equal`,
+  `less`, `less_equal`, `greater`, `greater_equal`), named by a string as
+  PyArrow's own registry names them. Each kernel against the same left
+  array: a `pa.BooleanArray`, with the values of the direct kernel call,
+  so the helper is the kernel and not a re-implementation. Its callers
+  compare a plain array with a PyArrow scalar (int64 against `0`, a string
+  column against `"int"`), with a Python `int` or `float` (a field's
+  values against a bare number), and with a second array of the same
+  length (the cross-multiplied decimal sides of two number columns). Each
+  gives a `pa.BooleanArray`, null where a compared row is null. No rows:
+  a `pa.BooleanArray` of length 0. This proves the stated class for every
+  right-hand kind and every kernel the callers name.
 
 ## Running Tests
 

@@ -2310,6 +2310,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """
 
         def names_interval_claims(member_id: str) -> bool:
+            """Return whether a claim naming *member_id* under the belief filter is an interval."""
             rows = self._claims_naming(member_id, belief_key)._struct_array()
             return rows.field("end_anchor").null_count < len(rows)
 
@@ -4065,12 +4066,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         def node(
             timeline_id: str, coordinate: Coordinate
         ) -> tuple[str, CoordinateValue]:
+            """Return the union-find key of a coordinate, registering it on first sight."""
             key = (timeline_id, coordinate.value)
             parent.setdefault(key, key)
             coordinates.setdefault(key, coordinate)
             return key
 
         def find(key: tuple[str, CoordinateValue]) -> tuple[str, CoordinateValue]:
+            """Return the root of *key*'s component, compressing the path to it."""
             root = key
             while parent[root] != root:
                 root = parent[root]
@@ -4773,6 +4776,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         written: dict[str, Resource] = {}
 
         def entry(table_type: str, url: str, path: Path, timelines: list[str]) -> None:
+            """Record the resource entry of one written table.
+
+            A held entry's id is reused, and its timeline order kept when it names
+            the same timelines; otherwise a resource id is minted.
+            """
             held = named.get(table_type)
             resource_id = held.id if held is not None else mint_id("resource", taken)
             taken.add(resource_id)
@@ -4783,6 +4791,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             )
 
         def place(table_type: str, default: str) -> tuple[str, Path]:
+            """Return the URL and resolved path a table is written to, creating its folder.
+
+            A held entry's URL is kept; otherwise *default* is used.
+            """
             held = named.get(table_type)
             url = held.url if held is not None else default
             path = resource_path(directory, url)

@@ -362,6 +362,7 @@ class _Repository:
                     self.entity_files.setdefault(str(subject), file)
 
     def uri(self, iri: str) -> Any:
+        """The RDF node of *iri*."""
         return self._rdflib.URIRef(iri)
 
     def types(self, iri: str) -> set[str]:
@@ -410,6 +411,7 @@ class _Repository:
         return self.entity_files[iri][0]
 
     def graph_of(self, iri: str) -> Any:
+        """The graph of the entity's file."""
         return self.files[self.entity_files[iri]]
 
     def describes(self, node: Any) -> bool:

@@ -166,6 +166,7 @@ def _projection_keys(table: pa.Table) -> pa.Table:
     columns: dict[str, pa.Array] = {}
 
     def struct(name: str, fields: dict[str, pa.DataType]) -> list[pa.Array]:
+        """Return the presence flag of struct column *name*, then its *fields* (nulls if absent)."""
         if name in table.column_names:
             data = table.column(name).combine_chunks()
             if isinstance(data, pa.StructArray) and len(data.type) > 0:
@@ -526,6 +527,11 @@ class EventsMixin:
         number_type = self._number_type
 
         def refuse_as_the_box(wrong: pa.Array) -> None:
+            """Refuse the first Box flagged in *wrong* with the Box's own validation message.
+
+            Raises:
+                ValueError: If any row is flagged.
+            """
             if not pc.any(wrong).as_py():
                 return
             at = pc.index(wrong, True).as_py()
@@ -565,6 +571,7 @@ class EventsMixin:
             at = pc.index(wrong, True).as_py()
 
             def written(cells: pa.StructArray) -> str:
+                """Format the cell of *cells* at the refused row as a coordinate value."""
                 return _format_coordinate_value(
                     struct_to_coordinate(cells[at].as_py(), number_type)
                 )
@@ -1256,6 +1263,7 @@ class EventsMixin:
             key = float(key)
 
         def placed(value: int | float | Fraction) -> int | float | Fraction:
+            """Place *value* on the queried axis through the path's offsets."""
             return placed_on(value, offsets, as_float=as_float)
 
         result = []

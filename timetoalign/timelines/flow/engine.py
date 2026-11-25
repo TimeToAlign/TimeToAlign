@@ -253,6 +253,7 @@ class _Walk:
         self.watchers.setdefault((jump.id, index), []).append(holder)
 
     def coordinate(self, value: Any) -> Coordinate:
+        """Return *value* as a coordinate in the unit and number type of the walked length."""
         return Coordinate(value, self.length.unit, number_type=self.length.number_type)
 
     def find(

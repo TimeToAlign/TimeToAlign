@@ -116,19 +116,23 @@ def _check_calibration(
     span = Fraction(last_value) - Fraction(first_value)
 
     def t_of(value: CoordinateValue) -> Fraction:
+        """Return the fraction ``t`` of the calibrated span at which *value* lies."""
         return (Fraction(value) - Fraction(first_value)) / span
 
     def gamma(value: CoordinateValue) -> Fraction:
         # γ_k, k counting the roundings of the product w·t.
+        """Return the relative rounding bound ``γ_k`` of the product ``w·t`` for *value*."""
         roundings = (Fraction(value) - Fraction(first_value), span)
         k = 2 + sum(Fraction(float(d)) != d for d in roundings)
         return Fraction(k, 2**53 - k)
 
     def half_ulp(position: CoordinateValue) -> Fraction:
+        """Return half the unit in the last place of *position* read as a float."""
         return Fraction(math.ulp(float(position))) / 2
 
     def error(position: CoordinateValue, value: CoordinateValue) -> Fraction:
         # E(p, t), with W for |w|.
+        """Return the error bound ``E(p, t)`` of the pair (*position*, *value*)."""
         return half_ulp(position) + gamma(value) * abs(t_of(value)) * width
 
     if not calibration.exact:
@@ -1091,9 +1095,11 @@ class _StandaloneMeasureMaps:
     own: Any = None
 
     def id_of(self, measure_map: Any) -> str:
+        """Return the measure map's own id."""
         return measure_map.id
 
     def id_of_rows(self, rows: list[dict[str, Any]]) -> str:
+        """Return the first measure map id, since a map written alone has no siblings."""
         return mint_id(MEASURE_MAP_ID_PREFIX, ())
 
 

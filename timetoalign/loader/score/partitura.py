@@ -172,6 +172,10 @@ class PartituraLoader(ScoreLoader):
                     return None
 
                 def duration_at(time_value: int) -> int | None:
+                    """Return the divisions per quarter in force at *time_value*.
+
+                    ``None`` before the first change.
+                    """
                     current: int | None = None
                     for change_time, change_duration in quarter_duration_changes:
                         if change_time > time_value:
@@ -283,6 +287,10 @@ class PartituraLoader(ScoreLoader):
             measure_starts = [m.start.t for m in measures]
 
             def get_mc(t: int) -> int:
+                """Return the measure count (MC, 1-based) of the measure containing *t*.
+
+                A position before the first measure gives 1.
+                """
                 idx = bisect.bisect_right(measure_starts, t) - 1
                 return idx + 1 if idx >= 0 else 1
 

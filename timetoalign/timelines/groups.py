@@ -134,6 +134,7 @@ def _nested(first: "Timeline", second: "Timeline") -> bool:
     """Whether one timeline is an ancestor of the other."""
 
     def ancestors(timeline: "Timeline") -> Iterator["Timeline"]:
+        """Yield the ancestors of *timeline*, nearest first."""
         while timeline._parent is not None:
             timeline = timeline._parent
             yield timeline

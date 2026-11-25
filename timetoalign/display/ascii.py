@@ -86,27 +86,35 @@ class Diagram:
 
     # Delegate common str methods so Diagram is drop-in compatible
     def split(self, *args: Any, **kwargs: Any) -> list[str]:
+        """Return :meth:`str.split` of the diagram text."""
         return self._text.split(*args, **kwargs)
 
     def splitlines(self, *args: Any, **kwargs: Any) -> list[str]:
+        """Return :meth:`str.splitlines` of the diagram text."""
         return self._text.splitlines(*args, **kwargs)
 
     def startswith(self, *args: Any, **kwargs: Any) -> bool:
+        """Return :meth:`str.startswith` of the diagram text."""
         return self._text.startswith(*args, **kwargs)
 
     def endswith(self, *args: Any, **kwargs: Any) -> bool:
+        """Return :meth:`str.endswith` of the diagram text."""
         return self._text.endswith(*args, **kwargs)
 
     def strip(self, *args: Any, **kwargs: Any) -> str:
+        """Return :meth:`str.strip` of the diagram text."""
         return self._text.strip(*args, **kwargs)
 
     def count(self, *args: Any, **kwargs: Any) -> int:
+        """Return :meth:`str.count` of the diagram text."""
         return self._text.count(*args, **kwargs)
 
     def find(self, *args: Any, **kwargs: Any) -> int:
+        """Return :meth:`str.find` of the diagram text."""
         return self._text.find(*args, **kwargs)
 
     def replace(self, *args: Any, **kwargs: Any) -> str:
+        """Return :meth:`str.replace` of the diagram text."""
         return self._text.replace(*args, **kwargs)
 
 
@@ -460,6 +468,7 @@ def _append_child_rows(
         *,
         is_last: bool,
     ) -> None:
+        """Append one child's row, then its own children's rows below it."""
         absolute_offset = root_offset + local_offset
         extent = child._extent
         row = _build_child_row(
@@ -545,6 +554,7 @@ def _measure_name_width(
     required = minimum
 
     def visit(parent: "Timeline", level: int, remaining: int | None) -> None:
+        """Raise ``required`` to fit the displayed children of *parent* and their subtrees."""
         nonlocal required
         if remaining == 0 or parent.n_children == 0:
             return

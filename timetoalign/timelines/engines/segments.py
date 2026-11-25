@@ -934,6 +934,7 @@ class SegmentsMixin:
             raise ValueError(f"the order of measures given for {what} is empty")
 
         def joined(runs: Iterable[tuple[Any, Any]]) -> list[tuple[Any, Any]]:
+            """Merge consecutive ``(start, end)`` runs that meet into one run."""
             together: list[tuple[Any, Any]] = []
             for start, end in runs:
                 if together and together[-1][1] == start:

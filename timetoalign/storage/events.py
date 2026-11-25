@@ -1793,6 +1793,7 @@ class EventData(SemanticFieldAccessMixin):
 
         # Helper to get field array (with instant->start mapping)
         def get_arr(name: str) -> Any:
+            """Return the given array of field *name*; ``instant`` stands in for ``start``."""
             if name == "start" and "start" not in fields and "instant" in fields:
                 return fields["instant"]
             return fields.get(name)

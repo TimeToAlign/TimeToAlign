@@ -296,6 +296,7 @@ def _read_score(mei: str) -> _Score:
     meter: tuple[str, str] | None = None
 
     def read_meter(element: ET.Element) -> None:
+        """Update the meter in force from *element*'s meter attributes, if it states one."""
         nonlocal meter
         count, unit = element.get("meter.count"), element.get("meter.unit")
         symbol = element.get("meter.sym")
@@ -311,6 +312,12 @@ def _read_score(mei: str) -> _Score:
             meter = _METER_SYMBOLS[symbol]
 
     def walk(element: ET.Element, ctx: dict[str, Any]) -> None:
+        """Read *element* into ``score``, then its children in document order.
+
+        A repeat mark or tempo is read whole, without descending. *ctx*
+        carries the enclosing movement, volta, measure, staff, layer, grace
+        and chord context down the tree.
+        """
         tag = _local(element.tag)
         if tag == "mdiv":
             score.movements.append(
@@ -1294,6 +1301,7 @@ def _as_measure_rests(mei: str, spaces: set[str]) -> str:
     replaced: list[str] = []
 
     def rest(match: re.Match[str]) -> str:
+        """Turn a listed ``<mSpace`` opening tag into ``<mRest``, recording its id."""
         if match.group(1) not in spaces:
             return match.group(0)
         replaced.append(match.group(1))
@@ -1750,6 +1758,7 @@ def _navigation(measures: list[_Measure]) -> list[dict[str, str | None]]:
         names.append(own)
 
     def first(func: str, start: int, stop: int) -> str | None:
+        """Return the first marker name of kind *func* in measures ``start:stop``."""
         return next(
             (name for own in names[start:stop] for kind, name in own if kind == func),
             None,

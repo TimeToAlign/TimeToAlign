@@ -658,6 +658,7 @@ class StatementsMixin:
         )
 
         def edit(document: dict[str, Any]) -> dict[str, Any]:
+            """Return *document* with each property–value pair of the verb stated on it."""
             for property, pair_value in pairs:
                 document = _stating(
                     document, (), property, pair_value, members, believed

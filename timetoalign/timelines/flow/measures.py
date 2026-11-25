@@ -111,6 +111,7 @@ def _rows(measures: MeasureMap | Iterable[Any]) -> list[_Row]:
         else:
 
             def read(key: str, measure: Any = measure) -> Any:
+                """Read attribute *key* of the measure object, ``None`` if it lacks one."""
                 return getattr(measure, key, None)
 
         count = read("count") or position
@@ -562,6 +563,11 @@ def measure_ranges(
         counts[rows[-1].end] = rows[-1].count + 1
 
     def count_at(position: Any) -> int:
+        """Return the measure count beginning at *position*, the end counting as one past the last.
+
+        Raises:
+            ValueError: If *position* lies inside a measure or outside the measures.
+        """
         if position in counts:
             return counts[position]
         inside = next(

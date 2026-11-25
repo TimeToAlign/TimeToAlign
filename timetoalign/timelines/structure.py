@@ -873,6 +873,7 @@ class MeasureMap(_OpenObject):
         last = len(measures) - 1
 
         def encoded(values: dict[str, Any]) -> dict[str, Any]:
+            """Return the row's set keys in row order, quarter values as JSON numbers."""
             return {
                 key: (
                     number_to_json(values[key]) if key in _QUARTER_KEYS else values[key]
@@ -882,6 +883,7 @@ class MeasureMap(_OpenObject):
             }
 
         def row_for(index: int) -> dict[str, Any]:
+            """Return the Measure Map row of the measure at *index*."""
             measure = measures[index]
             number = measure.number if measure.number is not None else measure.count
             offset = getattr(measure, "offset_within_measure", Fraction(0))
@@ -1586,6 +1588,7 @@ def _flatten_nodes(roots: Iterable[MetricNode]) -> tuple[MetricNode, ...]:
     found: dict[tuple[int, Interval], MetricNode] = {}
 
     def visit(node: MetricNode) -> None:
+        """Record *node* and every node below it, keeping the first of each identity."""
         found.setdefault(_node_identity(node), node)
         for expansion in node.expansions:
             for child in expansion.children:
@@ -1603,6 +1606,11 @@ def _pack_trees(trees: Iterable[Iterable[MetricNode]]) -> tuple[MetricNode, ...]
     child_ids: set[tuple[int, Interval]] = set()
 
     def merge(node: MetricNode, *, is_root: bool) -> None:
+        """Merge *node* and its subtree into ``canonical`` by identity.
+
+        Expansions with the same child partition unite their reading ids;
+        others are kept as alternatives.
+        """
         identity = _node_identity(node)
         if is_root:
             root_ids.add(identity)
@@ -1642,6 +1650,7 @@ def _pack_trees(trees: Iterable[Iterable[MetricNode]]) -> tuple[MetricNode, ...]
             merge(root, is_root=True)
 
     def hydrate(identity: tuple[int, Interval]) -> MetricNode:
+        """Rebuild the merged node of *identity* with its merged descendants."""
         node = canonical[identity]
         return MetricNode(
             level=node.level,
@@ -1790,6 +1799,12 @@ class MetricHierarchy:
             raise ValueError(f"Reserved metric reading id {sorted(overlap)[0]!r}")
 
         def validate(node: MetricNode) -> None:
+            """Check that *node* and its subtree lie in quarters within the piece.
+
+            Raises:
+                ValueError: If a span is in another unit or reaches outside the
+                    piece, or an expansion names a reading id that is not authored.
+            """
             if node.span.unit is not TimeUnit.quarters:
                 raise ValueError("Metric hierarchy spans must use quarters")
             if node.span.start.value < 0 or node.span.end.value > total:
@@ -1852,6 +1867,7 @@ class MetricHierarchy:
         """
 
         def build() -> tuple[Reading, ...]:
+            """Build one notation reading per generated reading id, in first-use order."""
             readings: list[Reading] = []
             seen: set[str] = set()
             for beat in self._generated_beats():
@@ -1897,6 +1913,7 @@ class MetricHierarchy:
         """
 
         def build() -> tuple[TempoEntry, ...]:
+            """Collect the tempo indication entries, sorted and validated."""
             entries = sorted(
                 (
                     entry
@@ -1937,6 +1954,7 @@ class MetricHierarchy:
         """
 
         def build() -> tuple[MetricNode, ...]:
+            """Pack the default, generated and authored trees into one forest."""
             trees = [self._default_trees(), *self._generated_trees().values()]
             trees.extend(self._authored_trees().values())
             return _pack_trees(trees)
@@ -2288,6 +2306,11 @@ class MetricHierarchy:
         def select(
             node: MetricNode, reading_id: str, inherited: bool = False
         ) -> MetricNode | None:
+            """Return *node* restricted to the expansions of *reading_id*.
+
+            A node beneath a selected expansion is kept even without expansions of
+            its own; a node without any is otherwise dropped (``None``).
+            """
             expansions = tuple(
                 Expansion(
                     children=tuple(
@@ -2513,6 +2536,11 @@ class MetricHierarchy:
             raise ValueError(f"Reading id {reading.id!r} is already used or reserved")
 
         def tag(node: MetricNode) -> MetricNode:
+            """Return a copy of *node* with every expansion tagged by the new reading.
+
+            Raises:
+                ValueError: If an expansion already carries another reading id.
+            """
             expansions: list[Expansion] = []
             for expansion in node.expansions:
                 if expansion.readings not in (frozenset(), frozenset({reading.id})):

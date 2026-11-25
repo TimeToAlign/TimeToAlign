@@ -753,6 +753,7 @@ def _timeline_class_named(name: str) -> type[Timeline]:
         ]
 
     def descendants(base: type[Timeline]) -> list[type[Timeline]]:
+        """Return *base* and all its subclasses, depth first."""
         return [
             base,
             *(cls for sub in base.__subclasses__() for cls in descendants(sub)),

@@ -779,6 +779,7 @@ class _Import:
         """Every ``perfRes`` of the entity's ``perfResList``s, nested lists included."""
 
         def walk(listing: ET.Element) -> Iterator[ET.Element]:
+            """Yield the ``perfRes`` children of *listing*, descending into nested lists."""
             for child in listing:
                 if _local(child) == "perfRes":
                     yield child

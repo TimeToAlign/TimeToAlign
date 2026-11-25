@@ -1160,6 +1160,7 @@ class Timeline(
         tree = cmap._unique_map_tree(owner)
 
         def rename(index: int, new_id: str) -> None:
+            """Store the map at *index* of the tree under *new_id*."""
             tree[index]._id = new_id
 
         self._admit_entries(cmap._identity_entries(owner), rename)
@@ -1181,6 +1182,7 @@ class Timeline(
         ]
 
         def rename(index: int, new_id: str) -> None:
+            """Store the element of entry *index* under *new_id* on the timeline holding it."""
             owner, (old_id, *_) = joining[index]
             owner._reassign_element_id(old_id, new_id)
 

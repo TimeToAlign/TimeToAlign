@@ -896,6 +896,12 @@ class MatchClaim(BaseModel):
             axes[claim_id] = _axis_of(timeline)
 
         def refuse(coordinate: Coordinate, timeline_id: str, where: str) -> None:
+            """Refuse *coordinate* unless its timeline's axis is given and admits it.
+
+            Raises:
+                ValueError: If the axis of *timeline_id* is not given, or the
+                    coordinate's unit or number type is off that axis.
+            """
             if timeline_id not in axes:
                 raise ValueError(
                     f"{where} is on timeline {quote_id(timeline_id)}, whose "
@@ -3463,6 +3469,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             )
 
         def compared(field: "MatchClaimField") -> pa.Table:
+            """Return *field*'s MatchClaim rows as a table without their provenance."""
             rows = pa.Table.from_struct_array(field._struct_array())
             return rows.drop_columns(["provenance"])
 
@@ -3608,6 +3615,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                     )
 
         def full(further: pa.Table | None, n: int) -> list[pa.Array]:
+            """Return one array per joined further column, *n* nulls where *further* lacks it."""
             return [
                 (
                     further.column(name).combine_chunks()
@@ -4021,6 +4029,12 @@ def _claims_between_events(
             held[(key, event_id)] = row
 
     def lookup(side: ClaimSide, timeline: Any, index: int) -> dict[str, Any] | None:
+        """Return the held event row *side* names, or ``None``.
+
+        Raises:
+            KeyError: If *side* is an event id that is held on neither the
+                timeline nor its children.
+        """
         if side is None:
             return None
         event_id = side if isinstance(side, str) else side.get("id")
@@ -4290,11 +4304,13 @@ def _refuse_other_span(
         return
 
     def spelled(first: Any, second: Any) -> str:
+        """Spell a span for the message: ``from … to …``, ``at …`` or ``the end …``."""
         if first is None:
             return f"the end {second}"
         return f"from {first} to {second}" if second is not None else f"at {first}"
 
     def on_axis(value: Any) -> Coordinate | None:
+        """Return *value* as a coordinate on the timeline's axis, ``None`` for ``None``."""
         if value is None:
             return None
         return Coordinate(value, timeline.unit, number_type=timeline.number_type)

@@ -240,6 +240,7 @@ class ScoreMidiLoader(MidiLoader):
             # PartGroup handling is recursive in partitura, but we need flat list for note_array
             # Helper to flatten
             def flatten_parts(obj):
+                """Return the parts of a Part or PartGroup tree, depth first."""
                 if isinstance(obj, Part):
                     return [obj]
                 elif isinstance(obj, PartGroup):

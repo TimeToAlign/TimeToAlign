@@ -784,6 +784,7 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
         }
 
         def column(name: str, rows: pa.Table = rows) -> pa.Array | None:
+            """Return column *name* of the timeline's rows, ``None`` if they lack it."""
             return rows.column(name) if name in rows.column_names else None
 
         parts.append(

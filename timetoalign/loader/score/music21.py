@@ -639,6 +639,8 @@ class Music21Loader(ScoreLoader):
 
             @property
             def duration(self) -> Any:
+                """Stand-in for a music21 Duration exposing only ``quarterLength``."""
+
                 class _Dur:
                     def __init__(self, ql: float) -> None:
                         self.quarterLength = ql

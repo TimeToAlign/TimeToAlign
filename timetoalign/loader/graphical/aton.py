@@ -285,6 +285,10 @@ class ATONLoader(Loader[list[ATONHole]]):
         """
 
         def get_int(key: str, default: int = 0) -> int:
+            """Read *key* as an integer, stripping a ``px`` or ``deg`` unit.
+
+            A missing or unparsable value gives *default*; a decimal is truncated.
+            """
             val = data.get(key, str(default))
             # Strip units
             for unit in ["px", "deg"]:
@@ -296,6 +300,10 @@ class ATONLoader(Loader[list[ATONHole]]):
                 return default
 
         def get_float(key: str, default: float = 0.0) -> float:
+            """Read *key* as a float, stripping a ``px`` or ``deg`` unit.
+
+            A missing or unparsable value gives *default*.
+            """
             val = data.get(key, str(default))
             # Strip units
             for unit in ["px", "deg"]:
@@ -307,6 +315,10 @@ class ATONLoader(Loader[list[ATONHole]]):
                 return default
 
         def get_optional_int(key: str) -> int | None:
+            """Read *key* as an integer, stripping a ``px`` unit, or ``None``.
+
+            A missing or unparsable value gives ``None``; a decimal is truncated.
+            """
             val = data.get(key)
             if val is None:
                 return None

@@ -334,6 +334,19 @@ class CallableFieldParser(FieldParser):
         self._fn = fn
 
     def from_array(self, source: pa.Array, *, name: str | None = None) -> DataField:
+        """Call the wrapped function on *source*.
+
+        The output name (this parser's ``name=``, else *name*, else ``"value"``)
+        is passed as ``name=``; a function that refuses it with a ``TypeError``
+        is called again with *source* alone.
+
+        Args:
+            source: The raw column from the source ``pa.Table``.
+            name: The source column name, the fallback output name.
+
+        Returns:
+            The :class:`DataField` the function returns.
+        """
         out_name = (
             self._name
             if self._name is not None

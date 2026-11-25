@@ -69,6 +69,7 @@ def _with_timeline_id(claim: MatchClaim, old_id: str, new_id: str) -> MatchClaim
         return claim
 
     def renamed(timeline_id: str) -> str:
+        """Return *new_id* for *old_id*, any other timeline id unchanged."""
         return new_id if timeline_id == old_id else timeline_id
 
     updates: dict[str, Any] = {

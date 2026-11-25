@@ -4615,6 +4615,11 @@ measures.
     - Fails if source has existing children
     - Rejects invocation through a parameterized class whose parameter differs
       from the source's exact class
+    - Rejects invocation through a subclass of `SegmentLine` that names no
+      segment type (`class PlainLine(SegmentLine)`) with a `TypeError` whose
+      exact message names the class and the spelling it needs
+      (`SegmentLine[ContinuousLogicalTimeline]`); without the check the call
+      failed on reading the absent type's name (`AttributeError`)
 
 19. **Timeline.derive() Tests** (8 tests)
     - Creates timeline in target unit

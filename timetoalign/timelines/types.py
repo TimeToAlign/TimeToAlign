@@ -629,7 +629,8 @@ class SegmentLine(SegmentLineMixin, Timeline):
             ValueError: If source already has children (ambiguous nesting).
             ValueError: If fewer than 2 split coordinates provided.
             ValueError: As ``create_segment_line`` refuses a Box.
-            TypeError: If a parameterized receiver does not match the source.
+            TypeError: If a parameterized receiver does not match the source,
+                or a receiver other than ``SegmentLine`` names no segment type.
         """
         if source.n_children > 0:
             raise ValueError(
@@ -648,6 +649,12 @@ class SegmentLine(SegmentLineMixin, Timeline):
 
         if cls is SegmentLine:
             line_class = SegmentLine[source_class]
+        elif cls._segment_type is None:
+            raise TypeError(
+                f"{cls.__name__}.from_segmentation() requires a class naming its "
+                f"segment type, such as SegmentLine[{source_class.__name__}]; "
+                f"{cls.__name__} names none"
+            )
         elif cls._segment_type is not source_class:
             raise TypeError(
                 f"{cls.__name__}.from_segmentation() requires source type "

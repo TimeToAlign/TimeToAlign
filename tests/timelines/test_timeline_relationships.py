@@ -1153,6 +1153,20 @@ class TestSegmentLineCasting:
         assert copied is not child
         assert child._parent is line
 
+    def test_from_segmentation_refuses_a_subclass_naming_no_segment_type(self):
+        """A subclass of SegmentLine that names no segment type is refused."""
+
+        class PlainLine(SegmentLine):
+            pass
+
+        with pytest.raises(TypeError) as refused:
+            PlainLine.from_segmentation(ContinuousLogicalTimeline(length=4), [0, 4])
+        assert str(refused.value) == (
+            "PlainLine.from_segmentation() requires a class naming its segment "
+            "type, such as SegmentLine[ContinuousLogicalTimeline]; PlainLine "
+            "names none"
+        )
+
     def test_parameterized_from_segmentation_rejects_source_type_mismatch(self):
         """A bound factory accepts only its exact parameter class."""
         source = ContinuousLogicalTimeline(length=4)

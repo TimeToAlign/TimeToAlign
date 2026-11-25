@@ -502,5 +502,4 @@ numbering_report
 # ## Go deeper
 #
 # - [Flow control](../howto/how01_flow_control.ipynb)
-# - [Flow maps from regions](../howto/how01_flowmap_from_regions.ipynb)
 # - [Beat grids](../howto/how01_beat_grids.ipynb)

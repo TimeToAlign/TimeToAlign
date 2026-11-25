@@ -527,8 +527,8 @@ stated = loader.create_stated_flow_map(rondo)
 # `create_flow_maps_from_flow_control()` writes the atomic sections as
 # Regions of the timeline, each named by its letter, and the flows as
 # FlowMaps listing them: `default`, then `single` and `printed` where they
-# differ from it. Each FlowMap names its convention, and its provenance says
-# it was inferred.
+# differ from it. Each FlowMap names its convention and is computed: written
+# again from the flow control whenever this is called.
 
 # %%
 written = score.create_flow_maps_from_flow_control()

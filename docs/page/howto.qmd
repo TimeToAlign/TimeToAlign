@@ -55,6 +55,10 @@ documentation:
 - [How to Build Beat Grids](howto/how01_beat_grids.ipynb) ---
   BeatGrid, tempo segments, beat tables, measure/beat queries, and
   annotation-tool export.
+- [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb) ---
+  Jumps, jump targets, breaks, section breaks and barlines; playing flow
+  control and its findings; repairing it; atomic sections, FlowMaps and
+  virtual timelines.
 
 ### TimelineGroups
 
@@ -70,7 +74,8 @@ documentation:
 - [How to Create a Note Alignment](howto/how03_create_note_alignment.ipynb) ---
   MatchClaims, AlignmentBundle, MatchLines, and cross-group MatchStamps.
 - [How to Align Multimodal Data (Beethoven)](howto/how03_beethoven_multimodal.ipynb) ---
-  AlignmentBundle, FlowMap, OMR, 16+ timelines across 3 domains.
+  AlignmentBundle, flow control and the played-through score, OMR, 16+
+  timelines across 3 domains.
 - [How to Load the Vienna 4x22 Corpus](howto/how03_loading_vienna_corpus.ipynb) ---
   MatchfileLoader, 22 performances, AlignmentBundle.
 - [How to Load an Audio-to-Score Alignment Corpus and Compare Performances](howto/how03_performance_precision.ipynb) ---

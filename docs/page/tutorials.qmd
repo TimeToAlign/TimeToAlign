@@ -49,7 +49,7 @@ from foundations through practical data work to the internals of the model:
 - [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) ---
   Claims, claim types, MatchLines and WarpMaps, MatchStamps, and support policies.
 - [Flow Control and Grids](tutorials/tut07_flow_and_grids.ipynb) ---
-  Folded and unfolded time, FlowMaps, apply_flow, and beat grids.
+  Folded and unfolded time, FlowMaps, virtual timelines, a score's flow control and its atomic sections, and beat grids.
 
 ### Under the Hood
 

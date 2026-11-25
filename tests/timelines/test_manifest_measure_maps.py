@@ -13,6 +13,7 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
+import timetoshare
 from timetoshare import FORMAT_CONTEXT
 
 from tests.helpers import bare, filed, reading, refusal
@@ -84,7 +85,82 @@ def _record(
     }
 
 
+def _bracket_rows(first: Any, second: Any) -> list[dict[str, Any]]:
+    """Four 4/4 bars as the library writes them, the last two under brackets.
+
+    Bar 2 is the default successor of bar 1 and so is omitted.
+    """
+    bar = {
+        "time_signature": "4/4",
+        "nominal_length": [4, 1],
+        "actual_length": [4, 1],
+        "start_repeat": False,
+    }
+    return [
+        {
+            "count": 1,
+            "qstamp": [0, 1],
+            "number": 1,
+            "name": "1",
+            **bar,
+            "end_repeat": False,
+            "next": ["2"],
+        },
+        {
+            "count": 3,
+            "qstamp": [8, 1],
+            "number": 3,
+            "name": "3",
+            **bar,
+            "end_repeat": True,
+            "next": ["4"],
+            "volta": first,
+        },
+        {
+            "count": 4,
+            "qstamp": [12, 1],
+            "number": 4,
+            "name": "4",
+            **bar,
+            "end_repeat": True,
+            "volta": second,
+        },
+    ]
+
+
 # region Writing
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "held"),
+    [([1, 3], [2], [(1, 3), (2,)]), (1, 2, [1, 2])],
+    ids=["lists", "numbers"],
+)
+def test_a_volta_is_written_and_read_in_the_form_stated(
+    first: Any, second: Any, held: list[Any]
+) -> None:
+    rows = _bracket_rows(first, second)
+    score = ContinuousLogicalTimeline(length=F(16), uid="score")
+    score.add_measure_map(MeasureMap.from_rows(copy.deepcopy(rows)))
+
+    written = score.to_dict(minimal=True)
+    assert bare(written) == {
+        "@context": dict(FORMAT_CONTEXT),
+        "timetoshare": "0.2.0",
+        "timelines": [
+            {
+                "id": "score",
+                "unit": "quarters",
+                "length": [16, 1],
+                "conversion_maps": [_record()],
+            }
+        ],
+        "measure_maps": [{"id": "measuremap_1", "rows": rows}],
+    }
+    timetoshare.validate(written)
+    read = Timeline.from_dict(copy.deepcopy(written))
+    assert [measure.volta for measure in read.measure_map] == [None, None, *held]
+    assert read.to_dict(minimal=True) == written
 
 
 def test_a_measure_map_writes_its_minimal_entry_by_default() -> None:

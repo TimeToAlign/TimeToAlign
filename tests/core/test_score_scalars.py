@@ -12,6 +12,8 @@ from timetoalign.core.enums import TimeUnit
 from timetoalign.core.events import (
     DcmlHarmony,
     Measure,
+    MeasureConstituentField,
+    MeasureField,
     MidiPitch,
     Note,
     NoteField,
@@ -20,6 +22,7 @@ from timetoalign.core.events import (
     SpecificPitch,
     SpecificPitchClass,
 )
+from timetoalign.core.fields import build_struct_array, join_one_or_several
 from timetoalign.core.protocols import (
     DcmlHarmonyLike,
     EnharmonicPitchLike,
@@ -533,6 +536,100 @@ class TestMeasure:
         assert m.end_repeat is False
         assert m.next is None
         assert m.volta is None
+
+
+VOLTAS = [(2, 2), ((1, 3), (1, 3)), ([1, 3], (1, 3)), ([1], (1,)), ((3, 1), (3, 1))]
+"""A volta as given and as the measure holds it."""
+
+
+class TestMeasureVolta:
+    """A volta is one pass or several, held as its source states it."""
+
+    @pytest.mark.parametrize(("given", "held"), VOLTAS, ids=repr)
+    def test_the_form_given_is_the_form_held(
+        self, given: object, held: int | tuple[int, ...]
+    ) -> None:
+        volta = Measure(volta=given).volta
+        assert volta == held
+        assert type(volta) is type(held)
+
+    def test_one_pass_and_the_list_of_that_pass_stay_apart(self) -> None:
+        assert Measure(volta=1).volta == 1
+        assert Measure(volta=[1]).volta == (1,)
+        assert Measure(volta=1) != Measure(volta=[1])
+
+    def test_volta_numbers_gives_the_numbers_of_either_form(self) -> None:
+        assert Measure(volta=2).volta_numbers == (2,)
+        assert Measure(volta=(1, 3)).volta_numbers == (1, 3)
+        assert Measure(volta=[1]).volta_numbers == (1,)
+        assert Measure(volta=(3, 1)).volta_numbers == (3, 1)
+        assert Measure().volta_numbers == ()
+
+    @pytest.mark.parametrize("numbers", [[], [1, 1]], ids=repr)
+    def test_a_list_names_at_least_one_pass_each_once(self, numbers: list) -> None:
+        with pytest.raises(ValidationError) as raised:
+            Measure(volta=numbers)
+        (error,) = raised.value.errors()
+        assert error["loc"] == ("volta",)
+        assert error["msg"] == (
+            "Value error, a volta naming several passes holds at least one number, "
+            f"each once, not {numbers!r}"
+        )
+
+    def test_a_dictionary_keeps_each_form(self) -> None:
+        for given, written in ((2, 2), ((1, 3), [1, 3]), ((1,), [1])):
+            data = Measure(id="m1", volta=given).to_dict()
+            assert data["volta"] == written
+            assert type(data["volta"]) is type(written)
+            assert Measure.from_dict(data).volta == given
+
+    def test_a_measure_with_a_volta_list_is_measure_like(self) -> None:
+        assert isinstance(Measure(volta=(1, 3)), MeasureLike)
+
+
+class TestMeasureFieldVolta:
+    """The struct keeps the two forms of a volta apart in two members."""
+
+    MEASURES = [
+        Measure(id="1", volta=2),
+        Measure(id="2", volta=(1, 3)),
+        Measure(id="3", volta=(1,)),
+        Measure(id="4"),
+    ]
+
+    def test_the_struct_holds_a_number_member_and_a_list_member(self) -> None:
+        struct = MeasureField.struct_schema()
+        assert struct.field("volta").type == pa.int64()
+        assert struct.field("volta_list").type == pa.list_(pa.int64())
+        assert struct.names[-2:] == ["volta", "volta_list"]
+        assert MeasureConstituentField.struct_schema().names[-3:] == [
+            "volta",
+            "volta_list",
+            "offset_within_measure",
+        ]
+
+    def test_each_form_fills_its_own_member(self) -> None:
+        array = build_struct_array(Measure, self.MEASURES)
+        assert array.type == MeasureField.struct_schema()
+        assert array.field("volta").to_pylist() == [2, None, None, None]
+        assert array.field("volta_list").to_pylist() == [None, [1, 3], [1], None]
+
+    def test_a_parquet_file_keeps_the_two_forms_apart(self, tmp_path) -> None:
+        import pyarrow.parquet as pq
+
+        array = build_struct_array(Measure, self.MEASURES)
+        field = MeasureField.from_field((array, pa.field("measure", array.type)))
+        path = tmp_path / "measures.parquet"
+        pq.write_table(pa.table({"measure": field.to_pyarrow()}), path)
+        read = pq.read_table(path).column("measure").combine_chunks()
+        assert read.type == MeasureField.struct_schema()
+        assert read.field("volta").to_pylist() == [2, None, None, None]
+        assert read.field("volta_list").to_pylist() == [None, [1, 3], [1], None]
+        stored = MeasureField.from_field((read, pa.field("measure", read.type)))
+        assert [
+            join_one_or_several(row["volta"], row["volta_list"])
+            for row in (stored[index] for index in range(4))
+        ] == [2, (1, 3), (1,), None]
 
 
 # ---------------------------------------------------------------------------

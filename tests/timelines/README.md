@@ -99,7 +99,12 @@ omitted run and expands to the default successors it stands for: three
 measures. A ``count`` that does not strictly increase cannot arise from
 compression and is refused with an error naming that count, whether it goes
 backwards (3 then 2) or repeats (2 then 2). ``volta`` carries no constraint: a row outside any repeat may carry
-``volta: 7`` and the value survives the round trip. A stated ``qstamp`` that
+``volta: 7`` and the value survives the round trip. A ``volta`` is a pass
+number or a list of them, and a map keeps the form its rows state: rows
+stating ``1``, ``[1]``, ``[1, 3]`` and ``[3, 1]`` give measures stating ``1``,
+``(1,)``, ``(1, 3)`` and ``(3, 1)``, write the same four values back
+compressed and in full, and keep them in a slice; an empty list and a list
+naming a number twice are refused. A stated ``qstamp`` that
 contradicts the position derived from preceding actual lengths emits exactly
 one ``UserWarning`` naming both values and the derived position is kept; the
 same message is emitted by ``MeasureMap`` construction from measures, because
@@ -886,6 +891,13 @@ entry, with literal manifests written from the format's rules.
   exact values `tests/maps/README.md` pins.
 - **Unknown keys of an entry are kept.** An entry's unknown key and a row's
   unknown key are written back where they were found.
+- **A volta list is a row value like any other.** A timeline of 16 quarters
+  whose measure map states the brackets `[1, 3]` and `[2]` writes the
+  literal entry with `"volta": [1, 3]` and `"volta": [2]` in its rows; the
+  manifest is valid for the format's validator, reads back to a timeline
+  whose measures state `(1, 3)` and `(2,)`, and is written back equal to
+  itself. The same holds with `"volta": 1` and `"volta": 2`, which stay
+  numbers: neither form is written as the other.
 
 ### Flow control (`test_flowcontrol.py`, `test_manifest_flow_control.py`)
 
@@ -1231,22 +1243,26 @@ fails as surely as a wrong place. The cases:
 | brackets 1, 2 | ONE Jump at the first bracket's start (`by: 0`, then `to`), one landing, one break, the repeat end on its own Jump |
 | three brackets, ends on 1 and 2 | both ends name one start; the second is `reset: false`, the first is not |
 | a bracket of two measures | adjacent rows of equal `volta` are one bracket: one break, behind it |
-| `volta` as a list (rows of `MeasureMap.expand_rows`) | `passes` is the list; `[1, 3]` and `[2]` are one run |
+| `volta` as a list (a measure map, and the rows of `MeasureMap.expand_rows`) | `passes` is the list; `[1, 3]` and `[2]` are one run; map and rows give the same elements |
 | brackets 1, 2, 1, 2 | a bracket naming a pass again begins the next run: two Jumps |
 | a repeat end where the brackets begin | signs on one coordinate are destinations of one Jump, in the order of the rows |
 | 3/8 bars | coordinates are the exact positions, `[3, 2]` and `[9, 2]` |
 | the elements in a registry, played | the IDs given serve as references; A B, A C comes out |
 | an abstract map; a `volta` that is no number | refused, with the count named |
 
-`Measure.volta` holds an integer today, so the list form is tested on full
-rows, the other input the function reads.
+The list form is tested on both inputs the function reads: a measure map,
+whose measures answer with their pass numbers whichever form they state,
+and full rows.
 
 **The reverse** (`measure_keys_from_flow_control`) is proved by going there
 and back: a map with a repeat, three brackets and a second repeat gives its
 own three keys again for every measure. Two tests show what cannot come
 back. Where the last bracket ends is no fact of flow control: with rows that
 state a two-measure second bracket the keys cover both measures, with the
-same positions and no `volta` they cover the first only. And the keys are
+same positions and no `volta` they cover the first only. Several passes
+come back as a list (`[1, 3]`), one pass as a number: flow control states
+passes, not whether a source wrote one pass as `2` or as `[2]`, so a map
+whose second bracket states `[2]` reads back `2` there. And the keys are
 read from manifestations: a jump target without one, a destination without
 one and a repeat start lying inside a measure state nothing, so a repaired
 or hand-written registry does not turn into notation it does not state.

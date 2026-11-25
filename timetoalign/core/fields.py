@@ -1787,6 +1787,101 @@ def _is_tuple_type(py_type: Any) -> bool:
     return origin is tuple
 
 
+ONE_OR_SEVERAL_SUFFIX = "_list"
+"""What the list member of a one-or-several property adds to the property's name."""
+
+
+def _one_or_several(py_type: Any) -> Any | None:
+    """Return ``T`` for an annotation ``T | tuple[T, ...]``, optional or not.
+
+    Such a property holds one value or several, as its source states it (a
+    volta bracket for pass ``2``, or for the passes ``(1, 3)``). Storage
+    keeps the two forms apart in two members: the property's own name holds
+    the single value, and that name with :data:`ONE_OR_SEVERAL_SUFFIX` the
+    list; a row fills at most one of them
+    (:func:`split_one_or_several`, :func:`join_one_or_several`).
+
+    Returns:
+        The single value's type, or ``None`` for any other annotation.
+    """
+    origin = get_origin(py_type)
+    union_type = getattr(sys.modules.get("types"), "UnionType", None)
+    is_union = origin is union_type or (
+        origin is not None and getattr(origin, "__name__", None) == "Union"
+    )
+    if not is_union:
+        return None
+    arms = [arm for arm in get_args(py_type) if arm is not type(None)]
+    if len(arms) != 2:
+        return None
+    for single, several in (arms, arms[::-1]):
+        if _is_tuple_type(several) and get_args(several) == (single, Ellipsis):
+            return single
+    return None
+
+
+def split_one_or_several(value: object) -> tuple[Any, list[Any] | None]:
+    """Split a one-or-several value into its two storage members.
+
+    Args:
+        value: One value, a tuple or list of several, or ``None``.
+
+    Returns:
+        ``(single, several)``: the value under the property's own name and
+        the list under its list member, at most one of them set.
+
+    Examples:
+        >>> split_one_or_several(2), split_one_or_several((1, 3))
+        ((2, None), (None, [1, 3]))
+    """
+    if _is_tuple(value) or _is_list(value):
+        return None, list(value)
+    return value, None
+
+
+def join_one_or_several(single: object, several: object) -> Any:
+    """Return the one-or-several value its two storage members hold.
+
+    The reverse of :func:`split_one_or_several`: a list member that is set
+    gives a tuple, whatever its length, so one value and the list of that
+    one value stay apart.
+
+    Args:
+        single: The member under the property's own name.
+        several: The list member, or ``None``.
+
+    Examples:
+        >>> join_one_or_several(2, None), join_one_or_several(None, [2])
+        (2, (2,))
+    """
+    if _is_tuple(several) or _is_list(several):
+        return tuple(several)
+    return single
+
+
+def split_row_member(row: dict[str, Any], name: str) -> None:
+    """Split the one-or-several value a table row holds under *name*, in place.
+
+    The row's two columns are the two storage members of
+    :func:`split_one_or_several`: *name* keeps a single value, and a list
+    moves to the column *name* with :data:`ONE_OR_SEVERAL_SUFFIX`. A row
+    without *name* is left as it is.
+    """
+    if name not in row:
+        return
+    row[name], several = split_one_or_several(row[name])
+    if several is not None:
+        row[name + ONE_OR_SEVERAL_SUFFIX] = several
+
+
+def join_row_member(row: Mapping[str, Any], name: str) -> Any:
+    """Return the one-or-several value a table row holds in its two columns.
+
+    The reverse of :func:`split_row_member`, by :func:`join_one_or_several`.
+    """
+    return join_one_or_several(row.get(name), row.get(name + ONE_OR_SEVERAL_SUFFIX))
+
+
 def _atomic_arrow_type(py_type: Any) -> pa.DataType:
     """Map a pydantic atomic / structural type annotation to a ``pa.DataType``."""
     if py_type is str:
@@ -1869,7 +1964,9 @@ def _unwrap_optional(py_type: Any) -> tuple[Any, bool]:
       :func:`register_value_projector` returning ``[]``.
     * Any other multi-arm union (e.g. ``str | int``).  Such cases must
       be split into separate fields or modelled with a tagged-union
-      schema by the caller.
+      schema by the caller.  The one union the translator stores itself
+      is ``T | tuple[T, ...]`` (:func:`_one_or_several`), which never
+      reaches this helper.
 
     Args:
         py_type: A type annotation harvested from ``BaseModel.model_fields``.
@@ -1936,6 +2033,19 @@ def _derive_arrow_fields(
                 f"Field {model_cls.__name__}.{name} has no annotation; cannot "
                 "derive PyArrow type"
             )
+        single = _one_or_several(ann)
+        if single is not None:
+            list_name = name + ONE_OR_SEVERAL_SUFFIX
+            if list_name in model_cls.model_fields:
+                raise TypeError(
+                    f"Field {model_cls.__name__}.{name} holds one value or several, "
+                    f"whose list is stored as {list_name!r}: the model declares a "
+                    "field of that name"
+                )
+            pa_type = _atomic_arrow_type(single)
+            out.append(pa.field(name, pa_type, nullable=True))
+            out.append(pa.field(list_name, pa.list_(pa_type), nullable=True))
+            continue
         inner, _optional = _unwrap_optional(ann)
         pa_type = _atomic_arrow_type(inner)
         out.append(pa.field(name, pa_type, nullable=True))
@@ -2172,13 +2282,21 @@ def _group_pa_fields_by_pydantic_field(
 ) -> "dict[str | None, list[pa.Field[pa.DataType]]]":
     """Map each ``pa.Field`` back to the pydantic field that produced it."""
     pyd_names = list(model_cls.model_fields.keys())
-    pyd_name_set = set(pyd_names)
+    # A member is produced by the pydantic field of its name, or is the list
+    # member of a one-or-several field.
+    producers = {name: name for name in pyd_names}
+    for name, info in model_cls.model_fields.items():
+        if (
+            _lookup_value_projector(model_cls, name) is None
+            and _one_or_several(info.annotation) is not None
+        ):
+            producers[name + ONE_OR_SEVERAL_SUFFIX] = name
     out: dict[str | None, list[pa.Field[pa.DataType]]] = {n: [] for n in pyd_names}
 
     matched_pa: list[pa.Field[pa.DataType]] = []
     for pf in pa_fields:
-        if pf.name in pyd_name_set:
-            out[pf.name].append(pf)
+        if pf.name in producers:
+            out[producers[pf.name]].append(pf)
             matched_pa.append(pf)
 
     leftover = [pf for pf in pa_fields if pf not in matched_pa]
@@ -2217,6 +2335,13 @@ def _build_field_arrays(
         return []
 
     annotation = field_info.annotation
+    if len(pa_subfields) == 2 and _one_or_several(annotation) is not None:
+        single_field, list_field = pa_subfields
+        members = [split_one_or_several(value) for value in values]
+        return [
+            pa.array([single for single, _ in members], type=single_field.type),
+            pa.array([several for _, several in members], type=list_field.type),
+        ]
     inner_type, _nullable = _unwrap_optional_annotation(annotation)
 
     if isinstance(inner_type, type) and issubclass(inner_type, BaseModel):

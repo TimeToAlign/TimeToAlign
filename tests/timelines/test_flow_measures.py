@@ -174,8 +174,15 @@ def test_a_bracket_of_two_measures_is_one_bracket() -> None:
     ]
 
 
-def test_a_volta_stated_as_a_list_gives_those_passes() -> None:
-    rows = MeasureMap.expand_rows(
+BOTH_INPUTS = pytest.mark.parametrize(
+    "read", [MeasureMap.from_rows, MeasureMap.expand_rows], ids=["map", "rows"]
+)
+"""The two inputs the translation reads: a measure map, and full rows."""
+
+
+@BOTH_INPUTS
+def test_a_volta_stated_as_a_list_gives_those_passes(read: Any) -> None:
+    rows = read(
         [
             {"count": 1, "time_signature": "4/4"},
             {"count": 2, "volta": [1, 3], "end_repeat": True},
@@ -312,17 +319,27 @@ def test_where_the_last_bracket_ends_stays_with_the_rows() -> None:
     )
 
 
-def test_several_passes_come_back_as_a_list() -> None:
-    rows = MeasureMap.expand_rows(
+@BOTH_INPUTS
+def test_several_passes_come_back_as_a_list(read: Any) -> None:
+    rows = read(
         [
             {"count": 1, "time_signature": "4/4"},
             {"count": 2, "volta": [1, 3], "end_repeat": True},
             {"count": 3, "volta": [2]},
+            {"count": 4, "volta": [2]},
         ]
     )
+    # One pass comes back as a number, though these rows state it as a list:
+    # flow control states passes, not how a source wrote them. The last
+    # bracket covers the two measures whose rows state its passes.
     assert measure_keys_from_flow_control(
         flow_control_from_measures(rows), rows
-    ) == keys((False, False, None), (False, True, [1, 3]), (False, False, 2))
+    ) == keys(
+        (False, False, None),
+        (False, True, [1, 3]),
+        (False, False, 2),
+        (False, False, 2),
+    )
 
 
 def test_row_keys_are_read_from_what_an_element_looks_like() -> None:

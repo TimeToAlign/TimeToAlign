@@ -372,7 +372,7 @@ class MeasureLike(Protocol):
     start_repeat: bool
     end_repeat: bool
     next: tuple[str, ...] | None
-    volta: int | None
+    volta: int | tuple[int, ...] | None
 
 
 # endregion Measure Protocol

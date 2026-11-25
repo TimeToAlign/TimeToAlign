@@ -1850,3 +1850,51 @@ class TestReducedAtTheDoorsOnly:
         assert reduced == []
         assert self._starts(flat_rows) == [("n0", (1, 2)), ("n1", (2, 3))]
         assert self._starts(parent_rows) == [("n0", (1, 2)), ("c", (1, 2))]
+
+
+# region A measure's volta, carried as stated
+
+
+def _measure_rows(*voltas: Any) -> list[dict[str, Any]]:
+    return [
+        {"event_type": "Measure", "start": index, "end": index + 1, "volta": volta}
+        for index, volta in enumerate(voltas)
+    ]
+
+
+def test_a_volta_number_and_a_volta_list_are_carried_in_two_columns() -> None:
+    data = EventData.from_dicts(
+        _measure_rows(2, [1, 3], [1], None), TimeUnit.quarters, NumberType.fraction
+    )
+    assert data.table.schema.field("volta").type == pa.int64()
+    assert data.table.schema.field("volta_list").type == pa.list_(pa.int64())
+    assert data.table.column("volta").to_pylist() == [2, None, None, None]
+    assert data.table.column("volta_list").to_pylist() == [None, [1, 3], [1], None]
+
+
+def test_the_list_column_has_its_type_whatever_its_rows_hold() -> None:
+    without = EventData.from_dicts(
+        [{**_measure_rows(None)[0], "volta_list": None}],
+        TimeUnit.quarters,
+        NumberType.fraction,
+    )
+    assert without.table.schema.field("volta_list").type == pa.list_(pa.int64())
+    without.extend(
+        EventData.from_dicts(
+            _measure_rows([1, 3]), TimeUnit.quarters, NumberType.fraction
+        )
+    )
+    assert without.table.column("volta").to_pylist() == [None, None]
+    assert without.table.column("volta_list").to_pylist() == [None, [1, 3]]
+
+
+def test_rows_stating_numbers_only_carry_no_list_column() -> None:
+    data = EventData.from_dicts(
+        _measure_rows(None, 2), TimeUnit.quarters, NumberType.fraction
+    )
+    assert "volta_list" not in data.table.column_names
+    assert data.table.schema.field("volta").type == pa.int64()
+    assert data.table.column("volta").to_pylist() == [None, 2]
+
+
+# endregion

@@ -1654,6 +1654,42 @@ class TestRowRules:
         assert [measure.volta for measure in measure_map] == [7, None, 7]
         assert MeasureMap.from_rows(measure_map.to_rows()) == measure_map
 
+    def test_a_volta_keeps_the_form_its_row_states(self) -> None:
+        stated = [1, [1], [1, 3], [3, 1]]
+        rows = [
+            {
+                "count": count,
+                "volta": volta,
+                **({"time_signature": "4/4"} if count == 1 else {}),
+            }
+            for count, volta in enumerate(stated, start=1)
+        ]
+        measure_map = MeasureMap.from_rows(rows)
+        assert [measure.volta for measure in measure_map] == [1, (1,), (1, 3), (3, 1)]
+        for compress in (True, False):
+            written = measure_map.to_rows(compress=compress)
+            assert [row["volta"] for row in written] == stated
+            assert [type(row["volta"]) for row in written] == [int, list, list, list]
+            assert MeasureMap.from_rows(written) == measure_map
+        assert [row["volta"] for row in MeasureMap.expand_rows(rows)] == stated
+        assert [measure.volta for measure in measure_map.get_slice(4, 12)] == [
+            (1,),
+            (1, 3),
+        ]
+
+    @pytest.mark.parametrize("numbers", [[], [2, 2]], ids=repr)
+    def test_a_volta_list_names_at_least_one_pass_each_once(
+        self, numbers: list[int]
+    ) -> None:
+        with pytest.raises(ValueError) as raised:
+            MeasureMap.from_rows(
+                [{"count": 1, "time_signature": "4/4", "volta": numbers}]
+            )
+        assert (
+            "a volta naming several passes holds at least one number, each once, "
+            f"not {numbers!r}"
+        ) in str(raised.value)
+
     def test_a_contradicting_qstamp_warns_and_is_corrected_in_both_lanes(self) -> None:
         with warnings.catch_warnings(record=True) as from_rows:
             warnings.simplefilter("always")

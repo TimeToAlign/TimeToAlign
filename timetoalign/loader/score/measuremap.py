@@ -30,6 +30,7 @@ MeasureMap JSON Schema Properties:
 | start_repeat | bool/number | Start repeat marker (||:) |
 | end_repeat | bool/number | End repeat marker (:||) |
 | next | array | IDs/counts of bars that can follow |
+| volta | int or array | Ending number, or the numbers of a bracket for several passes |
 """
 
 from __future__ import annotations
@@ -322,6 +323,7 @@ class MeasureMapLoader(ScoreLoader):
                 "start_repeat": bar["start_repeat"],
                 "end_repeat": bar["end_repeat"],
                 "next": bar["next"],  # Will be converted to string in from_dicts
+                "volta": bar["volta"],  # A number, or a list kept beside it
             }
 
             rows.append(row)

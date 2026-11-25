@@ -32,6 +32,7 @@ import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import IntervalPolicy, NumberType, TimeUnit
+from timetoalign.core.fields import ONE_OR_SEVERAL_SUFFIX, split_row_member
 from timetoalign.storage.events import EventData
 
 if TYPE_CHECKING:
@@ -69,6 +70,9 @@ class MeasureData(EventData):
         end_repeat: True if this bar has a repeat end marker (:||)
         next: Comma-separated list of MCs that can follow this bar
         volta: Ending number (1, 2, ...) or null
+        volta_list: Ending numbers of a bracket that states several
+            (``[1, 3]``), or null; a row fills ``volta`` or ``volta_list``,
+            as its source states the bracket, never both
         repeats: Legacy field ("start", "end", "firstMeasure")
         breaks: Section boundary marker ("section", etc.)
         dont_count: If true, skip in MN counting
@@ -160,6 +164,14 @@ class MeasureData(EventData):
             pa.int64(),
             nullable=True,
             metadata={"description": "Ending number (1, 2, ...)"},
+        ),
+        pa.field(
+            "volta" + ONE_OR_SEVERAL_SUFFIX,
+            pa.list_(pa.int64()),
+            nullable=True,
+            metadata={
+                "description": "Ending numbers of a bracket stating several ([1, 3])"
+            },
         ),
         pa.field(
             "repeats",
@@ -298,6 +310,9 @@ class MeasureData(EventData):
                     processed["next"] = ", ".join(str(x) for x in next_val)
                 # else: already a string from TSV
 
+            # ===== Keep 'volta' as stated: a number, or a list beside it =====
+            split_row_member(processed, "volta")
+
             # ===== Parse timesig into components =====
             if "timesig" in processed and processed["timesig"]:
                 ts = str(processed["timesig"])
@@ -376,12 +391,18 @@ class MeasureData(EventData):
             summary["repeat_ends"] = true_count
             summary["has_repeats"] = summary["has_repeats"] or true_count > 0
 
-        # Count voltas
+        # Count voltas: the ending numbers stated, singly or in a list
+        voltas: set[int] = set()
         if "volta" in self._table.column_names:
-            volta_arr = self._table.column("volta")
-            unique_voltas = set(volta_arr.to_pylist())
-            summary["voltas"] = {v for v in unique_voltas if v is not None}
-            summary["has_voltas"] = len(summary["voltas"]) > 0
+            voltas.update(
+                v for v in self._table.column("volta").to_pylist() if v is not None
+            )
+        list_column = "volta" + ONE_OR_SEVERAL_SUFFIX
+        if list_column in self._table.column_names:
+            for numbers in self._table.column(list_column).to_pylist():
+                voltas.update(numbers or ())
+        summary["voltas"] = voltas
+        summary["has_voltas"] = len(voltas) > 0
 
         # Count breaks
         if "breaks" in self._table.column_names:

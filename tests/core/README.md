@@ -1551,6 +1551,44 @@ gives `(1, 1)`.
 
 ---
 
+### `test_score_scalars.py`, `test_translator_extensions.py` - A volta is one pass or several, as stated
+
+A volta bracket stands for one pass (`2`) or for several (printed "1, 3"),
+and a source states which. `Measure.volta` holds what the source states: an
+integer, or a tuple of distinct integers. **What would prove it wrong:** one
+form turned into the other anywhere (`1` and `(1,)` are different
+statements), a list losing its order, or a storage that writes both into one
+integer column and cannot tell them apart when read.
+
+- **The scalar.** `volta=2` stays the integer `2`; `(1, 3)` and the list
+  `[1, 3]` are the tuple `(1, 3)`; `[1]` is `(1,)`, which is not `1`; a
+  tuple keeps its order (`(3, 1)`). `volta_numbers` gives the numbers of
+  either form as a tuple: `(2,)`, `(1, 3)`, `(1,)`, and `()` for a measure
+  without bracket. An empty tuple and a number named twice are refused with
+  the exact message `a volta naming several passes holds at least one
+  number, each once, not []` (and `not [1, 1]`). `to_dict` writes the
+  integer as a JSON integer and the tuple as a list, and `from_dict` reads
+  each back as it was. A `Measure` still satisfies `MeasureLike`.
+- **Storage.** The struct of `MeasureField` holds two members for the one
+  property: `volta` (`int64`), filled by the integer form, and `volta_list`
+  (`list<int64>`), filled by the tuple form; a row fills at most one. Built
+  from the measures `2`, `(1, 3)`, `(1,)` and none, the members are exactly
+  `[2, None, None, None]` and `[None, [1, 3], [1], None]`, also after the
+  field's array is written to a Parquet file and read again; joining the two
+  members of each row gives `2`, `(1, 3)`, `(1,)` and `None`. Every subclass
+  of `Measure` stores the same two members (`MeasureConstituentField` names
+  them before `offset_within_measure`).
+- **The rule is the translator's, not the measure's**
+  (`test_translator_extensions.py`). A property annotated `T | tuple[T,
+  ...]`, optional or not, in either order of the two arms, derives the two
+  members `<name>: T` and `<name>_list: list<T>`; a model that itself
+  declares `<name>_list` is refused, naming both; any other union of two
+  arms is refused as before. `split_one_or_several` and
+  `join_one_or_several` are each other's reverse on `None`, `2`, `(2,)` and
+  `(1, 3)`, with the values stated.
+
+---
+
 ### `test_column_builder.py` - The store-builder dumps no row
 
 **Purpose:** `build_struct_array` assembles a struct array column by column

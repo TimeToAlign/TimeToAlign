@@ -470,6 +470,37 @@ also fills. On the corpus, `WoO71.measures.mm.json` opens with a `MeasureConstit
 at offset 1, exactly the offset `WoO71.measures.tsv` states in its `mc_offset`
 column for MC 1.
 
+**A Measure Map file whose bracket states several passes.** No corpus file
+states a `volta`, so the case is a file written for it: four 4/4 measures,
+the third with `end_repeat` and `volta: [1, 3]`, the fourth with
+`end_repeat` and `volta: [2]` (the measures of the format's flow fixture
+"Volta brackets 1, 3 and 2"). What would prove the loader wrong: the list
+refused, flattened to one number, or lost between the file and the
+timeline. So every station is compared with what the file states:
+
+- the expanded rows keep `[1, 3]` and `[2]` as lists;
+- the measure table holds them in `volta_list` (`[None, None, [1, 3],
+  [2]]`) and nothing in `volta`; its summary names the voltas `{1, 2, 3}`;
+- the timeline's measures state `(1, 3)` and `(2,)`, and its rows written
+  back state `[1, 3]` and `[2]`;
+- the timeline's flow control is, element for element, what the rules of
+  `tests/timelines/README.md` ("Measures and flow control") give for these
+  rows: one Jump at 8 with the destinations `by` 0 on the passes `[1, 3]`
+  and `to` the jump target at 12 on the passes `[2]`; at 12 the Break and
+  the jump target of the second bracket and the first bracket's repeat end;
+  at 16 the second bracket's repeat end with `reset: false`;
+- the same file with the integers `1` and `2` in place of the lists gives
+  the measures `1` and `2`, the column `volta` `[None, None, 1, 2]` and an
+  empty `volta_list`: a number is never read as a list.
+
+**Stored measure tables keep the two forms apart, and old files read as
+before.** A measure table of rows stating `2`, `[1, 3]`, `[1]` and no
+bracket, written to a Parquet file and read again, has the columns `volta`
+`[2, None, None, None]` and `volta_list` `[None, [1, 3], [1], None]`, and
+the measure map built from it states `2`, `(1, 3)`, `(1,)` and `None`. A
+file written before the list column existed (the same table without it,
+`volta` an `int64` column) reads to the measures its integers state.
+
 MeasureMap tests require unique MC values, monotonic `qstamp`, valid `next` references,
 397 folded WoO71 measures, and matching MS3 MCs and repeat presence. Its schema must include flow-control and identity fields. The synthetic summary
 contains three measures, one repeat start, and one repeat end.

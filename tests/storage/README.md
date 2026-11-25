@@ -125,6 +125,20 @@ data unit and number type, places the selected rows directly on that timeline,
 and applies EventData filters before assignment. The tests pin the logical
 timeline class and the exact unfiltered and filtered event counts.
 
+### `test_events.py` - A measure's volta is carried as stated
+
+A table carries a measure's `volta` in two columns, so that a number and a
+list stay apart: `volta` (`int64`) holds the number, `volta_list`
+(`list<int64>`) the list of a bracket stating several passes. Rows giving
+`volta` as `2`, `[1, 3]`, `[1]` and `None` make the columns `[2, None,
+None, None]` and `[None, [1, 3], [1], None]`. Both columns have their type
+whether a table's rows hold a value or none, so a table whose rows state no
+bracket joins one whose rows do: extended by a table holding `[1, 3]`, a
+table of one row without bracket reads `[None, [1, 3]]` in `volta_list`.
+A table without the list column reads as before: `volta` alone, an
+`int64` column of `[None, 2]` (the type `tests/timelines/test_groups.py`
+pins).
+
 ### `test_events.py` - `EventData.column_values()`
 
 **Purpose:** Documents and validates the public, decoded column-read

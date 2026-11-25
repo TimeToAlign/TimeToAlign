@@ -39,7 +39,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from timetoalign.core import Coordinate, Duration, TimeUnit
+from timetoalign.core import Coordinate, Duration, Measure, TimeUnit
 from timetoalign.core.enums import FlowManifestation, MeasureFindingKind
 
 from ..flowcontrol import (
@@ -97,6 +97,10 @@ def _passes(volta: Any, count: int) -> tuple[int, ...] | None:
 def _rows(measures: MeasureMap | Iterable[Any]) -> list[_Row]:
     """Read the measures of a map, or full rows, in printed order.
 
+    A measure's passes are its
+    :attr:`~timetoalign.core.Measure.volta_numbers`; a row's are read from
+    its ``volta`` (:func:`_passes`).
+
     Raises:
         ValueError: If a measure states no ``qstamp`` or no ``actual_length``.
     """
@@ -125,7 +129,11 @@ def _rows(measures: MeasureMap | Iterable[Any]) -> list[_Row]:
                 end=start + Fraction(length),
                 start_repeat=bool(read("start_repeat")),
                 end_repeat=bool(read("end_repeat")),
-                passes=_passes(read("volta"), count),
+                passes=(
+                    measure.volta_numbers or None
+                    if isinstance(measure, Measure)
+                    else _passes(read("volta"), count)
+                ),
             )
         )
     return rows
@@ -322,8 +330,8 @@ def flow_control_from_measures(
     Args:
         measures: A :class:`~timetoalign.timelines.MeasureMap`, or full rows
             as :meth:`MeasureMap.expand_rows
-            <timetoalign.timelines.MeasureMap.expand_rows>` returns them, in
-            which ``volta`` may be a list of pass numbers.
+            <timetoalign.timelines.MeasureMap.expand_rows>` returns them. In
+            either, ``volta`` is a pass number or several of them.
 
     Returns:
         The elements by coordinate and then by ID, each with an ID of its

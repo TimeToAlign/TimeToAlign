@@ -51,7 +51,13 @@ from timetoalign.core import (
     TimeUnit,
     resolve_coordinate_spec,
 )
-from timetoalign.core.fields import SemanticField, blob_metadata, field_metadata
+from timetoalign.core.fields import (
+    ONE_OR_SEVERAL_SUFFIX,
+    SemanticField,
+    blob_metadata,
+    field_metadata,
+    split_row_member,
+)
 from timetoalign.core.ids import id_column, mint_ids, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
@@ -1031,6 +1037,15 @@ def _build_extra_field_schema(
             new_fields.append(pa.field(name, pa.int64(), nullable=True))
             continue
 
+        if name == "volta" + ONE_OR_SEVERAL_SUFFIX:
+            for row in processed_rows:
+                value = row.get(name)
+                row[name] = (
+                    [int(number) for number in value] if value is not None else None
+                )
+            new_fields.append(pa.field(name, pa.list_(pa.int64()), nullable=True))
+            continue
+
         sample = _first_non_null(processed_rows, name)
 
         if isinstance(sample, dict):
@@ -1682,6 +1697,9 @@ class EventData(SemanticFieldAccessMixin):
             # Ensure name field exists
             if "name" not in processed:
                 processed["name"] = None
+            # A measure's volta is carried as stated: a number, or a list
+            # in the column beside it.
+            split_row_member(processed, "volta")
             processed_rows.append(processed)
 
         schema = cls.get_schema(unit, number_type=number_type)

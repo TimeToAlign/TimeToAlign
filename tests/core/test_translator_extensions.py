@@ -28,7 +28,12 @@ from timetoalign.core.events import (
     SpecificPitchClass,
     WesternTertianHarmony,
 )
-from timetoalign.core.fields import derive_arrow_struct
+from timetoalign.core.fields import (
+    build_struct_array,
+    derive_arrow_struct,
+    join_one_or_several,
+    split_one_or_several,
+)
 from timetoalign.core.time import Duration
 
 
@@ -345,3 +350,94 @@ class TestMeasureSchema:
         assert pa.types.is_struct(qstamp_type)
         sub_names = [qstamp_type.field(i).name for i in range(qstamp_type.num_fields)]
         assert sub_names == ["value", "numerator", "denominator"]
+
+    def test_volta_is_a_number_member_and_a_list_member(self) -> None:
+        derived = derive_arrow_struct(Measure)
+        assert derived.field("volta").type == pa.int64()
+        assert derived.field("volta_list").type == pa.list_(pa.int64())
+
+
+class TestOneOrSeveral:
+    """``T | tuple[T, ...]`` stores as ``<name>: T`` beside ``<name>_list: list<T>``."""
+
+    def test_either_order_of_the_arms_derives_the_two_members(self) -> None:
+        class Optional_(BaseModel):
+            tags: str | tuple[str, ...] | None = None
+
+        class Required(BaseModel):
+            count: tuple[int, ...] | int
+
+        assert derive_arrow_struct(Optional_) == pa.struct(
+            [("tags", pa.string()), ("tags_list", pa.list_(pa.string()))]
+        )
+        assert derive_arrow_struct(Required) == pa.struct(
+            [("count", pa.int64()), ("count_list", pa.list_(pa.int64()))]
+        )
+
+    def test_each_form_builds_into_its_own_member(self) -> None:
+        class Model(BaseModel):
+            before: int = 0
+            tags: str | tuple[str, ...] | None = None
+            after: bool = False
+
+        array = build_struct_array(
+            Model,
+            [
+                Model(tags="a"),
+                Model(before=1, tags=("a", "b")),
+                Model(tags=("a",), after=True),
+                Model(),
+                None,
+            ],
+        )
+        assert array.type.names == ["before", "tags", "tags_list", "after"]
+        assert array.field("before").to_pylist() == [0, 1, 0, 0, None]
+        assert array.field("tags").to_pylist() == ["a", None, None, None, None]
+        assert array.field("tags_list").to_pylist() == [
+            None,
+            ["a", "b"],
+            ["a"],
+            None,
+            None,
+        ]
+        assert array.field("after").to_pylist() == [False, False, True, False, None]
+        assert array.is_valid().to_pylist() == [True, True, True, True, False]
+
+    def test_a_model_declaring_the_list_member_itself_is_refused(self) -> None:
+        class Model(BaseModel):
+            tags: str | tuple[str, ...] | None = None
+            tags_list: str | None = None
+
+        with pytest.raises(TypeError) as raised:
+            derive_arrow_struct(Model)
+        assert str(raised.value) == (
+            "Field Model.tags holds one value or several, whose list is stored as "
+            "'tags_list': the model declares a field of that name"
+        )
+
+    @pytest.mark.parametrize(
+        "annotation",
+        [str | int, int | tuple[str, ...], int | tuple[int, int]],
+        ids=str,
+    )
+    def test_any_other_union_of_two_arms_is_refused(self, annotation: object) -> None:
+        Model = type(
+            "Model",
+            (BaseModel,),
+            {"__annotations__": {"value": annotation}},
+        )
+        with pytest.raises(TypeError) as raised:
+            derive_arrow_struct(Model)
+        assert str(raised.value) == (
+            f"Only Optional[T] / T | None unions are supported, got {annotation!r}"
+        )
+
+    def test_splitting_and_joining_are_each_other_s_reverse(self) -> None:
+        members = {None: (None, None), 2: (2, None), (2,): (None, [2])}
+        members[(1, 3)] = (None, [1, 3])
+        for value, (single, several) in members.items():
+            assert split_one_or_several(value) == (single, several)
+            joined = join_one_or_several(single, several)
+            assert joined == value
+            assert type(joined) is type(value)
+        assert split_one_or_several([1, 3]) == (None, [1, 3])

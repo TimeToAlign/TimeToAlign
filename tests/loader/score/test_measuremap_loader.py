@@ -17,6 +17,7 @@ import json
 from fractions import Fraction
 from pathlib import Path
 
+import pyarrow as pa
 import pytest
 
 from timetoalign.testdata import ensure_data
@@ -348,6 +349,177 @@ class TestFlowControlSpecimen:
         assert len(measures) == 15  # flow_only specimen has exactly 15 measures
         summary = measures.get_flow_control_summary()
         assert summary["has_repeats"], "Flow control specimen should have repeats"
+
+
+class TestVoltaBrackets:
+    """A bracket states one pass or several; the loader keeps what the file states."""
+
+    @staticmethod
+    def _rows(first: object, second: object) -> list[dict[str, object]]:
+        """Four 4/4 measures, the last two under brackets closed by repeat signs."""
+        return [
+            {"count": 1, "time_signature": "4/4"},
+            {"count": 3, "end_repeat": True, "volta": first},
+            {"count": 4, "end_repeat": True, "volta": second},
+        ]
+
+    @staticmethod
+    def _loaded(tmp_path: Path, rows: list[dict[str, object]]):
+        from timetoalign.loader.score import MeasureMapLoader
+
+        path = tmp_path / "brackets.mm.json"
+        path.write_text(json.dumps(rows), encoding="utf-8")
+        return MeasureMapLoader().load(path)
+
+    def test_a_bracket_for_several_passes_reaches_the_timeline(self, tmp_path):
+        loader = self._loaded(tmp_path, self._rows([1, 3], [2]))
+
+        assert [bar["volta"] for bar in loader.expanded_data] == [
+            None,
+            None,
+            [1, 3],
+            [2],
+        ]
+        table = loader.store.measures.table
+        assert table.column("volta").to_pylist() == [None, None, None, None]
+        assert table.column("volta_list").to_pylist() == [None, None, [1, 3], [2]]
+        summary = loader.store.measures.get_flow_control_summary()
+        assert (summary["has_voltas"], summary["voltas"]) == (True, {1, 2, 3})
+
+        timeline = loader.create_timeline()
+        assert [measure.volta for measure in timeline.measure_map] == [
+            None,
+            None,
+            (1, 3),
+            (2,),
+        ]
+        assert [row.get("volta") for row in timeline.measure_map.to_rows()] == [
+            None,
+            [1, 3],
+            [2],
+        ]
+        assert timeline.flow_control.to_dict() == [
+            {
+                "id": "jump_1",
+                "role": "jump",
+                "coordinate": [8, 1],
+                "targets": [
+                    {"by": [0, 1], "passes": [1, 3], "manifestation": "volta"},
+                    {"to": "jump_target_1", "passes": [2], "manifestation": "volta"},
+                ],
+            },
+            {
+                "id": "break_1",
+                "role": "break",
+                "coordinate": [12, 1],
+                "manifestation": "volta",
+            },
+            {
+                "id": "jump_2",
+                "role": "jump",
+                "coordinate": [12, 1],
+                "targets": [{"repeat_count": 1, "manifestation": "repeat_end"}],
+            },
+            {
+                "id": "jump_target_1",
+                "role": "jump_target",
+                "coordinate": [12, 1],
+                "manifestation": "volta",
+            },
+            {
+                "id": "jump_3",
+                "role": "jump",
+                "coordinate": [16, 1],
+                "targets": [
+                    {"repeat_count": 1, "reset": False, "manifestation": "repeat_end"}
+                ],
+            },
+        ]
+
+    def test_a_number_is_never_read_as_a_list(self, tmp_path):
+        loader = self._loaded(tmp_path, self._rows(1, 2))
+
+        table = loader.store.measures.table
+        assert table.column("volta").to_pylist() == [None, None, 1, 2]
+        assert table.column("volta_list").to_pylist() == [None, None, None, None]
+        timeline = loader.create_timeline()
+        assert [measure.volta for measure in timeline.measure_map] == [None, None, 1, 2]
+        assert [row.get("volta") for row in timeline.measure_map.to_rows()] == [
+            None,
+            1,
+            2,
+        ]
+        first_jump, *_ = timeline.flow_control.to_dict()
+        assert [target["passes"] for target in first_jump["targets"]] == [[1], [2]]
+
+
+class TestStoredMeasureTables:
+    """A stored measure table tells a number from a list, and old files still read."""
+
+    @staticmethod
+    def _measures(*voltas: object):
+        """A measure table of 4/4 measures, one per volta stated."""
+        from timetoalign.core import NumberType, TimeUnit
+        from timetoalign.loader.score.stores import MeasureData
+
+        return MeasureData.from_dicts(
+            [
+                {
+                    "event_type": "Measure",
+                    "mc": count,
+                    "mn": str(count),
+                    "start": Fraction(4 * (count - 1)),
+                    "duration": Fraction(4),
+                    "timesig": "4/4",
+                    "volta": volta,
+                }
+                for count, volta in enumerate(voltas, start=1)
+            ],
+            unit=TimeUnit.quarters,
+            number_type=NumberType.fraction,
+        )
+
+    def test_a_parquet_file_keeps_the_two_forms_apart(self, tmp_path):
+        from timetoalign.loader.score.stores import MeasureData
+
+        path = tmp_path / "measures.parquet"
+        self._measures(2, [1, 3], [1], None).to_parquet(path)
+        read = MeasureData.from_parquet(path)
+
+        assert read.table.schema.field("volta").type == pa.int64()
+        assert read.table.schema.field("volta_list").type == pa.list_(pa.int64())
+        assert read.table.column("volta").to_pylist() == [2, None, None, None]
+        assert read.table.column("volta_list").to_pylist() == [
+            None,
+            [1, 3],
+            [1],
+            None,
+        ]
+        assert [measure.volta for measure in MeasureMap.from_measure_data(read)] == [
+            2,
+            (1, 3),
+            (1,),
+            None,
+        ]
+
+    def test_a_file_stored_without_the_list_column_reads_as_before(self, tmp_path):
+        import pyarrow.parquet as pq
+
+        from timetoalign.loader.score.stores import MeasureData
+
+        earlier = self._measures(None, 1, 2).table.drop_columns(["volta_list"])
+        assert earlier.schema.field("volta").type == pa.int64()
+        path = tmp_path / "earlier.parquet"
+        pq.write_table(earlier, path)
+
+        read = MeasureData.from_parquet(path)
+        assert "volta_list" not in read.table.column_names
+        assert read.table.column("volta").to_pylist() == [None, 1, 2]
+        assert [measure.volta for measure in MeasureMap.from_measure_data(read)] == [
+            None,
+            1,
+            2,
+        ]
 
 
 class TestAnacrusisConvention:

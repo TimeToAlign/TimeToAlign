@@ -3506,6 +3506,14 @@ class Measure(ScalarVocabulary, BaseModel):
     ``count`` and ``qstamp`` may be supplied by a source, but a containing
     measure map derives both from printed order and exact actual lengths.
     The map warns when a supplied value disagrees with that derivation.
+
+    ``volta`` is the volta bracket the measure lies under, as its source
+    states it: the number of the pass it is played in, or a tuple of
+    distinct numbers where the bracket stands for several passes (printed
+    "1, 3"). Neither form is turned into the other, so ``1`` and ``(1,)``
+    stay apart; :attr:`volta_numbers` gives the numbers of either form.
+    Storage keeps the forms apart in two members, the integer under
+    ``volta`` and the tuple under ``volta_list``.
     """
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
@@ -3525,7 +3533,7 @@ class Measure(ScalarVocabulary, BaseModel):
     start_repeat: bool = False
     end_repeat: bool = False
     next: tuple[str, ...] | None = None
-    volta: int | None = None
+    volta: int | tuple[int, ...] | None = None
 
     @classmethod
     def from_values(cls, **values: Any) -> Measure:
@@ -3654,6 +3662,18 @@ class Measure(ScalarVocabulary, BaseModel):
             )
         return tuple(str(item) for item in value)
 
+    @field_validator("volta", mode="after")
+    @classmethod
+    def _as_distinct_volta_numbers(
+        cls, value: int | tuple[int, ...] | None
+    ) -> int | tuple[int, ...] | None:
+        if isinstance(value, tuple) and (not value or len(set(value)) != len(value)):
+            raise ValueError(
+                f"a volta naming several passes holds at least one number, each "
+                f"once, not {list(value)!r}"
+            )
+        return value
+
     @model_validator(mode="after")
     def _default_name(self) -> Measure:
         if self.name is None and self.number is not None:
@@ -3664,6 +3684,20 @@ class Measure(ScalarVocabulary, BaseModel):
     def semantic_type(self) -> str:
         """Return the scalar's semantic name."""
         return "Measure"
+
+    @property
+    def volta_numbers(self) -> tuple[int, ...]:
+        """The numbers of the passes :attr:`volta` names, whichever form it has.
+
+        Examples:
+            >>> Measure(volta=2).volta_numbers, Measure(volta=(1, 3)).volta_numbers
+            ((2,), (1, 3))
+            >>> Measure().volta_numbers
+            ()
+        """
+        if self.volta is None:
+            return ()
+        return self.volta if isinstance(self.volta, tuple) else (self.volta,)
 
     def __repr__(self) -> str:
         parts = [f"id={self.id!r}", f"count={self.count!r}", f"name={self.name!r}"]
@@ -3701,7 +3735,9 @@ class Measure(ScalarVocabulary, BaseModel):
             "start_repeat": self.start_repeat,
             "end_repeat": self.end_repeat,
             "next": list(self.next) if self.next is not None else None,
-            "volta": self.volta,
+            "volta": (
+                list(self.volta) if isinstance(self.volta, tuple) else self.volta
+            ),
         }
         if isinstance(self, MeasureConstituent):
             data["offset_within_measure"] = number_to_json(self.offset_within_measure)

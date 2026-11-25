@@ -30,6 +30,7 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
+from timetoalign.core.fields import join_row_member
 from timetoalign.core.ids import _OpenObject, mint_id, validate_id
 from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
 from timetoalign.core.time import number_from_json, number_to_json, struct_to_rational
@@ -195,7 +196,7 @@ class MeasureMap(_OpenObject):
                     "start_repeat": bool(row.get("start_repeat", False)),
                     "end_repeat": bool(row.get("end_repeat", False)),
                     "next": _table_successors(row.get("next")),
-                    "volta": row.get("volta"),
+                    "volta": join_row_member(row, "volta"),
                     # Measure tables state the offset in whole notes.
                     "offset_within_measure": (
                         Fraction(str(offset)) * 4
@@ -275,7 +276,8 @@ class MeasureMap(_OpenObject):
 
         Rows are in their document form: quarter-note values are JSON numbers
         or Fraction pairs (``number_from_json``), ``next`` is a list of row
-        ``ID`` strings or ``count`` integers. Omitted rows are restored as
+        ``ID`` strings or ``count`` integers, and ``volta`` is a pass number
+        or a list of them, kept as the row states it. Omitted rows are restored as
         default successors of the row before them (count, number and qstamp
         advance, actual length becomes the nominal length, the name is the
         number, repeats clear, ``volta`` and ``offset_within_measure`` are
@@ -838,7 +840,8 @@ class MeasureMap(_OpenObject):
         A row holds every value its measure states, ``number`` (and ``name``)
         falling back to the count where a measure states none: ``ID`` only when
         it is not ``str(count)``, ``next`` as row IDs (on the last row only when it names
-        a successor), ``volta`` when set, and ``offset_within_measure`` only
+        a successor), ``volta`` when set (a number, or a list where the
+        measure states several), and ``offset_within_measure`` only
         when it is non-zero; then the keys outside the row form that the
         measure's row was read with. The first and the last rows are always
         retained, and so is every row read with such keys. Every other row is
@@ -896,7 +899,11 @@ class MeasureMap(_OpenObject):
                     "start_repeat": measure.start_repeat,
                     "end_repeat": measure.end_repeat,
                     "next": successors if index < last or successors else None,
-                    "volta": measure.volta,
+                    "volta": (
+                        list(measure.volta)
+                        if isinstance(measure.volta, tuple)
+                        else measure.volta
+                    ),
                     "offset_within_measure": offset or None,
                 }
             )

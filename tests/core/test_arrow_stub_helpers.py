@@ -60,6 +60,15 @@ def test_filled_mask_is_a_boolean_array() -> None:
     assert result.null_count == 0
 
 
+def test_filled_mask_of_a_chunked_column_is_chunked() -> None:
+    chunked = pa.chunked_array([pa.array([True, None]), pa.array([False])])
+    result = _filled_mask(chunked, pa.scalar(False))
+    assert type(result) is pa.ChunkedArray
+    assert result.type == pa.bool_()
+    assert result.to_pylist() == [True, False, False]
+    assert result.null_count == 0
+
+
 def test_joined_strings_is_a_string_array() -> None:
     result = _joined_strings(pa.array(["C", None]), pa.array(["4", "5"]), "")
     assert type(result) is pa.StringArray

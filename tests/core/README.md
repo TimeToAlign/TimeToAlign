@@ -2788,7 +2788,13 @@ helper's annotation is false and its test fails.
 - **Valid struct cell.** The first cell of that array: a `dict` equal to the
   row it was built from.
 - **Filled mask.** `[True, None, False]` filled with `False`: a
-  `pa.BooleanArray` `[True, False, False]` without nulls.
+  `pa.BooleanArray` `[True, False, False]` without nulls. Its callers also
+  fill the comparison of a table column with a scalar, which is chunked; the
+  helper states a chunked mask for a chunked one. The same rows as a chunked
+  column of two chunks (`[True, None]`, `[False]`): a `pa.ChunkedArray` of
+  type bool, values `[True, False, False]`, no nulls (how PyArrow lays out its
+  chunks is not part of the stated type and is not asserted). This proves the
+  chunked case of the stated overloads is the one a table column reaches.
 - **Joined strings.** `["C", None]` and `["4", "5"]` joined by `""`: a
   `pa.StringArray` `["C4", None]`.
 - **Struct if-else.** Choosing between two struct arrays by `[True, False]`:

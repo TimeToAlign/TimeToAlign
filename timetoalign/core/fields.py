@@ -743,19 +743,35 @@ def _valid_struct_cell(scalar: pa.StructScalar) -> dict[str, Any]:
     return cast("dict[str, Any]", scalar.as_py())
 
 
+@overload
 def _filled_mask(
     mask: pa.BooleanArray, fill_value: pa.BooleanScalar
-) -> pa.BooleanArray:
+) -> pa.BooleanArray: ...
+
+
+@overload
+def _filled_mask(
+    mask: pa.ChunkedArray[pa.BooleanScalar], fill_value: pa.BooleanScalar
+) -> pa.ChunkedArray[pa.BooleanScalar]: ...
+
+
+def _filled_mask(
+    mask: pa.BooleanArray | pa.ChunkedArray[pa.BooleanScalar],
+    fill_value: pa.BooleanScalar,
+) -> pa.BooleanArray | pa.ChunkedArray[pa.BooleanScalar]:
     """``pc.fill_null(mask, fill_value)``.
 
     pyarrow-stubs 20.0 declares ``pc.fill_null`` as ``coalesce``, whose one
     type variable joins the array and the scalar into
     ``BooleanArray | BooleanScalar``; PyArrow returns a ``pa.BooleanArray``
-    for a boolean array. Remove once pyarrow-stubs declares ``pc.fill_null``
-    as returning the type of its first argument; call ``pc.fill_null``
-    directly then.
+    for a boolean array and a chunked array for a chunked array. Remove once
+    pyarrow-stubs declares ``pc.fill_null`` as returning the type of its first
+    argument; call ``pc.fill_null`` directly then.
     """
-    return cast(pa.BooleanArray, pc.fill_null(mask, fill_value))
+    return cast(
+        "pa.BooleanArray | pa.ChunkedArray[pa.BooleanScalar]",
+        pc.fill_null(mask, fill_value),
+    )
 
 
 def _joined_strings(

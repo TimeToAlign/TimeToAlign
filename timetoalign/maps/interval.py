@@ -617,13 +617,15 @@ class QuartersToFloatingMeasures(TableMap):
         """Build the floating-measure lattice of a measure map.
 
         A floating measure is a **compound measure**: a maximal run of
-        consecutive measure records that share one ``number`` and one
-        ``nominal_length``, each continuing the one before it.  A record
-        continues the compound so far when the last record's ``next``
-        names it, or when its ``offset_within_measure`` is exactly where
-        the compound so far ends inside the notated bar (the first
-        record's offset plus the records' actual lengths) — the second
-        part of a bar split at a repeat sign whose first part jumps back.
+        consecutive measure records that share one ``number``, each
+        continuing the one before it.  A record continues the compound so
+        far when the last record's ``next`` names it — across a metre
+        change too, since one measure number is one notated bar — or
+        when it has the last record's ``nominal_length`` and its
+        ``offset_within_measure`` is exactly where the compound so far
+        ends inside the notated bar (the first record's offset plus the
+        records' actual lengths) — the second part of a bar split at a
+        repeat sign whose first part jumps back.
         Two records stating different ``volta`` brackets never join, nor
         does a record without a number.  A record on its own is a
         compound of one.  The records of a split bar, whose parts the
@@ -669,10 +671,11 @@ class QuartersToFloatingMeasures(TableMap):
         """Group a measure map's records into compound measures, in order.
 
         A record joins the compound before it when it carries the same
-        ``number`` and ``nominal_length`` as the compound's last record,
-        the two do not state different ``volta`` brackets, and either the
-        last record's ``next`` names it or its ``offset_within_measure``
-        is where the compound ends inside the notated bar.
+        ``number`` as the compound's last record, the two do not state
+        different ``volta`` brackets, and either the last record's
+        ``next`` names it, or it has the same ``nominal_length`` as the
+        last record and its ``offset_within_measure`` is where the
+        compound ends inside the notated bar.
         """
 
         def offset(record: Measure) -> Fraction:
@@ -683,7 +686,6 @@ class QuartersToFloatingMeasures(TableMap):
             if (
                 last.number is None
                 or last.number != record.number
-                or last.nominal_length != record.nominal_length
                 or (
                     last.volta is not None
                     and record.volta is not None
@@ -693,6 +695,8 @@ class QuartersToFloatingMeasures(TableMap):
                 return False
             if record.id in (last.next or ()):
                 return True
+            if last.nominal_length != record.nominal_length:
+                return False
             lengths = [part.actual_length for part in compound]
             if any(length is None for length in lengths):
                 return False
@@ -754,8 +758,9 @@ class QuartersToFloatingMeasures(TableMap):
                     f"The floating measures starting with measures {labels[index]} and "
                     f"{labels[index + 1]} have nominal downbeats {previous} and {current}, "
                     "which do not increase; consecutive measures form one floating measure "
-                    "only when they share a number and a nominal length, and the second "
-                    "continues the first"
+                    "only when they share a number and the first's next names the second, "
+                    "or they also share a nominal length and the second's offset continues "
+                    "the first"
                 )
 
         return x_values, y_values

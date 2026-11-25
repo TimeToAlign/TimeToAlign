@@ -414,11 +414,12 @@ class TestCompoundMeasures:
         assert cmap(76) == 38.666
         assert cmap(Fraction(153, 2)) == 39.0
 
-    def test_woo71_alternative_endings_stay_apart(self) -> None:
+    def test_woo71_second_ending_joins_its_rest_across_a_metre_change(self) -> None:
         """mc 260 jumps back, so mc 261 starts the next ordinal.
 
-        mc 262, the 6/8 rest of the second ending, is named by mc 261's next
-        but is not the same notated bar: 261 is 2/4, so it is ordinal 239.
+        mc 262, the 6/8 rest of the second ending, is named by mc 261's next:
+        one measure number, so one bar, although 261 is 2/4. Ordinal 238,
+        spread over 4 + 3/2 = 11/2 quarters.
         """
         loader = Ms3Loader.from_file(WOO71_MEASURES)
         measure_map = MeasureMap.from_measure_data(loader.store["measures"])
@@ -427,18 +428,27 @@ class TestCompoundMeasures:
         first, second, rest = measure_map.measures[259:262]
         assert (first.number, second.number, rest.number) == (237, 237, 237)
         assert (first.qstamp, second.qstamp) == (Fraction(945, 2), Fraction(949, 2))
-        assert (second.nominal_length, rest.nominal_length) == (
+        assert (second.nominal_length, second.actual_length, second.next) == (
             Fraction(2),
+            Fraction(4),
+            ("262",),
+        )
+        assert (rest.id, rest.nominal_length, rest.offset_within_measure) == (
+            "262",
             Fraction(3),
+            Fraction(3, 2),
         )
         assert rest.qstamp == Fraction(957, 2)
-        assert cmap(first.qstamp) == 237.0
-        assert cmap(second.qstamp) == 238.0
-        assert cmap(Fraction(477)) == 239.0
-        assert cmap(rest.qstamp) == 239.5
-        assert cmap(Fraction(480)) == 240.0
+        quarters = [
+            first.qstamp,
+            second.qstamp,
+            Fraction(477),
+            rest.qstamp,
+            Fraction(480),
+        ]
+        assert [cmap(q) for q in quarters] == [237.0, 238.0, 238.454, 238.727, 239.0]
         assert len(measure_map) == 397
-        assert (len(cmap.x_values), cmap.y_values.tolist()[-1]) == (375, 374.0)
+        assert (len(cmap.x_values), cmap.y_values.tolist()[-1]) == (374, 373.0)
 
     def test_couperin_musete_bar_split_at_a_repeat_sign_is_one_bar(self) -> None:
         """mc 31 jumps back, mc 32 continues it at offset 3/2: bar 28, slope 1/3."""
@@ -474,14 +484,26 @@ class TestCompoundMeasures:
             17.0,
         ]
 
-    def test_sq8913219_different_nominal_lengths_stay_apart(self) -> None:
-        """One number, the offset matching, but a 3/4 bar and a 2/2 pickup.
-
-        Both pairs of the score that share a number across a metre change are
-        two compounds each; the first of them already refuses the lattice.
+    def test_sq8913219_next_joins_across_a_metre_change_the_offset_does_not(
+        self,
+    ) -> None:
+        """mc 482 names mc 483 (3/8, then 3/4): one bar. mc 583 jumps back, and
+        mc 584 continues it only by its offset, under another nominal length:
+        two bars at one downbeat, so the score refuses, naming that pair.
         """
         measure_map = _loaded_measure_map(SQ8913219_MEASURES)
         records = {record.id: record for record in measure_map.measures}
+        split, rest = records["482"], records["483"]
+        assert (split.number, rest.number) == (480, 480)
+        assert (split.nominal_length, split.actual_length, split.next) == (
+            Fraction(3, 2),
+            Fraction(3, 2),
+            ("483",),
+        )
+        assert (rest.nominal_length, rest.offset_within_measure) == (
+            Fraction(3),
+            Fraction(2),
+        )
         bar, pickup = records["583"], records["584"]
         assert (bar.number, pickup.number) == (578, 578)
         assert (bar.nominal_length, bar.actual_length, bar.next) == (
@@ -498,17 +520,35 @@ class TestCompoundMeasures:
             [record.id for record in compound]
             for compound in QuartersToFloatingMeasures._compound_measures(measure_map)
         ]
-        for pair in (["482", "483"], ["583", "584"]):
-            assert [
-                compound for compound in compounds if set(compound) & set(pair)
-            ] == [
-                [pair[0]],
-                [pair[1]],
-            ]
+        touching = [
+            compound
+            for compound in compounds
+            if set(compound) & {"482", "483", "583", "584"}
+        ]
+        assert touching == [["482", "483"], ["583"], ["584"]]
         with pytest.raises(
-            ValueError, match="'482' and '483' have nominal downbeats 1270 and 2539/2"
+            ValueError, match="'583' and '584' have nominal downbeats 3131/2 and 3131/2"
         ):
             QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+    def test_sq8913219_bar_across_a_metre_change_reads_as_one_bar(self) -> None:
+        """Up to mc 582: the compound [482, 483] is ordinal 480 over 5/2 quarters."""
+        records = list(_loaded_measure_map(SQ8913219_MEASURES).measures[:582])
+        assert records[-1].id == "582"
+        records[-1] = records[-1].model_copy(update={"next": ()})
+        cmap = QuartersToFloatingMeasures.from_measure_map(MeasureMap(records))
+
+        quarters = [
+            Fraction(1270),
+            Fraction(2543, 2),
+            Fraction(1272),
+            Fraction(2545, 2),
+        ]
+        assert [cmap(q) for q in quarters] == [480.0, 480.6, 480.8, 481.0]
+        assert (cmap.x_values.tolist()[-1], cmap.y_values.tolist()[-1]) == (
+            1565.5,
+            578.0,
+        )
 
 
 class TestInterpolationInsideABar:
@@ -639,9 +679,13 @@ class TestRefusals:
                 _two_records_at_one_downbeat(None, None)
             )
 
-    def test_one_number_of_two_nominal_lengths_raises(self) -> None:
-        """5 and 5, b's offset continuing a, but b is a 3/4 bar."""
-        measure_map = _two_records_at_one_downbeat(5, 5, second_time_signature="3/4")
+    def test_one_number_of_two_nominal_lengths_joined_by_offset_only_raises(
+        self,
+    ) -> None:
+        """5 and 5, a's next naming a itself, b's offset continuing a, b a 3/4 bar."""
+        measure_map = _two_records_at_one_downbeat(
+            5, 5, first_next="a", second_time_signature="3/4"
+        )
 
         with pytest.raises(ValueError, match="do not increase"):
             QuartersToFloatingMeasures.from_measure_map(measure_map)
@@ -657,6 +701,16 @@ class TestRefusals:
         """5 and 5, a's next names a itself (a repeat), b's offset continues a."""
         cmap = QuartersToFloatingMeasures.from_measure_map(
             _two_records_at_one_downbeat(5, 5, first_next="a")
+        )
+
+        assert [cmap(0), cmap(1), cmap(2)] == [1.0, 1.5, 2.0]
+
+    def test_one_number_of_two_nominal_lengths_joined_by_next_is_one_measure(
+        self,
+    ) -> None:
+        """5 and 5, a's default next naming b, b a 3/4 bar: one bar across the metre change."""
+        cmap = QuartersToFloatingMeasures.from_measure_map(
+            _two_records_at_one_downbeat(5, 5, second_time_signature="3/4")
         )
 
         assert [cmap(0), cmap(1), cmap(2)] == [1.0, 1.5, 2.0]

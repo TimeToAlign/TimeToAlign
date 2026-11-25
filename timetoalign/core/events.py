@@ -1617,8 +1617,6 @@ class QuadrilateralField(ShapeField[Quadrilateral]):
 
     def _x_columns(self) -> tuple[list[pa.StructArray], list[pa.StructArray]]:
         array = self.to_pyarrow()
-        if isinstance(array, pa.ChunkedArray):
-            array = array.combine_chunks()
         columns = [
             pc.struct_field(pc.struct_field(array, name), "x")
             for name in Quadrilateral.CORNER_ORDER

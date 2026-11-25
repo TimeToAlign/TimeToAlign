@@ -337,8 +337,9 @@ class CallableFieldParser(FieldParser):
         """Call the wrapped function on *source*.
 
         The output name (this parser's ``name=``, else *name*, else ``"value"``)
-        is passed as ``name=``; a function that refuses it with a ``TypeError``
-        is called again with *source* alone.
+        is passed as ``name=``; if the call raises ``TypeError`` (as a function
+        without a ``name`` parameter does), the function is called again with
+        *source* alone.
 
         Args:
             source: The raw column from the source ``pa.Table``.

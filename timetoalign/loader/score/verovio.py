@@ -314,9 +314,9 @@ def _read_score(mei: str) -> _Score:
     def walk(element: ET.Element, ctx: dict[str, Any]) -> None:
         """Read *element* into ``score``, then its children in document order.
 
-        A repeat mark or tempo is read whole, without descending. *ctx*
-        carries the enclosing movement, volta, measure, staff, layer, grace
-        and chord context down the tree.
+        A repeat mark or tempo inside a measure is read whole, without
+        descending. *ctx* carries the enclosing movement, volta, measure,
+        staff, layer, grace and chord context down the tree.
         """
         tag = _local(element.tag)
         if tag == "mdiv":

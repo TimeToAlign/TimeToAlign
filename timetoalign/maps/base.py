@@ -120,8 +120,10 @@ def _check_calibration(
         return (Fraction(value) - Fraction(first_value)) / span
 
     def gamma(value: CoordinateValue) -> Fraction:
-        # γ_k, k counting the roundings of the product w·t.
-        """Return the relative rounding bound ``γ_k`` of the product ``w·t`` for *value*."""
+        """Return the relative rounding bound ``γ_k`` of the product ``w·t`` for *value*.
+
+        ``k`` counts the roundings of the product ``w·t``.
+        """
         roundings = (Fraction(value) - Fraction(first_value), span)
         k = 2 + sum(Fraction(float(d)) != d for d in roundings)
         return Fraction(k, 2**53 - k)
@@ -131,8 +133,10 @@ def _check_calibration(
         return Fraction(math.ulp(float(position))) / 2
 
     def error(position: CoordinateValue, value: CoordinateValue) -> Fraction:
-        # E(p, t), with W for |w|.
-        """Return the error bound ``E(p, t)`` of the pair (*position*, *value*)."""
+        """Return the error bound ``E(p, t)`` of the pair (*position*, *value*).
+
+        ``|w|`` is taken at its bound ``W`` (``width``).
+        """
         return half_ulp(position) + gamma(value) * abs(t_of(value)) * width
 
     if not calibration.exact:

@@ -1338,9 +1338,9 @@ class TestConversionColumnErrors:
 
         with pytest.raises(RuntimeError, match="^boom$") as excinfo:
             group.get_timestamp_table([25.0], "clock", conversion_maps=True)
-        (entry,) = [e for e in excinfo.traceback if e.name == "_cmap_columns"]
+        (entry,) = [e for e in excinfo.traceback if e.name == "conversion_map_column"]
         assert " ".join(str(entry.statement).split()) == (
-            "converted = cmap.convert_array(values[timeline_id])"
+            "converted = cmap.convert_array(values)"
         )
 
     def test_a_map_not_reaching_a_row_gets_no_column(self) -> None:

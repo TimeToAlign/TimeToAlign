@@ -79,6 +79,7 @@ from timetoalign.core.timestamp import (
 )
 from timetoalign.storage import EventData
 
+from .engines.tabular import conversion_map_column
 from .manifest import (
     Manifest,
     ManifestFileMixin,
@@ -1415,31 +1416,14 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             if timeline is None:
                 continue
             for cmap in timeline._conversion_maps.values():
-                target_unit = getattr(cmap, "target_unit", None)
-                if target_unit is None:
-                    # Numeric unit conversions only; a structured map has no
-                    # column type here.
-                    continue
-                try:
-                    converted = cmap.convert_array(values[timeline_id])
-                except ValueError:
-                    # The map does not reach every row (a value outside its
-                    # domain): it gets no column. Any other error is a
-                    # defect and propagates.
-                    continue
-                number_type = cmap.output_number_type
-                if number_type is None:
-                    # Never taken: a map naming a target unit declares one.
-                    continue
-                columns.append(
-                    TimestampColumn(
-                        name=cmap.name,
-                        values=pa.array(converted),
-                        unit=target_unit,
-                        number_type=number_type,
-                        metadata={"cmap_id": cmap.id, "source_timeline": timeline_id},
-                    )
+                column = conversion_map_column(
+                    cmap,
+                    values[timeline_id],
+                    {"cmap_id": cmap.id, "source_timeline": timeline_id},
+                    skip_unreached=True,
                 )
+                if column is not None:
+                    columns.append(column)
         return columns
 
     def _queried_timestamp_table(

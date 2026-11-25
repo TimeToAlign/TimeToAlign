@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 
 from timetoalign.core import Coordinate, TimeUnit
-from timetoalign.maps.linear import ScalarMap
+from timetoalign.maps.linear import LinearMap, ScalarMap
 from timetoalign.maps.meter import MetricMap
 from timetoalign.maps.table import TableMap
-from timetoalign.timelines import Timeline
+from timetoalign.timelines import ContinuousLogicalTimeline, Timeline, TimelineGroup
 
 
 class TestMapIntegration:
@@ -177,3 +177,30 @@ class TestTimelineSerializationWithMeterMap:
         restored_meter = restored.get_conversion_map("meter1")
         assert restored_meter is not None
         assert restored_meter(4.0) == 2
+
+
+class _SecondsByProperty(LinearMap):
+    """A map naming its target unit through the property alone."""
+
+    @property
+    def target_unit(self) -> TimeUnit:
+        return TimeUnit.seconds
+
+
+def test_both_tables_refuse_a_map_without_output_number_type():
+    """The timeline table and the group table apply one column rule."""
+    timeline = ContinuousLogicalTimeline(length=4, uid="clt_1")
+    timeline.add_conversion_map(
+        _SecondsByProperty(scalar=2, offset=0, source_unit=TimeUnit.quarters)
+    )
+    message = (
+        "Conversion map 'lmap_1' names the target unit 'seconds' "
+        "but no output number type"
+    )
+    with pytest.raises(ValueError) as refused:
+        timeline.get_timestamp_table([0, 1])
+    assert str(refused.value) == message
+    group = TimelineGroup(id="g", timelines=[timeline])
+    with pytest.raises(ValueError) as refused:
+        group.get_timestamp_table([0, 1], "clt_1")
+    assert str(refused.value) == message

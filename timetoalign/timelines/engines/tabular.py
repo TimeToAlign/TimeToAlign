@@ -116,6 +116,61 @@ def _null_where(column: pa.StructArray, mask: pa.Array) -> pa.StructArray:
     )
 
 
+def conversion_map_column(
+    cmap: ConversionMap[Any],
+    values: np.ndarray,
+    metadata: dict[str, str],
+    *,
+    skip_unreached: bool = False,
+) -> TimestampColumn | None:
+    """Describe the timestamp-table column a conversion map derives from an axis.
+
+    The one rule of both timestamp tables, a timeline's and a group's:
+    numeric unit conversions only, so a map without a target unit (a
+    structured map such as ``MetricalPositionMap``, which answers
+    ``{"mc": ..., "beat": ...}``) gives no column; a map naming a target
+    unit must declare the number type it writes.
+
+    Args:
+        cmap: The conversion map.
+        values: The axis values it converts, as floats (NaN where absent).
+        metadata: The column's extra field-metadata entries.
+        skip_unreached: Give no column, instead of raising, where the map
+            refuses a value with a ``ValueError`` (a value outside its
+            domain).
+
+    Returns:
+        The column, or None for a map without a target unit (or one not
+        reaching every value, with *skip_unreached*).
+
+    Raises:
+        ValueError: If the map names a target unit but no output number
+            type, or (without *skip_unreached*) refuses a value.
+    """
+    target_unit = getattr(cmap, "target_unit", None)
+    if target_unit is None:
+        return None
+    try:
+        converted = cmap.convert_array(values)
+    except ValueError:
+        if skip_unreached:
+            return None
+        raise
+    number_type = cmap.output_number_type
+    if number_type is None:
+        raise ValueError(
+            f"Conversion map '{cmap.id}' names the target unit '{target_unit}' "
+            f"but no output number type"
+        )
+    return TimestampColumn(
+        name=cmap.name,
+        values=pa.array(converted),
+        unit=target_unit,
+        number_type=number_type,
+        metadata=metadata,
+    )
+
+
 class TabularExportMixin:
     """Provide timestamp and tabular export operations for timeline instances."""
 
@@ -848,25 +903,9 @@ class TabularExportMixin:
             # Allow copy for arrays with nulls (zero_copy_only=False)
             axis_np = axis.field("value").to_numpy(zero_copy_only=False)
             for cmap in conversion_maps:
-                target_unit = getattr(cmap, "target_unit", None)
-                if target_unit is None:
-                    # Numeric unit conversions only. A structured map such as
-                    # MetricalPositionMap answers {"mc": ..., "beat": ...},
-                    # which has no column type here.
-                    continue
-                # A map with a target unit always declares how it writes its
-                # results: output_number_type is None only without one.
-                number_type = cmap.output_number_type
-                assert number_type is not None
-                columns.append(
-                    TimestampColumn(
-                        name=cmap.name,
-                        values=pa.array(cmap.convert_array(axis_np)),
-                        unit=target_unit,
-                        number_type=number_type,
-                        metadata={"cmap_id": cmap.id},
-                    )
-                )
+                column = conversion_map_column(cmap, axis_np, {"cmap_id": cmap.id})
+                if column is not None:
+                    columns.append(column)
 
         return build_timestamp_table(columns)
 

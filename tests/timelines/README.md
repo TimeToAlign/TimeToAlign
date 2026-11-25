@@ -1985,8 +1985,9 @@ is a defect that propagates. Two tests, as the bundle's catches are tested
 (`tests/alignment/test_bundle.py::TestUnexpectedErrorsPropagate`): with
 `TableMap._convert_array` raising `RuntimeError("boom")`,
 `get_timestamp_table([25.0], "clock", conversion_maps=True)` raises it, and
-the traceback passes `_cmap_columns` at the statement `converted =
-cmap.convert_array(values[timeline_id])`; and on a 100-second `clock`
+the traceback passes `conversion_map_column` (the one column rule the
+timeline's table applies too) at the statement `converted =
+cmap.convert_array(values)`; and on a 100-second `clock`
 carrying a milliseconds map over `[0, 100]` and a frames map over `[0, 50]`
 with `extrapolate="error"`, the rows `[25.0]` give the columns `clock`,
 `seconds_to_milliseconds`, `seconds_to_frames` (1250 frames), the rows
@@ -4356,6 +4357,18 @@ maps, so `Timeline.from_dict()` raised `ValueError: Unknown map type:
 MetricMap` for any timeline carrying one. The registry is now populated by
 `__init_subclass__`; the test attaches a `MetricMap`, round-trips through
 `Timeline.to_dict`/`from_dict`, and asserts `meter(4.0) == 2` exactly.
+
+**One column rule in both tables
+(`test_both_tables_refuse_a_map_without_output_number_type`):** a
+timeline's and a group's timestamp table derive a conversion map's column
+by one rule, so they cannot disagree. A public `LinearMap` subclass naming
+its target unit (`seconds`) through the `target_unit` property alone
+declares no output number type; on a quarters timeline, both
+`get_timestamp_table([0, 1])` and the group's
+`get_timestamp_table([0, 1], "clt_1")` raise the same `ValueError`,
+`Conversion map 'lmap_1' names the target unit 'seconds' but no output
+number type`. One table leaving the column out while the other refuses,
+or either failing with an assertion, fails the test.
 
 ---
 

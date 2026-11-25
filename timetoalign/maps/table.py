@@ -110,7 +110,6 @@ class TableMap(ConversionMap[CoordinateValue]):
         720
     """
 
-    _id_prefix: ClassVar[str] = "tmap"
     _manifest_type: ClassVar[str | None] = "TableMap"
 
     def __init__(

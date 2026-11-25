@@ -97,15 +97,15 @@ def _jump(at: Any, *, id: str | None = None, **place: Any) -> Jump:
         (lambda: Timeline(unit="ticks"), "dlt_1"),
         (lambda: Timeline(unit="pixels"), "dgt_1"),
         (lambda: SegmentLine[ContinuousLogicalTimeline](), "clt_1"),
-        (lambda: LinearMap(scalar=2), "lmap_1"),
-        (lambda: TableMap(x_values=[0, 4], y_values=[0.0, 2.5]), "tmap_1"),
+        (lambda: LinearMap(scalar=2), "cmap_1"),
+        (lambda: TableMap(x_values=[0, 4], y_values=[0.0, 2.5]), "cmap_1"),
         (
             lambda: QuartersToFloatingMeasures(x_values=[0, 4], y_values=[1.0, 2.0]),
-            "tmap_1",
+            "cmap_1",
         ),
         (
             lambda: PiecewiseMap(breaks=[0, 8], maps=[ShiftMap(offset=1)]),
-            "pmap_1",
+            "cmap_1",
         ),
         (lambda: ScalarMap(2), "cmap_1"),
         (lambda: Region(_q(0), _q(4)), "region_1"),
@@ -150,7 +150,7 @@ REFERENCE_IDS = {
     "breaks": {"break_1", "break_2"},
     "jump_targets": ["jump_target_1"],
     "jumps": [("jump_1", ["jump_target_1"])],
-    "maps": ["lmap_1"],
+    "maps": ["cmap_1"],
 }
 
 
@@ -663,13 +663,13 @@ class TestJoiningScopes:
 
         assert _held(first) == (
             ["region_1"],
-            ["lmap_1"],
+            ["cmap_1"],
             ["jump_target_1"],
             ["jump_target_1"],
         )
         assert _held(second) == (
             ["region_2"],
-            ["lmap_2"],
+            ["cmap_2"],
             ["jump_target_2"],
             ["jump_target_2"],
         )
@@ -691,7 +691,7 @@ class TestJoiningScopes:
         )
         assert second.list_regions() == ["region_1", "intro"]
         assert _held(second)[1:] == (
-            ["lmap_1"],
+            ["cmap_1"],
             ["jump_target_1"],
             ["jump_target_1"],
         )
@@ -977,6 +977,18 @@ def _measure_and_section() -> CombinationMap:
     return CombinationMap({"measure": record, "section": section})
 
 
+def _holding_two_maps() -> ContinuousLogicalTimeline:
+    """A quarters timeline holding two minted maps, ``cmap_1`` and ``cmap_2``."""
+    timeline = ContinuousLogicalTimeline(length=16)
+    timeline.add_conversion_map(
+        LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
+    )
+    timeline.add_conversion_map(
+        LinearMap(scalar=F(1, 2), source_unit="quarters", target_unit="minutes")
+    )
+    return timeline
+
+
 def _map_ids(cmap: dict[str, Any]) -> Any:
     """The ids of a written map, each nested map's under its own."""
     nested = cmap.get("maps")
@@ -992,26 +1004,24 @@ class TestNestedMaps:
     def test_a_chain_of_two_unnamed_maps_writes_two_ids(self) -> None:
         assert _map_ids(_seconds_to_minutes().to_dict()) == (
             "cmap_1",
-            ["lmap_1", "lmap_2"],
+            ["cmap_2", "cmap_3"],
         )
 
     def test_a_nested_minted_id_taken_in_the_manifest_is_minted_again(self) -> None:
-        timeline = ContinuousLogicalTimeline(length=16)
-        timeline.add_conversion_map(
-            LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
-        )
+        timeline = _holding_two_maps()
         timeline.add_conversion_map(_seconds_to_minutes())
         written = bare(timeline.to_dict())["timelines"][0]["conversion_maps"]
         assert [_map_ids(cmap) for cmap in written] == [
-            ("cmap_1", ["lmap_3", "lmap_2"]),
-            "lmap_1",
+            "cmap_1",
+            "cmap_2",
+            ("cmap_4", ["cmap_5", "cmap_3"]),
         ]
 
     def test_a_record_map_in_a_chain_in_a_combination(self) -> None:
         combination = _measure_and_section()
         assert _map_ids(combination.to_dict()) == (
             "cmap_1",
-            [("cmap_3", ["lmap_1", "cmap_2"]), "cmap_4"],
+            [("cmap_4", ["cmap_2", "cmap_3"]), "cmap_5"],
         )
         timeline = ContinuousLogicalTimeline(length=4, unit="whole_notes")
         timeline.add_conversion_map(ConstantMap(value="a", source_unit="whole_notes"))
@@ -1021,7 +1031,7 @@ class TestNestedMaps:
             _map_ids(cmap) for cmap in payload["timelines"][0]["conversion_maps"]
         ] == [
             "cmap_1",
-            ("cmap_5", [("cmap_3", ["lmap_1", "cmap_2"]), "cmap_4"]),
+            ("cmap_6", [("cmap_4", ["cmap_2", "cmap_3"]), "cmap_5"]),
         ]
         text = json.dumps(payload)
         assert (
@@ -1036,16 +1046,13 @@ class TestNestedMaps:
         assert _map_ids(cmap.to_dict()) == ("cmap_1", ["cmap_2", "cmap_3"])
 
     def test_a_joining_child_s_nested_map_is_minted_again(self) -> None:
-        root = ContinuousLogicalTimeline(length=16)
-        root.add_conversion_map(
-            LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
-        )
+        root = _holding_two_maps()
         child = ContinuousLogicalTimeline(length=8)
         chain = _seconds_to_minutes()
         child.add_conversion_map(chain)
         root.add_child(child, 0)
-        assert [cmap.id for cmap in chain.maps] == ["lmap_3", "lmap_2"]
-        assert list(child._conversion_maps) == ["cmap_1"]
+        assert [cmap.id for cmap in chain.maps] == ["cmap_5", "cmap_3"]
+        assert list(child._conversion_maps) == ["cmap_4"]
 
     def test_two_nested_maps_given_one_id_raise(self) -> None:
         with pytest.raises(
@@ -1070,14 +1077,14 @@ class TestNestedMaps:
         assert list(timeline._conversion_maps) == ["tempo"]
         assert (chain.id, [cmap.id for cmap in chain.maps]) == (
             "cmap_1",
-            ["lmap_1", "tempo"],
+            ["cmap_2", "tempo"],
         )
 
     def test_one_map_nested_in_two_places_raises(self) -> None:
         twice = LinearMap(scalar=2)
         with pytest.raises(ValueError, match="nests one map in two places"):
             ChainMap([twice, twice])
-        assert twice.id == "lmap_1"
+        assert twice.id == "cmap_1"
 
     def test_reading_refuses_a_nested_id_repeated(self) -> None:
         payload = bare(ContinuousLogicalTimeline(length=16, uid="piece").to_dict())
@@ -1088,8 +1095,8 @@ class TestNestedMaps:
                 "source_unit": "quarters",
                 "target_unit": "minutes",
                 "maps": [
-                    {"type": "LinearMap", "id": "lmap_1", **QUARTERS_TO_SECONDS},
-                    {"type": "LinearMap", "id": "lmap_1", **SECONDS_TO_MINUTES},
+                    {"type": "LinearMap", "id": "cmap_2", **QUARTERS_TO_SECONDS},
+                    {"type": "LinearMap", "id": "cmap_2", **SECONDS_TO_MINUTES},
                 ],
             }
         ]
@@ -1098,7 +1105,7 @@ class TestNestedMaps:
         assert refusal(refused.value) == (
             "duplicate_id",
             "#/timelines/0/conversion_maps/0/maps/1/id",
-            "'lmap_1' is not unique in the manifest, first at "
+            "'cmap_2' is not unique in the manifest, first at "
             "#/timelines/0/conversion_maps/0/maps/0/id",
         )
 
@@ -1366,7 +1373,7 @@ class TestIdsReadOncePerManifest:
             "a": "timeline 'a'",
             "ra": "region 'ra' of timeline 'a'",
             "b": "timeline 'b'",
-            "lmap_1": "conversion map 'lmap_1' of timeline 'b'",
+            "cmap_1": "conversion map 'cmap_1' of timeline 'b'",
             "c": "timeline 'c'",
             "d": "timeline 'd'",
             "g": "group 'g'",

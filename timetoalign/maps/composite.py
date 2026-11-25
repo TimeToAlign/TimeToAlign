@@ -224,7 +224,6 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         maps: Maps for each interval. len(maps) must be len(breaks) - 1.
     """
 
-    _id_prefix: ClassVar[str] = "pmap"
     _manifest_type: ClassVar[str | None] = "PiecewiseMap"
 
     def __init__(

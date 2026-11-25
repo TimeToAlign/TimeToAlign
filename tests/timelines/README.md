@@ -1476,8 +1476,8 @@ identification and a `name` for display. The tests prove four properties, each a
   class answers `_1`: the six timeline classes `clt_1`, `dlt_1`, `cpt_1`,
   `dpt_1`, `cgt_1`, `dgt_1`; the base `Timeline` and a segment line by their
   unit (`Timeline(unit="seconds")` is `cpt_1`, ticks `dlt_1`, pixels `dgt_1`);
-  `LinearMap` `lmap_1`, `TableMap` and its subclasses `tmap_1`, `PiecewiseMap`
-  `pmap_1`, every other map `cmap_1`; `region_1`; and a flow-control
+  every conversion map `cmap_1` (`LinearMap`, `TableMap` and its
+  subclasses, `PiecewiseMap` and every other map alike); `region_1`; and a flow-control
   element by its `role`: a `Break` `break_1`, a `SectionBreak`
   `section_break_1`, a `Barline` `barline_1`, a `Jump` `jump_1`, a
   `JumpTarget` `jump_target_1`. Determinism is proved by building one reference manifest
@@ -1488,7 +1488,7 @@ identification and a `name` for display. The tests prove four properties, each a
   serialize to identical `to_dict` payloads, and all three must carry
   exactly the ids spelled out literally (`clt_1`; children `clt_2`,
   `clt_3`; `region_1`, `region_2`; `break_1`, `break_2`;
-  `jump_target_1`; `jump_1` going on at `jump_target_1`; `lmap_1`). A
+  `jump_target_1`; `jump_1` going on at `jump_target_1`; `cmap_1`). A
   process-global counter gives
   different ids in the second build; insertion order may decide which
   element holds which id, never which ids exist. Minting above the highest
@@ -1551,10 +1551,10 @@ identification and a `name` for display. The tests prove four properties, each a
     conversion map 'chain' of timeline 'score'`.
 - **Trees joining a group or a bundle, every element kind.** Two trees
   built alike — a root of given id (`a`, `b`) holding a minted region
-  `region_1`, a minted `LinearMap` `lmap_1`, a minted jump target
+  `region_1`, a minted `LinearMap` `cmap_1`, a minted jump target
   `jump_target_1` and a given jump naming it — join one scope: in
   `TimelineGroup(timelines=[a, b])` and in an `AlignmentBundle` holding
-  both ungrouped, `a` keeps every id and `b`'s become `region_2`, `lmap_2`
+  both ungrouped, `a` keeps every id and `b`'s become `region_2`, `cmap_2`
   and `jump_target_2`, the `to` of its jump's destination following to
   `jump_target_2`. A given id
   refuses: `b` holding a region `intro` where `a` holds a map `intro` is
@@ -1628,26 +1628,31 @@ identification and a `name` for display. The tests prove four properties, each a
   a minted id another holds is minted again, a given one is kept or
   refused. What the tests prove, each against literal ids:
   - a `ChainMap` of two unnamed `LinearMap`s writes `cmap_1` holding
-    `lmap_1`, `lmap_2`; added to a timeline already holding a `LinearMap`
-    `lmap_1`, its members become `lmap_3`, `lmap_2` (the first was taken,
-    the second was not), and the manifest writes each id once;
+    `cmap_2`, `cmap_3` (each was minted `cmap_1` on its own, the chain
+    keeps its id and mints its members again in written order); added to a
+    timeline already holding two `LinearMap`s `cmap_1`, `cmap_2`, the chain
+    becomes `cmap_4` and its members `cmap_5`, `cmap_3` (the first member's
+    id was taken, the second's was not), and the manifest writes each id
+    once;
   - a `CombinationMap` of a `ChainMap` (a whole-notes-to-quarters
     `LinearMap`, then a `MeasureRecordMap`) under `measure` and a
-    `ConstantMap` under `section`: built, the record map is `cmap_2` (the
-    chain holds `cmap_1`), the chain `cmap_3` and the constant `cmap_4` (the
-    combination holds `cmap_1`); added to a whole-notes timeline already
-    holding a `ConstantMap` `cmap_1`, the combination becomes `cmap_5` and
-    the nested maps keep theirs. Its manifest round-trips text-identically
+    `ConstantMap` under `section`: built, the chain holds `cmap_1` with the
+    `LinearMap` `cmap_2` and the record map `cmap_3`; in the combination,
+    which holds `cmap_1`, the chain becomes `cmap_4` and the constant
+    `cmap_5`, the chain's members keeping theirs; added to a whole-notes
+    timeline already holding a `ConstantMap` `cmap_1`, the combination
+    becomes `cmap_6` and the nested maps keep theirs. Its manifest round-trips text-identically
     through JSON, so the reader keeps every nested id it reads;
   - an `IntervalToConstantMap` `cmap_1` with an end writes its two
     intervals' `ConstantMap`s as `cmap_2`, `cmap_3`;
-  - a child whose `ChainMap` holds `lmap_1`, `lmap_2` joins a root holding
-    `lmap_1`: the nested `lmap_1` is re-minted `lmap_3` in the child;
+  - a child whose `ChainMap` `cmap_1` holds `cmap_2`, `cmap_3` joins a
+    root holding `cmap_1`, `cmap_2`: in the child the chain is minted again
+    `cmap_4` and its first member `cmap_5`, the second keeping `cmap_3`;
   - refusals, each atomic (the timeline's maps and the joining map's ids
     unchanged): two nested maps given one id; a nested given id that a top
     map of the manifest holds; one map object nested in two places (its one
     id would be written twice); and a manifest whose `ChainMap` nests two
-    maps `lmap_1`, which `Timeline.from_dict` refuses as the TimeToShare
+    maps `cmap_2`, which `Timeline.from_dict` refuses as the TimeToShare
     validators do.
 - **Regions and jump targets are keyed by id; a destination names a jump
   target by its id.** Two
@@ -4405,7 +4410,7 @@ its target unit (`seconds`) through the `target_unit` property alone
 declares no output number type; on a quarters timeline, both
 `get_timestamp_table([0, 1])` and the group's
 `get_timestamp_table([0, 1], "clt_1")` raise the same `ValueError`,
-`Conversion map 'lmap_1' names the target unit 'seconds' but no output
+`Conversion map 'cmap_1' names the target unit 'seconds' but no output
 number type`. One table leaving the column out while the other refuses,
 or either failing with an assertion, fails the test.
 

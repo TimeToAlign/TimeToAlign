@@ -83,7 +83,6 @@ class LinearMap(ConversionMap[CoordinateValue]):
         100.0
     """
 
-    _id_prefix: ClassVar[str] = "lmap"
     _manifest_type: ClassVar[str | None] = "LinearMap"
 
     @classmethod

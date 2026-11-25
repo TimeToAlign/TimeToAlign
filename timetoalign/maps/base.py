@@ -211,8 +211,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
         5.0
     """
 
-    # Prefix of a minted id (``cmap_1``); subclasses inherit their nearest
-    # ancestor's.
+    # Prefix of a minted id (``cmap_1``), one for every conversion map.
     _id_prefix: ClassVar[str] = "cmap"
 
     _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "conversion_maps")
@@ -377,7 +376,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
             source_unit: The unit of input coordinates. Defaults to class default.
             target_unit: The unit of output coordinates. Defaults to class default.
             uid: Optional explicit ID, kept verbatim. If None, an id
-                ``{prefix}_1`` is minted, which a timeline re-mints should it
+                ``cmap_1`` is minted, which a timeline re-mints should it
                 collide in the timeline's manifest, and a map nesting this
                 one should it collide in that map's tree.
             name: Human-readable name for this map. Used as field header in

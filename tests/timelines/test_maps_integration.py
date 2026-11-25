@@ -194,7 +194,7 @@ def test_both_tables_refuse_a_map_without_output_number_type():
         _SecondsByProperty(scalar=2, offset=0, source_unit=TimeUnit.quarters)
     )
     message = (
-        "Conversion map 'lmap_1' names the target unit 'seconds' "
+        "Conversion map 'cmap_1' names the target unit 'seconds' "
         "but no output number type"
     )
     with pytest.raises(ValueError) as refused:

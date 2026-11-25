@@ -209,12 +209,12 @@ def test_a_whole_notes_timeline_reads_its_measure_map_through_times_four() -> No
             "maps": [
                 {
                     "type": "LinearMap",
-                    "id": "lmap_1",
+                    "id": "cmap_2",
                     "source_unit": "whole_notes",
                     "target_unit": "quarters",
                     "scalar": 4,
                 },
-                _record(map_id="cmap_2"),
+                _record(map_id="cmap_3"),
             ],
         }
     ]

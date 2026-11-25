@@ -1755,7 +1755,7 @@ def test_unknown_row_keys_are_kept_and_force_their_row() -> None:
                 conversion_maps=[
                     {
                         "type": "TableMap",
-                        "id": "tmap_1",
+                        "id": "cmap_1",
                         "source_unit": "quarters",
                         "target_unit": "seconds",
                         "y_values": [0.0, 1.0],

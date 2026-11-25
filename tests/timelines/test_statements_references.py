@@ -441,7 +441,7 @@ def _q(value: int) -> Coordinate:
 
 
 def _with_map_and_break() -> Timeline:
-    """A root holding the minted map ``lmap_1`` and break ``break_1``."""
+    """A root holding the minted map ``cmap_1`` and break ``break_1``."""
     root = _quarters(length=16)
     root.add_conversion_map(
         LinearMap(scalar=2, source_unit="quarters", target_unit="seconds")
@@ -452,22 +452,22 @@ def _with_map_and_break() -> Timeline:
 
 def test_a_map_and_a_break_minted_again_with_their_tree_are_renamed() -> None:
     held = _with_map_and_break()
-    newcomer = _naming(_with_map_and_break(), "lmap_1", "break_1")
+    newcomer = _naming(_with_map_and_break(), "cmap_1", "break_1")
     bundle = AlignmentBundle().add_timeline(held).add_timeline(newcomer)
     (cmap,) = newcomer._conversion_maps
     (element,) = newcomer.flow_control.elements
-    assert (cmap, element.id) == ("lmap_2", "break_2")
-    assert _named(newcomer) == ["lmap_2", "break_2"]
+    assert (cmap, element.id) == ("cmap_2", "break_2")
+    assert _named(newcomer) == ["cmap_2", "break_2"]
     validate(bundle.to_dict())
 
 
 def test_a_map_added_beside_one_named_leaves_the_name_with_it() -> None:
-    root = _naming(_with_map_and_break(), "lmap_1")
+    root = _naming(_with_map_and_break(), "cmap_1")
     root.add_conversion_map(
         LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
     )
-    assert sorted(root._conversion_maps) == ["lmap_1", "lmap_2"]
-    assert _named(root) == ["lmap_1"]
+    assert sorted(root._conversion_maps) == ["cmap_1", "cmap_2"]
+    assert _named(root) == ["cmap_1"]
 
 
 # endregion

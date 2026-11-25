@@ -322,8 +322,12 @@ def canonical_pitch_names(names: pd.Series, *, sep: str | None = None) -> pd.Ser
     dtype = names.dtype
     if isinstance(dtype, pd.CategoricalDtype):
         return _respelled_categorical(names, sep)
-    if isinstance(dtype, pd.ArrowDtype) and pa.types.is_dictionary(dtype.pyarrow_dtype):
-        return _respelled_dictionary(names, dtype.pyarrow_dtype, sep)
+    if isinstance(dtype, pd.ArrowDtype):
+        arrow: pd.arrays.ArrowExtensionArray = names.array
+        column = (arrow.__arrow_array__().chunks, dtype.pyarrow_dtype)
+        if _are_dictionary_chunks(column):
+            chunks, dictionary_type = column
+            return _respelled_dictionary(names, chunks, dictionary_type, sep)
     respelled: dict[str, str] = {}
     for value in names.dropna().unique():
         new = _respelled_cell(value, sep)
@@ -356,16 +360,17 @@ def _respelled_categorical(names: pd.Series, sep: str | None) -> pd.Series:
 
 
 def _respelled_dictionary(
-    names: pd.Series, dictionary_type: pa.DictionaryType[Any, Any], sep: str | None
+    names: pd.Series,
+    source: list[pa.DictionaryArray[Any, Any]],
+    dictionary_type: pa.DictionaryType[Any, Any],
+    sep: str | None,
 ) -> pd.Series:
-    """Respell the dictionary of an Arrow dictionary column, merging equal results."""
+    """Respell the dictionary of an Arrow dictionary column, merging equal results.
+
+    *source* holds the column's chunks, *dictionary_type* its type.
+    """
     import pandas as pd
 
-    arrow: pd.arrays.ArrowExtensionArray = names.array
-    column = arrow.__arrow_array__()
-    source = column.chunks
-    if not _are_dictionary_chunks(source, column.type):
-        raise TypeError(f"Expected a dictionary column, got {column.type}")
     value_type: pa.DataType = dictionary_type.value_type
     chunks: list[pa.DictionaryArray[Any, Any]] = []
     for chunk in source:
@@ -390,12 +395,16 @@ def _respelled_dictionary(
 
 
 def _are_dictionary_chunks(
-    chunks: list[pa.Array[Any]], column_type: pa.DataType
-) -> TypeGuard[list[pa.DictionaryArray[Any, Any]]]:
-    """Whether *chunks*, the chunks of a column of *column_type*, are
-    dictionary arrays: they are exactly when the column's type is a
-    dictionary type. No chunk is inspected."""
-    return pa.types.is_dictionary(column_type)
+    column: tuple[list[pa.Array[Any]], pa.DataType],
+) -> TypeGuard[tuple[list[pa.DictionaryArray[Any, Any]], pa.DictionaryType[Any, Any]]]:
+    """Whether *column*, the chunks of an Arrow column and the column's type,
+    is a dictionary column.
+
+    It is exactly when the type is a dictionary type: PyArrow gives every
+    chunk of a chunked array the array's type, so the chunks are then
+    dictionary arrays. No chunk is inspected.
+    """
+    return pa.types.is_dictionary(column[1])
 
 
 def _parse_octave_from_sp(sp: str | None, step: str) -> int:

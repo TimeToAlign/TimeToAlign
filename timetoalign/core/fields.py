@@ -905,7 +905,7 @@ _ComparisonKernel = Literal["equal", "less", "less_equal", "greater", "greater_e
 def _compared(
     kernel: _ComparisonKernel,
     left: pa.Array[Any],
-    right: pa.Array[Any] | pa.Scalar[Any] | int | float,
+    right: pa.Array[Any] | pa.Scalar[Any] | int | float | str,
 ) -> pa.BooleanArray:
     """``pc.<kernel>(left, right)``, e.g. ``pc.equal(left, right)``.
 

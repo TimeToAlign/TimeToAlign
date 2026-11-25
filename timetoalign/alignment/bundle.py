@@ -1822,9 +1822,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """
         held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
         table = self.match_claim_table
-        rows = pc.indices_nonzero(
-            pc.fill_null(pc.equal(table._ids, claim_id), False)
-        ).to_pylist()
+        held_rows = pc.indices_nonzero(
+            _filled_mask(_compared("equal", table._ids, claim_id), pa.scalar(False))
+        )
+        # An index is never null.
+        rows = [row for row in held_rows.to_pylist() if row is not None]
         if not rows:
             raise KeyError(
                 f"Bundle {quote_id(self.id)} holds no MatchClaim "

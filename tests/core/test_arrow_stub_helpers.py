@@ -274,6 +274,14 @@ def test_compared_with_a_string_scalar_is_a_boolean_array() -> None:
     assert result.to_pylist() == [True, False, None]
 
 
+def test_compared_with_a_python_string_is_the_equal_kernel() -> None:
+    left = pa.array(["score", "clock", None])
+    result = _compared("equal", left, "score")
+    assert type(result) is pa.BooleanArray
+    assert result.to_pylist() == [True, False, None]
+    assert result.equals(pc.equal(left, "score"))
+
+
 def test_compared_with_a_second_array_is_a_boolean_array() -> None:
     wide = pa.decimal256(37, 0)
     left = pa.array([1, 2, None], pa.int64()).cast(wide)

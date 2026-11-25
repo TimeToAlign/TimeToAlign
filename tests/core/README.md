@@ -2850,7 +2850,10 @@ helper's annotation is false and its test fails.
   so the helper is the kernel and not a re-implementation. Its callers
   compare a plain array with a PyArrow scalar (int64 against `0`, a string
   column against `"int"`), with a Python `int` or `float` (a field's
-  values against a bare number), and with a second array of the same
+  values against a bare number), with a Python `str` (a MatchClaim
+  table's timeline or claim ids against the id a caller names, which
+  gives the values of `pc.equal` called with the same string), and with
+  a second array of the same
   length (the cross-multiplied decimal sides of two number columns). Each
   gives a `pa.BooleanArray`, null where a compared row is null. No rows:
   a `pa.BooleanArray` of length 0. This proves the stated class for every

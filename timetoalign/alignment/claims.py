@@ -276,7 +276,7 @@ def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, holder: str) -> No
             f"claim of this {holder}"
         )
     counts = pc.value_counts(present)
-    repeated = counts.filter(pc.greater(counts.field("counts"), pa.scalar(1)))
+    repeated = counts.filter(_compared("greater", _struct_child(counts, "counts"), 1))
     if len(repeated):
         raise ValueError(
             f"claim id {quote_id(repeated.field('values')[0].as_py())} is held "
@@ -1869,7 +1869,7 @@ def _timeline_cells(
     rows: list[pa.Array] = []
     for timeline_id in named:
         axis = axes[timeline_id]
-        where = pc.indices_nonzero(pc.equal(timeline_ids, pa.scalar(timeline_id)))
+        where = pc.indices_nonzero(_compared("equal", timeline_ids, timeline_id))
         taken = (
             column.take(where)
             if isinstance(column, pa.Array)
@@ -3246,8 +3246,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
             )
         masks: list[pa.Array] = []
         for side in ("a", "b"):
-            side_id = pc.equal(
-                data.field(f"timeline_{side}_id"), pa.scalar(timeline_id)
+            side_id = _compared(
+                "equal", _struct_child(data, f"timeline_{side}_id"), timeline_id
             )
             start_cells = _struct_array(data.field("start_anchor")).field(
                 f"coordinate_{side}"
@@ -3614,7 +3614,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Raises:
             KeyError: If no row holds *claim_id*.
         """
-        held = pc.indices_nonzero(pc.equal(self._ids, pa.scalar(claim_id)))
+        held = pc.indices_nonzero(_compared("equal", self._ids, claim_id))
         # An index is never null.
         rows = [row for row in held.to_pylist() if row is not None]
         if not rows:
@@ -3822,8 +3822,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """Boolean mask: rows where either id sub-field equals ``timeline_id``."""
         data = self._struct_array()
         return pc.or_(
-            pc.equal(data.field("timeline_a_id"), pa.scalar(timeline_id)),
-            pc.equal(data.field("timeline_b_id"), pa.scalar(timeline_id)),
+            _compared("equal", _struct_child(data, "timeline_a_id"), timeline_id),
+            _compared("equal", _struct_child(data, "timeline_b_id"), timeline_id),
         )
 
     def _involves_any_mask(self, timeline_ids: set[str]) -> pa.Array:
@@ -3851,12 +3851,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
         column_b = data.field("timeline_b_id")
         return pc.or_(
             pc.and_(
-                pc.equal(column_a, pa.scalar(timeline_a_id)),
-                pc.equal(column_b, pa.scalar(timeline_b_id)),
+                _compared("equal", column_a, timeline_a_id),
+                _compared("equal", column_b, timeline_b_id),
             ),
             pc.and_(
-                pc.equal(column_a, pa.scalar(timeline_b_id)),
-                pc.equal(column_b, pa.scalar(timeline_a_id)),
+                _compared("equal", column_a, timeline_b_id),
+                _compared("equal", column_b, timeline_a_id),
             ),
         )
 
@@ -3953,7 +3953,7 @@ def _held_events(timeline: Any, ids: list[str]) -> list[dict[str, Any] | None]:
         pc.or_(own, pc.invert(pc.is_in(held, value_set=held.filter(own)))),
     )
     counts = pc.value_counts(held.filter(answering))
-    repeated = counts.filter(pc.greater(counts.field("counts"), pa.scalar(1)))
+    repeated = counts.filter(_compared("greater", _struct_child(counts, "counts"), 1))
     if len(repeated):
         event_id = repeated.field("values")[0].as_py()
         spelled = ", ".join(

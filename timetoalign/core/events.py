@@ -1718,12 +1718,12 @@ class EnharmonicPitchClass(TwelveTETPitchMixin, BaseModel):
 class EnharmonicPitchClassField(SemanticField[EnharmonicPitchClass]):
     """Columnar wrapper for ``EnharmonicPitchClass`` (paired Field)."""
 
-    def _pc_array(self) -> pa.Array:
+    def _pc_array(self) -> pa.Array[Any]:
         return _member(self, "pitch_class")
 
-    def get(self, *, format: str | None = None) -> pa.Array:
+    def get(self, *, format: str | None = None) -> pa.Array[Any]:
         """Vectorized cast of ``pitch_class`` to string."""
-        return pc.cast(self._pc_array(), pa.string())
+        return self._pc_array().cast(pa.string())
 
 
 # ---------------------------------------------------------------------------
@@ -1817,14 +1817,14 @@ class GenericPitchClass(TwelveTETPitchMixin, BaseModel):
 class GenericPitchClassField(SemanticField[GenericPitchClass]):
     """Columnar wrapper for ``GenericPitchClass`` (paired Field)."""
 
-    def _step_array(self) -> pa.Array:
+    def _step_array(self) -> pa.Array[Any]:
         return _member(self, "step")
 
-    def get(self, *, format: str | None = None) -> pa.Array:
+    def get(self, *, format: str | None = None) -> pa.Array[Any]:
         """Vectorized step-index → step-name lookup via a take table."""
         step = self._step_array()
         lookup = pa.array(list(_GPC_NAMES), type=pa.string())
-        return pc.take(lookup, pc.cast(step, pa.int64()))
+        return pc.take(lookup, step.cast(pa.int64()))
 
 
 # ---------------------------------------------------------------------------
@@ -1921,10 +1921,10 @@ class GenericPitch(TwelveTETPitchMixin, BaseModel):
 class GenericPitchField(SemanticField[GenericPitch]):
     """Columnar wrapper for ``GenericPitch`` (paired Field)."""
 
-    def _step_array(self) -> pa.Array:
+    def _step_array(self) -> pa.Array[Any]:
         return _member(self, "step")
 
-    def _octave_array(self) -> pa.Array:
+    def _octave_array(self) -> pa.Array[Any]:
         return _member(self, "octave")
 
     def convert_to(self, target_scalar_cls: type) -> SemanticField[Any]:
@@ -1939,7 +1939,7 @@ class GenericPitchField(SemanticField[GenericPitch]):
             step = self._step_array()
             new_struct = _struct_like(
                 self,
-                [pc.cast(step, pa.int64())],
+                [step.cast(pa.int64())],
                 [pa.field("step", pa.int64(), nullable=True)],
             )
             pa_field = pa.field("step", new_struct.type)
@@ -1952,13 +1952,13 @@ class GenericPitchField(SemanticField[GenericPitch]):
         """Parity alias for :meth:`convert_to`."""
         return self.convert_to(target_scalar_cls)
 
-    def get(self, *, format: str | None = None) -> pa.Array:
+    def get(self, *, format: str | None = None) -> pa.Array[Any]:
         """Vectorized step-name + octave string concatenation."""
         step = self._step_array()
         octave = self._octave_array()
         lookup = pa.array(list(_GPC_NAMES), type=pa.string())
-        step_str = pc.take(lookup, pc.cast(step, pa.int64()))
-        octave_str = pc.cast(octave, pa.string())
+        step_str = pc.take(lookup, step.cast(pa.int64()))
+        octave_str = octave.cast(pa.string())
         return _joined_strings(step_str, octave_str, "")
 
 
@@ -2094,32 +2094,32 @@ class SpecificPitchClass(TwelveTETPitchMixin, BaseModel):
 class SpecificPitchClassField(SemanticField[SpecificPitchClass]):
     """Columnar wrapper for ``SpecificPitchClass`` (paired Field)."""
 
-    def _step_array(self) -> pa.Array:
+    def _step_array(self) -> pa.Array[Any]:
         return _member(self, "step")
 
-    def _alter_array(self) -> pa.Array:
+    def _alter_array(self) -> pa.Array[Any]:
         return _member(self, "alter")
 
-    def _step_to_semitone(self) -> pa.Array:
+    def _step_to_semitone(self) -> pa.Array[Any]:
         """Vectorized ``step`` → semitone offset from C (int64), null on a null row."""
         return _step_lookup(self._step_array(), _STEP_TO_SEMITONE)
 
-    def _step_to_base_fifths(self) -> pa.Array:
+    def _step_to_base_fifths(self) -> pa.Array[Any]:
         """Vectorized ``step`` → line-of-fifths position of the natural (int64)."""
         return _step_lookup(self._step_array(), _BASE_FIFTHS)
 
     @property
-    def pitch_class(self) -> pa.Array:
+    def pitch_class(self) -> pa.Array[Any]:
         """Vectorized ``(step_semi + alter) mod 12``."""
         semi = self._step_to_semitone()
-        alter = pc.cast(self._alter_array(), pa.int64())
+        alter = self._alter_array().cast(pa.int64())
         return _pc_mod(pc.add(semi, alter), 12)
 
     @property
-    def fifths(self) -> pa.Array:
+    def fifths(self) -> pa.Array[Any]:
         """Vectorized line-of-fifths position (``base_fifths + 7*alter``)."""
         base = self._step_to_base_fifths()
-        alter = pc.cast(self._alter_array(), pa.int64())
+        alter = self._alter_array().cast(pa.int64())
         return pc.add(base, pc.multiply(alter, 7))
 
     def convert_to(self, target_scalar_cls: type) -> SemanticField[Any]:
@@ -2134,7 +2134,7 @@ class SpecificPitchClassField(SemanticField[SpecificPitchClass]):
             pc_arr = self.pitch_class
             new_struct = _struct_like(
                 self,
-                [pc.cast(pc_arr, pa.int64())],
+                [pc_arr.cast(pa.int64())],
                 [pa.field("pitch_class", pa.int64(), nullable=True)],
             )
             pa_field = pa.field("pitch_class", new_struct.type)
@@ -2147,7 +2147,7 @@ class SpecificPitchClassField(SemanticField[SpecificPitchClass]):
         """Parity alias for :meth:`convert_to`."""
         return self.convert_to(target_scalar_cls)
 
-    def get(self, *, format: str | None = None) -> pa.Array:
+    def get(self, *, format: str | None = None) -> pa.Array[Any]:
         """Vectorized step + accidental concatenation.
 
         Implementation note: per-element accidental construction via
@@ -2156,7 +2156,7 @@ class SpecificPitchClassField(SemanticField[SpecificPitchClass]):
         musical practice (``-2..+2``).
         """
         step = self._step_array()
-        alter = pc.cast(self._alter_array(), pa.int64())
+        alter = self._alter_array().cast(pa.int64())
         # Build accidental string per row: positive → "♯" * alter; negative
         # → "♭" * |alter|; zero → "".  Bounded alter range allows a
         # case-by-case if_else chain.
@@ -2293,18 +2293,18 @@ class EnharmonicPitchField(SemanticField[EnharmonicPitch]):
     ``{midi_number: int64}``; cached on the class as ``pa_schema``.
     """
 
-    def _midi_array(self) -> pa.Array:
+    def _midi_array(self) -> pa.Array[Any]:
         return _member(self, "midi_number")
 
     @property
-    def pitch_class(self) -> pa.Array:
+    def pitch_class(self) -> pa.Array[Any]:
         """Vectorized ``midi_number mod 12``."""
-        return _pc_mod(pc.cast(self._midi_array(), pa.int64()), 12)
+        return _pc_mod(self._midi_array().cast(pa.int64()), 12)
 
     @property
-    def octave(self) -> pa.Array:
+    def octave(self) -> pa.Array[Any]:
         """Vectorized ``(midi_number // 12) - 1``."""
-        return pc.subtract(pc.divide(pc.cast(self._midi_array(), pa.int64()), 12), 1)
+        return pc.subtract(pc.divide(self._midi_array().cast(pa.int64()), 12), 1)
 
     def convert_to(self, target_scalar_cls: type) -> SemanticField[Any]:
         """Vectorized mirror of ``EnharmonicPitch.to(target_scalar_cls)``.
@@ -2323,7 +2323,7 @@ class EnharmonicPitchField(SemanticField[EnharmonicPitch]):
             pc_arr = self.pitch_class
             new_struct = _struct_like(
                 self,
-                [pc.cast(pc_arr, pa.int64())],
+                [pc_arr.cast(pa.int64())],
                 [pa.field("pitch_class", pa.int64(), nullable=True)],
             )
             pa_field = pa.field("pitch_class", new_struct.type)
@@ -2336,7 +2336,7 @@ class EnharmonicPitchField(SemanticField[EnharmonicPitch]):
         """Parity alias for :meth:`convert_to`."""
         return self.convert_to(target_scalar_cls)
 
-    def get(self, *, format: str | None = None) -> pa.Array:
+    def get(self, *, format: str | None = None) -> pa.Array[Any]:
         """Vectorized label + octave string concatenation.
 
         Implementation: pitch-class → label via ``pc.take`` from the
@@ -2344,11 +2344,11 @@ class EnharmonicPitchField(SemanticField[EnharmonicPitch]):
         string-cast octave.
         """
         if format == "midi":
-            return pc.cast(self._midi_array(), pa.string())
+            return self._midi_array().cast(pa.string())
         pc_arr = self.pitch_class
         labels = pa.array(list(_EP_LABELS), type=pa.string())
-        label_str = pc.take(labels, pc.cast(pc_arr, pa.int64()))
-        octave_str = pc.cast(self.octave, pa.string())
+        label_str = pc.take(labels, pc_arr.cast(pa.int64()))
+        octave_str = self.octave.cast(pa.string())
         return _joined_strings(label_str, octave_str, "")
 
 
@@ -2398,16 +2398,16 @@ class MidiPitchField(SemanticField[MidiPitch]):
     ``__getitem__`` yields ``MidiPitch`` instances.
     """
 
-    def _midi_array(self) -> pa.Array:
+    def _midi_array(self) -> pa.Array[Any]:
         return _member(self, "midi_number")
 
     @property
-    def pitch_class(self) -> pa.Array:
-        return _pc_mod(pc.cast(self._midi_array(), pa.int64()), 12)
+    def pitch_class(self) -> pa.Array[Any]:
+        return _pc_mod(self._midi_array().cast(pa.int64()), 12)
 
     @property
-    def octave(self) -> pa.Array:
-        return pc.subtract(pc.divide(pc.cast(self._midi_array(), pa.int64()), 12), 1)
+    def octave(self) -> pa.Array[Any]:
+        return pc.subtract(pc.divide(self._midi_array().cast(pa.int64()), 12), 1)
 
     def convert_to(self, target_scalar_cls: type) -> SemanticField[Any]:
         """Vectorized mirror of ``EnharmonicPitch.to`` for the MidiPitch view."""
@@ -2421,7 +2421,7 @@ class MidiPitchField(SemanticField[MidiPitch]):
             pc_arr = self.pitch_class
             new_struct = _struct_like(
                 self,
-                [pc.cast(pc_arr, pa.int64())],
+                [pc_arr.cast(pa.int64())],
                 [pa.field("pitch_class", pa.int64(), nullable=True)],
             )
             pa_field = pa.field("pitch_class", new_struct.type)
@@ -2434,15 +2434,15 @@ class MidiPitchField(SemanticField[MidiPitch]):
         """Parity alias for :meth:`convert_to`."""
         return self.convert_to(target_scalar_cls)
 
-    def get(self, *, format: str | None = None) -> pa.Array:
+    def get(self, *, format: str | None = None) -> pa.Array[Any]:
         """Vectorized cast of ``midi_number`` to string (default format)."""
         if format is None or format == "midi":
-            return pc.cast(self._midi_array(), pa.string())
+            return self._midi_array().cast(pa.string())
         # Delegate to EP-style formatting when an explicit non-midi format is asked
         pc_arr = self.pitch_class
         labels = pa.array(list(_EP_LABELS), type=pa.string())
-        label_str = pc.take(labels, pc.cast(pc_arr, pa.int64()))
-        octave_str = pc.cast(self.octave, pa.string())
+        label_str = pc.take(labels, pc_arr.cast(pa.int64()))
+        octave_str = self.octave.cast(pa.string())
         return _joined_strings(label_str, octave_str, "")
 
 
@@ -2587,43 +2587,43 @@ class SpecificPitchField(SemanticField[SpecificPitch]):
     Pa schema: ``{step: string, alter: int64, octave: int64, cents: float64}``.
     """
 
-    def _step_array(self) -> pa.Array:
+    def _step_array(self) -> pa.Array[Any]:
         return _member(self, "step")
 
-    def _alter_array(self) -> pa.Array:
+    def _alter_array(self) -> pa.Array[Any]:
         return _member(self, "alter")
 
-    def _octave_array(self) -> pa.Array:
+    def _octave_array(self) -> pa.Array[Any]:
         return _member(self, "octave")
 
-    def _step_to_semitone(self) -> pa.Array:
+    def _step_to_semitone(self) -> pa.Array[Any]:
         """Vectorized ``step`` → semitone offset from C (int64), null on a null row."""
         return _step_lookup(self._step_array(), _STEP_TO_SEMITONE)
 
-    def _step_to_base_fifths(self) -> pa.Array:
+    def _step_to_base_fifths(self) -> pa.Array[Any]:
         """Vectorized ``step`` → line-of-fifths position of the natural (int64)."""
         return _step_lookup(self._step_array(), _BASE_FIFTHS)
 
     @property
-    def pitch_class(self) -> pa.Array:
+    def pitch_class(self) -> pa.Array[Any]:
         """Vectorized ``(step_semi + alter) mod 12``."""
         semi = self._step_to_semitone()
-        alter = pc.cast(self._alter_array(), pa.int64())
+        alter = self._alter_array().cast(pa.int64())
         return _pc_mod(pc.add(semi, alter), 12)
 
     @property
-    def midi_number(self) -> pa.Array:
+    def midi_number(self) -> pa.Array[Any]:
         """Vectorized ``(octave + 1) * 12 + step_semi + alter``."""
         semi = self._step_to_semitone()
-        alter = pc.cast(self._alter_array(), pa.int64())
-        octave = pc.cast(self._octave_array(), pa.int64())
+        alter = self._alter_array().cast(pa.int64())
+        octave = self._octave_array().cast(pa.int64())
         return pc.add(pc.add(pc.multiply(pc.add(octave, 1), 12), semi), alter)
 
     @property
-    def fifths(self) -> pa.Array:
+    def fifths(self) -> pa.Array[Any]:
         """Vectorized line-of-fifths position (``base_fifths + 7*alter``)."""
         base = self._step_to_base_fifths()
-        alter = pc.cast(self._alter_array(), pa.int64())
+        alter = self._alter_array().cast(pa.int64())
         return pc.add(base, pc.multiply(alter, 7))
 
     def convert_to(self, target_scalar_cls: type) -> SemanticField[Any]:
@@ -2638,7 +2638,7 @@ class SpecificPitchField(SemanticField[SpecificPitch]):
         if target_scalar_cls is SpecificPitch:
             return self
         if target_scalar_cls is MidiPitch:
-            midi_arr = pc.cast(self.midi_number, pa.int64())
+            midi_arr = self.midi_number.cast(pa.int64())
             new_struct = _struct_like(
                 self,
                 [midi_arr],
@@ -2647,7 +2647,7 @@ class SpecificPitchField(SemanticField[SpecificPitch]):
             pa_field = pa.field("midi_number", new_struct.type)
             return MidiPitchField.from_field((new_struct, pa_field))
         if target_scalar_cls is EnharmonicPitchClass:
-            pc_arr = pc.cast(self.pitch_class, pa.int64())
+            pc_arr = self.pitch_class.cast(pa.int64())
             new_struct = _struct_like(
                 self,
                 [pc_arr],
@@ -2657,7 +2657,7 @@ class SpecificPitchField(SemanticField[SpecificPitch]):
             return EnharmonicPitchClassField.from_field((new_struct, pa_field))
         if target_scalar_cls is SpecificPitchClass:
             step = self._step_array()
-            alter = pc.cast(self._alter_array(), pa.int64())
+            alter = self._alter_array().cast(pa.int64())
             new_struct = _struct_like(
                 self,
                 [step, alter],
@@ -2676,13 +2676,13 @@ class SpecificPitchField(SemanticField[SpecificPitch]):
         """Parity alias for :meth:`convert_to`."""
         return self.convert_to(target_scalar_cls)
 
-    def get(self, *, format: str | None = None) -> pa.Array:
+    def get(self, *, format: str | None = None) -> pa.Array[Any]:
         """Vectorized ``step + accidental + octave`` string concatenation."""
         if format == "midi":
-            return pc.cast(self.midi_number, pa.string())
+            return self.midi_number.cast(pa.string())
         step = self._step_array()
-        alter = pc.cast(self._alter_array(), pa.int64())
-        octave_str = pc.cast(self._octave_array(), pa.string())
+        alter = self._alter_array().cast(pa.int64())
+        octave_str = self._octave_array().cast(pa.string())
         out = pa.array([""] * len(step), type=pa.string())
         for n in (-2, -1, 1, 2):
             if n > 0:
@@ -3453,7 +3453,7 @@ class NoteField(SharedAxisField[Note]):
     """
 
     @property
-    def is_rest(self) -> pa.Array:
+    def is_rest(self) -> pa.Array[Any]:
         """Vectorized rest predicate.
 
         A row is a rest when the EventData carries no pitch for it — i.e.
@@ -4481,7 +4481,7 @@ class MeasureNumberField(SemanticField[MeasureNumber]):
 
     def from_array(
         self,
-        source: pa.Array | pa.ChunkedArray,
+        source: pa.Array[Any] | pa.ChunkedArray[Any],
         *,
         name: str | None = None,
     ) -> SemanticField[MeasureNumber]:
@@ -4502,7 +4502,7 @@ class MeasureNumberField(SemanticField[MeasureNumber]):
             source = source.combine_chunks()
         schema = type(self).struct_schema()
         label_type = schema.field(schema.get_field_index("mn")).type
-        labels = source if source.type == label_type else pc.cast(source, label_type)
+        labels = source if source.type == label_type else source.cast(label_type)
         arrays = [
             labels if field.name == "mn" else pa.nulls(len(labels), type=field.type)
             for field in schema

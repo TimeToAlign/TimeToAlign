@@ -388,6 +388,25 @@ not "without a length", but no number can be read from it. Reading it as anythin
 nominal length, the next row's position) would invent the length again, so it is refused
 under its own message, which says the length is unreadable rather than absent.
 
+## MS3 files that hold no table
+
+An empty file states no table, not an empty one: an ms3 TSV states its columns in its first line,
+so a file without one is no facet the loader could read, and loading it as an empty facet would
+claim that the piece has no notes, chords, labels or measures. The loader used to fail on it
+with whatever came first (`AttributeError: 'NoneType' object has no attribute 'empty'` for a
+notes, chords or harmonies file, `... 'columns'` for a file naming no facet, pandas'
+`EmptyDataError` for a measures file), and a harmonies file whose measures companion was empty
+failed with `... 'iterrows'`. Now each is refused with a `ValueError` naming the file.
+
+The proof writes zero-byte files in `tmp_path`. `Ms3Loader.from_file` of each of
+`p.notes.tsv`, `p.chords.tsv`, `p.harmonies.tsv`, `p.tsv` and `p.measures.tsv` must raise
+`ValueError` with exactly `Ms3Loader cannot read '<path>': the file holds no table (an ms3 TSV
+file states its columns in its first line).`, `<path>` the file's full path. The harmonies
+table of "MS3 facet discovery" beside an empty `p.measures.tsv` raises the same message naming
+the measures file, with and without `auto_discover` (the end of the last label is read from the
+measures companion either way). The same harmonies table without a measures file still loads,
+so the refusal is not passed by refusing the harmonies.
+
 ## Coordinate exactness
 
 Temporal coordinates use structs with `value`, `numerator`, and `denominator`. Populated

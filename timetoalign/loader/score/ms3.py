@@ -42,6 +42,14 @@ if TYPE_CHECKING:
     from timetoalign.timelines import MeasureMap, Timeline
 
 
+def _holds_no_table(source: Path) -> ValueError:
+    """The refusal of an ms3 TSV file that holds no table, naming it."""
+    return ValueError(
+        f"Ms3Loader cannot read '{source}': the file holds no table (an ms3 TSV "
+        "file states its columns in its first line)."
+    )
+
+
 class Ms3Loader(ScoreLoader):
     """Load symbolic scores from DCML-style TSV files.
 
@@ -282,6 +290,9 @@ class Ms3Loader(ScoreLoader):
 
         Returns:
             ScoreStore with populated data.
+
+        Raises:
+            ValueError: If the file holds no table (it is empty).
         """
         fname = source.name.lower()
 
@@ -290,7 +301,10 @@ class Ms3Loader(ScoreLoader):
                 raise ImportError(
                     "Ms3Loader requires pandas to read measures TSV files"
                 )
-            df = pd.read_csv(source, sep="\t")
+            try:
+                df = pd.read_csv(source, sep="\t")
+            except pd.errors.EmptyDataError as error:
+                raise _holds_no_table(source) from error
         else:
             try:
                 import ms3
@@ -299,6 +313,8 @@ class Ms3Loader(ScoreLoader):
                     missing_dependency("Ms3Loader", error.name, "ms3")
                 ) from error
             df = ms3.load_tsv(str(source))
+            if df is None:
+                raise _holds_no_table(source)
 
         # Determine category from filename
         if "measures" in fname:
@@ -449,6 +465,9 @@ class Ms3Loader(ScoreLoader):
         Returns:
             The exact end position in quarters, or None when no measures
             companion is available or its cells are not exact.
+
+        Raises:
+            ValueError: If the measures companion holds no table.
         """
         try:
             import ms3
@@ -463,6 +482,8 @@ class Ms3Loader(ScoreLoader):
             except Exception:
                 logger.debug("Could not read measures companion: %s", companion)
                 return None
+            if measures is None:
+                raise _holds_no_table(companion)
 
             end: Fraction | None = None
             for _, row in measures.iterrows():

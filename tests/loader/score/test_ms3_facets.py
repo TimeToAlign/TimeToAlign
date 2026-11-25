@@ -1,8 +1,8 @@
 """Ms3Loader: companion discovery, empty note cells, pitch names, measures it cannot read.
 
 Validation logic: ``tests/loader/score/README.md``, "MS3 facet discovery",
-"MS3 empty note cells", "MS3 pitch names" and "MS3 measures without a count or a
-length".
+"MS3 empty note cells", "MS3 pitch names", "MS3 measures without a count or a
+length" and "MS3 files that hold no table".
 """
 
 from __future__ import annotations
@@ -313,3 +313,34 @@ def test_a_length_that_cannot_be_read_is_refused(tmp_path):
         "The measures table 'p.measures.tsv' states no readable length of mc 2 "
         "(row 2)"
     )
+
+
+def _holds_no_table(path: Path) -> str:
+    return (
+        f"Ms3Loader cannot read '{path}': the file holds no table (an ms3 TSV file "
+        "states its columns in its first line)."
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["p.notes.tsv", "p.chords.tsv", "p.harmonies.tsv", "p.tsv", "p.measures.tsv"],
+)
+def test_an_empty_file_is_refused_naming_it(tmp_path, name):
+    path = tmp_path / name
+    path.write_bytes(b"")
+    with pytest.raises(ValueError) as excinfo:
+        Ms3Loader.from_file(path)
+    assert str(excinfo.value) == _holds_no_table(path)
+
+
+@pytest.mark.parametrize("auto_discover", [True, False])
+def test_an_empty_measures_companion_is_refused_naming_it(tmp_path, auto_discover):
+    harmonies = tmp_path / "p.harmonies.tsv"
+    harmonies.write_text(HARMONIES, encoding="utf-8")
+    Ms3Loader.from_file(harmonies, auto_discover=auto_discover)
+    measures = tmp_path / "p.measures.tsv"
+    measures.write_bytes(b"")
+    with pytest.raises(ValueError) as excinfo:
+        Ms3Loader.from_file(harmonies, auto_discover=auto_discover)
+    assert str(excinfo.value) == _holds_no_table(measures)

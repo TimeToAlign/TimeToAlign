@@ -18,6 +18,7 @@ from timetoalign.core.fields import (
     _dictionary_chunked_array,
     _filled_mask,
     _joined_strings,
+    _null_column,
     _struct_array_from,
     _struct_array_of,
     _struct_child,
@@ -96,6 +97,25 @@ def test_row_wise_helpers_on_no_rows_keep_their_class() -> None:
     assert type(chosen) is pa.StructArray
     assert chosen.type == PAIR
     assert len(chosen) == 0
+
+
+def test_null_column_is_an_array_of_the_type() -> None:
+    struct_nulls = _null_column(2, PAIR)
+    assert type(struct_nulls) is pa.StructArray
+    assert struct_nulls.type == PAIR
+    assert struct_nulls.to_pylist() == [None, None]
+    assert struct_nulls.null_count == 2
+    no_strings = _null_column(0, pa.string())
+    assert type(no_strings) is pa.StringArray
+    assert len(no_strings) == 0
+    untyped = _null_column(2, pa.null())
+    assert type(untyped) is pa.NullArray
+    assert len(untyped) == 2
+    dictionary_type = pa.dictionary(pa.int8(), pa.string())
+    labels = _null_column(2, dictionary_type)
+    assert type(labels) is pa.DictionaryArray
+    assert labels.type == dictionary_type
+    assert labels.to_pylist() == [None, None]
 
 
 def test_dictionary_chunked_array_is_a_chunked_array_of_the_type() -> None:

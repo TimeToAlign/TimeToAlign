@@ -2808,6 +2808,13 @@ helper's annotation is false and its test fails.
   a `pa.BooleanArray`, a `pa.StringArray`, and a `pa.StructArray` of the
   operands' struct type. This proves the stated class does not depend on
   there being a row to compute.
+- **Null column.** `pa.nulls` with a type given as a general data type, as
+  its callers pass the type of a schema field or of a column: two rows of a
+  struct type give a `pa.StructArray` of that type with both rows null; a
+  string type with no rows a `pa.StringArray` of length 0; the null type a
+  `pa.NullArray`; a dictionary type a `pa.DictionaryArray` of that type.
+  This proves the stated array for every type class a caller names, with
+  or without rows.
 - **Dictionary chunked array.** Two dictionary chunks and zero chunks: a
   `pa.ChunkedArray` of the given dictionary type, its chunk count and values
   as given.

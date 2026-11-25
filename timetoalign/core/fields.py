@@ -774,6 +774,19 @@ def _filled_mask(
     )
 
 
+def _null_column(size: int, type: pa.DataType) -> pa.Array[Any]:
+    """``pa.nulls(size, type)``.
+
+    pyarrow-stubs 20.0 declares ``pa.nulls`` with one overload per concrete
+    type class, so a general ``pa.DataType`` (the type of a schema field or
+    of a column, any type) matches none; PyArrow accepts any type and
+    returns an array of that type's class, every row null. Remove once
+    pyarrow-stubs declares ``pa.nulls`` for a general ``DataType``; call
+    ``pa.nulls`` directly then.
+    """
+    return cast("Callable[[int, pa.DataType], pa.Array[Any]]", pa.nulls)(size, type)
+
+
 def _joined_strings(
     left: pa.Array[Any], right: pa.Array[Any], separator: str
 ) -> pa.StringArray:

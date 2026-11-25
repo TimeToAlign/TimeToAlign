@@ -2,8 +2,10 @@
 # the gh-pages branch (see docs/publish_site.py):
 #   push to main          -> dev/
 #   push of a tag vX.Y.Z  -> X.Y.Z/, and stable/ when it is the newest release
-#   manual run            -> the given ref (a tag vX.Y.Z publishes X.Y.Z/, any
-#                            other ref publishes dev/)
+#   manual run            -> a release tag vX.Y.Z publishes X.Y.Z/, main
+#                            publishes dev/; any other ref is refused
+# A release made by release-please dispatches this workflow with its tag (a
+# tag pushed with the workflow token does not start a run by itself).
 on:
   push:
     branches:
@@ -20,8 +22,10 @@ on:
 permissions:
   contents: write
 
+# One group per ref, so that a build of main never cancels a pending release
+# build; the publishing step retries when another run moved gh-pages.
 concurrency:
-  group: docs-deploy
+  group: docs-${{ inputs.ref || github.ref_name }}
   cancel-in-progress: false
 
 name: docs
@@ -57,9 +61,12 @@ jobs:
           if [[ "$name" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
             echo "message=docs: publish ${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "$name" = "main" ]; then
             echo "version=dev" >> "$GITHUB_OUTPUT"
             echo "message=docs: publish dev at $(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Only main (dev/) and release tags vX.Y.Z (X.Y.Z/) are published, not '$name'."
+            exit 1
           fi
 
       - uses: actions/setup-python@v5
@@ -94,31 +101,47 @@ jobs:
         working-directory: src/docs/page
         run: quarto render
 
+      # The branch is created only when the remote answers that it does not
+      # exist (exit status 2); any other failure stops the job.
       - name: Check out gh-pages
         working-directory: src
         run: |
-          if git fetch origin gh-pages; then
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+            git fetch origin gh-pages
             git worktree add -B gh-pages ../pages FETCH_HEAD
           else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              exit "$status"
+            fi
             git worktree add --orphan -b gh-pages ../pages
           fi
 
-      - name: Publish the version folder
-        run: |
-          python tools/docs/publish_site.py src/docs/page/_site \
-            --version "${{ steps.target.outputs.version }}" --pages pages
-
-      - name: Commit and push gh-pages
-        working-directory: pages
+      # When the push is rejected because another run moved gh-pages, the
+      # folder is published again on top of the fetched branch, so that the
+      # root files are rebuilt from the folders actually present.
+      - name: Publish the version folder and push gh-pages
         env:
+          VERSION: ${{ steps.target.outputs.version }}
           MESSAGE: ${{ steps.target.outputs.message }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898799+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "Nothing changed."
-            exit 0
-          fi
-          git commit -m "$MESSAGE"
-          git push origin gh-pages
+          git -C pages config user.name "github-actions[bot]"
+          git -C pages config user.email "41898799+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            python tools/docs/publish_site.py src/docs/page/_site \
+              --version "$VERSION" --pages pages
+            git -C pages add -A
+            if git -C pages diff --cached --quiet; then
+              echo "Nothing changed."
+              exit 0
+            fi
+            git -C pages commit -m "$MESSAGE"
+            if git -C pages push origin gh-pages; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt); publishing again on the fetched gh-pages."
+            git -C pages fetch origin gh-pages
+            git -C pages reset --hard FETCH_HEAD
+          done
+          echo "::error::gh-pages kept moving; the folder was not published."
+          exit 1

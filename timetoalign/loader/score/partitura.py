@@ -168,7 +168,8 @@ class PartituraLoader(ScoreLoader):
 
             def exact_quarter_delta(start: int, end: int) -> Fraction | None:
                 """Integrate exact quarter duration between two positions."""
-                if not quarter_duration_changes:
+                changes = quarter_duration_changes
+                if not changes:
                     return None
 
                 def duration_at(time_value: int) -> int | None:
@@ -177,7 +178,7 @@ class PartituraLoader(ScoreLoader):
                     ``None`` before the first change.
                     """
                     current: int | None = None
-                    for change_time, change_duration in quarter_duration_changes:
+                    for change_time, change_duration in changes:
                         if change_time > time_value:
                             break
                         current = change_duration
@@ -192,7 +193,7 @@ class PartituraLoader(ScoreLoader):
                 duration = duration_at(current)
                 if duration is None or duration == 0:
                     return None
-                for change_time, change_duration in quarter_duration_changes:
+                for change_time, change_duration in changes:
                     if change_time <= current:
                         continue
                     if change_time >= end:
@@ -572,7 +573,7 @@ class PartituraLoader(ScoreLoader):
                 tpc = None
 
                 _sp_label = ""
-                if not is_rest and hasattr(obj, "midi_pitch"):
+                if not isinstance(obj, pts.Rest) and hasattr(obj, "midi_pitch"):
                     midi = int(obj.midi_pitch)
 
                     if hasattr(obj, "step"):

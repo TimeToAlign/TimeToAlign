@@ -290,6 +290,36 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
       </ul>
   </li>
         <li class="sidebar-item sidebar-item-section">
@@ -305,6 +335,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container">
   <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
   </div>
 </li>
       </ul>
@@ -366,12 +402,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="how-to-do-coordinate-math" class="level1">
 <h1>How to Do Coordinate Math</h1>
 <p>Domains, TimeUnits, NumberTypes, and type-safe Coordinate arithmetic.</p>
-<div id="54021c8f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:16.413058Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:16.412686Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.261827Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.260404Z&quot;}}" data-execution_count="1">
+<div id="3566948e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:18.849911Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:18.849383Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.513142Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.511857Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> Coordinate, Domain, NumberType, TimeUnit</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> Coordinate, Domain, IdCoordinate, NumberType, TimeUnit</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <section id="the-three-domains" class="level2">
 <h2 class="anchored" data-anchor-id="the-three-domains">The Three Domains</h2>
@@ -401,13 +437,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<div id="ac0b2488" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.265186Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.264665Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.275310Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.274120Z&quot;}}" data-execution_count="2">
+<div id="5a1d4cb5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.515898Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.515577Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.523763Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.523008Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="bu">list</span>(Domain)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
 <pre><code>["logical", "physical", "graphical"]</code></pre>
 </div>
 </div>
-<div id="5353abf6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.278714Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.278328Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.284910Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.283696Z&quot;}}" data-execution_count="3">
+<div id="e2c4eba8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.526394Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.526157Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.530760Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.529831Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>Domain.physical <span class="op">==</span> Domain.ph <span class="op">==</span> Domain(<span class="st">"physical"</span>) <span class="op">==</span> Domain(<span class="st">"ph"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
 <pre><code>True</code></pre>
@@ -416,7 +452,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timeunits" class="level2">
 <h2 class="anchored" data-anchor-id="timeunits">TimeUnits</h2>
-<div id="3fa61f3e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.287743Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.287388Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.323611Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.322625Z&quot;}}" data-execution_count="4">
+<div id="73f048c4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.533080Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.532775Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.552967Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.552009Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>unit_data <span class="op">=</span> [</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"unit"</span>: u.name, <span class="st">"domain"</span>: u.domain.name, <span class="st">"discrete"</span>: u.is_discrete}</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> u <span class="kw">in</span> TimeUnit</span>
@@ -480,7 +516,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">2</th>
-<td>measures</td>
+<td>floating_measures</td>
 <td>logical</td>
 <td>False</td>
 </tr>
@@ -538,7 +574,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="cfb08bdc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.327173Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.326881Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.337609Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.336425Z&quot;}}" data-execution_count="5">
+<div id="580a7b84" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.554946Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.554757Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.560829Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.560069Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Convenient aliases</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>aliases <span class="op">=</span> {</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"TimeUnit.s"</span>: TimeUnit.seconds,</span>
@@ -590,7 +626,7 @@ Name: resolves_to, dtype: str</code></pre>
 </tr>
 </tbody>
 </table>
-<div id="ee289328" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.340551Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.340245Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.347163Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.345860Z&quot;}}" data-execution_count="6">
+<div id="121bf16c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.562954Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.562770Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.567265Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.566318Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"from int"</span>: NumberType.from_number(<span class="dv">42</span>),</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"from float"</span>: NumberType.from_number(<span class="fl">3.14</span>),</span>
@@ -604,7 +640,7 @@ Name: resolves_to, dtype: str</code></pre>
 </div>
 <section id="why-fractions-matter" class="level3">
 <h3 class="anchored" data-anchor-id="why-fractions-matter">Why Fractions Matter</h3>
-<div id="be4f8111" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.350006Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.349657Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.359454Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.357505Z&quot;}}" data-execution_count="7">
+<div id="2a8b767c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.569132Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.568950Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.573638Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.572800Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>float_sum <span class="op">=</span> <span class="bu">sum</span>(<span class="fl">0.1</span> <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">10</span>))</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>fraction_sum <span class="op">=</span> <span class="bu">sum</span>(Fraction(<span class="dv">1</span>, <span class="dv">10</span>) <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">10</span>))</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -626,7 +662,7 @@ Name: resolves_to, dtype: str</code></pre>
 <section id="coordinates" class="level2">
 <h2 class="anchored" data-anchor-id="coordinates">Coordinates</h2>
 <p>Immutable, hashable, type-safe value+unit pairs.</p>
-<div id="ef5fe4b5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.363731Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.363299Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.380145Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.378890Z&quot;}}" data-execution_count="8">
+<div id="ea958dec" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.575612Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.575375Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.579903Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.579104Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>c1 <span class="op">=</span> Coordinate(<span class="dv">120</span>, TimeUnit.ticks)</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>c2 <span class="op">=</span> Coordinate(<span class="fl">1.5</span>, TimeUnit.seconds)</span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>c3 <span class="op">=</span> Coordinate(Fraction(<span class="dv">3</span>, <span class="dv">4</span>), TimeUnit.quarters)</span>
@@ -638,7 +674,7 @@ Name: resolves_to, dtype: str</code></pre>
  Coordinate(Fraction(3, 4), quarters))</code></pre>
 </div>
 </div>
-<div id="6ec3a313" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.383029Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.382680Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.389424Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.388337Z&quot;}}" data-execution_count="9">
+<div id="2e242d16" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.581831Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.581627Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.586322Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.585435Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"value"</span>: c3.value,</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: c3.unit,</span>
@@ -654,7 +690,9 @@ Name: resolves_to, dtype: str</code></pre>
 </div>
 <section id="arithmetic" class="level3">
 <h3 class="anchored" data-anchor-id="arithmetic">Arithmetic</h3>
-<div id="6304b04b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.392952Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.392647Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.399720Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.398559Z&quot;}}" data-execution_count="10">
+<p>Coordinates are <em>positions</em>, so the arithmetic is deliberately strict. The guiding distinction is between a position (a <code>Coordinate</code>) and a span between two positions (a <code>Duration</code>). The rules below fall straight out of that distinction.</p>
+<p><strong>Comparisons.</strong> Coordinates of the same unit compare as you would expect.</p>
+<div id="e69275fc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.588288Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.588099Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.592310Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.591549Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> Coordinate(<span class="dv">10</span>, TimeUnit.seconds)</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>y <span class="op">=</span> Coordinate(<span class="dv">5</span>, TimeUnit.seconds)</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -663,30 +701,125 @@ Name: resolves_to, dtype: str</code></pre>
 <pre><code>{'x &gt; y': True, 'x == y': False, 'x &lt;= y': False}</code></pre>
 </div>
 </div>
-<div id="89307344" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.402461Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.402078Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.408181Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.406962Z&quot;}}" data-execution_count="11">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Unit mismatch raises TypeError</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    Coordinate(<span class="dv">480</span>, TimeUnit.ticks) <span class="op">+</span> Coordinate(<span class="fl">1.0</span>, TimeUnit.seconds)</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span> <span class="im">as</span> e:</span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"TypeError: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Subtracting two Coordinates gives a <code>Duration</code>.</strong> The span between two positions is a duration, not another position. Reverse the operands and the duration is signed — <code>is_negative</code> / <code>is_positive</code> make the direction queryable.</p>
+<div id="ee32bdce" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.594246Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.594063Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.598749Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.597790Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>forwards <span class="op">=</span> x <span class="op">-</span> y  <span class="co"># 10s - 5s</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>backwards <span class="op">=</span> y <span class="op">-</span> x  <span class="co"># 5s - 10s</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"x - y"</span>: forwards,</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"type"</span>: <span class="bu">type</span>(forwards).<span class="va">__name__</span>,</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is_positive"</span>: forwards.is_positive(),</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"y - x"</span>: backwards,</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is_negative"</span>: backwards.is_negative(),</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>{'x - y': Duration(5, seconds),
+ 'type': 'Duration',
+ 'is_positive': True,
+ 'y - x': Duration(-5, seconds),
+ 'is_negative': True}</code></pre>
+</div>
+</div>
+<p><strong>A Coordinate plus or minus a Duration is a Coordinate</strong> — shifting a position by a span lands on another position. Shifting by a bare number works the same way.</p>
+<div id="ae381332" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.600939Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.600737Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.605080Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.604234Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"x - (x - y)"</span>: x <span class="op">-</span> forwards,  <span class="co"># Coordinate - Duration -&gt; Coordinate</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"x + 2"</span>: x <span class="op">+</span> <span class="dv">2</span>,  <span class="co"># Coordinate + number -&gt; Coordinate</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"x - 2"</span>: x <span class="op">-</span> <span class="dv">2</span>,</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>{'x - (x - y)': Coordinate(5, seconds),
+ 'x + 2': Coordinate(12, seconds),
+ 'x - 2': Coordinate(8, seconds)}</code></pre>
+</div>
+</div>
+<p><strong>Adding two Coordinates is forbidden.</strong> The sum of two positions is meaningless; subtract them instead to obtain the span between them.</p>
+<div id="e885fa4c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.606991Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.606754Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.610401Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.609506Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    x <span class="op">+</span> y  <span class="co"># two positions cannot be added</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span> <span class="im">as</span> e:</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"TypeError: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>TypeError: Cannot add coordinates with different units: ticks vs seconds</code></pre>
+<pre><code>TypeError: Cannot add two Coordinates; subtract them to obtain a Duration</code></pre>
+</div>
+</div>
+<p><strong>A Duration on the left of <code>+ Coordinate</code> is forbidden too</strong> — write <code>coord + dur</code>, not <code>dur + coord</code>.</p>
+<div id="dfa8f9ee" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.612306Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.612096Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.615621Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.614834Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    forwards <span class="op">+</span> x  <span class="co"># Duration + Coordinate</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span> <span class="im">as</span> e:</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"TypeError: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TypeError: Cannot add a Coordinate to a Duration; use 'coord + dur' instead</code></pre>
+</div>
+</div>
+<p><strong>Multiplying two TimeScalars is forbidden.</strong> Scaling a position by a number is fine; multiplying two positions (or two spans) is not.</p>
+<div id="a541e238" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.617724Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.617536Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.620623Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.619892Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    x <span class="op">*</span> y  <span class="co"># Coordinate * Coordinate</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span> <span class="im">as</span> e:</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"TypeError: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TypeError: Cannot multiply two TimeScalars: Coordinate * Coordinate</code></pre>
+</div>
+</div>
+<p><strong>Scaling by a number preserves the type.</strong> A scaled Coordinate is a Coordinate; a scaled Duration is a Duration.</p>
+<div id="406587a1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.622442Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.622268Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.626665Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.625811Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"x * 2"</span>: x <span class="op">*</span> <span class="dv">2</span>,</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"x / 2"</span>: x <span class="op">/</span> <span class="dv">2</span>,</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"(x - y) * 2"</span>: forwards <span class="op">*</span> <span class="dv">2</span>,</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"(x - y) type"</span>: <span class="bu">type</span>(forwards <span class="op">*</span> <span class="dv">2</span>).<span class="va">__name__</span>,</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>{'x * 2': Coordinate(20, seconds),
+ 'x / 2': Coordinate(5.0, seconds),
+ '(x - y) * 2': Duration(10, seconds),
+ '(x - y) type': 'Duration'}</code></pre>
+</div>
+</div>
+<p><strong>Different units cannot be combined.</strong> This is a separate rule from the two-Coordinates ban above: even subtraction — which <em>is</em> allowed between two Coordinates — refuses operands whose units disagree.</p>
+<div id="6f984b86" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.628280Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.628097Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.631303Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.630522Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    Coordinate(<span class="dv">1</span>, TimeUnit.ticks) <span class="op">-</span> Coordinate(<span class="dv">1</span>, TimeUnit.seconds)</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span> <span class="im">as</span> e:</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"TypeError: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TypeError: Cannot subtract Coordinate and Coordinate with different units: ticks vs seconds</code></pre>
+</div>
+</div>
+<p><strong>Id-bearing coordinates preserve their timeline.</strong> Subtracting two <code>IdCoordinate</code>s on the <em>same</em> timeline yields an <code>IdDuration</code> that keeps the <code>timeline_id</code>. Mixing two different timelines raises.</p>
+<div id="be873aaa" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.633529Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.633293Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.639492Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.638633Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>p <span class="op">=</span> IdCoordinate(<span class="dv">10</span>, TimeUnit.quarters, timeline_id<span class="op">=</span><span class="st">"clt1"</span>)</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>q <span class="op">=</span> IdCoordinate(<span class="dv">4</span>, TimeUnit.quarters, timeline_id<span class="op">=</span><span class="st">"clt1"</span>)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>span <span class="op">=</span> p <span class="op">-</span> q</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"p - q"</span>: span,</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"type"</span>: <span class="bu">type</span>(span).<span class="va">__name__</span>,</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timeline_id"</span>: span.timeline_id,</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>{'p - q': IdDuration(6, quarters, 'clt1'),
+ 'type': 'IdDuration',
+ 'timeline_id': 'clt1'}</code></pre>
 </div>
 </div>
 </section>
 <section id="type-conversions" class="level3">
 <h3 class="anchored" data-anchor-id="type-conversions">Type Conversions</h3>
-<div id="4f103e63" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.410847Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.410591Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.416284Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.415471Z&quot;}}" data-execution_count="12">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>c <span class="op">=</span> Coordinate(Fraction(<span class="dv">7</span>, <span class="dv">4</span>), TimeUnit.quarters)</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"original"</span>: c,</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_float()"</span>: c.to_float(),</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_int()"</span>: c.to_int(),</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_int('round')"</span>: c.to_int(<span class="st">"round"</span>),</span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_fraction()"</span>: c.to_fraction(),</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="12">
+<div id="1b83a2eb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.641462Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.641246Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.646232Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.645470Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>c <span class="op">=</span> Coordinate(Fraction(<span class="dv">7</span>, <span class="dv">4</span>), TimeUnit.quarters)</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"original"</span>: c,</span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_float()"</span>: c.to_float(),</span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_int()"</span>: c.to_int(),</span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_int('round')"</span>: c.to_int(<span class="st">"round"</span>),</span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"to_fraction()"</span>: c.to_fraction(),</span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
 <pre><code>{'original': Coordinate(Fraction(7, 4), quarters),
  'to_float()': 1.75,
  'to_int()': 1,
@@ -694,15 +827,15 @@ Name: resolves_to, dtype: str</code></pre>
  'to_fraction()': Fraction(7, 4)}</code></pre>
 </div>
 </div>
-<div id="33d345ab" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:17.418685Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:17.418340Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:17.424309Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:17.423232Z&quot;}}" data-execution_count="13">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>original <span class="op">=</span> Coordinate(<span class="dv">100</span>, TimeUnit.ticks)</span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"original"</span>: original,</span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"with_value(200)"</span>: original.with_value(<span class="dv">200</span>),</span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"with_unit(samples)"</span>: original.with_unit(TimeUnit.samples),</span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
+<div id="7b7926a2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:38:19.648674Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:38:19.648469Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:38:19.653491Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:38:19.652409Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>original <span class="op">=</span> Coordinate(<span class="dv">100</span>, TimeUnit.ticks)</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"original"</span>: original,</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"with_value(200)"</span>: original.with_value(<span class="dv">200</span>),</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"with_unit(samples)"</span>: original.with_unit(TimeUnit.samples),</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
 <pre><code>{'original': Coordinate(100, ticks),
  'with_value(200)': Coordinate(200, ticks),
  'with_unit(samples)': Coordinate(100, samples)}</code></pre>

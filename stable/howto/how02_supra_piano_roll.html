@@ -290,6 +290,36 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
       </ul>
   </li>
         <li class="sidebar-item sidebar-item-section">
@@ -305,6 +335,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container">
   <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
   </div>
 </li>
       </ul>
@@ -474,28 +510,30 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="6994866a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:07.423578Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:07.423193Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:10.384606Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:10.383470Z&quot;}}" data-execution_count="1">
+<div id="d0c2650b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:14.293211Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:14.292862Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:17.305823Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:17.303190Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> IdCoordinate, TimeUnit</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.alignment <span class="im">import</span> TimelineGroup</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> timestamp_table_to_dataframe</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.graphical.aton <span class="im">import</span> ATONLoader</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.midi <span class="im">import</span> PerformanceMidiLoader</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.physical <span class="im">import</span> AudioLoader</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score <span class="im">import</span> TSVLoader</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.maps <span class="im">import</span> ScalarMap</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> ContinuousPhysicalTimeline</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> IdCoordinate, Ms3Loader, TimelineGroup, TimeUnit</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> timestamp_table_to_dataframe</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.graphical.aton <span class="im">import</span> ATONLoader</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.midi <span class="im">import</span> PerformanceMidiLoader</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.physical <span class="im">import</span> AudioLoader</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.maps <span class="im">import</span> ScalarMap</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> ContinuousPhysicalTimeline</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> ensure_data(<span class="st">"supra"</span>)</span>
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> ensure_data(<span class="st">"supra"</span>)</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>ATON_FILE <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"image"</span> <span class="op">/</span> <span class="st">"fd660zf8362_analysis.txt"</span></span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>MIDI_RAW_PATH <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"fd660zf8362_raw.mid"</span></span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>MIDI_EXP_PATH <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"fd660zf8362_exp.mid"</span></span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>MP3_PATH <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"fd660zf8362.mp3"</span></span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>DCML_DIR <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"dcml"</span></span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Data directory"</span>: <span class="bu">str</span>(DATA_DIR), <span class="st">"ATON file"</span>: ATON_FILE.name}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>ATON_FILE <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"image"</span> <span class="op">/</span> <span class="st">"fd660zf8362_analysis.txt"</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>MIDI_RAW_PATH <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"fd660zf8362_raw.mid"</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>MIDI_EXP_PATH <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"fd660zf8362_exp.mid"</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>MP3_PATH <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"fd660zf8362.mp3"</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>DCML_DIR <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"dcml"</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Data directory"</span>: <span class="bu">str</span>(DATA_DIR), <span class="st">"ATON file"</span>: ATON_FILE.name}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/home/laser/miniconda3/envs/timetoalign/lib/python3.11/site-packages/partitura/__init__.py:9: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools&lt;81.
+  import pkg_resources</code></pre>
+</div>
 <div class="cell-output cell-output-display" data-execution_count="1">
 <pre><code>{'Data directory': '/home/laser/git/tta/timetoalign/tests/data/supra',
  'ATON file': 'fd660zf8362_analysis.txt'}</code></pre>
@@ -507,24 +545,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="part-a-create-the-image-timeline-dgt1-from-aton-loader">Part A: Create the Image Timeline (DGT1) from ATON Loader</h2>
 <p>The ATON (Artistic Text-based Object Notation) file contains hole punch data from the Stanford SUPRA project’s piano roll analysis. The loader creates a timeline with <strong>all hole events already populated</strong> at their absolute pixel coordinates.</p>
 <p><strong>Note:</strong> We use the <code>from_file()</code> constructor for one-line instantiation.</p>
-<div id="d37022d1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:10.387478Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:10.387090Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:13.732153Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:13.729926Z&quot;}}" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>aton_loader <span class="op">=</span> ATONLoader.from_file(ATON_FILE)</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.musical_holes <span class="op">==</span> <span class="dv">30092</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.musical_notes <span class="op">==</span> <span class="dv">8718</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.first_hole.value <span class="op">==</span> <span class="dv">15343</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.last_hole.value <span class="op">==</span> <span class="dv">293119</span></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.musical_length.value <span class="op">==</span> <span class="dv">277776</span></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.image_dimensions[<span class="st">"height"</span>] <span class="op">==</span> <span class="dv">299400</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image height"</span>: <span class="ss">f"</span><span class="sc">{</span>aton_loader<span class="sc">.</span>image_dimensions[<span class="st">'height'</span>]<span class="sc">:,}</span><span class="ss"> pixels"</span>,</span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Musical holes"</span>: <span class="ss">f"</span><span class="sc">{</span>aton_loader<span class="sc">.</span>musical_holes<span class="sc">:,}</span><span class="ss">"</span>,</span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"First hole"</span>: aton_loader.first_hole,</span>
-<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Last hole"</span>: aton_loader.last_hole,</span>
-<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Musical length"</span>: aton_loader.musical_length,</span>
-<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Verification"</span>: <span class="st">"PASSED"</span>,</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="d9aa235c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:17.310534Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:17.309709Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:21.815375Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:21.813997Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>aton_loader <span class="op">=</span> ATONLoader.from_file(ATON_FILE)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.musical_holes <span class="op">==</span> <span class="dv">30092</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.musical_notes <span class="op">==</span> <span class="dv">8718</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.first_hole.value <span class="op">==</span> <span class="dv">15343</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.last_hole.value <span class="op">==</span> <span class="dv">293119</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.musical_length.value <span class="op">==</span> <span class="dv">277776</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.image_dimensions[<span class="st">"height"</span>] <span class="op">==</span> <span class="dv">299400</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image height"</span>: <span class="ss">f"</span><span class="sc">{</span>aton_loader<span class="sc">.</span>image_dimensions[<span class="st">'height'</span>]<span class="sc">:,}</span><span class="ss"> pixels"</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Musical holes"</span>: <span class="ss">f"</span><span class="sc">{</span>aton_loader<span class="sc">.</span>musical_holes<span class="sc">:,}</span><span class="ss">"</span>,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"First hole"</span>: aton_loader.first_hole,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Last hole"</span>: aton_loader.last_hole,</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Musical length"</span>: aton_loader.musical_length,</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Verification"</span>: <span class="st">"PASSED"</span>,</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
 <pre><code>{'Image height': '299,400 pixels',
  'Musical holes': '30,092',
@@ -535,11 +573,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The loader’s <code>create_timeline()</code> method creates a timeline spanning the full image with holes at absolute coordinates.</p>
-<div id="a8963f84" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:13.761239Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:13.760461Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.482763Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.481401Z&quot;}}" data-execution_count="3">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>dgt1 <span class="op">=</span> aton_loader.create_timeline(uid<span class="op">=</span><span class="st">"dgt1"</span>, name<span class="op">=</span><span class="st">"Piano Roll Image (WM 990)"</span>)</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>dgt1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="d0bd4e75" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:21.822327Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:21.821615Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:22.185083Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:22.183559Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>dgt1 <span class="op">=</span> aton_loader.create_timeline(uid<span class="op">=</span><span class="st">"dgt1"</span>, name<span class="op">=</span><span class="st">"Piano Roll Image (WM 990)"</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>dgt1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<pre style="font-family: monospace; line-height: 1.2;">Timeline[dgt1] (30092 events)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">Timeline[dgt1] (30092 events)
                        0 =============================== 299400 pixels</pre>
 </div>
 </div>
@@ -550,39 +588,39 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>The piano roll was scanned at 300.25 DPI (dots per inch). We attach ConversionMaps to convert pixel coordinates to physical units.</p>
 <p><strong>Important:</strong> We specify <code>name=</code> for human-readable column headers in timestamp tables. Without it, columns would show as “map:ScalarMap_1”.</p>
 <p><strong>Calculation:</strong> 299,400 pixels / 300.25 DPI = 997.17 inches = 25.33 meters</p>
-<div id="2bf06ddd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.485818Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.485519Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.498356Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.492712Z&quot;}}" data-execution_count="4">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>LENGTH_DPI <span class="op">=</span> <span class="fl">300.25</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: name= provides readable column headers (defaults to "source_to_target")</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>dgt1.add_conversion_map(</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    ScalarMap(</span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        scalar<span class="op">=</span><span class="dv">1</span> <span class="op">/</span> LENGTH_DPI,</span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>        source_unit<span class="op">=</span><span class="st">"pixels"</span>,</span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        target_unit<span class="op">=</span><span class="st">"inches"</span>,</span>
-<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">"pixels_to_inches"</span>,  <span class="co"># Human-readable name for timestamp columns</span></span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>dgt1.add_conversion_map(</span>
-<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    ScalarMap(</span>
-<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>        scalar<span class="op">=</span><span class="fl">2.54</span> <span class="op">/</span> LENGTH_DPI,</span>
-<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>        source_unit<span class="op">=</span><span class="st">"pixels"</span>,</span>
-<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>        target_unit<span class="op">=</span><span class="st">"cm"</span>,</span>
-<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">"pixels_to_cm"</span>,  <span class="co"># Human-readable name for timestamp columns</span></span>
-<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="cc64be52" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:22.189820Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:22.189354Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:22.200786Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:22.199188Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>LENGTH_DPI <span class="op">=</span> <span class="fl">300.25</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: name= provides readable column headers (defaults to "source_to_target")</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>dgt1.add_conversion_map(</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    ScalarMap(</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>        scalar<span class="op">=</span><span class="dv">1</span> <span class="op">/</span> LENGTH_DPI,</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>        source_unit<span class="op">=</span><span class="st">"pixels"</span>,</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>        target_unit<span class="op">=</span><span class="st">"inches"</span>,</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">"pixels_to_inches"</span>,  <span class="co"># Human-readable name for timestamp columns</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>dgt1.add_conversion_map(</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    ScalarMap(</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>        scalar<span class="op">=</span><span class="fl">2.54</span> <span class="op">/</span> LENGTH_DPI,</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>        source_unit<span class="op">=</span><span class="st">"pixels"</span>,</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>        target_unit<span class="op">=</span><span class="st">"cm"</span>,</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">"pixels_to_cm"</span>,  <span class="co"># Human-readable name for timestamp columns</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>The <code>convert_to</code> method returns proper Coordinate objects with units.</p>
-<div id="9a394500" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.501843Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.501574Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.517949Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.511944Z&quot;}}" data-execution_count="5">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>image_length_inches <span class="op">=</span> dgt1.convert_to(dgt1.length, <span class="st">"inches"</span>)</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>image_length_cm <span class="op">=</span> dgt1.convert_to(dgt1.length, <span class="st">"cm"</span>)</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length"</span>: dgt1.length,</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length (inches)"</span>: image_length_inches,</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length (cm)"</span>: image_length_cm,</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length (meters)"</span>: <span class="ss">f"</span><span class="sc">{</span>image_length_cm<span class="sc">.</span>value <span class="op">/</span> <span class="dv">100</span><span class="sc">:.2f}</span><span class="ss"> meters"</span>,</span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="6ea0dab6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:22.206807Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:22.206355Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:22.215728Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:22.214528Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>image_length_inches <span class="op">=</span> dgt1.convert_to(dgt1.length, <span class="st">"inches"</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>image_length_cm <span class="op">=</span> dgt1.convert_to(dgt1.length, <span class="st">"cm"</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length"</span>: dgt1.length,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length (inches)"</span>: image_length_inches,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length (cm)"</span>: image_length_cm,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Image length (meters)"</span>: <span class="ss">f"</span><span class="sc">{</span>image_length_cm<span class="sc">.</span>value <span class="op">/</span> <span class="dv">100</span><span class="sc">:.2f}</span><span class="ss"> meters"</span>,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
 <pre><code>{'Image length': Coordinate(299400, pixels),
  'Image length (inches)': Coordinate(997.1690258118235, inches),
@@ -596,16 +634,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="part-c-create-child-timeline-for-relative-coordinates">Part C: Create Child Timeline for Relative Coordinates</h2>
 <p>The musical content doesn’t span the entire image - holes start at pixel 15,343. We create a <strong>child timeline</strong> to provide a relative coordinate view where the first hole = 0 pixels.</p>
 <p><strong>Key insight:</strong> The child has no events of its own. It’s purely a coordinate transformation. When we get timestamps, we see event coordinates in BOTH the parent (absolute) and child (relative) coordinate systems - for free!</p>
-<div id="cb085930" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.520692Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.520340Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.540632Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.539510Z&quot;}}" data-execution_count="6">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>dgt_holes <span class="op">=</span> dgt1.create_child(</span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span>aton_loader.musical_length,</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    offset<span class="op">=</span>aton_loader.first_hole,</span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="st">"dgt_holes"</span>,</span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"Musical Holes Region"</span>,</span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>dgt1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="e9659fef" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:22.219629Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:22.219116Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:22.231653Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:22.230470Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>dgt_holes <span class="op">=</span> dgt1.create_child(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span>aton_loader.musical_length,</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    offset<span class="op">=</span>aton_loader.first_hole,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="st">"dgt_holes"</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"Musical Holes Region"</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>dgt1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
-<pre style="font-family: monospace; line-height: 1.2;">Timeline[dgt1] (30092 events, 1 children, 2 cmaps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">Timeline[dgt1] (30092 events, 1 children, 2 cmaps)
                        0 =============================== 299400 pixels
   └─ Musical H...  15343  =============================  293119</pre>
 </div>
@@ -616,10 +654,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="part-d-demonstrate-timestamps">Part D: Demonstrate Timestamps</h2>
 <p>With the parent-child hierarchy established, we can generate <strong>timestamps</strong> that show coordinates in both the parent (full image) and child (holes region) coordinate systems simultaneously.</p>
 <p><strong>Note:</strong> The <code>to_dataframe()</code> method provides column names with units appended (e.g., “pixels_to_inches (inches)”) and proper integer types. This is the recommended way to get timestamp data for display.</p>
-<div id="cd90f04c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.551130Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.550391Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.600873Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.594563Z&quot;}}" data-execution_count="7">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>timestamps_df <span class="op">=</span> dgt1.to_dataframe()</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Total timestamps"</span>: <span class="bu">len</span>(timestamps_df), <span class="st">"Columns"</span>: <span class="bu">list</span>(timestamps_df.columns)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="57d861c9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:22.234439Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:22.234156Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:25.038469Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:25.036345Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>timestamps_df <span class="op">=</span> dgt1.to_dataframe()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Total timestamps"</span>: <span class="bu">len</span>(timestamps_df), <span class="st">"Columns"</span>: <span class="bu">list</span>(timestamps_df.columns)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
 <pre><code>{'Total timestamps': 20680,
  'Columns': ['axis (pixels)',
@@ -632,8 +670,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p><strong>Why ~20,680 timestamps?</strong></p>
 <p>The timestamp table has one row per <strong>unique</strong> event coordinate in the hierarchy: - Parent timeline (dgt1) contains 30,092 hole events at absolute pixel coordinates - But many holes share the same pixel row (multiple notes at one time position) - After de-duplication: ~20,676 unique coordinates plus 4 boundary coordinates</p>
 <p>Each row shows the coordinate in <strong>all</strong> coordinate systems simultaneously: - <code>axis (pixels)</code>: The root (parent) coordinate in pixels - <code>dgt1 (pixels)</code>: Same as axis (this IS the root timeline) - <code>dgt_holes (pixels)</code>: <strong>Relative</strong> coordinate in child timeline (first hole = 0, NaN if outside) - C-Map columns: Physical units with names like “pixels_to_inches (inches)”</p>
-<div id="3bc61c5a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.604549Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.604102Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.651583Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.649672Z&quot;}}" data-execution_count="8">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>timestamps_df.head(<span class="dv">10</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="ec70d903" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:25.042204Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:25.041799Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:25.072024Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:25.066676Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>timestamps_df.head(<span class="dv">10</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <div>
 
@@ -648,10 +686,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">pixels_to_inches (inches)</th>
 <th data-quarto-table-cell-role="th">pixels_to_cm (centimeters)</th>
 </tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
 </thead>
 <tbody>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">0</th>
+<th data-quarto-table-cell-role="th">hole_K0_N1</th>
 <td>15343.0</td>
 <td>15343.0</td>
 <td>0.0</td>
@@ -659,7 +705,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>129.795903</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">1</th>
+<th data-quarto-table-cell-role="th">hole_K0_N2</th>
 <td>15391.0</td>
 <td>15391.0</td>
 <td>48.0</td>
@@ -667,7 +713,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>130.201965</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">2</th>
+<th data-quarto-table-cell-role="th">hole_K88_N1</th>
 <td>15617.0</td>
 <td>15617.0</td>
 <td>274.0</td>
@@ -675,7 +721,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>132.113838</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">3</th>
+<th data-quarto-table-cell-role="th">hole_K86_N1</th>
 <td>15626.0</td>
 <td>15626.0</td>
 <td>283.0</td>
@@ -683,7 +729,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>132.189975</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">4</th>
+<th data-quarto-table-cell-role="th">hole_K0_N1</th>
 <td>15638.0</td>
 <td>15638.0</td>
 <td>295.0</td>
@@ -691,7 +737,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>132.291490</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">5</th>
+<th data-quarto-table-cell-role="th">hole_K88_N2</th>
 <td>15655.0</td>
 <td>15655.0</td>
 <td>312.0</td>
@@ -699,7 +745,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>132.435304</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">6</th>
+<th data-quarto-table-cell-role="th">hole_K0_N2</th>
 <td>15675.0</td>
 <td>15675.0</td>
 <td>332.0</td>
@@ -707,7 +753,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>132.604496</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">7</th>
+<th data-quarto-table-cell-role="th">hole_K88_N3</th>
 <td>15683.0</td>
 <td>15683.0</td>
 <td>340.0</td>
@@ -715,7 +761,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>132.672173</td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">8</th>
+<th data-quarto-table-cell-role="th">hole_K86_N2</th>
 <td>15684.0</td>
 <td>15684.0</td>
 <td>341.0</td>
@@ -723,7 +769,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>132.680633</td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">9</th>
+<th data-quarto-table-cell-role="th">hole_K0_N3</th>
 <td>15703.0</td>
 <td>15703.0</td>
 <td>360.0</td>
@@ -737,14 +783,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Query a specific coordinate: at pixel 100,000 in the image, what’s the local coordinate in the holes region?</p>
-<div id="78afc1a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.665348Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.664899Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.684562Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.679901Z&quot;}}" data-execution_count="9">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>ts <span class="op">=</span> dgt1.get_timestamp(<span class="fl">100000.0</span>)</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Query (parent coord)"</span>: <span class="fl">100000.0</span>,</span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Child coord (dgt_holes)"</span>: ts[<span class="st">"dgt_holes"</span>],</span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Calculation"</span>: <span class="ss">f"100000 - </span><span class="sc">{</span>aton_loader<span class="sc">.</span>first_hole<span class="sc">.</span>value<span class="sc">}</span><span class="ss"> = </span><span class="sc">{</span><span class="dv">100000</span> <span class="op">-</span> aton_loader<span class="sc">.</span>first_hole<span class="sc">.</span>value<span class="sc">}</span><span class="ss">"</span>,</span>
-<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="e5e9bf75" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:25.079836Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:25.075589Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:25.088047Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:25.086759Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>ts <span class="op">=</span> dgt1.get_timestamp(<span class="fl">100000.0</span>)</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Query (parent coord)"</span>: <span class="fl">100000.0</span>,</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Child coord (dgt_holes)"</span>: ts[<span class="st">"dgt_holes"</span>],</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Calculation"</span>: <span class="ss">f"100000 - </span><span class="sc">{</span>aton_loader<span class="sc">.</span>first_hole<span class="sc">.</span>value<span class="sc">}</span><span class="ss"> = </span><span class="sc">{</span><span class="dv">100000</span> <span class="op">-</span> aton_loader<span class="sc">.</span>first_hole<span class="sc">.</span>value<span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
 <pre><code>{'Query (parent coord)': 100000.0,
  'Child coord (dgt_holes)': 84657.0,
@@ -752,10 +798,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Boundary table shows where child timelines start and end (with C-Maps). Use <code>timestamp_table_to_dataframe()</code> for column names with units.</p>
-<div id="3a81a1b0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.694353Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.693624Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:14.718373Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:14.716064Z&quot;}}" data-execution_count="10">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>boundary_table <span class="op">=</span> dgt1.get_boundary_table(conversion_maps<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>boundary_df <span class="op">=</span> timestamp_table_to_dataframe(boundary_table)</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>boundary_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="3814096a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:25.094695Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:25.094282Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:25.119387Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:25.117760Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>boundary_table <span class="op">=</span> dgt1.get_boundary_table(conversion_maps<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>boundary_df <span class="op">=</span> timestamp_table_to_dataframe(boundary_table)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>boundary_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
 <div>
 
@@ -818,28 +864,28 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p><strong>All loaders use the <code>from_file()</code> constructor for clean one-line loading.</strong></p>
 <section id="e.1-dlt1---raw-midi-one-event-per-hole" class="level3">
 <h3 class="anchored" data-anchor-id="e.1-dlt1---raw-midi-one-event-per-hole">E.1: DLT1 - Raw MIDI (one event per hole)</h3>
-<div id="90bbfe88" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:14.724493Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:14.724045Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:16.673427Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:16.672138Z&quot;}}" data-execution_count="11">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># One-line loading with from_file()</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>midi_raw_loader <span class="op">=</span> PerformanceMidiLoader.from_file(MIDI_RAW_PATH)</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Create timeline directly from loader - no need to access store</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>dlt1_raw <span class="op">=</span> midi_raw_loader.create_timeline(uid<span class="op">=</span><span class="st">"dlt1_raw"</span>)</span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>raw_note_count <span class="op">=</span> <span class="bu">len</span>(midi_raw_loader.store.notes)</span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>dlt1_raw</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="75ef547a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:25.134419Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:25.133950Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:28.431057Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:28.427492Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># One-line loading with from_file()</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>midi_raw_loader <span class="op">=</span> PerformanceMidiLoader.from_file(MIDI_RAW_PATH)</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Create timeline directly from loader - no need to access store</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>dlt1_raw <span class="op">=</span> midi_raw_loader.create_timeline(uid<span class="op">=</span><span class="st">"dlt1_raw"</span>)</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>raw_note_count <span class="op">=</span> <span class="bu">len</span>(midi_raw_loader.store.notes)</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>dlt1_raw</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="11">
-<pre style="font-family: monospace; line-height: 1.2;">DiscreteLogicalTimeline[dlt1_raw] (30096 events, 2 children)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteLogicalTimeline[dlt1_raw] (30096 events, 2 children)
                        0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 277776 ticks
   ├─ notes             0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 277776 (30092 events)
   └─ controls          0 ,                                0 (4 events)</pre>
 </div>
 </div>
-<div id="a7626450" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:16.676253Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:16.675981Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:16.682196Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:16.680855Z&quot;}}" data-execution_count="12">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"DLT1 (MIDI Raw)"</span>: dlt1_raw.<span class="bu">id</span>,</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Length"</span>: <span class="ss">f"</span><span class="sc">{</span>dlt1_raw<span class="sc">.</span>length<span class="sc">.</span>value<span class="sc">:,}</span><span class="ss"> ticks"</span>,</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note events"</span>: <span class="ss">f"</span><span class="sc">{</span>raw_note_count<span class="sc">:,}</span><span class="ss">"</span>,</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="fef84cb0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:28.438730Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:28.438177Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:28.461958Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:28.456783Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"DLT1 (MIDI Raw)"</span>: dlt1_raw.<span class="bu">id</span>,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Length"</span>: <span class="ss">f"</span><span class="sc">{</span>dlt1_raw<span class="sc">.</span>length<span class="sc">.</span>value<span class="sc">:,}</span><span class="ss"> ticks"</span>,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note events"</span>: <span class="ss">f"</span><span class="sc">{</span>raw_note_count<span class="sc">:,}</span><span class="ss">"</span>,</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="12">
 <pre><code>{'DLT1 (MIDI Raw)': 'dlt1_raw',
  'Length': '277,776.0 ticks',
@@ -849,25 +895,25 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="e.2-dlt2---expressive-midi-merged-notes-dynamics" class="level3">
 <h3 class="anchored" data-anchor-id="e.2-dlt2---expressive-midi-merged-notes-dynamics">E.2: DLT2 - Expressive MIDI (merged notes + dynamics)</h3>
-<div id="9b52d0dd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:16.685453Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:16.685145Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:17.294418Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:17.293141Z&quot;}}" data-execution_count="13">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>midi_exp_loader <span class="op">=</span> PerformanceMidiLoader.from_file(MIDI_EXP_PATH)</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>dlt2_exp <span class="op">=</span> midi_exp_loader.create_timeline(uid<span class="op">=</span><span class="st">"dlt2_exp"</span>)</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>exp_note_count <span class="op">=</span> <span class="bu">len</span>(midi_exp_loader.store.notes)</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>dlt2_exp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="bbd67f51" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:28.466195Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:28.465696Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:29.214901Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:29.210399Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>midi_exp_loader <span class="op">=</span> PerformanceMidiLoader.from_file(MIDI_EXP_PATH)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>dlt2_exp <span class="op">=</span> midi_exp_loader.create_timeline(uid<span class="op">=</span><span class="st">"dlt2_exp"</span>)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>exp_note_count <span class="op">=</span> <span class="bu">len</span>(midi_exp_loader.store.notes)</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>dlt2_exp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="13">
-<pre style="font-family: monospace; line-height: 1.2;">DiscreteLogicalTimeline[dlt2_exp] (7876 events, 2 children)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteLogicalTimeline[dlt2_exp] (7876 events, 2 children)
                        0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 274318 ticks
   ├─ notes             0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,  273249 (6380 events)
   └─ controls          0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 274318 (1496 events)</pre>
 </div>
 </div>
-<div id="6f9e7be1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:17.297998Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:17.297726Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:17.303617Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:17.302382Z&quot;}}" data-execution_count="14">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"DLT2 (MIDI Expressive)"</span>: dlt2_exp.<span class="bu">id</span>,</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Length"</span>: <span class="ss">f"</span><span class="sc">{</span>dlt2_exp<span class="sc">.</span>length<span class="sc">.</span>value<span class="sc">:,}</span><span class="ss"> ticks"</span>,</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note events"</span>: <span class="ss">f"</span><span class="sc">{</span>exp_note_count<span class="sc">:,}</span><span class="ss">"</span>,</span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="d9103ca2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:29.223813Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:29.220887Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:29.237589Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:29.233385Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"DLT2 (MIDI Expressive)"</span>: dlt2_exp.<span class="bu">id</span>,</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Length"</span>: <span class="ss">f"</span><span class="sc">{</span>dlt2_exp<span class="sc">.</span>length<span class="sc">.</span>value<span class="sc">:,}</span><span class="ss"> ticks"</span>,</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note events"</span>: <span class="ss">f"</span><span class="sc">{</span>exp_note_count<span class="sc">:,}</span><span class="ss">"</span>,</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="14">
 <pre><code>{'DLT2 (MIDI Expressive)': 'dlt2_exp',
  'Length': '274,318.0 ticks',
@@ -878,37 +924,37 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="e.3-dpt1---audio-mp3" class="level3">
 <h3 class="anchored" data-anchor-id="e.3-dpt1---audio-mp3">E.3: DPT1 - Audio (MP3)</h3>
 <p><strong>Note:</strong> MP3 loading requires <code>mutagen</code> or <code>soundfile</code>. If not installed, we use a mock timeline with the known duration from the README.</p>
-<div id="d23ae1d7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:17.306174Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:17.305905Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:17.360946Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:17.359664Z&quot;}}" data-execution_count="15">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    audio_loader <span class="op">=</span> AudioLoader.from_file(MP3_PATH)</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    dpt1_audio <span class="op">=</span> audio_loader.create_timeline(uid<span class="op">=</span><span class="st">"dpt1_audio"</span>)</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    audio_duration <span class="op">=</span> audio_loader.duration_seconds</span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>    audio_info <span class="op">=</span> {</span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DPT1 (Audio)"</span>: dpt1_audio.<span class="bu">id</span>,</span>
-<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Sample rate"</span>: <span class="ss">f"</span><span class="sc">{</span>audio_loader<span class="sc">.</span>sample_rate<span class="sc">:,}</span><span class="ss"> Hz"</span>,</span>
-<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Duration"</span>: <span class="ss">f"</span><span class="sc">{</span>audio_duration<span class="sc">:.2f}</span><span class="ss"> seconds"</span>,</span>
-<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>    }</span>
-<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
-<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Note: MP3 loading unavailable (</span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">). Using mock timeline."</span>)</span>
-<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>    audio_duration <span class="op">=</span> <span class="fl">573.0</span></span>
-<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>    dpt1_audio <span class="op">=</span> ContinuousPhysicalTimeline(</span>
-<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>        length<span class="op">=</span>audio_duration,</span>
-<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>        unit<span class="op">=</span>TimeUnit.seconds,</span>
-<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>        uid<span class="op">=</span><span class="st">"dpt1_audio"</span>,</span>
-<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a>    audio_info <span class="op">=</span> {</span>
-<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DPT1 (Audio)"</span>: dpt1_audio.<span class="bu">id</span>,</span>
-<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Duration"</span>: <span class="ss">f"</span><span class="sc">{</span>audio_duration<span class="sc">:.2f}</span><span class="ss"> seconds (from README)"</span>,</span>
-<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a>    }</span>
-<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-23"><a href="#cb22-23" aria-hidden="true" tabindex="-1"></a>dpt1_audio</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="ea20c018" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:29.247746Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:29.247308Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:29.398320Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:29.393311Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    audio_loader <span class="op">=</span> AudioLoader.from_file(MP3_PATH)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    dpt1_audio <span class="op">=</span> audio_loader.create_timeline(uid<span class="op">=</span><span class="st">"dpt1_audio"</span>)</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    audio_duration <span class="op">=</span> audio_loader.duration_seconds</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    audio_info <span class="op">=</span> {</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DPT1 (Audio)"</span>: dpt1_audio.<span class="bu">id</span>,</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Sample rate"</span>: <span class="ss">f"</span><span class="sc">{</span>audio_loader<span class="sc">.</span>sample_rate<span class="sc">:,}</span><span class="ss"> Hz"</span>,</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Duration"</span>: <span class="ss">f"</span><span class="sc">{</span>audio_duration<span class="sc">:.2f}</span><span class="ss"> seconds"</span>,</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Note: MP3 loading unavailable (</span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">). Using mock timeline."</span>)</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>    audio_duration <span class="op">=</span> <span class="fl">573.0</span></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    dpt1_audio <span class="op">=</span> ContinuousPhysicalTimeline(</span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>        length<span class="op">=</span>audio_duration,</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>        unit<span class="op">=</span>TimeUnit.seconds,</span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>        uid<span class="op">=</span><span class="st">"dpt1_audio"</span>,</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>    audio_info <span class="op">=</span> {</span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DPT1 (Audio)"</span>: dpt1_audio.<span class="bu">id</span>,</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Duration"</span>: <span class="ss">f"</span><span class="sc">{</span>audio_duration<span class="sc">:.2f}</span><span class="ss"> seconds (from README)"</span>,</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>dpt1_audio</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="15">
-<pre style="font-family: monospace; line-height: 1.2;">DiscretePhysicalTimeline[dpt1_audio] (1 cmaps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscretePhysicalTimeline[dpt1_audio] (1 cmaps)
                          0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 19670082 samples</pre>
 </div>
 </div>
-<div id="2aca9539" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:17.363715Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:17.363301Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:17.369710Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:17.368481Z&quot;}}" data-execution_count="16">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>audio_info</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="f1c658a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:29.408197Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:29.407723Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:29.429207Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:29.426288Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>audio_info</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>{'DPT1 (Audio)': 'dpt1_audio',
  'Sample rate': '44,100 Hz',
@@ -920,11 +966,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="e.4-clt1---score-annotations-dcml-tsv-files">E.4: CLT1 - Score Annotations (DCML TSV files)</h3>
 <p>The DCML corpus provides score data in TSV format. We load <strong>all four files</strong> (notes, measures, harmonies, chords) at once using <code>from_file()</code> with glob.</p>
 <p><strong>Important:</strong> TimeToAlign! properly loads: - <code>.harmonies.tsv</code> as <strong>annotations</strong> (Roman numeral analysis) - <code>.chords.tsv</code> as <strong>control events</strong> (chord symbols)</p>
-<div id="75661cc8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:17.372621Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:17.372332Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:17.378724Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:17.377721Z&quot;}}" data-execution_count="17">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>SCORE_BASE <span class="op">=</span> <span class="st">"WWV096-Meistersinger_01_Vorspiel-Prelude_SchottKleinmichel"</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>score_tsv_files <span class="op">=</span> <span class="bu">sorted</span>(DCML_DIR.glob(<span class="ss">f"</span><span class="sc">{</span>SCORE_BASE<span class="sc">}</span><span class="ss">.*.tsv"</span>))</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>[f.name <span class="cf">for</span> f <span class="kw">in</span> score_tsv_files]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="74e75f42" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:29.437352Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:29.436866Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:29.457415Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:29.454276Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>SCORE_BASE <span class="op">=</span> <span class="st">"WWV096-Meistersinger_01_Vorspiel-Prelude_SchottKleinmichel"</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>score_tsv_files <span class="op">=</span> <span class="bu">sorted</span>(DCML_DIR.glob(<span class="ss">f"</span><span class="sc">{</span>SCORE_BASE<span class="sc">}</span><span class="ss">.*.tsv"</span>))</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>[f.name <span class="cf">for</span> f <span class="kw">in</span> score_tsv_files]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="17">
 <pre><code>['WWV096-Meistersinger_01_Vorspiel-Prelude_SchottKleinmichel.chords.tsv',
  'WWV096-Meistersinger_01_Vorspiel-Prelude_SchottKleinmichel.harmonies.tsv',
@@ -933,9 +979,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Load all TSV files at once using <code>from_file()</code> with <code>*</code> unpacking - one line.</p>
-<div id="8b295c3f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:17.381819Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:17.381537Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.289576Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.288390Z&quot;}}" data-execution_count="18">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>score_loader <span class="op">=</span> TSVLoader.from_file(<span class="op">*</span>score_tsv_files)</span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>score_loader.store.summary()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="c7e4a8a1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:29.467661Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:29.467178Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:37.761485Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:37.755702Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>score_loader <span class="op">=</span> Ms3Loader.from_file(<span class="op">*</span>score_tsv_files)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>score_loader.store.summary()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
 <pre><code>{'notes_count': 5577,
  'measures_count': 222,
@@ -961,22 +1007,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Verify against gold standard (ZERO TOLERANCE).</p>
-<div id="0e81cb9f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.292213Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.291855Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.300542Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.299449Z&quot;}}" data-execution_count="19">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>notes_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.notes)</span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>measures_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.measures)</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>annotations_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.annotations)  <span class="co"># Harmonies</span></span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>controls_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.controls)  <span class="co"># Chords</span></span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> notes_count <span class="op">==</span> <span class="dv">5577</span>, <span class="ss">f"Notes mismatch: </span><span class="sc">{</span>notes_count<span class="sc">}</span><span class="ss"> != 5577"</span></span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> measures_count <span class="op">==</span> <span class="dv">222</span>, <span class="ss">f"Measures mismatch: </span><span class="sc">{</span>measures_count<span class="sc">}</span><span class="ss"> != 222"</span></span>
-<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Notes"</span>: notes_count,</span>
-<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Measures"</span>: measures_count,</span>
-<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Annotations (harmonies)"</span>: annotations_count,</span>
-<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Controls (chords)"</span>: controls_count,</span>
-<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Verification"</span>: <span class="st">"PASSED"</span>,</span>
-<span id="cb29-15"><a href="#cb29-15" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="8d9f4d39" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:37.765293Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:37.764819Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:37.789212Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:37.787679Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>notes_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.notes)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>measures_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.measures)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>annotations_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.annotations)  <span class="co"># Harmonies</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>controls_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.controls)  <span class="co"># Chords</span></span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> notes_count <span class="op">==</span> <span class="dv">5577</span>, <span class="ss">f"Notes mismatch: </span><span class="sc">{</span>notes_count<span class="sc">}</span><span class="ss"> != 5577"</span></span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> measures_count <span class="op">==</span> <span class="dv">222</span>, <span class="ss">f"Measures mismatch: </span><span class="sc">{</span>measures_count<span class="sc">}</span><span class="ss"> != 222"</span></span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Notes"</span>: notes_count,</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Measures"</span>: measures_count,</span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Annotations (harmonies)"</span>: annotations_count,</span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Controls (chords)"</span>: controls_count,</span>
+<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Verification"</span>: <span class="st">"PASSED"</span>,</span>
+<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="19">
 <pre><code>{'Notes': 5577,
  'Measures': 222,
@@ -986,11 +1032,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Create the score timeline using <code>create_timeline()</code> directly from the loader.</p>
-<div id="2d98e157" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.303065Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.302734Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.611719Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.610169Z&quot;}}" data-execution_count="20">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>clt1_score <span class="op">=</span> score_loader.create_timeline(uid<span class="op">=</span><span class="st">"clt1_score"</span>)</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>clt1_score</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="162efc8b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:37.798637Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:37.798257Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.309984Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.308790Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>clt1_score <span class="op">=</span> score_loader.create_timeline(uid<span class="op">=</span><span class="st">"clt1_score"</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>clt1_score</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="20">
-<pre style="font-family: monospace; line-height: 1.2;">ContinuousLogicalTimeline[clt1_score] (11251 events, 4 children, 2 cmaps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[clt1_score] (11251 events, 4 children, 2 cmaps)
                       0 _________________________________ 888 quarters
   ├─ notes            0 ________________________________  886 (5577 events)
   ├─ measures         0 _________________________________ 888 (222 events)
@@ -1006,11 +1052,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><strong>Chords</strong> are loaded as <strong>control events</strong> (chord symbols)</li>
 </ul>
 <p>Let’s examine the harmonies - we’ll use a specific label for coordinate transfer!</p>
-<div id="e535727c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.615107Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.614657Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.659950Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.658640Z&quot;}}" data-execution_count="21">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get harmony annotations (from .harmonies.tsv)</span></span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>harmonies <span class="op">=</span> score_loader.store.annotations.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Harmony"</span>)</span>
-<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>harmonies_df <span class="op">=</span> harmonies.to_pandas()[[<span class="st">"name"</span>, <span class="st">"text"</span>, <span class="st">"start"</span>, <span class="st">"mc"</span>, <span class="st">"mn"</span>]].head(<span class="dv">20</span>)</span>
-<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>harmonies_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="4d8da136" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.314531Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.312834Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.385589Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.384082Z&quot;}}" data-execution_count="21">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get harmony annotations (from .harmonies.tsv)</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>harmonies <span class="op">=</span> score_loader.store.annotations.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Harmony"</span>)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>harmonies_df <span class="op">=</span> harmonies.to_dataframe()[[<span class="st">"name"</span>, <span class="st">"text"</span>, <span class="st">"start"</span>, <span class="st">"mc"</span>, <span class="st">"mn"</span>]].head(<span class="dv">20</span>)</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>harmonies_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
 <div>
 
@@ -1193,14 +1239,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="88bd9a52" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.663044Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.662666Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.728184Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.726836Z&quot;}}" data-execution_count="22">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get chord control events (from .chords.tsv)</span></span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>chords <span class="op">=</span> score_loader.store.controls.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Chord"</span>)</span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span>(chords) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    chords_df <span class="op">=</span> chords.to_pandas()[[<span class="st">"name"</span>, <span class="st">"text"</span>, <span class="st">"start"</span>, <span class="st">"mc"</span>, <span class="st">"mn"</span>]].head(<span class="dv">10</span>)</span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    chords_df</span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
-<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"Chord controls"</span>: <span class="st">"No chords loaded (file may not exist)"</span>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="396aac9a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.391279Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.390848Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.719402Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.716564Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get chord control events (from .chords.tsv)</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>chords <span class="op">=</span> score_loader.store.controls.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Chord"</span>)</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span>(chords) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    chords_df <span class="op">=</span> chords.to_dataframe()[[<span class="st">"name"</span>, <span class="st">"text"</span>, <span class="st">"start"</span>, <span class="st">"mc"</span>, <span class="st">"mn"</span>]].head(<span class="dv">10</span>)</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    chords_df</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"Chord controls"</span>: <span class="st">"No chords loaded (file may not exist)"</span>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <hr>
 </section>
@@ -1219,16 +1265,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     +-- dpt1_audio (seconds)
     |
     +-- clt1_score (quarterbeats)</code></pre>
-<div id="5c7222de" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.731178Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.730917Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.751744Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.750716Z&quot;}}" data-execution_count="23">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>group <span class="op">=</span> TimelineGroup(</span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"supra_alignment"</span>,</span>
-<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"SUPRA Piano Roll Alignment"</span>,</span>
-<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>    timelines<span class="op">=</span>[dgt_holes, dlt1_raw, dlt2_exp, dpt1_audio, clt1_score],</span>
-<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>group</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="16863690" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.724426Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.723963Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.781192Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.778073Z&quot;}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>group <span class="op">=</span> TimelineGroup(</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"supra_alignment"</span>,</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"SUPRA Piano Roll Alignment"</span>,</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    timelines<span class="op">=</span>[dgt_holes, dlt1_raw, dlt2_exp, dpt1_audio, clt1_score],</span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>group</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="23">
-<pre style="font-family: monospace; line-height: 1.2;">TimelineGroup[supra_alignment] (5 timelines, 2 timestamps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">TimelineGroup[supra_alignment] (5 timelines, 2 timestamps)
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ Timeline[dgt_holes]                                                         │
 │                        0 =========================== 277776 pixels          │
@@ -1256,8 +1302,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 Timestamps: 2</pre>
 </div>
 </div>
-<div id="682a05eb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.755077Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.754797Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.760750Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.759200Z&quot;}}" data-execution_count="24">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Group"</span>: group.name, <span class="st">"Timelines"</span>: group.timeline_ids, <span class="st">"Count"</span>: group.n_timelines}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="2a98510d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.791364Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.789517Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.808413Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.804835Z&quot;}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Group"</span>: group.name, <span class="st">"Timelines"</span>: group.timeline_ids, <span class="st">"Count"</span>: group.n_timelines}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="24">
 <pre><code>{'Group': 'SUPRA Piano Roll Alignment',
  'Timelines': ['dgt_holes',
@@ -1273,10 +1319,10 @@ Timestamps: 2</pre>
 <section id="part-g-group-timestamps---the-heart-of-alignment" class="level2">
 <h2 class="anchored" data-anchor-id="part-g-group-timestamps---the-heart-of-alignment">Part G: Group Timestamps - The Heart of Alignment</h2>
 <p><strong>This is the key feature!</strong> The TimelineGroup maintains a timestamp table where each row represents a synchronized point across ALL timelines. Coordinate transfer uses these timestamps via interpolation.</p>
-<div id="d17c4090" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.763781Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.763384Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.779551Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.778417Z&quot;}}" data-execution_count="25">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get the full timestamp table</span></span>
-<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>group_timestamps <span class="op">=</span> group.get_timestamps_df()</span>
-<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>group_timestamps</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="f6183ee6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.813189Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.812716Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.842209Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.840880Z&quot;}}" data-execution_count="25">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get the full timestamp table</span></span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>group_timestamps <span class="op">=</span> group.to_dataframe()</span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>group_timestamps</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="25">
 <div>
 
@@ -1292,7 +1338,7 @@ Timestamps: 2</pre>
 <th data-quarto-table-cell-role="th">clt1_score (quarters)</th>
 <th data-quarto-table-cell-role="th">samples_to_seconds (seconds)</th>
 <th data-quarto-table-cell-role="th">quarters_to_ticks (ticks)</th>
-<th data-quarto-table-cell-role="th">quarters_to_measures (measures)</th>
+<th data-quarto-table-cell-role="th">quarters_to_measures (floating_measures)</th>
 </tr>
 </thead>
 <tbody>
@@ -1333,35 +1379,35 @@ Timestamps: 2</pre>
 <section id="h.1-transfer-a-specific-harmony-label-across-all-timelines" class="level3">
 <h3 class="anchored" data-anchor-id="h.1-transfer-a-specific-harmony-label-across-all-timelines">H.1: Transfer a Specific Harmony Label Across All Timelines</h3>
 <p>Let’s take the first occurrence of a I chord (C major) and find its position in every timeline.</p>
-<div id="9fab9840" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.782063Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.781817Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.793850Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.792716Z&quot;}}" data-execution_count="26">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Find the first I chord (tonic) harmony</span></span>
-<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>i_chords <span class="op">=</span> score_loader.store.annotations.<span class="bu">filter</span>(text<span class="op">=</span><span class="st">"I"</span>)</span>
-<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span>(i_chords) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
-<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>    first_i <span class="op">=</span> i_chords.to_pandas().iloc[<span class="dv">0</span>]</span>
-<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>    i_chord_qb <span class="op">=</span> <span class="bu">float</span>(first_i[<span class="st">"start"</span>])</span>
-<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a>    i_chord_label <span class="op">=</span> first_i[<span class="st">"text"</span>]</span>
-<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a>    i_chord_mc <span class="op">=</span> first_i[<span class="st">"mc"</span>]</span>
-<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
-<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Fallback if no I chord</span></span>
-<span id="cb39-10"><a href="#cb39-10" aria-hidden="true" tabindex="-1"></a>    first_harmony <span class="op">=</span> score_loader.store.annotations.to_pandas().iloc[<span class="dv">0</span>]</span>
-<span id="cb39-11"><a href="#cb39-11" aria-hidden="true" tabindex="-1"></a>    i_chord_qb <span class="op">=</span> <span class="bu">float</span>(first_harmony[<span class="st">"start"</span>])</span>
-<span id="cb39-12"><a href="#cb39-12" aria-hidden="true" tabindex="-1"></a>    i_chord_label <span class="op">=</span> first_harmony[<span class="st">"text"</span>]</span>
-<span id="cb39-13"><a href="#cb39-13" aria-hidden="true" tabindex="-1"></a>    i_chord_mc <span class="op">=</span> first_harmony[<span class="st">"mc"</span>]</span>
-<span id="cb39-14"><a href="#cb39-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb39-15"><a href="#cb39-15" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb39-16"><a href="#cb39-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Harmony label"</span>: i_chord_label,</span>
-<span id="cb39-17"><a href="#cb39-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Position (quarterbeats)"</span>: i_chord_qb,</span>
-<span id="cb39-18"><a href="#cb39-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Measure"</span>: i_chord_mc,</span>
-<span id="cb39-19"><a href="#cb39-19" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="228a2871" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.844954Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.844679Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.861850Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.860332Z&quot;}}" data-execution_count="26">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Find the first I chord (tonic) harmony</span></span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>i_chords <span class="op">=</span> score_loader.store.annotations.<span class="bu">filter</span>(text<span class="op">=</span><span class="st">"I"</span>)</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span>(i_chords) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>    first_i <span class="op">=</span> i_chords.to_dataframe().iloc[<span class="dv">0</span>]</span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>    i_chord_qb <span class="op">=</span> <span class="bu">float</span>(first_i[<span class="st">"start"</span>])</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>    i_chord_label <span class="op">=</span> first_i[<span class="st">"text"</span>]</span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>    i_chord_mc <span class="op">=</span> first_i[<span class="st">"mc"</span>]</span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Fallback if no I chord</span></span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>    first_harmony <span class="op">=</span> score_loader.store.annotations.to_dataframe().iloc[<span class="dv">0</span>]</span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a>    i_chord_qb <span class="op">=</span> <span class="bu">float</span>(first_harmony[<span class="st">"start"</span>])</span>
+<span id="cb40-12"><a href="#cb40-12" aria-hidden="true" tabindex="-1"></a>    i_chord_label <span class="op">=</span> first_harmony[<span class="st">"text"</span>]</span>
+<span id="cb40-13"><a href="#cb40-13" aria-hidden="true" tabindex="-1"></a>    i_chord_mc <span class="op">=</span> first_harmony[<span class="st">"mc"</span>]</span>
+<span id="cb40-14"><a href="#cb40-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-15"><a href="#cb40-15" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb40-16"><a href="#cb40-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Harmony label"</span>: i_chord_label,</span>
+<span id="cb40-17"><a href="#cb40-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Position (quarterbeats)"</span>: i_chord_qb,</span>
+<span id="cb40-18"><a href="#cb40-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Measure"</span>: i_chord_mc,</span>
+<span id="cb40-19"><a href="#cb40-19" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="26">
 <pre><code>{'Harmony label': 'I', 'Position (quarterbeats)': 12.0, 'Measure': 4}</code></pre>
 </div>
 </div>
 <p>Now get the timestamp at this position - one call gives us ALL coordinates!</p>
-<div id="3a231e69" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.796860Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.796540Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.803013Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.801736Z&quot;}}" data-execution_count="27">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get timestamp at the harmony position in the score timeline</span></span>
-<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>harmony_ts <span class="op">=</span> group.get_timestamp_at(i_chord_qb, <span class="st">"clt1_score"</span>)</span>
-<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>harmony_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="2120cad9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.865626Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.864830Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.879013Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.876571Z&quot;}}" data-execution_count="27">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get timestamp at the harmony position in the score timeline</span></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>harmony_ts <span class="op">=</span> group.get_timestamp_at(i_chord_qb, <span class="st">"clt1_score"</span>)</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>harmony_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="27">
 <div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
 <table class="caption-top table table-sm table-striped small">
@@ -1399,13 +1445,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">4 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">6.027483 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">6.027483 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">4 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -1415,36 +1461,36 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
-</div>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
 </section>
 <section id="h.2-full-image-coordinates-physical-units-via-idcoordinate" class="level3">
 <h3 class="anchored" data-anchor-id="h.2-full-image-coordinates-physical-units-via-idcoordinate">H.2: Full Image Coordinates + Physical Units via IdCoordinate</h3>
 <p>The group timestamp gives us <code>dgt_holes</code> (relative pixels). To get the absolute image position AND physical units (C-Maps), we use <strong>IdCoordinate</strong> - it carries the child’s timeline_id, so the parent automatically applies the offset!</p>
-<div id="205c1fb9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.805855Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.805514Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.812088Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.810910Z&quot;}}" data-execution_count="28">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> harmony_ts[<span class="st">"dgt_holes"</span>] <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
-<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create IdCoordinate from child timeline - parent auto-offsets!</span></span>
-<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    child_coord <span class="op">=</span> IdCoordinate(harmony_ts[<span class="st">"dgt_holes"</span>], TimeUnit.pixels, <span class="st">"dgt_holes"</span>)</span>
-<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Parent's get_timestamps() recognizes the child_id and applies offset</span></span>
-<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    image_ts <span class="op">=</span> dgt1.get_timestamps(coordinates<span class="op">=</span>[child_coord])</span>
-<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>    image_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="746c9150" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.882904Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.882450Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.895631Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.892731Z&quot;}}" data-execution_count="28">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> harmony_ts[<span class="st">"dgt_holes"</span>] <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create IdCoordinate from child timeline - parent auto-offsets!</span></span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    child_coord <span class="op">=</span> IdCoordinate(harmony_ts[<span class="st">"dgt_holes"</span>], TimeUnit.pixels, <span class="st">"dgt_holes"</span>)</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Parent's to_dataframe() recognizes the child_id and applies offset</span></span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>    image_ts <span class="op">=</span> dgt1.to_dataframe(coordinates<span class="op">=</span>[child_coord])</span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>    image_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="h.3-multiple-harmony-labels---batch-transfer" class="level3">
 <h3 class="anchored" data-anchor-id="h.3-multiple-harmony-labels---batch-transfer">H.3: Multiple Harmony Labels - Batch Transfer</h3>
 <p>For batch transfers, use <code>group.get_timestamps_at()</code> - the DEAD-SIMPLE API: pass coordinates, get a DataFrame with all timelines and units in column names.</p>
-<div id="4bad061d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.815055Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.814717Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.869517Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.868583Z&quot;}}" data-execution_count="29">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get first 10 harmonies</span></span>
-<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>first_10_harmonies <span class="op">=</span> (</span>
-<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    score_loader.store.annotations.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Harmony"</span>).to_pandas().head(<span class="dv">10</span>)</span>
-<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a><span class="co"># DEAD-SIMPLE: Get timestamps for all harmony coordinates in ONE CALL</span></span>
-<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>harmony_coords <span class="op">=</span> first_10_harmonies[<span class="st">"start"</span>].tolist()</span>
-<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>group_df <span class="op">=</span> group.get_timestamps_at(harmony_coords, <span class="st">"clt1_score"</span>)</span>
-<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a>group_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="5fbd9fbd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:38.901502Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:38.899797Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:38.998234Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:38.995821Z&quot;}}" data-execution_count="29">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get first 10 harmonies</span></span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>first_10_harmonies <span class="op">=</span> (</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>    score_loader.store.annotations.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Harmony"</span>).to_dataframe().head(<span class="dv">10</span>)</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a><span class="co"># DEAD-SIMPLE: Get timestamps for all harmony coordinates in ONE CALL</span></span>
+<span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a>harmony_coords <span class="op">=</span> first_10_harmonies[<span class="st">"start"</span>].tolist()</span>
+<span id="cb44-8"><a href="#cb44-8" aria-hidden="true" tabindex="-1"></a>group_df <span class="op">=</span> group.get_timestamps_at(harmony_coords, <span class="st">"clt1_score"</span>)</span>
+<span id="cb44-9"><a href="#cb44-9" aria-hidden="true" tabindex="-1"></a>group_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="29">
 <div>
 
@@ -1458,8 +1504,8 @@ Timestamps: 2</pre>
 <th data-quarto-table-cell-role="th">dlt1_raw (ticks)</th>
 <th data-quarto-table-cell-role="th">dlt2_exp (ticks)</th>
 <th data-quarto-table-cell-role="th">dpt1_audio (samples)</th>
-<th data-quarto-table-cell-role="th">measures</th>
 <th data-quarto-table-cell-role="th">seconds</th>
+<th data-quarto-table-cell-role="th">floating_measures</th>
 <th data-quarto-table-cell-role="th">ticks</th>
 </tr>
 </thead>
@@ -1471,8 +1517,8 @@ Timestamps: 2</pre>
 <td>0</td>
 <td>0</td>
 <td>0</td>
-<td>1.00</td>
 <td>0.000000</td>
+<td>1.00</td>
 <td>0.0</td>
 </tr>
 <tr class="even">
@@ -1482,8 +1528,8 @@ Timestamps: 2</pre>
 <td>626</td>
 <td>618</td>
 <td>44302</td>
-<td>1.50</td>
 <td>1.004580</td>
+<td>1.50</td>
 <td>960.0</td>
 </tr>
 <tr class="odd">
@@ -1493,8 +1539,8 @@ Timestamps: 2</pre>
 <td>1564</td>
 <td>1545</td>
 <td>110755</td>
-<td>2.25</td>
 <td>2.511451</td>
+<td>2.25</td>
 <td>2400.0</td>
 </tr>
 <tr class="even">
@@ -1504,8 +1550,8 @@ Timestamps: 2</pre>
 <td>2190</td>
 <td>2162</td>
 <td>155057</td>
-<td>2.75</td>
 <td>3.516032</td>
+<td>2.75</td>
 <td>3360.0</td>
 </tr>
 <tr class="odd">
@@ -1515,8 +1561,8 @@ Timestamps: 2</pre>
 <td>2502</td>
 <td>2471</td>
 <td>177208</td>
-<td>3.00</td>
 <td>4.018322</td>
+<td>3.00</td>
 <td>3840.0</td>
 </tr>
 <tr class="even">
@@ -1526,8 +1572,8 @@ Timestamps: 2</pre>
 <td>2815</td>
 <td>2780</td>
 <td>199359</td>
-<td>3.25</td>
 <td>4.520612</td>
+<td>3.25</td>
 <td>4320.0</td>
 </tr>
 <tr class="odd">
@@ -1537,8 +1583,8 @@ Timestamps: 2</pre>
 <td>3128</td>
 <td>3089</td>
 <td>221510</td>
-<td>3.50</td>
 <td>5.022902</td>
+<td>3.50</td>
 <td>4800.0</td>
 </tr>
 <tr class="even">
@@ -1548,8 +1594,8 @@ Timestamps: 2</pre>
 <td>3441</td>
 <td>3398</td>
 <td>243661</td>
-<td>3.75</td>
 <td>5.525193</td>
+<td>3.75</td>
 <td>5280.0</td>
 </tr>
 <tr class="odd">
@@ -1559,8 +1605,8 @@ Timestamps: 2</pre>
 <td>3754</td>
 <td>3707</td>
 <td>265812</td>
-<td>4.00</td>
 <td>6.027483</td>
+<td>4.00</td>
 <td>5760.0</td>
 </tr>
 <tr class="even">
@@ -1570,8 +1616,8 @@ Timestamps: 2</pre>
 <td>4067</td>
 <td>4016</td>
 <td>287963</td>
-<td>4.25</td>
 <td>6.529773</td>
+<td>4.25</td>
 <td>6240.0</td>
 </tr>
 </tbody>
@@ -1581,19 +1627,19 @@ Timestamps: 2</pre>
 </div>
 </div>
 <p>To also get the parent’s C-Maps (inches, cm), pass IdCoordinates to the parent:</p>
-<div id="1cc71bb5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.873067Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.872681Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.889135Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.887794Z&quot;}}" data-execution_count="30">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get dgt_holes coordinates from group timestamps as IdCoordinates</span></span>
-<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>dgt_holes_col <span class="op">=</span> (</span>
-<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"dgt_holes (pixels)"</span> <span class="cf">if</span> <span class="st">"dgt_holes (pixels)"</span> <span class="kw">in</span> group_df.columns <span class="cf">else</span> <span class="st">"dgt_holes"</span></span>
-<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>child_coords <span class="op">=</span> [</span>
-<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>    IdCoordinate(v, TimeUnit.pixels, <span class="st">"dgt_holes"</span>)</span>
-<span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> v <span class="kw">in</span> group_df[dgt_holes_col].dropna()</span>
-<span id="cb44-8"><a href="#cb44-8" aria-hidden="true" tabindex="-1"></a>]</span>
-<span id="cb44-9"><a href="#cb44-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb44-10"><a href="#cb44-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Parent timeline auto-applies offset and returns timestamps with C-Maps</span></span>
-<span id="cb44-11"><a href="#cb44-11" aria-hidden="true" tabindex="-1"></a>parent_df <span class="op">=</span> dgt1.get_timestamps(coordinates<span class="op">=</span>child_coords)</span>
-<span id="cb44-12"><a href="#cb44-12" aria-hidden="true" tabindex="-1"></a>parent_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="9df19a7f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.002562Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.002107Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.031211Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.027905Z&quot;}}" data-execution_count="30">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get dgt_holes coordinates from group timestamps as IdCoordinates</span></span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>dgt_holes_col <span class="op">=</span> (</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"dgt_holes (pixels)"</span> <span class="cf">if</span> <span class="st">"dgt_holes (pixels)"</span> <span class="kw">in</span> group_df.columns <span class="cf">else</span> <span class="st">"dgt_holes"</span></span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>child_coords <span class="op">=</span> [</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>    IdCoordinate(v, TimeUnit.pixels, <span class="st">"dgt_holes"</span>)</span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> v <span class="kw">in</span> group_df[dgt_holes_col].dropna()</span>
+<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb45-9"><a href="#cb45-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-10"><a href="#cb45-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Parent timeline auto-applies offset and returns timestamps with C-Maps</span></span>
+<span id="cb45-11"><a href="#cb45-11" aria-hidden="true" tabindex="-1"></a>parent_df <span class="op">=</span> dgt1.to_dataframe(coordinates<span class="op">=</span>child_coords)</span>
+<span id="cb45-12"><a href="#cb45-12" aria-hidden="true" tabindex="-1"></a>parent_df</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="30">
 <div>
 
@@ -1705,10 +1751,10 @@ Timestamps: 2</pre>
 <section id="i.1-query-from-different-timelines" class="level3">
 <h3 class="anchored" data-anchor-id="i.1-query-from-different-timelines">I.1: Query from Different Timelines</h3>
 <p>We can query the group from ANY member timeline. Just display the timestamp!</p>
-<div id="3a9aaa56" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.892141Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.891796Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.898967Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.897998Z&quot;}}" data-execution_count="31">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Query at 100 seconds in the audio - timestamp shows ALL peer timelines</span></span>
-<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>audio_100s <span class="op">=</span> group.get_timestamp_at(<span class="fl">100.0</span>, <span class="st">"dpt1_audio"</span>)</span>
-<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>audio_100s</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="7c0f5b35" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.034997Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.034609Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.042472Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.041006Z&quot;}}" data-execution_count="31">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Query at 100 seconds in the audio - timestamp shows ALL peer timelines</span></span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>audio_100s <span class="op">=</span> group.get_timestamp_at(<span class="fl">100.0</span>, <span class="st">"dpt1_audio"</span>)</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>audio_100s</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="31">
 <div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
 <table class="caption-top table table-sm table-striped small">
@@ -1746,13 +1792,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">1.001129 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">0.002268 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">0.002268 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">1.001129 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -1762,13 +1808,13 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
-</div>
-<div id="ed19265d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.902333Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.901999Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.909172Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.908261Z&quot;}}" data-execution_count="32">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Query at 50,000 pixels in the holes region</span></span>
-<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>holes_50k <span class="op">=</span> group.get_timestamp_at(<span class="dv">50000</span>, <span class="st">"dgt_holes"</span>)</span>
-<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>holes_50k</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="8730e587" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.048033Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.047606Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.055620Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.054325Z&quot;}}" data-execution_count="32">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Query at 50,000 pixels in the holes region</span></span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>holes_50k <span class="op">=</span> group.get_timestamp_at(<span class="dv">50000</span>, <span class="st">"dgt_holes"</span>)</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>holes_50k</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="32">
 <div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
 <table class="caption-top table table-sm table-striped small">
@@ -1806,13 +1852,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">40.960256 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">80.286553 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">80.286553 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">40.960256 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -1822,17 +1868,17 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
-</div>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
 </section>
 <section id="i.2-boundary-points" class="level3">
 <h3 class="anchored" data-anchor-id="i.2-boundary-points">I.2: Boundary Points</h3>
 <p>Check the alignment at the start and end of the musical content. Display timestamps directly to see all coordinate values:</p>
-<div id="a9a5c21a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.912527Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.912186Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.919284Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.918358Z&quot;}}" data-execution_count="33">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start of music (coordinate 0 in dgt_holes)</span></span>
-<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>start_ts <span class="op">=</span> group.get_timestamp_at(<span class="dv">0</span>, <span class="st">"dgt_holes"</span>)</span>
-<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>start_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="b6c577c5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.058849Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.058489Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.065796Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.064444Z&quot;}}" data-execution_count="33">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start of music (coordinate 0 in dgt_holes)</span></span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>start_ts <span class="op">=</span> group.get_timestamp_at(<span class="dv">0</span>, <span class="st">"dgt_holes"</span>)</span>
+<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>start_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="33">
 <div style="font-family: monospace;"><strong>TimeStamp</strong>
 <table class="caption-top table table-sm table-striped small">
@@ -1870,13 +1916,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">1 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">0 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">0 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">1 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -1886,13 +1932,13 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
-</div>
-<div id="b68737f9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.923069Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.922688Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.930809Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.929518Z&quot;}}" data-execution_count="34">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="co"># End of music</span></span>
-<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>end_ts <span class="op">=</span> group.get_timestamp_at(<span class="bu">int</span>(aton_loader.musical_length.value), <span class="st">"dgt_holes"</span>)</span>
-<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>end_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="a7d6ab5b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.068475Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.068159Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.079379Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.077388Z&quot;}}" data-execution_count="34">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="co"># End of music</span></span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>end_ts <span class="op">=</span> group.get_timestamp_at(<span class="bu">int</span>(aton_loader.musical_length.value), <span class="st">"dgt_holes"</span>)</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>end_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="34">
 <div style="font-family: monospace;"><strong>TimeStamp</strong>
 <table class="caption-top table table-sm table-striped small">
@@ -1930,13 +1976,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">223 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">446.033605 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">446.033605 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">223 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -1946,19 +1992,19 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
-</div>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
 </section>
 <section id="i.3-round-trip-verification" class="level3">
 <h3 class="anchored" data-anchor-id="i.3-round-trip-verification">I.3: Round-Trip Verification</h3>
 <p>Verify that coordinate transfer is reversible. We show the full timestamps at each step so you can see all coordinates involved.</p>
-<div id="5da152c7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.933743Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.933362Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.941713Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.940339Z&quot;}}" data-execution_count="35">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>test_coord <span class="op">=</span> <span class="dv">100000</span>  <span class="co"># pixels in holes region</span></span>
-<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 1: Get timestamp at our test coordinate</span></span>
-<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>ts1 <span class="op">=</span> group.get_timestamp_at(test_coord, <span class="st">"dgt_holes"</span>)</span>
-<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>ts1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="ef9f3333" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.084862Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.084422Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.104923Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.103181Z&quot;}}" data-execution_count="35">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>test_coord <span class="op">=</span> <span class="dv">100000</span>  <span class="co"># pixels in holes region</span></span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 1: Get timestamp at our test coordinate</span></span>
+<span id="cb50-4"><a href="#cb50-4" aria-hidden="true" tabindex="-1"></a>ts1 <span class="op">=</span> group.get_timestamp_at(test_coord, <span class="st">"dgt_holes"</span>)</span>
+<span id="cb50-5"><a href="#cb50-5" aria-hidden="true" tabindex="-1"></a>ts1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="35">
 <div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
 <table class="caption-top table table-sm table-striped small">
@@ -1996,13 +2042,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">80.920511 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">160.573129 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">160.573129 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">80.920511 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -2012,13 +2058,13 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
-</div>
-<div id="62688ca8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.944563Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.944190Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.952126Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.950791Z&quot;}}" data-execution_count="36">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 2: Transfer to audio, then back to holes</span></span>
-<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>ts2 <span class="op">=</span> group.get_timestamp_at(ts1[<span class="st">"dpt1_audio"</span>], <span class="st">"dpt1_audio"</span>)</span>
-<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>ts2</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="cf1a56a0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.108810Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.108368Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.118749Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.117181Z&quot;}}" data-execution_count="36">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 2: Transfer to audio, then back to holes</span></span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>ts2 <span class="op">=</span> group.get_timestamp_at(ts1[<span class="st">"dpt1_audio"</span>], <span class="st">"dpt1_audio"</span>)</span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>ts2</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="36">
 <div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
 <table class="caption-top table table-sm table-striped small">
@@ -2056,13 +2102,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">80.920513 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">160.573129 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">160.573129 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">80.920513 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -2072,13 +2118,13 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
-</div>
-<div id="28622a2b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.955310Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.954917Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.962876Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.961757Z&quot;}}" data-execution_count="37">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 3: Transfer to score, then back to holes</span></span>
-<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>ts3 <span class="op">=</span> group.get_timestamp_at(ts1[<span class="st">"clt1_score"</span>], <span class="st">"clt1_score"</span>)</span>
-<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>ts3</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="3e72ddf0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.126655Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.124921Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.137519Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.135627Z&quot;}}" data-execution_count="37">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 3: Transfer to score, then back to holes</span></span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>ts3 <span class="op">=</span> group.get_timestamp_at(ts1[<span class="st">"clt1_score"</span>], <span class="st">"clt1_score"</span>)</span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>ts3</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="37">
 <div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
 <table class="caption-top table table-sm table-striped small">
@@ -2116,13 +2162,13 @@ Timestamps: 2</pre>
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">80.920511 measures</td>
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">160.573129 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">seconds</td>
-<td style="text-align: right;">160.573129 seconds</td>
+<td style="color: #666">floating_measures</td>
+<td style="text-align: right;">80.920511 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -2132,17 +2178,17 @@ Timestamps: 2</pre>
 </tr>
 </tbody>
 </table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
-</div>
-<div id="203a3580" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:22.966240Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:22.965881Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:22.973266Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:22.972065Z&quot;}}" data-execution_count="38">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify round-trip precision by examining coordinates from each timestamp</span></span>
-<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Round-trip verification:"</span>)</span>
-<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Original:   </span><span class="sc">{</span>test_coord<span class="sc">}</span><span class="ss"> pixels"</span>)</span>
-<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Via audio:  </span><span class="sc">{</span>ts2[<span class="st">'dgt_holes'</span>]<span class="sc">}</span><span class="ss"> pixels"</span>)</span>
-<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Via score:  </span><span class="sc">{</span>ts3[<span class="st">'dgt_holes'</span>]<span class="sc">}</span><span class="ss"> pixels"</span>)</span>
-<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Audio diff: </span><span class="sc">{</span><span class="bu">abs</span>(ts2[<span class="st">'dgt_holes'</span>] <span class="op">-</span> test_coord)<span class="sc">:.6f}</span><span class="ss">"</span>)</span>
-<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Score diff: </span><span class="sc">{</span><span class="bu">abs</span>(ts3[<span class="st">'dgt_holes'</span>] <span class="op">-</span> test_coord)<span class="sc">:.6f}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="96fbf056" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:39:39.146721Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:39:39.145516Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:39:39.164372Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:39:39.160337Z&quot;}}" data-execution_count="38">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify round-trip precision by examining coordinates from each timestamp</span></span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Round-trip verification:"</span>)</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Original:   </span><span class="sc">{</span>test_coord<span class="sc">}</span><span class="ss"> pixels"</span>)</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Via audio:  </span><span class="sc">{</span>ts2[<span class="st">'dgt_holes'</span>]<span class="sc">}</span><span class="ss"> pixels"</span>)</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Via score:  </span><span class="sc">{</span>ts3[<span class="st">'dgt_holes'</span>]<span class="sc">}</span><span class="ss"> pixels"</span>)</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Audio diff: </span><span class="sc">{</span><span class="bu">abs</span>(ts2[<span class="st">'dgt_holes'</span>] <span class="op">-</span> test_coord)<span class="sc">:.6f}</span><span class="ss">"</span>)</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Score diff: </span><span class="sc">{</span><span class="bu">abs</span>(ts3[<span class="st">'dgt_holes'</span>] <span class="op">-</span> test_coord)<span class="sc">:.6f}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Round-trip verification:
   Original:   100000 pixels

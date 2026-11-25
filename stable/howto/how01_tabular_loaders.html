@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="description" content="CoordinateField, ComputedField, and custom loader configuration">
+<meta name="description" content="Custom TsvLoader/CsvLoader, column_specs typed fields, nested-JSON Field access, group_by child timelines">
 
 <title>How to Load Tabular Data – TimeToAlign!</title>
 <style>
@@ -290,6 +290,36 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
       </ul>
   </li>
         <li class="sidebar-item sidebar-item-section">
@@ -305,6 +335,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container">
   <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
   </div>
 </li>
       </ul>
@@ -329,26 +365,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#creating-timelines" id="toc-creating-timelines" class="nav-link" data-scroll-target="#creating-timelines">Creating Timelines</a></li>
   <li><a href="#custom-loaders-for-non-standard-formats" id="toc-custom-loaders-for-non-standard-formats" class="nav-link" data-scroll-target="#custom-loaders-for-non-standard-formats">Custom Loaders for Non-Standard Formats</a>
   <ul class="collapse">
-  <li><a href="#strategy-1-simplest-case-no-extra-columns" id="toc-strategy-1-simplest-case-no-extra-columns" class="nav-link" data-scroll-target="#strategy-1-simplest-case-no-extra-columns">Strategy 1: Simplest Case (No Extra Columns)</a></li>
-  <li><a href="#strategy-2-auto-infer-all-columns" id="toc-strategy-2-auto-infer-all-columns" class="nav-link" data-scroll-target="#strategy-2-auto-infer-all-columns">Strategy 2: Auto-Infer All Columns</a></li>
-  <li><a href="#strategy-3-explicit-columns-with-types" id="toc-strategy-3-explicit-columns-with-types" class="nav-link" data-scroll-target="#strategy-3-explicit-columns-with-types">Strategy 3: Explicit Columns with Types</a></li>
+  <li><a href="#the-simplest-custom-loader" id="toc-the-simplest-custom-loader" class="nav-link" data-scroll-target="#the-simplest-custom-loader">The Simplest Custom Loader</a></li>
+  <li><a href="#promoting-columns-to-typed-fields-with-column_specs" id="toc-promoting-columns-to-typed-fields-with-column_specs" class="nav-link" data-scroll-target="#promoting-columns-to-typed-fields-with-column_specs">Promoting Columns to Typed Fields with <code>column_specs</code></a></li>
   </ul></li>
-  <li><a href="#nested-json-column-access-with-field" id="toc-nested-json-column-access-with-field" class="nav-link" data-scroll-target="#nested-json-column-access-with-field">Nested JSON Column Access with Field</a>
+  <li><a href="#nested-json-column-access-with-field" id="toc-nested-json-column-access-with-field" class="nav-link" data-scroll-target="#nested-json-column-access-with-field">Nested JSON Column Access with <code>Field</code></a>
   <ul class="collapse">
   <li><a href="#two-coordinate-systems-from-one-file" id="toc-two-coordinate-systems-from-one-file" class="nav-link" data-scroll-target="#two-coordinate-systems-from-one-file">Two Coordinate Systems from One File</a></li>
   <li><a href="#creating-timelines-1" id="toc-creating-timelines-1" class="nav-link" data-scroll-target="#creating-timelines-1">Creating Timelines</a></li>
+  <li><a href="#child-timelines-from-column-values-with-group_by" id="toc-child-timelines-from-column-values-with-group_by" class="nav-link" data-scroll-target="#child-timelines-from-column-values-with-group_by">Child Timelines from Column Values with <code>group_by</code></a></li>
   </ul></li>
-  <li><a href="#advanced-features" id="toc-advanced-features" class="nav-link" data-scroll-target="#advanced-features">Advanced Features</a>
-  <ul class="collapse">
-  <li><a href="#coordinatefield-loading-multiple-coordinate-columns" id="toc-coordinatefield-loading-multiple-coordinate-columns" class="nav-link" data-scroll-target="#coordinatefield-loading-multiple-coordinate-columns">CoordinateField: Loading Multiple Coordinate Columns</a></li>
-  <li><a href="#create_cmap-building-conversion-maps" id="toc-create_cmap-building-conversion-maps" class="nav-link" data-scroll-target="#create_cmap-building-conversion-maps">create_cmap(): Building Conversion Maps</a></li>
-  <li><a href="#group_by-creating-child-timelines-from-column-values" id="toc-group_by-creating-child-timelines-from-column-values" class="nav-link" data-scroll-target="#group_by-creating-child-timelines-from-column-values">group_by: Creating Child Timelines from Column Values</a></li>
-  </ul></li>
-  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">Summary</a>
-  <ul class="collapse">
-  <li><a href="#extra-columns-strategies" id="toc-extra-columns-strategies" class="nav-link" data-scroll-target="#extra-columns-strategies">Extra Columns Strategies</a></li>
-  <li><a href="#key-api" id="toc-key-api" class="nav-link" data-scroll-target="#key-api">Key API</a></li>
-  </ul></li>
+  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">Summary</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -363,7 +389,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <div>
   <div class="description">
-    CoordinateField, ComputedField, and custom loader configuration
+    Custom TsvLoader/CsvLoader, column_specs typed fields, nested-JSON Field access, group_by child timelines
   </div>
 </div>
 
@@ -383,21 +409,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="how-to-load-tabular-data" class="level1">
 <h1>How to Load Tabular Data</h1>
 <p>The fastest way to get music data into TimeToAlign! is through <strong>tabular loaders</strong>. If your data is in CSV or TSV format, you’re just 3 lines of code away from analysis.</p>
-<p><strong>What you’ll learn:</strong> - Load music annotations from TSV/CSV files - Access event counts, coordinate ranges, and metadata - Create timelines from loaded data - Create custom loaders with different <code>extra_columns</code> strategies - Use <code>Field</code> for nested JSON column access</p>
+<p><strong>What you’ll learn:</strong> - Load music annotations from TSV/CSV files - Access event counts, coordinate ranges, and metadata - Create timelines from loaded data - Write a custom loader that maps your columns to event fields - Promote selected columns to typed fields with <code>column_specs</code> - Reach nested JSON columns with <code>Field</code></p>
 <p><strong>Time:</strong> 15 minutes</p>
+<p>This is the gentle introduction. For the full column-to-field mechanism — the Step-1 resolution chain, composite columns, and Step-2 field promotion — see the in-depth CSV/TSV how-to.</p>
 <section id="tldr" class="level2">
 <h2 class="anchored" data-anchor-id="tldr">TL;DR</h2>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> Ms3Loader</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> TsvLoader</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> Ms3Loader()</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> TsvLoader()</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>loader.load(<span class="st">"beethoven.notes.tsv"</span>)</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> loader.events.to_pandas()       <span class="co"># Get as DataFrame</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> loader.events.to_dataframe()    <span class="co"># Get as DataFrame</span></span>
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>timeline <span class="op">=</span> loader.create_timeline()  <span class="co"># Create Timeline</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="d5ec1b34" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:46.531963Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:46.531618Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.538190Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.537111Z&quot;}}" data-execution_count="1">
+<div id="5948f5bc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:46.060653Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:46.060192Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:46.652717Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:46.651869Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>BEETHOVEN <span class="op">=</span> ensure_data(<span class="st">"score"</span>) <span class="op">/</span> <span class="st">"beethoven_woo71"</span></span>
@@ -418,15 +445,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="loading-notes-from-tsv" class="level2">
 <h2 class="anchored" data-anchor-id="loading-notes-from-tsv">Loading Notes from TSV</h2>
-<p>The <code>Ms3Loader</code> handles TSV files exported from the <a href="https://github.com/johentsch/ms3">ms3</a> parser, which processes MuseScore files.</p>
+<p><code>TsvLoader</code> is the generic starting point for a TSV whose columns you control. Declare the coordinate columns and promote the values you want as typed fields. For a standard ms3 score export, use the score <code>Ms3Loader</code> instead; it understands its notes, measures, chords, and harmonies facets.</p>
 <p><strong>Three lines of code:</strong></p>
-<div id="e7475276" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.541362Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.541001Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.606729Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.605878Z&quot;}}" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> Ms3Loader  <span class="co"># noqa: E402</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> Ms3Loader()</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>loader.load(BEETHOVEN <span class="op">/</span> <span class="st">"WoO71.notes.tsv"</span>)</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="ss">f"</span><span class="sc">{</span><span class="bu">len</span>(loader.events)<span class="sc">:,}</span><span class="ss"> notes loaded"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="0112fb03" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:46.654740Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:46.654368Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.481444Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.480398Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> NumberType, TimeUnit  <span class="co"># noqa: E402</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> TsvLoader  <span class="co"># noqa: E402</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> BeethovenNotesLoader(TsvLoader):</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Generic TSV configuration for the coordinate and pitch columns used here."""</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"quarterbeats"</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"duration_qb"</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.quarters</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.fraction</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    column_specs <span class="op">=</span> {<span class="st">"midi"</span>: <span class="bu">int</span>, <span class="st">"staff"</span>: <span class="bu">int</span>, <span class="st">"voice"</span>: <span class="bu">int</span>}</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> BeethovenNotesLoader()</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>loader.load(BEETHOVEN <span class="op">/</span> <span class="st">"WoO71.notes.tsv"</span>)</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="ss">f"</span><span class="sc">{</span><span class="bu">len</span>(loader.events)<span class="sc">:,}</span><span class="ss"> notes loaded"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/home/laser/miniconda3/envs/timetoalign/lib/python3.11/site-packages/partitura/__init__.py:9: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools&lt;81.
+  import pkg_resources</code></pre>
+</div>
 <div class="cell-output cell-output-display" data-execution_count="2">
 <pre><code>'4,753 notes loaded'</code></pre>
 </div>
@@ -434,9 +477,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="converting-to-pandas" class="level2">
 <h2 class="anchored" data-anchor-id="converting-to-pandas">Converting to pandas</h2>
-<p>Use <code>to_pandas()</code> to get a DataFrame with clean coordinate values:</p>
-<div id="9af8a297" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.610200Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.609857Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.685158Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.684275Z&quot;}}" data-execution_count="3">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>loader.events.to_pandas().head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Use <code>to_dataframe()</code> to get a DataFrame with clean coordinate values:</p>
+<div id="30bc636c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.483610Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.483361Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.530232Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.529382Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>loader.events.to_dataframe().head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
 <div>
 
@@ -452,14 +495,20 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">start</th>
 <th data-quarto-table-cell-role="th">end</th>
 <th data-quarto-table-cell-role="th">duration</th>
-<th data-quarto-table-cell-role="th">tpc</th>
-<th data-quarto-table-cell-role="th">chord_id</th>
-<th data-quarto-table-cell-role="th">midi</th>
-<th data-quarto-table-cell-role="th">mn</th>
 <th data-quarto-table-cell-role="th">staff</th>
 <th data-quarto-table-cell-role="th">voice</th>
-<th data-quarto-table-cell-role="th">mc</th>
+<th data-quarto-table-cell-role="th">tpc</th>
+<th data-quarto-table-cell-role="th">...</th>
+<th data-quarto-table-cell-role="th">quarterbeats_all_endings</th>
+<th data-quarto-table-cell-role="th">midi</th>
+<th data-quarto-table-cell-role="th">mc_onset</th>
+<th data-quarto-table-cell-role="th">chord_id</th>
+<th data-quarto-table-cell-role="th">scalar</th>
+<th data-quarto-table-cell-role="th">gracenote</th>
+<th data-quarto-table-cell-role="th">timesig</th>
 <th data-quarto-table-cell-role="th">octave</th>
+<th data-quarto-table-cell-role="th">volta</th>
+<th data-quarto-table-cell-role="th">mn_onset</th>
 </tr>
 </thead>
 <tbody>
@@ -468,94 +517,125 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>e000000</td>
 <td>A3</td>
 <td>interval</td>
-<td>Note</td>
+<td>Event</td>
 <td>0</td>
-<td>1/4</td>
-<td>1/4</td>
-<td>3</td>
-<td>3</td>
-<td>57</td>
-<td>0</td>
+<td>1.0</td>
+<td>1.0</td>
 <td>2</td>
 <td>1</td>
-<td>1</td>
 <td>3</td>
+<td>...</td>
+<td>0</td>
+<td>57</td>
+<td>0</td>
+<td>3</td>
+<td>1</td>
+<td>None</td>
+<td>2/4</td>
+<td>3</td>
+<td>NaN</td>
+<td>1/4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
 <td>e000001</td>
 <td>E4</td>
 <td>interval</td>
-<td>Note</td>
+<td>Event</td>
 <td>0</td>
-<td>1/4</td>
-<td>1/4</td>
-<td>4</td>
+<td>1.0</td>
+<td>1.0</td>
+<td>1</td>
 <td>2</td>
+<td>4</td>
+<td>...</td>
+<td>0</td>
 <td>64</td>
 <td>0</td>
-<td>1</td>
 <td>2</td>
 <td>1</td>
+<td>None</td>
+<td>2/4</td>
 <td>4</td>
+<td>NaN</td>
+<td>1/4</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
 <td>e000002</td>
 <td>A4</td>
 <td>interval</td>
-<td>Note</td>
+<td>Event</td>
 <td>0</td>
-<td>1/8</td>
-<td>1/8</td>
+<td>0.5</td>
+<td>0.5</td>
+<td>1</td>
+<td>1</td>
 <td>3</td>
+<td>...</td>
 <td>0</td>
 <td>69</td>
 <td>0</td>
+<td>0</td>
 <td>1</td>
-<td>1</td>
-<td>1</td>
+<td>None</td>
+<td>2/4</td>
 <td>4</td>
+<td>NaN</td>
+<td>1/4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
 <td>e000003</td>
 <td>C#5</td>
 <td>interval</td>
-<td>Note</td>
+<td>Event</td>
 <td>0</td>
-<td>1/8</td>
-<td>1/8</td>
+<td>0.5</td>
+<td>0.5</td>
+<td>1</td>
+<td>1</td>
 <td>7</td>
+<td>...</td>
 <td>0</td>
 <td>73</td>
 <td>0</td>
+<td>0</td>
 <td>1</td>
-<td>1</td>
-<td>1</td>
+<td>None</td>
+<td>2/4</td>
 <td>5</td>
+<td>NaN</td>
+<td>1/4</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
 <td>e000004</td>
 <td>E5</td>
 <td>interval</td>
-<td>Note</td>
+<td>Event</td>
 <td>1/2</td>
-<td>5/8</td>
-<td>1/8</td>
+<td>1.0</td>
+<td>0.5</td>
+<td>1</td>
+<td>1</td>
 <td>4</td>
-<td>1</td>
+<td>...</td>
+<td>1/2</td>
 <td>76</td>
-<td>0</td>
+<td>1/8</td>
 <td>1</td>
 <td>1</td>
-<td>1</td>
+<td>None</td>
+<td>2/4</td>
 <td>5</td>
+<td>NaN</td>
+<td>3/8</td>
 </tr>
 </tbody>
 </table>
 
+<p>5 rows × 24 columns</p>
 </div>
 </div>
 </div>
@@ -563,16 +643,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="quick-statistics" class="level2">
 <h2 class="anchored" data-anchor-id="quick-statistics">Quick Statistics</h2>
 <p>The loader provides immediate access to summary information:</p>
-<div id="1ddd3640" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.687790Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.687557Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.693425Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.692354Z&quot;}}" data-execution_count="4">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"event_count"</span>: <span class="bu">len</span>(loader.events),</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate_range"</span>: loader.events.coordinate_range(),</span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: <span class="bu">str</span>(loader.unit),</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"number_type"</span>: <span class="bu">str</span>(loader.number_type),</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="704aeb0a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.532286Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.532097Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.626372Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.625639Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"event_count"</span>: <span class="bu">len</span>(loader.events),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate_range"</span>: loader.events.coordinate_range(),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: <span class="bu">str</span>(loader.unit),</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"number_type"</span>: <span class="bu">str</span>(loader.number_type),</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <pre><code>{'event_count': 4753,
- 'coordinate_range': (0.0, 877.75),
+ 'coordinate_range': (Fraction(0, 1), 876.5),
  'unit': 'quarters',
  'number_type': 'fraction'}</code></pre>
 </div>
@@ -581,23 +661,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="creating-timelines" class="level2">
 <h2 class="anchored" data-anchor-id="creating-timelines">Creating Timelines</h2>
 <p>TimeToAlign! represents temporal data as <strong>Timelines</strong>:</p>
-<div id="e13a9a80" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.696708Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.696381Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.727554Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.726440Z&quot;}}" data-execution_count="5">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>timeline <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"beethoven_notes"</span>)</span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>timeline</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="db573730" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.628017Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.627837Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.722133Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.721321Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>timeline <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"beethoven_notes"</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>timeline</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
-<pre style="font-family: monospace; line-height: 1.2;">ContinuousLogicalTimeline[beethoven_notes] (4753 events)
-                      0 _______________________________ 877.8 quarters</pre>
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[beethoven_notes] (4753 events)
+                      0 _______________________________ 876.5 quarters</pre>
 </div>
 </div>
 </section>
 <section id="custom-loaders-for-non-standard-formats" class="level2">
 <h2 class="anchored" data-anchor-id="custom-loaders-for-non-standard-formats">Custom Loaders for Non-Standard Formats</h2>
-<p>For files that don’t match the ms3 format, create a custom loader by subclassing <code>TsvLoader</code> or <code>CsvLoader</code>.</p>
-<p>Let’s load the Thoresen annotations file which has a different column structure:</p>
-<div id="7e07ce38" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.730650Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.730304Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.763165Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.761896Z&quot;}}" data-execution_count="6">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd  <span class="co"># noqa: E402</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>pd.read_csv(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>, nrows<span class="op">=</span><span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For files that don’t match the ms3 format, create a custom loader by subclassing <code>TsvLoader</code> or <code>CsvLoader</code>. You point the canonical column attributes (<code>start_column</code>, <code>duration_column</code>, …) at the names in your file.</p>
+<p>Let’s load the Thoresen annotations file, which has a different column structure:</p>
+<div id="336b9599" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.723778Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.723607Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.734178Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.733632Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd  <span class="co"># noqa: E402</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>pd.read_csv(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>, nrows<span class="op">=</span><span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
 <div>
 
@@ -672,30 +752,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<section id="strategy-1-simplest-case-no-extra-columns" class="level3">
-<h3 class="anchored" data-anchor-id="strategy-1-simplest-case-no-extra-columns">Strategy 1: Simplest Case (No Extra Columns)</h3>
-<p>The simplest custom loader just maps the core coordinate columns. No <code>extra_columns</code> means only the base event fields are loaded:</p>
-<div id="77a1b9dc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.766042Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.765708Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.796962Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.795900Z&quot;}}" data-execution_count="7">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> NumberType, TimeUnit  <span class="co"># noqa: E402</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> TsvLoader  <span class="co"># noqa: E402</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenMinimalLoader(TsvLoader):</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Minimal loader - only core event fields."""</span></span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    id_column <span class="op">=</span> <span class="st">"event_id"</span></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"start_time_sec"</span></span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"duration_sec"</span></span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>    event_type_column <span class="op">=</span> <span class="st">"event_type"</span></span>
-<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>    name_column <span class="op">=</span> <span class="st">"description"</span></span>
-<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.seconds</span>
-<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
-<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a>minimal <span class="op">=</span> ThoresenMinimalLoader()</span>
-<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>minimal.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
-<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a>minimal.events.to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="the-simplest-custom-loader" class="level3">
+<h3 class="anchored" data-anchor-id="the-simplest-custom-loader">The Simplest Custom Loader</h3>
+<p>Map the core coordinate columns and nothing else. Every source column that you do <em>not</em> name survives as an opaque <strong>property column</strong> — carried alongside the event so you never lose data, but left untyped:</p>
+<div id="b837f09b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.736193Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.736038Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.756068Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.755126Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> TsvLoader  <span class="co"># noqa: E402</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenLoader(TsvLoader):</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Minimal loader — maps the core event fields."""</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    id_column <span class="op">=</span> <span class="st">"event_id"</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"start_time_sec"</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"duration_sec"</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    event_type_column <span class="op">=</span> <span class="st">"event_type"</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    name_column <span class="op">=</span> <span class="st">"description"</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.seconds</span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>thoresen <span class="op">=</span> ThoresenLoader()</span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a>thoresen.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
+<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a>thoresen.events.to_dataframe()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
 <div>
 
@@ -711,118 +790,202 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">start</th>
 <th data-quarto-table-cell-role="th">end</th>
 <th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">text_content</th>
+<th data-quarto-table-cell-role="th">layer_order</th>
+<th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
+<th data-quarto-table-cell-role="th">rect_coords_json</th>
+<th data-quarto-table-cell-role="th">graphical_element_id</th>
+<th data-quarto-table-cell-role="th">image_filename</th>
+<th data-quarto-table-cell-role="th">alignment_group_id</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">0</th>
 <td>annot_cue_001</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>0.0</td>
 <td>5.00</td>
 <td>5.00</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 10, "y": 90, "width": 148, "height": 55}</td>
+<td>rect_a</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
 <td>annot_cue_002</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>1.5</td>
 <td>5.50</td>
 <td>4.00</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 40, "y": 37, "width": 127, "height": 21}</td>
+<td>rect_b</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
 <td>annot_cue_003</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>3.5</td>
 <td>5.50</td>
 <td>2.00</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 111, "y": 60, "width": 57, "height": 23}</td>
+<td>rect_c</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
 <td>annot_cue_004</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>34.6</td>
 <td>39.80</td>
 <td>5.20</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 145, "y": 90, "width": 160, "height": 58}</td>
+<td>rect_a2</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
 <td>annot_cue_005</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>43.5</td>
 <td>48.00</td>
 <td>4.50</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 385, "y": 46, "width": 139, "height": 20}</td>
+<td>rect_h2</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
 <td>annot_cue_006</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>71.0</td>
 <td>75.75</td>
 <td>4.75</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 310, "y": 93, "width": 154, "height": 18}</td>
+<td>rect_d3</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
 <td>annot_cue_007</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>76.0</td>
 <td>83.50</td>
 <td>7.50</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 456, "y": 69, "width": 229, "height": 18}</td>
+<td>rect_b3</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
 <td>annot_cue_008</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>90.5</td>
 <td>94.50</td>
 <td>4.00</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 14, "y": 115, "width": 127, "height": 31}</td>
+<td>rect_i4</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
 <td>annot_cue_009</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>113.4</td>
 <td>116.40</td>
 <td>3.00</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 663, "y": 82, "width": 97, "height": 23}</td>
+<td>rect_a4</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
 <td>annot_cue_010</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>121.0</td>
 <td>128.50</td>
 <td>7.50</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 19, "y": 119, "width": 251, "height": 29}</td>
+<td>rect_i5</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
 <td>annot_cue_011</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>141.0</td>
 <td>142.50</td>
 <td>1.50</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 595, "y": 45, "width": 64, "height": 21}</td>
+<td>rect_f5</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 </tbody>
 </table>
@@ -831,29 +994,32 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </section>
-<section id="strategy-2-auto-infer-all-columns" class="level3">
-<h3 class="anchored" data-anchor-id="strategy-2-auto-infer-all-columns">Strategy 2: Auto-Infer All Columns</h3>
-<p>Set <code>extra_columns = True</code> to automatically include all remaining columns with inferred types:</p>
-<div id="71b19c9c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.799850Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.799502Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.834897Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.833962Z&quot;}}" data-execution_count="8">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenAutoLoader(TsvLoader):</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Auto-infer all remaining columns."""</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    id_column <span class="op">=</span> <span class="st">"event_id"</span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"start_time_sec"</span></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"duration_sec"</span></span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    event_type_column <span class="op">=</span> <span class="st">"event_type"</span></span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    name_column <span class="op">=</span> <span class="st">"description"</span></span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.seconds</span>
-<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
-<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Include ALL remaining columns with inferred types</span></span>
-<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    extra_columns <span class="op">=</span> <span class="va">True</span></span>
-<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>auto <span class="op">=</span> ThoresenAutoLoader()</span>
-<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a>auto.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
-<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a>auto.events.to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="promoting-columns-to-typed-fields-with-column_specs" class="level3">
+<h3 class="anchored" data-anchor-id="promoting-columns-to-typed-fields-with-column_specs">Promoting Columns to Typed Fields with <code>column_specs</code></h3>
+<p>When a property column should become a typed field, name it in <code>column_specs</code>. The keys are source-column names; the values are anything the loader can resolve to a field — a bare Python type (<code>int</code> / <code>float</code> / <code>str</code>) is the simplest form. Here we give two extra columns explicit types:</p>
+<div id="6a6a95d8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.757900Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.757720Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.776232Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.775356Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenTypedLoader(TsvLoader):</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Selected columns promoted to typed fields."""</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    id_column <span class="op">=</span> <span class="st">"event_id"</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"start_time_sec"</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"duration_sec"</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    event_type_column <span class="op">=</span> <span class="st">"event_type"</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    name_column <span class="op">=</span> <span class="st">"description"</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.seconds</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Promote these source columns to typed fields.</span></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    column_specs <span class="op">=</span> {</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>        <span class="st">"image_filename"</span>: <span class="bu">str</span>,</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>        <span class="st">"graphical_element_id"</span>: <span class="bu">str</span>,</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>typed <span class="op">=</span> ThoresenTypedLoader()</span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>typed.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>typed.events.to_dataframe()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <div>
 
@@ -869,202 +1035,202 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">start</th>
 <th data-quarto-table-cell-role="th">end</th>
 <th data-quarto-table-cell-role="th">duration</th>
-<th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
-<th data-quarto-table-cell-role="th">graphical_element_id</th>
 <th data-quarto-table-cell-role="th">text_content</th>
 <th data-quarto-table-cell-role="th">layer_order</th>
-<th data-quarto-table-cell-role="th">alignment_group_id</th>
+<th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
 <th data-quarto-table-cell-role="th">rect_coords_json</th>
+<th data-quarto-table-cell-role="th">graphical_element_id</th>
 <th data-quarto-table-cell-role="th">image_filename</th>
+<th data-quarto-table-cell-role="th">alignment_group_id</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">0</th>
 <td>annot_cue_001</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>0.0</td>
 <td>5.00</td>
 <td>5.00</td>
 <td>NaN</td>
-<td>rect_a</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 10, "y": 90, "width": 148, "height": 55}</td>
+<td>rect_a</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
 <td>annot_cue_002</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>1.5</td>
 <td>5.50</td>
 <td>4.00</td>
 <td>NaN</td>
-<td>rect_b</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 40, "y": 37, "width": 127, "height": 21}</td>
+<td>rect_b</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
 <td>annot_cue_003</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>3.5</td>
 <td>5.50</td>
 <td>2.00</td>
 <td>NaN</td>
-<td>rect_c</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 111, "y": 60, "width": 57, "height": 23}</td>
+<td>rect_c</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
 <td>annot_cue_004</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>34.6</td>
 <td>39.80</td>
 <td>5.20</td>
 <td>NaN</td>
-<td>rect_a2</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 145, "y": 90, "width": 160, "height": 58}</td>
+<td>rect_a2</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
 <td>annot_cue_005</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>43.5</td>
 <td>48.00</td>
 <td>4.50</td>
 <td>NaN</td>
-<td>rect_h2</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 385, "y": 46, "width": 139, "height": 20}</td>
+<td>rect_h2</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
 <td>annot_cue_006</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>71.0</td>
 <td>75.75</td>
 <td>4.75</td>
 <td>NaN</td>
-<td>rect_d3</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 310, "y": 93, "width": 154, "height": 18}</td>
+<td>rect_d3</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
 <td>annot_cue_007</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>76.0</td>
 <td>83.50</td>
 <td>7.50</td>
 <td>NaN</td>
-<td>rect_b3</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 456, "y": 69, "width": 229, "height": 18}</td>
+<td>rect_b3</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
 <td>annot_cue_008</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>90.5</td>
 <td>94.50</td>
 <td>4.00</td>
 <td>NaN</td>
-<td>rect_i4</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 14, "y": 115, "width": 127, "height": 31}</td>
+<td>rect_i4</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
 <td>annot_cue_009</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>113.4</td>
 <td>116.40</td>
 <td>3.00</td>
 <td>NaN</td>
-<td>rect_a4</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 663, "y": 82, "width": 97, "height": 23}</td>
+<td>rect_a4</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
 <td>annot_cue_010</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>121.0</td>
 <td>128.50</td>
 <td>7.50</td>
 <td>NaN</td>
-<td>rect_i5</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 19, "y": 119, "width": 251, "height": 29}</td>
+<td>rect_i5</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
 <td>annot_cue_011</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>141.0</td>
 <td>142.50</td>
 <td>1.50</td>
 <td>NaN</td>
-<td>rect_f5</td>
-<td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>{"x": 595, "y": 45, "width": 64, "height": 21}</td>
+<td>rect_f5</td>
 <td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 </tbody>
 </table>
@@ -1072,34 +1238,50 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
+<p>That is the entire idea: <strong>columns are a source artefact; fields are a TimeToAlign! artefact.</strong> <code>column_specs</code> is the bridge. A bare type is the gentlest entry — the in-depth CSV/TSV how-to covers the full resolution chain (composite columns, semantic pitch/id fields, and the Step-2 <code>field_specs</code> promotion stage) for richer formats.</p>
 </section>
-<section id="strategy-3-explicit-columns-with-types" class="level3">
-<h3 class="anchored" data-anchor-id="strategy-3-explicit-columns-with-types">Strategy 3: Explicit Columns with Types</h3>
-<p>Use a dict to specify exactly which columns to include and their types:</p>
-<div id="93e92608" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.838215Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.837841Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.865322Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.864075Z&quot;}}" data-execution_count="9">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenTypedLoader(TsvLoader):</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Explicit columns with types."""</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    id_column <span class="op">=</span> <span class="st">"event_id"</span></span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"start_time_sec"</span></span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"duration_sec"</span></span>
-<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    event_type_column <span class="op">=</span> <span class="st">"event_type"</span></span>
-<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    name_column <span class="op">=</span> <span class="st">"description"</span></span>
-<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.seconds</span>
-<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
-<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Explicit columns with types</span></span>
-<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    extra_columns <span class="op">=</span> {</span>
-<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>        <span class="st">"image_filename"</span>: <span class="bu">str</span>,</span>
-<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>        <span class="st">"graphical_element_id"</span>: <span class="bu">int</span>,</span>
-<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>    }</span>
-<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>typed <span class="op">=</span> ThoresenTypedLoader()</span>
-<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>typed.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
-<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>typed.events.to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="nested-json-column-access-with-field" class="level2">
+<h2 class="anchored" data-anchor-id="nested-json-column-access-with-field">Nested JSON Column Access with <code>Field</code></h2>
+<p>The Thoresen data has a <code>rect_coords_json</code> column containing pixel coordinates as JSON:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">"x"</span><span class="fu">:</span> <span class="dv">10</span><span class="fu">,</span> <span class="dt">"y"</span><span class="fu">:</span> <span class="dv">90</span><span class="fu">,</span> <span class="dt">"width"</span><span class="fu">:</span> <span class="dv">148</span><span class="fu">,</span> <span class="dt">"height"</span><span class="fu">:</span> <span class="dv">55</span><span class="fu">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Use <code>Field("column", "nested_field")</code> to point a coordinate attribute straight at a nested value. TimeToAlign! parses the JSON automatically. <code>ComputedField</code> lets you derive a coordinate from a small formula over those nested values:</p>
+<div id="7a53ce45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.777849Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.777654Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.789737Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.788987Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader <span class="im">import</span> ComputedField, Field  <span class="co"># noqa: E402</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenGraphicalLoader(TsvLoader):</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Loader using PIXEL coordinates from a nested JSON column."""</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Nested fields are addressed directly; JSON is parsed automatically.</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> Field(<span class="st">"rect_coords_json"</span>, <span class="st">"x"</span>)</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>    end_column <span class="op">=</span> ComputedField(</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">"end"</span>, formula<span class="op">=</span><span class="st">"rect_coords_json.x + rect_coords_json.width"</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.pixels</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>    default_event_type <span class="op">=</span> <span class="st">"Rectangle"</span></span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>graphical <span class="op">=</span> ThoresenGraphicalLoader()</span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>graphical.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: <span class="bu">str</span>(graphical.unit),</span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate_range"</span>: graphical.events.coordinate_range(),</span>
+<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>{'unit': 'pixels', 'coordinate_range': (10.0, 760.0)}</code></pre>
+</div>
+</div>
+<section id="two-coordinate-systems-from-one-file" class="level3">
+<h3 class="anchored" data-anchor-id="two-coordinate-systems-from-one-file">Two Coordinate Systems from One File</h3>
+<p>The same TSV file backs timelines in different coordinate systems — seconds from the time columns, pixels from the JSON column:</p>
+<div id="48c710d3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.791265Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.791066Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.805691Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.804905Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Physical timeline (seconds)</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>typed.events.to_dataframe()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
 <div>
 
 
@@ -1114,142 +1296,202 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">start</th>
 <th data-quarto-table-cell-role="th">end</th>
 <th data-quarto-table-cell-role="th">duration</th>
-<th data-quarto-table-cell-role="th">image_filename</th>
+<th data-quarto-table-cell-role="th">text_content</th>
+<th data-quarto-table-cell-role="th">layer_order</th>
+<th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
+<th data-quarto-table-cell-role="th">rect_coords_json</th>
 <th data-quarto-table-cell-role="th">graphical_element_id</th>
+<th data-quarto-table-cell-role="th">image_filename</th>
+<th data-quarto-table-cell-role="th">alignment_group_id</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">0</th>
 <td>annot_cue_001</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>0.0</td>
 <td>5.00</td>
 <td>5.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 10, "y": 90, "width": 148, "height": 55}</td>
 <td>rect_a</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
 <td>annot_cue_002</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>1.5</td>
 <td>5.50</td>
 <td>4.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 40, "y": 37, "width": 127, "height": 21}</td>
 <td>rect_b</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
 <td>annot_cue_003</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>3.5</td>
 <td>5.50</td>
 <td>2.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 111, "y": 60, "width": 57, "height": 23}</td>
 <td>rect_c</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
 <td>annot_cue_004</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>34.6</td>
 <td>39.80</td>
 <td>5.20</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 145, "y": 90, "width": 160, "height": 58}</td>
 <td>rect_a2</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
 <td>annot_cue_005</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>43.5</td>
 <td>48.00</td>
 <td>4.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 385, "y": 46, "width": 139, "height": 20}</td>
 <td>rect_h2</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
 <td>annot_cue_006</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>71.0</td>
 <td>75.75</td>
 <td>4.75</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 310, "y": 93, "width": 154, "height": 18}</td>
 <td>rect_d3</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
 <td>annot_cue_007</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>76.0</td>
 <td>83.50</td>
 <td>7.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 456, "y": 69, "width": 229, "height": 18}</td>
 <td>rect_b3</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
 <td>annot_cue_008</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>90.5</td>
 <td>94.50</td>
 <td>4.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 14, "y": 115, "width": 127, "height": 31}</td>
 <td>rect_i4</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
 <td>annot_cue_009</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>113.4</td>
 <td>116.40</td>
 <td>3.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 663, "y": 82, "width": 97, "height": 23}</td>
 <td>rect_a4</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
 <td>annot_cue_010</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>121.0</td>
 <td>128.50</td>
 <td>7.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 19, "y": 119, "width": 251, "height": 29}</td>
 <td>rect_i5</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
 <td>annot_cue_011</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>141.0</td>
 <td>142.50</td>
 <td>1.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>{"x": 595, "y": 45, "width": 64, "height": 21}</td>
 <td>rect_f5</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
 </tr>
 </tbody>
 </table>
@@ -1257,51 +1499,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-</section>
-</section>
-<section id="nested-json-column-access-with-field" class="level2">
-<h2 class="anchored" data-anchor-id="nested-json-column-access-with-field">Nested JSON Column Access with Field</h2>
-<p>The Thoresen data has a <code>rect_coords_json</code> column containing pixel coordinates as JSON:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">"x"</span><span class="fu">:</span> <span class="dv">10</span><span class="fu">,</span> <span class="dt">"y"</span><span class="fu">:</span> <span class="dv">90</span><span class="fu">,</span> <span class="dt">"width"</span><span class="fu">:</span> <span class="dv">148</span><span class="fu">,</span> <span class="dt">"height"</span><span class="fu">:</span> <span class="dv">55</span><span class="fu">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Use <code>Field("column", "nested_field")</code> to access nested fields directly. TimeToAlign! automatically parses JSON when needed:</p>
-<div id="ca76ff41" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.867990Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.867677Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.884257Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.883316Z&quot;}}" data-execution_count="10">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader <span class="im">import</span> ComputedField, Field  <span class="co"># noqa: E402</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenGraphicalLoader(TsvLoader):</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Loader using PIXEL coordinates from nested JSON.</span></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="co">    Field automatically parses JSON columns when accessing nested fields.</span></span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use nested fields directly - JSON is parsed automatically</span></span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> Field(<span class="st">"rect_coords_json"</span>, <span class="st">"x"</span>)</span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    end_column <span class="op">=</span> ComputedField(</span>
-<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>        <span class="st">"end"</span>, formula<span class="op">=</span><span class="st">"rect_coords_json.x + rect_coords_json.width"</span></span>
-<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.pixels</span>
-<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
-<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>    default_event_type <span class="op">=</span> <span class="st">"Rectangle"</span></span>
-<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>graphical <span class="op">=</span> ThoresenGraphicalLoader()</span>
-<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>graphical.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
-<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: <span class="bu">str</span>(graphical.unit),</span>
-<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate_range"</span>: graphical.events.coordinate_range(),</span>
-<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="10">
-<pre><code>{'unit': 'pixels', 'coordinate_range': (10.0, 760.0)}</code></pre>
-</div>
-</div>
-<section id="two-coordinate-systems-from-one-file" class="level3">
-<h3 class="anchored" data-anchor-id="two-coordinate-systems-from-one-file">Two Coordinate Systems from One File</h3>
-<p>The same TSV file can create timelines in different coordinate systems:</p>
-<div id="f494c3c1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.886421Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.886224Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.901776Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.900749Z&quot;}}" data-execution_count="11">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Physical timeline (seconds)</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>typed.events.to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="60111929" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.807415Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.807260Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.822132Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.821354Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Graphical timeline (pixels)</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>graphical.events.to_dataframe()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="11">
 <div>
 
@@ -1317,279 +1517,238 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">start</th>
 <th data-quarto-table-cell-role="th">end</th>
 <th data-quarto-table-cell-role="th">duration</th>
-<th data-quarto-table-cell-role="th">image_filename</th>
+<th data-quarto-table-cell-role="th">text_content</th>
+<th data-quarto-table-cell-role="th">event_id</th>
 <th data-quarto-table-cell-role="th">graphical_element_id</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">0</th>
-<td>annot_cue_001</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>0.0</td>
-<td>5.00</td>
-<td>5.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_a</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">1</th>
-<td>annot_cue_002</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>1.5</td>
-<td>5.50</td>
-<td>4.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_b</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">2</th>
-<td>annot_cue_003</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>3.5</td>
-<td>5.50</td>
-<td>2.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_c</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">3</th>
-<td>annot_cue_004</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>34.6</td>
-<td>39.80</td>
-<td>5.20</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_a2</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">4</th>
-<td>annot_cue_005</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>43.5</td>
-<td>48.00</td>
-<td>4.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_h2</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">5</th>
-<td>annot_cue_006</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>71.0</td>
-<td>75.75</td>
-<td>4.75</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_d3</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">6</th>
-<td>annot_cue_007</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>76.0</td>
-<td>83.50</td>
-<td>7.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_b3</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">7</th>
-<td>annot_cue_008</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>90.5</td>
-<td>94.50</td>
-<td>4.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_i4</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">8</th>
-<td>annot_cue_009</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>113.4</td>
-<td>116.40</td>
-<td>3.00</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_a4</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">9</th>
-<td>annot_cue_010</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>121.0</td>
-<td>128.50</td>
-<td>7.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_i5</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">10</th>
-<td>annot_cue_011</td>
-<td>NaN</td>
-<td>interval</td>
-<td>rectangle</td>
-<td>141.0</td>
-<td>142.50</td>
-<td>1.50</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-<td>rect_f5</td>
-</tr>
-</tbody>
-</table>
-
-</div>
-</div>
-</div>
-<div id="601321a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.904160Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.903883Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.918981Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.917820Z&quot;}}" data-execution_count="12">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Graphical timeline (pixels)</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>graphical.events.to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="12">
-<div>
-
-
-<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">id</th>
-<th data-quarto-table-cell-role="th">name</th>
-<th data-quarto-table-cell-role="th">temporal_type</th>
-<th data-quarto-table-cell-role="th">event_type</th>
-<th data-quarto-table-cell-role="th">start</th>
-<th data-quarto-table-cell-role="th">end</th>
-<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">layer_order</th>
+<th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
+<th data-quarto-table-cell-role="th">description</th>
+<th data-quarto-table-cell-role="th">duration_sec</th>
+<th data-quarto-table-cell-role="th">image_filename</th>
+<th data-quarto-table-cell-role="th">alignment_group_id</th>
+<th data-quarto-table-cell-role="th">start_time_sec</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">0</th>
 <td>e000000</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>10.0</td>
 <td>158.0</td>
 <td>148.0</td>
+<td>NaN</td>
+<td>annot_cue_001</td>
+<td>rect_a</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>5.00</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>0.0</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
 <td>e000001</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>40.0</td>
 <td>167.0</td>
 <td>127.0</td>
+<td>NaN</td>
+<td>annot_cue_002</td>
+<td>rect_b</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>4.00</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>1.5</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
 <td>e000002</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>111.0</td>
 <td>168.0</td>
 <td>57.0</td>
+<td>NaN</td>
+<td>annot_cue_003</td>
+<td>rect_c</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>2.00</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>3.5</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
 <td>e000003</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>145.0</td>
 <td>305.0</td>
 <td>160.0</td>
+<td>NaN</td>
+<td>annot_cue_004</td>
+<td>rect_a2</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>5.20</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>34.6</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
 <td>e000004</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>385.0</td>
 <td>524.0</td>
 <td>139.0</td>
+<td>NaN</td>
+<td>annot_cue_005</td>
+<td>rect_h2</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>4.50</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>43.5</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
 <td>e000005</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>310.0</td>
 <td>464.0</td>
 <td>154.0</td>
+<td>NaN</td>
+<td>annot_cue_006</td>
+<td>rect_d3</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>4.75</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>71.0</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
 <td>e000006</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>456.0</td>
 <td>685.0</td>
 <td>229.0</td>
+<td>NaN</td>
+<td>annot_cue_007</td>
+<td>rect_b3</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>7.50</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>76.0</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
 <td>e000007</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>14.0</td>
 <td>141.0</td>
 <td>127.0</td>
+<td>NaN</td>
+<td>annot_cue_008</td>
+<td>rect_i4</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>4.00</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>90.5</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
 <td>e000008</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>663.0</td>
 <td>760.0</td>
 <td>97.0</td>
+<td>NaN</td>
+<td>annot_cue_009</td>
+<td>rect_a4</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>3.00</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>113.4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
 <td>e000009</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>19.0</td>
 <td>270.0</td>
 <td>251.0</td>
+<td>NaN</td>
+<td>annot_cue_010</td>
+<td>rect_i5</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>7.50</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>121.0</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
 <td>e000010</td>
-<td>NaN</td>
+<td>None</td>
 <td>interval</td>
 <td>rectangle</td>
 <td>595.0</td>
 <td>659.0</td>
 <td>64.0</td>
+<td>NaN</td>
+<td>annot_cue_011</td>
+<td>rect_f5</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>1.50</td>
+<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
+<td>NaN</td>
+<td>141.0</td>
 </tr>
 </tbody>
 </table>
@@ -1600,19 +1759,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="creating-timelines-1" class="level3">
 <h3 class="anchored" data-anchor-id="creating-timelines-1">Creating Timelines</h3>
-<p>Use <code>create_timeline()</code> to convert loaded events into a Timeline object. The <code>diagram()</code> method shows an ASCII visualization:</p>
-<div id="c500be6f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.921472Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.921170Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.928457Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.927440Z&quot;}}" data-execution_count="13">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create Physical Timeline (seconds)</span></span>
+<p>Use <code>create_timeline()</code> to turn loaded events into a Timeline object:</p>
+<div id="de8a7a68" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.823761Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.823595Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.828704Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.827912Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Physical timeline (seconds)</span></span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>physical_tl <span class="op">=</span> typed.create_timeline(uid<span class="op">=</span><span class="st">"thoresen_physical"</span>)</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>physical_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
-<pre style="font-family: monospace; line-height: 1.2;">ContinuousPhysicalTimeline[thoresen_physical] (11 events)
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[thoresen_physical] (11 events)
                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 142.5 seconds</pre>
 </div>
 </div>
-<div id="bcb497a2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.931374Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.931067Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.937721Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.936742Z&quot;}}" data-execution_count="14">
+<div id="fc040bc5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.830498Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.830321Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.834661Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.834109Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>physical_tl.get_timestamp_table()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
+<div class="cell-output cell-output-display" data-execution_count="13">
 <pre><code>pyarrow.Table
 axis: double
 thoresen_physical: double
@@ -1621,264 +1780,28 @@ axis: [[0,1.5,3.5,5,5.5,...,116.4,121,128.5,141,142.5]]
 thoresen_physical: [[0,1.5,3.5,5,5.5,...,116.4,121,128.5,141,142.5]]</code></pre>
 </div>
 </div>
-<div id="c706d347" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.940285Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.939994Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.947418Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.946155Z&quot;}}" data-execution_count="15">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create Graphical Timeline (pixels)</span></span>
+<div id="2cd46af9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.836597Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.836438Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.841381Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.840826Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Graphical timeline (pixels)</span></span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>graphical_tl <span class="op">=</span> graphical.create_timeline(uid<span class="op">=</span><span class="st">"thoresen_graphical"</span>)</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>graphical_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
-<pre style="font-family: monospace; line-height: 1.2;">DiscreteGraphicalTimeline[thoresen_graphical] (11 events)
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteGraphicalTimeline[thoresen_graphical] (11 events)
                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 760 pixels</pre>
 </div>
 </div>
-<p><strong>Note:</strong> Both timelines represent the same 11 events, but in different coordinate systems: - <strong>Physical:</strong> <code>0 - 142.5 seconds</code> (audio time) - <strong>Graphical:</strong> <code>10 - 760 pixels</code> (image coordinates)</p>
+<p><strong>Note:</strong> Both timelines represent the same 11 events in different coordinate systems: - <strong>Physical:</strong> <code>0 - 142.5 seconds</code> (audio time) - <strong>Graphical:</strong> <code>10 - 760 pixels</code> (image coordinates)</p>
 <p>TimeToAlign! uses these dual representations to align graphical annotations with audio.</p>
-<hr>
 </section>
-</section>
-<section id="advanced-features" class="level2">
-<h2 class="anchored" data-anchor-id="advanced-features">Advanced Features</h2>
-<p>The following sections cover advanced features for complex data loading scenarios.</p>
-<section id="coordinatefield-loading-multiple-coordinate-columns" class="level3">
-<h3 class="anchored" data-anchor-id="coordinatefield-loading-multiple-coordinate-columns">CoordinateField: Loading Multiple Coordinate Columns</h3>
-<p>Sometimes your data contains coordinates in <strong>multiple systems</strong> (e.g., seconds AND pixels). Use <code>CoordinateField</code> to parse any column as a proper coordinate struct with unit metadata, enabling:</p>
-<ul>
-<li>Multiple coordinate columns in one EventData</li>
-<li>C-Map creation from loaded coordinate pairs</li>
-<li>Full precision preservation with Fraction number type</li>
-<li>Proper unit tracking per column (not just the primary unit)</li>
-</ul>
-<p>The Thoresen data has both time coordinates (seconds) and pixel coordinates (in JSON):</p>
-<div id="d73ea2fa" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.950267Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.949943Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.985483Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.984532Z&quot;}}" data-execution_count="16">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> NumberType, TimeUnit  <span class="co"># noqa: E402, F811</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader <span class="im">import</span> CoordinateField, Field  <span class="co"># noqa: E402, F811</span></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> TsvLoader  <span class="co"># noqa: E402, F811</span></span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MultiCoordinateLoader(TsvLoader):</span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Loader that extracts multiple coordinate columns.</span></span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="co">    </span><span class="ch">\n</span><span class="co">    Primary coordinates in seconds, with additional x_pixels column.</span></span>
-<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="co">    This enables creating C-Maps between coordinate systems.</span></span>
-<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Primary coordinates: seconds</span></span>
-<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    id_column <span class="op">=</span> <span class="st">"event_id"</span></span>
-<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"start_time_sec"</span></span>
-<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"duration_sec"</span></span>
-<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>    event_type_column <span class="op">=</span> <span class="st">"event_type"</span></span>
-<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>    _default_unit <span class="op">=</span> TimeUnit.seconds</span>
-<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>    coordinate_type <span class="op">=</span> NumberType.<span class="bu">float</span></span>
-<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Extra columns - mix of regular and coordinate columns</span></span>
-<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>    extra_columns <span class="op">=</span> [</span>
-<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>        <span class="st">"image_filename"</span>,  <span class="co"># Regular string column</span></span>
-<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>        <span class="co"># CoordinateField extracts x as a proper coordinate struct</span></span>
-<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>        CoordinateField(</span>
-<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>            <span class="st">"x_pixels"</span>,</span>
-<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>            source<span class="op">=</span>Field(<span class="st">"rect_coords_json"</span>, <span class="st">"x"</span>),  <span class="co"># Nested JSON access</span></span>
-<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>            unit<span class="op">=</span>TimeUnit.pixels,</span>
-<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>        ),</span>
-<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>    ]</span>
-<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a>multi <span class="op">=</span> MultiCoordinateLoader()</span>
-<span id="cb23-34"><a href="#cb23-34" aria-hidden="true" tabindex="-1"></a>multi.load(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>)</span>
-<span id="cb23-35"><a href="#cb23-35" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-36"><a href="#cb23-36" aria-hidden="true" tabindex="-1"></a><span class="co"># The x_pixels column is now a proper coordinate with unit metadata</span></span>
-<span id="cb23-37"><a href="#cb23-37" aria-hidden="true" tabindex="-1"></a>multi.events.to_pandas()[[<span class="st">"id"</span>, <span class="st">"start"</span>, <span class="st">"end"</span>, <span class="st">"x_pixels"</span>, <span class="st">"image_filename"</span>]]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="16">
-<div>
-
-
-<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">id</th>
-<th data-quarto-table-cell-role="th">start</th>
-<th data-quarto-table-cell-role="th">end</th>
-<th data-quarto-table-cell-role="th">x_pixels</th>
-<th data-quarto-table-cell-role="th">image_filename</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">0</th>
-<td>annot_cue_001</td>
-<td>0.0</td>
-<td>5.00</td>
-<td>10.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">1</th>
-<td>annot_cue_002</td>
-<td>1.5</td>
-<td>5.50</td>
-<td>40.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">2</th>
-<td>annot_cue_003</td>
-<td>3.5</td>
-<td>5.50</td>
-<td>111.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">3</th>
-<td>annot_cue_004</td>
-<td>34.6</td>
-<td>39.80</td>
-<td>145.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">4</th>
-<td>annot_cue_005</td>
-<td>43.5</td>
-<td>48.00</td>
-<td>385.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">5</th>
-<td>annot_cue_006</td>
-<td>71.0</td>
-<td>75.75</td>
-<td>310.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">6</th>
-<td>annot_cue_007</td>
-<td>76.0</td>
-<td>83.50</td>
-<td>456.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">7</th>
-<td>annot_cue_008</td>
-<td>90.5</td>
-<td>94.50</td>
-<td>14.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">8</th>
-<td>annot_cue_009</td>
-<td>113.4</td>
-<td>116.40</td>
-<td>663.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">9</th>
-<td>annot_cue_010</td>
-<td>121.0</td>
-<td>128.50</td>
-<td>19.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">10</th>
-<td>annot_cue_011</td>
-<td>141.0</td>
-<td>142.50</td>
-<td>595.0</td>
-<td>thoresen_2010_form-building-patterns_p90-91_pa...</td>
-</tr>
-</tbody>
-</table>
-
-</div>
-</div>
-</div>
-<div id="1977983b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.988793Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.988446Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:47.994666Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:47.993495Z&quot;}}" data-execution_count="17">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>multi.events.table.schema</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="17">
-<pre><code>id: string not null
-name: string
-temporal_type: string not null
-event_type: string not null
-start: struct&lt;value: double, numerator: int64, denominator: int64&gt;
-  child 0, value: double
-  child 1, numerator: int64
-  child 2, denominator: int64
-  -- field metadata --
-  unit: 'seconds'
-end: struct&lt;value: double, numerator: int64, denominator: int64&gt;
-  child 0, value: double
-  child 1, numerator: int64
-  child 2, denominator: int64
-  -- field metadata --
-  unit: 'seconds'
-duration: struct&lt;value: double, numerator: int64, denominator: int64&gt;
-  child 0, value: double
-  child 1, numerator: int64
-  child 2, denominator: int64
-  -- field metadata --
-  unit: 'seconds'
-x_pixels: struct&lt;value: double, numerator: int64, denominator: int64&gt;
-  child 0, value: double
-  child 1, numerator: int64
-  child 2, denominator: int64
-  -- field metadata --
-  unit: 'pixels'
-  number_type: 'float'
-image_filename: string
--- schema metadata --
-timetoalign: '{"loader_class": "EventData", "number_type": "float", "sour' + 60</code></pre>
-</div>
-</div>
-</section>
-<section id="create_cmap-building-conversion-maps" class="level3">
-<h3 class="anchored" data-anchor-id="create_cmap-building-conversion-maps">create_cmap(): Building Conversion Maps</h3>
-<p>With dual coordinates loaded, you can create <strong>Conversion Maps</strong> (C-Maps) to convert between coordinate systems. The loader’s <code>create_cmap()</code> method supports:</p>
-<ul>
-<li><strong>TableMap</strong> (default): Point-to-point mapping with interpolation</li>
-<li><strong>LinearMap</strong>: Fits a linear function <code>y = ax + b</code></li>
-<li><strong>ScalarMap</strong>: Fits a pure scaling <code>y = ax</code></li>
-</ul>
-<div id="f32a50d2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:47.997354Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:47.997037Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:48.011950Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:48.010766Z&quot;}}" data-execution_count="18">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.maps <span class="im">import</span> LinearMap  <span class="co"># noqa: E402</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a TableMap from start (seconds) -&gt; x_pixels</span></span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>table_cmap <span class="op">=</span> multi.create_cmap(<span class="st">"start"</span>, <span class="st">"x_pixels"</span>)</span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a LinearMap (fits y = ax + b)</span></span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>linear_cmap <span class="op">=</span> multi.create_cmap(<span class="st">"start"</span>, <span class="st">"x_pixels"</span>, map_type<span class="op">=</span>LinearMap)</span>
-<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Compare the two map types</span></span>
-<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"TableMap"</span>: <span class="bu">str</span>(table_cmap),</span>
-<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"LinearMap"</span>: <span class="bu">str</span>(linear_cmap),</span>
-<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"5.0 seconds (TableMap)"</span>: <span class="ss">f"</span><span class="sc">{</span>table_cmap(<span class="fl">5.0</span>)<span class="sc">:.1f}</span><span class="ss"> pixels"</span>,</span>
-<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"5.0 seconds (LinearMap)"</span>: <span class="ss">f"</span><span class="sc">{</span>linear_cmap(<span class="fl">5.0</span>)<span class="sc">:.1f}</span><span class="ss"> pixels"</span>,</span>
-<span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="18">
-<pre><code>{'TableMap': 'TableMap(seconds -&gt; pixels)',
- 'LinearMap': 'LinearMap(seconds -&gt; pixels)',
- '5.0 seconds (TableMap)': '112.6 pixels',
- '5.0 seconds (LinearMap)': '94.9 pixels'}</code></pre>
-</div>
-</div>
-</section>
-<section id="group_by-creating-child-timelines-from-column-values" class="level3">
-<h3 class="anchored" data-anchor-id="group_by-creating-child-timelines-from-column-values">group_by: Creating Child Timelines from Column Values</h3>
-<p>When your data contains events from <strong>multiple sources</strong> (e.g., multiple images, pages, or tracks), use <code>group_by</code> to automatically create child timelines for each unique value.</p>
-<p>The Thoresen data has events from 5 different image files:</p>
-<div id="f0dd2fd0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:48.014636Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:48.014306Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:48.033050Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:48.031891Z&quot;}}" data-execution_count="19">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Using the earlier 'auto' loader which has image_filename</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> create_timeline  <span class="co"># noqa: E402</span></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Create timeline grouped by image filename</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>grouped_tl <span class="op">=</span> create_timeline(auto, group_by<span class="op">=</span><span class="st">"image_filename"</span>)</span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>grouped_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="19">
-<pre style="font-family: monospace; line-height: 1.2;">ContinuousPhysicalTimeline[tl:1] (11 events, 5 children)
+<section id="child-timelines-from-column-values-with-group_by" class="level3">
+<h3 class="anchored" data-anchor-id="child-timelines-from-column-values-with-group_by">Child Timelines from Column Values with <code>group_by</code></h3>
+<p>When your data carries events from <strong>multiple sources</strong> (images, pages, tracks), pass <code>group_by</code> to <code>create_timeline()</code> to split the events into one child timeline per unique value. The Thoresen data has events from five different image files:</p>
+<div id="22cc67d6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.843005Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.842844Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.854190Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.853525Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> create_timeline  <span class="co"># noqa: E402</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>grouped_tl <span class="op">=</span> create_timeline(typed, group_by<span class="op">=</span><span class="st">"image_filename"</span>)</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>grouped_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[cpt1] (11 events, 5 children)
                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 142.5 seconds
   ├─ thoresen_...     0 ~                                5.5 (3 events)
   ├─ thoresen_...     0 ~~~~~~~~~~                       48 (2 events)
@@ -1887,18 +1810,18 @@ timetoalign: '{"loader_class": "EventData", "number_type": "float", "sour' + 60<
   └─ thoresen_...     0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 142.5 (2 events)</pre>
 </div>
 </div>
-<div id="a500d0a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:48.035680Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:48.035393Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:48.041403Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:48.040314Z&quot;}}" data-execution_count="20">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Each child timeline represents events from one image</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"parent_id"</span>: grouped_tl.<span class="bu">id</span>,</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"n_children"</span>: grouped_tl.n_children,</span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"children"</span>: {</span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>        child.<span class="bu">id</span>: <span class="bu">len</span>(child._events) <span class="cf">if</span> child._events <span class="cf">else</span> <span class="dv">0</span></span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> _, child <span class="kw">in</span> grouped_tl.iter_children()</span>
-<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>    },</span>
-<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="20">
-<pre><code>{'parent_id': 'tl:1',
+<div id="33a32653" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:48.855653Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:48.855505Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:48.859063Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:48.858578Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Each child timeline represents events from one image</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"parent_id"</span>: grouped_tl.<span class="bu">id</span>,</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"n_children"</span>: grouped_tl.n_children,</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"children"</span>: {</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>        child.<span class="bu">id</span>: <span class="bu">len</span>(child._events) <span class="cf">if</span> child._events <span class="cf">else</span> <span class="dv">0</span></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> _, child <span class="kw">in</span> grouped_tl.iter_children()</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>{'parent_id': 'cpt1',
  'n_children': 5,
  'children': {'thoresen_2010_form-building-patterns_p90-91_page1_1.jpeg': 3,
   'thoresen_2010_form-building-patterns_p90-91_page1_2.jpeg': 2,
@@ -1912,89 +1835,55 @@ timetoalign: '{"loader_class": "EventData", "number_type": "float", "sour' + 60<
 </section>
 <section id="summary" class="level2">
 <h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<section id="extra-columns-strategies" class="level3">
-<h3 class="anchored" data-anchor-id="extra-columns-strategies">Extra Columns Strategies</h3>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 35%">
-<col style="width: 28%">
-<col style="width: 35%">
+<col style="width: 54%">
+<col style="width: 45%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Strategy</th>
-<th>Syntax</th>
-<th>Use Case</th>
+<th>Goal</th>
+<th>How</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>None</td>
-<td><code>extra_columns</code> not set</td>
-<td>Only core event fields</td>
+<td>Load an ms3 score TSV</td>
+<td><code>Ms3Loader()</code> + <code>loader.load(path)</code></td>
 </tr>
 <tr class="even">
-<td>Auto-infer</td>
-<td><code>extra_columns = True</code></td>
-<td>Include all columns, infer types</td>
+<td>Map your own columns</td>
+<td>Subclass <code>TsvLoader</code> / <code>CsvLoader</code>, set <code>start_column</code> etc.</td>
 </tr>
 <tr class="odd">
-<td>Explicit dict</td>
-<td><code>extra_columns = {"col": type}</code></td>
-<td>Specific columns with types</td>
+<td>Promote a column to a typed field</td>
+<td>Name it in <code>column_specs</code> (<code>{"col": int}</code>)</td>
 </tr>
 <tr class="even">
-<td>With CoordinateField</td>
-<td><code>extra_columns = [CoordinateField(...)]</code></td>
-<td>C-Maps</td>
+<td>Reach a nested JSON value</td>
+<td><code>Field("column", "nested")</code> as a coordinate attribute</td>
+</tr>
+<tr class="odd">
+<td>Derive a coordinate</td>
+<td><code>ComputedField("end", formula="...")</code></td>
+</tr>
+<tr class="even">
+<td>Split into child timelines</td>
+<td><code>create_timeline(loader, group_by="column")</code></td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="key-api" class="level3">
-<h3 class="anchored" data-anchor-id="key-api">Key API</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load</span></span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> Ms3Loader()</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>loader.load(<span class="st">"file.tsv"</span>)</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Access</span></span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> loader.events.to_pandas()</span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>timeline <span class="op">=</span> loader.create_timeline()</span>
-<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom loader with explicit columns</span></span>
-<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MyLoader(TsvLoader):</span>
-<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"onset"</span></span>
-<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"dur"</span></span>
-<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>    extra_columns <span class="op">=</span> {<span class="st">"pitch"</span>: <span class="bu">int</span>, <span class="st">"velocity"</span>: <span class="bu">int</span>}</span>
-<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Nested JSON field access (auto-parses JSON)</span></span>
-<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader <span class="im">import</span> Field, ComputedField</span>
-<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-18"><a href="#cb31-18" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> GraphicalLoader(TsvLoader):</span>
-<span id="cb31-19"><a href="#cb31-19" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> Field(<span class="st">"rect_json"</span>, <span class="st">"x"</span>)  <span class="co"># JSON parsed automatically</span></span>
-<span id="cb31-20"><a href="#cb31-20" aria-hidden="true" tabindex="-1"></a>    end_column <span class="op">=</span> ComputedField(<span class="st">"end"</span>, formula<span class="op">=</span><span class="st">"rect_json.x + rect_json.width"</span>)</span>
-<span id="cb31-21"><a href="#cb31-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-22"><a href="#cb31-22" aria-hidden="true" tabindex="-1"></a><span class="co"># Multiple coordinate columns with CoordinateField</span></span>
-<span id="cb31-23"><a href="#cb31-23" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader <span class="im">import</span> CoordinateField</span>
-<span id="cb31-24"><a href="#cb31-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-25"><a href="#cb31-25" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MyCoordinateLoader(TsvLoader):</span>
-<span id="cb31-26"><a href="#cb31-26" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"time_sec"</span></span>
-<span id="cb31-27"><a href="#cb31-27" aria-hidden="true" tabindex="-1"></a>    extra_columns <span class="op">=</span> [</span>
-<span id="cb31-28"><a href="#cb31-28" aria-hidden="true" tabindex="-1"></a>        CoordinateField(<span class="st">"x_pixels"</span>, source<span class="op">=</span><span class="st">"x_px"</span>, unit<span class="op">=</span>TimeUnit.pixels),</span>
-<span id="cb31-29"><a href="#cb31-29" aria-hidden="true" tabindex="-1"></a>    ]</span>
-<span id="cb31-30"><a href="#cb31-30" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-31"><a href="#cb31-31" aria-hidden="true" tabindex="-1"></a><span class="co"># Create C-Maps from loaded coordinates</span></span>
-<span id="cb31-32"><a href="#cb31-32" aria-hidden="true" tabindex="-1"></a>cmap <span class="op">=</span> loader.create_cmap(<span class="st">"start"</span>, <span class="st">"x_pixels"</span>)  <span class="co"># TableMap (default)</span></span>
-<span id="cb31-33"><a href="#cb31-33" aria-hidden="true" tabindex="-1"></a>cmap <span class="op">=</span> loader.create_cmap(<span class="st">"start"</span>, <span class="st">"x_pixels"</span>, map_type<span class="op">=</span>LinearMap)</span>
-<span id="cb31-34"><a href="#cb31-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-35"><a href="#cb31-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Group events by column value into child timelines</span></span>
-<span id="cb31-36"><a href="#cb31-36" aria-hidden="true" tabindex="-1"></a>timeline <span class="op">=</span> create_timeline(loader, group_by<span class="op">=</span><span class="st">"image_filename"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> TsvLoader</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MyLoader(TsvLoader):</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    start_column <span class="op">=</span> <span class="st">"onset"</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    duration_column <span class="op">=</span> <span class="st">"dur"</span></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    column_specs <span class="op">=</span> {<span class="st">"pitch"</span>: <span class="bu">int</span>, <span class="st">"velocity"</span>: <span class="bu">int</span>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <blockquote class="blockquote">
-<p><strong>Key Takeaway:</strong> Tabular loaders provide a declarative way to map CSV/TSV columns to TimeToAlign! events. Use <code>Field</code> for nested JSON access, <code>CoordinateField</code> for additional coordinate columns with unit tracking, and <code>group_by</code> for multi-source timelines.</p>
+<p><strong>Key Takeaway:</strong> Tabular loaders map CSV/TSV columns to TimeToAlign! events declaratively. Unnamed columns ride along as property columns; <code>column_specs</code> promotes the ones you want as typed fields; <code>Field</code> reaches nested JSON. For the full column-to-field mechanism — composite columns, semantic field types, and Step-2 promotion — continue to the in-depth CSV/TSV how-to.</p>
 </blockquote>
 
 
-</section>
 </section>
 </section>
 

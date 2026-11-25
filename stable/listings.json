@@ -14,8 +14,14 @@
       "/howto/how02_supra_piano_roll.html",
       "/howto/how03_beethoven_multimodal.html",
       "/howto/how03_create_note_alignment.html",
+      "/howto/how03_ieee1599.html",
+      "/howto/how03_listen_here.html",
       "/howto/how03_loading_vienna_corpus.html",
-      "/howto/how04_hendrix_song_genesis.html"
+      "/howto/how03_mpm_toolbox.html",
+      "/howto/how03_parangonada.html",
+      "/howto/how03_performance_precision.html",
+      "/howto/how04_hendrix_song_genesis.html",
+      "/howto/how04_loading_csv.html"
     ]
   },
   {
@@ -26,7 +32,9 @@
       "/tutorials/tut01b_children_regions_timestamps.html",
       "/tutorials/tut02_timeline_groups.html",
       "/tutorials/tut03_alignment_bundles.html",
-      "/tutorials/tut04_flow_and_grids.html"
+      "/tutorials/tut04_flow_and_grids.html",
+      "/tutorials/tut05_datafields_and_eventdata.html",
+      "/tutorials/tut06_pitch_and_harmony.html"
     ]
   }
 ]

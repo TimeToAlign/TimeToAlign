@@ -165,37 +165,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
 
   <ul>
-  <li><a href="#what-is-timetoalign" id="toc-what-is-timetoalign" class="nav-link active" data-scroll-target="#what-is-timetoalign">What is TimeToAlign!?</a></li>
+  <li><a href="#timetoalign" id="toc-timetoalign" class="nav-link active" data-scroll-target="#timetoalign">TimeToAlign!</a>
+  <ul>
+  <li><a href="#what-is-timetoalign" id="toc-what-is-timetoalign" class="nav-link" data-scroll-target="#what-is-timetoalign">What is TimeToAlign!?</a></li>
   <li><a href="#documentation-structure" id="toc-documentation-structure" class="nav-link" data-scroll-target="#documentation-structure">Documentation Structure</a></li>
   <li><a href="#the-three-temporal-domains" id="toc-the-three-temporal-domains" class="nav-link" data-scroll-target="#the-three-temporal-domains">The Three Temporal Domains</a></li>
   <li><a href="#getting-started" id="toc-getting-started" class="nav-link" data-scroll-target="#getting-started">Getting Started</a></li>
   <li><a href="#project-links" id="toc-project-links" class="nav-link" data-scroll-target="#project-links">Project Links</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content">
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
 
-<header id="title-block-header" class="quarto-title-block default">
-<div class="quarto-title">
+
+
+
+<p><img src="figs/lead_figure.png" class="img-fluid" style="width:100.0%" alt="Lead figure of the TISMIR article: musical timelines across the physical, logical, and graphical domains, connected by conversion maps within timelines and match claims across them."></p>
+<section id="timetoalign" class="level1 title">
 <h1 class="title">TimeToAlign!</h1>
-<p class="subtitle lead">A Cross-Domain Timeline Model for Music Information Retrieval and Digital Musicology</p>
-</div>
-
-
-
-<div class="quarto-title-meta">
-
-
-
-
-  </div>
-
-
-
-</header>
-
-
+<p class="subtitle lead">
+A Cross-Domain Timeline Model for Music Information Retrieval and Digital Musicology
+</p>
 <section id="what-is-timetoalign" class="level2">
 <h2 class="anchored" data-anchor-id="what-is-timetoalign">What is TimeToAlign!?</h2>
 <p>Music research relies on heterogeneous time-related data: scores, recordings, annotations, images, sensor data, and video. These artefacts differ in repertoire, completeness, format, granularity, and quality control. Combining them requires <strong>alignment</strong>—matching corresponding events across representations—which is expensive, error-prone, and rarely reusable.</p>
@@ -204,7 +196,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>A <strong>generalised cross-domain model</strong> for musical timelines and their alignments, grounded in three temporal domains (physical, logical, graphical) in both continuous and discrete variants.</li>
 <li>A <strong>working Python library</strong> (<code>timetoalign</code>) implementing this model with typed timelines, loaders for common formats, conversion maps, and alignment primitives.</li>
 </ol>
-<p>The model represents coordinate systems as nodes in a graph, connected by <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s within a timeline and <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension).">MatchClaim</button> objects across timelines. This structure enables coordinate transfer, annotation propagation, and alignment queries across arbitrarily many representations of the same musical content.</p>
+<p>The model represents coordinate systems as nodes in a graph, connected by <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s within a timeline and <button class="glossary" title="">MatchClaim</button> objects across timelines. This structure enables coordinate transfer, annotation propagation, and alignment queries across arbitrarily many representations of the same musical content.</p>
 </section>
 <section id="documentation-structure" class="level2">
 <h2 class="anchored" data-anchor-id="documentation-structure">Documentation Structure</h2>
@@ -220,6 +212,8 @@ Step-by-step notebooks that teach the <code>timetoalign</code> library from firs
 <li><a href="./tutorials/tut02_timeline_groups.html">Timeline Groups and Commensurability</a></li>
 <li><a href="./tutorials/tut03_alignment_bundles.html">Alignment Bundles</a></li>
 <li><a href="./tutorials/tut04_flow_and_grids.html">Flow Control and Grids</a></li>
+<li><a href="./tutorials/tut05_datafields_and_eventdata.html">DataFields and Layered EventData</a></li>
+<li><a href="./tutorials/tut06_pitch_and_harmony.html">Pitch and Harmony across Formats</a></li>
 </ul>
 </dd>
 <dt><a href="./howto.html"><strong>How-To Guides</strong></a></dt>
@@ -227,8 +221,8 @@ Step-by-step notebooks that teach the <code>timetoalign</code> library from firs
 Task-oriented recipes grouped by topic.
 <em>Timelines, Events &amp; Maps</em> — <a href="./howto/how01_coordinate_math.html">How to Do Coordinate Math</a> · <a href="./howto/how01_advanced_cmaps.html">How to Use Advanced Conversion Maps</a> · <a href="./howto/how01_advanced_timestamps.html">How to Query Timestamps</a> · <a href="./howto/how01_manual_timeline_construction.html">How to Construct Timelines Manually</a> · <a href="./howto/how01_loading_data.html">How to Load Data</a> · <a href="./howto/how01_tabular_loaders.html">How to Load Tabular Data</a> · <a href="./howto/how01_graphical_timelines.html">How to Work with Graphical Timelines</a> · <a href="./howto/how01_thoresen_annotation_transfer.html">How to Transfer Annotations Between Graphical Analyses</a> · <a href="./howto/how01_beat_grids.html">How to Build Beat Grids</a>
 <em>TimelineGroups</em> — <a href="./howto/how02_supra_piano_roll.html">How to Align a Piano Roll (SUPRA)</a>
-<em>AlignmentBundles</em> — <a href="./howto/how03_create_note_alignment.html">How to Create a Note Alignment</a> · <a href="./howto/how03_beethoven_multimodal.html">How to Align Multimodal Data (Beethoven)</a> · <a href="./howto/how03_loading_vienna_corpus.html">How to Load the Vienna 4x22 Corpus</a>
-<em>In-depth Topics</em> — <a href="./howto/how04_hendrix_song_genesis.html">How to Encode Song Genesis (Hendrix)</a>
+<em>AlignmentBundles</em> — <a href="./howto/how03_create_note_alignment.html">How to Create a Note Alignment</a> · <a href="./howto/how03_beethoven_multimodal.html">How to Align Multimodal Data (Beethoven)</a> · <a href="./howto/how03_loading_vienna_corpus.html">How to Load the Vienna 4x22 Corpus</a> · <a href="./howto/how03_performance_precision.html">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</a> · <a href="./howto/how03_parangonada.html">How to Load a parangonada Note Alignment Across Several Performances</a> · <a href="./howto/how03_mpm_toolbox.html">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</a> · <a href="./howto/how03_listen_here.html">How to Load an Audio-to-Audio Alignment (Listen Here!)</a>
+<em>In-depth Topics</em> — <a href="./howto/how04_hendrix_song_genesis.html">How to Encode Song Genesis (Hendrix)</a> · <a href="./howto/how04_loading_csv.html">How to Load CSV/TSV with column_specs and field_specs</a>
 </dd>
 <dt><a href="./concepts.html"><strong>Conceptual Model</strong></a></dt>
 <dd>
@@ -297,19 +291,36 @@ Table&nbsp;1: The six timeline types arising from three domains and two number t
 </section>
 <section id="getting-started" class="level2">
 <h2 class="anchored" data-anchor-id="getting-started">Getting Started</h2>
-<p>The <code>timetoalign</code> library is under active development. To install the current development version:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> path/to/timetoalign</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The library requires Python 3.12 or later.</p>
+<p>The <code>timetoalign</code> library is available on PyPI. To install it:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install timetoalign</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The library requires Python 3.11 or later.</p>
 </section>
 <section id="project-links" class="level2">
 <h2 class="anchored" data-anchor-id="project-links">Project Links</h2>
 <ul>
-<li><strong>Source Code</strong>: <a href="https://github.com/TimeToAlign">GitHub</a></li>
-<li><strong>Specimen Collection</strong>: Real-world datasets used in the tutorials and the accompanying TISMIR manuscript.</li>
-<li><strong>TISMIR Manuscript</strong>: The model and its five demonstration scenarios are described in a manuscript currently under review.</li>
+<li><strong>Source Code</strong>: <a href="https://github.com/timetoalign/timetoalign">GitHub</a></li>
+<li><strong>Notebooks</strong>: <a href="https://github.com/TimeToAlign/timetoalign/tree/main/docs">[README]</a></li>
+<li><strong>Specimen Collection</strong>: Forthcoming. Watch this space!</li>
+<li><strong>TISMIR Article</strong>: <a href="https://doi.org/10.5334/tismir.296">Time to Align! Modelling Musical Timelines for Music Information Retrieval and Digital Musicology</a></li>
 </ul>
+<div class="callout callout-style-default callout-note callout-titled" title="How to cite">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>How to cite
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Please cite the published TISMIR article:</p>
+<pre><code>Hentschel, Johannes; Berndt, Axel; Cancino-Chacón, Carlos; Dixon, Simon; Foo, Anne; Gotham, Mark; Hu, Patricia; Köster, Maik; Martins, Felipe D.; Mauro, Davide A.; Müller, Meinard; Neuwirth, Markus; Pacha, Alexander; Page, Kevin R.; Peter, Silvan; Polyakov, Egor; Pugin, Laurent; Weigl, David M.; Weiß, Christof; and Widmer, Gerhard. 2026. "Time to Align! Modelling Musical Timelines for Music Information Retrieval and Digital Musicology." *Transactions of the International Society for Music Information Retrieval* 9 (1): 384--404. https://doi.org/10.5334/tismir.296.</code></pre>
+<p>A BibTeX entry ships in the repository via the <a href="https://github.com/TimeToAlign/timetoalign/tree/main#citing">README Citing section</a> and <code>CITATION.cff</code>.</p>
+</div>
+</div>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->

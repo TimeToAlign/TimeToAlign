@@ -1,0 +1,2318 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="PerformancePrecisionLoader, MetricMap, granularity-tagged MatchClaims, tempo comparison">
+
+<title>How to Load an Audio-to-Score Alignment Corpus and Compare Performances – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html">
+<span class="menu-text">Home</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html">
+<span class="menu-text">Tutorials</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="../howto.html" aria-current="page">
+<span class="menu-text">How-To Guides</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html">
+<span class="menu-text">Explanation</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html">
+<span class="menu-text">API Reference</span></a>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_performance_precision.html">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container">
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How-To Guides</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Timelines, Events &amp; Maps</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_coordinate_math.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Do Coordinate Math</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_advanced_cmaps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Use Advanced Conversion Maps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_advanced_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Query Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_manual_timeline_construction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Construct Timelines Manually</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_tabular_loaders.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Tabular Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_graphical_timelines.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Work with Graphical Timelines</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_thoresen_annotation_transfer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Transfer Annotations Between Graphical Analyses</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_beat_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Build Beat Grids</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">TimelineGroups</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how02_supra_piano_roll.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align a Piano Roll (SUPRA)</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">AlignmentBundles</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_create_note_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Create a Note Alignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_beethoven_multimodal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align Multimodal Data (Beethoven)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_loading_vienna_corpus.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">In-depth Topics</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+
+  <ul>
+  <li><a href="#how-to-load-an-audio-to-score-alignment-corpus-and-compare-performances" id="toc-how-to-load-an-audio-to-score-alignment-corpus-and-compare-performances" class="nav-link active" data-scroll-target="#how-to-load-an-audio-to-score-alignment-corpus-and-compare-performances">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</a>
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#load-the-specimen-in-one-call" id="toc-load-the-specimen-in-one-call" class="nav-link" data-scroll-target="#load-the-specimen-in-one-call">1. Load the specimen in one call</a></li>
+  <li><a href="#the-measure-structure" id="toc-the-measure-structure" class="nav-link" data-scroll-target="#the-measure-structure">2. The measure structure</a></li>
+  <li><a href="#the-score-timeline" id="toc-the-score-timeline" class="nav-link" data-scroll-target="#the-score-timeline">3. The score timeline</a>
+  <ul class="collapse">
+  <li><a href="#how-a-measureoffset-label-becomes-a-quarter-coordinate" id="toc-how-a-measureoffset-label-becomes-a-quarter-coordinate" class="nav-link" data-scroll-target="#how-a-measureoffset-label-becomes-a-quarter-coordinate">How a <code>measure+offset</code> label becomes a quarter coordinate</a></li>
+  <li><a href="#a-note-on-pitch" id="toc-a-note-on-pitch" class="nav-link" data-scroll-target="#a-note-on-pitch">A note on pitch</a></li>
+  </ul></li>
+  <li><a href="#the-performance-timelines" id="toc-the-performance-timelines" class="nav-link" data-scroll-target="#the-performance-timelines">4. The performance timelines</a></li>
+  <li><a href="#the-granularity-tagged-matchclaims" id="toc-the-granularity-tagged-matchclaims" class="nav-link" data-scroll-target="#the-granularity-tagged-matchclaims">5. The granularity-tagged MatchClaims</a></li>
+  <li><a href="#comparing-the-performances" id="toc-comparing-the-performances" class="nav-link" data-scroll-target="#comparing-the-performances">6. Comparing the performances</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_performance_precision.html">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</h1>
+</div>
+
+<div>
+  <div class="description">
+    PerformancePrecisionLoader, MetricMap, granularity-tagged MatchClaims, tempo comparison
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+
+
+
+  </div>
+
+
+
+</header>
+
+
+<section id="how-to-load-an-audio-to-score-alignment-corpus-and-compare-performances" class="level1">
+<h1>How to Load an Audio-to-Score Alignment Corpus and Compare Performances</h1>
+<p>A <em>Performance Precision</em> specimen bundles one symbolic score with several recorded performances of it, plus the audio-to-score alignments that connect them. This guide loads such a specimen in a single call and arrives at the question the corpus was built to answer: <strong>how do different pianists shape the same piece in time?</strong></p>
+<p>The specimen here is Chopin’s Nocturne in E♭ major, Op. 9 No.&nbsp;2 — a <code>.solo</code> score, a Verovio timemap giving each measure’s position in quarter notes, and an <code>Alignments/</code> directory holding three alignment files (note, bar, beat) for each of seven recordings. By the end we will read, for one shared score position, the seven different moments at which each pianist played it.</p>
+<p>The arc:</p>
+<ol type="1">
+<li>Load the whole specimen in one call.</li>
+<li>Inspect the measure structure recovered from the timemap.</li>
+<li>Read the score <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> (in quarters) and see how a <code>measure+offset</code> label resolves.</li>
+<li>Read the per-performer <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button>s (in seconds).</li>
+<li>Inspect the <button class="glossary" title="">MatchClaim</button>s, tagged by granularity.</li>
+<li>Compare the performers’ timing through the <button class="glossary" title="">AlignmentBundle</button>.</li>
+</ol>
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<div id="f6760282" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:40:54.602148Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:40:54.601683Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:00.486214Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:00.485286Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> collections <span class="im">import</span> Counter</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> EnharmonicPitch</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.alignment <span class="im">import</span> PerformancePrecisionLoader</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular.solo <span class="im">import</span> SoloLoader</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>SPECIMEN_DIR <span class="op">=</span> ensure_data(<span class="st">"performance_precision"</span>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>SOLO_FILE <span class="op">=</span> SPECIMEN_DIR <span class="op">/</span> <span class="st">"Chopin Nocturne Op. 9 No. 2.solo"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/home/laser/miniconda3/envs/timetoalign/lib/python3.11/site-packages/partitura/__init__.py:9: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools&lt;81.
+  import pkg_resources</code></pre>
+</div>
+</div>
+</section>
+<section id="load-the-specimen-in-one-call" class="level2">
+<h2 class="anchored" data-anchor-id="load-the-specimen-in-one-call">1. Load the specimen in one call</h2>
+<p><button class="glossary" title="Loader for audio-to-score alignment specimens: a directory bundling a .solo score, a Verovio timemap, and per-performer alignment files at the note, bar, and beat granularities. Uses the standard two-phase load() → create_*() pattern. Resolves every “+” label to absolute quarters via a MetricMap, builds one logical score timeline (quarters) and one physical performance timeline per recording (seconds), and emits a MatchClaim per alignment row — synchronous for located onsets, NOMATCH for the dangling ones. Returns an AlignmentBundle via create_bundle().">PerformancePrecisionLoader</button> ingests the whole directory — the <code>.solo</code> score, the Verovio timemap, and every per-performer alignment file — through the standard two-phase loader pattern. <code>from_file()</code> is the one-line form.</p>
+<div id="1b3e5211" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:00.488683Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:00.488275Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.026348Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.025221Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> PerformancePrecisionLoader.from_file(SPECIMEN_DIR)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>loader</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<h4 class="anchored">PerformancePrecisionLoader</h4>
+
+<table class="caption-top table table-sm table-striped small">
+<tbody>
+<tr class="odd">
+<td><strong>Sources</strong></td>
+<td>3 file(s): <code>Chopin Nocturne Op. 9 No. 2.solo</code>, <code>Chopin Nocturne Op. 9 No. 2.json</code>, <code>Alignments</code></td>
+</tr>
+<tr class="even">
+<td><strong>Events</strong></td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td><strong>Try</strong></td>
+<td><code>create_timeline()</code>, <code>create_timelines()</code>, <code>create_bundle()</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Seven recordings, and a few thousand <button class="glossary" title="">MatchClaim</button>s linking the score to them. Everything below reads from this single loaded object.</p>
+<hr>
+</section>
+<section id="the-measure-structure" class="level2">
+<h2 class="anchored" data-anchor-id="the-measure-structure">2. The measure structure</h2>
+<p>The Verovio timemap records each measure’s absolute position in quarter notes. The loader walks it into a <button class="glossary" title="A table-based ConversionMap from a quarter position to its measure count, built from explicit measure-boundary anchors rather than a uniform measure length. Correctly handles anacrusis (incomplete first measure), irregular measures, varying time signatures, and repeat structure. Built directly from a Verovio timemap via MetricMap.from_verovio_timemap(). Not invertible (many quarters map to the same measure).">MetricMap</button> — a <button class="glossary" title="">ConversionMap</button> from a quarter position to its measure count — and exposes it directly:</p>
+<div id="14888b40" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.028875Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.028579Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.033660Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.032695Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>metric_map <span class="op">=</span> loader.metric_map</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>metric_map</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>MetricMap(n_measures=38, total_length=425/2)</code></pre>
+</div>
+</div>
+<p>Thirty-eight measures spanning 212.5 quarters. The companion <code>.meter</code> file is deliberately left unread: it encodes only meter <em>changes</em> (four rows across the whole piece), so it cannot by itself bound the final measure. The timemap’s terminal position supplies that bound, which is why it is preferred here.</p>
+<p>The paired <button class="glossary" title="A CombinationMap pairing a MetricMap with a beat-in-measure map to return a metrical position {mc, beat} from a quarter coordinate. Adds a reverse lookup quarters_at(mc, beat) (metrical position → quarters) and mn_at(quarters) (quarters → measure-number label).">MetricalPositionMap</button> is a <button class="glossary" title="">CombinationMap</button> carrying both directions of the measure↔︎quarter relationship. <code>quarters_at(mc, beat)</code> goes from a metrical position to a quarter coordinate; <code>mn_at(quarters)</code> returns the measure-number label at a quarter position:</p>
+<div id="db390eba" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.036169Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.035861Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.041921Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.040966Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>metrical_position_map <span class="op">=</span> loader.metrical_position_map</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"downbeat of MC 2 (quarters)"</span>: metrical_position_map.quarters_at(<span class="dv">2</span>),</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"downbeat of MC 3 (quarters)"</span>: metrical_position_map.quarters_at(<span class="dv">3</span>),</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measure label at quarter 0.0"</span>: metrical_position_map.mn_at(<span class="fl">0.0</span>),</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measure label at quarter 7.0"</span>: metrical_position_map.mn_at(<span class="fl">7.0</span>),</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>{'downbeat of MC 2 (quarters)': Fraction(1, 2),
+ 'downbeat of MC 3 (quarters)': Fraction(13, 2),
+ 'measure label at quarter 0.0': '1',
+ 'measure label at quarter 7.0': '3'}</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="the-score-timeline" class="level2">
+<h2 class="anchored" data-anchor-id="the-score-timeline">3. The score timeline</h2>
+<p>The score is a logical <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> measured in quarters. It holds every note of the <code>.solo</code> score, each placed at its absolute quarter position. Its stored UID is <code>score:clt1</code>.</p>
+<div id="12c8daf5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.044721Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.044460Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.059905Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.058789Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>score_tl <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"score:clt1"</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>score_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[score:clt1] (2494 events, 1 cmaps)
+                      0 _______________________________ 212.5 quarters</pre>
+</div>
+</div>
+<section id="how-a-measureoffset-label-becomes-a-quarter-coordinate" class="level3">
+<h3 class="anchored" data-anchor-id="how-a-measureoffset-label-becomes-a-quarter-coordinate">How a <code>measure+offset</code> label becomes a quarter coordinate</h3>
+<p>Both the <code>.solo</code> score and the alignment files write score positions as <code>"&lt;measure&gt;+&lt;offset&gt;"</code>, where the offset is given in <strong>whole notes</strong>. The resolver is one line of arithmetic — <code>measure_start + offset × 4</code> (the <code>× 4</code> converts whole notes to quarters) — with one wrinkle: <strong>measure 0 is the anacrusis</strong> (the pickup), whose offsets are measured back from a virtual full-bar downbeat preceding the first sounding note. The very first note of the piece, labelled <code>0+11/8</code>, therefore lands exactly on quarter 0:</p>
+<div id="f50f00e2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.062310Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.062038Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.077201Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.075925Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>first_three <span class="op">=</span> score_tl.get_events().table.<span class="bu">slice</span>(<span class="dv">0</span>, <span class="dv">3</span>).to_pandas()</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>first_three[[<span class="st">"id"</span>, <span class="st">"start"</span>]]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">start</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>score:0</td>
+<td>{'value': 0.0, 'numerator': 0, 'denominator': 1}</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>score:1</td>
+<td>{'value': 0.5, 'numerator': 1, 'denominator': 2}</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>score:2</td>
+<td>{'value': 0.5, 'numerator': 1, 'denominator': 2}</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>A <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. TimeStamp implements the shared Stamp interface used by GroupTimestamp and MatchStamp, including raw get(), unit-bearing get_coordinate(), present_timelines, and is_interpolated access.">TimeStamp</button> is the primary way to query the score timeline at a coordinate — here the downbeat of the first full measure, half a quarter in:</p>
+<div id="302eb54b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.079595Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.079356Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.084040Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.083095Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>score_tl.get_timestamp(Fraction(<span class="dv">1</span>, <span class="dv">2</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header" style="border-bottom: 1px solid #ccc;">
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">ID</th>
+<th data-quarto-table-cell-role="th" style="text-align: right; padding: 2px 8px;">Coordinate</th>
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">Type</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>score:clt1</strong></td>
+<td style="text-align: right;">0.5 quarters</td>
+<td><em>axis</em></td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code></div></div>
+</div>
+</div>
+</section>
+<section id="a-note-on-pitch" class="level3">
+<h3 class="anchored" data-anchor-id="a-note-on-pitch">A note on pitch</h3>
+<p>The score timeline carries pitch as the raw MIDI pitch integer that the <code>.solo</code> file recorded — faithful to the source, which notes no accidental spelling. When a <em>typed</em> pitch field is wanted, it lives on a freshly composed <code>SoloLoader</code> reading the same <code>.solo</code> file. There the field materialises as <code>EnharmonicPitch</code> scalars, and the canonical glyphs ♯/♭ render in their labels:</p>
+<div id="3847837d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.086391Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.086155Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.153678Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.152563Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>solo <span class="op">=</span> SoloLoader.from_file(SOLO_FILE)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>pitch_field <span class="op">=</span> solo.events.get_field(EnharmonicPitch)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>{<span class="st">"first five pitches"</span>: [pitch_field[i] <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">5</span>)]}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>{'first five pitches': [EP(A♯/B♭4),
+  EP(A♯/B♭4),
+  EP(D♯/E♭2),
+  EP(G5),
+  EP(D♯/E♭2)]}</code></pre>
+</div>
+</div>
+<p>Because <code>.solo</code> records only the MIDI pitch number, an enharmonic pair such as <code>G♯3</code> and <code>A♭3</code> both surface as the same number — the field reports what was represented, not what could be inferred.</p>
+<hr>
+</section>
+</section>
+<section id="the-performance-timelines" class="level2">
+<h2 class="anchored" data-anchor-id="the-performance-timelines">4. The performance timelines</h2>
+<p>Each recording is a physical <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> measured in seconds, one event per aligned note onset. Their stored UIDs follow <code>perf:&lt;performer&gt;:cpt1</code>, so the Ashkenazy recording is <code>perf:Chopin_Ashkenazy:cpt1</code>:</p>
+<div id="a13a3792" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.156246Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.155990Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.161799Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.160492Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>performer_keys <span class="op">=</span> [tl.name <span class="cf">for</span> tl <span class="kw">in</span> loader.create_timelines() <span class="cf">if</span> tl <span class="kw">is</span> <span class="kw">not</span> score_tl]</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>performer_keys</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>['Chopin_Ashkenazy',
+ 'Chopin_Barenboim',
+ 'Chopin_Freire',
+ 'Chopin_Horowitz',
+ 'Chopin_Pollini',
+ 'Chopin_Rachmaninoff',
+ 'Chopin_Rubinstein']</code></pre>
+</div>
+</div>
+<div id="cd3f66d2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.164525Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.164202Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.171181Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.169954Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>ashkenazy <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"perf:Chopin_Ashkenazy:cpt1"</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>ashkenazy</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[perf:Chopin_Ashkenazy:cpt1] (480 events)
+                      0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 209.1 seconds</pre>
+</div>
+</div>
+<p>A score position is in quarters; a performance position is in seconds. The alignment is what relates the two, and that is carried by the <button class="glossary" title="">MatchClaim</button>s.</p>
+<hr>
+</section>
+<section id="the-granularity-tagged-matchclaims" class="level2">
+<h2 class="anchored" data-anchor-id="the-granularity-tagged-matchclaims">5. The granularity-tagged MatchClaims</h2>
+<p>The <button class="glossary" title="">AlignmentBundle</button> assembles the loaded data: the score in its own group, each performance standalone, and every alignment row as a cross-group <button class="glossary" title="">MatchClaim</button>.</p>
+<div id="1bbe503c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.174340Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.174029Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.190095Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.189132Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> loader.create_bundle()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>bundle</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle:AlignmentBundle_1]
+
+  TimelineGroup[score] (1 timelines, 2 timestamps)
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ ContinuousLogicalTimeline[score:clt1] (2494 events, 1 cmaps)               │
+  │                       0 ___________________________________ 212.5 quarters │
+  └────────────────────────────────────────────────────────────────────────────┘
+  Timestamps: 2
+
+  Standalone timelines (7):
+    Chopin_As...     0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 209.1 seconds (480 ev)
+    Chopin_Ba...     0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 231.9 seconds (480 ev)
+    Chopin_Fr...     0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 216.2 seconds (480 ev)
+    ... (1 more)
+    Chopin_Po...     0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 208.7 seconds (480 ev)
+    Chopin_Ra...     0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 256.9 seconds (480 ev)
+    Chopin_Ru...     0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 227.1 seconds (480 ev)
+
+  MatchClaims: 6769</pre>
+</div>
+</div>
+<p>Each recording was aligned at three granularities — note, bar, and beat — and the loader records which one produced each claim in its provenance metadata: the aligning agent’s <code>identifier</code> carries the granularity. Counting the claims for one performer shows the shape of a single recording’s alignment. A <button class="glossary" title="A sentinel value in a MatchClaim explicitly encoding the absence of a corresponding event on the other timeline. The MatchClaim records both timeline IDs but has no AlignmentAnchors; is_synchronous is always False.">NOMATCH</button> claim prints its unmatched score coordinate (<code>score:clt1@…</code>) so the dangling position stays legible at a glance:</p>
+<div id="afc33268" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.193001Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.192640Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.243160Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.236621Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>bundle.cross_group_claims</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>[MatchClaim(instant: score:clt1@0.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@9.5),
+ MatchClaim(instant: score:clt1@0.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@10.3),
+ MatchClaim(instant: score:clt1@1.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@11.1),
+ MatchClaim(instant: score:clt1@1.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@11.6),
+ MatchClaim(instant: score:clt1@2.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@12.0),
+ MatchClaim(instant: score:clt1@2.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@12.4),
+ MatchClaim(instant: score:clt1@3.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@12.9),
+ MatchClaim(instant: score:clt1@3.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@13.4),
+ MatchClaim(instant: score:clt1@4.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@13.9),
+ MatchClaim(instant: score:clt1@4.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@14.4),
+ MatchClaim(instant: score:clt1@5.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@14.8),
+ MatchClaim(instant: score:clt1@5.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@15.2),
+ MatchClaim(instant: score:clt1@6.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@15.6),
+ MatchClaim(instant: score:clt1@6.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@16.2),
+ MatchClaim(instant: score:clt1@7.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@16.6),
+ MatchClaim(instant: score:clt1@7.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@17.0),
+ MatchClaim(instant: score:clt1@8.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@17.7),
+ MatchClaim(instant: score:clt1@8.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@18.1),
+ MatchClaim(instant: score:clt1@9.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@18.6),
+ MatchClaim(instant: score:clt1@9.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@19.1),
+ MatchClaim(instant: score:clt1@10.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@19.5),
+ MatchClaim(instant: score:clt1@10.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@19.9),
+ MatchClaim(instant: score:clt1@11.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@20.3),
+ MatchClaim(instant: score:clt1@11.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@20.6),
+ MatchClaim(instant: score:clt1@12.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@21.0),
+ MatchClaim(instant: score:clt1@12.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@21.5),
+ MatchClaim(instant: score:clt1@13.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@21.8),
+ MatchClaim(instant: score:clt1@13.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@22.2),
+ MatchClaim(instant: score:clt1@14.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@22.7),
+ MatchClaim(instant: score:clt1@14.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@23.0),
+ MatchClaim(instant: score:clt1@15.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@23.4),
+ MatchClaim(instant: score:clt1@15.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@23.8),
+ MatchClaim(instant: score:clt1@16.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@24.2),
+ MatchClaim(instant: score:clt1@16.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@24.6),
+ MatchClaim(instant: score:clt1@17.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@25.0),
+ MatchClaim(instant: score:clt1@17.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@25.4),
+ MatchClaim(instant: score:clt1@18.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@25.7),
+ MatchClaim(instant: score:clt1@18.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@26.3),
+ MatchClaim(instant: score:clt1@19.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@26.9),
+ MatchClaim(instant: score:clt1@19.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@27.4),
+ MatchClaim(instant: score:clt1@20.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@27.9),
+ MatchClaim(instant: score:clt1@20.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@28.2),
+ MatchClaim(instant: score:clt1@20.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@28.4),
+ MatchClaim(instant: score:clt1@20.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@28.6),
+ MatchClaim(instant: score:clt1@21.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@28.9),
+ MatchClaim(instant: score:clt1@21.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@29.2),
+ MatchClaim(instant: score:clt1@21.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@29.6),
+ MatchClaim(instant: score:clt1@22.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@30.0),
+ MatchClaim(instant: score:clt1@22.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@30.4),
+ MatchClaim(instant: score:clt1@23.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@30.9),
+ MatchClaim(instant: score:clt1@23.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@31.3),
+ MatchClaim(instant: score:clt1@24.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@31.9),
+ MatchClaim(instant: score:clt1@24.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@32.7),
+ MatchClaim(instant: score:clt1@25.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@33.3),
+ MatchClaim(instant: score:clt1@25.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@33.7),
+ MatchClaim(instant: score:clt1@26.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@34.3),
+ MatchClaim(instant: score:clt1@26.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@34.6),
+ MatchClaim(instant: score:clt1@26.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@34.9),
+ MatchClaim(instant: score:clt1@26.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@35.2),
+ MatchClaim(instant: score:clt1@27.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@35.4),
+ MatchClaim(instant: score:clt1@27.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@35.7),
+ MatchClaim(instant: score:clt1@27.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@36.0),
+ MatchClaim(instant: score:clt1@28.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@36.6),
+ MatchClaim(instant: score:clt1@28.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@37.1),
+ MatchClaim(instant: score:clt1@29.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@37.5),
+ MatchClaim(instant: score:clt1@29.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@37.6),
+ MatchClaim(instant: score:clt1@29.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@37.8),
+ MatchClaim(instant: score:clt1@29.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@38.1),
+ MatchClaim(instant: score:clt1@30.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@38.3),
+ MatchClaim(instant: score:clt1@30.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@38.6),
+ MatchClaim(instant: score:clt1@30.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@38.8),
+ MatchClaim(instant: score:clt1@30.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@39.1),
+ MatchClaim(instant: score:clt1@31.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@39.3),
+ MatchClaim(instant: score:clt1@31.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@39.5),
+ MatchClaim(instant: score:clt1@31.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@39.7),
+ MatchClaim(instant: score:clt1@31.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@39.9),
+ MatchClaim(instant: score:clt1@32.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@40.1),
+ MatchClaim(instant: score:clt1@32.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@40.3),
+ MatchClaim(instant: score:clt1@32.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@40.5),
+ MatchClaim(instant: score:clt1@32.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@40.7),
+ MatchClaim(instant: score:clt1@33.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@41.0),
+ MatchClaim(instant: score:clt1@33.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@41.3),
+ MatchClaim(instant: score:clt1@33.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@41.7),
+ MatchClaim(instant: score:clt1@34.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@42.2),
+ MatchClaim(instant: score:clt1@34.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@42.6),
+ MatchClaim(instant: score:clt1@35.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@43.1),
+ MatchClaim(instant: score:clt1@35.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@43.5),
+ MatchClaim(instant: score:clt1@36.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@43.9),
+ MatchClaim(instant: score:clt1@36.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@44.3),
+ MatchClaim(instant: score:clt1@37.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@44.7),
+ MatchClaim(instant: score:clt1@37.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@45.1),
+ MatchClaim(instant: score:clt1@38.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@45.6),
+ MatchClaim(instant: score:clt1@38.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@46.1),
+ MatchClaim(instant: score:clt1@39.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@46.6),
+ MatchClaim(instant: score:clt1@39.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@47.0),
+ MatchClaim(instant: score:clt1@40.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@47.4),
+ MatchClaim(instant: score:clt1@40.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@47.8),
+ MatchClaim(instant: score:clt1@41.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@48.2),
+ MatchClaim(instant: score:clt1@41.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@48.6),
+ MatchClaim(instant: score:clt1@42.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@49.0),
+ MatchClaim(instant: score:clt1@42.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@49.6),
+ MatchClaim(instant: score:clt1@43.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@50.3),
+ MatchClaim(instant: score:clt1@43.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@50.7),
+ MatchClaim(instant: score:clt1@44.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@51.3),
+ MatchClaim(instant: score:clt1@44.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@51.6),
+ MatchClaim(instant: score:clt1@44.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@51.9),
+ MatchClaim(instant: score:clt1@44.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@52.1),
+ MatchClaim(instant: score:clt1@45.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@52.6),
+ MatchClaim(instant: score:clt1@45.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@53.1),
+ MatchClaim(instant: score:clt1@45.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@53.4),
+ MatchClaim(instant: score:clt1@46.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@54.0),
+ MatchClaim(instant: score:clt1@46.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@54.5),
+ MatchClaim(instant: score:clt1@47.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@54.9),
+ MatchClaim(instant: score:clt1@47.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@55.3),
+ MatchClaim(instant: score:clt1@48.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@55.9),
+ MatchClaim(instant: score:clt1@48.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@56.6),
+ MatchClaim(instant: score:clt1@49.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@57.1),
+ MatchClaim(instant: score:clt1@49.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@57.5),
+ MatchClaim(instant: score:clt1@50.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@58.0),
+ MatchClaim(instant: score:clt1@50.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@58.5),
+ MatchClaim(instant: score:clt1@51.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@59.0),
+ MatchClaim(instant: score:clt1@51.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@59.8),
+ MatchClaim(instant: score:clt1@52.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@60.4),
+ MatchClaim(instant: score:clt1@52.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@60.9),
+ MatchClaim(instant: score:clt1@53.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@61.3),
+ MatchClaim(instant: score:clt1@53.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@61.7),
+ MatchClaim(instant: score:clt1@54.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@62.1),
+ MatchClaim(instant: score:clt1@54.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@62.8),
+ MatchClaim(instant: score:clt1@55.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@63.3),
+ MatchClaim(instant: score:clt1@55.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@63.8),
+ MatchClaim(instant: score:clt1@56.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@64.3),
+ MatchClaim(instant: score:clt1@56.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@64.9),
+ MatchClaim(instant: score:clt1@56.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@65.1),
+ MatchClaim(instant: score:clt1@57.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@65.6),
+ MatchClaim(instant: score:clt1@57.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@66.3),
+ MatchClaim(instant: score:clt1@57.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@66.6),
+ MatchClaim(instant: score:clt1@58.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@67.2),
+ MatchClaim(instant: score:clt1@58.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@67.6),
+ MatchClaim(instant: score:clt1@59.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@68.0),
+ MatchClaim(instant: score:clt1@59.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@68.4),
+ MatchClaim(instant: score:clt1@60.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@68.8),
+ MatchClaim(instant: score:clt1@60.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@69.4),
+ MatchClaim(instant: score:clt1@61.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@69.8),
+ MatchClaim(instant: score:clt1@61.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@70.2),
+ MatchClaim(instant: score:clt1@62.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@70.6),
+ MatchClaim(instant: score:clt1@62.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@70.9),
+ MatchClaim(instant: score:clt1@63.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@71.3),
+ MatchClaim(instant: score:clt1@63.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@71.8),
+ MatchClaim(instant: score:clt1@64.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@72.2),
+ MatchClaim(instant: score:clt1@64.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@72.6),
+ MatchClaim(instant: score:clt1@65.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@73.0),
+ MatchClaim(instant: score:clt1@65.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@73.3),
+ MatchClaim(instant: score:clt1@66.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@73.7),
+ MatchClaim(instant: score:clt1@66.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@74.2),
+ MatchClaim(instant: score:clt1@67.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@74.5),
+ MatchClaim(instant: score:clt1@67.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@74.9),
+ MatchClaim(instant: score:clt1@68.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@75.4),
+ MatchClaim(instant: score:clt1@68.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@75.8),
+ MatchClaim(instant: score:clt1@69.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@76.2),
+ MatchClaim(instant: score:clt1@69.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@76.7),
+ MatchClaim(instant: score:clt1@70.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@77.4),
+ MatchClaim(instant: score:clt1@70.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@78.0),
+ MatchClaim(instant: score:clt1@71.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@78.5),
+ MatchClaim(instant: score:clt1@71.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@79.1),
+ MatchClaim(instant: score:clt1@72.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@79.8),
+ MatchClaim(instant: score:clt1@72.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@80.6),
+ MatchClaim(instant: score:clt1@73.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@81.7),
+ MatchClaim(instant: score:clt1@73.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@82.4),
+ MatchClaim(instant: score:clt1@73.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@82.7),
+ MatchClaim(instant: score:clt1@74.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@83.0),
+ MatchClaim(instant: score:clt1@74.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@83.2),
+ MatchClaim(instant: score:clt1@74.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@83.4),
+ MatchClaim(instant: score:clt1@74.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@83.7),
+ MatchClaim(instant: score:clt1@75.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@84.1),
+ MatchClaim(instant: score:clt1@75.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@84.5),
+ MatchClaim(instant: score:clt1@75.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@84.7),
+ MatchClaim(instant: score:clt1@76.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@85.2),
+ MatchClaim(instant: score:clt1@76.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@85.7),
+ MatchClaim(instant: score:clt1@77.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@86.2),
+ MatchClaim(instant: score:clt1@77.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@86.4),
+ MatchClaim(instant: score:clt1@77.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@86.7),
+ MatchClaim(instant: score:clt1@77.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@86.9),
+ MatchClaim(instant: score:clt1@78.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@87.1),
+ MatchClaim(instant: score:clt1@78.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@87.3),
+ MatchClaim(instant: score:clt1@78.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@87.6),
+ MatchClaim(instant: score:clt1@78.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@87.8),
+ MatchClaim(instant: score:clt1@79.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.0),
+ MatchClaim(instant: score:clt1@79.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.2),
+ MatchClaim(instant: score:clt1@79.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.4),
+ MatchClaim(instant: score:clt1@79.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.6),
+ MatchClaim(instant: score:clt1@80.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.8),
+ MatchClaim(instant: score:clt1@80.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@89.0),
+ MatchClaim(instant: score:clt1@80.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@89.2),
+ MatchClaim(instant: score:clt1@80.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@89.4),
+ MatchClaim(instant: score:clt1@81.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@89.7),
+ MatchClaim(instant: score:clt1@81.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@90.0),
+ MatchClaim(instant: score:clt1@81.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@90.4),
+ MatchClaim(instant: score:clt1@82.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@91.0),
+ MatchClaim(instant: score:clt1@82.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@91.5),
+ MatchClaim(instant: score:clt1@83.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@91.9),
+ MatchClaim(instant: score:clt1@83.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@92.3),
+ MatchClaim(instant: score:clt1@84.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@92.8),
+ MatchClaim(instant: score:clt1@84.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@93.2),
+ MatchClaim(instant: score:clt1@85.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@93.6),
+ MatchClaim(instant: score:clt1@85.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@94.0),
+ MatchClaim(instant: score:clt1@86.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@94.6),
+ MatchClaim(instant: score:clt1@86.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@95.1),
+ MatchClaim(instant: score:clt1@87.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@95.6),
+ MatchClaim(instant: score:clt1@87.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@96.1),
+ MatchClaim(instant: score:clt1@88.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@96.5),
+ MatchClaim(instant: score:clt1@88.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@96.9),
+ MatchClaim(instant: score:clt1@89.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@97.4),
+ MatchClaim(instant: score:clt1@89.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@97.8),
+ MatchClaim(instant: score:clt1@90.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@98.2),
+ MatchClaim(instant: score:clt1@90.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@98.7),
+ MatchClaim(instant: score:clt1@91.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@99.4),
+ MatchClaim(instant: score:clt1@91.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@100.0),
+ MatchClaim(instant: score:clt1@92.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@100.5),
+ MatchClaim(instant: score:clt1@92.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@100.8),
+ MatchClaim(instant: score:clt1@92.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@100.9),
+ MatchClaim(instant: score:clt1@92.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.1),
+ MatchClaim(instant: score:clt1@92.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.2),
+ MatchClaim(instant: score:clt1@92.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.3),
+ MatchClaim(instant: score:clt1@92.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.5),
+ MatchClaim(instant: score:clt1@92.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.6),
+ MatchClaim(instant: score:clt1@93.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.8),
+ MatchClaim(instant: score:clt1@93.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@102.0),
+ MatchClaim(instant: score:clt1@93.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@102.4),
+ MatchClaim(instant: score:clt1@93.3 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@102.5),
+ MatchClaim(instant: score:clt1@93.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@102.6),
+ MatchClaim(instant: score:clt1@93.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@102.8),
+ MatchClaim(instant: score:clt1@93.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@103.1),
+ MatchClaim(instant: score:clt1@94.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@103.7),
+ MatchClaim(instant: score:clt1@94.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@104.2),
+ MatchClaim(instant: score:clt1@95.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@104.6),
+ MatchClaim(instant: score:clt1@95.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@105.1),
+ MatchClaim(instant: score:clt1@96.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@105.7),
+ MatchClaim(instant: score:clt1@96.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@106.4),
+ MatchClaim(instant: score:clt1@97.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@107.0),
+ MatchClaim(instant: score:clt1@97.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@107.4),
+ MatchClaim(instant: score:clt1@98.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@107.9),
+ MatchClaim(instant: score:clt1@98.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@108.3),
+ MatchClaim(instant: score:clt1@99.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@108.7),
+ MatchClaim(instant: score:clt1@99.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@109.2),
+ MatchClaim(instant: score:clt1@100.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@109.6),
+ MatchClaim(instant: score:clt1@100.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@110.0),
+ MatchClaim(instant: score:clt1@101.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@110.4),
+ MatchClaim(instant: score:clt1@101.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@110.8),
+ MatchClaim(instant: score:clt1@102.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@111.2),
+ MatchClaim(instant: score:clt1@102.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@111.9),
+ MatchClaim(instant: score:clt1@102.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@112.3),
+ MatchClaim(instant: score:clt1@103.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@112.4),
+ MatchClaim(instant: score:clt1@103.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@112.7),
+ MatchClaim(instant: score:clt1@103.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@112.9),
+ MatchClaim(instant: score:clt1@103.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@113.0),
+ MatchClaim(instant: score:clt1@104.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@113.4),
+ MatchClaim(instant: score:clt1@104.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@113.9),
+ MatchClaim(instant: score:clt1@104.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@114.2),
+ MatchClaim(instant: score:clt1@105.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@114.6),
+ MatchClaim(instant: score:clt1@105.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@115.4),
+ MatchClaim(instant: score:clt1@105.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@115.7),
+ MatchClaim(instant: score:clt1@106.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@116.3),
+ MatchClaim(instant: score:clt1@106.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@116.7),
+ MatchClaim(instant: score:clt1@107.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@117.1),
+ MatchClaim(instant: score:clt1@107.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@117.5),
+ MatchClaim(instant: score:clt1@108.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@117.9),
+ MatchClaim(instant: score:clt1@108.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@118.4),
+ MatchClaim(instant: score:clt1@109.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@118.9),
+ MatchClaim(instant: score:clt1@109.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@119.3),
+ MatchClaim(instant: score:clt1@110.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@119.7),
+ MatchClaim(instant: score:clt1@110.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@120.1),
+ MatchClaim(instant: score:clt1@111.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@120.5),
+ MatchClaim(instant: score:clt1@111.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@120.9),
+ MatchClaim(instant: score:clt1@112.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@121.3),
+ MatchClaim(instant: score:clt1@112.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@121.7),
+ MatchClaim(instant: score:clt1@113.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@122.1),
+ MatchClaim(instant: score:clt1@113.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@122.5),
+ MatchClaim(instant: score:clt1@114.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@122.9),
+ MatchClaim(instant: score:clt1@114.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@123.4),
+ MatchClaim(instant: score:clt1@115.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@123.9),
+ MatchClaim(instant: score:clt1@115.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@124.3),
+ MatchClaim(instant: score:clt1@116.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@124.8),
+ MatchClaim(instant: score:clt1@116.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@125.3),
+ MatchClaim(instant: score:clt1@117.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@125.7),
+ MatchClaim(instant: score:clt1@117.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@126.3),
+ MatchClaim(instant: score:clt1@118.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@127.2),
+ MatchClaim(instant: score:clt1@118.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@127.9),
+ MatchClaim(instant: score:clt1@119.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@128.4),
+ MatchClaim(instant: score:clt1@119.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@129.0),
+ MatchClaim(instant: score:clt1@120.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@129.7),
+ MatchClaim(instant: score:clt1@120.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@130.7),
+ MatchClaim(instant: score:clt1@121.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@131.6),
+ MatchClaim(instant: score:clt1@121.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@132.2),
+ MatchClaim(instant: score:clt1@121.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@132.5),
+ MatchClaim(instant: score:clt1@122.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@132.8),
+ MatchClaim(instant: score:clt1@122.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@133.0),
+ MatchClaim(instant: score:clt1@122.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@133.2),
+ MatchClaim(instant: score:clt1@122.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@133.5),
+ MatchClaim(instant: score:clt1@123.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@133.9),
+ MatchClaim(instant: score:clt1@123.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@134.5),
+ MatchClaim(instant: score:clt1@123.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@134.7),
+ MatchClaim(instant: score:clt1@124.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@135.2),
+ MatchClaim(instant: score:clt1@124.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@135.8),
+ MatchClaim(instant: score:clt1@125.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@136.3),
+ MatchClaim(instant: score:clt1@125.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@136.6),
+ MatchClaim(instant: score:clt1@125.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@136.8),
+ MatchClaim(instant: score:clt1@125.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.0),
+ MatchClaim(instant: score:clt1@126.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.3),
+ MatchClaim(instant: score:clt1@126.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.5),
+ MatchClaim(instant: score:clt1@126.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.7),
+ MatchClaim(instant: score:clt1@126.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.9),
+ MatchClaim(instant: score:clt1@127.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@138.2),
+ MatchClaim(instant: score:clt1@127.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@138.4),
+ MatchClaim(instant: score:clt1@127.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@138.6),
+ MatchClaim(instant: score:clt1@127.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@138.7),
+ MatchClaim(instant: score:clt1@128.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@139.0),
+ MatchClaim(instant: score:clt1@128.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@139.1),
+ MatchClaim(instant: score:clt1@128.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@139.4),
+ MatchClaim(instant: score:clt1@128.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@139.8),
+ MatchClaim(instant: score:clt1@129.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@140.2),
+ MatchClaim(instant: score:clt1@129.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@140.5),
+ MatchClaim(instant: score:clt1@129.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@141.1),
+ MatchClaim(instant: score:clt1@130.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@141.8),
+ MatchClaim(instant: score:clt1@130.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@142.3),
+ MatchClaim(instant: score:clt1@131.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@142.8),
+ MatchClaim(instant: score:clt1@131.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@143.4),
+ MatchClaim(instant: score:clt1@132.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@143.8),
+ MatchClaim(instant: score:clt1@132.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@144.4),
+ MatchClaim(instant: score:clt1@133.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@144.8),
+ MatchClaim(instant: score:clt1@133.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@145.3),
+ MatchClaim(instant: score:clt1@134.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@145.9),
+ MatchClaim(instant: score:clt1@134.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@146.5),
+ MatchClaim(instant: score:clt1@135.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@147.0),
+ MatchClaim(instant: score:clt1@135.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@147.5),
+ MatchClaim(instant: score:clt1@136.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@148.0),
+ MatchClaim(instant: score:clt1@136.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@148.4),
+ MatchClaim(instant: score:clt1@137.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@148.9),
+ MatchClaim(instant: score:clt1@137.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@149.4),
+ MatchClaim(instant: score:clt1@138.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@149.8),
+ MatchClaim(instant: score:clt1@138.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@150.5),
+ MatchClaim(instant: score:clt1@138.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@151.2),
+ MatchClaim(instant: score:clt1@139.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@151.5),
+ MatchClaim(instant: score:clt1@139.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@152.0),
+ MatchClaim(instant: score:clt1@139.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@152.5),
+ MatchClaim(instant: score:clt1@139.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@152.9),
+ MatchClaim(instant: score:clt1@140.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@153.2),
+ MatchClaim(instant: score:clt1@140.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@153.4),
+ MatchClaim(instant: score:clt1@140.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@153.7),
+ MatchClaim(instant: score:clt1@140.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@153.9),
+ MatchClaim(instant: score:clt1@140.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@154.0),
+ MatchClaim(instant: score:clt1@140.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@154.2),
+ MatchClaim(instant: score:clt1@140.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@154.3),
+ MatchClaim(instant: score:clt1@141.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@154.5),
+ MatchClaim(instant: score:clt1@141.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@154.8),
+ MatchClaim(instant: score:clt1@141.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@155.2),
+ MatchClaim(instant: score:clt1@141.3 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@155.5),
+ MatchClaim(instant: score:clt1@141.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@155.6),
+ MatchClaim(instant: score:clt1@141.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@155.7),
+ MatchClaim(instant: score:clt1@141.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@156.2),
+ MatchClaim(instant: score:clt1@142.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@156.8),
+ MatchClaim(instant: score:clt1@142.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@157.3),
+ MatchClaim(instant: score:clt1@143.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@157.7),
+ MatchClaim(instant: score:clt1@143.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@158.2),
+ MatchClaim(instant: score:clt1@144.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@158.8),
+ MatchClaim(instant: score:clt1@144.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@159.6),
+ MatchClaim(instant: score:clt1@145.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@160.3),
+ MatchClaim(instant: score:clt1@145.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@161.1),
+ MatchClaim(instant: score:clt1@146.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@161.8),
+ MatchClaim(instant: score:clt1@146.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@162.3),
+ MatchClaim(instant: score:clt1@147.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@162.9),
+ MatchClaim(instant: score:clt1@147.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@163.6),
+ MatchClaim(instant: score:clt1@148.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@164.4),
+ MatchClaim(instant: score:clt1@148.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@164.9),
+ MatchClaim(instant: score:clt1@149.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@165.3),
+ MatchClaim(instant: score:clt1@149.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@165.8),
+ MatchClaim(instant: score:clt1@150.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@166.3),
+ MatchClaim(instant: score:clt1@150.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@167.2),
+ MatchClaim(instant: score:clt1@151.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@167.9),
+ MatchClaim(instant: score:clt1@151.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@168.4),
+ MatchClaim(instant: score:clt1@152.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@168.9),
+ MatchClaim(instant: score:clt1@152.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@169.2),
+ MatchClaim(instant: score:clt1@152.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@169.5),
+ MatchClaim(instant: score:clt1@152.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@169.8),
+ MatchClaim(instant: score:clt1@153.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@170.0),
+ MatchClaim(instant: score:clt1@153.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@170.3),
+ MatchClaim(instant: score:clt1@153.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@170.6),
+ MatchClaim(instant: score:clt1@154.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@171.2),
+ MatchClaim(instant: score:clt1@154.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@171.8),
+ MatchClaim(instant: score:clt1@155.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@173.0),
+ MatchClaim(instant: score:clt1@155.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@173.7),
+ MatchClaim(instant: score:clt1@156.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@174.2),
+ MatchClaim(instant: score:clt1@156.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@174.8),
+ MatchClaim(instant: score:clt1@157.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@175.4),
+ MatchClaim(instant: score:clt1@157.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@175.8),
+ MatchClaim(instant: score:clt1@158.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@176.3),
+ MatchClaim(instant: score:clt1@158.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@176.7),
+ MatchClaim(instant: score:clt1@159.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@177.1),
+ MatchClaim(instant: score:clt1@159.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@177.6),
+ MatchClaim(instant: score:clt1@160.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@178.1),
+ MatchClaim(instant: score:clt1@160.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@178.3),
+ MatchClaim(instant: score:clt1@160.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@178.6),
+ MatchClaim(instant: score:clt1@160.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@178.8),
+ MatchClaim(instant: score:clt1@161.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@179.6),
+ MatchClaim(instant: score:clt1@161.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@180.4),
+ MatchClaim(instant: score:clt1@161.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@180.7),
+ MatchClaim(instant: score:clt1@162.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@181.0),
+ MatchClaim(instant: score:clt1@162.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@181.2),
+ MatchClaim(instant: score:clt1@162.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@181.6),
+ MatchClaim(instant: score:clt1@163.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@182.1),
+ MatchClaim(instant: score:clt1@163.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@182.7),
+ MatchClaim(instant: score:clt1@164.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@183.3),
+ MatchClaim(instant: score:clt1@164.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@183.6),
+ MatchClaim(instant: score:clt1@164.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@183.9),
+ MatchClaim(instant: score:clt1@164.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@184.2),
+ MatchClaim(instant: score:clt1@165.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@184.8),
+ MatchClaim(instant: score:clt1@165.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@185.6),
+ MatchClaim(instant: score:clt1@165.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@185.9),
+ MatchClaim(instant: score:clt1@166.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@186.6),
+ MatchClaim(instant: score:clt1@166.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@187.1),
+ MatchClaim(instant: score:clt1@167.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@187.6),
+ MatchClaim(instant: score:clt1@167.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@188.1),
+ MatchClaim(instant: score:clt1@168.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@188.6),
+ MatchClaim(instant: score:clt1@168.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@189.5),
+ MatchClaim(instant: score:clt1@169.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@190.4),
+ MatchClaim(instant: score:clt1@169.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@190.8),
+ MatchClaim(instant: score:clt1@170.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@191.4),
+ MatchClaim(instant: score:clt1@170.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@191.7),
+ MatchClaim(instant: score:clt1@170.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@191.8),
+ MatchClaim(instant: score:clt1@170.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@191.9),
+ MatchClaim(instant: score:clt1@170.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@192.0),
+ MatchClaim(instant: score:clt1@170.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@192.3),
+ MatchClaim(instant: score:clt1@170.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@192.5),
+ MatchClaim(instant: score:clt1@171.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@192.6),
+ MatchClaim(instant: score:clt1@171.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@192.9),
+ MatchClaim(instant: score:clt1@171.3 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@193.0),
+ MatchClaim(instant: score:clt1@171.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@193.4),
+ MatchClaim(instant: score:clt1@172.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@193.9),
+ MatchClaim(instant: score:clt1@172.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@194.4),
+ MatchClaim(instant: score:clt1@173.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@194.8),
+ MatchClaim(instant: score:clt1@173.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@195.2),
+ MatchClaim(instant: score:clt1@174.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@195.6),
+ MatchClaim(instant: score:clt1@174.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@196.2),
+ MatchClaim(instant: score:clt1@175.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@196.8),
+ MatchClaim(instant: score:clt1@175.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@197.0),
+ MatchClaim(instant: score:clt1@175.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@197.2),
+ MatchClaim(instant: score:clt1@175.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@197.4),
+ MatchClaim(instant: score:clt1@176.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@197.6),
+ MatchClaim(instant: score:clt1@176.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@197.8),
+ MatchClaim(instant: score:clt1@176.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@198.0),
+ MatchClaim(instant: score:clt1@176.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@198.2),
+ MatchClaim(instant: score:clt1@177.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@198.4),
+ MatchClaim(instant: score:clt1@177.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@198.8),
+ MatchClaim(instant: score:clt1@177.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@198.9),
+ MatchClaim(instant: score:clt1@177.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@199.0),
+ MatchClaim(instant: score:clt1@178.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@199.6),
+ MatchClaim(instant: score:clt1@178.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@200.2),
+ MatchClaim(instant: score:clt1@179.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@200.6),
+ MatchClaim(instant: score:clt1@179.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@201.0),
+ MatchClaim(instant: score:clt1@180.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@201.4),
+ MatchClaim(instant: score:clt1@180.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@201.8),
+ MatchClaim(instant: score:clt1@181.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@202.1),
+ MatchClaim(instant: score:clt1@181.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@202.4),
+ MatchClaim(instant: score:clt1@182.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@202.8),
+ MatchClaim(instant: score:clt1@182.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@203.2),
+ MatchClaim(instant: score:clt1@183.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@203.5),
+ MatchClaim(instant: score:clt1@183.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@203.9),
+ MatchClaim(instant: score:clt1@184.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@204.4),
+ MatchClaim(instant: score:clt1@184.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@204.9),
+ MatchClaim(instant: score:clt1@185.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@205.2),
+ MatchClaim(instant: score:clt1@185.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@205.7),
+ MatchClaim(instant: score:clt1@186.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@206.3),
+ MatchClaim(instant: score:clt1@186.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@207.0),
+ MatchClaim(instant: score:clt1@186.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@207.5),
+ MatchClaim(instant: score:clt1@187.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@207.7),
+ MatchClaim(instant: score:clt1@187.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@208.0),
+ MatchClaim(instant: score:clt1@188.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@208.1),
+ MatchClaim(instant: score:clt1@188.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@208.3),
+ MatchClaim(instant: score:clt1@188.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@208.5),
+ MatchClaim(instant: score:clt1@189.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@208.8),
+ MatchClaim(instant: score:clt1@189.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@209.1),
+ MatchClaim(score:clt1@192.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@192.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@192.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@192.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@193.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@194.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@195.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@196.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@197.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@198.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.6 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.8 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@199.9 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@200.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@200.1 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@200.2 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@200.4 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@200.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@201.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@201.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@202.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@202.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@203.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@203.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@204.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@204.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@205.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@205.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@206.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@206.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@208.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(score:clt1@209.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1 [NOMATCH]),
+ MatchClaim(instant: score:clt1@0.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@10.3),
+ MatchClaim(instant: score:clt1@6.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@16.2),
+ MatchClaim(instant: score:clt1@12.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@21.5),
+ MatchClaim(instant: score:clt1@18.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@26.3),
+ MatchClaim(instant: score:clt1@24.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@32.7),
+ MatchClaim(instant: score:clt1@30.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@38.8),
+ MatchClaim(instant: score:clt1@36.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@44.3),
+ MatchClaim(instant: score:clt1@42.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@49.6),
+ MatchClaim(instant: score:clt1@48.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@56.6),
+ MatchClaim(instant: score:clt1@54.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@62.8),
+ MatchClaim(instant: score:clt1@60.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@69.4),
+ MatchClaim(instant: score:clt1@66.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@74.2),
+ MatchClaim(instant: score:clt1@72.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@80.6),
+ MatchClaim(instant: score:clt1@78.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@87.6),
+ MatchClaim(instant: score:clt1@84.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@93.2),
+ MatchClaim(instant: score:clt1@90.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@98.7),
+ MatchClaim(instant: score:clt1@96.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@106.4),
+ MatchClaim(instant: score:clt1@102.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@111.9),
+ MatchClaim(instant: score:clt1@108.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@118.4),
+ MatchClaim(instant: score:clt1@114.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@123.4),
+ MatchClaim(instant: score:clt1@120.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@130.7),
+ MatchClaim(instant: score:clt1@126.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.7),
+ MatchClaim(instant: score:clt1@132.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@144.4),
+ MatchClaim(instant: score:clt1@138.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@150.5),
+ MatchClaim(instant: score:clt1@144.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@159.6),
+ MatchClaim(instant: score:clt1@150.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@167.2),
+ MatchClaim(instant: score:clt1@156.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@174.8),
+ MatchClaim(instant: score:clt1@162.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@181.6),
+ MatchClaim(instant: score:clt1@168.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@189.5),
+ MatchClaim(instant: score:clt1@174.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@196.2),
+ MatchClaim(instant: score:clt1@180.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@201.8),
+ MatchClaim(instant: score:clt1@186.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@207.0),
+ MatchClaim(instant: score:clt1@0.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@9.5),
+ MatchClaim(instant: score:clt1@0.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@10.3),
+ MatchClaim(instant: score:clt1@1.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@11.1),
+ MatchClaim(instant: score:clt1@1.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@11.6),
+ MatchClaim(instant: score:clt1@2.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@12.0),
+ MatchClaim(instant: score:clt1@2.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@12.4),
+ MatchClaim(instant: score:clt1@3.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@12.9),
+ MatchClaim(instant: score:clt1@3.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@13.4),
+ MatchClaim(instant: score:clt1@4.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@13.9),
+ MatchClaim(instant: score:clt1@4.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@14.4),
+ MatchClaim(instant: score:clt1@5.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@14.8),
+ MatchClaim(instant: score:clt1@5.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@15.2),
+ MatchClaim(instant: score:clt1@6.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@15.6),
+ MatchClaim(instant: score:clt1@6.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@16.2),
+ MatchClaim(instant: score:clt1@7.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@16.6),
+ MatchClaim(instant: score:clt1@7.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@17.0),
+ MatchClaim(instant: score:clt1@8.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@17.7),
+ MatchClaim(instant: score:clt1@8.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@18.1),
+ MatchClaim(instant: score:clt1@9.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@18.6),
+ MatchClaim(instant: score:clt1@9.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@19.1),
+ MatchClaim(instant: score:clt1@10.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@19.5),
+ MatchClaim(instant: score:clt1@10.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@19.9),
+ MatchClaim(instant: score:clt1@11.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@20.3),
+ MatchClaim(instant: score:clt1@11.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@20.6),
+ MatchClaim(instant: score:clt1@12.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@21.0),
+ MatchClaim(instant: score:clt1@12.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@21.5),
+ MatchClaim(instant: score:clt1@13.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@21.8),
+ MatchClaim(instant: score:clt1@13.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@22.2),
+ MatchClaim(instant: score:clt1@14.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@22.7),
+ MatchClaim(instant: score:clt1@14.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@23.0),
+ MatchClaim(instant: score:clt1@15.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@23.4),
+ MatchClaim(instant: score:clt1@15.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@23.8),
+ MatchClaim(instant: score:clt1@16.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@24.2),
+ MatchClaim(instant: score:clt1@16.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@24.6),
+ MatchClaim(instant: score:clt1@17.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@25.0),
+ MatchClaim(instant: score:clt1@17.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@25.4),
+ MatchClaim(instant: score:clt1@18.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@25.7),
+ MatchClaim(instant: score:clt1@18.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@26.3),
+ MatchClaim(instant: score:clt1@19.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@26.9),
+ MatchClaim(instant: score:clt1@19.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@27.4),
+ MatchClaim(instant: score:clt1@20.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@27.9),
+ MatchClaim(instant: score:clt1@20.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@28.4),
+ MatchClaim(instant: score:clt1@21.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@28.9),
+ MatchClaim(instant: score:clt1@21.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@29.6),
+ MatchClaim(instant: score:clt1@22.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@30.0),
+ MatchClaim(instant: score:clt1@22.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@30.4),
+ MatchClaim(instant: score:clt1@23.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@30.9),
+ MatchClaim(instant: score:clt1@23.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@31.3),
+ MatchClaim(instant: score:clt1@24.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@31.9),
+ MatchClaim(instant: score:clt1@24.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@32.7),
+ MatchClaim(instant: score:clt1@25.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@33.3),
+ MatchClaim(instant: score:clt1@25.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@33.7),
+ MatchClaim(instant: score:clt1@26.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@34.3),
+ MatchClaim(instant: score:clt1@26.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@34.9),
+ MatchClaim(instant: score:clt1@27.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@35.4),
+ MatchClaim(instant: score:clt1@27.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@36.0),
+ MatchClaim(instant: score:clt1@28.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@36.6),
+ MatchClaim(instant: score:clt1@28.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@37.1),
+ MatchClaim(instant: score:clt1@29.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@37.5),
+ MatchClaim(instant: score:clt1@29.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@37.8),
+ MatchClaim(instant: score:clt1@30.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@38.3),
+ MatchClaim(instant: score:clt1@30.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@38.8),
+ MatchClaim(instant: score:clt1@31.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@39.3),
+ MatchClaim(instant: score:clt1@31.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@39.7),
+ MatchClaim(instant: score:clt1@32.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@40.1),
+ MatchClaim(instant: score:clt1@32.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@40.5),
+ MatchClaim(instant: score:clt1@33.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@41.0),
+ MatchClaim(instant: score:clt1@33.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@41.7),
+ MatchClaim(instant: score:clt1@34.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@42.2),
+ MatchClaim(instant: score:clt1@34.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@42.6),
+ MatchClaim(instant: score:clt1@35.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@43.1),
+ MatchClaim(instant: score:clt1@35.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@43.5),
+ MatchClaim(instant: score:clt1@36.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@43.9),
+ MatchClaim(instant: score:clt1@36.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@44.3),
+ MatchClaim(instant: score:clt1@37.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@44.7),
+ MatchClaim(instant: score:clt1@37.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@45.1),
+ MatchClaim(instant: score:clt1@38.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@45.6),
+ MatchClaim(instant: score:clt1@38.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@46.1),
+ MatchClaim(instant: score:clt1@39.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@46.6),
+ MatchClaim(instant: score:clt1@39.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@47.0),
+ MatchClaim(instant: score:clt1@40.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@47.4),
+ MatchClaim(instant: score:clt1@40.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@47.8),
+ MatchClaim(instant: score:clt1@41.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@48.2),
+ MatchClaim(instant: score:clt1@41.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@48.6),
+ MatchClaim(instant: score:clt1@42.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@49.0),
+ MatchClaim(instant: score:clt1@42.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@49.6),
+ MatchClaim(instant: score:clt1@43.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@50.3),
+ MatchClaim(instant: score:clt1@43.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@50.7),
+ MatchClaim(instant: score:clt1@44.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@51.3),
+ MatchClaim(instant: score:clt1@44.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@51.9),
+ MatchClaim(instant: score:clt1@45.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@52.6),
+ MatchClaim(instant: score:clt1@45.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@53.4),
+ MatchClaim(instant: score:clt1@46.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@54.0),
+ MatchClaim(instant: score:clt1@46.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@54.5),
+ MatchClaim(instant: score:clt1@47.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@54.9),
+ MatchClaim(instant: score:clt1@47.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@55.3),
+ MatchClaim(instant: score:clt1@48.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@55.9),
+ MatchClaim(instant: score:clt1@48.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@56.6),
+ MatchClaim(instant: score:clt1@49.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@57.1),
+ MatchClaim(instant: score:clt1@49.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@57.5),
+ MatchClaim(instant: score:clt1@50.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@58.0),
+ MatchClaim(instant: score:clt1@50.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@58.5),
+ MatchClaim(instant: score:clt1@51.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@59.0),
+ MatchClaim(instant: score:clt1@51.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@59.8),
+ MatchClaim(instant: score:clt1@52.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@60.4),
+ MatchClaim(instant: score:clt1@52.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@60.9),
+ MatchClaim(instant: score:clt1@53.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@61.3),
+ MatchClaim(instant: score:clt1@53.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@61.7),
+ MatchClaim(instant: score:clt1@54.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@62.1),
+ MatchClaim(instant: score:clt1@54.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@62.8),
+ MatchClaim(instant: score:clt1@55.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@63.3),
+ MatchClaim(instant: score:clt1@55.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@63.8),
+ MatchClaim(instant: score:clt1@56.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@64.3),
+ MatchClaim(instant: score:clt1@56.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@64.9),
+ MatchClaim(instant: score:clt1@57.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@65.6),
+ MatchClaim(instant: score:clt1@57.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@66.6),
+ MatchClaim(instant: score:clt1@58.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@67.2),
+ MatchClaim(instant: score:clt1@58.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@67.6),
+ MatchClaim(instant: score:clt1@59.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@68.0),
+ MatchClaim(instant: score:clt1@59.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@68.4),
+ MatchClaim(instant: score:clt1@60.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@68.8),
+ MatchClaim(instant: score:clt1@60.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@69.4),
+ MatchClaim(instant: score:clt1@61.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@69.8),
+ MatchClaim(instant: score:clt1@61.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@70.2),
+ MatchClaim(instant: score:clt1@62.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@70.6),
+ MatchClaim(instant: score:clt1@62.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@70.9),
+ MatchClaim(instant: score:clt1@63.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@71.3),
+ MatchClaim(instant: score:clt1@63.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@71.8),
+ MatchClaim(instant: score:clt1@64.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@72.2),
+ MatchClaim(instant: score:clt1@64.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@72.6),
+ MatchClaim(instant: score:clt1@65.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@73.0),
+ MatchClaim(instant: score:clt1@65.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@73.3),
+ MatchClaim(instant: score:clt1@66.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@73.7),
+ MatchClaim(instant: score:clt1@66.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@74.2),
+ MatchClaim(instant: score:clt1@67.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@74.5),
+ MatchClaim(instant: score:clt1@67.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@74.9),
+ MatchClaim(instant: score:clt1@68.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@75.4),
+ MatchClaim(instant: score:clt1@68.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@75.8),
+ MatchClaim(instant: score:clt1@69.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@76.2),
+ MatchClaim(instant: score:clt1@69.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@76.7),
+ MatchClaim(instant: score:clt1@70.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@77.4),
+ MatchClaim(instant: score:clt1@70.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@78.0),
+ MatchClaim(instant: score:clt1@71.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@78.5),
+ MatchClaim(instant: score:clt1@71.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@79.1),
+ MatchClaim(instant: score:clt1@72.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@79.8),
+ MatchClaim(instant: score:clt1@72.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@80.6),
+ MatchClaim(instant: score:clt1@73.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@81.7),
+ MatchClaim(instant: score:clt1@73.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@82.4),
+ MatchClaim(instant: score:clt1@74.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@83.0),
+ MatchClaim(instant: score:clt1@74.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@83.4),
+ MatchClaim(instant: score:clt1@75.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@84.1),
+ MatchClaim(instant: score:clt1@75.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@84.7),
+ MatchClaim(instant: score:clt1@76.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@85.2),
+ MatchClaim(instant: score:clt1@76.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@85.7),
+ MatchClaim(instant: score:clt1@77.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@86.2),
+ MatchClaim(instant: score:clt1@77.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@86.7),
+ MatchClaim(instant: score:clt1@78.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@87.1),
+ MatchClaim(instant: score:clt1@78.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@87.6),
+ MatchClaim(instant: score:clt1@79.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.0),
+ MatchClaim(instant: score:clt1@79.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.4),
+ MatchClaim(instant: score:clt1@80.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@88.8),
+ MatchClaim(instant: score:clt1@80.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@89.2),
+ MatchClaim(instant: score:clt1@81.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@89.7),
+ MatchClaim(instant: score:clt1@81.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@90.4),
+ MatchClaim(instant: score:clt1@82.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@91.0),
+ MatchClaim(instant: score:clt1@82.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@91.5),
+ MatchClaim(instant: score:clt1@83.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@91.9),
+ MatchClaim(instant: score:clt1@83.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@92.3),
+ MatchClaim(instant: score:clt1@84.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@92.8),
+ MatchClaim(instant: score:clt1@84.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@93.2),
+ MatchClaim(instant: score:clt1@85.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@93.6),
+ MatchClaim(instant: score:clt1@85.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@94.0),
+ MatchClaim(instant: score:clt1@86.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@94.6),
+ MatchClaim(instant: score:clt1@86.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@95.1),
+ MatchClaim(instant: score:clt1@87.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@95.6),
+ MatchClaim(instant: score:clt1@87.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@96.1),
+ MatchClaim(instant: score:clt1@88.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@96.5),
+ MatchClaim(instant: score:clt1@88.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@96.9),
+ MatchClaim(instant: score:clt1@89.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@97.4),
+ MatchClaim(instant: score:clt1@89.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@97.8),
+ MatchClaim(instant: score:clt1@90.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@98.2),
+ MatchClaim(instant: score:clt1@90.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@98.7),
+ MatchClaim(instant: score:clt1@91.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@99.4),
+ MatchClaim(instant: score:clt1@91.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@100.0),
+ MatchClaim(instant: score:clt1@92.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@100.5),
+ MatchClaim(instant: score:clt1@92.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.2),
+ MatchClaim(instant: score:clt1@93.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@101.8),
+ MatchClaim(instant: score:clt1@93.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@103.1),
+ MatchClaim(instant: score:clt1@94.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@103.7),
+ MatchClaim(instant: score:clt1@94.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@104.2),
+ MatchClaim(instant: score:clt1@95.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@104.6),
+ MatchClaim(instant: score:clt1@95.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@105.1),
+ MatchClaim(instant: score:clt1@96.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@105.7),
+ MatchClaim(instant: score:clt1@96.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@106.4),
+ MatchClaim(instant: score:clt1@97.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@107.0),
+ MatchClaim(instant: score:clt1@97.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@107.4),
+ MatchClaim(instant: score:clt1@98.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@107.9),
+ MatchClaim(instant: score:clt1@98.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@108.3),
+ MatchClaim(instant: score:clt1@99.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@108.7),
+ MatchClaim(instant: score:clt1@99.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@109.2),
+ MatchClaim(instant: score:clt1@100.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@109.6),
+ MatchClaim(instant: score:clt1@100.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@110.0),
+ MatchClaim(instant: score:clt1@101.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@110.4),
+ MatchClaim(instant: score:clt1@101.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@110.8),
+ MatchClaim(instant: score:clt1@102.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@111.2),
+ MatchClaim(instant: score:clt1@102.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@111.9),
+ MatchClaim(instant: score:clt1@103.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@112.4),
+ MatchClaim(instant: score:clt1@103.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@112.9),
+ MatchClaim(instant: score:clt1@104.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@113.4),
+ MatchClaim(instant: score:clt1@104.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@113.9),
+ MatchClaim(instant: score:clt1@105.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@114.6),
+ MatchClaim(instant: score:clt1@105.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@115.7),
+ MatchClaim(instant: score:clt1@106.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@116.3),
+ MatchClaim(instant: score:clt1@106.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@116.7),
+ MatchClaim(instant: score:clt1@107.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@117.1),
+ MatchClaim(instant: score:clt1@107.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@117.5),
+ MatchClaim(instant: score:clt1@108.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@117.9),
+ MatchClaim(instant: score:clt1@108.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@118.4),
+ MatchClaim(instant: score:clt1@109.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@118.9),
+ MatchClaim(instant: score:clt1@109.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@119.3),
+ MatchClaim(instant: score:clt1@110.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@119.7),
+ MatchClaim(instant: score:clt1@110.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@120.1),
+ MatchClaim(instant: score:clt1@111.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@120.5),
+ MatchClaim(instant: score:clt1@111.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@120.9),
+ MatchClaim(instant: score:clt1@112.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@121.3),
+ MatchClaim(instant: score:clt1@112.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@121.7),
+ MatchClaim(instant: score:clt1@113.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@122.1),
+ MatchClaim(instant: score:clt1@113.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@122.5),
+ MatchClaim(instant: score:clt1@114.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@122.9),
+ MatchClaim(instant: score:clt1@114.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@123.4),
+ MatchClaim(instant: score:clt1@115.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@123.9),
+ MatchClaim(instant: score:clt1@115.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@124.3),
+ MatchClaim(instant: score:clt1@116.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@124.8),
+ MatchClaim(instant: score:clt1@116.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@125.3),
+ MatchClaim(instant: score:clt1@117.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@125.7),
+ MatchClaim(instant: score:clt1@117.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@126.3),
+ MatchClaim(instant: score:clt1@118.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@127.2),
+ MatchClaim(instant: score:clt1@118.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@127.9),
+ MatchClaim(instant: score:clt1@119.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@128.4),
+ MatchClaim(instant: score:clt1@119.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@129.0),
+ MatchClaim(instant: score:clt1@120.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@129.7),
+ MatchClaim(instant: score:clt1@120.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@130.7),
+ MatchClaim(instant: score:clt1@121.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@131.6),
+ MatchClaim(instant: score:clt1@121.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@132.2),
+ MatchClaim(instant: score:clt1@122.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@132.8),
+ MatchClaim(instant: score:clt1@122.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@133.2),
+ MatchClaim(instant: score:clt1@123.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@133.9),
+ MatchClaim(instant: score:clt1@123.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@134.7),
+ MatchClaim(instant: score:clt1@124.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@135.2),
+ MatchClaim(instant: score:clt1@124.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@135.8),
+ MatchClaim(instant: score:clt1@125.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@136.3),
+ MatchClaim(instant: score:clt1@125.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@136.8),
+ MatchClaim(instant: score:clt1@126.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.3),
+ MatchClaim(instant: score:clt1@126.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@137.7),
+ MatchClaim(instant: score:clt1@127.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@138.2),
+ MatchClaim(instant: score:clt1@127.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@138.6),
+ MatchClaim(instant: score:clt1@128.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@139.0),
+ MatchClaim(instant: score:clt1@128.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@139.4),
+ MatchClaim(instant: score:clt1@129.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@140.2),
+ MatchClaim(instant: score:clt1@129.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@141.1),
+ MatchClaim(instant: score:clt1@130.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@141.8),
+ MatchClaim(instant: score:clt1@130.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@142.3),
+ MatchClaim(instant: score:clt1@131.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@142.8),
+ MatchClaim(instant: score:clt1@131.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@143.4),
+ MatchClaim(instant: score:clt1@132.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@143.8),
+ MatchClaim(instant: score:clt1@132.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@144.4),
+ MatchClaim(instant: score:clt1@133.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@144.8),
+ MatchClaim(instant: score:clt1@133.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@145.3),
+ MatchClaim(instant: score:clt1@134.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@145.9),
+ MatchClaim(instant: score:clt1@134.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@146.5),
+ MatchClaim(instant: score:clt1@135.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@147.0),
+ MatchClaim(instant: score:clt1@135.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@147.5),
+ MatchClaim(instant: score:clt1@136.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@148.0),
+ MatchClaim(instant: score:clt1@136.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@148.4),
+ MatchClaim(instant: score:clt1@137.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@148.9),
+ MatchClaim(instant: score:clt1@137.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@149.4),
+ MatchClaim(instant: score:clt1@138.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@149.8),
+ MatchClaim(instant: score:clt1@138.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@150.5),
+ MatchClaim(instant: score:clt1@139.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@151.5),
+ MatchClaim(instant: score:clt1@139.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@152.5),
+ MatchClaim(instant: score:clt1@140.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@153.2),
+ MatchClaim(instant: score:clt1@140.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@153.7),
+ MatchClaim(instant: score:clt1@141.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@154.5),
+ MatchClaim(instant: score:clt1@141.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@156.2),
+ MatchClaim(instant: score:clt1@142.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@156.8),
+ MatchClaim(instant: score:clt1@142.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@157.3),
+ MatchClaim(instant: score:clt1@143.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@157.7),
+ MatchClaim(instant: score:clt1@143.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@158.2),
+ MatchClaim(instant: score:clt1@144.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@158.8),
+ MatchClaim(instant: score:clt1@144.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@159.6),
+ MatchClaim(instant: score:clt1@145.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@160.3),
+ MatchClaim(instant: score:clt1@145.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@161.1),
+ MatchClaim(instant: score:clt1@146.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@161.8),
+ MatchClaim(instant: score:clt1@146.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@162.3),
+ MatchClaim(instant: score:clt1@147.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@162.9),
+ MatchClaim(instant: score:clt1@147.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@163.6),
+ MatchClaim(instant: score:clt1@148.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@164.4),
+ MatchClaim(instant: score:clt1@148.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@164.9),
+ MatchClaim(instant: score:clt1@149.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@165.3),
+ MatchClaim(instant: score:clt1@149.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@165.8),
+ MatchClaim(instant: score:clt1@150.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@166.3),
+ MatchClaim(instant: score:clt1@150.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@167.2),
+ MatchClaim(instant: score:clt1@151.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@167.9),
+ MatchClaim(instant: score:clt1@151.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@168.4),
+ MatchClaim(instant: score:clt1@152.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@168.9),
+ MatchClaim(instant: score:clt1@152.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@169.5),
+ MatchClaim(instant: score:clt1@153.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@170.0),
+ MatchClaim(instant: score:clt1@153.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@170.6),
+ MatchClaim(instant: score:clt1@154.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@171.2),
+ MatchClaim(instant: score:clt1@154.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@171.8),
+ MatchClaim(instant: score:clt1@155.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@173.0),
+ MatchClaim(instant: score:clt1@155.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@173.7),
+ MatchClaim(instant: score:clt1@156.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@174.2),
+ MatchClaim(instant: score:clt1@156.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@174.8),
+ MatchClaim(instant: score:clt1@157.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@175.4),
+ MatchClaim(instant: score:clt1@157.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@175.8),
+ MatchClaim(instant: score:clt1@158.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@176.3),
+ MatchClaim(instant: score:clt1@158.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@176.7),
+ MatchClaim(instant: score:clt1@159.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@177.1),
+ MatchClaim(instant: score:clt1@159.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@177.6),
+ MatchClaim(instant: score:clt1@160.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@178.1),
+ MatchClaim(instant: score:clt1@160.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@178.6),
+ MatchClaim(instant: score:clt1@161.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@179.6),
+ MatchClaim(instant: score:clt1@161.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@180.4),
+ MatchClaim(instant: score:clt1@162.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@181.0),
+ MatchClaim(instant: score:clt1@162.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@181.6),
+ MatchClaim(instant: score:clt1@163.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@182.1),
+ MatchClaim(instant: score:clt1@163.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@182.7),
+ MatchClaim(instant: score:clt1@164.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@183.3),
+ MatchClaim(instant: score:clt1@164.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@183.9),
+ MatchClaim(instant: score:clt1@165.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@184.8),
+ MatchClaim(instant: score:clt1@165.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@185.9),
+ MatchClaim(instant: score:clt1@166.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@186.6),
+ MatchClaim(instant: score:clt1@166.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@187.1),
+ MatchClaim(instant: score:clt1@167.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@187.6),
+ MatchClaim(instant: score:clt1@167.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@188.1),
+ MatchClaim(instant: score:clt1@168.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@188.6),
+ MatchClaim(instant: score:clt1@168.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@189.5),
+ MatchClaim(instant: score:clt1@169.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@190.4),
+ MatchClaim(instant: score:clt1@169.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@190.8),
+ MatchClaim(instant: score:clt1@170.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@191.4),
+ MatchClaim(instant: score:clt1@170.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@191.9),
+ MatchClaim(instant: score:clt1@171.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@192.6),
+ MatchClaim(instant: score:clt1@171.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@193.4),
+ MatchClaim(instant: score:clt1@172.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@193.9),
+ MatchClaim(instant: score:clt1@172.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@194.4),
+ MatchClaim(instant: score:clt1@173.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@194.8),
+ MatchClaim(instant: score:clt1@173.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@195.2),
+ MatchClaim(instant: score:clt1@174.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@195.6),
+ MatchClaim(instant: score:clt1@174.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@196.2),
+ MatchClaim(instant: score:clt1@175.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@196.8),
+ MatchClaim(instant: score:clt1@175.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@197.2),
+ MatchClaim(instant: score:clt1@176.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@197.6),
+ MatchClaim(instant: score:clt1@176.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@198.0),
+ MatchClaim(instant: score:clt1@177.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@198.4),
+ MatchClaim(instant: score:clt1@177.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@199.0),
+ MatchClaim(instant: score:clt1@178.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@199.6),
+ MatchClaim(instant: score:clt1@178.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@200.2),
+ MatchClaim(instant: score:clt1@179.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@200.6),
+ MatchClaim(instant: score:clt1@179.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@201.0),
+ MatchClaim(instant: score:clt1@180.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@201.4),
+ MatchClaim(instant: score:clt1@180.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@201.8),
+ MatchClaim(instant: score:clt1@181.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@202.1),
+ MatchClaim(instant: score:clt1@181.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@202.4),
+ MatchClaim(instant: score:clt1@182.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@202.8),
+ MatchClaim(instant: score:clt1@182.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@203.2),
+ MatchClaim(instant: score:clt1@183.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@203.5),
+ MatchClaim(instant: score:clt1@183.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@203.9),
+ MatchClaim(instant: score:clt1@184.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@204.4),
+ MatchClaim(instant: score:clt1@184.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@204.9),
+ MatchClaim(instant: score:clt1@185.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@205.2),
+ MatchClaim(instant: score:clt1@185.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@205.7),
+ MatchClaim(instant: score:clt1@186.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@206.3),
+ MatchClaim(instant: score:clt1@186.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@207.0),
+ MatchClaim(instant: score:clt1@188.0 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@208.1),
+ MatchClaim(instant: score:clt1@189.5 &lt;-&gt; perf:Chopin_Ashkenazy:cpt1@209.1),
+ MatchClaim(instant: score:clt1@0.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@0.3),
+ MatchClaim(instant: score:clt1@0.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@1.2),
+ MatchClaim(instant: score:clt1@1.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@1.9),
+ MatchClaim(instant: score:clt1@1.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@2.4),
+ MatchClaim(instant: score:clt1@2.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@2.9),
+ MatchClaim(instant: score:clt1@2.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@3.4),
+ MatchClaim(instant: score:clt1@3.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@4.0),
+ MatchClaim(instant: score:clt1@3.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@4.6),
+ MatchClaim(instant: score:clt1@4.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@5.2),
+ MatchClaim(instant: score:clt1@4.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@5.6),
+ MatchClaim(instant: score:clt1@5.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@6.2),
+ MatchClaim(instant: score:clt1@5.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@6.7),
+ MatchClaim(instant: score:clt1@6.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@7.2),
+ MatchClaim(instant: score:clt1@6.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@7.8),
+ MatchClaim(instant: score:clt1@7.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@8.3),
+ MatchClaim(instant: score:clt1@7.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@8.8),
+ MatchClaim(instant: score:clt1@8.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@9.5),
+ MatchClaim(instant: score:clt1@8.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@10.0),
+ MatchClaim(instant: score:clt1@9.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@10.5),
+ MatchClaim(instant: score:clt1@9.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@11.2),
+ MatchClaim(instant: score:clt1@10.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@11.7),
+ MatchClaim(instant: score:clt1@10.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@12.2),
+ MatchClaim(instant: score:clt1@11.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@12.8),
+ MatchClaim(instant: score:clt1@11.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@13.3),
+ MatchClaim(instant: score:clt1@12.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@13.8),
+ MatchClaim(instant: score:clt1@12.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@14.3),
+ MatchClaim(instant: score:clt1@13.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@14.8),
+ MatchClaim(instant: score:clt1@13.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@15.3),
+ MatchClaim(instant: score:clt1@14.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@15.9),
+ MatchClaim(instant: score:clt1@14.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@16.5),
+ MatchClaim(instant: score:clt1@15.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@17.0),
+ MatchClaim(instant: score:clt1@15.5 &lt;-&gt; perf:Chopin_Barenboim:cpt1@17.6),
+ MatchClaim(instant: score:clt1@16.0 &lt;-&gt; perf:Chopin_Barenboim:cpt1@18.1),
+ ...]</code></pre>
+</div>
+</div>
+<div id="7ae74c39" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.251149Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.249945Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.266604Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.263159Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>ashkenazy_claims <span class="op">=</span> [c <span class="cf">for</span> c <span class="kw">in</span> bundle.cross_group_claims <span class="cf">if</span> c.connects(ashkenazy.<span class="bu">id</span>)]</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>by_granularity <span class="op">=</span> Counter(c.metadata.agent.identifier <span class="cf">for</span> c <span class="kw">in</span> ashkenazy_claims)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="bu">dict</span>(by_granularity)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>{'note': 559, 'bar': 32, 'beats': 376}</code></pre>
+</div>
+</div>
+<p>At the note level, not every score note is found in the recording: where the aligner located no onset, the row is recorded as a <button class="glossary" title="A sentinel value in a MatchClaim explicitly encoding the absence of a corresponding event on the other timeline. The MatchClaim records both timeline IDs but has no AlignmentAnchors; is_synchronous is always False.">NOMATCH</button> rather than discarded, so the dangling score position is preserved. Splitting the note-level claims into located and <button class="glossary" title="A sentinel value in a MatchClaim explicitly encoding the absence of a corresponding event on the other timeline. The MatchClaim records both timeline IDs but has no AlignmentAnchors; is_synchronous is always False.">NOMATCH</button> makes the distinction explicit:</p>
+<div id="f79c3295" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.273300Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.272989Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.280508Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.279150Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>note_claims <span class="op">=</span> [c <span class="cf">for</span> c <span class="kw">in</span> ashkenazy_claims <span class="cf">if</span> c.metadata.agent.identifier <span class="op">==</span> <span class="st">"note"</span>]</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"note claims (total)"</span>: <span class="bu">len</span>(note_claims),</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"located (synchronous)"</span>: <span class="bu">sum</span>(<span class="dv">1</span> <span class="cf">for</span> c <span class="kw">in</span> note_claims <span class="cf">if</span> c.is_synchronous),</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"NOMATCH (no onset found)"</span>: <span class="bu">sum</span>(<span class="dv">1</span> <span class="cf">for</span> c <span class="kw">in</span> note_claims <span class="cf">if</span> <span class="kw">not</span> c.is_synchronous),</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>{'note claims (total)': 559,
+ 'located (synchronous)': 480,
+ 'NOMATCH (no onset found)': 79}</code></pre>
+</div>
+</div>
+<p>A single bar-level claim links a score quarter to a performed second. This one anchors the downbeat of the first full measure (quarter 0.5) to the moment Ashkenazy played it:</p>
+<div id="bba8cda5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.288093Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.287413Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.298058Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.296279Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>ashkenazy_bar_claims <span class="op">=</span> [</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    c <span class="cf">for</span> c <span class="kw">in</span> ashkenazy_claims <span class="cf">if</span> c.metadata.agent.identifier <span class="op">==</span> <span class="st">"bar"</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>ashkenazy_bar_claims[<span class="dv">0</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<div style="font-family: monospace;"><strong>MatchClaim</strong> <span style="background: #e8f5e9; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">synchronous, instant</span>
+<table class="caption-top table table-sm table-striped small">
+<tbody>
+<tr class="odd">
+<td>Timeline A</td>
+<td><strong>score:clt1</strong></td>
+<td>@0.5</td>
+</tr>
+<tr class="even">
+<td>Timeline B</td>
+<td><strong>perf:Chopin_Ashkenazy:cpt1</strong></td>
+<td>@10.272</td>
+</tr>
+<tr class="odd" style="color: #666;">
+<td>Metadata</td>
+<td colspan="2">agent=performance_precision</td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>claim.get_matchstamp()</code></div></div>
+</div>
+</div>
+<hr>
+</section>
+<section id="comparing-the-performances" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-the-performances">6. Comparing the performances</h2>
+<p>The corpus exists to compare how performers shape the same music in time. The <button class="glossary" title="">AlignmentBundle</button> answers this directly: given one score coordinate, <code>get_matchstamp_at</code> returns the corresponding coordinate on every connected timeline. A <button class="glossary" title="The union of TimeStamps from groups synchronously connected by a MatchGraph. Contains one coordinate per participating timeline and, with conversion_maps=True (the default), C-map conversion values. MatchStamp implements the shared Stamp interface: get() returns a raw coordinate, get_coordinate() returns a unit-bearing Coordinate, present_timelines lists available timelines, and is_interpolated identifies interpolation fallback.">MatchStamp</button> at the first full downbeat is therefore one score quarter mapped to seven performed seconds:</p>
+<div id="b636a0bc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.301802Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.301409Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.363611Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.361343Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>downbeat <span class="op">=</span> <span class="bu">float</span>(metrical_position_map.quarters_at(<span class="dv">2</span>))</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>stamp <span class="op">=</span> bundle.get_matchstamp_at(downbeat, score_tl.<span class="bu">id</span>)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>stamp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<div style="font-family: monospace;"><strong>MatchStamp</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">8 timelines, 7 edges</span>
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header" style="border-bottom: 1px solid #ccc;">
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">ID</th>
+<th data-quarto-table-cell-role="th" style="text-align: right; padding: 2px 8px;">Coordinate</th>
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">Type</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>perf:Chopin_Ashkenazy:cpt1</strong></td>
+<td style="text-align: right;">10.272</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="even">
+<td><strong>perf:Chopin_Freire:cpt1</strong></td>
+<td style="text-align: right;">1.536</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="odd">
+<td><strong>perf:Chopin_Barenboim:cpt1</strong></td>
+<td style="text-align: right;">1.2</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="even">
+<td><strong>perf:Chopin_Rubinstein:cpt1</strong></td>
+<td style="text-align: right;">1.168</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="odd">
+<td><strong>score:clt1</strong></td>
+<td style="text-align: right;">0.5</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="even">
+<td><strong>perf:Chopin_Pollini:cpt1</strong></td>
+<td style="text-align: right;">1.952</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="odd">
+<td><strong>perf:Chopin_Horowitz:cpt1</strong></td>
+<td style="text-align: right;">0.96</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="even">
+<td><strong>perf:Chopin_Rachmaninoff:cpt1</strong></td>
+<td style="text-align: right;">5.728</td>
+<td><em>anchor</em></td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>stamp.get(&lt;tl_id&gt;)</code>, <code>stamp.get_coordinate(&lt;tl_id&gt;)</code></div></div>
+</div>
+</div>
+<p>Reading that across a sequence of downbeats gives each performer’s arrival time at each measure — the raw material of a tempo comparison. We take the first several measure downbeats, ask the bundle for each performer’s onset there, and tabulate the seconds against the score quarters:</p>
+<div id="23a02743" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-21T15:41:01.367645Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-21T15:41:01.367172Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-21T15:41:01.700980Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-21T15:41:01.695428Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>downbeat_mcs <span class="op">=</span> <span class="bu">range</span>(<span class="dv">2</span>, <span class="dv">10</span>)</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>rows <span class="op">=</span> []</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> mc <span class="kw">in</span> downbeat_mcs:</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    quarters <span class="op">=</span> <span class="bu">float</span>(metrical_position_map.quarters_at(mc))</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    onset_stamp <span class="op">=</span> bundle.get_matchstamp_at(quarters, score_tl.<span class="bu">id</span>)</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    row <span class="op">=</span> {<span class="st">"score (quarters)"</span>: quarters}</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> key <span class="kw">in</span> performer_keys:</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>        perf_id <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span>key).<span class="bu">id</span></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>        coord <span class="op">=</span> onset_stamp.coordinates.get(perf_id)</span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>        row[key.replace(<span class="st">"Chopin_"</span>, <span class="st">""</span>)] <span class="op">=</span> (</span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>            <span class="bu">round</span>(<span class="bu">float</span>(coord), <span class="dv">3</span>) <span class="cf">if</span> coord <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="cf">else</span> <span class="va">None</span></span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>    rows.append(row)</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>tempo_table <span class="op">=</span> pd.DataFrame(rows).set_index(<span class="st">"score (quarters)"</span>)</span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>tempo_table</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">Ashkenazy</th>
+<th data-quarto-table-cell-role="th">Barenboim</th>
+<th data-quarto-table-cell-role="th">Freire</th>
+<th data-quarto-table-cell-role="th">Horowitz</th>
+<th data-quarto-table-cell-role="th">Pollini</th>
+<th data-quarto-table-cell-role="th">Rachmaninoff</th>
+<th data-quarto-table-cell-role="th">Rubinstein</th>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">score (quarters)</th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0.5</th>
+<td>10.272</td>
+<td>1.200</td>
+<td>1.536</td>
+<td>0.960</td>
+<td>1.952</td>
+<td>5.728</td>
+<td>1.168</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">6.5</th>
+<td>16.152</td>
+<td>7.792</td>
+<td>8.384</td>
+<td>7.232</td>
+<td>8.352</td>
+<td>13.072</td>
+<td>7.696</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">12.5</th>
+<td>21.456</td>
+<td>14.304</td>
+<td>15.040</td>
+<td>14.208</td>
+<td>14.848</td>
+<td>20.208</td>
+<td>14.752</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">18.5</th>
+<td>26.320</td>
+<td>21.248</td>
+<td>21.408</td>
+<td>20.704</td>
+<td>20.384</td>
+<td>27.520</td>
+<td>21.888</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">24.5</th>
+<td>32.672</td>
+<td>29.248</td>
+<td>28.542</td>
+<td>28.352</td>
+<td>27.232</td>
+<td>35.824</td>
+<td>30.032</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">30.5</th>
+<td>38.784</td>
+<td>35.920</td>
+<td>34.614</td>
+<td>35.024</td>
+<td>33.664</td>
+<td>42.848</td>
+<td>36.896</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">36.5</th>
+<td>44.320</td>
+<td>42.688</td>
+<td>40.998</td>
+<td>42.112</td>
+<td>40.432</td>
+<td>51.696</td>
+<td>43.952</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">42.5</th>
+<td>49.600</td>
+<td>49.504</td>
+<td>47.920</td>
+<td>48.976</td>
+<td>46.464</td>
+<td>60.208</td>
+<td>51.344</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>Each column is one pianist’s arrival times in seconds; each row is a shared score position. The gaps between successive rows within a column are the inter-downbeat durations — read down a column and the performer’s local tempo is visible, read across a row and the performers’ differing placements of the same beat stand side by side. The same procedure at the beat or note granularity yields a finer-grained timing profile, all from the one <button class="glossary" title="">AlignmentBundle</button>.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button,
+          { trigger: "manual",
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined;
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              }
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            }
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

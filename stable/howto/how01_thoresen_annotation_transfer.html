@@ -319,6 +319,36 @@ window.Quarto = {
  <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
       </ul>
   </li>
         <li class="sidebar-item sidebar-item-section">
@@ -334,6 +364,12 @@ window.Quarto = {
   <div class="sidebar-item-container">
   <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
   </div>
 </li>
       </ul>
@@ -412,7 +448,7 @@ window.Quarto = {
 
 <section id="how-to-transfer-annotations-between-graphical-analyses" class="level1">
 <h1>How to Transfer Annotations Between Graphical Analyses</h1>
-<p>This notebook demonstrates how to project graphical annotations from one image-based analytical diagram onto another using the Time To Align! library.</p>
+<p>This notebook demonstrates how to project graphical annotations from one image-based analytical diagram onto another using the TimeToAlign! library.</p>
 <p>The use case comes from Lasse Thoresen’s spectromorphological analyses of <em>Objets Obscurs</em> by Manuella Blackburn. Two published editions of the same analysis exist:</p>
 <ul>
 <li><strong>DGT2</strong> (2010): five separate images (strips), each covering roughly 30 seconds of music.</li>
@@ -434,30 +470,33 @@ window.Quarto = {
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="d414b258" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:55.735884Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:55.735599Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.444625Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.443612Z&quot;}}" data-execution_count="1">
+<div id="37fc3deb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:58.635795Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:58.635336Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.404189Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.403259Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    AlignmentBundle,</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    ConstantMap,</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    DiscreteGraphicalTimeline,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    LinearMap,</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    MatchClaim,</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    MatchMetadata,</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ScalarMap,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data  <span class="co"># noqa: E402</span></span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> SegmentLine</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> ensure_data(<span class="st">"thoresen"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    Agent,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    AlignmentBundle,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    ConstantMap,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    DiscreteGraphicalTimeline,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    LinearMap,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    MatchClaim,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    MatchMetadata,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    ScalarMap,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    TimeUnit,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> AgentType</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data  <span class="co"># noqa: E402</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> SegmentLine</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> ensure_data(<span class="st">"thoresen"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="load-the-annotation-data" class="level2">
 <h2 class="anchored" data-anchor-id="load-the-annotation-data">1. Load the Annotation Data</h2>
 <p>The file <code>thoresen_test.tsv</code> contains 11 annotated sound-object rectangles, each with pixel coordinates on one of the five DGT2 images and a start time and duration in seconds (from manual alignment with the audio).</p>
-<div id="c0769ac0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.447681Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.447385Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.477903Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.476752Z&quot;}}" data-execution_count="2">
+<div id="cba0cf24" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.406231Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.405966Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.424736Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.423838Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>events_df <span class="op">=</span> pd.read_csv(DATA_DIR <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Parse the JSON rectangle coordinates into separate columns</span></span>
@@ -676,7 +715,7 @@ window.Quarto = {
 </tr>
 </tbody>
 </table>
-<div id="54e4ab78" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.480149Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.479853Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.485912Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.484980Z&quot;}}" data-execution_count="3">
+<div id="8e1dbe9f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.426549Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.426384Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.430612Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.429768Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Segment bounds: (x0, x1, y_axis) for each image</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>DGT2_BOUNDS <span class="op">=</span> [</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">8</span>, <span class="dv">874</span>, <span class="dv">15</span>),  <span class="co"># page1_1</span></span>
@@ -705,7 +744,7 @@ window.Quarto = {
 </section>
 <section id="create-the-segmentline-by-concatenation" class="level3">
 <h3 class="anchored" data-anchor-id="create-the-segmentline-by-concatenation">Create the SegmentLine by concatenation</h3>
-<div id="fc2db61d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.488293Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.488029Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.499514Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.498506Z&quot;}}" data-execution_count="4">
+<div id="12786acc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.432416Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.432236Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.442656Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.441845Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>dgt2 <span class="op">=</span> SegmentLine(</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    segment_type<span class="op">=</span>DiscreteGraphicalTimeline,</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span><span class="dv">0</span>,</span>
@@ -750,7 +789,7 @@ Number of segments: 5</code></pre>
 <section id="add-the-11-events-to-their-respective-segments" class="level3">
 <h3 class="anchored" data-anchor-id="add-the-11-events-to-their-respective-segments">Add the 11 events to their respective segments</h3>
 <p>Each event is placed on the correct DGT2 segment using the <code>image_filename</code> column from the TSV. Coordinates are converted to <em>local</em> segment pixels (subtracting the segment’s <code>x0</code> boundary).</p>
-<div id="cf42a066" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.501864Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.501546Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.531262Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.529977Z&quot;}}" data-execution_count="5">
+<div id="a69e613c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.444775Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.444559Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.461753Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.460710Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _, row <span class="kw">in</span> events_df.iterrows():</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    seg_idx <span class="op">=</span> IMAGE_TO_SEGMENT[row[<span class="st">"image_filename"</span>]]</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    x0 <span class="op">=</span> DGT2_BOUNDS[seg_idx][<span class="dv">0</span>]</span>
@@ -794,17 +833,19 @@ Number of segments: 5</code></pre>
 <li>Expected seconds: ~43.1 to ~47.9 (pixel-derived)</li>
 <li>TSV ground truth: 43.5 s, duration 4.5 s</li>
 </ul>
-<div id="b651eca4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.533779Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.533390Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.539018Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.538027Z&quot;}}" data-execution_count="6">
+<div id="fe08451d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.463657Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.463425Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.467244Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.466517Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>stamp_h <span class="op">=</span> dgt2.get_timestamp_of(<span class="st">"rect_h2"</span>)</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(stamp_h)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>TimeIntervalStamp [1244, 1383) pixels
-             start   end
-  dgt2       1244  1383 pixels
-  dgt2_seg2   378   517 pixels</code></pre>
+                                                                start                                                       end
+  dgt2                                                           1244                                                      1383 pixels
+  dgt2_seg2                                                       378                                                       517 pixels
+  seconds                                                   13.079585                                                 17.889273
+  filename   thoresen_2010_form-building-patterns_p90-91_page1_2.jpeg  thoresen_2010_form-building-patterns_p90-91_page1_2.jpeg</code></pre>
 </div>
 </div>
-<div id="20e67153" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.541980Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.541655Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.546945Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.545970Z&quot;}}" data-execution_count="7">
+<div id="f9e9fb1e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.468913Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.468764Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.471773Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.471013Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Extract the key values for validation</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>h_start_global <span class="op">=</span> stamp_h.start.axis</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>h_end_global <span class="op">=</span> stamp_h.end.axis</span>
@@ -815,7 +856,7 @@ Number of segments: 5</code></pre>
   Expected: [1244, 1383)</code></pre>
 </div>
 </div>
-<div id="3eadafe0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.550326Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.549908Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.557985Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.556951Z&quot;}}" data-execution_count="8">
+<div id="d68a2107" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.473286Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.473134Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.477977Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.477203Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Helper: convert a global DGT2 pixel coordinate to seconds.</span></span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="co"># The ScalarMap on each segment converts local pixels to the *local* seconds</span></span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="co"># within a 30-second window.  We need to know the segment index and offset</span></span>
@@ -884,7 +925,7 @@ Number of segments: 5</code></pre>
 </tr>
 </tbody>
 </table>
-<div id="3ce44acc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.561369Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.561132Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.571018Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.570025Z&quot;}}" data-execution_count="9">
+<div id="597fb3cb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.480114Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.479915Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.488049Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.487383Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>DGT1_SEGMENT_LENGTH <span class="op">=</span> <span class="dv">967</span>  <span class="co"># x1 - x0 = 969 - 2</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>DGT1_TOTAL_WIDTH <span class="op">=</span> DGT1_SEGMENT_LENGTH <span class="op">*</span> <span class="dv">5</span>  <span class="co"># 4835</span></span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -926,7 +967,7 @@ Number of children: 5</code></pre>
 <section id="create-alignmentbundle" class="level2">
 <h2 class="anchored" data-anchor-id="create-alignmentbundle">4. Create AlignmentBundle</h2>
 <p>Both timelines are added directly to the bundle as standalone timelines (no explicit <code>TimelineGroup</code> wrapping needed – the bundle creates implicit singleton groups).</p>
-<div id="2423bf93" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.573921Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.573638Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.581913Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.580581Z&quot;}}" data-execution_count="10">
+<div id="31000212" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.489587Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.489446Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.494849Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.493960Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> AlignmentBundle(name<span class="op">=</span><span class="st">"Thoresen Annotation Transfer"</span>)</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>bundle.add_timeline(dgt2, uid<span class="op">=</span><span class="st">"dgt2"</span>)</span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>bundle.add_timeline(dgt1, uid<span class="op">=</span><span class="st">"dgt1"</span>)</span>
@@ -935,7 +976,7 @@ Number of children: 5</code></pre>
 <pre><code>AlignmentBundle[bundle:AlignmentBundle_1]
 
   Standalone timelines (2):
-    Thoresen ...     0 ======================================= 4328 pixels
+    Thoresen ...     0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4328 pixels
     Thoresen ...     0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels
 
   MatchClaims: 0</code></pre>
@@ -945,7 +986,7 @@ Number of children: 5</code></pre>
 <section id="create-matchclaims-coordinate-projection" class="level2">
 <h2 class="anchored" data-anchor-id="create-matchclaims-coordinate-projection">5. Create MatchClaims (Coordinate Projection)</h2>
 <p>For each event on DGT2, we: 1. Get its <code>TimeIntervalStamp</code> to extract global pixel coordinates and seconds. 2. Project the seconds onto DGT1 via the inverse of DGT1’s ScalarMap. 3. Create a <code>MatchClaim.from_projection()</code> recording the correspondence.</p>
-<div id="665a7f30" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.584774Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.584487Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.601895Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.600748Z&quot;}}" data-execution_count="11">
+<div id="94178081" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.496407Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.496242Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.507361Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.506548Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get the inverse map for DGT1: seconds -&gt; pixels</span></span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>dgt1_sec_to_px <span class="op">=</span> dgt1_px_to_sec.inverse()</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -973,56 +1014,61 @@ Number of children: 5</code></pre>
 <span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create the MatchClaim</span></span>
 <span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a>    claim <span class="op">=</span> MatchClaim.from_projection(</span>
-<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a>        event<span class="op">=</span>{<span class="st">"start"</span>: dgt2_start, <span class="st">"end"</span>: dgt2_end},</span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a>        event<span class="op">=</span>{<span class="st">"id"</span>: event_id, <span class="st">"name"</span>: event_id, <span class="st">"start"</span>: dgt2_start, <span class="st">"end"</span>: dgt2_end},</span>
 <span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a>        source_tl_id<span class="op">=</span><span class="st">"dgt2"</span>,</span>
 <span id="cb18-30"><a href="#cb18-30" aria-hidden="true" tabindex="-1"></a>        target_tl_id<span class="op">=</span><span class="st">"dgt1"</span>,</span>
 <span id="cb18-31"><a href="#cb18-31" aria-hidden="true" tabindex="-1"></a>        target_coord<span class="op">=</span>dgt1_start,</span>
-<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a>        target_end_coord<span class="op">=</span>dgt1_end,</span>
-<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a>        end_coord_key<span class="op">=</span><span class="st">"end"</span>,</span>
-<span id="cb18-34"><a href="#cb18-34" aria-hidden="true" tabindex="-1"></a>        metadata<span class="op">=</span>MatchMetadata(</span>
-<span id="cb18-35"><a href="#cb18-35" aria-hidden="true" tabindex="-1"></a>            agent<span class="op">=</span><span class="st">"thoresen_analysis"</span>,</span>
-<span id="cb18-36"><a href="#cb18-36" aria-hidden="true" tabindex="-1"></a>            decision_criteria<span class="op">=</span><span class="st">"coordinate_projection_via_shared_physical_timeline"</span>,</span>
-<span id="cb18-37"><a href="#cb18-37" aria-hidden="true" tabindex="-1"></a>            certainty<span class="op">=</span><span class="fl">1.0</span>,</span>
-<span id="cb18-38"><a href="#cb18-38" aria-hidden="true" tabindex="-1"></a>        ),</span>
-<span id="cb18-39"><a href="#cb18-39" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb18-40"><a href="#cb18-40" aria-hidden="true" tabindex="-1"></a>    claims.append(claim)</span>
-<span id="cb18-41"><a href="#cb18-41" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-42"><a href="#cb18-42" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Track data for the summary table</span></span>
-<span id="cb18-43"><a href="#cb18-43" aria-hidden="true" tabindex="-1"></a>    projection_data.append(</span>
-<span id="cb18-44"><a href="#cb18-44" aria-hidden="true" tabindex="-1"></a>        {</span>
-<span id="cb18-45"><a href="#cb18-45" aria-hidden="true" tabindex="-1"></a>            <span class="st">"event_id"</span>: event_id,</span>
-<span id="cb18-46"><a href="#cb18-46" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_start_px"</span>: dgt2_start,</span>
-<span id="cb18-47"><a href="#cb18-47" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_end_px"</span>: dgt2_end,</span>
-<span id="cb18-48"><a href="#cb18-48" aria-hidden="true" tabindex="-1"></a>            <span class="st">"seconds_start"</span>: <span class="bu">round</span>(sec_start, <span class="dv">2</span>),</span>
-<span id="cb18-49"><a href="#cb18-49" aria-hidden="true" tabindex="-1"></a>            <span class="st">"seconds_end"</span>: <span class="bu">round</span>(sec_end, <span class="dv">2</span>),</span>
-<span id="cb18-50"><a href="#cb18-50" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_start_px"</span>: <span class="bu">round</span>(dgt1_start, <span class="dv">1</span>),</span>
-<span id="cb18-51"><a href="#cb18-51" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_end_px"</span>: <span class="bu">round</span>(dgt1_end, <span class="dv">1</span>),</span>
-<span id="cb18-52"><a href="#cb18-52" aria-hidden="true" tabindex="-1"></a>        }</span>
-<span id="cb18-53"><a href="#cb18-53" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb18-54"><a href="#cb18-54" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-55"><a href="#cb18-55" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Created </span><span class="sc">{</span><span class="bu">len</span>(claims)<span class="sc">}</span><span class="ss"> MatchClaims"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Created 11 MatchClaims</code></pre>
+<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a>        source_unit<span class="op">=</span>TimeUnit.pixels,</span>
+<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a>        target_unit<span class="op">=</span>TimeUnit.pixels,</span>
+<span id="cb18-34"><a href="#cb18-34" aria-hidden="true" tabindex="-1"></a>        target_end_coord<span class="op">=</span>dgt1_end,</span>
+<span id="cb18-35"><a href="#cb18-35" aria-hidden="true" tabindex="-1"></a>        end_coord_key<span class="op">=</span><span class="st">"end"</span>,</span>
+<span id="cb18-36"><a href="#cb18-36" aria-hidden="true" tabindex="-1"></a>        metadata<span class="op">=</span>MatchMetadata(</span>
+<span id="cb18-37"><a href="#cb18-37" aria-hidden="true" tabindex="-1"></a>            agent<span class="op">=</span>Agent(</span>
+<span id="cb18-38"><a href="#cb18-38" aria-hidden="true" tabindex="-1"></a>                name<span class="op">=</span><span class="st">"Thoresen analysis"</span>,</span>
+<span id="cb18-39"><a href="#cb18-39" aria-hidden="true" tabindex="-1"></a>                <span class="bu">type</span><span class="op">=</span>AgentType.human,</span>
+<span id="cb18-40"><a href="#cb18-40" aria-hidden="true" tabindex="-1"></a>                identifier<span class="op">=</span><span class="st">"coordinate_projection_via_shared_physical_timeline"</span>,</span>
+<span id="cb18-41"><a href="#cb18-41" aria-hidden="true" tabindex="-1"></a>            ),</span>
+<span id="cb18-42"><a href="#cb18-42" aria-hidden="true" tabindex="-1"></a>            certainty<span class="op">=</span><span class="fl">1.0</span>,</span>
+<span id="cb18-43"><a href="#cb18-43" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb18-44"><a href="#cb18-44" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-45"><a href="#cb18-45" aria-hidden="true" tabindex="-1"></a>    claims.append(claim)</span>
+<span id="cb18-46"><a href="#cb18-46" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-47"><a href="#cb18-47" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Track data for the summary table</span></span>
+<span id="cb18-48"><a href="#cb18-48" aria-hidden="true" tabindex="-1"></a>    projection_data.append(</span>
+<span id="cb18-49"><a href="#cb18-49" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb18-50"><a href="#cb18-50" aria-hidden="true" tabindex="-1"></a>            <span class="st">"event_id"</span>: event_id,</span>
+<span id="cb18-51"><a href="#cb18-51" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_start_px"</span>: dgt2_start,</span>
+<span id="cb18-52"><a href="#cb18-52" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_end_px"</span>: dgt2_end,</span>
+<span id="cb18-53"><a href="#cb18-53" aria-hidden="true" tabindex="-1"></a>            <span class="st">"seconds_start"</span>: <span class="bu">round</span>(sec_start, <span class="dv">2</span>),</span>
+<span id="cb18-54"><a href="#cb18-54" aria-hidden="true" tabindex="-1"></a>            <span class="st">"seconds_end"</span>: <span class="bu">round</span>(sec_end, <span class="dv">2</span>),</span>
+<span id="cb18-55"><a href="#cb18-55" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_start_px"</span>: <span class="bu">round</span>(dgt1_start, <span class="dv">1</span>),</span>
+<span id="cb18-56"><a href="#cb18-56" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_end_px"</span>: <span class="bu">round</span>(dgt1_end, <span class="dv">1</span>),</span>
+<span id="cb18-57"><a href="#cb18-57" aria-hidden="true" tabindex="-1"></a>        }</span>
+<span id="cb18-58"><a href="#cb18-58" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-59"><a href="#cb18-59" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-60"><a href="#cb18-60" aria-hidden="true" tabindex="-1"></a>{<span class="st">"claims"</span>: <span class="bu">len</span>(claims)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>{'claims': 11}</code></pre>
 </div>
 </div>
-<div id="96a16f2e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.604578Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.604251Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.610639Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.609670Z&quot;}}" data-execution_count="12">
+<div id="5062c74d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.508975Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.508817Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.513151Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.512385Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add claims to the bundle</span></span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>bundle.add_match_claims(claims)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="12">
-<pre style="font-family: monospace; line-height: 1.2;">AlignmentBundle[bundle:AlignmentBundle_1]
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle:AlignmentBundle_1]
 
   Standalone timelines (2):
-    Thoresen ...     0 ======================================= 4328 pixels
+    Thoresen ...     0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4328 pixels
     Thoresen ...     0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels
 
   MatchClaims: 11</pre>
 </div>
 </div>
-<div id="a66f0909" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.612737Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.612531Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.616727Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.615829Z&quot;}}" data-execution_count="13">
+<div id="5655e32f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.514969Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.514798Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.518424Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.517687Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Display an example claim (shows event ID, timelines, coordinates)</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>claims[<span class="dv">0</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="13">
-<div style="font-family: monospace;"><strong>MatchClaim</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">synchronous, interval</span>
+<div style="font-family: monospace;"><strong>MatchClaim</strong> <span style="background: #fff3e0; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">PROJECTION</span>
 <table class="caption-top table table-sm table-striped small">
 <tbody>
 <tr class="odd">
@@ -1030,18 +1076,23 @@ Number of children: 5</code></pre>
 <td><strong>dgt2</strong></td>
 <td>[2 – 150]</td>
 </tr>
-<tr class="even">
+<tr class="even" style="color: #555; font-size: 0.9em;">
+<td>Event A</td>
+<td>rect_a</td>
+<td>"rect_a"</td>
+</tr>
+<tr class="odd">
 <td>Timeline B</td>
 <td><strong>dgt1</strong></td>
 <td>[2.233256 – 167.494226]</td>
 </tr>
-<tr class="odd" style="color: #666;">
+<tr class="even" style="color: #666;">
 <td>Metadata</td>
-<td colspan="2">agent=thoresen_analysis</td>
+<td colspan="2">agent=Thoresen analysis</td>
 </tr>
 </tbody>
 </table>
-</div>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>claim.get_matchstamp()</code></div></div>
 </div>
 </div>
 </section>
@@ -1050,47 +1101,62 @@ Number of children: 5</code></pre>
 <section id="event-h-matchstamp-from-a-single-claim" class="level3">
 <h3 class="anchored" data-anchor-id="event-h-matchstamp-from-a-single-claim">Event H MatchStamp (from a single claim)</h3>
 <p>Since each MatchClaim has two anchors (start and end of the interval), the claim-level <code>get_matchstamp(from_graph=False)</code> returns a reduced stamp for the start anchor, showing the coordinate on both DGT2 and DGT1.</p>
-<div id="42759263" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.618752Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.618568Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.622464Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.621621Z&quot;}}" data-execution_count="14">
+<div id="b83f92ac" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.519897Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.519748Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.523297Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.522654Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Find the claim for Event H (rect_h2)</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>claim_h <span class="op">=</span> <span class="bu">next</span>(c <span class="cf">for</span> c <span class="kw">in</span> claims <span class="cf">if</span> c.start_anchor.coordinate_a <span class="op">==</span> stamp_h.start.axis)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>claim_h <span class="op">=</span> <span class="bu">next</span>(c <span class="cf">for</span> c <span class="kw">in</span> claims <span class="cf">if</span> c.event_a_id <span class="op">==</span> <span class="st">"rect_h2"</span>)</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>matchstamp_h_start <span class="op">=</span> claim_h.get_matchstamp(from_graph<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Event H MatchStamp -- start anchor:"</span>)</span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(matchstamp_h_start)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Event H MatchStamp -- start anchor:
-MatchStamp (2 timelines, 1 edges)
-  dgt2         1244  anchor
-  dgt1  1388.598616  anchor</code></pre>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>matchstamp_h_start</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<div style="font-family: monospace;"><strong>MatchStamp</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">2 timelines, 1 edges</span>
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header" style="border-bottom: 1px solid #ccc;">
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">ID</th>
+<th data-quarto-table-cell-role="th" style="text-align: right; padding: 2px 8px;">Coordinate</th>
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">Type</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>dgt2</strong></td>
+<td style="text-align: right;">1244</td>
+<td><em>anchor</em></td>
+</tr>
+<tr class="even">
+<td><strong>dgt1</strong></td>
+<td style="text-align: right;">1388.598616</td>
+<td><em>anchor</em></td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>stamp.get(&lt;tl_id&gt;)</code>, <code>stamp.get_coordinate(&lt;tl_id&gt;)</code>, <code>stamp.get_unit(&lt;unit&gt;)</code></div></div>
 </div>
 </div>
-<div id="0412b6b9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.624890Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.624693Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.628361Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.627657Z&quot;}}" data-execution_count="15">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The end anchor can be queried the same way by creating a fresh claim</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="co"># from just the end anchor, or we can read the coordinates directly:</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">Event H correspondence (start):"</span>)</span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"  DGT2: </span><span class="sc">{</span>claim_h<span class="sc">.</span>start_anchor<span class="sc">.</span>coordinate_a<span class="sc">}</span><span class="ss"> px"</span></span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f" -&gt; DGT1: </span><span class="sc">{</span>claim_h<span class="sc">.</span>start_anchor<span class="sc">.</span>coordinate_b<span class="sc">:.1f}</span><span class="ss"> px"</span></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Event H correspondence (end):"</span>)</span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
-<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"  DGT2: </span><span class="sc">{</span>claim_h<span class="sc">.</span>end_anchor<span class="sc">.</span>coordinate_a<span class="sc">}</span><span class="ss"> px"</span></span>
-<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f" -&gt; DGT1: </span><span class="sc">{</span>claim_h<span class="sc">.</span>end_anchor<span class="sc">.</span>coordinate_b<span class="sc">:.1f}</span><span class="ss"> px"</span></span>
-<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-Event H correspondence (start):
-  DGT2: 1244.0 px -&gt; DGT1: 1388.6 px
-Event H correspondence (end):
-  DGT2: 1383.0 px -&gt; DGT1: 1543.6 px</code></pre>
+<div id="005751a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.524910Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.524748Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.529037Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.528532Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The end anchor can be queried the same way by creating a fresh claim</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="co"># from just the end anchor, or we can read the coordinates directly:</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"start"</span>: {</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DGT2 px"</span>: claim_h.start_anchor.coordinate_a.value,</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DGT1 px"</span>: <span class="bu">round</span>(claim_h.start_anchor.coordinate_b.value, <span class="dv">1</span>),</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"end"</span>: {</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DGT2 px"</span>: claim_h.end_anchor.coordinate_a.value,</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">"DGT1 px"</span>: <span class="bu">round</span>(claim_h.end_anchor.coordinate_b.value, <span class="dv">1</span>),</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>{'start': {'DGT2 px': 1244.0, 'DGT1 px': 1388.6},
+ 'end': {'DGT2 px': 1383.0, 'DGT1 px': 1543.6}}</code></pre>
 </div>
 </div>
 </section>
 <section id="all-11-matchclaims-as-a-dataframe" class="level3">
 <h3 class="anchored" data-anchor-id="all-11-matchclaims-as-a-dataframe">All 11 MatchClaims as a DataFrame</h3>
-<div id="0bf51686" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.630715Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.630398Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.643132Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.642001Z&quot;}}" data-execution_count="16">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>projection_df <span class="op">=</span> pd.DataFrame(projection_data)</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>projection_df <span class="op">=</span> projection_df.set_index(<span class="st">"event_id"</span>)</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(projection_df.to_string())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="884ae26d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.531500Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.531254Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.539226Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.538454Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>projection_df <span class="op">=</span> pd.DataFrame(projection_data)</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>projection_df <span class="op">=</span> projection_df.set_index(<span class="st">"event_id"</span>)</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(projection_df.to_string())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>          dgt2_start_px  dgt2_end_px  seconds_start  seconds_end  dgt1_start_px  dgt1_end_px
 event_id
@@ -1110,12 +1176,12 @@ rect_f5          4050.0       4114.0         140.35       142.57         4523.9 
 </section>
 <section id="validation-all-dgt1-coordinates-within-bounds" class="level3">
 <h3 class="anchored" data-anchor-id="validation-all-dgt1-coordinates-within-bounds">Validation: all DGT1 coordinates within bounds</h3>
-<div id="0678b41b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.645655Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.645368Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.651337Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.650312Z&quot;}}" data-execution_count="17">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> projection_df[<span class="st">"dgt1_start_px"</span>].<span class="bu">min</span>() <span class="op">&gt;=</span> <span class="dv">0</span>, <span class="st">"DGT1 start below zero"</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> (</span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    projection_df[<span class="st">"dgt1_end_px"</span>].<span class="bu">max</span>() <span class="op">&lt;=</span> DGT1_TOTAL_WIDTH</span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>), <span class="st">"DGT1 end exceeds total width"</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"All 11 events project within DGT1 range [0, </span><span class="sc">{</span>DGT1_TOTAL_WIDTH<span class="sc">}</span><span class="ss">)"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="f8c8d9b5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.540947Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.540776Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.544459Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.543436Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> projection_df[<span class="st">"dgt1_start_px"</span>].<span class="bu">min</span>() <span class="op">&gt;=</span> <span class="dv">0</span>, <span class="st">"DGT1 start below zero"</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> (</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    projection_df[<span class="st">"dgt1_end_px"</span>].<span class="bu">max</span>() <span class="op">&lt;=</span> DGT1_TOTAL_WIDTH</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>), <span class="st">"DGT1 end exceeds total width"</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"All 11 events project within DGT1 range [0, </span><span class="sc">{</span>DGT1_TOTAL_WIDTH<span class="sc">}</span><span class="ss">)"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>All 11 events project within DGT1 range [0, 4835)</code></pre>
 </div>
@@ -1214,33 +1280,33 @@ rect_f5          4050.0       4114.0         140.35       142.57         4523.9 
 </tr>
 </tbody>
 </table>
-<div id="b189a1e6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.653937Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.653600Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.658800Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.657700Z&quot;}}" data-execution_count="18">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>DGT1_Y_RANGES <span class="op">=</span> [(<span class="dv">18</span>, <span class="dv">165</span>), (<span class="dv">205</span>, <span class="dv">353</span>), (<span class="dv">396</span>, <span class="dv">544</span>), (<span class="dv">588</span>, <span class="dv">736</span>), (<span class="dv">785</span>, <span class="dv">933</span>)]</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>DGT2_Y_RANGES <span class="op">=</span> [(<span class="dv">15</span>, <span class="dv">148</span>), (<span class="dv">18</span>, <span class="dv">150</span>), (<span class="dv">19</span>, <span class="dv">152</span>), (<span class="dv">15</span>, <span class="dv">147</span>), (<span class="dv">20</span>, <span class="dv">152</span>)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="658b5f43" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.546330Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.546155Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.549690Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.548992Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>DGT1_Y_RANGES <span class="op">=</span> [(<span class="dv">18</span>, <span class="dv">165</span>), (<span class="dv">205</span>, <span class="dv">353</span>), (<span class="dv">396</span>, <span class="dv">544</span>), (<span class="dv">588</span>, <span class="dv">736</span>), (<span class="dv">785</span>, <span class="dv">933</span>)]</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>DGT2_Y_RANGES <span class="op">=</span> [(<span class="dv">15</span>, <span class="dv">148</span>), (<span class="dv">18</span>, <span class="dv">150</span>), (<span class="dv">19</span>, <span class="dv">152</span>), (<span class="dv">15</span>, <span class="dv">147</span>), (<span class="dv">20</span>, <span class="dv">152</span>)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="create-per-segment-linearmaps-for-y-transfer" class="level3">
 <h3 class="anchored" data-anchor-id="create-per-segment-linearmaps-for-y-transfer">Create per-segment LinearMaps for y-transfer</h3>
 <p>Each segment has a LinearMap that maps <code>[dgt2_y0, dgt2_y1]</code> to <code>[dgt1_y0, dgt1_y1]</code>. The linear mapping is:</p>
 <p><span class="math display">\[y_{\text{DGT1}} = y_{0}^{\text{DGT1}} + \frac{y - y_{0}^{\text{DGT2}}}{h^{\text{DGT2}}} \cdot h^{\text{DGT1}}\]</span></p>
-<div id="57050ce9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.661507Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.661179Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.668563Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.667327Z&quot;}}" data-execution_count="19">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>y_maps <span class="op">=</span> []</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, ((d2_y0, d2_y1), (d1_y0, d1_y1)) <span class="kw">in</span> <span class="bu">enumerate</span>(<span class="bu">zip</span>(DGT2_Y_RANGES, DGT1_Y_RANGES)):</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    d2_height <span class="op">=</span> d2_y1 <span class="op">-</span> d2_y0</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    d1_height <span class="op">=</span> d1_y1 <span class="op">-</span> d1_y0</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>    scalar <span class="op">=</span> d1_height <span class="op">/</span> d2_height</span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">=</span> d1_y0 <span class="op">-</span> scalar <span class="op">*</span> d2_y0</span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>    lmap <span class="op">=</span> LinearMap(</span>
-<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>        scalar<span class="op">=</span>scalar,</span>
-<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>        offset<span class="op">=</span>offset,</span>
-<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="ss">f"y_transfer_seg</span><span class="sc">{</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">"</span>,</span>
-<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>    y_maps.append(lmap)</span>
-<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(</span>
-<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a>        <span class="ss">f"Segment </span><span class="sc">{</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">: DGT2 [</span><span class="sc">{</span>d2_y0<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>d2_y1<span class="sc">}</span><span class="ss">] -&gt; DGT1 [</span><span class="sc">{</span>d1_y0<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>d1_y1<span class="sc">}</span><span class="ss">], "</span></span>
-<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a>        <span class="ss">f"scalar=</span><span class="sc">{</span>scalar<span class="sc">:.4f}</span><span class="ss">, offset=</span><span class="sc">{</span>offset<span class="sc">:.2f}</span><span class="ss">"</span></span>
-<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a>    )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="609ba648" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.551341Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.551178Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.555172Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.554541Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>y_maps <span class="op">=</span> []</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, ((d2_y0, d2_y1), (d1_y0, d1_y1)) <span class="kw">in</span> <span class="bu">enumerate</span>(<span class="bu">zip</span>(DGT2_Y_RANGES, DGT1_Y_RANGES)):</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    d2_height <span class="op">=</span> d2_y1 <span class="op">-</span> d2_y0</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    d1_height <span class="op">=</span> d1_y1 <span class="op">-</span> d1_y0</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>    scalar <span class="op">=</span> d1_height <span class="op">/</span> d2_height</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">=</span> d1_y0 <span class="op">-</span> scalar <span class="op">*</span> d2_y0</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>    lmap <span class="op">=</span> LinearMap(</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>        scalar<span class="op">=</span>scalar,</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>        offset<span class="op">=</span>offset,</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="ss">f"y_transfer_seg</span><span class="sc">{</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>    y_maps.append(lmap)</span>
+<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(</span>
+<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a>        <span class="ss">f"Segment </span><span class="sc">{</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">: DGT2 [</span><span class="sc">{</span>d2_y0<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>d2_y1<span class="sc">}</span><span class="ss">] -&gt; DGT1 [</span><span class="sc">{</span>d1_y0<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>d1_y1<span class="sc">}</span><span class="ss">], "</span></span>
+<span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a>        <span class="ss">f"scalar=</span><span class="sc">{</span>scalar<span class="sc">:.4f}</span><span class="ss">, offset=</span><span class="sc">{</span>offset<span class="sc">:.2f}</span><span class="ss">"</span></span>
+<span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a>    )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Segment 1: DGT2 [15, 148] -&gt; DGT1 [18, 165], scalar=1.1053, offset=1.42
 Segment 2: DGT2 [18, 150] -&gt; DGT1 [205, 353], scalar=1.1212, offset=184.82
@@ -1252,51 +1318,51 @@ Segment 5: DGT2 [20, 152] -&gt; DGT1 [785, 933], scalar=1.1212, offset=762.58</c
 </section>
 <section id="apply-y-transfer-to-all-events" class="level3">
 <h3 class="anchored" data-anchor-id="apply-y-transfer-to-all-events">Apply y-transfer to all events</h3>
-<div id="4101d4f2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.671386Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.671053Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.685936Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.684747Z&quot;}}" data-execution_count="20">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>full_transfer_data <span class="op">=</span> []</span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _, row <span class="kw">in</span> events_df.iterrows():</span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    event_id <span class="op">=</span> row[<span class="st">"graphical_element_id"</span>]</span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    seg_idx <span class="op">=</span> IMAGE_TO_SEGMENT[row[<span class="st">"image_filename"</span>]]</span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>    x0 <span class="op">=</span> DGT2_BOUNDS[seg_idx][<span class="dv">0</span>]</span>
-<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># DGT2 local coordinates</span></span>
-<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    dgt2_x_start <span class="op">=</span> row[<span class="st">"x"</span>] <span class="op">-</span> x0</span>
-<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>    dgt2_x_end <span class="op">=</span> dgt2_x_start <span class="op">+</span> row[<span class="st">"width"</span>]</span>
-<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>    dgt2_y_top <span class="op">=</span> row[<span class="st">"y"</span>]</span>
-<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>    dgt2_y_bottom <span class="op">=</span> row[<span class="st">"y"</span>] <span class="op">+</span> row[<span class="st">"height"</span>]</span>
-<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Get the projection data we already computed</span></span>
-<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>    proj <span class="op">=</span> <span class="bu">next</span>(p <span class="cf">for</span> p <span class="kw">in</span> projection_data <span class="cf">if</span> p[<span class="st">"event_id"</span>] <span class="op">==</span> event_id)</span>
-<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Apply y-transfer via the segment's LinearMap</span></span>
-<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a>    dgt1_y_top <span class="op">=</span> <span class="bu">float</span>(y_maps[seg_idx](dgt2_y_top))</span>
-<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a>    dgt1_y_bottom <span class="op">=</span> <span class="bu">float</span>(y_maps[seg_idx](dgt2_y_bottom))</span>
-<span id="cb33-20"><a href="#cb33-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-21"><a href="#cb33-21" aria-hidden="true" tabindex="-1"></a>    full_transfer_data.append(</span>
-<span id="cb33-22"><a href="#cb33-22" aria-hidden="true" tabindex="-1"></a>        {</span>
-<span id="cb33-23"><a href="#cb33-23" aria-hidden="true" tabindex="-1"></a>            <span class="st">"event_id"</span>: event_id,</span>
-<span id="cb33-24"><a href="#cb33-24" aria-hidden="true" tabindex="-1"></a>            <span class="st">"segment"</span>: seg_idx <span class="op">+</span> <span class="dv">1</span>,</span>
-<span id="cb33-25"><a href="#cb33-25" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_x_start"</span>: dgt2_x_start,</span>
-<span id="cb33-26"><a href="#cb33-26" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_y_top"</span>: dgt2_y_top,</span>
-<span id="cb33-27"><a href="#cb33-27" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_x_end"</span>: dgt2_x_end,</span>
-<span id="cb33-28"><a href="#cb33-28" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_y_bottom"</span>: dgt2_y_bottom,</span>
-<span id="cb33-29"><a href="#cb33-29" aria-hidden="true" tabindex="-1"></a>            <span class="st">"sec_start"</span>: proj[<span class="st">"seconds_start"</span>],</span>
-<span id="cb33-30"><a href="#cb33-30" aria-hidden="true" tabindex="-1"></a>            <span class="st">"sec_end"</span>: proj[<span class="st">"seconds_end"</span>],</span>
-<span id="cb33-31"><a href="#cb33-31" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_x_start"</span>: proj[<span class="st">"dgt1_start_px"</span>],</span>
-<span id="cb33-32"><a href="#cb33-32" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_y_top"</span>: <span class="bu">round</span>(dgt1_y_top, <span class="dv">1</span>),</span>
-<span id="cb33-33"><a href="#cb33-33" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_x_end"</span>: proj[<span class="st">"dgt1_end_px"</span>],</span>
-<span id="cb33-34"><a href="#cb33-34" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_y_bottom"</span>: <span class="bu">round</span>(dgt1_y_bottom, <span class="dv">1</span>),</span>
-<span id="cb33-35"><a href="#cb33-35" aria-hidden="true" tabindex="-1"></a>        }</span>
-<span id="cb33-36"><a href="#cb33-36" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb33-37"><a href="#cb33-37" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-38"><a href="#cb33-38" aria-hidden="true" tabindex="-1"></a>transfer_df <span class="op">=</span> pd.DataFrame(full_transfer_data).set_index(<span class="st">"event_id"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="d1e5acff" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.556705Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.556548Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.563629Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.562715Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>full_transfer_data <span class="op">=</span> []</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _, row <span class="kw">in</span> events_df.iterrows():</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    event_id <span class="op">=</span> row[<span class="st">"graphical_element_id"</span>]</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>    seg_idx <span class="op">=</span> IMAGE_TO_SEGMENT[row[<span class="st">"image_filename"</span>]]</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>    x0 <span class="op">=</span> DGT2_BOUNDS[seg_idx][<span class="dv">0</span>]</span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># DGT2 local coordinates</span></span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a>    dgt2_x_start <span class="op">=</span> row[<span class="st">"x"</span>] <span class="op">-</span> x0</span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>    dgt2_x_end <span class="op">=</span> dgt2_x_start <span class="op">+</span> row[<span class="st">"width"</span>]</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a>    dgt2_y_top <span class="op">=</span> row[<span class="st">"y"</span>]</span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a>    dgt2_y_bottom <span class="op">=</span> row[<span class="st">"y"</span>] <span class="op">+</span> row[<span class="st">"height"</span>]</span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Get the projection data we already computed</span></span>
+<span id="cb32-15"><a href="#cb32-15" aria-hidden="true" tabindex="-1"></a>    proj <span class="op">=</span> <span class="bu">next</span>(p <span class="cf">for</span> p <span class="kw">in</span> projection_data <span class="cf">if</span> p[<span class="st">"event_id"</span>] <span class="op">==</span> event_id)</span>
+<span id="cb32-16"><a href="#cb32-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-17"><a href="#cb32-17" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Apply y-transfer via the segment's LinearMap</span></span>
+<span id="cb32-18"><a href="#cb32-18" aria-hidden="true" tabindex="-1"></a>    dgt1_y_top <span class="op">=</span> <span class="bu">float</span>(y_maps[seg_idx](dgt2_y_top))</span>
+<span id="cb32-19"><a href="#cb32-19" aria-hidden="true" tabindex="-1"></a>    dgt1_y_bottom <span class="op">=</span> <span class="bu">float</span>(y_maps[seg_idx](dgt2_y_bottom))</span>
+<span id="cb32-20"><a href="#cb32-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-21"><a href="#cb32-21" aria-hidden="true" tabindex="-1"></a>    full_transfer_data.append(</span>
+<span id="cb32-22"><a href="#cb32-22" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb32-23"><a href="#cb32-23" aria-hidden="true" tabindex="-1"></a>            <span class="st">"event_id"</span>: event_id,</span>
+<span id="cb32-24"><a href="#cb32-24" aria-hidden="true" tabindex="-1"></a>            <span class="st">"segment"</span>: seg_idx <span class="op">+</span> <span class="dv">1</span>,</span>
+<span id="cb32-25"><a href="#cb32-25" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_x_start"</span>: dgt2_x_start,</span>
+<span id="cb32-26"><a href="#cb32-26" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_y_top"</span>: dgt2_y_top,</span>
+<span id="cb32-27"><a href="#cb32-27" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_x_end"</span>: dgt2_x_end,</span>
+<span id="cb32-28"><a href="#cb32-28" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt2_y_bottom"</span>: dgt2_y_bottom,</span>
+<span id="cb32-29"><a href="#cb32-29" aria-hidden="true" tabindex="-1"></a>            <span class="st">"sec_start"</span>: proj[<span class="st">"seconds_start"</span>],</span>
+<span id="cb32-30"><a href="#cb32-30" aria-hidden="true" tabindex="-1"></a>            <span class="st">"sec_end"</span>: proj[<span class="st">"seconds_end"</span>],</span>
+<span id="cb32-31"><a href="#cb32-31" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_x_start"</span>: proj[<span class="st">"dgt1_start_px"</span>],</span>
+<span id="cb32-32"><a href="#cb32-32" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_y_top"</span>: <span class="bu">round</span>(dgt1_y_top, <span class="dv">1</span>),</span>
+<span id="cb32-33"><a href="#cb32-33" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_x_end"</span>: proj[<span class="st">"dgt1_end_px"</span>],</span>
+<span id="cb32-34"><a href="#cb32-34" aria-hidden="true" tabindex="-1"></a>            <span class="st">"dgt1_y_bottom"</span>: <span class="bu">round</span>(dgt1_y_bottom, <span class="dv">1</span>),</span>
+<span id="cb32-35"><a href="#cb32-35" aria-hidden="true" tabindex="-1"></a>        }</span>
+<span id="cb32-36"><a href="#cb32-36" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb32-37"><a href="#cb32-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-38"><a href="#cb32-38" aria-hidden="true" tabindex="-1"></a>transfer_df <span class="op">=</span> pd.DataFrame(full_transfer_data).set_index(<span class="st">"event_id"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="full-2d-transfer-table" class="level3">
 <h3 class="anchored" data-anchor-id="full-2d-transfer-table">Full 2D transfer table</h3>
-<div id="b06ffe7d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.688625Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.688327Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.700844Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.699911Z&quot;}}" data-execution_count="21">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(transfer_df.to_string())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="8936167f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.565333Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.565172Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.571340Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.570699Z&quot;}}" data-execution_count="21">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(transfer_df.to_string())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>          segment  dgt2_x_start  dgt2_y_top  dgt2_x_end  dgt2_y_bottom  sec_start  sec_end  dgt1_x_start  dgt1_y_top  dgt1_x_end  dgt1_y_bottom
 event_id
@@ -1318,18 +1384,18 @@ rect_f5         5           586          45         650             66     140.3
 <h3 class="anchored" data-anchor-id="event-h-detailed-y-coordinate-transfer">Event H: detailed y-coordinate transfer</h3>
 <p>Event H (<code>rect_h2</code>) is on DGT2 segment 2 at y=46, height=20. DGT2 segment 2 y-range: [18, 150], height=132. DGT1 system 2 y-range: [205, 353], height=148.</p>
 <p>Relative y-position: (46 - 18) / 132 = 0.212 Mapped y_top: 205 + 0.212 * 148 ~ 236 Mapped y_bottom: 205 + ((66 - 18) / 132) * 148 ~ 259</p>
-<div id="9b731abc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.703947Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.703640Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.710602Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.709480Z&quot;}}" data-execution_count="22">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>h_row <span class="op">=</span> transfer_df.loc[<span class="st">"rect_h2"</span>]</span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Event H (rect_h2) full 2D transfer:"</span>)</span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
-<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"  DGT2: x=[</span><span class="sc">{</span>h_row[<span class="st">'dgt2_x_start'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt2_x_end'</span>]<span class="sc">}</span><span class="ss">), "</span></span>
-<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"y=[</span><span class="sc">{</span>h_row[<span class="st">'dgt2_y_top'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt2_y_bottom'</span>]<span class="sc">}</span><span class="ss">)"</span></span>
-<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Seconds: [</span><span class="sc">{</span>h_row[<span class="st">'sec_start'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'sec_end'</span>]<span class="sc">}</span><span class="ss">)"</span>)</span>
-<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
-<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"  DGT1: x=[</span><span class="sc">{</span>h_row[<span class="st">'dgt1_x_start'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt1_x_end'</span>]<span class="sc">}</span><span class="ss">), "</span></span>
-<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"y=[</span><span class="sc">{</span>h_row[<span class="st">'dgt1_y_top'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt1_y_bottom'</span>]<span class="sc">}</span><span class="ss">)"</span></span>
-<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="22746d97" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.573325Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.573175Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.576766Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.576109Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>h_row <span class="op">=</span> transfer_df.loc[<span class="st">"rect_h2"</span>]</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Event H (rect_h2) full 2D transfer:"</span>)</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"  DGT2: x=[</span><span class="sc">{</span>h_row[<span class="st">'dgt2_x_start'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt2_x_end'</span>]<span class="sc">}</span><span class="ss">), "</span></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"y=[</span><span class="sc">{</span>h_row[<span class="st">'dgt2_y_top'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt2_y_bottom'</span>]<span class="sc">}</span><span class="ss">)"</span></span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  Seconds: [</span><span class="sc">{</span>h_row[<span class="st">'sec_start'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'sec_end'</span>]<span class="sc">}</span><span class="ss">)"</span>)</span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"  DGT1: x=[</span><span class="sc">{</span>h_row[<span class="st">'dgt1_x_start'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt1_x_end'</span>]<span class="sc">}</span><span class="ss">), "</span></span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"y=[</span><span class="sc">{</span>h_row[<span class="st">'dgt1_y_top'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>h_row[<span class="st">'dgt1_y_bottom'</span>]<span class="sc">}</span><span class="ss">)"</span></span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Event H (rect_h2) full 2D transfer:
   DGT2: x=[378.0, 517.0), y=[46.0, 66.0)
@@ -1340,17 +1406,17 @@ rect_f5         5           586          45         650             66     140.3
 </section>
 <section id="validation-y-coordinates-within-bounds" class="level3">
 <h3 class="anchored" data-anchor-id="validation-y-coordinates-within-bounds">Validation: y-coordinates within bounds</h3>
-<div id="05af68ca" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:56.713253Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:56.712938Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:56.722577Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:56.721314Z&quot;}}" data-execution_count="23">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _, row <span class="kw">in</span> pd.DataFrame(full_transfer_data).iterrows():</span>
-<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    seg_idx <span class="op">=</span> <span class="bu">int</span>(row[<span class="st">"segment"</span>]) <span class="op">-</span> <span class="dv">1</span></span>
-<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    d1_y0, d1_y1 <span class="op">=</span> DGT1_Y_RANGES[seg_idx]</span>
-<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> (</span>
-<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>        row[<span class="st">"dgt1_y_top"</span>] <span class="op">&gt;=</span> d1_y0</span>
-<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>    ), <span class="ss">f"</span><span class="sc">{</span>row[<span class="st">'event_id'</span>]<span class="sc">}</span><span class="ss">: y_top </span><span class="sc">{</span>row[<span class="st">'dgt1_y_top'</span>]<span class="sc">}</span><span class="ss"> below system y0 </span><span class="sc">{</span>d1_y0<span class="sc">}</span><span class="ss">"</span></span>
-<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> (</span>
-<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>        row[<span class="st">"dgt1_y_bottom"</span>] <span class="op">&lt;=</span> d1_y1</span>
-<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>    ), <span class="ss">f"</span><span class="sc">{</span>row[<span class="st">'event_id'</span>]<span class="sc">}</span><span class="ss">: y_bottom </span><span class="sc">{</span>row[<span class="st">'dgt1_y_bottom'</span>]<span class="sc">}</span><span class="ss"> exceeds system y1 </span><span class="sc">{</span>d1_y1<span class="sc">}</span><span class="ss">"</span></span>
-<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"All y-coordinates within their respective DGT1 system bounds"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="a24ad9c1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-24T20:34:59.578515Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-24T20:34:59.578343Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-24T20:34:59.583252Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-24T20:34:59.582622Z&quot;}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _, row <span class="kw">in</span> pd.DataFrame(full_transfer_data).iterrows():</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    seg_idx <span class="op">=</span> <span class="bu">int</span>(row[<span class="st">"segment"</span>]) <span class="op">-</span> <span class="dv">1</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    d1_y0, d1_y1 <span class="op">=</span> DGT1_Y_RANGES[seg_idx]</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> (</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>        row[<span class="st">"dgt1_y_top"</span>] <span class="op">&gt;=</span> d1_y0</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    ), <span class="ss">f"</span><span class="sc">{</span>row[<span class="st">'event_id'</span>]<span class="sc">}</span><span class="ss">: y_top </span><span class="sc">{</span>row[<span class="st">'dgt1_y_top'</span>]<span class="sc">}</span><span class="ss"> below system y0 </span><span class="sc">{</span>d1_y0<span class="sc">}</span><span class="ss">"</span></span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> (</span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>        row[<span class="st">"dgt1_y_bottom"</span>] <span class="op">&lt;=</span> d1_y1</span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>    ), <span class="ss">f"</span><span class="sc">{</span>row[<span class="st">'event_id'</span>]<span class="sc">}</span><span class="ss">: y_bottom </span><span class="sc">{</span>row[<span class="st">'dgt1_y_bottom'</span>]<span class="sc">}</span><span class="ss"> exceeds system y1 </span><span class="sc">{</span>d1_y1<span class="sc">}</span><span class="ss">"</span></span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"All y-coordinates within their respective DGT1 system bounds"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>All y-coordinates within their respective DGT1 system bounds</code></pre>
 </div>
@@ -1367,7 +1433,7 @@ rect_f5         5           586          45         650             66     140.3
 <li><strong>MatchStamps</strong> confirmed the coordinate correspondence from both the claim and bundle perspectives.</li>
 <li><strong>Y-coordinates</strong> were transferred via per-segment <code>LinearMap</code>, mapping each segment’s event space to the corresponding DGT1 system.</li>
 </ol>
-<p>The two construction patterns – SegmentLine concatenation (DGT2) vs.&nbsp;plain timeline with children (DGT1) – illustrate how Time To Align! supports both “accumulate as you go” and “known layout” approaches.</p>
+<p>The two construction patterns – SegmentLine concatenation (DGT2) vs.&nbsp;plain timeline with children (DGT1) – illustrate how TimeToAlign! supports both “accumulate as you go” and “known layout” approaches.</p>
 
 
 </section>

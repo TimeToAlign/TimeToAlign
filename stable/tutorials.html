@@ -282,6 +282,29 @@ window.Quarto = {
 </li>
       </ul>
   </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true">
+ <span class="menu-text">Data &amp; Type Model</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="./tutorials/tut05_datafields_and_eventdata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DataFields and Layered EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="./tutorials/tut06_pitch_and_harmony.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Pitch and Harmony across Formats</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
@@ -299,6 +322,7 @@ window.Quarto = {
   <li><a href="#timelinegroups" id="toc-timelinegroups" class="nav-link" data-scroll-target="#timelinegroups">TimelineGroups</a></li>
   <li><a href="#alignmentbundles" id="toc-alignmentbundles" class="nav-link" data-scroll-target="#alignmentbundles">AlignmentBundles</a></li>
   <li><a href="#in-depth-topics" id="toc-in-depth-topics" class="nav-link" data-scroll-target="#in-depth-topics">In-depth Topics</a></li>
+  <li><a href="#data-type-model" id="toc-data-type-model" class="nav-link" data-scroll-target="#data-type-model">Data &amp; Type Model</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -326,8 +350,8 @@ window.Quarto = {
 </header>
 
 
-<p>These tutorials take you from zero to a working multimodal alignment, introducing one concept at a time. Each notebook uses real-world data from the project’s specimen collection and can be run locally after installing the library with <code>pip install -e ".[tutorial]"</code> from the repository root.</p>
-<p><strong>Prerequisites:</strong> Python 3.12+, basic familiarity with Jupyter notebooks.</p>
+<p>These tutorials take you from zero to a working multimodal alignment, introducing one concept at a time. Each notebook uses real-world data from the project’s specimen collection and can be run locally after installing the library with <code>pip install "timetoalign[tutorial]"</code>.</p>
+<p><strong>Prerequisites:</strong> Python 3.11+, basic familiarity with Jupyter notebooks.</p>
 <section id="tutorial-notebooks" class="level2">
 <h2 class="anchored" data-anchor-id="tutorial-notebooks">Tutorial Notebooks</h2>
 <div id="listing-tutorial-listing" class="quarto-listing quarto-listing-container-table">
@@ -347,7 +371,7 @@ Description
 </thead>
 <tbody class="list">
 
-<tr data-index="0" data-listing-file-modified-sort="1778755163431" data-listing-reading-time-sort="2" data-listing-word-count-sort="215" data-listing-title-sort="Quickstart" data-listing-filename-sort="tut00_quickstart.ipynb">
+<tr data-index="0" data-listing-file-modified-sort="1784925658172" data-listing-reading-time-sort="2" data-listing-word-count-sort="211" data-listing-title-sort="Quickstart" data-listing-filename-sort="tut00_quickstart.ipynb">
 <td>
 <a href="./tutorials/tut00_quickstart.html" class="title listing-title">Quickstart</a>
 </td>
@@ -357,7 +381,7 @@ Description
 
 </tr>
 
-<tr data-index="1" data-listing-file-modified-sort="1778755172598" data-listing-reading-time-sort="1" data-listing-word-count-sort="76" data-listing-title-sort="Timelines, Events, and Maps" data-listing-filename-sort="tut01a_timelines_events_maps.ipynb">
+<tr data-index="1" data-listing-file-modified-sort="1784922169673" data-listing-reading-time-sort="1" data-listing-word-count-sort="76" data-listing-title-sort="Timelines, Events, and Maps" data-listing-filename-sort="tut01a_timelines_events_maps.ipynb">
 <td>
 <a href="./tutorials/tut01a_timelines_events_maps.html" class="title listing-title">Timelines, Events, and Maps</a>
 </td>
@@ -367,7 +391,7 @@ Description
 
 </tr>
 
-<tr data-index="2" data-listing-file-modified-sort="1778755181684" data-listing-reading-time-sort="1" data-listing-word-count-sort="66" data-listing-title-sort="Children, Regions, and Timestamps" data-listing-filename-sort="tut01b_children_regions_timestamps.ipynb">
+<tr data-index="2" data-listing-file-modified-sort="1784922169673" data-listing-reading-time-sort="1" data-listing-word-count-sort="66" data-listing-title-sort="Children, Regions, and Timestamps" data-listing-filename-sort="tut01b_children_regions_timestamps.ipynb">
 <td>
 <a href="./tutorials/tut01b_children_regions_timestamps.html" class="title listing-title">Children, Regions, and Timestamps</a>
 </td>
@@ -377,7 +401,7 @@ Description
 
 </tr>
 
-<tr data-index="3" data-listing-file-modified-sort="1778755189451" data-listing-reading-time-sort="1" data-listing-word-count-sort="63" data-listing-title-sort="Timeline Groups and Commensurability" data-listing-filename-sort="tut02_timeline_groups.ipynb">
+<tr data-index="3" data-listing-file-modified-sort="1784922169674" data-listing-reading-time-sort="1" data-listing-word-count-sort="63" data-listing-title-sort="Timeline Groups and Commensurability" data-listing-filename-sort="tut02_timeline_groups.ipynb">
 <td>
 <a href="./tutorials/tut02_timeline_groups.html" class="title listing-title">Timeline Groups and Commensurability</a>
 </td>
@@ -387,7 +411,7 @@ Description
 
 </tr>
 
-<tr data-index="4" data-listing-file-modified-sort="1778755208665" data-listing-reading-time-sort="1" data-listing-word-count-sort="62" data-listing-title-sort="Alignment Bundles" data-listing-filename-sort="tut03_alignment_bundles.ipynb">
+<tr data-index="4" data-listing-file-modified-sort="1784925658167" data-listing-reading-time-sort="2" data-listing-word-count-sort="345" data-listing-title-sort="Alignment Bundles" data-listing-filename-sort="tut03_alignment_bundles.ipynb">
 <td>
 <a href="./tutorials/tut03_alignment_bundles.html" class="title listing-title">Alignment Bundles</a>
 </td>
@@ -397,12 +421,32 @@ Description
 
 </tr>
 
-<tr data-index="5" data-listing-file-modified-sort="1778755213135" data-listing-reading-time-sort="1" data-listing-word-count-sort="122" data-listing-title-sort="Flow Control and Grids" data-listing-filename-sort="tut04_flow_and_grids.ipynb">
+<tr data-index="5" data-listing-file-modified-sort="1784922169674" data-listing-reading-time-sort="1" data-listing-word-count-sort="122" data-listing-title-sort="Flow Control and Grids" data-listing-filename-sort="tut04_flow_and_grids.ipynb">
 <td>
 <a href="./tutorials/tut04_flow_and_grids.html" class="title listing-title">Flow Control and Grids</a>
 </td>
 <td>
 <span class="listing-description">BeatGrid, repeats, metrical structure</span>
+</td>
+
+</tr>
+
+<tr data-index="6" data-listing-file-modified-sort="1784925658167" data-listing-reading-time-sort="6" data-listing-word-count-sort="1062" data-listing-title-sort="DataFields and Layered EventData" data-listing-filename-sort="tut05_datafields_and_eventdata.ipynb">
+<td>
+<a href="./tutorials/tut05_datafields_and_eventdata.html" class="title listing-title">DataFields and Layered EventData</a>
+</td>
+<td>
+<span class="listing-description">The Protocol/Scalar/Field triple, raw Layer 0 fields, default and self-built semantic fields, discovery, and Parquet-embedded metadata</span>
+</td>
+
+</tr>
+
+<tr data-index="7" data-listing-file-modified-sort="1784922169674" data-listing-reading-time-sort="5" data-listing-word-count-sort="974" data-listing-title-sort="Pitch and Harmony across Formats" data-listing-filename-sort="tut06_pitch_and_harmony.ipynb">
+<td>
+<a href="./tutorials/tut06_pitch_and_harmony.html" class="title listing-title">Pitch and Harmony across Formats</a>
+</td>
+<td>
+<span class="listing-description">Cross-format pitch equivalence: the same note from ms3 TSV, music21, partitura, MIDI, and parangonada; the SpecificPitch vs EnharmonicPitch/MidiPitch affordance; the same triple for harmony</span>
 </td>
 
 </tr>
@@ -439,6 +483,13 @@ Description
 <h3 class="anchored" data-anchor-id="in-depth-topics">In-depth Topics</h3>
 <ul>
 <li><a href="./tutorials/tut04_flow_and_grids.html">Flow Control and Grids</a> — BeatGrid, repeats, and metrical structure.</li>
+</ul>
+</section>
+<section id="data-type-model" class="level3">
+<h3 class="anchored" data-anchor-id="data-type-model">Data &amp; Type Model</h3>
+<ul>
+<li><a href="./tutorials/tut05_datafields_and_eventdata.html">DataFields and Layered EventData</a> — The Protocol/Scalar/Field triple, raw and semantic fields, discovery, and Parquet-embedded metadata.</li>
+<li><a href="./tutorials/tut06_pitch_and_harmony.html">Pitch and Harmony across Formats</a> — Cross-format pitch equivalence and the typed view each format affords, applied to pitch and harmony.</li>
 </ul>
 
 

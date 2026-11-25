@@ -221,11 +221,15 @@ ul.task-list li input[type="checkbox"] {
 <dl>
 <dt><strong>AlignmentAnchor</strong></dt>
 <dd>
-A coordinate pair associating one coordinate on timeline A with one on timeline B; a neutral record with no claim semantics—provenance is carried by the enclosing <button class="glossary" title="">MatchClaim</button>. Only synchronous MatchClaims produce AlignmentAnchors. From a <button class="glossary" title="">MatchClaim</button> of <button class="glossary" title="">TimeIntervalEvent</button>s, one derives a <strong>StartAnchor</strong> and an <strong>EndAnchor</strong>. See <a href="./concepts.html#alignment">Alignment</a>.
+A coordinate pair associating one coordinate on timeline A with one on timeline B; a neutral record with no claim semantics—provenance is carried by the enclosing <button class="glossary" title="">MatchClaim</button>. Only synchronous MatchClaims produce AlignmentAnchors. From a <button class="glossary" title="">MatchClaim</button> of <button class="glossary" title="An event with duration, defined by a TimeInterval (start and end coordinates). Contrast with InstantEvent which has zero duration.">TimeIntervalEvent</button>s, one derives a <strong>StartAnchor</strong> and an <strong>EndAnchor</strong>. See <a href="./concepts.html#alignment">Alignment</a>.
 </dd>
 <dt><strong>AlignmentBundle</strong></dt>
 <dd>
 A collection of <button class="glossary" title="">TimelineGroup</button>s with inter-group <button class="glossary" title="">MatchClaim</button> connections; provides coordinate transfer via offset arithmetic, interpolation, and <button class="glossary" title="An interpolation-based coordinate mapping derived from a MatchLine; enables non-linear coordinate transfer between TimelineGroups.">WarpMap</button>s. See <a href="./concepts.html#alignment">Alignment</a>.
+</dd>
+<dt><strong>AlignmentMatrix</strong></dt>
+<dd>
+An audio-to-audio alignment in which several recordings of one work are each warped onto a single shared, equidistant reference grid. Per recording, a parallel onset-time array gives that recording’s clock-time at each grid column; because every array indexes the same grid they are equal length, so together they form a dense matrix of shape (recordings × grid columns). A single such file encodes an entire <button class="glossary" title="">MatchGraph</button> directly — every pair of recordings is related at every grid column — rather than only one score-to-performance correspondence. The complete pairwise claim set is held in a <button class="glossary" title="">MatchClaimField</button>. See <a href="./concepts.html#alignment">Alignment</a>.
 </dd>
 </dl>
 </section>
@@ -234,7 +238,7 @@ A collection of <button class="glossary" title="">TimelineGroup</button>s with i
 <dl>
 <dt><strong>Break</strong></dt>
 <dd>
-A <button class="glossary" title="">ControlEvent</button> that voids <button class="glossary" title="A TimeInterval is contiguous if it monotonically spans all coordinates between its start and end. An Instant is contiguous with a TimeInterval if it is synchronous with its EndInstant.">Contiguity</button> at its <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button>. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals. See <a href="./concepts.html#flow-control">Flow control</a>.
+A <button class="glossary" title="">ControlEvent</button> that voids <button class="glossary" title="A TimeInterval is contiguous if it monotonically spans all coordinates between its start and end. An Instant is contiguous with a TimeInterval if it is synchronous with its EndInstant.">Contiguity</button> at its <button class="glossary" title="">Instant</button>. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals. See <a href="./concepts.html#flow-control">Flow control</a>.
 </dd>
 </dl>
 </section>
@@ -243,15 +247,19 @@ A <button class="glossary" title="">ControlEvent</button> that voids <button cla
 <dl>
 <dt><strong>ChainMap</strong></dt>
 <dd>
-A <button class="glossary" title="">MultiMap</button> that applies multiple <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s in sequence, creating a conversion path from a source unit to a target unit. See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
+A <button class="glossary" title="An umbrella term for composed ConversionMaps: ChainMap (sequential), CombinationMap (parallel outputs), and ConcatenationMap (regional).">MultiMap</button> that applies multiple <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s in sequence, creating a conversion path from a source unit to a target unit. See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
 </dd>
 <dt><strong>Child</strong></dt>
 <dd>
 A <button class="glossary" title="">Timeline</button> nested within a parent, sharing its measuring unit but defining its own origin. Children are locked upon insertion to prevent side effects from modifications. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
 </dd>
+<dt><strong>ClaimType</strong></dt>
+<dd>
+The semantic kind of a <button class="glossary" title="">MatchClaim</button>, derived from its structure rather than stored — read from whether the claim is explicit, whether it is synchronous, and how many of its two sides name an event. Six members: <strong>event_match</strong> (synchronous, both sides name an event; the case that yields <button class="glossary" title="A coordinate pair associating one coordinate on timeline A with one on timeline B; a neutral record with no claim semantics. Provenance and interpretation are carried by the enclosing MatchClaim. Only synchronous MatchClaims produce AlignmentAnchors.">AlignmentAnchor</button>s), <strong>projection</strong> (synchronous, exactly one side names an event, the other a bare coordinate), <strong>anchor</strong> (synchronous, neither side names an event — two anonymous coordinates), <strong>nomatch</strong> (non-synchronous, exactly one side names an event whose counterpart is absent; see <button class="glossary" title="">NOMATCH</button>), <strong>conceptual</strong> (non-synchronous, neither or both sides name an event — a structural correspondence with no temporal commitment), and <strong>implicit</strong> (inferred by graph extension; overrides all the above). See <a href="./concepts.html#alignment">Alignment</a>.
+</dd>
 <dt><strong>CombinationMap</strong></dt>
 <dd>
-A <button class="glossary" title="">MultiMap</button> yielding outputs from multiple <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s simultaneously (e.g., <em>(x, y)</em> coordinate pairs). See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
+A <button class="glossary" title="An umbrella term for composed ConversionMaps: ChainMap (sequential), CombinationMap (parallel outputs), and ConcatenationMap (regional).">MultiMap</button> yielding outputs from multiple <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s simultaneously (e.g., <em>(x, y)</em> coordinate pairs). See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
 </dd>
 <dt><strong>Commensurability</strong></dt>
 <dd>
@@ -259,19 +267,19 @@ Two timelines are commensurable if connected by a chain of <button class="glossa
 </dd>
 <dt><strong>Commensurable</strong></dt>
 <dd>
-See <button class="glossary" title="">Commensurability</button>.
+See <button class="glossary" title="Two timelines are commensurable if connected by a chain of C-maps, membership in the same TimelineGroup, or cross-group MatchClaims, enabling coordinate translation between them.">Commensurability</button>.
 </dd>
 <dt><strong>ConcatenationMap</strong></dt>
 <dd>
-A <button class="glossary" title="">MultiMap</button> combining bounded <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s such that each coordinate region is handled by a specific map. See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
+A <button class="glossary" title="An umbrella term for composed ConversionMaps: ChainMap (sequential), CombinationMap (parallel outputs), and ConcatenationMap (regional).">MultiMap</button> combining bounded <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s such that each coordinate region is handled by a specific map. See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
 </dd>
 <dt><strong>Contiguity</strong></dt>
 <dd>
-A <button class="glossary" title="">TimeInterval</button> is contiguous if it monotonically spans all coordinates between its start and end. An <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button> is contiguous with a TimeInterval if it is synchronous with its <button class="glossary" title="An Instant marking the end of a TimeInterval. Implies the presence of a corresponding StartInstant with coordinate <= EndInstant’s coordinate.">EndInstant</button>. See <a href="./concepts.html#flow-control">Flow control</a>.
+A <button class="glossary" title="">TimeInterval</button> is contiguous if it monotonically spans all coordinates between its start and end. An <button class="glossary" title="">Instant</button> is contiguous with a TimeInterval if it is synchronous with its <button class="glossary" title="">EndInstant</button>. See <a href="./concepts.html#flow-control">Flow control</a>.
 </dd>
 <dt><strong>ControlEvent</strong></dt>
 <dd>
-An event affecting flow control: either a <button class="glossary" title="A control event that voids contiguity at its Instant. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals.">Break</button> (voiding contiguity) or a <button class="glossary" title="A control event with JumpFrom and JumpTo Instants. When active, makes events at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, dal segno).">Jump</button> (creating new contiguity). See <a href="./concepts.html#flow-control">Flow control</a>.
+An event affecting flow control: either a <button class="glossary" title="A control event that voids contiguity at its Instant. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals.">Break</button> (voiding contiguity) or a <button class="glossary" title="">Jump</button> (creating new contiguity). See <a href="./concepts.html#flow-control">Flow control</a>.
 </dd>
 <dt><strong>ConversionMap</strong></dt>
 <dd>
@@ -288,7 +296,7 @@ A position on a <button class="glossary" title="">Timeline</button>, expressed a
 <dl>
 <dt><strong>DictStore</strong></dt>
 <dd>
-A generic <code>EventStore</code> subclass holding a <code>dict[str, EventData]</code> with arbitrary keys. Used internally by AlignmentLoaders to store one <code>EventData</code> table per timeline-to-be (e.g., <code>"score"</code>, <code>"perf:p01"</code>). Maintains the uniform <code>EventStore</code> interface. See the <a href="./reference/DictStore.html">API reference</a>.
+A generic <code>EventStore</code> subclass holding a <code>dict[str, EventData]</code> with arbitrary keys. Used internally by AlignmentLoaders to store one <code>EventData</code> table per timeline-to-be (e.g., <code>"score:clt1"</code>, <code>"perf:Chopin_op10_no3_p01:cpt1"</code>). Maintains the uniform <code>EventStore</code> interface. See the <a href="./reference/DictStore.html">API reference</a>.
 </dd>
 <dt><strong>Discrete</strong></dt>
 <dd>
@@ -305,11 +313,11 @@ One of three temporal categories: <strong>Graphical</strong> (visual/spatial), <
 <dl>
 <dt><strong>EndInstant</strong></dt>
 <dd>
-An <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button> marking the end of a <button class="glossary" title="">TimeInterval</button>. Its coordinate must be greater than or equal to the corresponding <button class="glossary" title="An Instant marking the start of a TimeInterval. Implies the presence of a corresponding EndInstant with coordinate >= StartInstant’s coordinate.">StartInstant</button>’s coordinate. See <a href="./concepts.html#foundations">Foundations</a>.
+An <button class="glossary" title="">Instant</button> marking the end of a <button class="glossary" title="">TimeInterval</button>. Its coordinate must be greater than or equal to the corresponding <button class="glossary" title="An Instant marking the start of a TimeInterval. Implies the presence of a corresponding EndInstant with coordinate >= StartInstant’s coordinate.">StartInstant</button>’s coordinate. See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 <dt><strong>Event</strong></dt>
 <dd>
-Anything associated with a <button class="glossary" title="">Timeline</button> via <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button>s. An <button class="glossary" title="An event defined by a single Instant, having zero duration. Contrast with TimeIntervalEvent which has a duration.">InstantEvent</button> has zero duration; a <button class="glossary" title="">TimeIntervalEvent</button> has duration defined by start and end coordinates. See <a href="./concepts.html#foundations">Foundations</a>.
+Anything associated with a <button class="glossary" title="">Timeline</button> via <button class="glossary" title="">Instant</button>s. An <button class="glossary" title="An event defined by a single Instant, having zero duration. Contrast with TimeIntervalEvent which has a duration.">InstantEvent</button> has zero duration; a <button class="glossary" title="An event with duration, defined by a TimeInterval (start and end coordinates). Contrast with InstantEvent which has zero duration.">TimeIntervalEvent</button> has duration defined by start and end coordinates. See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 </dl>
 </section>
@@ -318,7 +326,7 @@ Anything associated with a <button class="glossary" title="">Timeline</button> v
 <dl>
 <dt><strong>FlowMap</strong></dt>
 <dd>
-A sequence of <button class="glossary" title="">TimeInterval</button>s specifying a particular path through a score’s control structure (repeats, jumps); not itself a <button class="glossary" title="">Timeline</button>. Used for unfolding a score into performance order. See <a href="./concepts.html#derivative-timelines">Derivative timelines</a>.
+A path through a score’s control structure (repeats, jumps), expressed as an ordered sequence of <button class="glossary" title="">TimeInterval</button>s; not itself a <button class="glossary" title="">Timeline</button>. Used for unfolding a score into performance order. A FlowMap is built from one uniform argument — a single interval-like value (a <button class="glossary" title="A named part of a timeline defined by a TimeInterval (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button>, a coordinate pair, a <button class="glossary" title="">Timeline</button>, or an interval event) or an iterable of them, which concatenate in performance order — or from a score’s computed flow of <button class="glossary" title="A control event that voids contiguity at its Instant. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals.">Break</button>s and <button class="glossary" title="">Jump</button>s. <code>Timeline.create_flow_map(intervals)</code> resolves region names against the timeline’s own <button class="glossary" title="A named part of a timeline defined by a TimeInterval (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button>s, attaches the FlowMap, and returns it. See <a href="./concepts.html#derivative-timelines">Derivative timelines</a>.
 </dd>
 </dl>
 </section>
@@ -327,7 +335,7 @@ A sequence of <button class="glossary" title="">TimeInterval</button>s specifyin
 <dl>
 <dt><strong>GroupTimestamp</strong></dt>
 <dd>
-A cross-section through a <button class="glossary" title="">TimelineGroup</button> at a given coordinate. Contains one coordinate per timeline in the group plus (optionally) C-map conversion values. A <button class="glossary" title="">MatchStamp</button> is the union of GroupTimestamps from each participating group. Produced by <code>TimelineGroup.get_timestamp_at()</code>. See <a href="./concepts.html#alignment">Alignment</a>.
+A cross-section through a <button class="glossary" title="">TimelineGroup</button> at a given coordinate. Contains one coordinate per timeline in the group plus (optionally) C-map conversion values. A <button class="glossary" title="">MatchStamp</button> is the union of GroupTimestamps from each participating group. Produced by <code>TimelineGroup.get_timestamp_at()</code>. Exported from the package root as <code>timetoalign.GroupTimestamp</code>. See <a href="./concepts.html#alignment">Alignment</a>.
 </dd>
 </dl>
 </section>
@@ -336,11 +344,11 @@ A cross-section through a <button class="glossary" title="">TimelineGroup</butto
 <dl>
 <dt><strong>Instant</strong></dt>
 <dd>
-Associates a <button class="glossary" title="A position on a timeline, expressed as the distance from the origin in the timeline’s measuring unit. Combines a numeric value with a TimeUnit.">Coordinate</button> (a “time-point”) with a signification such as “start of event <em>e</em>”. Instants sharing a coordinate are synchronous. See <a href="./concepts.html#foundations">Foundations</a>.
+Associates a <button class="glossary" title="">Coordinate</button> (a “time-point”) with a signification such as “start of event <em>e</em>”. Instants sharing a coordinate are synchronous. See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 <dt><strong>InstantEvent</strong></dt>
 <dd>
-An <button class="glossary" title="">Event</button> defined by a single <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button>, having zero duration. See <a href="./concepts.html#foundations">Foundations</a>.
+An <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> defined by a single <button class="glossary" title="">Instant</button>, having zero duration. See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 <dt><strong>InverseMap</strong></dt>
 <dd>
@@ -353,7 +361,7 @@ The reverse transformation of a bijective <button class="glossary" title="A type
 <dl>
 <dt><strong>Jump</strong></dt>
 <dd>
-A <button class="glossary" title="">ControlEvent</button> with <strong>JumpFrom</strong> and <strong>JumpTo</strong> <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button>s. When active, makes events at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, <em>dal segno</em>). See <a href="./concepts.html#flow-control">Flow control</a>.
+A <button class="glossary" title="">ControlEvent</button> with <strong>JumpFrom</strong> and <strong>JumpTo</strong> <button class="glossary" title="">Instant</button>s. When active, makes events at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, <em>dal segno</em>). See <a href="./concepts.html#flow-control">Flow control</a>.
 </dd>
 </dl>
 </section>
@@ -362,11 +370,11 @@ A <button class="glossary" title="">ControlEvent</button> with <strong>JumpFrom<
 <dl>
 <dt><strong>Length</strong></dt>
 <dd>
-The distance between a <button class="glossary" title="">Timeline</button>’s origin and its last <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button>. See <a href="./concepts.html#foundations">Foundations</a>.
+The distance between a <button class="glossary" title="">Timeline</button>’s origin and its last <button class="glossary" title="">Instant</button>. See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 <dt><strong>Locked</strong></dt>
 <dd>
-A timeline state preventing the addition of <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button>s after the last time-point. <button class="glossary" title="">Child</button> timelines are automatically locked when embedded in a parent. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
+A timeline state that fixes its coordinate axis: no <button class="glossary" title="">Instant</button>s may be added after the last time-point, so its length cannot change. Locking governs the coordinate axis only — non-structural annotations such as <button class="glossary" title="A named part of a timeline defined by a TimeInterval (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button>s may still be added to a locked timeline. <button class="glossary" title="">Child</button> timelines are automatically locked when embedded in a parent. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
 </dd>
 </dl>
 </section>
@@ -379,14 +387,18 @@ See <button class="glossary" title="">MatchClaim</button>.
 </dd>
 <dt><strong>MatchfileLoader</strong></dt>
 <dd>
-Loader for Vienna Match (<code>.match</code>) alignment files. Uses the standard two-phase <code>load()</code> → <code>create_*()</code> pattern. A single instance processes all <code>.match</code> files that share the same score, building a shared score timeline on the first file and verifying subsequent files against it. Returns an <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> directly via <code>create_alignment_bundle()</code>. Score goes into its own group; performances are standalone timelines; <button class="glossary" title="">MatchClaim</button>s connect score to performances. See the <a href="./reference/MatchfileLoader.html">API reference</a>.
+Loader for Vienna Match (<code>.match</code>) alignment files. Uses the standard two-phase <code>load()</code> → <code>create_*()</code> pattern. A single instance processes all <code>.match</code> files that share the same score, building a shared score timeline on the first file and verifying subsequent files against it. Returns an <button class="glossary" title="">AlignmentBundle</button> directly via <code>create_bundle()</code>. Score goes into its own group; performances are standalone timelines; <button class="glossary" title="">MatchClaim</button>s connect score to performances. See the <a href="./reference/MatchfileLoader.html">API reference</a>.
 </dd>
 <dt><strong>MatchClaim</strong></dt>
 <dd>
-A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing <button class="glossary" title="A coordinate pair associating one coordinate on timeline A with one on timeline B; a neutral record with no claim semantics. Provenance and interpretation are carried by the enclosing MatchClaim. Only synchronous MatchClaims produce AlignmentAnchors.">AlignmentAnchor</button>s) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection,
-<ol start="3" type="a">
-<li><button class="glossary" title="">NOMATCH</button>, (d) implicit (from group extension). See <a href="./concepts.html#alignment">Alignment</a>.</li>
+A claim of equivalence between events on different timelines, with provenance metadata (the authoring agent and a certainty). May be synchronous (producing <button class="glossary" title="A coordinate pair associating one coordinate on timeline A with one on timeline B; a neutral record with no claim semantics. Provenance and interpretation are carried by the enclosing MatchClaim. Only synchronous MatchClaims produce AlignmentAnchors.">AlignmentAnchor</button>s) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event,
+<ol start="2" type="a">
+<li>projection, (c) <button class="glossary" title="">NOMATCH</button>, (d) implicit (from group extension). Held individually, or columnar at scale in a <button class="glossary" title="">MatchClaimField</button>. See <a href="./concepts.html#alignment">Alignment</a>.</li>
 </ol>
+</dd>
+<dt><strong>MatchClaimField</strong></dt>
+<dd>
+A columnar, PyArrow-backed store holding a whole set of synchronous-instant pairwise <button class="glossary" title="">MatchClaim</button>s as Arrow columns (the two timeline ids dictionary-encoded, the two coordinates as <code>float64</code>) rather than as one frozen MatchClaim object per claim. Individual MatchClaims are materialised on demand when a row is indexed or iterated. Built vectorized via <code>from_columns()</code>, it is the scalable backing for dense <button class="glossary" title="An audio-to-audio alignment in which several recordings of one work are each warped onto a single shared, equidistant reference grid. Per recording, a parallel onset-time array gives that recording’s clock-time at each grid column; because every array indexes the same grid they are equal length, so together they form a dense matrix of shape (recordings × grid columns). A single such file encodes an entire MatchGraph directly — every pair of recordings is related at every grid column — rather than only one score-to-performance correspondence. Read by ListenHereLoader, with the complete pairwise claim set held in a MatchClaimField.">AlignmentMatrix</button> alignments, where the complete pairwise topology of a whole work runs to roughly a million claims. Shared provenance is held once at field level, never per row. See <a href="./concepts.html#alignment">Alignment</a>.
 </dd>
 <dt><strong>MatchGraph</strong></dt>
 <dd>
@@ -402,11 +414,23 @@ A path traversal connecting matched events across multiple timelines (e.g., A -&
 </dd>
 <dt><strong>MatchStamp</strong></dt>
 <dd>
-The union of <button class="glossary" title="">TimeStamp</button>s from groups synchronously connected by a <button class="glossary" title="">MatchGraph</button>. Contains one coordinate per participating timeline and, with <code>conversion_maps=True</code> (the default), C-map conversion values. See <a href="./concepts.html#alignment">Alignment</a>.
+The union of <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. TimeStamp implements the shared Stamp interface used by GroupTimestamp and MatchStamp, including raw get(), unit-bearing get_coordinate(), present_timelines, and is_interpolated access.">TimeStamp</button>s from groups synchronously connected by a <button class="glossary" title="">MatchGraph</button>. Contains one coordinate per participating timeline and, with <code>conversion_maps=True</code>, C-map conversion values. Unlike <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. TimeStamp implements the shared Stamp interface used by GroupTimestamp and MatchStamp, including raw get(), unit-bearing get_coordinate(), present_timelines, and is_interpolated access.">TimeStamp</button>, where C-Maps are visible by default, <code>conversion_maps</code> on a MatchStamp getter (<code>bundle.get_matchstamp_at()</code>, <code>get_matchstamps()</code>, <code>get_matchstamp_table()</code>, <code>MatchClaim.get_matchstamp()</code>) is opt-in and defaults to <code>False</code>. This is a per-context <em>default value</em> for a shared parameter, not a structural difference: MatchStamp implements the same <code>Stamp</code> interface as every other stamp type — <code>get()</code> returns a raw coordinate, <code>get_coordinate()</code> returns a unit-bearing <button class="glossary" title="">Coordinate</button>, <code>present_timelines</code> lists available timelines, and <code>is_interpolated</code> identifies interpolation fallback. A stamp from any source keeps the identical structure, methods, and behaviour the <code>Stamp</code> contract guarantees; only the caller-visible default for one keyword argument varies by producing context. See <a href="./concepts.html#alignment">Alignment</a>.
+</dd>
+<dt><strong>MetricMap</strong></dt>
+<dd>
+A table-based <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> from a quarter position to its measure count, built from explicit measure-boundary anchors rather than a uniform measure length. Correctly handles anacrusis (an incomplete first measure), irregular measures, varying time signatures, and repeat structure. Built directly from a Verovio timemap via <code>MetricMap.from_verovio_timemap()</code>. Not invertible — many quarters map to the same measure. See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
+</dd>
+<dt><strong>MetricalPositionMap</strong></dt>
+<dd>
+A <button class="glossary" title="A MultiMap yielding outputs from multiple ConversionMaps simultaneously (e.g., (x, y) coordinate pairs).">CombinationMap</button> pairing a <button class="glossary" title="A table-based ConversionMap from a quarter position to its measure count, built from explicit measure-boundary anchors rather than a uniform measure length. Correctly handles anacrusis (incomplete first measure), irregular measures, varying time signatures, and repeat structure. Built directly from a Verovio timemap via MetricMap.from_verovio_timemap(). Not invertible (many quarters map to the same measure).">MetricMap</button> with a beat-in-measure map to return a metrical position <code>{mc, beat}</code> from a quarter coordinate. Adds a reverse lookup <code>quarters_at(mc, beat)</code> (metrical position to quarters) and <code>mn_at(quarters)</code> (quarters to measure-number label). See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
+</dd>
+<dt><strong>MpmLoader</strong></dt>
+<dd>
+Loader for an MPM-Toolbox project: a sibling <code>.msm</code> score, <code>.mpm</code> modelled performance, and <code>.mpr</code> project file (carrying an observed audio-to-score alignment) for one work. Uses the standard two-phase <code>load()</code> → <code>create_*()</code> pattern. Builds a shared logical <code>"score"</code> group holding the notes in two units — a ticks <button class="glossary" title="">Timeline</button> (also carrying every MPM markup event: <code>Tempo</code>, <code>Dynamics</code>, <code>Articulation</code>, …) and a quarters <button class="glossary" title="">Timeline</button> — with a <code>TicksToQuarters</code> map and a modelled quarters→seconds <code>TableMap</code> integrated from the performance’s tempo markup; and a physical <code>"perf"</code> group of observed onsets in seconds and samples. Emits one synchronous cross-group <button class="glossary" title="">MatchClaim</button> per score note (the MSM <code>xml:id</code> ↔︎ MPR <code>ref</code> join is a bijection). Reads the modelled performance and the observed alignment; never runs an aligner. Returns an <button class="glossary" title="">AlignmentBundle</button> via <code>create_bundle()</code>.
 </dd>
 <dt><strong>MultiMap</strong></dt>
 <dd>
-An umbrella term for composed <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s: <button class="glossary" title="A MultiMap that applies multiple ConversionMaps in sequence, creating a conversion path from source to target unit.">ChainMap</button> (sequential), <button class="glossary" title="">CombinationMap</button> (parallel outputs), and <button class="glossary" title="">ConcatenationMap</button> (regional). See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
+An umbrella term for composed <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s: <button class="glossary" title="A MultiMap that applies multiple ConversionMaps in sequence, creating a conversion path from source to target unit.">ChainMap</button> (sequential), <button class="glossary" title="A MultiMap yielding outputs from multiple ConversionMaps simultaneously (e.g., (x, y) coordinate pairs).">CombinationMap</button> (parallel outputs), and <button class="glossary" title="A MultiMap combining bounded ConversionMaps such that each coordinate region is handled by a specific map. Also called PiecewiseMap.">ConcatenationMap</button> (regional). See <a href="./concepts.html#conversion-maps">Conversion maps</a>.
 </dd>
 </dl>
 </section>
@@ -435,14 +459,22 @@ The zero coordinate of a <button class="glossary" title="">Timeline</button>, fr
 <dd>
 A <button class="glossary" title="">Timeline</button> that contains one or more <button class="glossary" title="">Child</button> timelines. The parent and all its children must share the same measuring unit. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
 </dd>
+<dt><strong>PerformancePrecisionLoader</strong></dt>
+<dd>
+Loader for audio-to-score alignment specimens: a directory bundling a <code>.solo</code> score, a Verovio timemap, and per-performer alignment files at the note, bar, and beat granularities. Uses the standard two-phase <code>load()</code> → <code>create_*()</code> pattern. Resolves every <code>"&lt;measure&gt;+&lt;offset&gt;"</code> label to absolute quarters via a <button class="glossary" title="A table-based ConversionMap from a quarter position to its measure count, built from explicit measure-boundary anchors rather than a uniform measure length. Correctly handles anacrusis (incomplete first measure), irregular measures, varying time signatures, and repeat structure. Built directly from a Verovio timemap via MetricMap.from_verovio_timemap(). Not invertible (many quarters map to the same measure).">MetricMap</button>, builds one logical score <button class="glossary" title="">Timeline</button> (quarters) and one physical performance <button class="glossary" title="">Timeline</button> per recording (seconds), and emits a <button class="glossary" title="">MatchClaim</button> per alignment row — synchronous for located onsets, <button class="glossary" title="">NOMATCH</button> for the dangling ones. Returns an <button class="glossary" title="">AlignmentBundle</button> via <code>create_bundle()</code>. See the <a href="./reference/PerformancePrecisionLoader.html">API reference</a>.
+</dd>
+<dt><strong>ParangonadaLoader</strong></dt>
+<dd>
+Loader for a <em>parangonar</em> <em>parangonada</em> export: per-performance CSV triples (score notes, performed notes, note-level correspondences) for one work. Uses the standard two-phase <code>load()</code> → <code>create_*()</code> pattern. Parses the shared score once into two logical <button class="glossary" title="">Timeline</button>s (quarters and division-grid ticks, linked by a divs→quarters <code>LinearMap</code>), builds one performance group per recording with two physical <button class="glossary" title="">Timeline</button>s (seconds and samples, linked by a <code>SamplesToSeconds</code> map), and emits one cross-group <button class="glossary" title="">MatchClaim</button> per correspondence — synchronous for a matched note, <button class="glossary" title="">NOMATCH</button> for a score-only or performance-only note. Reads the existing alignment; never runs an aligner. Returns an <button class="glossary" title="">AlignmentBundle</button> via <code>create_bundle()</code>.
+</dd>
 </dl>
 </section>
 <section id="r" class="level2">
 <h2 class="anchored" data-anchor-id="r">R</h2>
 <dl>
-<dt><strong>raw_to_normalised</strong></dt>
+<dt><strong>raw_quarters</strong></dt>
 <dd>
-The conventional name for the <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> (specifically a <code>ShiftMap</code>) attached to a score timeline to expose normalised (non-negative) coordinates. Its offset equals <code>−min(raw_onsets)</code>. Added by <button class="glossary" title="Loader for Vienna Match (.match) alignment files. Uses the standard two-phase load() → create_*() pattern. A single instance processes all .match files that share the same score, building a shared score timeline on the first file and verifying subsequent files against it. Returns an AlignmentBundle directly via create_alignment_bundle(). Score goes into its own group; performances are standalone timelines; MatchClaims connect score to performances.">MatchfileLoader</button> and <code>PartituraLoader</code> so downstream code can detect and apply the same shift when comparing coordinates across loaders.
+The conventional name for the <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> (specifically a <code>ShiftMap</code>) attached to a score timeline. The timeline stores normalised (non-negative) coordinates — shifted so the minimum onset is <code>0.0</code> — and this map converts them back to the raw quarter values of the source. Its offset equals <code>min(raw_onsets)</code>. Added by <button class="glossary" title="Loader for Vienna Match (.match) alignment files. Uses the standard two-phase load() → create_*() pattern. A single instance processes all .match files that share the same score, building a shared score timeline on the first file and verifying subsequent files against it. Returns an AlignmentBundle directly via create_alignment_bundle(). Score goes into its own group; performances are standalone timelines; MatchClaims connect score to performances.">MatchfileLoader</button> and <code>PartituraLoader</code> so downstream code can detect and apply the same shift when comparing coordinates across loaders.
 </dd>
 <dt><strong>Region</strong></dt>
 <dd>
@@ -471,11 +503,15 @@ A parent <button class="glossary" title="">Timeline</button> containing only con
 </dd>
 <dt><strong>StartInstant</strong></dt>
 <dd>
-An <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button> marking the start of a <button class="glossary" title="">TimeInterval</button>. See <a href="./concepts.html#foundations">Foundations</a>.
+An <button class="glossary" title="">Instant</button> marking the start of a <button class="glossary" title="">TimeInterval</button>. See <a href="./concepts.html#foundations">Foundations</a>.
+</dd>
+<dt><strong>SupportPolicy</strong></dt>
+<dd>
+How a cross-timeline <button class="glossary" title="">MatchStamp</button> treats a timeline whose transferred coordinate falls outside <em>alignment support</em> — the entering coordinate lies beyond the transferring <button class="glossary" title="An interpolation-based coordinate mapping derived from a MatchLine; enables non-linear coordinate transfer between TimelineGroups.">WarpMap</button>’s anchor hull, or the produced coordinate would fall outside the target timeline’s <code>[0, length]</code> span. <code>omit</code> (the default) drops that timeline; <code>clamp</code> reports the nearest in-support boundary coordinate; <code>extrapolate</code> keeps the linear extrapolation clipped to <code>[0, length]</code>. No policy ever yields a negative coordinate, and the queried timeline’s own coordinate is never altered. Set per call on <code>AlignmentBundle.get_matchstamp_at(..., support_policy=...)</code> or persistently via <code>AlignmentBundle.support_policy</code>. See <a href="./concepts.html#alignment">Alignment</a>.
 </dd>
 <dt><strong>Synchrony</strong></dt>
 <dd>
-<em>Strict synchrony</em>: <button class="glossary" title="Associates a coordinate (a “time-point”) with a signification such as “start of event e”. Instants sharing a coordinate are synchronous.">Instant</button>s sharing identical coordinates. <em>Pragmatic synchrony</em>: Instants binned together based on a threshold (e.g., for quantisation). See <a href="./concepts.html#foundations">Foundations</a>.
+<em>Strict synchrony</em>: <button class="glossary" title="">Instant</button>s sharing identical coordinates. <em>Pragmatic synchrony</em>: Instants binned together based on a threshold (e.g., for quantisation). See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 </dl>
 </section>
@@ -484,15 +520,15 @@ An <button class="glossary" title="Associates a coordinate (a “time-point”) 
 <dl>
 <dt><strong>TimeInterval</strong></dt>
 <dd>
-Defined by a <button class="glossary" title="An Instant marking the start of a TimeInterval. Implies the presence of a corresponding EndInstant with coordinate >= StartInstant’s coordinate.">StartInstant</button> and <button class="glossary" title="An Instant marking the end of a TimeInterval. Implies the presence of a corresponding StartInstant with coordinate <= EndInstant’s coordinate.">EndInstant</button>; left-inclusive and right-exclusive [<em>s</em>, <em>e</em>). The EndInstant’s coordinate must be &gt;= the StartInstant’s. See <a href="./concepts.html#foundations">Foundations</a>.
+Defined by a <button class="glossary" title="An Instant marking the start of a TimeInterval. Implies the presence of a corresponding EndInstant with coordinate >= StartInstant’s coordinate.">StartInstant</button> and <button class="glossary" title="">EndInstant</button>; left-inclusive and right-exclusive [<em>s</em>, <em>e</em>). The EndInstant’s coordinate must be &gt;= the StartInstant’s. See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 <dt><strong>TimeIntervalEvent</strong></dt>
 <dd>
-An <button class="glossary" title="">Event</button> with duration, defined by a <button class="glossary" title="">TimeInterval</button>. Contrast with <button class="glossary" title="An event defined by a single Instant, having zero duration. Contrast with TimeIntervalEvent which has a duration.">InstantEvent</button>. See <a href="./concepts.html#foundations">Foundations</a>.
+An <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> with duration, defined by a <button class="glossary" title="">TimeInterval</button>. Contrast with <button class="glossary" title="An event defined by a single Instant, having zero duration. Contrast with TimeIntervalEvent which has a duration.">InstantEvent</button>. See <a href="./concepts.html#foundations">Foundations</a>.
 </dd>
 <dt><strong>TimeIntervalStamp</strong></dt>
 <dd>
-Combination of a start <button class="glossary" title="">TimeStamp</button> and an end TimeStamp, representing a cross-section of an interval through the timeline hierarchy. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
+Combination of a start <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. TimeStamp implements the shared Stamp interface used by GroupTimestamp and MatchStamp, including raw get(), unit-bearing get_coordinate(), present_timelines, and is_interpolated access.">TimeStamp</button> and an end TimeStamp, representing a cross-section of an interval through the timeline hierarchy. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
 </dd>
 <dt><strong>Timeline</strong></dt>
 <dd>
@@ -500,11 +536,11 @@ A positive coordinate axis defined by an origin and a measuring unit; continuous
 </dd>
 <dt><strong>TimelineGroup</strong></dt>
 <dd>
-A container for timelines claimed to be commensurable; placing timelines in a group asserts <button class="glossary" title="">Commensurability</button> regardless of underlying units. Coordinates transfer via interpolation. See <a href="./concepts.html#alignment">Alignment</a>.
+A container for timelines claimed to be commensurable; placing timelines in a group asserts <button class="glossary" title="Two timelines are commensurable if connected by a chain of C-maps, membership in the same TimelineGroup, or cross-group MatchClaims, enabling coordinate translation between them.">Commensurability</button> regardless of underlying units. Coordinates transfer via interpolation. See <a href="./concepts.html#alignment">Alignment</a>.
 </dd>
 <dt><strong>TimeStamp</strong></dt>
 <dd>
-A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
+A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s. TimeStamp implements the shared <code>Stamp</code> interface used by <button class="glossary" title="A cross-section through a TimelineGroup at a given coordinate. Contains one coordinate per timeline in the group plus (optionally) C-map conversion values. A MatchStamp is the union of GroupTimestamps from each participating group. Produced by TimelineGroup.get_timestamp_at(). Exported from the package root as timetoalign.GroupTimestamp.">GroupTimestamp</button> and <button class="glossary" title="">MatchStamp</button>, including raw <code>get()</code>, unit-bearing <code>get_coordinate()</code>, <code>present_timelines</code>, and <code>is_interpolated</code> access. See <a href="./concepts.html#nested-timelines">Nested timelines</a>.
 </dd>
 </dl>
 </section>
@@ -513,7 +549,7 @@ A cross-section through a timeline or group at a given coordinate, capturing pos
 <dl>
 <dt><strong>WarpMap</strong></dt>
 <dd>
-An interpolation-based coordinate mapping derived from a <button class="glossary" title="">MatchLine</button>; enables non-linear coordinate transfer between <button class="glossary" title="">TimelineGroup</button>s. See <a href="./concepts.html#coordinate-transfer">Alignment</a>.
+An interpolation-based coordinate mapping derived from a <button class="glossary" title="An ordered sequence of AlignmentAnchors derived from MatchClaims, sorted by coordinate on a source timeline; input for WarpMap generation.">MatchLine</button>; enables non-linear coordinate transfer between <button class="glossary" title="">TimelineGroup</button>s. See <a href="./concepts.html#coordinate-transfer">Alignment</a>.
 </dd>
 </dl>
 

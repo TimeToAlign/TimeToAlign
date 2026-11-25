@@ -1,0 +1,40 @@
+[
+  {
+    "listing": "/howto.html",
+    "items": [
+      "/howto/how01_advanced_cmaps.html",
+      "/howto/how01_advanced_timestamps.html",
+      "/howto/how01_beat_grids.html",
+      "/howto/how01_coordinate_math.html",
+      "/howto/how01_graphical_timelines.html",
+      "/howto/how01_loading_data.html",
+      "/howto/how01_manual_timeline_construction.html",
+      "/howto/how01_tabular_loaders.html",
+      "/howto/how01_thoresen_annotation_transfer.html",
+      "/howto/how02_supra_piano_roll.html",
+      "/howto/how03_beethoven_multimodal.html",
+      "/howto/how03_create_note_alignment.html",
+      "/howto/how03_ieee1599.html",
+      "/howto/how03_listen_here.html",
+      "/howto/how03_loading_vienna_corpus.html",
+      "/howto/how03_mpm_toolbox.html",
+      "/howto/how03_parangonada.html",
+      "/howto/how03_performance_precision.html",
+      "/howto/how04_hendrix_song_genesis.html",
+      "/howto/how04_loading_csv.html"
+    ]
+  },
+  {
+    "listing": "/tutorials.html",
+    "items": [
+      "/tutorials/tut00_quickstart.html",
+      "/tutorials/tut01a_timelines_events_maps.html",
+      "/tutorials/tut01b_children_regions_timestamps.html",
+      "/tutorials/tut02_timeline_groups.html",
+      "/tutorials/tut03_alignment_bundles.html",
+      "/tutorials/tut04_flow_and_grids.html",
+      "/tutorials/tut05_datafields_and_eventdata.html",
+      "/tutorials/tut06_pitch_and_harmony.html"
+    ]
+  }
+]

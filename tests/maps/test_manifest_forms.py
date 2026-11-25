@@ -22,6 +22,8 @@ from timetoalign import (
     DiscretePhysicalTimeline,
     Timeline,
 )
+from timetoalign.core import NumberType, TimeUnit
+from timetoalign.loader.score.stores.measures import MeasureData
 from timetoalign.maps import (
     BeatInMeasureMap,
     ChainMap,
@@ -560,6 +562,35 @@ def test_measure_number_labels_read_back_as_numbers() -> None:
         == [int(cmap(p)) for p in probes]
         == [0, 0, 0, 1, 1, 2, 2]
     )
+
+
+@pytest.mark.parametrize(
+    ("number_type", "starts", "duration"),
+    [
+        (NumberType.fraction, [F(0), F(1, 3), F(4, 3)], F(1, 3)),
+        (NumberType.float, [0.0, 0.5, 1.25], 0.25),
+    ],
+    ids=["fraction", "float"],
+)
+def test_measure_number_labels_from_measure_data_keep_the_starts(
+    number_type: NumberType, starts: list[Any], duration: Any
+) -> None:
+    measures = MeasureData.from_dicts(
+        [
+            {"start": start, "duration": duration, "mc": count, "mn": str(count)}
+            for count, start in enumerate(starts, start=1)
+        ],
+        TimeUnit.quarters,
+        number_type,
+    )
+    read = _through_manifest(QuartersToMeasureNumber.from_measure_data(measures))
+    assert isinstance(read, MeasureNumberMap)
+    written = [(m.qstamp, type(m.qstamp), m.number) for m in read.measure_map]
+    expected = {
+        NumberType.fraction: [(F(0), F, 1), (F(1, 3), F, 2), (F(4, 3), F, 3)],
+        NumberType.float: [(F(0), F, 1), (F(1, 2), F, 2), (F(5, 4), F, 3)],
+    }
+    assert written == expected[number_type]
 
 
 def _meter() -> MetricMap:

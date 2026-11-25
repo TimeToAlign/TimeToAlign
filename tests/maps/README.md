@@ -64,6 +64,17 @@ inside its anchors, or only in value, fails.
   reads back as the number `3`; a `BeatInMeasureMap` answer is the `beat` of
   the read map's pair, and a `MetricalPositionMap`'s `{"mc": n, "beat": b}`
   is `{"number": n, "beat": b}`.
+- **Measure starts read from a table keep its number type.**
+  `QuartersToMeasureNumber.from_measure_data` reads each measure's `start`
+  in the `MeasureData`'s declared number type, so the measure map its view
+  writes carries the starts as the table holds them. Written and read back
+  through a timeline, a fraction table with starts `0`, `1/3`, `4/3` gives
+  the qstamps `Fraction(0)`, `Fraction(1, 3)`, `Fraction(4, 3)` (reading the
+  float side gave the dyadic `6004799503160661/18014398509481984` for `1/3`,
+  a ratio the table never stated); a float table with starts `0.0`, `0.5`,
+  `1.25` gives `Fraction(0)`, `Fraction(1, 2)`, `Fraction(5, 4)`, the exact
+  values of those doubles, as before. Numbers `1`, `2`, `3` in both. `1/3`
+  is chosen because no double equals it, so only an exact read passes.
 - **No lifting.** Reading builds the abstract type's class: a written
   `TicksToQuarters` reads back as a `LinearMap`, a `MetricMap` as a
   `MeasureNumberMap`. A manifest never says "ticks to quarters at 480 ppq",

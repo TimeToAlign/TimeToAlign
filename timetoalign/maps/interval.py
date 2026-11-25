@@ -20,7 +20,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
-from timetoalign.core.time import CoordinateValue, number_to_json
+from timetoalign.core.time import CoordinateValue, number_to_json, struct_to_coordinate
 from timetoalign.maps.base import ConversionMap, MeasureMapIds
 from timetoalign.maps.composite import _piecewise_form
 from timetoalign.maps.constant import ConstantMap, _constant_to_json
@@ -453,21 +453,18 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
         if len(measures) == 0:
             raise ValueError("MeasureData is empty")
 
-        # Extract start positions and MN labels from the PyArrow table
-        boundaries: list[float] = []
+        # Extract start positions and MN labels from the PyArrow table; each
+        # start is read in the table's number type, so exact starts stay exact.
+        boundaries: list[CoordinateValue] = []
         mns: list[str] = []
 
         for event in measures:
             start = event.get("start")
             mn = event.get("mn")
 
-            # Handle coordinate struct format
-            if isinstance(start, dict) and "value" in start:
-                start_val = float(start["value"])
-            elif start is not None:
-                start_val = float(start)
-            else:
+            if start is None:
                 continue
+            start_val = struct_to_coordinate(start, measures.number_type)
 
             # Handle MN (may be None, convert to string)
             if mn is None:

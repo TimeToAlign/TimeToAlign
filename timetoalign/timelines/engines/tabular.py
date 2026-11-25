@@ -1124,14 +1124,7 @@ class TabularExportMixin:
             # Boundaries only
             axis = self._collect_boundary_coordinates(recursion_limit=recursion_limit)
 
-        # Resolve C-Map references using flexible helper
-        resolved_maps = self._resolve_conversion_maps(conversion_maps)
-
-        table = self._build_timestamp_table(
-            axis=axis,
-            conversion_maps=resolved_maps if resolved_maps else None,
-            recursion_limit=recursion_limit,
-        )
+        table = self._timestamp_table(axis, conversion_maps, recursion_limit)
         if format == "table":
             return table
 
@@ -1217,15 +1210,36 @@ class TabularExportMixin:
             1   50.0    0.0
             2   60.0   10.0
         """
-        table = self.get_timestamp_table(
+        return self._timestamp_table(
             self._collect_boundary_coordinates(recursion_limit=recursion_limit),
-            conversion_maps=conversion_maps,
-            recursion_limit=recursion_limit,
-            include_events=False,
-            include_boundaries=False,  # Already included in the positions
+            conversion_maps,
+            recursion_limit,
         )
-        assert isinstance(table, pa.Table)
-        return table
+
+    def _timestamp_table(
+        self,
+        axis: pa.StructArray,
+        conversion_maps: ConversionMapsSpec,
+        recursion_limit: int | None,
+    ) -> pa.Table:
+        """Build the Arrow timestamp table of this hierarchy over an axis.
+
+        What :meth:`get_timestamp_table` returns as a table once it has
+        resolved its positions, and what :meth:`get_boundary_table` returns
+        over the boundaries.
+
+        Args:
+            axis: The positions on this timeline's axis, as coordinate structs.
+            conversion_maps: The C-Maps to include, as ``get_timestamp_table``
+                takes them.
+            recursion_limit: Maximum depth for child traversal.
+        """
+        resolved_maps = self._resolve_conversion_maps(conversion_maps)
+        return self._build_timestamp_table(
+            axis=axis,
+            conversion_maps=resolved_maps if resolved_maps else None,
+            recursion_limit=recursion_limit,
+        )
 
     def export_to_csv(
         self,

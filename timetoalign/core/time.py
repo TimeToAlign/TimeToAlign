@@ -97,8 +97,10 @@ from .fields import (
     StructField,
     _filled_mask,
     _is_arrow_column,
+    _is_arrow_field,
     _is_dict,
     _is_list,
+    _is_tuple,
     _member_fields,
     _struct_array,
     _struct_array_from,
@@ -1680,8 +1682,8 @@ class RedundantNumberField(NumberField):
 
     def __init__(
         self,
-        data: pa.Array | pa.ChunkedArray | None = None,
-        field: pa.Field | None = None,
+        data: pa.Array[Any] | pa.ChunkedArray[Any] | None = None,
+        field: pa.Field[pa.DataType] | None = None,
         *,
         name: str | None = None,
     ) -> None:
@@ -1704,7 +1706,11 @@ class RedundantNumberField(NumberField):
 
     @classmethod
     def from_field(
-        cls, source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field], **kw: Any
+        cls,
+        source: tuple[
+            pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]
+        ],
+        **kw: Any,
     ) -> "RedundantNumberField":
         cls._warn_ignored_keywords(kw)
         data, field = source
@@ -1712,7 +1718,7 @@ class RedundantNumberField(NumberField):
 
     def from_array(
         self,
-        source: pa.Array | pa.ChunkedArray,
+        source: pa.Array[Any] | pa.ChunkedArray[Any],
         *,
         name: str | None = None,
         number_type: NumberType | str | None = None,
@@ -1874,8 +1880,8 @@ class DenominateNumberField(RedundantNumberField):
 
     def __init__(
         self,
-        data: pa.Array | pa.ChunkedArray | None = None,
-        field: pa.Field | None = None,
+        data: pa.Array[Any] | pa.ChunkedArray[Any] | None = None,
+        field: pa.Field[pa.DataType] | None = None,
         *,
         name: str | None = None,
         unit: TimeUnit | str,
@@ -1911,7 +1917,7 @@ class DenominateNumberField(RedundantNumberField):
     # -- helpers -------------------------------------------------------------
 
     @staticmethod
-    def _field_metadata(pa_field: pa.Field) -> dict[str, Any]:
+    def _field_metadata(pa_field: pa.Field[pa.DataType]) -> dict[str, Any]:
         raw_meta = pa_field.metadata
         if not raw_meta or TIMETOALIGN_METADATA_KEY not in raw_meta:
             return {}
@@ -1921,7 +1927,7 @@ class DenominateNumberField(RedundantNumberField):
             return {}
 
     @staticmethod
-    def _resolve_unit(pa_field: pa.Field, override: Any) -> TimeUnit:
+    def _resolve_unit(pa_field: pa.Field[pa.DataType], override: Any) -> TimeUnit:
         """Resolve the unit from a kwarg override, then from field metadata.
 
         Raises:
@@ -1938,7 +1944,7 @@ class DenominateNumberField(RedundantNumberField):
         )
 
     @staticmethod
-    def _resolve_number_type(pa_field: pa.Field, override: Any) -> Any:
+    def _resolve_number_type(pa_field: pa.Field[pa.DataType], override: Any) -> Any:
         """Resolve the representation from an override, then field metadata."""
         if override is not None:
             return NumberType(override) if isinstance(override, str) else override
@@ -1954,7 +1960,9 @@ class DenominateNumberField(RedundantNumberField):
     @classmethod
     def from_field(
         cls,
-        source: tuple[pa.Array | pa.ChunkedArray | None, pa.Field],
+        source: tuple[
+            pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]
+        ],
         *,
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
@@ -1969,7 +1977,7 @@ class DenominateNumberField(RedundantNumberField):
 
     def from_array(
         self,
-        source: pa.Array | pa.ChunkedArray,
+        source: pa.Array[Any] | pa.ChunkedArray[Any],
         *,
         name: str | None = None,
         number_type: NumberType | str | None = None,
@@ -2125,7 +2133,7 @@ def exact_coordinate_value(value: Any) -> Fraction | None:
     Accepts a storage cell, a bare number, or anything else; returns
     ``None`` only when there is genuinely no ratio to be had.
     """
-    if isinstance(value, dict):
+    if _is_dict(value):
         try:
             return struct_to_rational(value)
         except (TypeError, ValueError, ZeroDivisionError):
@@ -2142,7 +2150,7 @@ def coordinate_numeric_value(value: Any) -> Fraction | float:
     exact = exact_coordinate_value(value)
     if exact is not None:
         return exact
-    if isinstance(value, dict):
+    if _is_dict(value):
         return struct_to_rational(value)
     if hasattr(value, "value"):
         return value.value
@@ -2675,7 +2683,7 @@ def _make_duration(
 
 def _time_value_projector(
     _model_cls: type[BaseModel], _name: str, _info: object
-) -> list[pa.Field]:
+) -> list[pa.Field[pa.DataType]]:
     """Project ``value`` onto the denormalised storage struct."""
     return list(RATIONAL_STRUCT_TYPE)
 
@@ -2740,81 +2748,6 @@ def _dur_field_from_value(
     if timeline_id is not None:
         return IdDurationField(raw, unit, number_type, timeline_id)
     return DurationField(raw, unit, number_type)
-
-
-def _scalar_binop_value_and_id(
-    self: TimeScalarField, other: Any, op: str
-) -> tuple[Any, str | None]:
-    """Extract the numeric payload and result timeline_id for arithmetic.
-
-    Performs the metadata-level invariant check exactly once (unit match,
-    cross-timeline-id mismatch) at the entry point of a Field arithmetic
-    operation — NEVER per row.  Returns ``(numeric_other, result_tl_id)``.
-    """
-    self_tl = getattr(self, "_timeline_id", None)
-    if isinstance(other, TimeScalar):
-        if self._bound_unit() != other.unit:
-            raise TypeError(
-                f"Cannot {op} {type(self).__name__} and "
-                f"{type(other).__name__} with different units: "
-                f"{self.unit} vs {other.unit}"
-            )
-        other_tl = getattr(other, "timeline_id", None)
-        if self_tl is not None and other_tl is not None and self_tl != other_tl:
-            raise TypeError(
-                f"Cannot {op} {type(self).__name__} and "
-                f"{type(other).__name__} with mismatched timeline_id: "
-                f"{self_tl!r} vs {other_tl!r}"
-            )
-        return other.value, self_tl or other_tl
-    if isinstance(other, TimeScalarField):
-        if self._bound_unit() != other._bound_unit():
-            raise TypeError(
-                f"Cannot {op} {type(self).__name__} and "
-                f"{type(other).__name__} with different units: "
-                f"{self.unit} vs {other.unit}"
-            )
-        other_tl = getattr(other, "_timeline_id", None)
-        if self_tl is not None and other_tl is not None and self_tl != other_tl:
-            raise TypeError(
-                f"Cannot {op} {type(self).__name__} and "
-                f"{type(other).__name__} with mismatched timeline_id: "
-                f"{self_tl!r} vs {other_tl!r}"
-            )
-        return other._value_array(), self_tl or other_tl
-    if isinstance(other, Fraction):
-        return other, self_tl
-    if isinstance(other, (int, float)) and not isinstance(other, bool):
-        return other, self_tl
-    raise TypeError(f"Cannot {op} {type(self).__name__} with {type(other).__name__}")
-
-
-def _field_binop(
-    left: "TimeScalarField",
-    other: Any,
-    op_name: str,
-    operation: str,
-) -> tuple[pa.StructArray, str | None]:
-    """Check the metadata invariants once, then combine the columns.
-
-    Unit and timeline-id compatibility are properties of the two *fields*,
-    so they are settled here, before any data is touched — never re-tested
-    per row. The arithmetic then runs in the left operand's declared
-    representation, which is what decides the result's.
-    """
-    _, tl_id = _scalar_binop_value_and_id(left, other, op_name)
-    if isinstance(other, TimeScalarField):
-        operand: Any = other.to_pyarrow()
-    elif isinstance(other, TimeScalar):
-        operand = other.value
-    else:
-        operand = other
-    return (
-        combine_number_columns(
-            left.to_pyarrow(), operand, operation, left._number_type
-        ),
-        tl_id,
-    )
 
 
 _AxisFieldScalarT = TypeVar("_AxisFieldScalarT", bound=BaseModel)
@@ -2980,7 +2913,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
             _, number_type = self._resolve_metadata(raw.field, None, None)
         elif number_type is None:
             number_type = NumberType.float
-        self._number_type = (
+        self._number_type: NumberType = (
             NumberType(number_type) if isinstance(number_type, str) else number_type
         )
 
@@ -3071,7 +3004,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
 
     @staticmethod
     def _resolve_metadata(
-        pa_field: pa.Field,
+        pa_field: pa.Field[pa.DataType],
         unit_override: TimeUnit | str | None,
         nt_override: NumberType | str | None,
     ) -> tuple[TimeUnit | None, NumberType]:
@@ -3083,10 +3016,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
                 meta = parse_metadata_blob(raw_meta[TIMETOALIGN_METADATA_KEY])
             else:
                 meta = {
-                    (k.decode("utf-8") if isinstance(k, bytes) else k): (
-                        v.decode("utf-8") if isinstance(v, bytes) else v
-                    )
-                    for k, v in raw_meta.items()
+                    k.decode("utf-8"): v.decode("utf-8") for k, v in raw_meta.items()
                 }
 
         if unit_override is not None:
@@ -3130,7 +3060,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         """
         extra_resolved = extra_resolved or {}
 
-        if isinstance(source, tuple):
+        if _is_tuple(source):
             data, pa_field = source
             resolved_unit, resolved_nt = cls._resolve_metadata(
                 pa_field, unit, number_type
@@ -3143,7 +3073,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
             struct_field = StructField(data, pa_field)
             return cls(struct_field, resolved_unit, resolved_nt, **extra_resolved)
 
-        if isinstance(source, pa.Field):
+        if _is_arrow_field(source):
             resolved_unit, resolved_nt = cls._resolve_metadata(
                 source, unit, number_type
             )
@@ -3160,7 +3090,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
             resolved_nt = cls._require_number_type(number_type, cls.__name__)
             return cls(source, resolved_unit, resolved_nt, **extra_resolved)
 
-        if isinstance(source, (pa.Array, pa.ChunkedArray)):
+        if _is_arrow_column(source):
             resolved_unit = cls._require_unit(unit, cls.__name__)
             resolved_nt = cls._require_number_type(number_type, cls.__name__)
             pa_field = pa.field(name, source.type)
@@ -3176,11 +3106,11 @@ class TimeScalarField(_AxisField[TimeScalarT]):
     def from_field(
         cls,
         source: (
-            pa.Array
-            | pa.ChunkedArray
+            pa.Array[Any]
+            | pa.ChunkedArray[Any]
             | StructField
-            | pa.Field
-            | tuple[pa.Array | pa.ChunkedArray | None, pa.Field]
+            | pa.Field[pa.DataType]
+            | tuple[pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]]
         ),
         *,
         unit: TimeUnit | str | None = None,
@@ -3205,9 +3135,10 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         number_type: NumberType | str | None = None,
     ) -> Self:
         if field is None:
+            schema_fields: list[pa.Field[pa.DataType]] = list(table.schema)
             candidates = [
                 f.name
-                for f in table.schema
+                for f in schema_fields
                 if pa.types.is_struct(f.type)
                 and f.metadata
                 and TIMETOALIGN_METADATA_KEY in f.metadata
@@ -3228,7 +3159,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         data = table.column(field)
         return cls.from_field((data, pa_field), unit=unit, number_type=number_type)
 
-    def with_unit(self, unit: TimeUnit) -> TimeScalarField:
+    def with_unit(self, unit: TimeUnit) -> TimeScalarField[TimeScalarT]:
         """Return a same-class field with a different unit (no value conversion)."""
         return type(self)(self._raw, unit, self._number_type)
 
@@ -3239,7 +3170,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
     # expression over the underlying ``value`` sub-field of the
     # denormalised rational struct, NEVER a per-row Python loop.
 
-    def _value_array(self) -> pa.Array:
+    def _value_array(self) -> pa.Array[Any]:
         """Return the underlying ``value`` sub-field with outer-struct nulls propagated.
 
         The inner ``value`` sub-field by itself ignores the outer
@@ -3252,15 +3183,15 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         and agrees element-wise with the scalar dispatch.
         """
         arr = _struct_array(self.to_pyarrow())
-        value_arr = arr.field("value")
+        value_arr = _struct_child(arr, "value")
         outer_valid = arr.is_valid()
         return pc.if_else(outer_valid, value_arr, pa.scalar(None, type=value_arr.type))
 
-    def to_float(self) -> pa.Array:
+    def to_float(self) -> pa.Array[Any]:
         """Vectorized cast of the ``value`` sub-field to ``float64``."""
-        return pc.cast(self._value_array(), pa.float64())
+        return self._value_array().cast(pa.float64())
 
-    def to_int(self, rounding: str = "round") -> pa.Array:
+    def to_int(self, rounding: str = "round") -> pa.Array[Any]:
         """Vectorized cast to ``int64``; same modes and default as the scalar."""
         v = self._value_array()
         if rounding == "truncate":
@@ -3276,17 +3207,17 @@ class TimeScalarField(_AxisField[TimeScalarT]):
                 f"Unknown rounding mode: {rounding!r}. "
                 f"Use 'truncate', 'round', 'floor', or 'ceil'."
             )
-        return pc.cast(rounded, pa.int64())
+        return rounded.cast(pa.int64())
 
-    def is_zero(self) -> pa.Array:
+    def is_zero(self) -> pa.BooleanArray:
         """Vectorized ``pc.equal(value, 0)`` predicate."""
         return pc.equal(self._value_array(), pa.scalar(0))
 
-    def is_positive(self) -> pa.Array:
+    def is_positive(self) -> pa.BooleanArray:
         """Vectorized ``pc.greater(value, 0)`` predicate."""
         return pc.greater(self._value_array(), pa.scalar(0))
 
-    def is_negative(self) -> pa.Array:
+    def is_negative(self) -> pa.BooleanArray:
         """Vectorized ``pc.less(value, 0)`` predicate."""
         return pc.less(self._value_array(), pa.scalar(0))
 
@@ -3300,36 +3231,110 @@ class TimeScalarField(_AxisField[TimeScalarT]):
     # names (``less_than``, ``less_equal``, etc.) plus a single ``compare``
     # entry-point.
 
-    def less_than(self, other: TimeScalar | int | float | Fraction) -> pa.Array:
+    def less_than(self, other: TimeScalar | int | float | Fraction) -> pa.BooleanArray:
         """Vectorized ``pc.less(value, other)``."""
         return pc.less(self._value_array(), _scalar_compare_value(other))
 
-    def less_equal(self, other: TimeScalar | int | float | Fraction) -> pa.Array:
+    def less_equal(self, other: TimeScalar | int | float | Fraction) -> pa.BooleanArray:
         """Vectorized ``pc.less_equal(value, other)``."""
         return pc.less_equal(self._value_array(), _scalar_compare_value(other))
 
-    def greater_than(self, other: TimeScalar | int | float | Fraction) -> pa.Array:
+    def greater_than(
+        self, other: TimeScalar | int | float | Fraction
+    ) -> pa.BooleanArray:
         """Vectorized ``pc.greater(value, other)``."""
         return pc.greater(self._value_array(), _scalar_compare_value(other))
 
-    def greater_equal(self, other: TimeScalar | int | float | Fraction) -> pa.Array:
+    def greater_equal(
+        self, other: TimeScalar | int | float | Fraction
+    ) -> pa.BooleanArray:
         """Vectorized ``pc.greater_equal(value, other)``."""
         return pc.greater_equal(self._value_array(), _scalar_compare_value(other))
 
     # Parity-mirror dunders.  Python protocol requires ``bool`` returns;
     # use the explicit ``less_than`` / ``less_equal`` / ``greater_than``
     # / ``greater_equal`` methods for vectorized comparisons.
-    def __lt__(self, other: object) -> pa.Array:
+    def __lt__(self, other: object) -> pa.BooleanArray:
         return self.less_than(other)  # type: ignore[arg-type]
 
-    def __le__(self, other: object) -> pa.Array:
+    def __le__(self, other: object) -> pa.BooleanArray:
         return self.less_equal(other)  # type: ignore[arg-type]
 
-    def __gt__(self, other: object) -> pa.Array:
+    def __gt__(self, other: object) -> pa.BooleanArray:
         return self.greater_than(other)  # type: ignore[arg-type]
 
-    def __ge__(self, other: object) -> pa.Array:
+    def __ge__(self, other: object) -> pa.BooleanArray:
         return self.greater_equal(other)  # type: ignore[arg-type]
+
+    def _binop_operand(self, other: Any, op: str) -> tuple[Any, str | None]:
+        """Extract the numeric payload and result timeline_id for arithmetic.
+
+        Performs the metadata-level invariant check exactly once (unit match,
+        cross-timeline-id mismatch) at the entry point of a Field arithmetic
+        operation — NEVER per row.  Returns ``(numeric_other, result_tl_id)``.
+        """
+        self_tl = getattr(self, "_timeline_id", None)
+        if isinstance(other, TimeScalar):
+            if self._bound_unit() != other.unit:
+                raise TypeError(
+                    f"Cannot {op} {type(self).__name__} and "
+                    f"{type(other).__name__} with different units: "
+                    f"{self.unit} vs {other.unit}"
+                )
+            other_tl = getattr(other, "timeline_id", None)
+            if self_tl is not None and other_tl is not None and self_tl != other_tl:
+                raise TypeError(
+                    f"Cannot {op} {type(self).__name__} and "
+                    f"{type(other).__name__} with mismatched timeline_id: "
+                    f"{self_tl!r} vs {other_tl!r}"
+                )
+            return other.value, self_tl or other_tl
+        if _is_time_scalar_field(other):
+            if self._bound_unit() != other._bound_unit():
+                raise TypeError(
+                    f"Cannot {op} {type(self).__name__} and "
+                    f"{type(other).__name__} with different units: "
+                    f"{self.unit} vs {other.unit}"
+                )
+            other_tl = getattr(other, "_timeline_id", None)
+            if self_tl is not None and other_tl is not None and self_tl != other_tl:
+                raise TypeError(
+                    f"Cannot {op} {type(self).__name__} and "
+                    f"{type(other).__name__} with mismatched timeline_id: "
+                    f"{self_tl!r} vs {other_tl!r}"
+                )
+            return other._value_array(), self_tl or other_tl
+        if isinstance(other, Fraction):
+            return other, self_tl
+        if isinstance(other, (int, float)) and not isinstance(other, bool):
+            return other, self_tl
+        raise TypeError(
+            f"Cannot {op} {type(self).__name__} with {type(other).__name__}"
+        )
+
+    def _binop(
+        self, other: Any, op_name: str, operation: str
+    ) -> tuple[pa.StructArray, str | None]:
+        """Check the metadata invariants once, then combine the columns.
+
+        Unit and timeline-id compatibility are properties of the two *fields*,
+        so they are settled here, before any data is touched — never re-tested
+        per row. The arithmetic then runs in the left operand's declared
+        representation, which is what decides the result's.
+        """
+        _, tl_id = self._binop_operand(other, op_name)
+        if _is_time_scalar_field(other):
+            operand: Any = other.to_pyarrow()
+        elif isinstance(other, TimeScalar):
+            operand = other.value
+        else:
+            operand = other
+        return (
+            combine_number_columns(
+                self.to_pyarrow(), operand, operation, self._number_type
+            ),
+            tl_id,
+        )
 
     def _repr_bound(self) -> str:
         length = len(self) if not self.is_empty else 0
@@ -3337,6 +3342,10 @@ class TimeScalarField(_AxisField[TimeScalarT]):
             f"{type(self).__name__}(name={self.name!r}, unit={self._unit}, "
             f"number_type={self._number_type}, len={length})"
         )
+
+
+def _is_time_scalar_field(value: object) -> TypeGuard[TimeScalarField[Any]]:
+    return isinstance(value, TimeScalarField)
 
 
 # ---------------------------------------------------------------------------
@@ -3509,7 +3518,7 @@ class CoordinateField(TimeScalarField[Coordinate]):
             raise TypeError(
                 "Cannot add two Coordinate fields; subtract them to obtain a Duration"
             )
-        struct, tl = _field_binop(self, other, "add", "add")
+        struct, tl = self._binop(other, "add", "add")
         return _coord_field_from_value(struct, self._unit, self._number_type, tl)
 
     @overload
@@ -3519,7 +3528,7 @@ class CoordinateField(TimeScalarField[Coordinate]):
     def __sub__(self, other: object) -> CoordinateField | DurationField: ...
 
     def __sub__(self, other: object) -> CoordinateField | DurationField:
-        struct, tl = _field_binop(self, other, "subtract", "subtract")
+        struct, tl = self._binop(other, "subtract", "subtract")
         # Two positions differ by an extent; everything else stays a position.
         if isinstance(other, (Coordinate, CoordinateField)):
             return _dur_field_from_value(struct, self._unit, self._number_type, tl)
@@ -3527,7 +3536,7 @@ class CoordinateField(TimeScalarField[Coordinate]):
 
     def __mul__(self, scalar: object) -> CoordinateField:
         """Scales a *position* — see Duration for tempo-style scaling of *extents*."""
-        struct, tl = _field_binop(self, scalar, "multiply", "multiply")
+        struct, tl = self._binop(scalar, "multiply", "multiply")
         return _coord_field_from_value(struct, self._unit, self._number_type, tl)
 
     def __rmul__(self, scalar: object) -> CoordinateField:
@@ -3536,16 +3545,16 @@ class CoordinateField(TimeScalarField[Coordinate]):
 
     def __truediv__(self, scalar: object) -> CoordinateField:
         """Scales a *position* — see Duration for tempo-style scaling of *extents*."""
-        struct, tl = _field_binop(self, scalar, "divide", "divide")
+        struct, tl = self._binop(scalar, "divide", "divide")
         return _coord_field_from_value(struct, self._unit, self._number_type, tl)
 
     def __floordiv__(self, scalar: object) -> CoordinateField:
         """Scales a *position* — see Duration for tempo-style scaling of *extents*."""
-        struct, tl = _field_binop(self, scalar, "floor_divide", "floor_divide")
+        struct, tl = self._binop(scalar, "floor_divide", "floor_divide")
         return _coord_field_from_value(struct, self._unit, self._number_type, tl)
 
     @classmethod
-    def matches_pa_field(cls, pa_field: pa.Field) -> bool:
+    def matches_pa_field(cls, pa_field: pa.Field[pa.DataType]) -> bool:
         """Reject ``IdCoordinateField`` shapes — they live in a sibling class.
 
         The base ``SemanticField.matches_pa_field`` is shape-OR-metadata.
@@ -3706,32 +3715,32 @@ class DurationField(TimeScalarField[Duration]):
                 "Cannot add a Coordinate to a Duration field; "
                 "use 'coord + dur' instead"
             )
-        struct, tl = _field_binop(self, other, "add", "add")
+        struct, tl = self._binop(other, "add", "add")
         return _dur_field_from_value(struct, self._unit, self._number_type, tl)
 
     def __sub__(self, other: object) -> DurationField:
         if isinstance(other, (Coordinate, CoordinateField)):
             raise TypeError("Cannot subtract a Coordinate from a Duration field")
-        struct, tl = _field_binop(self, other, "subtract", "subtract")
+        struct, tl = self._binop(other, "subtract", "subtract")
         return _dur_field_from_value(struct, self._unit, self._number_type, tl)
 
     def __mul__(self, scalar: object) -> DurationField:
-        struct, tl = _field_binop(self, scalar, "multiply", "multiply")
+        struct, tl = self._binop(scalar, "multiply", "multiply")
         return _dur_field_from_value(struct, self._unit, self._number_type, tl)
 
     def __rmul__(self, scalar: object) -> DurationField:
         return self.__mul__(scalar)
 
     def __truediv__(self, scalar: object) -> DurationField:
-        struct, tl = _field_binop(self, scalar, "divide", "divide")
+        struct, tl = self._binop(scalar, "divide", "divide")
         return _dur_field_from_value(struct, self._unit, self._number_type, tl)
 
     def __floordiv__(self, scalar: object) -> DurationField:
-        struct, tl = _field_binop(self, scalar, "floor_divide", "floor_divide")
+        struct, tl = self._binop(scalar, "floor_divide", "floor_divide")
         return _dur_field_from_value(struct, self._unit, self._number_type, tl)
 
     @classmethod
-    def matches_pa_field(cls, pa_field: pa.Field) -> bool:
+    def matches_pa_field(cls, pa_field: pa.Field[pa.DataType]) -> bool:
         """Reject ``IdDurationField`` shapes; otherwise defer to the base."""
         if (
             pa_field.metadata is not None
@@ -3868,8 +3877,8 @@ class IdCoordinateField(CoordinateField):
             pa.Array
             | pa.ChunkedArray
             | StructField
-            | pa.Field
-            | tuple[pa.Array | pa.ChunkedArray | None, pa.Field]
+            | pa.Field[pa.DataType]
+            | tuple[pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]]
         ),
         *,
         unit: TimeUnit | str | None = None,
@@ -3894,7 +3903,7 @@ class IdCoordinateField(CoordinateField):
         return IdCoordinateField(self._raw, unit, self._number_type, self._timeline_id)
 
     @classmethod
-    def matches_pa_field(cls, pa_field: pa.Field) -> bool:
+    def matches_pa_field(cls, pa_field: pa.Field[pa.DataType]) -> bool:
         """Require ``field_type == "IdCoordinateField"`` in the metadata blob.
 
         Id-variants share their struct shape with their non-Id parent, so
@@ -4029,8 +4038,8 @@ class IdDurationField(DurationField):
             pa.Array
             | pa.ChunkedArray
             | StructField
-            | pa.Field
-            | tuple[pa.Array | pa.ChunkedArray | None, pa.Field]
+            | pa.Field[pa.DataType]
+            | tuple[pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]]
         ),
         *,
         unit: TimeUnit | str | None = None,
@@ -4055,7 +4064,7 @@ class IdDurationField(DurationField):
         return IdDurationField(self._raw, unit, self._number_type, self._timeline_id)
 
     @classmethod
-    def matches_pa_field(cls, pa_field: pa.Field) -> bool:
+    def matches_pa_field(cls, pa_field: pa.Field[pa.DataType]) -> bool:
         """Require ``field_type == "IdDurationField"`` in the metadata blob."""
         if (
             pa_field.metadata is None
@@ -4145,7 +4154,7 @@ instead (:data:`PACKAGE_COORDINATE_CELL_TYPE`, :data:`PACKAGE_NUMBER_TYPE`).
 
 def coordinate_cell_projector(
     _model_cls: type[BaseModel], name: str, _info: object
-) -> list[pa.Field]:
+) -> list[pa.Field[pa.DataType]]:
     """Store a scalar's coordinate field as one :data:`COORDINATE_CELL_TYPE` cell.
 
     The value projector (``core.fields.register_value_projector``) of every
@@ -4811,8 +4820,8 @@ class SharedAxisField(_AxisField[AxisScalarT]):
             pa.Array
             | pa.ChunkedArray
             | StructField
-            | pa.Field
-            | tuple[pa.Array | None, pa.Field]
+            | pa.Field[pa.DataType]
+            | tuple[pa.Array[Any] | None, pa.Field[pa.DataType]]
         ),
         *,
         unit: TimeUnit | str | None = None,
@@ -5168,7 +5177,7 @@ def _resolve_timeline_id(source: Any, override: str | None) -> str:
             )
         return override
 
-    pa_field: pa.Field | None = None
+    pa_field: pa.Field[pa.DataType] | None = None
     if isinstance(source, tuple) and len(source) == 2:
         pa_field = source[1]
     elif isinstance(source, pa.Field):

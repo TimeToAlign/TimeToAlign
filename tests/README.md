@@ -38,9 +38,9 @@ the package's `fixtures/0.2.0/` (drawings excluded): each fixture in the
 complete form and its minimal twin `<name>.minimal.yaml` beside it, both
 in canonical YAML and read with the package's `loads`. The
 pairing is exact, every fixture has its twin and every twin its fixture,
-and the fixtures lie in exactly the four directories a reader is named
-for (directly in the directory, `groups/`, `bundles/`, `statements/`),
-none of them empty. How many fixtures each holds is the package's catalogue to decide,
+and the fixtures lie in exactly the five directories a reader is named
+for (directly in the directory, `groups/`, `bundles/`, `statements/`,
+`flow/`), none of them empty. How many fixtures each holds is the package's catalogue to decide,
 so no count is pinned here: a fixture added there is proved here without a
 change. For every pair:
 
@@ -50,7 +50,8 @@ change. For every pair:
   the fixture's: the library's two forms are exactly the package's two
   forms, compared as text, so `8` and `8.0` or a missing `null` differ;
 - the class that reads the directory's manifests as a whole
-  (`Timeline.from_dict` directly in the directory, `TimelineGroup.from_dict`
+  (`Timeline.from_dict` directly in the directory and in `flow/`, whose
+  manifests hold one root with its flow control, `TimelineGroup.from_dict`
   in `groups/`, `AlignmentBundle.from_dict` in `bundles/` and
   `statements/`) reads fixture and
   twin to objects of the same class that write the same manifests: the
@@ -60,8 +61,12 @@ change. For every pair:
   is the fixture's text and `dumps(to_dict())` the twin's. Because
   `dumps` puts arrays in canonical order itself, the library's own output
   is also compared with keys sorted and arrays as they stand: the library
-  must write children, conversion maps, regions, flow control, timelines,
-  groups and members in canonical order without help;
+  must write children, conversion maps, regions, flow control, the
+  destinations of every jump, timelines, groups and members in canonical
+  order without help. The fixtures of `flow/` hold a manifest's FlowMaps
+  and virtual timelines beside the timelines; the library does not read
+  them as objects yet and must write them back as they were read, in both
+  forms, which the byte comparison proves;
 - `AlignmentBundle.from_dict`, which reads every manifest, reads each
   fixture and each twin and writes it back byte for byte in its own form,
   and the bundle's minimal form is `minimal` of its complete form, as text

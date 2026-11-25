@@ -107,22 +107,17 @@ MINIMAL: dict[str, Any] = {
             "flow_control": [
                 {
                     "id": "segno",
-                    "type": "jump_to",
-                    "manifestation": "segno",
+                    "role": "jump_target",
                     "coordinate": [4, 1],
+                    "manifestation": "segno",
                 },
                 {
                     "id": "back",
-                    "type": "jump_from",
-                    "manifestation": "repeat_end",
+                    "role": "jump",
                     "coordinate": [16, 1],
+                    "targets": [{"repeat_count": 1, "manifestation": "repeat_end"}],
                 },
-                {
-                    "id": "fine",
-                    "type": "flow_marker",
-                    "manifestation": "section_break",
-                    "coordinate": [32, 1],
-                },
+                {"id": "end", "role": "section_break", "coordinate": [32, 1]},
             ],
         }
     ],
@@ -183,27 +178,33 @@ COMPLETE: dict[str, Any] = {
             "flow_control": [
                 {
                     "id": "segno",
-                    "type": "jump_to",
-                    "manifestation": "segno",
+                    "role": "jump_target",
                     "coordinate": [4, 1],
+                    "manifestation": "segno",
                     "name": None,
                     "label": None,
                     "meta": {},
                 },
                 {
                     "id": "back",
-                    "type": "jump_from",
-                    "manifestation": "repeat_end",
+                    "role": "jump",
                     "coordinate": [16, 1],
-                    "repeat_count": 1,
+                    "targets": [
+                        {
+                            "repeat_count": 1,
+                            "determined": True,
+                            "reset": True,
+                            "manifestation": "repeat_end",
+                            "label": None,
+                        }
+                    ],
                     "name": None,
                     "label": None,
                     "meta": {},
                 },
                 {
-                    "id": "fine",
-                    "type": "flow_marker",
-                    "manifestation": "section_break",
+                    "id": "end",
+                    "role": "section_break",
                     "coordinate": [32, 1],
                     "name": None,
                     "label": None,
@@ -234,9 +235,12 @@ def test_minimal_and_complete_read_to_equal_objects() -> None:
     )
     assert _text(bare(from_complete.to_dict(minimal=False))) == _text(COMPLETE)
     assert from_minimal.get_region("theme") == from_complete.get_region("theme")
-    assert from_minimal.flow_control.breaks == from_complete.flow_control.breaks
-    assert from_minimal.flow_control.jumps == from_complete.flow_control.jumps
-    assert from_minimal.flow_control.markers == from_complete.flow_control.markers
+    assert from_minimal.flow_control.elements == from_complete.flow_control.elements
+    assert [type(e).__name__ for e in from_minimal.flow_control.elements] == [
+        "JumpTarget",
+        "Jump",
+        "SectionBreak",
+    ]
 
 
 @pytest.mark.parametrize("reader", sorted(READERS))
@@ -252,9 +256,9 @@ ELEMENTS: dict[str, tuple[Any, str, int | None]] = {
     # element kind: (the element of the timeline read, its key, its index)
     "region": (lambda t: t.get_region("theme"), "regions", 0),
     "conversion map": (lambda t: t.get_conversion_map("tempo"), "conversion_maps", 0),
-    "marker": (lambda t: t.flow_control.markers[0], "flow_control", 0),
+    "jump target": (lambda t: t.flow_control.jump_targets[0], "flow_control", 0),
     "jump": (lambda t: t.flow_control.jumps[0], "flow_control", 1),
-    "break": (lambda t: t.flow_control.breaks[0], "flow_control", 2),
+    "section break": (lambda t: t.flow_control.section_breaks[0], "flow_control", 2),
     "flow control registry": (lambda t: t.flow_control, "flow_control", None),
 }
 
@@ -382,21 +386,39 @@ def test_a_group_takes_its_form_with_the_whole_manifest(writer: str, case: str) 
 
 def test_a_reader_supplies_every_default() -> None:
     timeline = Timeline.from_dict(filed(copy.deepcopy(MINIMAL)))
-    (brk,) = timeline.flow_control.breaks
+    (end,) = timeline.flow_control.section_breaks
     (jump,) = timeline.flow_control.jumps
+    (destination,) = jump.targets
 
     assert (timeline.name, timeline.meta, timeline.is_locked) == ("score", {}, False)
     assert timeline.number_type is NumberType.fraction
     assert timeline.measure_map is None and timeline.metric_hierarchy is None
-    assert (brk.control_type.value, brk.condition.value) == ("section_break", "always")
-    assert (brk.label, brk.name, brk.meta) == (None, None, {})
-    assert (jump.control_type.value, jump.condition.value, jump.repeat_count) == (
+    assert (end.manifestation, end.label, end.name, end.meta, end.provenance) == (
+        None,
+        None,
+        None,
+        {},
+        None,
+    )
+    assert (destination.manifestation.value, destination.repeat_count) == (
         "repeat_end",
-        "first_n",
         1,
     )
-    assert jump.to_coordinate == Coordinate(0, TimeUnit.quarters)
-    assert (jump.target, jump.name, jump.label, jump.meta) == (None, None, None, {})
+    assert (destination.determined, destination.reset, destination.label) == (
+        True,
+        True,
+        None,
+    )
+    assert (destination.to, destination.by, destination.passes, destination.after) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert timeline.flow_control.place_of(destination, jump) == Coordinate(
+        0, TimeUnit.quarters
+    )
+    assert (jump.name, jump.label, jump.meta, jump.provenance) == (None, None, {}, None)
     assert timeline.get_conversion_map("tempo").to_dict(minimal=False)["name"] is None
 
 
@@ -512,7 +534,7 @@ def _with_value(path: tuple[Any, ...], value: Any) -> dict[str, Any]:
         (
             ("flow_control", 2, "coordinate"),
             32,
-            "coordinate 32 of 'fine' is an int on a fraction axis: write [32, 1]",
+            "coordinate 32 of 'end' is an int on a fraction axis: write [32, 1]",
         ),
         (
             ("flow_control", 0, "coordinate"),
@@ -524,6 +546,11 @@ def _with_value(path: tuple[Any, ...], value: Any) -> dict[str, Any]:
             0.25,
             "coordinate 0.25 of 'back' is a float on a fraction axis: write [1, 4]",
         ),
+        (
+            ("flow_control", 1, "targets", 0, "by"),
+            -6,
+            "by -6 of 'back' is an int on a fraction axis: write [-6, 1]",
+        ),
     ],
     ids=[
         "length",
@@ -531,9 +558,10 @@ def _with_value(path: tuple[Any, ...], value: Any) -> dict[str, Any]:
         "child_offset",
         "region_start",
         "region_end",
-        "flow_marker",
-        "jump_to",
-        "jump_from",
+        "section_break",
+        "jump_target",
+        "jump",
+        "destination_by",
     ],
 )
 def test_each_bare_key_checks_its_representation(
@@ -702,24 +730,45 @@ UNKNOWN: dict[str, Any] = {
             "flow_control": [
                 {
                     "id": "segno",
-                    "type": "jump_to",
-                    "manifestation": "segno",
+                    "role": "jump_target",
                     "coordinate": [4, 1],
-                    "x-note": "jump_to",
+                    "manifestation": "segno",
+                    "x-note": "jump_target",
                 },
                 {
                     "id": "back",
-                    "type": "jump_from",
-                    "manifestation": "repeat_end",
+                    "role": "jump",
                     "coordinate": [16, 1],
-                    "x-note": "jump_from",
+                    "targets": [
+                        {
+                            "to": "segno",
+                            "repeat_count": 1,
+                            "after": {"jump": "leap", "x-note": "after"},
+                            "manifestation": "repeat_end",
+                            "x-note": "destination",
+                        }
+                    ],
+                    "x-note": "jump",
                 },
                 {
                     "id": "fine",
-                    "type": "flow_marker",
-                    "manifestation": "section_break",
+                    "role": "break",
+                    "coordinate": [24, 1],
+                    "manifestation": "fine",
+                    "ends": {"after": {"jump": "leap"}, "x-note": "ends"},
+                    "x-note": "break",
+                },
+                {
+                    "id": "end",
+                    "role": "section_break",
                     "coordinate": [32, 1],
-                    "x-note": "flow_marker",
+                    "x-note": "section_break",
+                },
+                {
+                    "id": "leap",
+                    "role": "jump",
+                    "coordinate": [32, 1],
+                    "targets": [{"repeat_count": 1, "reset": False}],
                 },
             ],
         },

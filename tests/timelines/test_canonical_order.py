@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from tests.helpers import bare
-from timetoalign.core import FlowControlElement
+from timetoalign.core import FlowManifestation
 from timetoalign.maps import ConstantMap, ScalarMap, ShiftMap
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
@@ -20,7 +20,13 @@ from timetoalign.timelines import (
     DiscreteLogicalTimeline,
     Timeline,
 )
-from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.flowcontrol import (
+    Break,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+    SectionBreak,
+)
 
 
 @dataclass(frozen=True)
@@ -65,21 +71,26 @@ REGIONS = [
     ("coda", "mid", "hi"),
 ]
 BREAKS = [
-    ("section", FlowControlElement.section_break, "mid"),
-    ("fine", FlowControlElement.fine, "mid"),
-    ("early", FlowControlElement.section_break, "lo"),
+    ("section", SectionBreak, None, "mid"),
+    ("fine", Break, FlowManifestation.fine, "mid"),
+    ("early", SectionBreak, None, "lo"),
 ]
-JUMPS = [
-    ("repeat", FlowControlElement.repeat_end, "hi", "lo"),
-    ("inner", FlowControlElement.repeat_end, "hi", "mid"),
-    ("segno", FlowControlElement.dal_segno, "hi", "lo"),
-    ("first", FlowControlElement.repeat_end, "mid", "lo"),
+# One jump lies at a coordinate; the signs sharing one are its destinations.
+JUMPS = [("back", "hi"), ("first", "mid"), ("skip", "lo")]
+# The destinations of the jump ``back``, each a label and a place: none,
+# ``by`` back to a position, or ``to`` a marker.
+DESTINATIONS = [
+    ("segno", "to", "segno"),
+    ("inner", "by", "mid"),
+    ("capo", None, None),
+    ("Coda", "to", "Coda"),
+    ("repeat", "by", "lo"),
 ]
 MARKERS = [
-    ("segno", FlowControlElement.segno, "lo"),
-    ("coda", FlowControlElement.coda, "mid"),
-    ("Repeat", FlowControlElement.repeat_start, "hi"),
-    ("Coda", FlowControlElement.coda, "mid"),
+    ("segno", FlowManifestation.segno, "lo"),
+    ("coda", FlowManifestation.coda, "mid"),
+    ("Repeat", FlowManifestation.repeat_start, "hi"),
+    ("Coda", FlowManifestation.coda, "mid"),
 ]
 
 COLLECTIONS = {
@@ -88,6 +99,7 @@ COLLECTIONS = {
     "regions": REGIONS,
     "breaks": BREAKS,
     "jumps": JUMPS,
+    "destinations": DESTINATIONS,
     "markers": MARKERS,
 }
 
@@ -95,23 +107,28 @@ COLLECTIONS = {
 CANONICAL_CHILDREN = ["m", "z", "b", "a"]  # lo (m before z), mid, hi
 CANONICAL_MAPS = ["constant", "scale", "shift"]
 CANONICAL_REGIONS = ["intro", "alpha", "verse", "coda"]  # (lo,mid), (lo,hi)x2, (mid,hi)
-# Flow-control elements by coordinate (a jump's from coordinate), ties by id;
-# each element's id is its kind and label. Code point: "marker-Coda" <
-# "marker-coda" ("C" < "c").
+# Flow-control elements by coordinate, ties by id; each element's id is its
+# kind and label. Code point: "marker-Coda" < "marker-coda" ("C" < "c").
 CANONICAL_FLOW = [
     "break-early",
+    "jump-skip",
     "marker-segno",
     "break-fine",
     "break-section",
     "jump-first",
     "marker-Coda",
     "marker-coda",
-    "jump-inner",
-    "jump-repeat",
-    "jump-segno",
+    "jump-back",
     "marker-Repeat",
 ]
-FLOW_TYPES = {"breaks": "flow_marker", "jumps": "jump_from", "markers": "jump_to"}
+# The destinations of a jump by place: the one without, then by distance
+# (back to lo lies further than back to mid), then by the id named.
+CANONICAL_DESTINATIONS = ["capo", "repeat", "inner", "Coda", "segno"]
+FLOW_ROLES = {
+    "breaks": {"break", "section_break"},
+    "jumps": {"jump"},
+    "markers": {"jump_target"},
+}
 
 
 def _map(map_id: str) -> Any:
@@ -134,27 +151,42 @@ def _build(axis: Axis, orders: dict[str, list[Any]]) -> Timeline:
     for name, start, end in orders["regions"]:
         timeline.create_region(position[start], position[end], id=name, name=name)
     registry = timeline.flow_control
-    for name, control_type, at in orders["markers"]:
-        registry.add_marker(
-            Marker(
-                position[at], name=name, control_type=control_type, id=f"marker-{name}"
+    for name, manifestation, at in orders["markers"]:
+        registry.add(
+            JumpTarget(
+                timeline.make_coordinate(position[at]),
+                name=name,
+                manifestation=manifestation,
+                id=f"marker-{name}",
             )
         )
-    for label, control_type, at in orders["breaks"]:
-        registry.add_break(
-            Break(
-                coordinate=timeline.make_coordinate(position[at]),
-                control_type=control_type,
+    for label, element_class, manifestation, at in orders["breaks"]:
+        registry.add(
+            element_class(
+                timeline.make_coordinate(position[at]),
+                manifestation=manifestation,
                 label=label,
                 id=f"break-{label}",
             )
         )
-    for label, control_type, source, target in orders["jumps"]:
-        registry.add_jump(
+    destinations = {
+        "back": [
+            JumpDestination(
+                label=label,
+                repeat_count=1,
+                to=f"marker-{place}" if kind == "to" else None,
+                by=position[place] - position["hi"] if kind == "by" else None,
+            )
+            for label, kind, place in orders["destinations"]
+        ],
+        "first": [JumpDestination(to="marker-segno", repeat_count=1)],
+        "skip": [JumpDestination(to="marker-coda")],
+    }
+    for label, at in orders["jumps"]:
+        registry.add(
             Jump(
-                from_coordinate=timeline.make_coordinate(position[source]),
-                to_coordinate=timeline.make_coordinate(position[target]),
-                control_type=control_type,
+                timeline.make_coordinate(position[at]),
+                destinations[label],
                 label=label,
                 id=f"jump-{label}",
             )
@@ -187,7 +219,7 @@ INSERTION_ORDERS = _insertion_orders()
 def test_to_dict_is_invariant_under_every_insertion_order(axis_name: str) -> None:
     axis = AXES[axis_name]
     reference = _build(axis, COLLECTIONS).to_dict()
-    assert len(INSERTION_ORDERS) == 24 + 6 + 24 + 6 + 24 + 24
+    assert len(INSERTION_ORDERS) == 24 + 6 + 24 + 6 + 6 + 120 + 24
     for case, orders in INSERTION_ORDERS:
         payload = _build(axis, orders).to_dict()
         assert payload == reference, case
@@ -202,14 +234,16 @@ def test_to_dict_writes_the_canonical_order(axis_name: str) -> None:
     assert [entry["id"] for entry in payload["regions"]] == CANONICAL_REGIONS
     assert [entry["id"] for entry in payload["flow_control"]] == CANONICAL_FLOW
     assert {
-        entry["id"]: entry.get("target")
+        entry["id"]: [
+            destination.get("label", destination.get("to"))
+            for destination in entry["targets"]
+        ]
         for entry in payload["flow_control"]
-        if entry["type"] == "jump_from"
+        if entry["role"] == "jump"
     } == {
-        "jump-first": "marker-segno",
-        "jump-repeat": "marker-segno",
-        "jump-segno": "marker-segno",
-        "jump-inner": "marker-Coda",
+        "jump-skip": ["marker-coda"],
+        "jump-first": ["marker-segno"],
+        "jump-back": CANONICAL_DESTINATIONS,
     }
 
 
@@ -228,6 +262,24 @@ def test_offsets_compare_by_value_not_by_their_json_spelling() -> None:
     }
 
 
+def test_distances_compare_by_value_not_by_their_json_spelling() -> None:
+    distances = {}
+    for name, axis in AXES.items():
+        flow = _root(bare(_build(axis, COLLECTIONS).to_dict()))["flow_control"]
+        (back,) = (entry for entry in flow if entry["id"] == "jump-back")
+        distances[name] = [
+            destination["by"] for destination in back["targets"] if "by" in destination
+        ]
+    assert distances == {
+        # "-10" < "-11" as text
+        "ticks_int": [-11, -10],
+        # [-17, 6] < [-23, 8] as text
+        "quarters_fraction": [[-23, 8], [-17, 6]],
+        # "-10.25" < "-11.5" as text
+        "seconds_float": [-11.5, -10.25],
+    }
+
+
 def _reordered(payload: dict[str, Any], name: str, order: tuple[int, ...]) -> dict:
     """Return a copy of *payload* with one collection rearranged by *order*."""
     manifest = copy.deepcopy(payload)
@@ -239,10 +291,15 @@ def _reordered(payload: dict[str, Any], name: str, order: tuple[int, ...]) -> di
         result["conversion_maps"] = [maps[index] for index in order]
     elif name == "regions":
         result["regions"] = [result["regions"][index] for index in order]
+    elif name == "destinations":
+        (back,) = (
+            entry for entry in result["flow_control"] if entry["id"] == "#jump-back"
+        )
+        back["targets"] = [back["targets"][index] for index in order]
     else:
         flow = result["flow_control"]
-        kind = [entry for entry in flow if entry["type"] == FLOW_TYPES[name]]
-        rest = [entry for entry in flow if entry["type"] != FLOW_TYPES[name]]
+        kind = [entry for entry in flow if entry["role"] in FLOW_ROLES[name]]
+        rest = [entry for entry in flow if entry["role"] not in FLOW_ROLES[name]]
         result["flow_control"] = [kind[index] for index in order] + rest
     return manifest
 
@@ -258,25 +315,21 @@ def test_from_dict_accepts_any_order(axis_name: str) -> None:
             assert restored == canonical, (name, order)
             assert _text(restored) == _text(canonical), (name, order)
             checked += 1
-    assert checked == 108
+    assert checked == 24 + 6 + 24 + 6 + 6 + 120 + 24
 
 
-def test_storage_keeps_its_own_order() -> None:
+def test_children_keep_their_stored_order_and_flow_control_is_held_canonically() -> (
+    None
+):
     timeline = _build(AXES["quarters_fraction"], COLLECTIONS)
     timeline.to_dict()
     assert timeline.list_children() == ["z", "m", "b", "a"]
-    # Sorted by position, the two breaks at one position in insertion order.
-    assert [brk.label for brk in timeline.flow_control.breaks] == [
-        "early",
-        "section",
-        "fine",
-    ]
-    assert [marker.name for marker in timeline.flow_control.markers] == [
-        "segno",
-        "coda",
-        "Coda",
-        "Repeat",
-    ]
-    copied = timeline.flow_control.copy()
-    assert [brk.label for brk in copied.breaks] == ["early", "section", "fine"]
-    assert copied.to_dict() == timeline.flow_control.to_dict()
+    registry = timeline.flow_control
+    assert [element.id for element in registry.elements] == CANONICAL_FLOW
+    (back,) = (jump for jump in registry.jumps if jump.id == "jump-back")
+    assert [destination.label for destination in back.targets] == (
+        CANONICAL_DESTINATIONS
+    )
+    copied = registry.copy()
+    assert [element.id for element in copied.elements] == CANONICAL_FLOW
+    assert copied.to_dict() == registry.to_dict()

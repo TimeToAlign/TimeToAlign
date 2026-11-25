@@ -45,7 +45,7 @@ from timetoalign import (
     Timeline,
     TimelineGroup,
 )
-from timetoalign.core import FlowControlElement, TimeUnit
+from timetoalign.core import FlowManifestation, TimeUnit
 from timetoalign.core.time import number_from_json, number_to_json
 from timetoalign.loader.alignment import (
     Ieee1599Loader,
@@ -85,7 +85,12 @@ from timetoalign.maps import (
 )
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import MeasureMap
-from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.flowcontrol import (
+    Break,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+)
 
 SCORE = ensure_data("score")
 MIDI = ensure_data("midi")
@@ -104,22 +109,29 @@ def _with_structure(cls: type[Timeline], unit: str, length: Any) -> Timeline:
     timeline.add_child(cls(length=length / 3, unit=unit), length / 6)
     timeline.add_child(cls(length=length / 4, unit=unit), length / 2)
     timeline.create_region(length / 6, length / 2, id="theme", name="theme")
-    timeline.flow_control.add_break(
+    timeline.flow_control.add(
         Break(
-            coordinate=timeline.make_coordinate(length / 2),
-            control_type=FlowControlElement.fine,
+            timeline.make_coordinate(length / 2),
+            manifestation=FlowManifestation.fine,
         )
     )
-    start = timeline.flow_control.add_marker(
-        Marker(length / 6, name="start", control_type=FlowControlElement.repeat_start)
+    start = timeline.flow_control.add(
+        JumpTarget(
+            timeline.make_coordinate(length / 6),
+            name="start",
+            manifestation=FlowManifestation.repeat_start,
+        )
     )
-    timeline.flow_control.add_jump(
+    timeline.flow_control.add(
         Jump(
-            from_coordinate=timeline.make_coordinate(length / 2),
-            to_coordinate=timeline.make_coordinate(length / 6),
-            control_type=FlowControlElement.repeat_end,
-            repeat_count=2,
-            target=start.id,
+            timeline.make_coordinate(length / 2),
+            [
+                JumpDestination(
+                    to=start.id,
+                    repeat_count=2,
+                    manifestation=FlowManifestation.repeat_end,
+                )
+            ],
         )
     )
     if unit != "quarters":
@@ -410,6 +422,7 @@ READERS: dict[str, type] = {
     "groups": TimelineGroup,
     "bundles": AlignmentBundle,
     "statements": AlignmentBundle,
+    "flow": Timeline,
 }
 """The class reading a fixture directory's manifests as a whole."""
 

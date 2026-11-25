@@ -45,6 +45,7 @@ READERS: dict[str, type] = {
     "groups": TimelineGroup,
     "bundles": AlignmentBundle,
     "statements": AlignmentBundle,
+    "flow": Timeline,
 }
 """The class reading a fixture directory's manifests as a whole."""
 

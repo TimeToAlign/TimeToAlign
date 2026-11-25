@@ -38,6 +38,20 @@ default) restores every Jump and Break lying wholly inside the stretch gone
 back over (its coordinate and all its places in ``[place, Jump)``): its
 arrivals, takes and ``after`` flags start again.
 
+**Where the flow ends.** At the length, or at a Break that holds where no
+Jump is taken. Ending at a Break before the length is found worth reporting
+(``flow_ends_at_break``) unless a section break lies there or one of the
+Breaks ending the flow states a condition (``ends``): a Fine ends a piece
+regularly, also where it lies between two brackets beside their Break.
+
+**Which elements are read.** Those no actor rejects
+(:meth:`FlowControlRegistry.active_elements
+<timetoalign.timelines.flowcontrol.FlowControlRegistry.active_elements>`),
+or, for a named believer, those that actor does not reject. A ``to`` or an
+``after`` naming an element that is not read names nothing, and two Jumps
+read at one coordinate cannot both be played: either is refused with a
+``ValueError`` in the words the registry refuses such an element with.
+
 **Conventions.** ``default`` is the walk. ``single`` goes through once: no
 destination lying before its Jump is taken, no ``after`` holds, and each
 Jump and Break is arrived at on pass 1 + the sum of the ``repeat_count`` of
@@ -212,12 +226,8 @@ class _Walk:
     def _watch(
         self, condition: FlowCondition, holder: Hashable, jumps: dict[str, Jump]
     ) -> None:
-        """Note that *holder*'s condition waits for the destination it names.
-
-        A condition naming a Jump that is not played (a rejected one) never
-        holds.
-        """
-        if condition.after is None or condition.after.jump not in jumps:
+        """Note that *holder*'s condition waits for the destination it names."""
+        if condition.after is None:
             return
         jump, index = self.registry._destination_among(
             jumps, condition.after, "a condition"
@@ -394,6 +404,7 @@ def _walk(
     if end.value < 0:
         raise ValueError(f"a flow is played over a length, not over {end}")
     elements = registry.active_elements(believer=believer, beliefs=beliefs)
+    registry._check(elements, elements)
     return _Walk(registry, end, elements)
 
 
@@ -452,12 +463,12 @@ def play(
             or a bare number on a bound registry.
         convention: ``default`` (every Jump and Break acts), ``single``
             (once through) or ``printed`` (the axis as it stands).
-        believer: The actor whose beliefs decide which elements are read
-            (:meth:`FlowControlRegistry.active_elements
+        believer: The actor whose beliefs alone decide which elements are
+            read (:meth:`FlowControlRegistry.active_elements
             <timetoalign.timelines.flowcontrol.FlowControlRegistry.active_elements>`);
-            None reads every element.
-        beliefs: The belief states read; every state but ``"false"`` by
-            default.
+            None reads the elements no actor rejects.
+        beliefs: With a believer, the belief states read; every state but
+            ``"false"`` by default.
 
     Returns:
         The runs in the order played and the findings. ``single`` reports
@@ -466,7 +477,12 @@ def play(
 
     Raises:
         ValueError: If the length is negative or not on the registry's
-            axis, or two Jumps not rejected lie at one coordinate.
+            axis, or the elements read cannot be played, in the words the
+            registry refuses an element with: a ``to`` or an ``after``
+            names an element that is not read (a rejected one names
+            nothing), or two of the Jumps read lie at one coordinate (a
+            rejected Jump and its replacement, read for a believer who
+            rejects neither).
 
     Examples:
         >>> from timetoalign.core import Coordinate
@@ -512,17 +528,16 @@ def play(
                 continue
         ending = walk.ends_at(nxt, single)
         if ending:
-            unconditional = next((brk for brk in ending if brk.ends is None), None)
             if (
-                unconditional is not None
+                all(brk.ends is None for brk in ending)
                 and nxt != end
                 and nxt not in walk.section_breaks
             ):
                 walk.find(
                     FlowFindingKind.flow_ends_at_break,
-                    unconditional,
-                    f"The flow ends at the break {unconditional.id!r} at "
-                    f"{unconditional.coordinate}: no jump there has a "
+                    ending[0],
+                    f"The flow ends at the break {ending[0].id!r} at "
+                    f"{ending[0].coordinate}: no jump there has a "
                     "destination that holds.",
                 )
             restart = min(
@@ -557,9 +572,9 @@ def atomic_sections(
     Args:
         registry: The flow control.
         length: The length of the axis, as for :func:`play`.
-        believer: The actor whose beliefs decide which elements are read;
-            None reads every element.
-        beliefs: The belief states read.
+        believer: The actor whose beliefs alone decide which elements are
+            read; None reads the elements no actor rejects.
+        beliefs: With a believer, the belief states read.
 
     Raises:
         ValueError: As :func:`play`.

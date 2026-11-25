@@ -254,7 +254,7 @@ A structure-bearing timeline combines a measure map containing regular,
 irregular, and constituent measures, each with the number and nominal length
 its class requires (the constituent at offset ``1/3``, so a codec dropping the
 offset fails strict map equality); a metric hierarchy; a region; one break;
-one jump; one marker; one child; and one conversion map. Its default timeline
+one jump; one jump target; one child; and one conversion map. Its default timeline
 object has exactly ``id``, ``name``, ``unit``, ``number_type``, ``length``,
 ``locked``, ``is_segment_line``, ``meta``, ``children``, ``conversion_maps``,
 ``regions`` and ``flow_control``; ``events`` remains absent, and the measure
@@ -357,7 +357,8 @@ the library writes back against the same literal text.
   `timetoshare.SCHEMA_VERSION` (`0.2.0`, asserted), never a copy of it, so
   the library cannot write a version its validator no longer reads.
 - **Defaults are supplied.** A minimal manifest (only `id`, `unit` and
-  `length` per timeline, only `id` and `coordinate` per marker, and so on)
+  `length` per timeline, only `id`, `role` and `coordinate` per section
+  break, and so on)
   and its complete twin, both literal, read to objects whose complete and
   minimal forms are identical; the complete form written back equals the
   complete literal and the minimal form the minimal literal. For each of the
@@ -371,10 +372,12 @@ the library writes back against the same literal text.
   written back as an unknown key.
 - **The number type governs, the lexical form never.** One refused value per bare key —
   `length`, a root's `offset`, a child's `offset`, region `start` and `end`,
-  the `coordinate` of a flow-control element —
+  the `coordinate` of a flow-control element (a section break, a jump
+  target and a jump), the `by` of a jump's destination —
   each raises the exact message naming the key, the value, the id of the
   object holding the key (the timeline for `length` and `offset`, a child's
-  own id for its offset, the region or flow-control element for its keys) and
+  own id for its offset, the region or flow-control element for its keys, the
+  jump for its destination's `by`) and
   what to write instead, e.g. `length 32 of 'score' is an int on a fraction
   axis: write [32, 1]`. The rewritten value is named only when the rewriting
   is exact, otherwise the axis's number type: `[5, 2]` on a float axis says
@@ -393,8 +396,9 @@ the library writes back against the same literal text.
   (`write 480`).
 - **Unknown keys are kept where they were found.** One literal manifest
   carries an `x-note` key on the manifest, a root and a child timeline, a
-  region, a `flow_marker`, a `jump_from`, a `jump_to`, a conversion map and a
-  map nested in it, a `measure_maps` entry, a group and `graphical`, each
+  region, a jump target, a jump, one of its destinations and that
+  destination's `after`, a break and its `ends`, a section break, a
+  conversion map and a map nested in it, a `measure_maps` entry, a group and `graphical`, each
   with a different value. `AlignmentBundle.from_dict` followed by `to_dict` equals the literal,
   and `Timeline.from_dict` and `TimelineGroup.from_dict` keep the keys of the
   parts they read. Distinct values at every depth catch a reader that moves a
@@ -682,8 +686,8 @@ the library writes back against the same literal text.
 - **Minimal by default.** Every writer writes the minimal form unless asked
   for the complete one: `to_dict()` of each of the three classes, and of each
   element of the one-root literal read in its complete form — the region,
-  the conversion map, the marker, the jump, the break and the flow-control
-  registry — equals that element in the minimal literal, and
+  the conversion map, the jump target, the jump, the section break and the
+  flow-control registry — equals that element in the minimal literal, and
   `to_dict(minimal=False)` equals it in the complete literal. The tests that
   pin a complete form ask for it explicitly.
 - **The minimal form is the package's.** A default compares by value, as
@@ -887,7 +891,7 @@ entry, with literal manifests written from the format's rules.
 
 `flow_control` is one array of elements `{id, role, coordinate, …, name?,
 label?, meta?, provenance?}`, written in canonical order by coordinate and
-then ID. The `role` names the class: `jump` (`Jump`, with `targets`),
+then ID; `provenance` is a list of provenance entries. The `role` names the class: `jump` (`Jump`, with `targets`),
 `jump_target` (`JumpTarget`), `break` (`Break`, with `ends`),
 `section_break` (`SectionBreak`) and `barline` (`Barline`); the last four
 may state a `manifestation`. A destination in `targets` is an object with
@@ -901,19 +905,29 @@ literals of the format and never from what the writer happens to produce.
   of the five roles, a destination stating every key (in two destinations,
   since `to` and `by` exclude each other), both forms of `passes` (a list
   and `{from: n}`), an `after` with `to`, one with `by` and one with
-  neither, an `ends` with both conditions, `provenance` with a belief,
-  `name`, `label`, `meta`, and an unknown key on an element, on a
-  destination, on an `after` and on an `ends`. Reading it and writing it in
-  the minimal form gives the literal back; the complete form adds exactly
-  `name: null`, `label: null`, `meta: {}` to each element that left them
-  out and nothing inside a destination or a condition, where a key at its
-  default is absent in both forms. `determined: true` and `reset: true` are
-  read and never written.
+  neither, an `ends` with both conditions, `provenance` of two entries, one
+  of them with a belief, `name`, `label`, `meta`, and an unknown key on an
+  element, on a destination, on an `after` and on an `ends`. Reading it and
+  writing it in the minimal form gives the literal back; the complete form
+  adds exactly `name: null`, `label: null`, `meta: {}` to each element that
+  left them out and `determined: true`, `reset: true`, `label: null` to
+  each destination that left them out, and nothing inside an `after` or an
+  `ends`, which have no defaults. The expected complete form is the
+  literal with exactly those keys added, and the format's own functions
+  are the second witness: `timetoshare.complete` of a manifest holding the
+  minimal array gives the array the library writes in the complete form,
+  and `timetoshare.minimal` of that one the literal. A destination written
+  with `determined: true`, `reset: true` and `label: null` reads as one
+  that left them out, and writes them in the complete form only.
 - **Reading builds the objects.** The same literal read gives, by exact
   value, each element's class, coordinate on the axis's number type,
   manifestation as a `FlowManifestation`, each destination's attributes,
   each distance as a `Duration` of the axis, `passes` as a tuple or a
-  `PassesFrom`, and the provenance as a `Provenance`.
+  `PassesFrom`, and the provenance as a tuple of `Provenance`, one per
+  entry of the list. One entry given to the constructor (a `Provenance` or
+  its dictionary) is held as the list of that entry. `provenance: []`, a
+  single object in place of the list and an entry with an unknown method
+  are refused, the element named.
 - **A manifestation outside the vocabulary is kept.** `"x-wavy-line"` on a
   jump target, a break, a section break, a barline and a destination is
   read, held as the string and written back unchanged. A word of the
@@ -945,7 +959,17 @@ literals of the format and never from what the writer happens to produce.
   following.
 - **Canonical order.** Elements added in reverse are held and written by
   coordinate and then ID, an integer, a fraction and a float axis each
-  with values whose text order differs from their numeric order.
+  with values whose text order differs from their numeric order. The
+  destinations of a Jump carry no order in the format, which writes them
+  by place: the one without place, then those with `by`, by value, then
+  those with `to`, by ID. One Jump with seven destinations (no place; `by`
+  −2/3, 0 and 7/2, whose text order is not their numeric one; `to` `B`,
+  `a` and `b`, an uppercase letter before every lowercase one) is built
+  from every rotation of one given order and from its reverse: each is
+  equal to the first, holds the places in the order spelled out, and
+  writes the same object. On a float axis three `by` values are ordered
+  numerically. The literal of the round trip is written in this order,
+  and the conformance test proves it the format's (`canonical_order`).
 - **Places.** `place_of` is asserted for every kind of place: a jump
   target; `by` forwards, backwards and 0, on an integer, a fraction (9/2 −
   1/2 = 4 exactly) and a float axis; a Region of the timeline (its start),
@@ -959,20 +983,56 @@ literals of the format and never from what the writer happens to produce.
   `Fraction(1, 3)` on a float axis as `0.3333333333333333`, for the
   element's coordinate and for a destination's `by` alike. An unbound
   registry stores the identical object. A copy is equal and independent.
-- **Rejection.** An element whose provenance holds the belief `"false"` of
-  an actor is left out by `active_elements(believer=<that actor>)` and
-  kept for every other believer and without one; a rejected Jump and its
-  replacement lie at one coordinate, `jump_at` answers the replacement,
-  and reading both without a believer is refused.
+- **Rejection.** An element is rejected when any entry of its provenance
+  holds a belief `"false"`, whoever holds it and whichever entry: the same
+  reading as the format's validators, which the test checks against
+  `timetoshare.validation.flow.rejected` on the written elements. Four
+  jump targets (no provenance; `unlikely` by the editor; `false` by the
+  editor in the first entry; `false` by the reviewer in the second of two
+  entries): `active_elements()` keeps the first two;
+  `active_elements(believer=editor)` keeps all but the editor's rejection,
+  so the reviewer's rejection stands for the editor; `believer=reviewer`
+  keeps all but the reviewer's; `beliefs=["false"]` with the editor keeps
+  exactly the one the editor rejects, `["true"]` the one the editor
+  believes and `["undecided"]` the one without provenance; a word that is
+  no belief state is refused with or without a believer. An element in
+  which one actor holds
+  `true` in one entry and `false` in another is read as rejected by that
+  actor (the more critical belief).
+- **A rejected element is out of every rule.** A rejected Jump and its
+  replacement lie at one coordinate, in either order of adding, and
+  `jump_at` answers the replacement; a third Jump there that is not
+  rejected is refused. A rejected Jump may name anything (a `to` that
+  names nothing), since nothing reads it. A Jump that is not rejected is
+  refused when its `to` names a rejected jump target, and a Break when its
+  `ends.after` names a rejected Jump, the message saying that the element
+  named is rejected.
+- **Recording a belief.** `registry.with_belief(id, actor, belief)` puts
+  the element's copy in the element's place: same ID, coordinate and keys,
+  the provenance alone changed, the object held before untouched. On an
+  element without provenance the result is one entry holding the belief
+  alone, `[{beliefs: [{actor, belief, date}]}]`, the form a MatchClaim
+  stated without provenance gets; on an element with an entry the belief
+  joins that entry beside its paradata; a second belief of the same actor
+  replaces the first in place and leaves another actor's standing; with
+  two entries, the entry already holding the actor's belief takes the new
+  one. The date is the one given, as a string or a `datetime.date`, and an
+  invalid belief or date is refused. An unknown ID raises `KeyError`
+  listing the IDs. Rejecting a jump target that a Jump names is accepted
+  (the repair is not finished); taking the rejection of a Jump back
+  (`true` after `false`) while its replacement lies at the coordinate is
+  refused, and the registry holds what it held.
 - **Score loaders.** The elements a loader writes from the ms3 measures of
   Couperin's `c05n05_musete` (class, ID, coordinate and name of each of the
   nine) are written as the `flow_control` array and read back to an equal
   registry. What each element states, and from which column of the table,
   is the subject of `tests/loader/score/test_flow_gold.py`.
 
-Tests of whole manifests holding flow control (through `Timeline.from_dict`
-and `to_dict`, which run the format's validator) are added with the release
-of the format that defines these roles.
+Whole manifests holding flow control are proved by
+`tests/test_timetoshare_conformance.py`: every fixture of the format, the
+ten of its directory `flow/` among them, is read by `Timeline.from_dict` or
+the class of its directory and written back byte for byte in both forms,
+and every rejection case of the format is refused with its code and path.
 
 ### The flow engine (`test_flow_engine.py`)
 
@@ -1000,6 +1060,7 @@ one before stopped is merged with it):
 | three brackets | Jump 4 with passes 1, 2, 3 to 4, 8, 12; Breaks 8, 12; Jumps 8 and 12 once; length 16 | [0,8) [0,4) [8,12) [0,4) [12,16) |
 | brackets (1, 3), (2) | Jump 4 `{by: 0, passes: [1, 3]}`, `{to: 8, passes: [2]}`; Break 8; Jump 8 `{repeat_count: 2}`; Jump 12 once; length 16 | [0,8) [0,4) [8,12) [0,8) [0,4) [8,16), see below |
 | first bracket without sign | brackets 1, 2 without the Jump at 8 | [0,8); `flow_ends_at_break` at 8, `never_played` [8,12) |
+| brackets (1, 3), (2) ending with a Fine | Jump 4 `{by: 0, passes: [1, 3]}`, `{to: 8, passes: [2]}`; Break 8; Jump 8 once; Jump 12 `{repeat_count: 1, reset: false}`; a second Break at 8 ending after the Jump at 12; length 12 | [0,8) [0,4) [8,12) [0,8), no finding, see below |
 | D.C. al Fine | Break 4 ending after the Jump at 8 `{repeat_count: 1, reset: false}`; length 8 | [0,8) [0,4) |
 | D.S. al Coda | segno 4; Jump 8 to the coda at 16 after the D.S.; Jump 16 to the segno, once, no reset; length 20 | [0,16) [4,8) [16,20) |
 | repeat end and D.S. on one barline | segno 4; Jump 8 `{repeat_count: 1}` and `{to: segno, repeat_count: 1, reset: false}` | [0,8) [0,8) [4,8): the restoring destination first |
@@ -1022,6 +1083,21 @@ again, plays the first bracket, the restored repeat at 8 is taken, and the
 fourth time through enters the second bracket and goes on to the end. A
 "third pass" numbered 3 is never reached. The test asserts this reading and
 is the place to change when the rule changes.
+
+The same brackets ending with a Fine are the encoding that reaches pass 3:
+the repeat sign at the end of the second bracket does not restore
+(`reset: false`), so the bracket Jump keeps its count. Pass 1 plays [0, 8)
+and the repeat at 8 is taken; pass 2 goes to the second bracket [8, 12),
+whose sign goes back to 0 and raises the flag the Fine waits for; pass 3
+goes on into the first bracket and plays up to 8, where the repeat is used
+up and two Breaks lie: the one between the brackets, which has no `ends`,
+and the Fine, whose `ends` holds. The flow ends there, and because a Break
+with `ends` holds at that coordinate it ends regularly: no
+`flow_ends_at_break`. The same elements without the Fine end at the same
+place with `flow_ends_at_break` at 8, which is asserted beside it, so the
+finding is shown to depend on the Fine alone. `single` arrives at the
+bracket Jump on pass 2 (the first bracket's repeat restores, the second's
+does not count) and plays [0,4) [8,12).
 
 `single` and `printed` are asserted for the three bracket cases: `printed`
 is [0, length) for each. `single` arrives at the bracket Jump on pass 1 +
@@ -1064,6 +1140,49 @@ for the first two:
    sections equal its `atomic` rows, with no finding. The gold rows are
    read from the file and turned into quarters by the measure starts
    above; nothing is copied from the engine.
+
+**Rejected elements.** Without a believer the engine plays the elements no
+actor rejects: a rejected Jump once at 8 and its replacement twice at 8
+play [0,8) [0,8) [0,12), with or without naming the believer who rejected
+it. For a believer who rejects neither, both Jumps are read and the walk
+is refused in the registry's words for a second Jump at a coordinate. A
+`to` naming a rejected jump target and an `ends.after` naming a rejected
+Jump dangle: `play` and `atomic_sections` raise `ValueError` with the
+message the registry refuses such an element with when it is added, the
+whole message asserted, ending in the statement that the element named is
+rejected. Such flow control arises when a belief is recorded after the
+elements were added, which is how the tests build it.
+
+### The format's expected flows (`test_flow_expected.py`)
+
+TimeToShare ships, for each of its flow fixtures with flow control, the
+flow that follows from it: `fixtures/flows/<version>/<name>.yaml` beside
+the trace it was derived by hand with. The files name a manifest and a
+timeline and state the atomic sections and, for `default`, `single` and
+`printed`, the runs and the letters of the sections they cover; for
+`default` also the findings. They were written by another hand than the
+engine, from the same rules, so agreement is evidence for both and a
+difference is a defect of one of them, to be decided by the rules.
+
+The test reads each named manifest with `AlignmentBundle.from_dict`, takes
+the named timeline's flow control and length and compares, exactly:
+
+- the atomic sections (name, start, end, in the file's spelling of the
+  axis's number type);
+- for each convention the runs. The files list one run per stretch up to a
+  Jump, a Break or the length; the engine joins a run to the one before
+  where it goes on from it, so the file's runs are joined by that one rule
+  before comparing. So that the joining cannot hide a difference, the
+  letters of the atomic sections the engine's runs cover, in order, are
+  compared with the file's `sections` as well;
+- for `default` the findings as kind and coordinate, in the file's order.
+  The files state no findings for `single` and `printed`, and none is
+  compared there.
+
+The nine case names are asserted, so that a directory not found cannot
+pass as nine cases agreeing. A case whose file is known to differ from the
+rules is listed with the exact difference and runs as a strict expected
+failure, never skipped: at present none.
 
 ### Measures and flow control (`test_flow_measures.py`)
 
@@ -1137,9 +1256,9 @@ finding changes nothing.
 
 ### Manifest identity (`test_manifest_ids.py`)
 
-Every element of a manifest (a timeline, a conversion map, a region, a break,
-a jump, a marker) carries an `id` for identification and a `name` for
-display. The tests prove four properties, each against literal expected ids.
+Every element of a manifest (a timeline, a conversion map, a region, a
+flow-control element of any of the five roles) carries an `id` for
+identification and a `name` for display. The tests prove four properties, each against literal expected ids.
 
 - **One form, one generator, no process state.** An element constructed
   without an id is minted `{prefix}_{N}` with N above the highest number
@@ -1150,17 +1269,17 @@ display. The tests prove four properties, each against literal expected ids.
   unit (`Timeline(unit="seconds")` is `cpt_1`, ticks `dlt_1`, pixels `dgt_1`);
   `LinearMap` `lmap_1`, `TableMap` and its subclasses `tmap_1`, `PiecewiseMap`
   `pmap_1`, every other map `cmap_1`; `region_1`; and a flow-control
-  element by its manifest `type`: a `Break` (a `flow_marker`)
-  `flow_marker_1`, a `Jump` (a `jump_from`) `jump_from_1`, a `Marker` (a
-  `jump_to`) `jump_to_1`. Determinism is proved by building one reference manifest
+  element by its `role`: a `Break` `break_1`, a `SectionBreak`
+  `section_break_1`, a `Barline` `barline_1`, a `Jump` `jump_1`, a
+  `JumpTarget` `jump_target_1`. Determinism is proved by building one reference manifest
   (a quarters root, two children made by `create_child`, two regions, two
-  breaks, a marker and a jump targeting it, a `LinearMap`) twice, the second
+  breaks, a jump target and a jump naming it, a `LinearMap`) twice, the second
   time after constructing five unrelated timelines and four maps, and once
   more with its collections added in the reverse order. The first two must
   serialize to identical `to_dict` payloads, and all three must carry
   exactly the ids spelled out literally (`clt_1`; children `clt_2`,
-  `clt_3`; `region_1`, `region_2`; `flow_marker_1`, `flow_marker_2`;
-  `jump_to_1`; `jump_from_1` targeting `jump_to_1`; `lmap_1`). A
+  `clt_3`; `region_1`, `region_2`; `break_1`, `break_2`;
+  `jump_target_1`; `jump_1` going on at `jump_target_1`; `lmap_1`). A
   process-global counter gives
   different ids in the second build; insertion order may decide which
   element holds which id, never which ids exist. Minting above the highest
@@ -1170,7 +1289,7 @@ display. The tests prove four properties, each against literal expected ids.
 - **Whatever is given is the id.** Hand-chosen ids (`performance`, `a`,
   `Bass Kick`, `score:clt_7`, `score/1`, `part 2`,
   `https://example.org/op35#m1`) are kept verbatim on timelines, maps,
-  regions, breaks, jumps and markers, and survive `to_dict` → JSON →
+  regions, breaks, jumps and jump targets, and survive `to_dict` → JSON →
   `from_dict` → `to_dict` text-identically; a minted manifest round-trips
   its minted ids verbatim too. A manifest whose own id, roots, child,
   group, measure map, conversion map, region and three flow-control
@@ -1178,7 +1297,8 @@ display. The tests prove four properties, each against literal expected ids.
   `AlignmentBundle.from_dict`, every element answers its id, and the
   manifest is written back equal to what was read and text-identically
   through JSON. Refused ids raise `ValueError` on every kind: the empty
-  string and any containing a control character (`"a\tb"`, `"a\nb"`);
+  string and any containing a control character (`"a\tb"`, `"a\nb"`), on
+  each of the five flow-control classes too;
   `a/b` and `Bass Kick` are accepted.
 - **Collisions within one manifest, across all kinds.** A manifest is a root
   timeline and all its descendants. When an element joins it, a minted id
@@ -1190,8 +1310,8 @@ display. The tests prove four properties, each against literal expected ids.
   `region_2`, while the root keeps `clt_1` and `region_1`. A grandchild is
   renamed under its own parent's key as well (the nested specimen: the child
   carries a minted child `clt_2` of its own, which becomes `clt_3`). A child
-  whose marker `jump_to_1` collides is re-minted `jump_to_2` and its jump's
-  `target` follows to `jump_to_2`. Given ids: a child `score` under a root
+  whose jump target `jump_target_1` collides is re-minted `jump_target_2`
+  and the `to` of its jump's destination follows to `jump_target_2`. Given ids: a child `score` under a root
   `score` raises naming `timeline 'score'` twice; a child timeline `intro`
   under a root holding a region `intro` raises naming `region 'intro'`; a
   region `intro` added beside a child `intro` raises; adding a given map id
@@ -1209,24 +1329,25 @@ display. The tests prove four properties, each against literal expected ids.
   - a region `intro` in each root: `by region 'intro' of timeline 'score'
     and by region 'intro' of timeline 'perf'`;
   - a conversion map `m` on `score` and a break `m` on `perf`: `by
-    conversion map 'm' of timeline 'score' and by flow_marker 'm' of
+    conversion map 'm' of timeline 'score' and by break 'm' of
     timeline 'perf'`;
   - a root `perf` and a child `perf` of `score`: `by timeline 'perf' and by
     timeline 'perf'`;
   - a group `g` and a region `g` of `perf`: `by region 'g' of timeline
     'perf' and by group 'g'`;
-  - a measure map `bars` and a marker `bars` of `perf`: `by measure map
-    'bars' and by jump_to 'bars' of timeline 'perf'`;
+  - a measure map `bars` and a jump target `bars` of `perf`: `by measure map
+    'bars' and by jump_target 'bars' of timeline 'perf'`;
   - the manifest id `op35` and a map `op35` nested in a `ChainMap` `chain`
     of `score`: `by the manifest and by conversion map 'op35' nested in
     conversion map 'chain' of timeline 'score'`.
 - **Trees joining a group or a bundle, every element kind.** Two trees
   built alike — a root of given id (`a`, `b`) holding a minted region
-  `region_1`, a minted `LinearMap` `lmap_1`, a minted marker `jump_to_1`
-  and a given jump targeting it — join one scope: in
+  `region_1`, a minted `LinearMap` `lmap_1`, a minted jump target
+  `jump_target_1` and a given jump naming it — join one scope: in
   `TimelineGroup(timelines=[a, b])` and in an `AlignmentBundle` holding
   both ungrouped, `a` keeps every id and `b`'s become `region_2`, `lmap_2`
-  and `jump_to_2`, its jump's target following to `jump_to_2`. A given id
+  and `jump_target_2`, the `to` of its jump's destination following to
+  `jump_target_2`. A given id
   refuses: `b` holding a region `intro` where `a` holds a map `intro` is
   refused with `region 'intro' of timeline 'b' cannot join group
   'group_1': its id 'intro' is already held by conversion map 'intro' of
@@ -1245,7 +1366,7 @@ display. The tests prove four properties, each against literal expected ids.
   is refused with `region 'intro' of timeline 'b' cannot join: its id
   'intro' is already held by region 'intro' of timeline 'a'`, a given map
   `intro` with `conversion map 'intro' of timeline 'b' cannot join: …` and
-  a given break `intro` with `flow_marker 'intro' of timeline 'b' cannot
+  a given break `intro` with `break 'intro' of timeline 'b' cannot
   join: …`, each message compared whole; `b` holds no region, map or break
   `intro` afterwards. The same holds in a bundle holding `a` and `b`
   ungrouped. Once `b` is removed from the group (`remove_timeline`), or
@@ -1289,13 +1410,6 @@ display. The tests prove four properties, each against literal expected ids.
   one timeline `t` is refused with `region 'Bach's' of timeline 't' cannot
   join: its id 'Bach's' is already held by region 'Bach's' of timeline
   't'` (a `repr` would write `"Bach's"`).
-- **Writing never changes an id.** A `jump_to` written where a jump lands
-  on no marker takes an id minted around every id of the manifest
-  written, those minted before it included: in a bundle of two roots
-  `score` and `perf`, each with a given D.S. jump landing on no marker,
-  the roots are written sorted by id, so `perf` writes `jump_to_1` and its
-  jump targets it, `score` writes `jump_to_2` and its jump targets that;
-  the jumps held keep their target `None`.
 - **Maps nested in maps share the scope.** A `ChainMap`, `PiecewiseMap`,
   `CombinationMap` (and an `IntervalToConstantMap` with an end, whose form
   nests a `ConstantMap` per interval) writes its nested maps with ids of
@@ -1326,19 +1440,25 @@ display. The tests prove four properties, each against literal expected ids.
     id would be written twice); and a manifest whose `ChainMap` nests two
     maps `lmap_1`, which `Timeline.from_dict` refuses as the TimeToShare
     validators do.
-- **Regions and markers are keyed by id; jumps target marker ids.** Two
+- **Regions and jump targets are keyed by id; a destination names a jump
+  target by its id.** Two
   regions named `Chorus` coexist as `region_1` and `region_2`; `get_region`,
   `has_region`, `list_regions`, `create_child_from_region` and
   `create_children_from_regions` take ids, and `get_region("Chorus")` raises
   `KeyError` listing the available ids. `create_child_from_region` names the
   child after the region (`name == "Chorus"`) and mints its id (`clt_2`),
-  never reusing the region's id. `add_jump` refuses a `target` that names no
-  marker of the registry. A score loader resolves D.S. targets to marker
-  ids: the ms3 measures of Couperin's `c05n05_musete` (corpus `score`,
-  `couperin_concerts`) load one marker, `jump_to_1`, a `segno` named `segno`
-  at quarter 12 (its Fine is a break at the end of its bar, 42, and no jump
-  target), and both D.S. al Fine jumps target `jump_to_1`; the da capo and
-  repeat jumps of the Rondeau `c11n08_Rondeau` target `None`.
+  never reusing the region's id. Adding a jump whose destination's `to`
+  names no jump target of the registry and no place of the timeline is
+  refused, the whole message asserted, and nothing is added. A score loader
+  resolves a D.S. to the segno's id: the ms3 measures of Couperin's
+  `c05n05_musete` (corpus `score`, `couperin_concerts`) load the segno as
+  the jump target `jump_target_1`, named `segno`, at quarter 12, before the
+  two printed repeat starts (its Fine is a break at the end of its bar, 42,
+  and no jump target), and both D.S. al Fine destinations name
+  `jump_target_1`. In the Rondeau `c11n08_Rondeau` the two da capo
+  destinations (at 24 and 36) and the first repeat end (at 12, which has
+  no printed start) name no place, and each other repeat end names the
+  repeat start printed for it (`jump_target_2` to `jump_target_4`).
 - **A manifest's ids are read once per write, never once per root**
   (`TestIdsReadOncePerManifest`). Reading every id a group or bundle holds
   is one pass over all its trees (`groups._held_ids`); asking it once per
@@ -1359,8 +1479,8 @@ display. The tests prove four properties, each against literal expected ids.
 Loader parity (`test_manifest_ids.py::TestLoaderParity`): for one specimen
 each of the ms3 (with and without D.S. jumps), score-MIDI, lab, audio (its
 samples timeline and its seconds twin), Parangonada and IIIF loaders the test walks the whole
-`to_dict` tree and requires every timeline, child, map, region, break, jump
-and marker to carry a valid id (non-empty, no control character),
+`to_dict` tree and requires every timeline, child, map, region and
+flow-control element to carry a valid id (non-empty, no control character),
 all ids within one manifest to be distinct, and no id to start with `tl:`.
 
 ### Statements (`test_statements.py`, `test_statements_references.py`)
@@ -1553,8 +1673,9 @@ places a reference can stand, value, entry value and basis item:
 so that two timelines with the same content serialize to the same text however
 their content was added: `children` by offset, then id; `conversion_maps` by
 id; `regions` by start, then end, then id; the `flow_control` elements
-(breaks, jumps and markers in one array) by coordinate, a jump's being its
-from coordinate, then id. Ids are unique within a manifest, so no two
+(every role in one array) by coordinate, then id; the `targets` of a jump
+by place (the destination without one, then those with `by`, by value,
+then those with `to`, by id). Ids are unique within a manifest, so no two
 entries of one list tie on every member. Coordinates compare by their exact numeric value, never by their JSON
 spelling, and strings by Unicode code point.
 
@@ -1563,39 +1684,47 @@ What proves it:
 - **Invariance.** One fixed content set is built on three axes, `ticks`
   (`int`), `quarters` (`fraction`) and `seconds` (`float`): four children,
   two of them at the same offset; three conversion maps; four regions, three
-  sharing a start and two of those sharing start and end; three breaks, two
-  at one coordinate; four jumps, three sharing a from coordinate; four
-  markers, two at one coordinate, each jump landing on a marker.
+  sharing a start and two of those sharing start and end; three breaks (a
+  Fine and two section breaks), two at one coordinate; three jumps, one at
+  each position, since a coordinate holds one jump; five destinations of
+  the last jump (none, two distances back, two markers); four jump targets,
+  two at one coordinate.
   Every element carries a given id (its kind and label, e.g. `break-fine`),
   because minted ids follow insertion order. For every permutation of
   the insertion order of each collection, the payload must equal the payload
   of the reference insertion order under `==`, and its `json.dumps` text must
   be identical. Equality of dicts ignores key order, so the text comparison is
-  what catches a differing `children` or `markers` order. A serializer that
+  what catches a differing `children` or `targets` order. A serializer that
   kept insertion order fails on the first non-identity permutation.
 - **The order itself.** Invariance alone would also hold for an arbitrary but
   fixed order, so the expected sequence of child ids, map ids, region ids
   and flow-control element ids is spelled out literally per axis. The values are chosen so that numeric order and JSON-text order
   disagree: on the `ticks` axis `9` precedes `10`, on the `quarters` axis
   `5/8` precedes `2/3` although `[2, 3]` sorts first as text, and on the
-  `seconds` axis `9.25` precedes `10.5`. The two markers at one coordinate,
-  `marker-Coda` and `marker-coda`, pin code-point order of the id tie-break
-  (an uppercase letter precedes every lowercase one).
+  `seconds` axis `9.25` precedes `10.5`. The two jump targets at one
+  coordinate, `marker-Coda` and `marker-coda`, pin code-point order of the
+  id tie-break (an uppercase letter precedes every lowercase one). The two
+  distances of the last jump are spelled out per axis: back to the lowest
+  position lies further than back to the middle one, `-11` before `-10`
+  ticks, `[-23, 8]` before `[-17, 6]` quarters, `-11.5` before `-10.25`
+  seconds, each against its text order; the two destinations naming a
+  marker follow in the order `marker-Coda`, `marker-segno`.
 - **Ties.** Children at one offset fall back to id; regions at one start fall
   back to end, then id; flow-control elements at one coordinate (two breaks,
-  a jump and two markers at one position) fall back to their id, whose
+  a jump and two jump targets at one position) fall back to their id, whose
   expected order is spelled out from the literal entries.
 - **Reading accepts any order.** For every permutation of each collection in
-  the canonical payload (the lists reordered; for breaks, jumps and markers,
-  the elements of that type moved to the front of the `flow_control` array in
-  the permuted order, so that jumps come before the markers they name),
-  `Timeline.from_dict` must restore a timeline whose `to_dict` is the
-  canonical payload, text-identical.
-- **Storage is untouched.** The order is a property of the serialized form
-  only: a registry's `breaks` keep their stored sequence (sorted by position,
-  ties in insertion order) and `children` keep their insertion order after
-  `to_dict`, proven by reading both back after serializing a permutation
-  whose stored order differs from the canonical one.
+  the canonical payload (the lists reordered; for breaks, jumps and jump
+  targets, the elements of those roles moved to the front of the
+  `flow_control` array in the permuted order, so that jumps come before the
+  jump targets they name; for the destinations, the `targets` of the last
+  jump reordered), `Timeline.from_dict` must restore a timeline whose
+  `to_dict` is the canonical payload, text-identical.
+- **What is stored.** `children` keep their insertion order after
+  `to_dict`: there the order is a property of the serialized form only.
+  Flow control is held in the canonical order itself: the registry's
+  elements and the destinations of a jump read back in the order spelled
+  out, on the object and on its copy.
 
 ### Measure and hierarchy structure
 
@@ -1950,18 +2079,19 @@ holds.
 **Reach.** A display needs an extent even when the length is unknown. The
 reach is the farthest own-axis coordinate the content reaches: children's
 ends (a child of unknown length contributing its offset plus its own reach),
-region ends, break and marker coordinates, both ends of each jump, and the
-end of the measure map. Events are not part of it. The nested example is
+region ends, the coordinate of every flow-control element, the place a
+jump's destination reaches by its distance (`by`), and the end of the
+measure map. Events are not part of it. The nested example is
 computed by hand:
 
 | Timeline | Content | Reach |
 |---|---|---|
-| `V` (unknown) | marker at `7` | `7` |
+| `V` (unknown) | jump target at `7` | `7` |
 | `U` (unknown) | region `[1, 3]`, `V` at offset `5` → `5 + 7 = 12` | `12` |
-| `R` (unknown) | child `A` `[2, 6)`; `U` at `10` → `10 + 12 = 22`; region `[0, 15]`; break at `18`; jump `20 → 4` | `22` |
+| `R` (unknown) | child `A` `[2, 6)`; `U` at `10` → `10 + 12 = 22`; region `[0, 15]`; break at `18`; jump at `20` going on `16` before it | `22` |
 
 Each content kind also wins once on its own: a lone measure map of five
-3/4 bars reaches `15`, a jump `9 → 30` reaches `30`, and a timeline without
+3/4 bars reaches `15`, a jump at `9` going on `21` behind it reaches `30`, and a timeline without
 content reaches `0`. The diagram of `R` scales to `22`, labels each unknown
 end `?`, and never prints `0` or `nan` for it. `repr()` says `length=unknown`.
 

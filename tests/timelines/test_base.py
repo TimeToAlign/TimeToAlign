@@ -27,7 +27,7 @@ import pytest
 from timetoalign.core import (
     Coordinate,
     Duration,
-    FlowControlElement,
+    FlowManifestation,
     IrregularMeasure,
     MeasureConstituent,
     NumberType,
@@ -47,7 +47,12 @@ from timetoalign.timelines import (
     TempoMap,
     Timeline,
 )
-from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.flowcontrol import (
+    Jump,
+    JumpDestination,
+    JumpTarget,
+    SectionBreak,
+)
 
 
 def _structure_bearing_timeline() -> Timeline:
@@ -95,27 +100,29 @@ def _structure_bearing_timeline() -> Timeline:
     timeline.create_region(
         Fraction(1, 3), Fraction(4, 3), id="opening", name="opening", meta={"n": 1}
     )
-    timeline.flow_control.add_break(
-        Break(
+    timeline.flow_control.add(
+        SectionBreak(
             Coordinate(Fraction(4, 3), TimeUnit.quarters),
-            control_type=FlowControlElement.section_break,
             label="boundary",
         )
     )
-    segno = timeline.flow_control.add_marker(
-        Marker(
+    segno = timeline.flow_control.add(
+        JumpTarget(
             Coordinate(Fraction(1, 3), TimeUnit.quarters),
             name="segno",
-            control_type=FlowControlElement.segno,
+            manifestation=FlowManifestation.segno,
         )
     )
-    timeline.flow_control.add_jump(
+    timeline.flow_control.add(
         Jump(
             Coordinate(Fraction(10, 3), TimeUnit.quarters),
-            Coordinate(Fraction(1, 3), TimeUnit.quarters),
-            control_type=FlowControlElement.repeat_end,
-            repeat_count=2,
-            target=segno.id,
+            [
+                JumpDestination(
+                    to=segno.id,
+                    repeat_count=2,
+                    manifestation=FlowManifestation.repeat_end,
+                )
+            ],
             label="repeat",
         )
     )
@@ -807,9 +814,12 @@ class TestSerialization:
         assert original.metric_hierarchy is not None
         assert restored.metric_hierarchy is None
         assert restored.get_region("opening") == original.get_region("opening")
-        assert restored.flow_control.breaks == original.flow_control.breaks
-        assert restored.flow_control.jumps == original.flow_control.jumps
-        assert restored.flow_control.markers == original.flow_control.markers
+        assert restored.flow_control.elements == original.flow_control.elements
+        assert [type(e).__name__ for e in restored.flow_control.elements] == [
+            "JumpTarget",
+            "SectionBreak",
+            "Jump",
+        ]
         assert (
             restored.get_child("whole").to_dict()
             == original.get_child("whole").to_dict()

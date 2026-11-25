@@ -99,6 +99,14 @@ BRACKETS_13_2 = (
     J(8, D(repeat_count=2)),
     J(12, D(repeat_count=1)),
 )
+BRACKETS_13_2_FINE = (
+    J(4, D(by=0, passes=[1, 3]), D(to="v2", passes=[2])),
+    T(8, "v2"),
+    B(8),
+    J(8, D(repeat_count=1)),
+    J(12, D(repeat_count=1, reset=False)),
+    Break(_at(8), ends=FlowCondition(after=after("J12")), id="fine"),
+)
 
 CASES: dict[str, tuple[tuple[FlowControlElement, ...], int, list[Any], list[Any]]] = {
     "repeat without start": (
@@ -137,6 +145,18 @@ CASES: dict[str, tuple[tuple[FlowControlElement, ...], int, list[Any], list[Any]
         16,
         [(0, 8), (0, 4), (8, 12), (0, 8), (0, 4), (8, 16)],
         [],
+    ),
+    "brackets (1, 3), (2) ending with a Fine": (
+        BRACKETS_13_2_FINE,
+        12,
+        [(0, 8), (0, 4), (8, 12), (0, 8)],
+        [],
+    ),
+    "brackets (1, 3), (2) ending without a Fine": (
+        BRACKETS_13_2_FINE[:5],
+        12,
+        [(0, 8), (0, 4), (8, 12), (0, 8)],
+        [(K.flow_ends_at_break, 8, None)],
     ),
     "first bracket without sign": (
         BRACKETS_1_2[:3],
@@ -313,6 +333,7 @@ SINGLE = {
     "brackets 1, 2": ([(0, 4), (8, 12)], []),
     "three brackets": ([(0, 4), (12, 16)], []),
     "brackets (1, 3), (2)": ([(0, 8)], [(K.flow_ends_at_break, 8, None)]),
+    "brackets (1, 3), (2) ending with a Fine": ([(0, 4), (8, 12)], []),
 }
 
 
@@ -348,24 +369,65 @@ def test_an_unknown_convention_is_refused() -> None:
 # region Rejected elements
 
 EDITOR = "https://example.org/people/editor"
+REVIEWER = "https://example.org/people/reviewer"
+REJECTED = {
+    "method": "imported",
+    "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-25"}],
+}
 
 
-def test_a_rejected_element_is_not_played_for_its_believer() -> None:
-    rejected = {
-        "method": "imported",
-        "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-25"}],
-    }
+def test_a_rejected_element_is_not_played() -> None:
     registry = _registry(
-        Jump(_at(8), [D(repeat_count=1)], id="printed", provenance=rejected),
+        Jump(_at(8), [D(repeat_count=1)], id="printed", provenance=REJECTED),
         Jump(_at(8), [D(repeat_count=2)], id="repair", provenance={"method": "manual"}),
     )
+    assert _runs(play(registry, 12)) == [(0, 8), (0, 8), (0, 12)]
     assert _runs(play(registry, 12, believer=EDITOR)) == [(0, 8), (0, 8), (0, 12)]
-    with pytest.raises(ValueError) as error:
-        play(registry, 12)
-    assert str(error.value) == (
-        "jumps 'printed' and 'repair' both lie at 8 ticks: name the believer who "
-        "rejected one of them"
+    assert [(s.start.value, s.end.value) for s in atomic_sections(registry, 12)] == [
+        (0, 8),
+        (8, 12),
+    ]
+    for call in (play, atomic_sections):
+        with pytest.raises(ValueError) as error:
+            call(registry, 12, believer=REVIEWER)
+        assert str(error.value) == (
+            "jump 'printed' lies at 8 ticks, where jump 'repair' lies already: one "
+            "jump lies at a coordinate, and several signs there are its destinations"
+        )
+
+
+def test_a_to_naming_a_rejected_target_dangles() -> None:
+    registry = _registry(
+        T(4, "start"), T(6, "other"), J(8, D(to="start", repeat_count=1))
     )
+    assert _runs(play(registry, 12)) == [(0, 8), (4, 12)]
+    registry.with_belief("start", EDITOR, "false", date="2026-11-25")
+    for call in (play, atomic_sections):
+        with pytest.raises(ValueError) as error:
+            call(registry, 12)
+        assert str(error.value) == (
+            "jump 'J8' goes on at 'start', which names no jump target of this "
+            "registry and no place of its timeline: jump_target 'start' is "
+            "rejected. Available jump targets: ['other']. Available places: []"
+        )
+    assert _runs(play(registry, 12, believer=REVIEWER)) == [(0, 8), (4, 12)]
+
+
+def test_an_after_naming_a_rejected_jump_dangles() -> None:
+    registry = _registry(
+        B(4, FlowCondition(after=after("J8"))),
+        J(8, D(repeat_count=1, reset=False)),
+    )
+    assert _runs(play(registry, 8)) == [(0, 8), (0, 4)]
+    registry.with_belief("J8", EDITOR, "false", date="2026-11-25")
+    with pytest.raises(ValueError) as error:
+        play(registry, 8)
+    assert str(error.value) == (
+        "the `after` of break 'B4' names 'J8', which is no jump of this registry: "
+        "jump 'J8' is rejected. Available jumps: []"
+    )
+    registry.with_belief("B4", EDITOR, "false", date="2026-11-25")
+    assert _runs(play(registry, 8)) == [(0, 8)]
 
 
 # endregion

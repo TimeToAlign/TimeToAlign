@@ -43,6 +43,7 @@ Common music notation:
 
 from __future__ import annotations
 
+import datetime
 import logging
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from copy import deepcopy
@@ -50,7 +51,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any, ClassVar, Self
 
-from timetoshare import DEFAULT_BELIEFS, BeliefState
+from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 
 from timetoalign.core import Coordinate, Duration, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.enums import FlowManifestation
@@ -60,7 +61,13 @@ from timetoalign.core.ids import (
     _plan_admissions,
     quote_id,
 )
-from timetoalign.core.provenance import Provenance
+from timetoalign.core.provenance import (
+    Belief,
+    BeliefValue,
+    Provenance,
+    belief_mask,
+    provenance_array,
+)
 from timetoalign.core.time import express_scalar_as, number_to_json
 
 from .manifest import (
@@ -71,6 +78,7 @@ from .manifest import (
     read_name,
     require_object,
 )
+from .statements import _day
 
 module_logger = logging.getLogger(__name__)
 
@@ -284,6 +292,20 @@ class DestinationReference(_OpenObject):
         return replace(self, jump=jump, to=to)
 
 
+def _by_place(destination: JumpDestination) -> tuple[int, Any, str]:
+    """The canonical order of a Jump's destinations.
+
+    The destination without place first, then those with ``by``, by value,
+    then those with ``to``, by ID (by Unicode code point).
+    """
+    place = destination.place
+    if place is None:
+        return (0, 0, "")
+    if place[0] == "by":
+        return (1, place[1], "")
+    return (2, 0, place[1])
+
+
 def _place_key(to: str | None, by: Any) -> tuple[str, Any] | None:
     """A place as destinations of one Jump are told apart."""
     if to is not None:
@@ -389,13 +411,21 @@ class FlowCondition(_OpenObject):
         """Whether any condition is stated."""
         return self.passes is not None or self.after is not None
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return the condition as its JSON object, absent keys left out."""
-        written = self._fields()
+    def to_dict(self, *, minimal: bool = True) -> dict[str, Any]:
+        """Return the condition as its JSON object.
+
+        Args:
+            minimal: Write the minimal form (the default): every key at its
+                default value left out. With False, the complete form: the
+                keys that have a default (``determined``, ``reset`` and
+                ``label`` of a destination) are written whatever they hold.
+                A key without a default is written only when stated.
+        """
+        written = self._fields(minimal=minimal)
         written.update(deepcopy(dict(self._unknown_keys)))
         return written
 
-    def _fields(self) -> dict[str, Any]:
+    def _fields(self, *, minimal: bool) -> dict[str, Any]:
         written: dict[str, Any] = {}
         if isinstance(self.passes, PassesFrom):
             written["passes"] = {"from": self.passes.first}
@@ -448,8 +478,11 @@ class JumpDestination(FlowCondition):
         label: A human-readable label.
 
     Examples:
-        >>> JumpDestination(to="segno", repeat_count=1, reset=False).to_dict()
+        >>> leap = JumpDestination(to="segno", repeat_count=1, reset=False)
+        >>> leap.to_dict()
         {'to': 'segno', 'repeat_count': 1, 'reset': False}
+        >>> leap.to_dict(minimal=False)
+        {'to': 'segno', 'repeat_count': 1, 'determined': True, 'reset': False, 'label': None}
         >>> JumpDestination(by=0, passes=[1, 3], manifestation="volta").passes
         (1, 3)
     """
@@ -524,9 +557,9 @@ class JumpDestination(FlowCondition):
         """Whether the destination is ``by: 0``: going on, never taken."""
         return self.by is not None and _place_key(None, self.by) == ("by", 0)
 
-    def _fields(self) -> dict[str, Any]:
+    def _fields(self, *, minimal: bool) -> dict[str, Any]:
         written: dict[str, Any] = {}
-        condition = super()._fields()
+        condition = super()._fields(minimal=minimal)
         if self.to is not None:
             written["to"] = self.to
         if self.by is not None:
@@ -537,13 +570,13 @@ class JumpDestination(FlowCondition):
             written["repeat_count"] = self.repeat_count
         if "after" in condition:
             written["after"] = condition["after"]
-        if not self.determined:
-            written["determined"] = False
-        if not self.reset:
-            written["reset"] = False
+        if not (minimal and self.determined):
+            written["determined"] = self.determined
+        if not (minimal and self.reset):
+            written["reset"] = self.reset
         if self.manifestation is not None:
             written["manifestation"] = _written(self.manifestation)
-        if self.label is not None:
+        if not (minimal and self.label is None):
             written["label"] = self.label
         return written
 
@@ -613,21 +646,77 @@ def _read_label(data: Mapping[str, Any], what: str) -> str | None:
     return label
 
 
-def _read_provenance(data: Mapping[str, Any], what: str) -> Provenance | None:
-    """Read an optional ``provenance``, one provenance entry.
+def _read_provenance(data: Mapping[str, Any], what: str) -> list[Any] | None:
+    """Read an optional ``provenance``, a list of provenance entries.
 
     Raises:
-        ValueError: If it is no provenance entry.
+        ValueError: If it is no list.
     """
-    if data.get("provenance") is None:
+    entries = data.get("provenance")
+    if entries is not None and not isinstance(entries, list):
+        raise ValueError(
+            f"the provenance of {what} is a list of provenance entries, not "
+            f"{entries!r}"
+        )
+    return entries
+
+
+def _provenance_entries(value: object, what: str) -> tuple[Provenance, ...] | None:
+    """Return the provenance of an element as it holds it: its entries, or None.
+
+    One entry (a :class:`~timetoalign.core.provenance.Provenance` or its
+    dictionary) is the list of that entry.
+
+    Raises:
+        ValueError: If *value* lists no entry, or holds something that is no
+            provenance entry.
+    """
+    if value is None:
         return None
-    entry = data["provenance"]
-    if not isinstance(entry, dict):
-        raise ValueError(f"the provenance of {what} must be an object")
-    try:
-        return Provenance.from_dict(entry)
-    except ValueError as error:
-        raise ValueError(f"the provenance of {what}: {error}") from error
+    if isinstance(value, Provenance | Mapping):
+        value = (value,)
+    if isinstance(value, str) or not isinstance(value, Iterable):
+        raise ValueError(
+            f"the provenance of {what} is a list of provenance entries, not {value!r}"
+        )
+    entries: list[Provenance] = []
+    for entry in value:
+        if isinstance(entry, Mapping):
+            try:
+                entry = Provenance.from_dict(dict(entry))
+            except ValueError as error:
+                raise ValueError(f"the provenance of {what}: {error}") from error
+        if not isinstance(entry, Provenance):
+            raise ValueError(
+                f"the provenance of {what} holds {entry!r}, which is no "
+                "provenance entry"
+            )
+        entries.append(entry)
+    if not entries:
+        raise ValueError(
+            f"the provenance of {what} lists no entry: leave `provenance` out for "
+            "an element that states none"
+        )
+    return tuple(entries)
+
+
+def _belief_state(
+    entries: Sequence[Provenance], believer: str, context: Mapping[str, Any] | None
+) -> BeliefState:
+    """What *believer* believes of an element holding the provenance *entries*.
+
+    The most critical belief the believer holds in any entry (``"false"``,
+    then ``"unlikely"``, then ``"true"``), or ``"undecided"`` where the
+    believer holds none; each entry is read by
+    :func:`~timetoalign.core.provenance.belief_mask`.
+    """
+    if entries:
+        rows = provenance_array(list(entries))
+        states: tuple[BeliefState, ...] = ("false", "unlikely", "true")
+        for state in states:
+            if any(belief_mask(rows, believer, [state], context=context).to_pylist()):
+                return state
+    return "undecided"
 
 
 @dataclass(frozen=True, repr=False)
@@ -644,9 +733,11 @@ class FlowControlElement(_IdentifiedElement):
         name: A display name.
         label: A human-readable label.
         meta: Additional metadata.
-        provenance: How the element was made and who believes it. An
-            element is never changed or deleted to repair flow control: it
-            is rejected by a belief, and another one added.
+        provenance: How the element was made and who believes it: one or
+            more provenance entries, or None. A single entry given is held
+            as the list of that entry. An element is never changed or
+            deleted to repair flow control: it is rejected by a belief
+            (:meth:`with_belief`), and another one added.
         id: The element's ID; minted from its role when not given.
     """
 
@@ -659,7 +750,7 @@ class FlowControlElement(_IdentifiedElement):
     name: str | None = field(default=None, kw_only=True)
     label: str | None = field(default=None, kw_only=True)
     meta: dict[str, Any] = field(default_factory=dict[str, Any], kw_only=True)
-    provenance: Provenance | None = field(default=None, kw_only=True)
+    provenance: tuple[Provenance, ...] | None = field(default=None, kw_only=True)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -684,8 +775,9 @@ class FlowControlElement(_IdentifiedElement):
         the class; called on one of the five classes, the role must be that
         class's. ``coordinate`` and every ``by`` are bare values on the
         timeline's axis, which *unit* and *number_type* describe. ``name``,
-        ``label``, ``meta`` and ``provenance`` may be left out; keys the
-        library does not know are kept and written back.
+        ``label``, ``meta`` and ``provenance`` (a list of provenance
+        entries) may be left out; keys the library does not know are kept
+        and written back.
 
         Raises:
             ValueError: If the element is malformed, is written in the form
@@ -754,17 +846,85 @@ class FlowControlElement(_IdentifiedElement):
             )
         if isinstance(self.coordinate, IdCoordinate):
             object.__setattr__(self, "coordinate", self.coordinate.to_coordinate())
-        if isinstance(self.provenance, Mapping):
-            object.__setattr__(
-                self, "provenance", Provenance.from_dict(dict(self.provenance))
-            )
+        object.__setattr__(
+            self,
+            "provenance",
+            _provenance_entries(self.provenance, f"{self.role} {quote_id(self.id)}"),
+        )
 
     @property
     def is_rejected(self) -> bool:
-        """Whether any actor holds the belief ``"false"`` in the element."""
-        return self.provenance is not None and any(
-            belief.belief == "false" for belief in self.provenance.beliefs
+        """Whether the element is rejected: some actor believes it ``"false"``.
+
+        Any entry of its provenance holding such a belief rejects it. A
+        rejected element is left out when flow control is played, and
+        nothing may name it.
+        """
+        return any(
+            belief.belief == "false"
+            for entry in self.provenance or ()
+            for belief in entry.beliefs
         )
+
+    def with_belief(
+        self, belief: Belief, *, context: Mapping[str, Any] | None = None
+    ) -> Self:
+        """A copy of the element whose provenance holds *belief*.
+
+        Only the provenance changes. The belief replaces its actor's earlier
+        one in every entry holding one
+        (:meth:`Provenance.with_belief
+        <timetoalign.core.provenance.Provenance.with_belief>`); where the
+        actor holds none, the first entry records it, and an element
+        without provenance gets one entry holding the belief alone. Every
+        other actor's belief stands. A registry records a belief in an
+        element it holds with :meth:`FlowControlRegistry.with_belief`.
+
+        Args:
+            belief: The belief; ``"false"`` rejects the element.
+            context: The JSON-LD context under which actors compare as IRIs;
+                None declares no prefix.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate, TimeUnit
+            >>> from timetoalign.core.provenance import Belief
+            >>> barline = Barline(Coordinate(8, TimeUnit.quarters))
+            >>> rejected = barline.with_belief(
+            ...     Belief(actor="ana", belief="false", date="2026-11-25")
+            ... )
+            >>> barline.is_rejected, rejected.is_rejected
+            (False, True)
+            >>> rejected.to_dict()["provenance"]
+            [{'beliefs': [{'actor': 'ana', 'belief': 'false', 'date': '2026-11-25'}]}]
+        """
+        entries = self.provenance
+        if entries is None:
+            return replace(self, provenance=(Provenance(beliefs=(belief,)),))
+        holding = [
+            entry.get_belief(belief.actor, context=context) is not None
+            for entry in entries
+        ]
+        if not any(holding):
+            holding[0] = True
+        return replace(
+            self,
+            provenance=tuple(
+                entry.with_belief(belief, context=context) if holds else entry
+                for entry, holds in zip(entries, holding, strict=True)
+            ),
+        )
+
+    def _passes_belief_filter(
+        self,
+        believer: str | None,
+        beliefs: Collection[BeliefState],
+        context: Mapping[str, Any] | None,
+    ) -> bool:
+        """Whether the element is read: not rejected, or kept for *believer*."""
+        if believer is None:
+            return not self.is_rejected
+        state = _belief_state(self.provenance or (), believer, context)
+        return state in check_belief_filter(beliefs)
 
     def _own_fields(self) -> dict[str, Any]:
         """Return the class's own keys as written, absent ones left out."""
@@ -781,7 +941,7 @@ class FlowControlElement(_IdentifiedElement):
             "meta": deepcopy(self.meta),
         }
         if self.provenance is not None:
-            fields["provenance"] = self.provenance.to_dict()
+            fields["provenance"] = [entry.to_dict() for entry in self.provenance]
         return fields
 
     def _renamed(self, renamed: Mapping[str, str]) -> Self:
@@ -806,11 +966,15 @@ class Jump(FlowControlElement):
         coordinate: Where the flow leaves: the end of the measure before.
         targets: The destinations, at least one, each with a place of its
             own: no two with the same ``to``, the same ``by``, or both
-            without place.
+            without place. They carry no order and are held and written in
+            the canonical one, whatever order they are given in: the
+            destination without place, then those with ``by``, by value,
+            then those with ``to``, by ID.
         name: A display name.
         label: A human-readable label.
         meta: Additional metadata.
-        provenance: How the Jump was made and who believes it.
+        provenance: How the Jump was made and who believes it: provenance
+            entries, or None.
         id: The Jump's ID; minted as ``jump_{N}`` when not given.
 
     Examples:
@@ -881,7 +1045,7 @@ class Jump(FlowControlElement):
                     f"{what} has {places.count(place)} destinations with {stated}: "
                     "the destinations of one jump are distinct places"
                 )
-        object.__setattr__(self, "targets", bound)
+        object.__setattr__(self, "targets", tuple(sorted(bound, key=_by_place)))
 
     @property
     def manifestations(self) -> tuple[FlowManifestation | str, ...]:
@@ -893,7 +1057,11 @@ class Jump(FlowControlElement):
         )
 
     def _own_fields(self) -> dict[str, Any]:
-        return {"targets": [destination.to_dict() for destination in self.targets]}
+        return {
+            "targets": [
+                destination.to_dict(minimal=False) for destination in self.targets
+            ]
+        }
 
     def _renamed(self, renamed: Mapping[str, str]) -> Self:
         targets = tuple(destination._renamed(renamed) for destination in self.targets)
@@ -966,7 +1134,8 @@ class JumpTarget(_ManifestedElement):
         name: A display name, such as the source's name of the sign.
         label: A human-readable label.
         meta: Additional metadata.
-        provenance: How the element was made and who believes it.
+        provenance: How the element was made and who believes it:
+            provenance entries, or None.
         id: The element's ID; minted as ``jump_target_{N}`` when not given.
 
     Examples:
@@ -1006,7 +1175,8 @@ class Break(_ManifestedElement):
         name: A display name.
         label: A human-readable label.
         meta: Additional metadata.
-        provenance: How the element was made and who believes it.
+        provenance: How the element was made and who believes it:
+            provenance entries, or None.
         id: The element's ID; minted as ``break_{N}`` when not given.
 
     Examples:
@@ -1093,7 +1263,8 @@ class SectionBreak(_ManifestedElement):
         name: A display name.
         label: A human-readable label.
         meta: Additional metadata.
-        provenance: How the element was made and who believes it.
+        provenance: How the element was made and who believes it:
+            provenance entries, or None.
         id: The element's ID; minted as ``section_break_{N}`` when not given.
     """
 
@@ -1114,7 +1285,8 @@ class Barline(_ManifestedElement):
         name: A display name.
         label: A human-readable label.
         meta: Additional metadata.
-        provenance: How the element was made and who believes it.
+        provenance: How the element was made and who believes it:
+            provenance entries, or None.
         id: The element's ID; minted as ``barline_{N}`` when not given.
     """
 
@@ -1138,6 +1310,11 @@ _ROLES: dict[str, type[FlowControlElement]] = {
 _Entry = tuple[str, bool, str, str]
 
 
+def _rejected(left_out: Mapping[str, str], name: str) -> str:
+    """Words saying that *name* is an element left out as rejected, if it is."""
+    return f": {left_out[name]} is rejected" if name in left_out else ""
+
+
 def _canonical(elements: Iterable[FlowControlElement]) -> list[FlowControlElement]:
     """Sort elements by coordinate, then by ID."""
     return sorted(elements, key=lambda element: (element.coordinate.value, element.id))
@@ -1157,10 +1334,16 @@ class FlowControlRegistry:
     the timeline's ``flow_control`` array.
 
     The registry refuses what cannot be played: a second Jump at a
-    coordinate (unless one of the two is rejected by a belief), a ``to``
-    naming neither a :class:`JumpTarget` of the registry nor a place of its
-    timeline, and an ``after`` that does not name exactly one destination
-    of another Jump of the registry.
+    coordinate, a ``to`` naming neither a :class:`JumpTarget` of the
+    registry nor a place of its timeline, and an ``after`` that does not
+    name exactly one destination of another Jump of the registry.
+
+    An element that some actor believes ``"false"`` is rejected
+    (:attr:`FlowControlElement.is_rejected`, :meth:`with_belief`): it stays
+    in the registry and is written, but it is out of every rule, as what is
+    checked and as what is named. A rejected Jump and its replacement may
+    therefore share a coordinate, and a ``to`` or ``after`` naming a
+    rejected element names nothing.
 
     Attributes:
         elements: Every element, by coordinate and then by ID.
@@ -1370,12 +1553,12 @@ class FlowControlRegistry:
 
         Raises:
             ValueError: If an element's given ID is already taken, its unit
-                is not the registry's, a coordinate holds a second Jump
-                (unless one of the two is rejected by a belief), a ``to``
-                names neither a JumpTarget of the registry nor a place of
-                its timeline, or an ``after`` does not name exactly one
-                destination of another Jump of the registry. Nothing has
-                changed then.
+                is not the registry's, or an element that is not rejected
+                cannot be played among those not rejected: a coordinate
+                holds a second Jump, a ``to`` names neither a JumpTarget of
+                the registry nor a place of its timeline, or an ``after``
+                does not name exactly one destination of another Jump of
+                the registry. Nothing has changed then.
         """
         staged = [self._on_axis(element) for element in elements]
         if not staged:
@@ -1403,7 +1586,15 @@ class FlowControlRegistry:
             )._renamed(renamed)
             for element, new_id in zip(staged, ids, strict=True)
         ]
-        self._check(stored, [*self.elements, *stored])
+        self._check(
+            [element for element in stored if not element.is_rejected],
+            [
+                element
+                for element in (*self.elements, *stored)
+                if not element.is_rejected
+            ],
+            [*self.elements, *stored],
+        )
         self._admitted_ids(entries, check_only=False)
         self.elements = _canonical([*self.elements, *stored])
         return stored
@@ -1421,32 +1612,43 @@ class FlowControlRegistry:
         return [plan.get(index, entry[0]) for index, entry in enumerate(entries)]
 
     def _check(
-        self, new: Sequence[FlowControlElement], every: Sequence[FlowControlElement]
+        self,
+        new: Sequence[FlowControlElement],
+        read: Sequence[FlowControlElement],
+        held: Sequence[FlowControlElement] | None = None,
     ) -> None:
-        """Refuse *new* elements that cannot be played among *every* element.
+        """Refuse *new* elements that cannot be played among the elements *read*.
+
+        *read* holds the elements the rules see (*new* among them), *held*
+        every element of the registry (its own when None): a name found
+        among *held* only is reported as naming an element left out.
 
         Raises:
             ValueError: As :meth:`add_all`.
         """
-        jumps = {element.id: element for element in every if isinstance(element, Jump)}
-        targets = {element.id for element in every if isinstance(element, JumpTarget)}
+        jumps = {element.id: element for element in read if isinstance(element, Jump)}
+        targets = {element.id for element in read if isinstance(element, JumpTarget)}
+        left_out = {
+            element.id: f"{element.role} {quote_id(element.id)}"
+            for element in (self.elements if held is None else held)
+        }
+        for element in read:
+            left_out.pop(element.id, None)
         places: Mapping[str, Coordinate] | None = None
         for element in new:
             what = f"{element.role} {quote_id(element.id)}"
             if isinstance(element, Jump):
-                if not element.is_rejected:
-                    for other in jumps.values():
-                        if (
-                            other is not element
-                            and not other.is_rejected
-                            and other.coordinate.value == element.coordinate.value
-                        ):
-                            raise ValueError(
-                                f"{what} lies at {element.coordinate}, where jump "
-                                f"{quote_id(other.id)} lies already: one jump lies "
-                                "at a coordinate, and several signs there are its "
-                                "destinations"
-                            )
+                for other in jumps.values():
+                    if (
+                        other is not element
+                        and other.coordinate.value == element.coordinate.value
+                    ):
+                        raise ValueError(
+                            f"{what} lies at {element.coordinate}, where jump "
+                            f"{quote_id(other.id)} lies already: one jump lies "
+                            "at a coordinate, and several signs there are its "
+                            "destinations"
+                        )
                 for destination in element.targets:
                     if destination.to is not None and destination.to not in targets:
                         if places is None:
@@ -1455,16 +1657,23 @@ class FlowControlRegistry:
                             raise ValueError(
                                 f"{what} goes on at {quote_id(destination.to)}, which "
                                 "names no jump target of this registry and no place "
-                                "of its timeline. Available jump targets: "
-                                f"{sorted(targets)}. Available places: {list(places)}"
+                                f"of its timeline{_rejected(left_out, destination.to)}. "
+                                f"Available jump targets: {sorted(targets)}. "
+                                f"Available places: {list(places)}"
                             )
                     if destination.after is not None:
                         self._destination_among(
-                            jumps, destination.after, what, holder=element.id
+                            jumps,
+                            destination.after,
+                            what,
+                            holder=element.id,
+                            left_out=left_out,
                         )
             elif isinstance(element, Break) and element.ends is not None:
                 if element.ends.after is not None:
-                    self._destination_among(jumps, element.ends.after, what)
+                    self._destination_among(
+                        jumps, element.ends.after, what, left_out=left_out
+                    )
 
     @staticmethod
     def _destination_among(
@@ -1473,6 +1682,7 @@ class FlowControlRegistry:
         what: str,
         *,
         holder: str | None = None,
+        left_out: Mapping[str, str] | None = None,
     ) -> tuple[Jump, int]:
         """Return the Jump and the index of the destination *reference* names.
 
@@ -1484,7 +1694,8 @@ class FlowControlRegistry:
         if jump is None:
             raise ValueError(
                 f"the `after` of {what} names {quote_id(reference.jump)}, which is "
-                f"no jump of this registry. Available jumps: {list(jumps)}"
+                f"no jump of this registry{_rejected(left_out or {}, reference.jump)}. "
+                f"Available jumps: {list(jumps)}"
             )
         if jump.id == holder:
             raise ValueError(
@@ -1516,7 +1727,7 @@ class FlowControlRegistry:
         """Return the Jump at *coordinate*, if one lies there.
 
         Where a rejected Jump and its replacement lie together, the one not
-        rejected is returned.
+        rejected is returned; a rejected one where no other lies.
 
         Raises:
             ValueError: If a coordinate object's unit is not the registry's.
@@ -1559,12 +1770,13 @@ class FlowControlRegistry:
             destination: The destination.
             jump: The Jump holding it.
             elements: The elements to find jump targets and section breaks
-                among; every element of the registry when None.
+                among; the elements not rejected (:meth:`active_elements`)
+                when None.
 
         Raises:
-            KeyError: If ``to`` names nothing.
+            KeyError: If ``to`` names nothing, or a rejected jump target.
         """
-        among = self.elements if elements is None else elements
+        among = self.active_elements() if elements is None else elements
         axis = jump.coordinate
         if isinstance(destination.by, Duration):
             return Coordinate(
@@ -1601,50 +1813,121 @@ class FlowControlRegistry:
         beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
         context: Mapping[str, Any] | None = None,
     ) -> list[FlowControlElement]:
-        """Return the elements *believer* does not reject, in canonical order.
+        """Return the elements that are read as flow control, in canonical order.
 
-        The belief filter of
-        :meth:`Provenance.passes_belief_filter
-        <timetoalign.core.provenance.Provenance.passes_belief_filter>`,
-        read on each element's provenance: an element without provenance, or
+        Without a believer these are the elements not rejected: every
+        element but those some actor believes ``"false"``
+        (:attr:`FlowControlElement.is_rejected`). A believer narrows the
+        reading to that actor's beliefs: the belief filter of
+        :func:`~timetoalign.core.provenance.belief_mask`, read on each
+        element's provenance, where an element without provenance, or
         without a belief of the believer's, is one the believer has not
-        decided on. Without a believer nothing is filtered.
+        decided on, and one the believer holds two beliefs in (in two
+        entries) is read as the more critical of them.
 
         Args:
-            believer: The actor whose beliefs filter; None keeps all.
-            beliefs: The belief states kept; every state but ``"false"`` by
-                default.
+            believer: The actor whose beliefs alone decide; None leaves out
+                what any actor rejects.
+            beliefs: With a believer, the belief states kept; every state
+                but ``"false"`` by default.
             context: The JSON-LD context under which actors compare as IRIs.
 
         Raises:
-            ValueError: If two of the elements kept are Jumps at one
-                coordinate: a rejected Jump and its replacement, read
-                without the believer who rejected it.
+            ValueError: If *beliefs* is no collection of belief states.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> registry = FlowControlRegistry(unit="quarters")
+            >>> barline = registry.add(Barline(Coordinate(8, "quarters")))
+            >>> _ = registry.with_belief(barline.id, "ana", "false", date="2026-11-25")
+            >>> registry.elements, registry.active_elements()
+            ([Barline('barline_1' @ 8 quarters)], [])
+            >>> registry.active_elements(believer="bea")
+            [Barline('barline_1' @ 8 quarters)]
         """
-        kept = [
+        check_belief_filter(beliefs)
+        return [
             element
             for element in self.elements
-            if believer is None
-            or (
-                "undecided" in beliefs
-                if element.provenance is None
-                else element.provenance.passes_belief_filter(
-                    believer, beliefs, context=context
-                )
-            )
+            if element._passes_belief_filter(believer, beliefs, context)
         ]
-        seen: dict[Any, Jump] = {}
-        for element in kept:
-            if not isinstance(element, Jump):
-                continue
-            other = seen.setdefault(element.coordinate.value, element)
-            if other is not element:
-                raise ValueError(
-                    f"jumps {quote_id(other.id)} and {quote_id(element.id)} both lie "
-                    f"at {element.coordinate}: name the believer who rejected one "
-                    "of them"
-                )
-        return kept
+
+    def with_belief(
+        self,
+        element_id: str,
+        actor: str,
+        belief: BeliefValue,
+        *,
+        date: str | datetime.date | None = None,
+        note: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> Any:
+        """Record *actor*'s belief in the element *element_id*.
+
+        The registry holds the element's copy whose provenance records the
+        belief (:meth:`FlowControlElement.with_belief`) in its place; the
+        element's ID, coordinate and every other key stay. The belief
+        ``"false"`` rejects the element, which is how flow control is
+        repaired: the wrong element is rejected and another one added,
+        never changed or removed. What names a rejected element names
+        nothing from then on (:func:`~timetoalign.timelines.flow.engine.play`
+        refuses such flow control), so a repair rejects the elements naming
+        it too, or adds the replacement they name.
+
+        Args:
+            element_id: The element's ID.
+            actor: Who holds the belief, an IRI.
+            belief: ``"true"``, ``"false"`` or ``"unlikely"``.
+            date: The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today
+                when None.
+            note: A remark.
+            context: The JSON-LD context under which actors compare as IRIs;
+                None declares no prefix.
+
+        Returns:
+            The element as the registry holds it now.
+
+        Raises:
+            KeyError: If the registry holds no element *element_id*.
+            ValueError: If the belief or the date is invalid, or the
+                element, no longer rejected by the belief, cannot be played
+                among the elements not rejected (:meth:`add_all`). Nothing
+                has changed then.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> registry = FlowControlRegistry(unit="quarters")
+            >>> wrong = registry.add(
+            ...     Jump(Coordinate(16, "quarters"), [JumpDestination(repeat_count=1)]))
+            >>> registry.with_belief(wrong.id, "ana", "false").is_rejected
+            True
+            >>> registry.add(
+            ...     Jump(Coordinate(16, "quarters"), [JumpDestination(by=-8, repeat_count=1)])
+            ... ).id
+            'jump_2'
+            >>> registry.jump_at(16).id
+            'jump_2'
+        """
+        held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
+        for index, element in enumerate(self.elements):
+            if element.id == element_id:
+                break
+        else:
+            raise KeyError(
+                f"{element_id!r} names no flow-control element. Available "
+                f"elements: {[element.id for element in self.elements]}"
+            )
+        believed = element.with_belief(held, context=context)
+        elements = [*self.elements]
+        elements[index] = believed
+        if not believed.is_rejected:
+            self._check(
+                [believed],
+                [other for other in elements if not other.is_rejected],
+                elements,
+            )
+        self.elements = elements
+        return believed
 
     def has_flow_control(self) -> bool:
         """Whether the registry holds any element."""
@@ -1705,10 +1988,14 @@ class FlowControlRegistry:
 
         Args:
             minimal: Write each element in the minimal form (the default):
-                every key at its default value left out. With False, the
-                complete form of the element's own keys. A destination and
-                a condition are written alike in both: a key at its default
-                is absent.
+                every key at its default value left out, in the
+                destinations of a Jump too. With False, the complete form:
+                ``name``, ``label`` and ``meta`` of every element and
+                ``determined``, ``reset`` and ``label`` of every
+                destination are written whatever they hold. A key without
+                a default (``manifestation``, ``ends``, ``provenance``,
+                ``to``, ``by``, ``passes``, ``repeat_count``, ``after``) is
+                written only when stated.
         """
         return [element.to_dict(minimal=minimal) for element in self.elements]
 

@@ -14,7 +14,7 @@ from timetoshare import validate
 
 from tests.helpers import bare, filed, refusal
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.core import Coordinate, FlowControlElement, TimeUnit
+from timetoalign.core import Coordinate, FlowManifestation, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
 from timetoalign.loader.graphical.paths import VerticalLinePath
@@ -49,12 +49,18 @@ from timetoalign.timelines import (
     TimelineGroup,
 )
 from timetoalign.timelines import groups as groups_module
-from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.flowcontrol import (
+    Barline,
+    Break,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+    SectionBreak,
+)
 from timetoalign.timelines.manifest import _manifest_ids_of
 from timetoalign.timelines.regions import Region
 
-SEGNO = FlowControlElement.segno
-DAL_SEGNO = FlowControlElement.dal_segno
+SEGNO = FlowManifestation.segno
 
 SCORE = ensure_data("score")
 MIDI = ensure_data("midi")
@@ -68,6 +74,11 @@ QUARTERS = TimeUnit.quarters
 
 def _q(value: Any) -> Coordinate:
     return Coordinate(value, QUARTERS)
+
+
+def _jump(at: Any, *, id: str | None = None, **place: Any) -> Jump:
+    """A jump at *at* with one destination, ``to`` an id or ``by`` a distance."""
+    return Jump(_q(at), [JumpDestination(**place)], id=id)
 
 
 # region One form, one generator
@@ -98,9 +109,11 @@ def _q(value: Any) -> Coordinate:
         ),
         (lambda: ScalarMap(2), "cmap_1"),
         (lambda: Region(_q(0), _q(4)), "region_1"),
-        (lambda: Break(_q(4)), "flow_marker_1"),
-        (lambda: Jump(_q(4), _q(0)), "jump_from_1"),
-        (lambda: Marker(_q(0), control_type=SEGNO), "jump_to_1"),
+        (lambda: Break(_q(4)), "break_1"),
+        (lambda: SectionBreak(_q(4)), "section_break_1"),
+        (lambda: Barline(_q(4)), "barline_1"),
+        (lambda: _jump(4, by=-4), "jump_1"),
+        (lambda: JumpTarget(_q(0), manifestation=SEGNO), "jump_target_1"),
     ],
 )
 def test_standalone_elements_mint_their_first_id(
@@ -117,18 +130,16 @@ def _reference(*, reverse: bool = False) -> Timeline:
         lambda: root.create_child(length=8, offset=8),
         lambda: root.create_region(0, 8, name="A"),
         lambda: root.create_region(8, 16, name="B"),
-        lambda: root.flow_control.add_break(Break(_q(8))),
-        lambda: root.flow_control.add_break(Break(_q(16))),
+        lambda: root.flow_control.add(Break(_q(8))),
+        lambda: root.flow_control.add(Break(_q(16))),
         lambda: root.add_conversion_map(
             LinearMap(scalar=2, source_unit="quarters", target_unit="seconds")
         ),
     ]
     for step in reversed(steps) if reverse else steps:
         step()
-    marker = root.flow_control.add_marker(
-        Marker(_q(8), name="segno", control_type=SEGNO)
-    )
-    root.flow_control.add_jump(Jump(_q(24), _q(8), target=marker.id))
+    marker = root.flow_control.add(JumpTarget(_q(8), name="segno", manifestation=SEGNO))
+    root.flow_control.add(_jump(24, to=marker.id))
     return root
 
 
@@ -136,9 +147,9 @@ REFERENCE_IDS = {
     "timeline": "clt_1",
     "children": {"clt_2", "clt_3"},
     "regions": {"region_1", "region_2"},
-    "breaks": {"flow_marker_1", "flow_marker_2"},
-    "markers": ["jump_to_1"],
-    "jumps": [("jump_from_1", "jump_to_1")],
+    "breaks": {"break_1", "break_2"},
+    "jump_targets": ["jump_target_1"],
+    "jumps": [("jump_1", ["jump_target_1"])],
     "maps": ["lmap_1"],
 }
 
@@ -150,12 +161,14 @@ def _ids(manifest: dict[str, Any]) -> dict[str, Any]:
         "timeline": payload["id"],
         "children": {child["id"] for child in payload["children"]},
         "regions": {entry["id"] for entry in payload["regions"]},
-        "breaks": {entry["id"] for entry in flow if entry["type"] == "flow_marker"},
-        "markers": [entry["id"] for entry in flow if entry["type"] == "jump_to"],
+        "breaks": {entry["id"] for entry in flow if entry["role"] == "break"},
+        "jump_targets": [
+            entry["id"] for entry in flow if entry["role"] == "jump_target"
+        ],
         "jumps": [
-            (entry["id"], entry.get("target"))
+            (entry["id"], [destination.get("to") for destination in entry["targets"]])
             for entry in flow
-            if entry["type"] == "jump_from"
+            if entry["role"] == "jump"
         ],
         "maps": [entry["id"] for entry in payload["conversion_maps"]],
     }
@@ -221,11 +234,11 @@ def _given_manifest() -> Timeline:
     root.add_child(ContinuousLogicalTimeline(length=8, uid="score:clt_7"), 8)
     root.create_region(0, 8, id="a", name="A")
     root.add_conversion_map(ScalarMap(2, uid="raw"))
-    root.flow_control.add_break(Break(_q(8), id="b1"))
-    root.flow_control.add_marker(
-        Marker(_q(8), id="segno", name="segno", control_type=SEGNO)
+    root.flow_control.add(Break(_q(8), id="b1"))
+    root.flow_control.add(
+        JumpTarget(_q(8), id="segno", name="segno", manifestation=SEGNO)
     )
-    root.flow_control.add_jump(Jump(_q(24), _q(8), id="ds", target="segno"))
+    root.flow_control.add(_jump(24, id="ds", to="segno"))
     return root
 
 
@@ -238,8 +251,8 @@ class TestGivenIds:
             "children": {"Bass Kick", "score:clt_7"},
             "regions": {"a"},
             "breaks": {"b1"},
-            "markers": ["segno"],
-            "jumps": [("ds", "segno")],
+            "jump_targets": ["segno"],
+            "jumps": [("ds", ["segno"])],
             "maps": ["raw"],
         }
 
@@ -258,10 +271,21 @@ class TestGivenIds:
             lambda uid: ScalarMap(2, uid=uid),
             lambda uid: Region(_q(0), _q(4), id=uid),
             lambda uid: Break(_q(4), id=uid),
-            lambda uid: Jump(_q(4), _q(0), id=uid),
-            lambda uid: Marker(_q(0), id=uid, control_type=SEGNO),
+            lambda uid: SectionBreak(_q(4), id=uid),
+            lambda uid: Barline(_q(4), id=uid),
+            lambda uid: _jump(4, id=uid, by=-4),
+            lambda uid: JumpTarget(_q(0), id=uid, manifestation=SEGNO),
         ],
-        ids=["timeline", "map", "region", "break", "jump", "marker"],
+        ids=[
+            "timeline",
+            "map",
+            "region",
+            "break",
+            "section_break",
+            "barline",
+            "jump",
+            "jump_target",
+        ],
     )
     def test_refused_ids(self, build: Callable[[str], Any], refused: str) -> None:
         with pytest.raises(ValueError, match="Invalid id"):
@@ -311,17 +335,17 @@ class TestCollisions:
         assert child.list_children() == ["clt_4"]
         assert child.get_child("clt_4") is grandchild
 
-    def test_a_marker_minted_again_takes_its_jumps_along(self) -> None:
+    def test_a_jump_target_minted_again_takes_its_jumps_along(self) -> None:
         root = ContinuousLogicalTimeline(length=16)
-        root.flow_control.add_marker(Marker(_q(0), control_type=SEGNO))
+        root.flow_control.add(JumpTarget(_q(0), manifestation=SEGNO))
         child = ContinuousLogicalTimeline(length=8)
-        marker = child.flow_control.add_marker(
-            Marker(_q(2), name="segno", control_type=SEGNO)
+        target = child.flow_control.add(
+            JumpTarget(_q(2), name="segno", manifestation=SEGNO)
         )
-        child.flow_control.add_jump(Jump(_q(6), _q(2), target=marker.id))
+        child.flow_control.add(_jump(6, to=target.id))
         root.add_child(child, 0)
-        assert [m.id for m in child.flow_control.markers] == ["jump_to_2"]
-        assert [j.target for j in child.flow_control.jumps] == ["jump_to_2"]
+        assert [t.id for t in child.flow_control.jump_targets] == ["jump_target_2"]
+        assert [j.targets[0].to for j in child.flow_control.jumps] == ["jump_target_2"]
 
     def test_given_timeline_id_collision_raises(self) -> None:
         root = ContinuousLogicalTimeline(length=16, uid="score")
@@ -372,9 +396,9 @@ def _free_bundle() -> AlignmentBundle:
     score.add_measure_map(
         MeasureMap(_bars().measures, id="https://example.org/op35/bars")
     )
-    score.flow_control.add_break(Break(_q(8), id="fine / end"))
-    score.flow_control.add_marker(Marker(_q(4), id="segno 1", control_type=SEGNO))
-    score.flow_control.add_jump(Jump(_q(12), _q(4), id="D.S./1", target="segno 1"))
+    score.flow_control.add(Break(_q(8), id="fine / end"))
+    score.flow_control.add(JumpTarget(_q(4), id="segno 1", manifestation=SEGNO))
+    score.flow_control.add(_jump(12, id="D.S./1", to="segno 1"))
     perf = ContinuousPhysicalTimeline(length=20.0, uid="https://example.org/take#1")
     bundle = AlignmentBundle(id="https://example.org/op35")
     bundle.add_timeline(score)
@@ -404,8 +428,8 @@ class TestFreeIds:
         ]
         assert score.measure_map.id == "https://example.org/op35/bars"
         assert [e.id for e in score.flow_control.breaks] == ["fine / end"]
-        assert [m.id for m in score.flow_control.markers] == ["segno 1"]
-        assert [(j.id, j.target) for j in score.flow_control.jumps] == [
+        assert [t.id for t in score.flow_control.jump_targets] == ["segno 1"]
+        assert [(j.id, j.targets[0].to) for j in score.flow_control.jumps] == [
             ("D.S./1", "segno 1")
         ]
         assert sorted(read.timelines) == [
@@ -466,7 +490,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
                     "flow_control": [
                         {
                             "id": "m",
-                            "type": "flow_marker",
+                            "role": "break",
                             "manifestation": "fine",
                             "coordinate": [4, 1],
                         }
@@ -520,7 +544,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
                     "flow_control": [
                         {
                             "id": "bars",
-                            "type": "jump_to",
+                            "role": "jump_target",
                             "manifestation": "segno",
                             "coordinate": [4, 1],
                         }
@@ -591,12 +615,12 @@ def test_an_id_held_twice_in_a_manifest_is_refused(
 
 
 def _joining(uid: str) -> ContinuousLogicalTimeline:
-    """A root of given id holding a minted region, map and marker, and a jump."""
+    """A root of given id holding a minted region, map and jump target, and a jump."""
     timeline = ContinuousLogicalTimeline(length=16, uid=uid)
     timeline.create_region(0, 4)
     timeline.add_conversion_map(LinearMap(scalar=2))
-    marker = timeline.flow_control.add_marker(Marker(_q(2), control_type=SEGNO))
-    timeline.flow_control.add_jump(Jump(_q(6), _q(2), id=f"ds-{uid}", target=marker.id))
+    target = timeline.flow_control.add(JumpTarget(_q(2), manifestation=SEGNO))
+    timeline.flow_control.add(_jump(6, id=f"ds-{uid}", to=target.id))
     return timeline
 
 
@@ -604,8 +628,8 @@ def _held(timeline: Timeline) -> tuple[list[str], list[str], list[str], list[Any
     return (
         timeline.list_regions(),
         [cmap.id for cmap in timeline._all_conversion_maps()],
-        [marker.id for marker in timeline.flow_control.markers],
-        [jump.target for jump in timeline.flow_control.jumps],
+        [target.id for target in timeline.flow_control.jump_targets],
+        [jump.targets[0].to for jump in timeline.flow_control.jumps],
     )
 
 
@@ -637,8 +661,18 @@ class TestJoiningScopes:
         first, second = _joining("a"), _joining("b")
         join(first, second)
 
-        assert _held(first) == (["region_1"], ["lmap_1"], ["jump_to_1"], ["jump_to_1"])
-        assert _held(second) == (["region_2"], ["lmap_2"], ["jump_to_2"], ["jump_to_2"])
+        assert _held(first) == (
+            ["region_1"],
+            ["lmap_1"],
+            ["jump_target_1"],
+            ["jump_target_1"],
+        )
+        assert _held(second) == (
+            ["region_2"],
+            ["lmap_2"],
+            ["jump_target_2"],
+            ["jump_target_2"],
+        )
 
     @SCOPES
     def test_a_given_id_held_in_the_scope_is_refused_atomically(
@@ -656,7 +690,11 @@ class TestJoiningScopes:
             "already held by conversion map 'intro' of timeline 'a'"
         )
         assert second.list_regions() == ["region_1", "intro"]
-        assert _held(second)[1:] == (["lmap_1"], ["jump_to_1"], ["jump_to_1"])
+        assert _held(second)[1:] == (
+            ["lmap_1"],
+            ["jump_target_1"],
+            ["jump_target_1"],
+        )
         members = (
             container.timeline_ids
             if isinstance(container, TimelineGroup)
@@ -706,10 +744,8 @@ class TestLivingScopes:
                 "conversion map",
             ),
             (
-                lambda timeline: timeline.flow_control.add_break(
-                    Break(_q(4), id="intro")
-                ),
-                "flow_marker",
+                lambda timeline: timeline.flow_control.add(Break(_q(4), id="intro")),
+                "break",
             ),
         ],
         ids=["region", "map", "break"],
@@ -911,31 +947,6 @@ def test_an_id_is_named_in_single_quotes() -> None:
     )
 
 
-def test_a_written_jump_to_takes_an_id_of_the_whole_manifest() -> None:
-    bundle = AlignmentBundle()
-    for uid in ("score", "perf"):
-        timeline = ContinuousLogicalTimeline(length=16, uid=uid)
-        timeline.flow_control.add_jump(
-            Jump(_q(12), _q(4), id=f"ds-{uid}", control_type=DAL_SEGNO)
-        )
-        bundle.add_timeline(timeline)
-
-    written = {
-        timeline["id"]: [
-            (element["id"], element.get("target"))
-            for element in timeline["flow_control"]
-        ]
-        for timeline in bare(bundle.to_dict())["timelines"]
-    }
-    assert written == {
-        "perf": [("jump_to_1", None), ("ds-perf", "jump_to_1")],
-        "score": [("jump_to_2", None), ("ds-score", "jump_to_2")],
-    }
-    assert [jump.target for jump in bundle.timelines["score"].flow_control.jumps] == [
-        None
-    ]
-
-
 QUARTERS_TO_SECONDS = {"source_unit": "quarters", "target_unit": "seconds", "scalar": 2}
 SECONDS_TO_MINUTES = {
     "source_unit": "seconds",
@@ -1094,11 +1105,11 @@ class TestNestedMaps:
 
 # endregion
 
-# region Regions and markers by id
+# region Regions and jump targets by id
 
 
 class TestKeyedById:
-    """The region API takes ids; jumps target markers by id."""
+    """The region API takes ids; a destination names its jump target by id."""
 
     def test_regions_with_one_name_coexist(self) -> None:
         timeline = ContinuousLogicalTimeline(length=32)
@@ -1120,38 +1131,64 @@ class TestKeyedById:
         children = timeline.create_children_from_regions(["region_2"])
         assert [(c.id, c.name) for c in children] == [("clt_3", "Verse")]
 
-    def test_jump_target_must_name_a_marker(self) -> None:
-        timeline = ContinuousLogicalTimeline(length=32)
-        with pytest.raises(ValueError, match="names no marker"):
-            timeline.flow_control.add_jump(Jump(_q(8), _q(0), target="segno"))
-        assert timeline.flow_control.jumps == []
+    def test_a_destination_must_name_a_jump_target(self) -> None:
+        timeline = ContinuousLogicalTimeline(length=32, uid="score")
+        with pytest.raises(ValueError) as refused:
+            timeline.flow_control.add(_jump(8, id="ds", to="segno"))
+        assert str(refused.value) == (
+            "jump 'ds' goes on at 'segno', which names no jump target of this "
+            "registry and no place of its timeline. Available jump targets: []. "
+            "Available places: ['score']"
+        )
+        assert timeline.flow_control.elements == []
 
-    def test_dal_segno_targets_the_segno_marker_id(self) -> None:
+    def test_dal_segno_names_the_segno_s_id(self) -> None:
         timeline = (
             Ms3Loader()
             .load(SCORE / "couperin_concerts/c05n05_musete.measures.tsv")
             .create_timeline()
         )
         flow = timeline.flow_control
-        assert [(m.id, m.control_type, m.name, m.coordinate) for m in flow.markers] == [
-            ("jump_to_1", SEGNO, "segno", _q(12)),
+        segno, *repeat_starts = flow.jump_targets
+        assert (segno.id, segno.manifestation, segno.name, segno.coordinate) == (
+            "jump_target_1",
+            SEGNO,
+            "segno",
+            _q(12),
+        )
+        assert [target.manifestation for target in repeat_starts] == [
+            FlowManifestation.repeat_start,
+            FlowManifestation.repeat_start,
         ]
-        assert [(b.control_type, b.coordinate) for b in flow.breaks] == [
-            (FlowControlElement.fine, _q(42))
+        assert [(b.manifestation, b.coordinate) for b in flow.breaks] == [
+            (FlowManifestation.fine, _q(42))
         ]
-        dal_segno = [j for j in flow.jumps if j.target is not None]
-        assert [(j.control_type.value, j.target) for j in dal_segno] == [
-            ("dal_segno_al_fine", "jump_to_1"),
-            ("dal_segno_al_fine", "jump_to_1"),
-        ]
+        assert [
+            destination.to
+            for jump in flow.jumps
+            for destination in jump.targets
+            if destination.manifestation is FlowManifestation.dal_segno_al_fine
+        ] == ["jump_target_1", "jump_target_1"]
 
-    def test_jumps_without_a_marker_target_hold_none(self) -> None:
+    def test_a_destination_without_a_printed_place_names_none(self) -> None:
         timeline = (
             Ms3Loader()
             .load(SCORE / "couperin_concerts/c11n08_Rondeau.measures.tsv")
             .create_timeline()
         )
-        assert {j.target for j in timeline.flow_control.jumps} == {None}
+        # The first repeat end has no printed start; a da capo has no place.
+        assert [
+            (jump.coordinate.value, destination.manifestation.value, destination.to)
+            for jump in timeline.flow_control.jumps
+            for destination in jump.targets
+        ] == [
+            (12, "repeat_end", None),
+            (24, "da_capo", None),
+            (24, "repeat_end", "jump_target_2"),
+            (36, "da_capo", None),
+            (36, "repeat_end", "jump_target_3"),
+            (F(171, 2), "repeat_end", "jump_target_4"),
+        ]
 
 
 # endregion

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import datetime
 from fractions import Fraction
 from typing import Any
 
 import pytest
+from timetoshare.validation.flow import rejected
 
 from timetoalign.core import (
     Coordinate,
@@ -15,6 +17,7 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
+from timetoalign.core.provenance import Provenance
 from timetoalign.timelines import Timeline
 from timetoalign.timelines.flowcontrol import (
     Barline,
@@ -119,11 +122,11 @@ def test_a_jump_puts_its_distances_on_its_axis() -> None:
         [D(by=0, passes=[1]), D(by=F(-1, 2), repeat_count=1, after=after("x", by=-1))],
     )
     assert [d.by for d in jump.targets] == [
-        Duration(F(0), "quarters"),
         Duration(F(-1, 2), "quarters"),
+        Duration(F(0), "quarters"),
     ]
-    assert [d.goes_on for d in jump.targets] == [True, False]
-    assert jump.targets[1].after == after("x", by=Duration(F(-1), "quarters"))
+    assert [d.goes_on for d in jump.targets] == [False, True]
+    assert jump.targets[0].after == after("x", by=Duration(F(-1), "quarters"))
     assert _refused(lambda: Jump(_q(8), [D(by=Duration(1, "seconds"))])) == (
         "a `by` of jump 'jump_1' is a distance in seconds on an axis in quarters"
     )
@@ -305,8 +308,9 @@ def test_an_after_finds_its_destination_by_its_place() -> None:
         Break(_t(8), ends=FlowCondition(after=after("two", by=-1)), id="fine"),
     )
     two, one = registry.jumps
-    assert registry.destination_of(after("two", to="segno")) == (two, 0)
-    assert registry.destination_of(after("two", by=Duration(-1, "ticks"))) == (two, 1)
+    assert [d.place for d in two.targets] == [("by", -1), ("to", "segno")]
+    assert registry.destination_of(after("two", to="segno")) == (two, 1)
+    assert registry.destination_of(after("two", by=Duration(-1, "ticks"))) == (two, 0)
     assert registry.destination_of(after("one")) == (one, 0)
     assert registry.breaks[0].ends.after == after("two", by=Duration(-1, "ticks"))
 
@@ -422,6 +426,41 @@ def test_elements_are_held_and_written_by_coordinate_then_id(
     assert [e["id"] for e in registry.to_dict()] == [id_ for _, id_ in expected]
 
 
+def test_the_destinations_of_a_jump_are_held_by_place() -> None:
+    given = [
+        D(to="b", repeat_count=1),
+        D(by=F(7, 2), repeat_count=1),
+        D(to="B", repeat_count=1),
+        D(repeat_count=1),
+        D(by=F(-2, 3), repeat_count=1),
+        D(by=0),
+        D(to="a", repeat_count=1),
+    ]
+    places = [
+        None,
+        ("by", F(-2, 3)),
+        ("by", F(0)),
+        ("by", F(7, 2)),
+        ("to", "B"),
+        ("to", "a"),
+        ("to", "b"),
+    ]
+    reference = Jump(_q(8), given, id="j")
+    assert [d.place for d in reference.targets] == places
+    assert [
+        "to" in d and d["to"] or d.get("by") for d in reference.to_dict()["targets"]
+    ] == [None, [-2, 3], [0, 1], [7, 2], "B", "a", "b"]
+    for shift in range(1, len(given)):
+        rotated = Jump(_q(8), given[shift:] + given[:shift], id="j")
+        assert rotated == reference
+        assert rotated.to_dict() == reference.to_dict()
+    assert Jump(_q(8), list(reversed(given)), id="j") == reference
+    seconds = Jump(
+        Coordinate(20.75, "seconds"), [D(by=-9.25), D(by=-10.5), D(by=-20.75)], id="j"
+    )
+    assert [d.by.value for d in seconds.targets] == [-20.75, -10.5, -9.25]
+
+
 # endregion
 
 # region Places
@@ -443,12 +482,12 @@ def test_place_of_a_target_a_distance_and_no_place() -> None:
         ),
     )
     (jump,) = registry.jumps
-    assert [registry.place_of(d, jump) for d in jump.targets] == [
-        _t(4),
-        _t(20),
-        _t(17),
-        _t(25),
-        _t(0),
+    assert [(d.place, registry.place_of(d, jump)) for d in jump.targets] == [
+        (None, _t(0)),
+        (("by", -3), _t(17)),
+        (("by", 0), _t(20)),
+        (("by", 5), _t(25)),
+        (("to", "segno"), _t(4)),
     ]
     assert all(type(registry.place_of(d, jump).value) is int for d in jump.targets)
 
@@ -498,10 +537,10 @@ def test_a_destination_names_a_region_a_child_and_the_timeline() -> None:
         )
     )
     registry = timeline.flow_control
-    assert [registry.place_of(d, jump) for d in jump.targets] == [
-        _q(F(16)),
-        _q(F(40)),
-        _q(F(0)),
+    assert [(d.to, registry.place_of(d, jump)) for d in jump.targets] == [
+        ("chorus", _q(F(16))),
+        ("score", _q(F(0))),
+        ("trio", _q(F(40))),
     ]
     assert _refused(lambda: registry.add(Jump(_q(60), D(to="verse")))) == (
         "jump 'jump_2' goes on at 'verse', which names no jump target of this "
@@ -628,57 +667,269 @@ def test_reach_counts_every_element_and_every_distance() -> None:
 # region Rejection
 
 
-def _believed(actor: str, belief: str) -> dict[str, Any]:
-    return {
-        "method": "imported",
-        "beliefs": [{"actor": actor, "belief": belief, "date": "2026-11-25"}],
-    }
+def _believed(*beliefs: tuple[str, str], method: str = "imported") -> dict[str, Any]:
+    """One provenance entry holding a belief for each (actor, belief) given."""
+    entry: dict[str, Any] = {"method": method}
+    if beliefs:
+        entry["beliefs"] = [
+            {"actor": actor, "belief": belief, "date": "2026-11-25"}
+            for actor, belief in beliefs
+        ]
+    return entry
 
 
-def test_a_rejected_element_is_left_out_for_its_believer() -> None:
+def test_an_element_any_actor_believes_false_is_rejected() -> None:
     registry = _registry(
         JumpTarget(_t(2), id="kept"),
-        JumpTarget(_t(4), id="doubted", provenance=_believed(EDITOR, "unlikely")),
-        JumpTarget(_t(6), id="rejected", provenance=_believed(EDITOR, "false")),
+        JumpTarget(_t(4), id="doubted", provenance=_believed((EDITOR, "unlikely"))),
+        JumpTarget(_t(6), id="by_editor", provenance=_believed((EDITOR, "false"))),
+        JumpTarget(
+            _t(8),
+            id="by_reviewer",
+            provenance=[
+                _believed((EDITOR, "true")),
+                _believed((REVIEWER, "false"), method="manual"),
+            ],
+        ),
     )
-    assert [e.is_rejected for e in registry.elements] == [False, False, True]
-    assert [e.id for e in registry.active_elements()] == ["kept", "doubted", "rejected"]
-    assert [e.id for e in registry.active_elements(believer=EDITOR)] == [
-        "kept",
-        "doubted",
+    assert [e.is_rejected for e in registry.elements] == [False, False, True, True]
+    assert [rejected(written) for written in registry.to_dict()] == [
+        False,
+        False,
+        True,
+        True,
     ]
-    assert [e.id for e in registry.active_elements(believer=REVIEWER)] == [
-        "kept",
-        "doubted",
-        "rejected",
-    ]
+
+    def read(**filter: Any) -> list[str]:
+        return [element.id for element in registry.active_elements(**filter)]
+
+    assert read() == ["kept", "doubted"]
+    assert read(believer=EDITOR) == ["kept", "doubted", "by_reviewer"]
+    assert read(believer=REVIEWER) == ["kept", "doubted", "by_editor"]
+    assert read(believer=EDITOR, beliefs=["false"]) == ["by_editor"]
+    assert read(believer=EDITOR, beliefs=["true"]) == ["by_reviewer"]
+    assert read(believer=EDITOR, beliefs=["undecided"]) == ["kept"]
+    for believer in (EDITOR, None):
+        assert _refused(lambda: read(believer=believer, beliefs=["maybe"])) == (
+            "'maybe' is no belief state: write 'true', 'undecided', 'unlikely' or "
+            "'false'"
+        )
+
+
+def test_two_beliefs_of_one_actor_read_as_the_more_critical() -> None:
+    registry = _registry(
+        Barline(
+            _t(4),
+            id="both",
+            provenance=[_believed((EDITOR, "true")), _believed((EDITOR, "false"))],
+        )
+    )
+    assert registry.elements[0].is_rejected
+    assert registry.active_elements(believer=EDITOR) == []
     assert [
         e.id for e in registry.active_elements(believer=EDITOR, beliefs=["false"])
-    ] == ["rejected"]
+    ] == ["both"]
+    assert registry.active_elements(believer=EDITOR, beliefs=["true"]) == []
 
 
-def test_a_rejected_jump_and_its_replacement_lie_at_one_coordinate() -> None:
-    registry = _registry(
-        Jump(
-            _t(8),
-            D(repeat_count=1),
-            id="printed",
-            provenance=_believed(EDITOR, "false"),
-        ),
-        Jump(_t(8), D(repeat_count=2), id="repair", provenance={"method": "manual"}),
+@pytest.mark.parametrize("rejected_first", [True, False])
+def test_a_rejected_jump_and_its_replacement_lie_at_one_coordinate(
+    rejected_first: bool,
+) -> None:
+    printed = Jump(
+        _t(8),
+        D(repeat_count=1),
+        id="printed",
+        provenance=_believed((EDITOR, "false")),
     )
+    repair = Jump(
+        _t(8), D(repeat_count=2), id="repair", provenance={"method": "manual"}
+    )
+    registry = FlowControlRegistry(unit="ticks")
+    for jump in (printed, repair) if rejected_first else (repair, printed):
+        registry.add(jump)
+    assert [e.id for e in registry.elements] == ["printed", "repair"]
     assert registry.jump_at(8).id == "repair"
+    assert [e.id for e in registry.active_elements()] == ["repair"]
     assert [e.id for e in registry.active_elements(believer=EDITOR)] == ["repair"]
-    assert _refused(registry.active_elements) == (
-        "jumps 'printed' and 'repair' both lie at 8 ticks: name the believer who "
-        "rejected one of them"
-    )
+    assert [e.id for e in registry.active_elements(believer=REVIEWER)] == [
+        "printed",
+        "repair",
+    ]
     assert _refused(
         lambda: registry.add(Jump(_t(8), D(repeat_count=3), id="third"))
     ) == (
         "jump 'third' lies at 8 ticks, where jump 'repair' lies already: one jump "
         "lies at a coordinate, and several signs there are its destinations"
     )
+    assert [e.id for e in registry.elements] == ["printed", "repair"]
+
+
+def test_a_rejected_element_is_out_of_every_rule() -> None:
+    registry = _registry(
+        JumpTarget(_t(4), id="gone", provenance=_believed((EDITOR, "false"))),
+        Jump(
+            _t(8),
+            D(to="nowhere"),
+            id="unread",
+            provenance=_believed((EDITOR, "false")),
+        ),
+    )
+    before = list(registry.elements)
+    assert _refused(lambda: registry.add(Jump(_t(12), D(to="gone"), id="j"))) == (
+        "jump 'j' goes on at 'gone', which names no jump target of this registry "
+        "and no place of its timeline: jump_target 'gone' is rejected. Available "
+        "jump targets: []. Available places: []"
+    )
+    assert _refused(
+        lambda: registry.add(
+            Break(_t(6), id="fine", ends=FlowCondition(after=after("unread")))
+        )
+    ) == (
+        "the `after` of break 'fine' names 'unread', which is no jump of this "
+        "registry: jump 'unread' is rejected. Available jumps: []"
+    )
+    assert registry.elements == before
+
+
+def test_a_single_entry_is_held_as_the_list_of_it() -> None:
+    entry = Provenance(method="imported")
+    for given in (entry, {"method": "imported"}, [entry], ({"method": "imported"},)):
+        assert Barline(_t(4), provenance=given).provenance == (entry,)
+    assert Barline(_t(4)).provenance is None
+    assert _refused(lambda: Barline(_t(4), id="b", provenance=[])) == (
+        "the provenance of barline 'b' lists no entry: leave `provenance` out for "
+        "an element that states none"
+    )
+    assert _refused(lambda: Barline(_t(4), id="b", provenance=["imported"])) == (
+        "the provenance of barline 'b' holds 'imported', which is no provenance entry"
+    )
+    assert _refused(lambda: Barline(_t(4), id="b", provenance="imported")) == (
+        "the provenance of barline 'b' is a list of provenance entries, not "
+        "'imported'"
+    )
+
+
+# endregion
+
+# region Recording a belief
+
+
+def test_a_belief_is_recorded_on_the_element_s_copy() -> None:
+    registry = _registry(
+        JumpTarget(_t(4), id="bare", manifestation="segno", name="S"),
+        Barline(_t(6), id="imported", provenance={"method": "imported"}),
+    )
+    bare, imported = registry.elements
+
+    believed = registry.with_belief("bare", EDITOR, "false", date="2026-11-25")
+
+    assert believed is registry.elements[0]
+    assert bare.provenance is None and not bare.is_rejected
+    assert believed.is_rejected
+    assert believed.to_dict() == {
+        "id": "bare",
+        "role": "jump_target",
+        "coordinate": 4,
+        "manifestation": "segno",
+        "name": "S",
+        "provenance": [
+            {"beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-25"}]}
+        ],
+    }
+
+    registry.with_belief(
+        "imported", EDITOR, "unlikely", date=datetime.date(2026, 11, 24), note="?"
+    )
+    registry.with_belief("imported", REVIEWER, "true", date="2026-11-25")
+    registry.with_belief("imported", EDITOR, "false", date="2026-11-25")
+    assert imported.provenance == (Provenance(method="imported"),)
+    assert registry.to_dict()[1]["provenance"] == [
+        {
+            "method": "imported",
+            "beliefs": [
+                {"actor": EDITOR, "belief": "false", "date": "2026-11-25"},
+                {"actor": REVIEWER, "belief": "true", "date": "2026-11-25"},
+            ],
+        }
+    ]
+    assert [e.id for e in registry.elements] == ["bare", "imported"]
+
+
+def test_a_belief_joins_the_entry_holding_the_actor_s_earlier_one() -> None:
+    registry = _registry(
+        Barline(
+            _t(4),
+            id="b",
+            provenance=[
+                _believed(),
+                _believed((REVIEWER, "true"), (EDITOR, "true"), method="manual"),
+            ],
+        )
+    )
+    registry.with_belief("b", EDITOR, "false", date="2026-11-26")
+    registry.with_belief(
+        "b", "https://example.org/people/third", "true", date="2026-11-26"
+    )
+    assert registry.to_dict()[0]["provenance"] == [
+        {
+            "method": "imported",
+            "beliefs": [
+                {
+                    "actor": "https://example.org/people/third",
+                    "belief": "true",
+                    "date": "2026-11-26",
+                }
+            ],
+        },
+        {
+            "method": "manual",
+            "beliefs": [
+                {"actor": REVIEWER, "belief": "true", "date": "2026-11-25"},
+                {"actor": EDITOR, "belief": "false", "date": "2026-11-26"},
+            ],
+        },
+    ]
+
+
+def test_recording_a_belief_refuses_what_it_cannot_record() -> None:
+    registry = _registry(Barline(_t(4), id="b"))
+    before = list(registry.elements)
+    with pytest.raises(KeyError) as unknown:
+        registry.with_belief("x", EDITOR, "false")
+    assert unknown.value.args[0] == (
+        "'x' names no flow-control element. Available elements: ['b']"
+    )
+    with pytest.raises(
+        ValueError, match="Input should be 'true', 'false' or 'unlikely'"
+    ):
+        registry.with_belief("b", EDITOR, "maybe")
+    with pytest.raises(ValueError, match="'2026-13-01' is no date of the calendar"):
+        registry.with_belief("b", EDITOR, "false", date="2026-13-01")
+    assert registry.elements == before
+    assert registry.elements[0].provenance is None
+
+
+def test_a_repair_rejects_first_and_a_rejection_taken_back_is_checked() -> None:
+    registry = _registry(
+        JumpTarget(_t(4), id="start"),
+        Jump(_t(8), D(to="start", repeat_count=1), id="printed"),
+    )
+    # Rejecting what a Jump names is accepted: the repair is not finished.
+    assert registry.with_belief("start", EDITOR, "false", date="2026-11-25").is_rejected
+    assert registry.with_belief("printed", EDITOR, "false", date="2026-11-25").id == (
+        "printed"
+    )
+    registry.add(Jump(_t(8), D(repeat_count=1), id="repair"))
+    before = list(registry.elements)
+    assert _refused(
+        lambda: registry.with_belief("printed", EDITOR, "true", date="2026-11-26")
+    ) == (
+        "jump 'printed' lies at 8 ticks, where jump 'repair' lies already: one jump "
+        "lies at a coordinate, and several signs there are its destinations"
+    )
+    assert registry.elements == before
+    assert [e.id for e in registry.active_elements()] == ["repair"]
 
 
 # endregion

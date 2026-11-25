@@ -14,6 +14,7 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
+import timetoshare
 
 from timetoalign import Ms3Loader
 from timetoalign.core import Coordinate, Duration, FlowManifestation, TimeUnit
@@ -78,19 +79,19 @@ LITERAL: list[dict[str, Any]] = [
         "coordinate": [8, 1],
         "targets": [
             {
-                "to": "start",
-                "repeat_count": 2,
-                "manifestation": "repeat_end",
-                "label": "twice",
-                "x-note": "kept",
-            },
-            {
                 "by": [-4, 1],
                 "passes": {"from": 2},
                 "after": {"jump": "ds", "to": "segno", "x-why": "kept"},
                 "determined": False,
                 "reset": False,
                 "manifestation": "ossia",
+            },
+            {
+                "to": "start",
+                "repeat_count": 2,
+                "manifestation": "repeat_end",
+                "label": "twice",
+                "x-note": "kept",
             },
         ],
         "label": "end of the first part",
@@ -141,19 +142,22 @@ LITERAL: list[dict[str, Any]] = [
         "role": "jump",
         "coordinate": [28, 1],
         "targets": [
+            {"repeat_count": 1, "reset": False, "manifestation": "da_capo"},
             {
                 "to": "segno",
                 "repeat_count": 1,
                 "reset": False,
                 "manifestation": "dal_segno_al_coda",
             },
-            {"repeat_count": 1, "reset": False, "manifestation": "da_capo"},
         ],
-        "provenance": {
-            "stated_by": [EDITOR],
-            "method": "manual",
-            "beliefs": [{"actor": EDITOR, "belief": "true", "date": "2026-11-25"}],
-        },
+        "provenance": [
+            {"method": "imported", "service": "https://example.org/importer"},
+            {
+                "stated_by": [EDITOR],
+                "method": "manual",
+                "beliefs": [{"actor": EDITOR, "belief": "true", "date": "2026-11-25"}],
+            },
+        ],
     },
     {
         "id": "coda",
@@ -173,30 +177,88 @@ LITERAL.sort(key=lambda element: (element["coordinate"][0], element["id"]))
 
 
 def _complete(element: dict[str, Any]) -> dict[str, Any]:
-    return {"name": None, "label": None, "meta": {}, **element}
+    """The element with every key that has a default written."""
+    completed = {"name": None, "label": None, "meta": {}, **element}
+    if "targets" in element:
+        completed["targets"] = [
+            {"determined": True, "reset": True, "label": None, **destination}
+            for destination in element["targets"]
+        ]
+    return completed
+
+
+def _manifest(flow_control: list[dict[str, Any]]) -> dict[str, Any]:
+    """A manifest whose one timeline holds *flow_control*."""
+    return {
+        "timetoshare": "0.2.0",
+        "timelines": [
+            {
+                "id": "score",
+                "unit": "quarters",
+                "length": [40, 1],
+                "flow_control": copy.deepcopy(flow_control),
+            }
+        ],
+    }
+
+
+def _flow_control_of(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    return manifest["timelines"][0]["flow_control"]
 
 
 def test_the_literal_round_trips() -> None:
     registry = _read(LITERAL)
+    complete_form = [_complete(e) for e in LITERAL]
     assert registry.to_dict() == LITERAL
-    assert registry.to_dict(minimal=False) == [_complete(e) for e in LITERAL]
-    assert _read([_complete(e) for e in LITERAL]).to_dict() == LITERAL
+    assert registry.to_dict(minimal=False) == complete_form
+    assert _read(complete_form).to_dict() == LITERAL
+    assert _read(complete_form).to_dict(minimal=False) == complete_form
     assert json.loads(json.dumps(registry.to_dict())) == LITERAL
 
 
-def test_the_defaults_of_a_destination_are_read_and_never_written() -> None:
+def test_both_forms_are_the_format_s() -> None:
+    registry = _read(LITERAL)
+    written, written_complete = registry.to_dict(), registry.to_dict(minimal=False)
+    assert _flow_control_of(timetoshare.complete(_manifest(written))) == (
+        written_complete
+    )
+    assert _flow_control_of(timetoshare.minimal(_manifest(written_complete))) == (
+        written
+    )
+    destinations = [
+        destination
+        for element in written_complete
+        for destination in element.get("targets", [])
+    ]
+    assert len(destinations) == 7
+    for destination in destinations:
+        assert {"determined", "reset", "label"} <= set(destination)
+    assert [d["determined"] for d in destinations].count(False) == 1
+    assert [d["reset"] for d in destinations].count(False) == 3
+    assert [d["label"] for d in destinations].count(None) == 6
+
+
+def test_the_defaults_of_a_destination_are_written_in_the_complete_form_only() -> None:
     element = {
         "id": "j",
         "role": "jump",
         "coordinate": [8, 1],
-        "targets": [{"repeat_count": 1, "determined": True, "reset": True}],
+        "targets": [
+            {"repeat_count": 1, "determined": True, "reset": True, "label": None}
+        ],
     }
     registry = _read([element])
     (destination,) = registry.jumps[0].targets
-    assert (destination.determined, destination.reset) == (True, True)
-    for minimal in (True, False):
-        (written,) = registry.to_dict(minimal=minimal)
-        assert written["targets"] == [{"repeat_count": 1}]
+    assert destination == JumpDestination(repeat_count=1)
+    assert (destination.determined, destination.reset, destination.label) == (
+        True,
+        True,
+        None,
+    )
+    assert registry.to_dict()[0]["targets"] == [{"repeat_count": 1}]
+    assert registry.to_dict(minimal=False)[0]["targets"] == element["targets"]
+    assert destination.to_dict() == {"repeat_count": 1}
+    assert destination.to_dict(minimal=False) == element["targets"][0]
 
 
 def test_reading_builds_the_library_s_elements() -> None:
@@ -241,9 +303,6 @@ def test_reading_builds_the_library_s_elements() -> None:
     assert back.label == "end of the first part"
     assert back.targets == (
         JumpDestination(
-            to="start", repeat_count=2, manifestation=M.repeat_end, label="twice"
-        ),
-        JumpDestination(
             by=Duration(F(-4), "quarters"),
             passes=PassesFrom(2),
             after=DestinationReference(jump="ds", to="segno"),
@@ -251,8 +310,11 @@ def test_reading_builds_the_library_s_elements() -> None:
             reset=False,
             manifestation=M.ossia,
         ),
+        JumpDestination(
+            to="start", repeat_count=2, manifestation=M.repeat_end, label="twice"
+        ),
     )
-    assert back.manifestations == (M.repeat_end, M.ossia)
+    assert back.manifestations == (M.ossia, M.repeat_end)
     assert brackets.targets == (
         JumpDestination(
             by=Duration(F(0), "quarters"), passes=(1, 3), manifestation="volta"
@@ -263,17 +325,21 @@ def test_reading_builds_the_library_s_elements() -> None:
     assert to_coda.targets[0].after == DestinationReference(
         jump="back", by=Duration(F(-4), "quarters")
     )
-    assert ds.provenance == Provenance(
-        stated_by=(EDITOR,),
-        method="manual",
-        beliefs=(Belief(actor=EDITOR, belief="true", date="2026-11-25"),),
+    assert ds.provenance == (
+        Provenance(method="imported", service="https://example.org/importer"),
+        Provenance(
+            stated_by=(EDITOR,),
+            method="manual",
+            beliefs=(Belief(actor=EDITOR, belief="true", date="2026-11-25"),),
+        ),
     )
+    assert [e.provenance for e in registry.elements if e is not ds] == [None] * 11
     assert registry.breaks[1].ends == FlowCondition(
         passes=(2,), after=DestinationReference(jump="ds")
     )
-    assert registry.destination_of(registry.breaks[1].ends.after) == (ds, 1)
-    assert registry.destination_of(back.targets[1].after) == (ds, 0)
-    assert registry.destination_of(to_coda.targets[0].after) == (back, 1)
+    assert registry.destination_of(registry.breaks[1].ends.after) == (ds, 0)
+    assert registry.destination_of(back.targets[0].after) == (ds, 1)
+    assert registry.destination_of(to_coda.targets[0].after) == (back, 0)
 
 
 @pytest.mark.parametrize(
@@ -574,8 +640,18 @@ _J = {"id": "j", "role": "jump", "coordinate": [8, 1]}
             "a flow-control element lacks the key(s) ['coordinate']",
         ),
         (
-            [{**_J, "targets": [{}], "provenance": {"method": "guessed"}}],
+            [{**_J, "targets": [{}], "provenance": [{"method": "guessed"}]}],
             "the provenance of jump 'j': 1 validation error for Provenance",
+        ),
+        (
+            [{**_J, "targets": [{}], "provenance": {"method": "imported"}}],
+            "the provenance of jump 'j' is a list of provenance entries, not "
+            "{'method': 'imported'}",
+        ),
+        (
+            [{**_J, "targets": [{}], "provenance": []}],
+            "the provenance of jump 'j' lists no entry: leave `provenance` out "
+            "for an element that states none",
         ),
     ],
 )

@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-a0f9fd0d421825b736dc1bbcbcba2219.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -310,14 +310,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="children-regions-and-timestamps" class="level1">
 <h1>Children, Regions, and Timestamps</h1>
 <p>Timelines nest inside one another. A <strong>timestamp</strong> is a cross-section that shows where you are in every active child at a given root coordinate.</p>
-<div id="dfd61205" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:30:16.248498Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:30:16.248498Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:30:28.283472Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:30:28.281403Z&quot;}}" data-execution_count="1">
+<div id="47fb9e27" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:36.131827Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:36.131486Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:39.241868Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:39.240789Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score.partitura <span class="im">import</span> PartituraLoader</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <section id="load-a-structured-score" class="level2">
 <h2 class="anchored" data-anchor-id="load-a-structured-score">Load a Structured Score</h2>
-<div id="77ab322c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:30:28.291466Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:30:28.289423Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:30:35.000768Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:30:34.997532Z&quot;}}" data-execution_count="2">
+<div id="506ce060" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:39.244569Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:39.244155Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:39.419639Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:39.418668Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> Path(<span class="st">"."</span>).resolve().parents[<span class="dv">1</span>] <span class="op">/</span> <span class="st">"tests"</span> <span class="op">/</span> <span class="st">"data"</span> <span class="op">/</span> <span class="st">"vienna_1x22"</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> PartituraLoader()</span>
@@ -325,18 +325,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>tl <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"chopin_etude"</span>)</span>
 <span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<pre style="font-family: monospace; line-height: 1.2;">ContinuousLogicalTimeline[chopin_etude] (547 events, 3 children, 3 cmaps)
+<pre style="font-family: monospace; line-height: 1.2;">ContinuousLogicalTimeline[chopin_etude] (547 events, 4 children, 3 cmaps)
                       0 ________________________________ 41.5 quarters
   ├─ notes            0 ________________________________ 41.5 (498 events)
   ├─ measures         0 ________________________________ 41.5 (22 events)
-  └─ controls         0 ______________________________   40 (27 events)</pre>
+  ├─ controls         0 ______________________________   40 (22 events)
+  └─ annotations      0 _________________________        32.5 (5 events)</pre>
 </div>
 </div>
 </section>
 <section id="measures-as-regions" class="level2">
 <h2 class="anchored" data-anchor-id="measures-as-regions">Measures as Regions</h2>
 <p>The loader’s <code>EventStore</code> contains measure intervals. We can filter notes by coordinate bounds.</p>
-<div id="a33affc5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:30:35.012566Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:30:35.010094Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:30:35.045219Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:30:35.043194Z&quot;}}" data-execution_count="3">
+<div id="5a9f5ee9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:39.422526Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:39.422311Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:39.434523Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:39.433414Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>measures <span class="op">=</span> loader.store.measures.to_dataframe()</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>m2 <span class="op">=</span> measures.iloc[<span class="dv">1</span>]</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>{</span>
@@ -348,7 +349,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code>{'measure': 2, 'start': 0.5, 'end': 2.5}</code></pre>
 </div>
 </div>
-<div id="d667f249" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:30:35.052722Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:30:35.051212Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:30:35.150459Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:30:35.147439Z&quot;}}" data-execution_count="4">
+<div id="c17d4917" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:39.436889Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:39.436629Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:39.473363Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:39.472308Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>tl.get_child(<span class="st">"notes"</span>).get_events(</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    event_type<span class="op">=</span><span class="st">"Note"</span>, min_coord<span class="op">=</span><span class="bu">float</span>(m2.start), max_coord<span class="op">=</span><span class="bu">float</span>(m2.end)</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>).to_dataframe().head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -371,7 +372,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">mc</th>
 <th data-quarto-table-cell-role="th">mn</th>
 <th data-quarto-table-cell-role="th">...</th>
-<th data-quarto-table-cell-role="th">spelled_pitch</th>
+<th data-quarto-table-cell-role="th">specific_pitch</th>
 <th data-quarto-table-cell-role="th">tpc</th>
 <th data-quarto-table-cell-role="th">octave</th>
 <th data-quarto-table-cell-role="th">velocity</th>
@@ -402,7 +403,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>4</td>
 <td>64</td>
 <td>0</td>
-<td>None</td>
+<td>NaN</td>
 <td>NaN</td>
 <td>1</td>
 <td>1</td>
@@ -426,7 +427,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>3</td>
 <td>64</td>
 <td>0</td>
-<td>None</td>
+<td>NaN</td>
 <td>NaN</td>
 <td>3</td>
 <td>1</td>
@@ -450,7 +451,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>2</td>
 <td>64</td>
 <td>0</td>
-<td>None</td>
+<td>NaN</td>
 <td>NaN</td>
 <td>4</td>
 <td>2</td>
@@ -474,7 +475,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>2</td>
 <td>64</td>
 <td>0</td>
-<td>None</td>
+<td>NaN</td>
 <td>NaN</td>
 <td>7</td>
 <td>2</td>
@@ -498,7 +499,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>3</td>
 <td>64</td>
 <td>0</td>
-<td>None</td>
+<td>NaN</td>
 <td>NaN</td>
 <td>3</td>
 <td>1</td>
@@ -515,7 +516,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="timestamps-cross-section-queries" class="level2">
 <h2 class="anchored" data-anchor-id="timestamps-cross-section-queries">Timestamps: Cross-Section Queries</h2>
 <p>At root coordinate X, what is the local coordinate inside each active child timeline?</p>
-<div id="fa383eae" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:30:35.161016Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:30:35.159018Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:30:35.528934Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:30:35.527930Z&quot;}}" data-execution_count="5">
+<div id="d351be91" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:39.476025Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:39.475709Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:39.639124Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:39.637977Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>timestamps_df <span class="op">=</span> tl.get_timestamps()</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>timestamps_df.head(<span class="dv">10</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
@@ -531,12 +532,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">notes (quarters)</th>
 <th data-quarto-table-cell-role="th">measures (quarters)</th>
 <th data-quarto-table-cell-role="th">controls (quarters)</th>
+<th data-quarto-table-cell-role="th">annotations (quarters)</th>
 <th data-quarto-table-cell-role="th">quarters_to_ticks (ticks)</th>
 <th data-quarto-table-cell-role="th">quarters_to_measures (measures)</th>
 <th data-quarto-table-cell-role="th">raw_quarters (quarters)</th>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th"></th>
 <th data-quarto-table-cell-role="th"></th>
 <th data-quarto-table-cell-role="th"></th>
 <th data-quarto-table-cell-role="th"></th>
@@ -556,11 +559,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>0</td>
 <td>0</td>
 <td>0</td>
+<td>0</td>
 <td>1</td>
 <td>-1/2</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">notes:note:000002</th>
+<td>1/2</td>
 <td>1/2</td>
 <td>1/2</td>
 <td>1/2</td>
@@ -577,12 +582,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>3/4</td>
 <td>3/4</td>
 <td>3/4</td>
+<td>3/4</td>
 <td>360</td>
 <td>17/8</td>
 <td>1/4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">notes:note:000008</th>
+<td>1</td>
 <td>1</td>
 <td>1</td>
 <td>1</td>
@@ -599,12 +606,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>5/4</td>
 <td>5/4</td>
 <td>5/4</td>
+<td>5/4</td>
 <td>600</td>
 <td>19/8</td>
 <td>3/4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">notes:note:000013</th>
+<td>3/2</td>
 <td>3/2</td>
 <td>3/2</td>
 <td>3/2</td>
@@ -621,12 +630,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>7/4</td>
 <td>7/4</td>
 <td>7/4</td>
+<td>7/4</td>
 <td>840</td>
 <td>21/8</td>
 <td>5/4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">notes:note:000020</th>
+<td>2</td>
 <td>2</td>
 <td>2</td>
 <td>2</td>
@@ -643,12 +654,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>9/4</td>
 <td>9/4</td>
 <td>9/4</td>
+<td>9/4</td>
 <td>1080</td>
 <td>23/8</td>
 <td>7/4</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">notes:note:000023</th>
+<td>5/2</td>
 <td>5/2</td>
 <td>5/2</td>
 <td>5/2</td>

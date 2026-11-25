@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-a0f9fd0d421825b736dc1bbcbcba2219.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -383,25 +383,21 @@ TSV ──────┘</code></pre>
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="8e330841" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:50.263036Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:50.262028Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:53.626279Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:53.625264Z&quot;}}" data-execution_count="1">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<div id="c898d5ef" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:35.368206Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:35.367844Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:38.425120Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:38.424366Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score.music21 <span class="im">import</span> Music21Loader</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score.partitura <span class="im">import</span> PartituraLoader</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score.tsv <span class="im">import</span> TSVLoader</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>_notebook_dir <span class="op">=</span> Path(<span class="st">"."</span>).resolve()</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Data directory - relative to notebook location</span></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> _notebook_dir.parent.parent <span class="op">/</span> <span class="st">"tests"</span> <span class="op">/</span> <span class="st">"data"</span> <span class="op">/</span> <span class="st">"vienna_1x22"</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> DATA_DIR.is_dir(), <span class="ss">f"Data directory not found: </span><span class="sc">{</span>DATA_DIR<span class="sc">}</span><span class="ss">"</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score.music21 <span class="im">import</span> Music21Loader</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score.partitura <span class="im">import</span> PartituraLoader</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score.tsv <span class="im">import</span> TSVLoader</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> ensure_data(<span class="st">"vienna_1x22"</span>)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Our test piece: Chopin Etude Op.10 No.3</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>CHOPIN_XML <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"Chopin_op10_no3.musicxml"</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>CHOPIN_TSV <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"ms3"</span> <span class="op">/</span> <span class="st">"chopin_op10_no3.notes.tsv"</span></span>
 <span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Our test piece: Chopin Etude Op.10 No.3</span></span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>CHOPIN_XML <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"Chopin_op10_no3.musicxml"</span></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>CHOPIN_TSV <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"ms3"</span> <span class="op">/</span> <span class="st">"chopin_op10_no3.notes.tsv"</span></span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>CHOPIN_XML.name, CHOPIN_TSV.name</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>CHOPIN_XML.name, CHOPIN_TSV.name</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
 <pre><code>('Chopin_op10_no3.musicxml', 'chopin_op10_no3.notes.tsv')</code></pre>
 </div>
@@ -416,7 +412,7 @@ TSV ──────┘</code></pre>
 <li><strong>Access</strong> the store containing EventStores</li>
 </ol>
 <p>Let’s see this in action with three different loaders, all loading the same Chopin piece:</p>
-<div id="34637374" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:53.631304Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:53.630275Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.730347Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.730347Z&quot;}}" data-execution_count="2">
+<div id="7ef2e59d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:38.428105Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:38.427626Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.191110Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.189773Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load from three different sources</span></span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>tsv_loader <span class="op">=</span> TSVLoader()</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>tsv_loader.load(CHOPIN_TSV)</span>
@@ -441,7 +437,7 @@ TSV ──────┘</code></pre>
 <section id="cross-loader-validation" class="level2">
 <h2 class="anchored" data-anchor-id="cross-loader-validation">Cross-Loader Validation</h2>
 <p>One of the key benefits of TimeToAlign! is that different loaders produce comparable output. Let’s verify that all three loaders found the same number of notes:</p>
-<div id="7f909b95" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.734509Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.733993Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.766247Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.765632Z&quot;}}" data-execution_count="3">
+<div id="c9ee5889" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.194215Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.193844Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.251672Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.250492Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Convert to DataFrames</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>tsv_df <span class="op">=</span> tsv_loader.store.notes.to_dataframe()</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>partitura_df <span class="op">=</span> partitura_loader.store.notes.to_dataframe()</span>
@@ -470,7 +466,7 @@ Name: note_count, dtype: int64</code></pre>
 <h2 class="anchored" data-anchor-id="the-eventstore">The EventStore</h2>
 <p>Each ScoreStore contains <strong>EventStores</strong> - efficient, PyArrow-backed tables that hold musical events.</p>
 <p>Key characteristics: - <strong>High Performance</strong>: Built on Apache Arrow for fast columnar operations - <strong>Type Safety</strong>: Schema metadata preserves units and types - <strong>Pandas Interop</strong>: Easy conversion with <code>.to_dataframe()</code></p>
-<div id="89999a3b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.768297Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.768297Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.772459Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.772459Z&quot;}}" data-execution_count="4">
+<div id="019102d9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.254469Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.254108Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.262290Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.260989Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>notes_store <span class="op">=</span> tsv_loader.store.notes</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>{</span>
@@ -482,7 +478,7 @@ Name: note_count, dtype: int64</code></pre>
 <pre><code>{'type': 'NoteEventData', 'n_events': 498, 'storage': 'Table'}</code></pre>
 </div>
 </div>
-<div id="7c155565" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.774548Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.774548Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.787411Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.786799Z&quot;}}" data-execution_count="5">
+<div id="75f28dfe" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.265836Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.265445Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.295185Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.293975Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Examine the schema with metadata</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>schema_info <span class="op">=</span> []</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> field <span class="kw">in</span> notes_store.table.schema:</span>
@@ -589,7 +585,7 @@ Name: note_count, dtype: int64</code></pre>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">13</th>
-<td>spelled_pitch</td>
+<td>specific_pitch</td>
 <td>struct&lt;gpc_int: int64, gpc_str</td>
 <td></td>
 </tr>
@@ -694,12 +690,12 @@ Name: note_count, dtype: int64</code></pre>
 <td>MIDI pitch number (0-127)</td>
 </tr>
 <tr class="even">
-<td><code>spelled_pitch</code></td>
+<td><code>specific_pitch</code></td>
 <td>Pitch spelling information</td>
 </tr>
 </tbody>
 </table>
-<div id="86402a12" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.789529Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.788521Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.799271Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.799271Z&quot;}}" data-execution_count="6">
+<div id="77d40e45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.297809Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.297491Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.320837Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.319655Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show selected columns for the first few notes</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>display_cols <span class="op">=</span> [</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"id"</span>,</span>
@@ -850,8 +846,8 @@ Name: note_count, dtype: int64</code></pre>
 </section>
 <section id="pitch-information" class="level2">
 <h2 class="anchored" data-anchor-id="pitch-information">Pitch Information</h2>
-<p>The <code>spelled_pitch</code> column contains rich pitch information as a struct. This preserves the enharmonic spelling (e.g., G# vs Ab) which is lost when using only MIDI pitch numbers.</p>
-<div id="51426986" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.802656Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.802656Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.810122Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.809611Z&quot;}}" data-execution_count="7">
+<p>The <code>specific_pitch</code> column contains rich pitch information as a struct. This preserves the enharmonic spelling (e.g., G# vs Ab) which is lost when using only MIDI pitch numbers.</p>
+<div id="f761cb18" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.323865Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.323642Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.330095Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.328923Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Extract spelled pitch information for the first note</span></span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>first_note <span class="op">=</span> tsv_df.iloc[<span class="dv">0</span>]</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -859,13 +855,13 @@ Name: note_count, dtype: int64</code></pre>
 <span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"name"</span>: first_note[<span class="st">"name"</span>],</span>
 <span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"midi_pitch"</span>: first_note[<span class="st">"midi_pitch"</span>],</span>
 <span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"octave"</span>: first_note[<span class="st">"octave"</span>],</span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"spelled_pitch"</span>: first_note[<span class="st">"spelled_pitch"</span>],</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"specific_pitch"</span>: first_note[<span class="st">"specific_pitch"</span>],</span>
 <span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
 <pre><code>{'name': 'B3',
  'midi_pitch': {'ep': 59, 'epc': 11},
  'octave': 3,
- 'spelled_pitch': {'gpc_int': 6,
+ 'specific_pitch': {'gpc_int': 6,
   'gpc_str': 'B',
   'acc': 0,
   'spc_int': 5,
@@ -878,7 +874,7 @@ Name: note_count, dtype: int64</code></pre>
 <section id="duration-analysis" class="level2">
 <h2 class="anchored" data-anchor-id="duration-analysis">Duration Analysis</h2>
 <p>TimeToAlign! stores durations in quarter notes. Let’s analyze the rhythmic content of our piece:</p>
-<div id="fbdc19c0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.813161Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.813161Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.832773Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.831736Z&quot;}}" data-execution_count="8">
+<div id="3e660e5f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.332282Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.332073Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.344304Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.343312Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Duration distribution</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>tsv_df[<span class="st">"duration_float"</span>].value_counts().sort_index().to_frame(<span class="st">"count"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
@@ -927,7 +923,7 @@ Name: note_count, dtype: int64</code></pre>
 </div>
 </div>
 </div>
-<div id="485f4bc1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.835299Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.835299Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.851584Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.850529Z&quot;}}" data-execution_count="9">
+<div id="b8d9136f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.347254Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.346938Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.357317Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.356110Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Summary statistics</span></span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>tsv_df[<span class="st">"duration_float"</span>].describe()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
@@ -946,7 +942,7 @@ Name: duration_float, dtype: float64</code></pre>
 <section id="navigating-by-measure" class="level2">
 <h2 class="anchored" data-anchor-id="navigating-by-measure">Navigating by Measure</h2>
 <p>The <code>mc</code> (measure count) and <code>mn</code> (measure number) columns allow easy navigation through the score. Note that <code>mn</code> is stored as a string (to support labels like “1a”, “1b”), so we convert to int for proper sorting:</p>
-<div id="3698df68" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.854978Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.854978Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.867133Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.867133Z&quot;}}" data-execution_count="10">
+<div id="e947873d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.360535Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.360224Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.371323Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.370159Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Notes per measure, sorted numerically</span></span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>notes_per_measure <span class="op">=</span> tsv_df.groupby(<span class="st">"mn"</span>).size()</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -1065,7 +1061,7 @@ Name: duration_float, dtype: float64</code></pre>
 </div>
 </div>
 </div>
-<div id="f7384e8a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.870525Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.870525Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.883552Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.883552Z&quot;}}" data-execution_count="11">
+<div id="44c36465" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.374027Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.373627Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.394579Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.393424Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get all notes in a specific measure</span></span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>measure_5 <span class="op">=</span> tsv_df[tsv_df[<span class="st">"mn"</span>] <span class="op">==</span> <span class="st">"5"</span>]</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>measure_5[[<span class="st">"name"</span>, <span class="st">"duration_float"</span>, <span class="st">"voice"</span>, <span class="st">"staff"</span>]]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1269,7 +1265,7 @@ Name: duration_float, dtype: float64</code></pre>
 <section id="comparing-loader-outputs" class="level2">
 <h2 class="anchored" data-anchor-id="comparing-loader-outputs">Comparing Loader Outputs</h2>
 <p>While all loaders produce the same number of notes, there can be subtle differences in how they interpret the score. Let’s compare the first few notes:</p>
-<div id="ab0fe03b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.885799Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.885799Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.893647Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.893647Z&quot;}}" data-execution_count="12">
+<div id="c8919086" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.397979Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.397720Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.413729Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.412605Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Compare ID schemes across loaders</span></span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>pd.DataFrame(</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    {</span>
@@ -1339,7 +1335,7 @@ Name: duration_float, dtype: float64</code></pre>
 <section id="unit-metadata" class="level2">
 <h2 class="anchored" data-anchor-id="unit-metadata">Unit Metadata</h2>
 <p>TimeToAlign! stores unit information in the PyArrow schema metadata. This ensures coordinates are always interpreted correctly:</p>
-<div id="3f22b251" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.895656Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.895656Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.899797Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.899797Z&quot;}}" data-execution_count="13">
+<div id="eab522b9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.418290Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.417932Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.426191Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.424894Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Extract unit metadata for temporal columns</span></span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>temporal_cols <span class="op">=</span> [<span class="st">"start"</span>, <span class="st">"end"</span>, <span class="st">"duration"</span>]</span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>{</span>
@@ -1355,7 +1351,7 @@ Name: duration_float, dtype: float64</code></pre>
 <section id="voice-and-staff-information" class="level2">
 <h2 class="anchored" data-anchor-id="voice-and-staff-information">Voice and Staff Information</h2>
 <p>In scores with multiple staves or multiple voices per staff, notes are distributed accordingly:</p>
-<div id="0ae10308" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.901810Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.901810Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.922128Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.922128Z&quot;}}" data-execution_count="14">
+<div id="745b4b28" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.429297Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.428953Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.447982Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.446617Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Notes by staff and voice</span></span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>tsv_df.groupby([<span class="st">"staff"</span>, <span class="st">"voice"</span>]).size().unstack(fill_value<span class="op">=</span><span class="dv">0</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="14">
@@ -1432,7 +1428,7 @@ Solution
 <span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> loader.store.notes.to_dataframe()</span>
 <span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>{<span class="st">"total_notes"</span>: <span class="bu">len</span>(df), <span class="st">"notes_per_part"</span>: df.groupby(<span class="st">"part_id"</span>).size().to_dict()}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
-<div id="f0bc6140" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:32:02.926137Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:32:02.925139Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:32:02.928620Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:32:02.928620Z&quot;}}" data-execution_count="15">
+<div id="0b15c0e0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:42.452050Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:42.451675Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:42.457276Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:42.454847Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Your solution here</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 

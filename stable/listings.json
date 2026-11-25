@@ -1,16 +1,5 @@
 [
   {
-    "listing": "/tutorials.html",
-    "items": [
-      "/tutorials/tut00_quickstart.html",
-      "/tutorials/tut01a_timelines_events_maps.html",
-      "/tutorials/tut01b_children_regions_timestamps.html",
-      "/tutorials/tut02_timeline_groups.html",
-      "/tutorials/tut03_alignment_bundles.html",
-      "/tutorials/tut04_flow_and_grids.html"
-    ]
-  },
-  {
     "listing": "/howto.html",
     "items": [
       "/howto/how01_advanced_cmaps.html",
@@ -27,6 +16,17 @@
       "/howto/how03_create_note_alignment.html",
       "/howto/how03_loading_vienna_corpus.html",
       "/howto/how04_hendrix_song_genesis.html"
+    ]
+  },
+  {
+    "listing": "/tutorials.html",
+    "items": [
+      "/tutorials/tut00_quickstart.html",
+      "/tutorials/tut01a_timelines_events_maps.html",
+      "/tutorials/tut01b_children_regions_timestamps.html",
+      "/tutorials/tut02_timeline_groups.html",
+      "/tutorials/tut03_alignment_bundles.html",
+      "/tutorials/tut04_flow_and_grids.html"
     ]
   }
 ]

@@ -1,0 +1,2223 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>timeline – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html">
+<span class="menu-text">Home</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html">
+<span class="menu-text">Tutorials</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html">
+<span class="menu-text">How-To Guides</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html">
+<span class="menu-text">Explanation</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="../reference.html" aria-current="page">
+<span class="menu-text">API Reference</span></a>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/Timeline.html">Timeline</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container">
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentAnchor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentAnchor</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentBundle.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentBundle</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/BeatGrid.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGrid</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ChainMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ChainMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimFilter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousPhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousPhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ConversionMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConversionMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Coordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateSpec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateSpec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateValue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateValue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscretePhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscretePhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Domain.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Domain</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EepNotesLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EepNotesLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventData.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/GraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LinearMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LinearMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchClaim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaim</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchfileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchfileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchGraph.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchGraph</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchMetadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchMetadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/NumberType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NumberType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PerfectAlignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerfectAlignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PiecewiseMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewiseMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScalarMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScopedId</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SecondsToSamples.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SecondsToSamples</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ShiftMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShiftMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SingleStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SingleStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TableMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TableMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaDictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaDictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaJsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaJsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Timeline.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Timeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineGroup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineGroup</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineIdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineIdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimeUnit.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeUnit</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/WarpMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">WarpMap</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+
+  <ul>
+  <li><a href="#timetoalign.Timeline" id="toc-timetoalign.Timeline" class="nav-link active" data-scroll-target="#timetoalign.Timeline">Timeline</a>
+  <ul>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#timetoalign.Timeline.add_break" id="toc-timetoalign.Timeline.add_break" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_break">add_break</a></li>
+  <li><a href="#timetoalign.Timeline.add_child" id="toc-timetoalign.Timeline.add_child" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_child">add_child</a></li>
+  <li><a href="#timetoalign.Timeline.add_conversion_map" id="toc-timetoalign.Timeline.add_conversion_map" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_conversion_map">add_conversion_map</a></li>
+  <li><a href="#timetoalign.Timeline.add_events" id="toc-timetoalign.Timeline.add_events" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_events">add_events</a></li>
+  <li><a href="#timetoalign.Timeline.add_flow_map" id="toc-timetoalign.Timeline.add_flow_map" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_flow_map">add_flow_map</a></li>
+  <li><a href="#timetoalign.Timeline.add_jump" id="toc-timetoalign.Timeline.add_jump" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_jump">add_jump</a></li>
+  <li><a href="#timetoalign.Timeline.add_match" id="toc-timetoalign.Timeline.add_match" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_match">add_match</a></li>
+  <li><a href="#timetoalign.Timeline.add_region" id="toc-timetoalign.Timeline.add_region" class="nav-link" data-scroll-target="#timetoalign.Timeline.add_region">add_region</a></li>
+  <li><a href="#timetoalign.Timeline.attach_flow_map" id="toc-timetoalign.Timeline.attach_flow_map" class="nav-link" data-scroll-target="#timetoalign.Timeline.attach_flow_map">attach_flow_map</a></li>
+  <li><a href="#timetoalign.Timeline.convert_to" id="toc-timetoalign.Timeline.convert_to" class="nav-link" data-scroll-target="#timetoalign.Timeline.convert_to">convert_to</a></li>
+  <li><a href="#timetoalign.Timeline.create_child" id="toc-timetoalign.Timeline.create_child" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_child">create_child</a></li>
+  <li><a href="#timetoalign.Timeline.create_child_from_region" id="toc-timetoalign.Timeline.create_child_from_region" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_child_from_region">create_child_from_region</a></li>
+  <li><a href="#timetoalign.Timeline.create_children_from_regions" id="toc-timetoalign.Timeline.create_children_from_regions" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_children_from_regions">create_children_from_regions</a></li>
+  <li><a href="#timetoalign.Timeline.create_region" id="toc-timetoalign.Timeline.create_region" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_region">create_region</a></li>
+  <li><a href="#timetoalign.Timeline.create_regions_by_grouping" id="toc-timetoalign.Timeline.create_regions_by_grouping" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_regions_by_grouping">create_regions_by_grouping</a></li>
+  <li><a href="#timetoalign.Timeline.create_regions_by_splitting" id="toc-timetoalign.Timeline.create_regions_by_splitting" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_regions_by_splitting">create_regions_by_splitting</a></li>
+  <li><a href="#timetoalign.Timeline.create_regions_from_boundaries" id="toc-timetoalign.Timeline.create_regions_from_boundaries" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_regions_from_boundaries">create_regions_from_boundaries</a></li>
+  <li><a href="#timetoalign.Timeline.create_segment_line" id="toc-timetoalign.Timeline.create_segment_line" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_segment_line">create_segment_line</a></li>
+  <li><a href="#timetoalign.Timeline.create_segment_line_by_grouping" id="toc-timetoalign.Timeline.create_segment_line_by_grouping" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_segment_line_by_grouping">create_segment_line_by_grouping</a></li>
+  <li><a href="#timetoalign.Timeline.create_segment_line_by_splitting" id="toc-timetoalign.Timeline.create_segment_line_by_splitting" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_segment_line_by_splitting">create_segment_line_by_splitting</a></li>
+  <li><a href="#timetoalign.Timeline.create_segment_line_from_regions" id="toc-timetoalign.Timeline.create_segment_line_from_regions" class="nav-link" data-scroll-target="#timetoalign.Timeline.create_segment_line_from_regions">create_segment_line_from_regions</a></li>
+  <li><a href="#timetoalign.Timeline.derive" id="toc-timetoalign.Timeline.derive" class="nav-link" data-scroll-target="#timetoalign.Timeline.derive">derive</a></li>
+  <li><a href="#timetoalign.Timeline.diagram" id="toc-timetoalign.Timeline.diagram" class="nav-link" data-scroll-target="#timetoalign.Timeline.diagram">diagram</a></li>
+  <li><a href="#timetoalign.Timeline.empty" id="toc-timetoalign.Timeline.empty" class="nav-link" data-scroll-target="#timetoalign.Timeline.empty">empty</a></li>
+  <li><a href="#timetoalign.Timeline.export_to_csv" id="toc-timetoalign.Timeline.export_to_csv" class="nav-link" data-scroll-target="#timetoalign.Timeline.export_to_csv">export_to_csv</a></li>
+  <li><a href="#timetoalign.Timeline.fold" id="toc-timetoalign.Timeline.fold" class="nav-link" data-scroll-target="#timetoalign.Timeline.fold">fold</a></li>
+  <li><a href="#timetoalign.Timeline.from_dict" id="toc-timetoalign.Timeline.from_dict" class="nav-link" data-scroll-target="#timetoalign.Timeline.from_dict">from_dict</a></li>
+  <li><a href="#timetoalign.Timeline.from_event_data" id="toc-timetoalign.Timeline.from_event_data" class="nav-link" data-scroll-target="#timetoalign.Timeline.from_event_data">from_event_data</a></li>
+  <li><a href="#timetoalign.Timeline.from_events" id="toc-timetoalign.Timeline.from_events" class="nav-link" data-scroll-target="#timetoalign.Timeline.from_events">from_events</a></li>
+  <li><a href="#timetoalign.Timeline.get_boundary_table" id="toc-timetoalign.Timeline.get_boundary_table" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_boundary_table">get_boundary_table</a></li>
+  <li><a href="#timetoalign.Timeline.get_child" id="toc-timetoalign.Timeline.get_child" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_child">get_child</a></li>
+  <li><a href="#timetoalign.Timeline.get_child_offset" id="toc-timetoalign.Timeline.get_child_offset" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_child_offset">get_child_offset</a></li>
+  <li><a href="#timetoalign.Timeline.get_children_at" id="toc-timetoalign.Timeline.get_children_at" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_children_at">get_children_at</a></li>
+  <li><a href="#timetoalign.Timeline.get_conversion_map" id="toc-timetoalign.Timeline.get_conversion_map" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_conversion_map">get_conversion_map</a></li>
+  <li><a href="#timetoalign.Timeline.get_event" id="toc-timetoalign.Timeline.get_event" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_event">get_event</a></li>
+  <li><a href="#timetoalign.Timeline.get_events" id="toc-timetoalign.Timeline.get_events" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_events">get_events</a></li>
+  <li><a href="#timetoalign.Timeline.get_events_at" id="toc-timetoalign.Timeline.get_events_at" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_events_at">get_events_at</a></li>
+  <li><a href="#timetoalign.Timeline.get_flow_map" id="toc-timetoalign.Timeline.get_flow_map" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_flow_map">get_flow_map</a></li>
+  <li><a href="#timetoalign.Timeline.get_interval_stamp" id="toc-timetoalign.Timeline.get_interval_stamp" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_interval_stamp">get_interval_stamp</a></li>
+  <li><a href="#timetoalign.Timeline.get_region" id="toc-timetoalign.Timeline.get_region" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_region">get_region</a></li>
+  <li><a href="#timetoalign.Timeline.get_regions_at" id="toc-timetoalign.Timeline.get_regions_at" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_regions_at">get_regions_at</a></li>
+  <li><a href="#timetoalign.Timeline.get_slice" id="toc-timetoalign.Timeline.get_slice" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_slice">get_slice</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamp" id="toc-timetoalign.Timeline.get_timestamp" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamp">get_timestamp</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamp_at" id="toc-timetoalign.Timeline.get_timestamp_at" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamp_at">get_timestamp_at</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamp_of" id="toc-timetoalign.Timeline.get_timestamp_of" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamp_of">get_timestamp_of</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamp_table" id="toc-timetoalign.Timeline.get_timestamp_table" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamp_table">get_timestamp_table</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamp_table_filtered" id="toc-timetoalign.Timeline.get_timestamp_table_filtered" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamp_table_filtered">get_timestamp_table_filtered</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamps" id="toc-timetoalign.Timeline.get_timestamps" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamps">get_timestamps</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamps_filtered" id="toc-timetoalign.Timeline.get_timestamps_filtered" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamps_filtered">get_timestamps_filtered</a></li>
+  <li><a href="#timetoalign.Timeline.get_timestamps_of" id="toc-timetoalign.Timeline.get_timestamps_of" class="nav-link" data-scroll-target="#timetoalign.Timeline.get_timestamps_of">get_timestamps_of</a></li>
+  <li><a href="#timetoalign.Timeline.has_child" id="toc-timetoalign.Timeline.has_child" class="nav-link" data-scroll-target="#timetoalign.Timeline.has_child">has_child</a></li>
+  <li><a href="#timetoalign.Timeline.has_flow_map" id="toc-timetoalign.Timeline.has_flow_map" class="nav-link" data-scroll-target="#timetoalign.Timeline.has_flow_map">has_flow_map</a></li>
+  <li><a href="#timetoalign.Timeline.has_region" id="toc-timetoalign.Timeline.has_region" class="nav-link" data-scroll-target="#timetoalign.Timeline.has_region">has_region</a></li>
+  <li><a href="#timetoalign.Timeline.iter_children" id="toc-timetoalign.Timeline.iter_children" class="nav-link" data-scroll-target="#timetoalign.Timeline.iter_children">iter_children</a></li>
+  <li><a href="#timetoalign.Timeline.iter_regions" id="toc-timetoalign.Timeline.iter_regions" class="nav-link" data-scroll-target="#timetoalign.Timeline.iter_regions">iter_regions</a></li>
+  <li><a href="#timetoalign.Timeline.list_children" id="toc-timetoalign.Timeline.list_children" class="nav-link" data-scroll-target="#timetoalign.Timeline.list_children">list_children</a></li>
+  <li><a href="#timetoalign.Timeline.list_flow_maps" id="toc-timetoalign.Timeline.list_flow_maps" class="nav-link" data-scroll-target="#timetoalign.Timeline.list_flow_maps">list_flow_maps</a></li>
+  <li><a href="#timetoalign.Timeline.list_regions" id="toc-timetoalign.Timeline.list_regions" class="nav-link" data-scroll-target="#timetoalign.Timeline.list_regions">list_regions</a></li>
+  <li><a href="#timetoalign.Timeline.make_coordinate" id="toc-timetoalign.Timeline.make_coordinate" class="nav-link" data-scroll-target="#timetoalign.Timeline.make_coordinate">make_coordinate</a></li>
+  <li><a href="#timetoalign.Timeline.query_events_hierarchical" id="toc-timetoalign.Timeline.query_events_hierarchical" class="nav-link" data-scroll-target="#timetoalign.Timeline.query_events_hierarchical">query_events_hierarchical</a></li>
+  <li><a href="#timetoalign.Timeline.resolve_subclass" id="toc-timetoalign.Timeline.resolve_subclass" class="nav-link" data-scroll-target="#timetoalign.Timeline.resolve_subclass">resolve_subclass</a></li>
+  <li><a href="#timetoalign.Timeline.summary" id="toc-timetoalign.Timeline.summary" class="nav-link" data-scroll-target="#timetoalign.Timeline.summary">summary</a></li>
+  <li><a href="#timetoalign.Timeline.to_dataframe" id="toc-timetoalign.Timeline.to_dataframe" class="nav-link" data-scroll-target="#timetoalign.Timeline.to_dataframe">to_dataframe</a></li>
+  <li><a href="#timetoalign.Timeline.to_dict" id="toc-timetoalign.Timeline.to_dict" class="nav-link" data-scroll-target="#timetoalign.Timeline.to_dict">to_dict</a></li>
+  <li><a href="#timetoalign.Timeline.to_typed" id="toc-timetoalign.Timeline.to_typed" class="nav-link" data-scroll-target="#timetoalign.Timeline.to_typed">to_typed</a></li>
+  <li><a href="#timetoalign.Timeline.unfold" id="toc-timetoalign.Timeline.unfold" class="nav-link" data-scroll-target="#timetoalign.Timeline.unfold">unfold</a></li>
+  <li><a href="#timetoalign.Timeline.validate_child" id="toc-timetoalign.Timeline.validate_child" class="nav-link" data-scroll-target="#timetoalign.Timeline.validate_child">validate_child</a></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/Timeline.html">Timeline</a></li></ol></nav></header>
+
+
+
+
+<section id="timetoalign.Timeline" class="level1">
+<h1>Timeline</h1>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Timeline(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    unit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    number_type<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    id_prefix<span class="op">=</span><span class="st">'tl'</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    locked<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    meta<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A positive coordinate axis with events and nested child timelines.</p>
+<p>A Timeline represents a temporal dimension in one of three domains (Logical, Physical, Graphical) with either continuous or discrete coordinates. It stores events in an EventData and can contain nested child timelines (segments) at specified offsets.</p>
+<p><strong>Intended usage:</strong> This base class provides the full Timeline API but does not enforce domain or modality constraints. For typical usage, prefer one of the six concrete subclasses or the <code>create_timeline()</code> factory function:</p>
+<ul>
+<li><code>ContinuousLogicalTimeline</code> – beats, quarters, measures (Fraction)</li>
+<li><code>DiscreteLogicalTimeline</code> – ticks (int)</li>
+<li><code>ContinuousPhysicalTimeline</code> – seconds, ms, minutes (float)</li>
+<li><code>DiscretePhysicalTimeline</code> – samples, frames (int)</li>
+<li><code>ContinuousGraphicalTimeline</code> – cm, inches, points (float)</li>
+<li><code>DiscreteGraphicalTimeline</code> – pixels (int)</li>
+</ul>
+<p>These subclasses restrict allowed units and number types to prevent accidental cross-domain errors and provide sensible defaults.</p>
+<p>Direct instantiation of <code>Timeline</code> is appropriate for internal use, generic algorithms that operate across domains, or advanced scenarios where domain constraints are intentionally relaxed.</p>
+<p>If you have a <code>Timeline</code> instance and need the appropriate typed subclass, use :meth:<code>to_typed</code>.</p>
+<p>Attributes: id: Unique identifier for this timeline. unit: The time unit for coordinates (e.g., seconds, quarters, pixels). number_type: The numeric type for coordinates (int, float, Fraction). domain: The temporal domain (derived from unit). origin: The start coordinate (always 0). length: The end coordinate. is_locked: Whether the timeline can be modified. is_discrete: Whether the timeline uses discrete coordinates. is_continuous: Whether the timeline uses continuous coordinates.</p>
+<p>Examples: &gt;&gt;&gt; # Preferred: use concrete subclasses &gt;&gt;&gt; from timetoalign.timelines import ContinuousPhysicalTimeline &gt;&gt;&gt; audio = ContinuousPhysicalTimeline(length=180.0)</p>
+<pre><code>&gt;&gt;&gt; # Or use the factory to auto-select the right subclass
+&gt;&gt;&gt; from timetoalign.timelines import create_timeline
+&gt;&gt;&gt; tl = create_timeline(loader)
+
+&gt;&gt;&gt; # Direct base class (internal/advanced use)
+&gt;&gt;&gt; from timetoalign.core import TimeUnit
+&gt;&gt;&gt; tl = Timeline(length=100, unit=TimeUnit.seconds)</code></pre>
+<section id="attributes" class="level2">
+<h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.class_name">class_name</a></td>
+<td>The class name of this timeline.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.domain">domain</a></td>
+<td>The temporal domain (derived from unit).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.end">end</a></td>
+<td>Alias for length.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.events">events</a></td>
+<td>The underlying EventData (read-only access).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.id">id</a></td>
+<td>Unique identifier for this timeline.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.is_continuous">is_continuous</a></td>
+<td>Whether this timeline uses continuous (real-valued) coordinates.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.is_discrete">is_discrete</a></td>
+<td>Whether this timeline uses discrete (integer) coordinates.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.is_locked">is_locked</a></td>
+<td>Whether this timeline is locked (cannot expand).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.length">length</a></td>
+<td>The end coordinate (length of the timeline).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.meta">meta</a></td>
+<td>Metadata dictionary.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.n_children">n_children</a></td>
+<td>Number of direct child timelines.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.n_conversion_maps">n_conversion_maps</a></td>
+<td>Number of attached conversion maps.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.n_events">n_events</a></td>
+<td>Number of events (excluding segment events).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.n_flow_maps">n_flow_maps</a></td>
+<td>Number of attached FlowMaps.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.n_regions">n_regions</a></td>
+<td>Number of regions on this timeline.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.name">name</a></td>
+<td>Human-readable name for display.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.number_type">number_type</a></td>
+<td>The number type for coordinates.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.origin">origin</a></td>
+<td>The start coordinate (always 0).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.start">start</a></td>
+<td>Alias for origin.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.unit">unit</a></td>
+<td>The time unit for coordinates.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.add_break">add_break</a></td>
+<td>Add a Break (contiguity void) at the specified coordinate.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.add_child">add_child</a></td>
+<td>Embed a child timeline at the specified offset.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.add_conversion_map">add_conversion_map</a></td>
+<td>Add a ConversionMap to this timeline.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.add_events">add_events</a></td>
+<td>Add events to the timeline.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.add_flow_map">add_flow_map</a></td>
+<td>Add a FlowMap to this timeline.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.add_jump">add_jump</a></td>
+<td>Add a Jump (non-linear contiguity) between coordinates.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.add_match">add_match</a></td>
+<td>Add an alignment Match to this timeline.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.add_region">add_region</a></td>
+<td>Add or create a named Region on this timeline.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.attach_flow_map">attach_flow_map</a></td>
+<td>Deprecated alias for <code>add_flow_map</code>.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.convert_to">convert_to</a></td>
+<td>Convert coordinates to another unit using attached C-Maps.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.create_child">create_child</a></td>
+<td>Create a new child timeline and embed it at the specified offset.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.create_child_from_region">create_child_from_region</a></td>
+<td>Create a child timeline from a named region (partitioning).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.create_children_from_regions">create_children_from_regions</a></td>
+<td>Create children from multiple regions (batch partitioning).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.create_region">create_region</a></td>
+<td>Create a new named Region and attach it to this timeline.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.create_regions_by_grouping">create_regions_by_grouping</a></td>
+<td>Create regions by grouping <em>adjacent</em> events on a column value.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.create_regions_by_splitting">create_regions_by_splitting</a></td>
+<td>Create contiguous regions by splitting at events matching a predicate.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.create_regions_from_boundaries">create_regions_from_boundaries</a></td>
+<td>Create contiguous regions from boundary coordinates.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.create_segment_line">create_segment_line</a></td>
+<td>Create a SegmentLine by segmenting at boundary coordinates.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.create_segment_line_by_grouping">create_segment_line_by_grouping</a></td>
+<td>Create a SegmentLine by grouping adjacent events on a column value.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.create_segment_line_by_splitting">create_segment_line_by_splitting</a></td>
+<td>Create a SegmentLine by splitting at events matching a predicate.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.create_segment_line_from_regions">create_segment_line_from_regions</a></td>
+<td>Create a SegmentLine from contiguous regions.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.derive">derive</a></td>
+<td>Create a derivative timeline in a different unit via C-Map conversion.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.diagram">diagram</a></td>
+<td>Generate ASCII diagram for this timeline.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.empty">empty</a></td>
+<td>Create an empty Timeline with length 0.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.export_to_csv">export_to_csv</a></td>
+<td>Export timeline data to a CSV file.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.fold">fold</a></td>
+<td>Convert an unfolded coordinate to a folded coordinate.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.from_dict">from_dict</a></td>
+<td>Create a Timeline from a dictionary.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.from_event_data">from_event_data</a></td>
+<td>Create a Timeline from an existing EventData.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.from_events">from_events</a></td>
+<td>Create a Timeline from event dictionaries.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_boundary_table">get_boundary_table</a></td>
+<td>Get timestamps for timeline boundaries only.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_child">get_child</a></td>
+<td>Retrieve a child timeline by ID.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_child_offset">get_child_offset</a></td>
+<td>Get the offset of a child timeline.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_children_at">get_children_at</a></td>
+<td>Return all children whose extent contains the given coordinate.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_conversion_map">get_conversion_map</a></td>
+<td>Get a conversion map by target unit <strong>or</strong> by name/id.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_event">get_event</a></td>
+<td>Look up a single event by its <code>id</code> field.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_events">get_events</a></td>
+<td>Filter and retrieve events.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_events_at">get_events_at</a></td>
+<td>Get all events active at a specific coordinate.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_flow_map">get_flow_map</a></td>
+<td>Get an attached FlowMap by id.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_interval_stamp">get_interval_stamp</a></td>
+<td>Get a TimeIntervalStamp for a coordinate range.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_region">get_region</a></td>
+<td>Get a Region by name.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_regions_at">get_regions_at</a></td>
+<td>Return all regions containing the given coordinate.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_slice">get_slice</a></td>
+<td>Extract a portion of this timeline as a new, independent timeline.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_timestamp">get_timestamp</a></td>
+<td>Get a TimeStamp at a specific coordinate.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_timestamp_at">get_timestamp_at</a></td>
+<td>Alias for <code>get_timestamp()</code> for API consistency with TimelineGroup.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_timestamp_of">get_timestamp_of</a></td>
+<td>Get the timestamp for a specific event by its ID.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_timestamp_table">get_timestamp_table</a></td>
+<td>Generate a timestamp table as a PyArrow Table.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_timestamp_table_filtered">get_timestamp_table_filtered</a></td>
+<td>Generate timestamps for filtered events only.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_timestamps">get_timestamps</a></td>
+<td>Generate timestamps as a pandas DataFrame with units in column names.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.get_timestamps_filtered">get_timestamps_filtered</a></td>
+<td>Generate timestamps for filtered events as a pandas DataFrame.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.get_timestamps_of">get_timestamps_of</a></td>
+<td>Get timestamps for multiple events, returned as a DataFrame.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.has_child">has_child</a></td>
+<td>Check if a child with the given ID exists.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.has_flow_map">has_flow_map</a></td>
+<td>Check if a FlowMap with the given id is attached.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.has_region">has_region</a></td>
+<td>Check if a region exists.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.iter_children">iter_children</a></td>
+<td>Iterate over child timelines.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.iter_regions">iter_regions</a></td>
+<td>Iterate over all regions in insertion order.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.list_children">list_children</a></td>
+<td>List child timeline IDs.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.list_flow_maps">list_flow_maps</a></td>
+<td>List all attached FlowMap ids.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.list_regions">list_regions</a></td>
+<td>List all region names.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.make_coordinate">make_coordinate</a></td>
+<td>Create a Coordinate in this timeline’s unit.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.query_events_hierarchical">query_events_hierarchical</a></td>
+<td>Query events across the timeline hierarchy.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.resolve_subclass">resolve_subclass</a></td>
+<td>Return the canonical Timeline subclass for a unit/number_type pair.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.summary">summary</a></td>
+<td>Get a summary of the timeline.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.to_dataframe">to_dataframe</a></td>
+<td>Generate timestamps as a pandas DataFrame with formatted column names.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.to_dict">to_dict</a></td>
+<td>Convert timeline to a dictionary for serialization.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.to_typed">to_typed</a></td>
+<td>Return this timeline re-instantiated as the appropriate typed subclass.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.Timeline.unfold">unfold</a></td>
+<td>Convert a folded coordinate to unfolded coordinates.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.Timeline.validate_child">validate_child</a></td>
+<td>Validate that a timeline can be added as a child.</td>
+</tr>
+</tbody>
+</table>
+<section id="timetoalign.Timeline.add_break" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_break">add_break</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_break(at)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add a Break (contiguity void) at the specified coordinate.</p>
+<p>Args: at: The coordinate for the break.</p>
+<p>Raises: NotImplementedError: Breaks will be implemented in a future phase.</p>
+</section>
+<section id="timetoalign.Timeline.add_child" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_child">add_child</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_child(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    child,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    offset,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    allow_expansion<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    use_conversion_map<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Embed a child timeline at the specified offset.</p>
+<p>The child timeline will be locked after being added. Parent-child coordinate conversion uses exact offset arithmetic.</p>
+<p>From the TTA manuscript (Section 3.4 - Nested Timelines): “A timeline can accommodate not only events but also other timelines, called Children, as long as they use the same measuring unit.”</p>
+<p>When the child uses a different unit than the parent, set <code>use_conversion_map</code> to automatically convert the child to the parent’s unit via a C-Map. The parent must have a C-Map whose <code>target_unit</code> matches the child’s unit, so that inverting it yields the <code>child_unit -&gt; parent_unit</code> conversion. The child’s events are copied with converted coordinates; the original child is NOT modified.</p>
+<p>The converted child receives the ID <code>{child.id}[{parent.unit}]</code>.</p>
+<p>Args: child: The timeline to embed. offset: The start coordinate on this timeline, in the <strong>parent’s</strong> unit. When <code>use_conversion_map</code> is set, the offset must already be expressed in the parent’s unit (e.g.&nbsp;samples). allow_expansion: If True, expand this timeline if needed. use_conversion_map: Conversion map specification for unit conversion. Accepts the same formats as the <code>conversion_maps</code> parameter in timestamp functions: - <code>None</code> (default): No conversion; units must match. - <code>True</code>: Auto-select a parent C-Map whose target unit matches the child’s unit. - <code>str</code>: Look up by C-Map ID or target unit name. - <code>TimeUnit</code>: Find by target unit. - <code>ConversionMap</code>: Use directly.</p>
+<p>Raises: TypeError: If child is not a Timeline. ValueError: If units don’t match (and no conversion map given) or would exceed bounds. RuntimeError: If this timeline is locked.</p>
+</section>
+<section id="timetoalign.Timeline.add_conversion_map" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_conversion_map">add_conversion_map</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_conversion_map(cmap)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add a ConversionMap to this timeline.</p>
+<p>Any map with a <code>target_unit</code> is automatically registered in the unified timestamp system so that :meth:<code>get_timestamp</code> can resolve coordinates in that unit. <code>TableMap</code> instances are wrapped in an <code>InterpolationMap</code> for O(log n) lookup; analytical maps (e.g. <code>ScalarMap</code>, <code>LinearMap</code>) are stored directly.</p>
+<p>Args: cmap: The ConversionMap to add.</p>
+<p>Raises: ValueError: If the map’s source unit is incompatible.</p>
+</section>
+<section id="timetoalign.Timeline.add_events" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_events">add_events</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_events(rows, allow_expansion<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add events to the timeline.</p>
+<p>Only <code>event_type</code> and a coordinate are strictly required per dict. Missing fields are filled in automatically:</p>
+<ul>
+<li><strong>id</strong>: auto-generated (<code>e000001</code>, <code>e000002</code>, …).</li>
+<li><strong>temporal_type</strong>: inferred from keys – <code>"interval"</code> when both <code>start</code> and <code>end</code> (or <code>duration</code>) are present, <code>"instant"</code> otherwise.</li>
+</ul>
+<p>Args: rows: List of event dictionaries. Required keys: - event_type: class name (e.g.&nbsp;<code>"Beat"</code>, <code>"Note"</code>) - instant: coordinate (for instant events), <strong>or</strong> - start, end: coordinates (for interval events) allow_expansion: If True, expand timeline if events exceed length.</p>
+<p>Raises: ValueError: If events exceed length and expansion not allowed. RuntimeError: If timeline is locked and expansion not allowed.</p>
+<p>Examples: &gt;&gt;&gt; tl.add_events([ … {“event_type”: “Beat”, “instant”: 0.0}, … {“event_type”: “Note”, “start”: 0.0, “end”: 0.5}, … ])</p>
+</section>
+<section id="timetoalign.Timeline.add_flow_map" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_flow_map">add_flow_map</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_flow_map(flow_map, <span class="bu">id</span><span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add a FlowMap to this timeline.</p>
+<p>FlowMaps enable coordinate transformation for timelines with flow control (repeats, jumps, D.S., D.C., etc.). They are created by <code>timetoalign.ScoreFlowController</code> and added to the timeline for later use.</p>
+<p>Design Decision: Timelines store FlowMaps, NOT FlowControllers. FlowControllers are factories that produce FlowMaps.</p>
+<p>Args: flow_map: The FlowMap to add. id: Identifier for this FlowMap. If None, uses flow_map.id. Common values: “default”, “atomic”, “single”.</p>
+<p>Examples: &gt;&gt;&gt; controller = ScoreFlowController(measure_data) &gt;&gt;&gt; flow_map = controller.create_flow_map() &gt;&gt;&gt; timeline.add_flow_map(flow_map) &gt;&gt;&gt; timeline.get_flow_map(“default”) # Retrieve later FlowMap(default: 5 sections)</p>
+</section>
+<section id="timetoalign.Timeline.add_jump" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_jump">add_jump</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_jump(from_, to)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add a Jump (non-linear contiguity) between coordinates.</p>
+<p>Args: from_: The jump source coordinate. to: The jump target coordinate.</p>
+<p>Raises: NotImplementedError: Jumps will be implemented in a future phase.</p>
+</section>
+<section id="timetoalign.Timeline.add_match" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_match">add_match</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_match(match)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add an alignment Match to this timeline.</p>
+<p>Args: match: The Match to add.</p>
+<p>Raises: NotImplementedError: Alignment is managed via AlignmentBundle.</p>
+</section>
+<section id="timetoalign.Timeline.add_region" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.add_region">add_region</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>Timeline.add_region(region_or_name, start<span class="op">=</span><span class="va">None</span>, end<span class="op">=</span><span class="va">None</span>, <span class="op">*</span>, meta<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add or create a named Region on this timeline.</p>
+<p>Overloaded for backward compatibility: - <code>add_region(Region)</code> — attach a pre-existing Region object. - <code>add_region(name, start, end)</code> — delegate to :meth:<code>create_region</code>.</p>
+<p>Under the unified verb×noun API, <code>add</code> means “attach an existing object” while <code>create</code> means “construct + attach + return”.</p>
+<p>Args: region_or_name: A Region object (new) or a string name (legacy). start: Start coordinate (only when region_or_name is a string). end: End coordinate (only when region_or_name is a string). meta: Optional metadata dictionary.</p>
+<p>Returns: The Region object (either the one passed in or the newly created one).</p>
+<p>Raises: ValueError: If region name already exists, end &lt; start, or arguments are inconsistent. RuntimeError: If timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; # New API — attach a pre-existing Region &gt;&gt;&gt; r = Region(“Chorus”, Coordinate(10, TimeUnit.seconds), … Coordinate(30, TimeUnit.seconds)) &gt;&gt;&gt; tl.add_region(r)</p>
+<pre><code>&gt;&gt;&gt; # Legacy API (delegates to create_region)
+&gt;&gt;&gt; tl.add_region("Verse", 30, 50, meta={"repeat": 2})</code></pre>
+</section>
+<section id="timetoalign.Timeline.attach_flow_map" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.attach_flow_map">attach_flow_map</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>Timeline.attach_flow_map(flow_map, <span class="bu">id</span><span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Deprecated alias for <code>add_flow_map</code>.</p>
+<p>.. deprecated:: Use :meth:<code>add_flow_map</code> instead. This alias will be removed in a future version.</p>
+</section>
+<section id="timetoalign.Timeline.convert_to" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.convert_to">convert_to</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>Timeline.convert_to(values, target_unit)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Convert coordinates to another unit using attached C-Maps.</p>
+<p>Args: values: Coordinate value(s) to convert. Can be: - Scalar (int, float, Fraction): Returns a Coordinate object - Coordinate: Returns a Coordinate object - numpy array: Returns a numpy array of converted values target_unit: Target unit.</p>
+<p>Returns: - For scalar/Coordinate input: Coordinate object in the target unit - For array input: numpy array of converted values</p>
+<p>Raises: ValueError: If no suitable map is found.</p>
+<p>Examples: &gt;&gt;&gt; timeline.add_conversion_map(ScalarMap(scalar=1/300, …)) &gt;&gt;&gt; coord = timeline.convert_to(15343, “inches”) &gt;&gt;&gt; coord Coordinate(51.1, inches) &gt;&gt;&gt; arr = timeline.convert_to(np.array([100, 200]), “inches”) &gt;&gt;&gt; arr array([0.333, 0.666])</p>
+</section>
+<section id="timetoalign.Timeline.create_child" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_child">create_child</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_child(</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    length,</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    offset,</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    allow_expansion<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a new child timeline and embed it at the specified offset.</p>
+<p>Convenience method that creates a new timeline with the same unit as the parent and immediately adds it as a child. This is equivalent to:</p>
+<pre><code>child = Timeline(length=length, unit=parent.unit, uid=uid, name=name)
+parent.add_child(child, offset=offset)</code></pre>
+<p>From the TTA manuscript (Section 3.4 - Nested Timelines): “A timeline can accommodate not only events but also other timelines, called Children, as long as they use the same measuring unit.”</p>
+<p>Args: length: Length of the child timeline (in parent’s unit). Can be a Coordinate object if its unit matches the parent. offset: The start coordinate on this timeline where the child begins. uid: Unique identifier for the child. Auto-generated if None. name: Human-readable name for the child. allow_expansion: If True, expand parent timeline if needed.</p>
+<p>Returns: The newly created and embedded child Timeline.</p>
+<p>Raises: ValueError: If offset is negative or child would exceed parent bounds. ValueError: If length/offset Coordinate has mismatched unit. RuntimeError: If this timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; # Create a child representing a region of interest &gt;&gt;&gt; holes_region = image_timeline.create_child( … length=277776, … offset=15343, … uid=“dgt1_holes”, … name=“Musical Holes Region”, … ) &gt;&gt;&gt; # Now add events to the child &gt;&gt;&gt; holes_region.add_events(hole_events)</p>
+</section>
+<section id="timetoalign.Timeline.create_child_from_region" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_child_from_region">create_child_from_region</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_child_from_region(region_name, <span class="op">*</span>, copy_events<span class="op">=</span><span class="va">True</span>, uid<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a child timeline from a named region (partitioning).</p>
+<p>The child’s length = region duration, offset = region start. The child’s class matches the parent’s concrete class. If copy_events, events in [start, end) are copied with adjusted coordinates.</p>
+<p>Args: region_name: Name of an existing region. copy_events: Copy events within the region to the child. uid: Explicit child ID. Defaults to region name.</p>
+<p>Returns: The newly created and attached child timeline.</p>
+<p>Raises: KeyError: If region_name not found. RuntimeError: If timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; tl.create_regions_by_splitting(“breaks”, prefix=“movement”) &gt;&gt;&gt; mov4 = tl.create_child_from_region(“movement_4”)</p>
+</section>
+<section id="timetoalign.Timeline.create_children_from_regions" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_children_from_regions">create_children_from_regions</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_children_from_regions(region_names<span class="op">=</span><span class="va">None</span>, <span class="op">*</span>, copy_events<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create children from multiple regions (batch partitioning).</p>
+<p>Each region becomes a child. Regions may overlap — resulting children are independent.</p>
+<p>Args: region_names: Region names. None = all regions in insertion order. copy_events: Copy events to children.</p>
+<p>Returns: List of child timelines in region order.</p>
+<p>Raises: KeyError: If any region_name not found. RuntimeError: If timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; tl.create_regions_by_grouping(“<span class="citation" data-cites="pageIndex">@pageIndex</span>”, … name_format=“page_{value}”) &gt;&gt;&gt; tl.create_children_from_regions() # All pages as children</p>
+</section>
+<section id="timetoalign.Timeline.create_region" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_region">create_region</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_region(name, start, end, <span class="op">*</span>, meta<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a new named Region and attach it to this timeline.</p>
+<p>Under the unified verb×noun API, <code>create</code> constructs a new object, attaches it, and returns it.</p>
+<p>Args: name: Unique name for this region. start: Start coordinate. end: End coordinate (must be &gt;= start). meta: Optional metadata dictionary.</p>
+<p>Returns: The created Region object.</p>
+<p>Raises: ValueError: If name already exists or end &lt; start. RuntimeError: If timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; tl.create_region(“Chorus”, 10.0, 30.0) &gt;&gt;&gt; tl.create_region(“Verse”, 30.0, 50.0, meta={“repeat”: 2})</p>
+</section>
+<section id="timetoalign.Timeline.create_regions_by_grouping" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_regions_by_grouping">create_regions_by_grouping</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_regions_by_grouping(column, <span class="op">*</span>, name_format<span class="op">=</span><span class="st">'</span><span class="sc">{value}</span><span class="st">'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create regions by grouping <em>adjacent</em> events on a column value.</p>
+<p>For each <em>run</em> of consecutive events that share the same value in the specified column, creates a region spanning the run’s coordinate extent <code>[min_start, max_end)</code>. Only adjacent events with the same value are grouped — non-adjacent occurrences of the same value produce separate regions.</p>
+<p>This “run-length” semantics is essential for musical data where, e.g., the same time signature may recur after a change (4/4 → 3/4 → 4/4) and each occurrence should be its own region.</p>
+<p>Args: column: Event column name to group by. name_format: Format string. Placeholders: {value}, {i} (0-based), {n} (1-based), {run} (1-based run index for this value).</p>
+<p>Returns: List of Region objects ordered by start coordinate.</p>
+<p>Raises: ValueError: If column does not exist in events. RuntimeError: If timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; # Time-signature regions (adjacent grouping) &gt;&gt;&gt; tl.create_regions_by_grouping(“timesig”) [Region(‘4/4’, 0-64), Region(‘3/4’, 64-88), Region(‘4/4’, 88-120)]</p>
+</section>
+<section id="timetoalign.Timeline.create_regions_by_splitting" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_regions_by_splitting">create_regions_by_splitting</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_regions_by_splitting(</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    predicate,</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    names<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    name_format<span class="op">=</span><span class="st">'</span><span class="sc">{prefix}</span><span class="st">_</span><span class="sc">{n}</span><span class="st">'</span>,</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    prefix<span class="op">=</span><span class="st">'section'</span>,</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    include_before_first<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>    include_after_last<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create contiguous regions by splitting at events matching a predicate.</p>
+<p>Finds events matching the predicate, uses their coordinates as split points, creates contiguous regions between consecutive split points.</p>
+<p>The predicate can be: - A string: column name. Events where this column is truthy (non-null, non-empty, non-zero) are split points. - A dict: keyword filters in the same style as <code>EventData.filter()</code>. For example <code>{"breaks": "section"}</code> selects events whose <code>breaks</code> column equals <code>"section"</code>. - A callable: receives event dict, returns True for split points.</p>
+<p>For each matching event the split coordinate is the event’s <code>end</code> (interval events) or <code>start</code>/<code>instant</code> (instant events).</p>
+<p>Args: predicate: Column name, filter dict, or callable identifying split-point events. names: Explicit region names. name_format: Format string. Placeholders: {prefix}, {i}, {n}. prefix: Prefix for auto-generated names. include_before_first: Create a region from timeline origin to first split point. include_after_last: Create a region from last split point to timeline end.</p>
+<p>Returns: List of contiguous Region objects in coordinate order.</p>
+<p>Raises: RuntimeError: If timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; # Split at section breaks &gt;&gt;&gt; tl.create_regions_by_splitting(“breaks”, prefix=“movement”)</p>
+<pre><code>&gt;&gt;&gt; # Split at specific break types
+&gt;&gt;&gt; tl.create_regions_by_splitting(
+...     {"breaks": "section"}, prefix="movement"
+... )</code></pre>
+</section>
+<section id="timetoalign.Timeline.create_regions_from_boundaries" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_regions_from_boundaries">create_regions_from_boundaries</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_regions_from_boundaries(</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    boundaries,</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    names<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>    name_format<span class="op">=</span><span class="st">'</span><span class="sc">{prefix}</span><span class="st">_</span><span class="sc">{n}</span><span class="st">'</span>,</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>    prefix<span class="op">=</span><span class="st">'section'</span>,</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create contiguous regions from boundary coordinates.</p>
+<p>Given k+1 sorted boundary coordinates, creates k regions where region_i spans [boundaries[i], boundaries[i+1]).</p>
+<p>Args: boundaries: k+1 monotonically increasing coordinates. names: Explicit names for the k regions. Mutually exclusive with name_format/prefix. name_format: Format string. Placeholders: {prefix}, {i} (0-based), {n} (1-based). prefix: Prefix for auto-generated names.</p>
+<p>Returns: List of k Region objects in boundary order.</p>
+<p>Raises: ValueError: If fewer than 2 boundaries or not monotonically increasing. RuntimeError: If timeline is locked.</p>
+<p>Examples: &gt;&gt;&gt; tl.create_regions_from_boundaries( … [0, 30, 60, 90], … prefix=“movement”, … ) [Region(‘movement_1’, 0-30), Region(‘movement_2’, 30-60), Region(‘movement_3’, 60-90)]</p>
+</section>
+<section id="timetoalign.Timeline.create_segment_line" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_segment_line">create_segment_line</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_segment_line(boundaries, <span class="op">*</span>, copy_events<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a SegmentLine by segmenting at boundary coordinates.</p>
+<p>Given k+1 sorted coordinates, produces a new SegmentLine with k contiguous segments. Each segment’s class matches self’s class.</p>
+<p>Does NOT modify self. Returns a new independent SegmentLine.</p>
+<p>Args: boundaries: k+1 monotonically increasing coordinates. copy_events: Copy events into their respective segments.</p>
+<p>Returns: A new SegmentLine with k segments.</p>
+<p>Raises: ValueError: If fewer than 2 boundaries or not monotonically increasing.</p>
+<p>Examples: &gt;&gt;&gt; measures = audio_tl.create_segment_line( … [0.0] + measure_times.tolist() + [float(audio_tl.length)] … )</p>
+</section>
+<section id="timetoalign.Timeline.create_segment_line_by_grouping" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_segment_line_by_grouping">create_segment_line_by_grouping</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_segment_line_by_grouping(</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    column,</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    name_format<span class="op">=</span><span class="st">'</span><span class="sc">{value}</span><span class="st">'</span>,</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a SegmentLine by grouping adjacent events on a column value.</p>
+<p>Groups must form contiguous, non-overlapping spans. This is validated and raises if not satisfied.</p>
+<p>Does NOT modify self. Does NOT add intermediate regions to self.</p>
+<p>Args: column: Event column to group by. copy_events: Copy events into segments. name_format: Format string for segment names.</p>
+<p>Returns: A new SegmentLine.</p>
+<p>Raises: ValueError: If groups are not contiguous.</p>
+<p>Examples: &gt;&gt;&gt; systems = page.create_segment_line_by_grouping(“spacing_run_id”)</p>
+</section>
+<section id="timetoalign.Timeline.create_segment_line_by_splitting" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_segment_line_by_splitting">create_segment_line_by_splitting</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_segment_line_by_splitting(</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    predicate,</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    names<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    name_format<span class="op">=</span><span class="st">'</span><span class="sc">{prefix}</span><span class="st">_</span><span class="sc">{n}</span><span class="st">'</span>,</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    prefix<span class="op">=</span><span class="st">'section'</span>,</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>    include_before_first<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>    include_after_last<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a SegmentLine by splitting at events matching a predicate.</p>
+<p>Shortcut for finding split points and creating a SegmentLine directly. Does NOT modify self (no intermediate regions are created).</p>
+<p>The predicate follows the same semantics as :meth:<code>create_regions_by_splitting</code>.</p>
+<p>Args: predicate: Column name, filter dict, or callable identifying split-point events. copy_events: Copy events into segments. names: Explicit segment names. name_format: Format string for segment names. prefix: Prefix for auto-generated names. include_before_first: Include segment before first split point. include_after_last: Include segment after last split point.</p>
+<p>Returns: A new SegmentLine.</p>
+<p>Examples: &gt;&gt;&gt; sl = tl.create_segment_line_by_splitting( … {“breaks”: “section”}, prefix=“movement” … )</p>
+</section>
+<section id="timetoalign.Timeline.create_segment_line_from_regions" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.create_segment_line_from_regions">create_segment_line_from_regions</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>Timeline.create_segment_line_from_regions(</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    region_names<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a SegmentLine from contiguous regions.</p>
+<p>Validates that regions are contiguous and non-overlapping (each region’s end == next region’s start).</p>
+<p>Does NOT modify self.</p>
+<p>Args: region_names: Ordered region names. None = all regions sorted by start coordinate. copy_events: Copy events into segments.</p>
+<p>Returns: A new SegmentLine.</p>
+<p>Raises: ValueError: If regions are not contiguous or empty.</p>
+<p>Examples: &gt;&gt;&gt; tl.create_regions_by_grouping(“timesig”) &gt;&gt;&gt; seg_line = tl.create_segment_line_from_regions()</p>
+</section>
+<section id="timetoalign.Timeline.derive" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.derive">derive</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>Timeline.derive(target_unit, name<span class="op">=</span><span class="va">None</span>, copy_events<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a derivative timeline in a different unit via C-Map conversion.</p>
+<p>From TTA manuscript (Section 3.3): “A ConversionMap implies the presence of a derived timeline in the target unit. The derive() method makes this implicit timeline explicit.”</p>
+<p>The derived timeline: - Has coordinates in the target unit - Has length equal to the converted source length - Automatically has an inverse C-Map back to the source unit - Optionally copies and converts events from the source</p>
+<p>This operation creates a NEW timeline, NOT a child timeline. The source and derived timelines have different units, so per TTA specification, they cannot be parent-child (children must share the parent’s unit). Use TimelineGroup to connect them.</p>
+<p>Args: target_unit: The unit for the derived timeline. name: Optional name for the derived timeline. copy_events: If True, copy and convert events to the derived timeline.</p>
+<p>Returns: A new Timeline in the target unit.</p>
+<p>Raises: ValueError: If no C-Map exists for the target unit. ValueError: If C-Map is not invertible (needed for roundtrip).</p>
+<p>Examples: &gt;&gt;&gt; # Create physical timeline with tempo C-Map &gt;&gt;&gt; audio = ContinuousPhysicalTimeline(length=60.0) &gt;&gt;&gt; audio.add_conversion_map(LinearMap(2.0, 0.0, … source_unit=TimeUnit.seconds, target_unit=TimeUnit.quarters)) &gt;&gt;&gt; # Derive a logical timeline &gt;&gt;&gt; score = audio.derive(TimeUnit.quarters, name=“score”) &gt;&gt;&gt; score.unit TimeUnit.quarters &gt;&gt;&gt; score.length Coordinate(120.0, quarters) # 60 seconds * 2 q/s</p>
+</section>
+<section id="timetoalign.Timeline.diagram" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.diagram">diagram</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>Timeline.diagram(</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="dv">70</span>,</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    show_children<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    max_children<span class="op">=</span><span class="dv">6</span>,</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">unicode</span><span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    show<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate ASCII diagram for this timeline.</p>
+<p>Args: width: Total width of the diagram in characters. show_children: Whether to show child timelines (one per row). max_children: Maximum children to show before truncating. unicode: Use Unicode characters (True) or ASCII fallback (False). show: Optional set controlling which elements appear. Supported values: <code>"children"</code>, <code>"regions"</code>, and <code>"cmaps"</code> (attached conversion maps). When <code>None</code>, behaviour is exactly as before.</p>
+<p>Returns: Diagram object (displays as ASCII in terminal, rich HTML in Jupyter).</p>
+<p>Examples: &gt;&gt;&gt; print(timeline.diagram()) DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children) 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels ├─ system_1 0 ∶∶∶∶∶∶∶ 967 ├─ system_2 967 ∶∶∶∶∶∶∶∶ 1934 └─ …</p>
+</section>
+<section id="timetoalign.Timeline.empty" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.empty">empty</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>Timeline.empty(unit<span class="op">=</span><span class="va">None</span>, number_type<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create an empty Timeline with length 0.</p>
+<p>Args: unit: The time unit. Defaults to class default. number_type: The number type. Defaults to class default. **kwargs: Additional arguments passed to <strong>init</strong>.</p>
+<p>Returns: A new empty Timeline.</p>
+</section>
+<section id="timetoalign.Timeline.export_to_csv" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.export_to_csv">export_to_csv</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>Timeline.export_to_csv(</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    filepath,</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    coordinates<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>    recursion_limit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    include_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    include_boundaries<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>    columns<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>    units<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>    sep<span class="op">=</span><span class="st">','</span>,</span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>    header<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>    index<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Export timeline data to a CSV file.</p>
+<p>This is a convenience method that generates a timestamp DataFrame and writes it to a CSV file. For more control over the output, use to_dataframe() and save manually.</p>
+<p>Args: filepath: Output CSV file path. coordinates: Explicit coordinates to use as the axis. conversion_maps: C-Maps to include as columns. Defaults to True (all). recursion_limit: Maximum depth for child traversal. include_events: If True and coordinates is None, extract from events. include_boundaries: If True, include timeline boundary coordinates. columns: How to name the columns (see to_dataframe). units: If True (default), append units to column names. sep: Field separator. Default “,” (comma). header: If True (default), write column headers. index: If True, write row indices. Default False.</p>
+<p>Returns: Number of rows written.</p>
+<p>Examples: &gt;&gt;&gt; timeline.export_to_csv(“timestamps.csv”) 100</p>
+<pre><code>&gt;&gt;&gt; # Tab-separated, no header
+&gt;&gt;&gt; timeline.export_to_csv("data.tsv", sep="\t", header=False)
+100</code></pre>
+</section>
+<section id="timetoalign.Timeline.fold" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.fold">fold</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>Timeline.fold(coord, <span class="bu">id</span><span class="op">=</span><span class="st">'default'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Convert an unfolded coordinate to a folded coordinate.</p>
+<p>Convenience method that delegates to the attached FlowMap.</p>
+<p>Args: coord: Coordinate in the unfolded timeline. id: Which FlowMap to use.</p>
+<p>Returns: Coordinate in the folded timeline.</p>
+<p>Raises: ValueError: If no FlowMap with the given id is attached, or if the coordinate is outside the flow range.</p>
+</section>
+<section id="timetoalign.Timeline.from_dict" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.from_dict">from_dict</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>Timeline.from_dict(data)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a Timeline from a dictionary.</p>
+<p>Args: data: Dictionary from to_dict().</p>
+<p>Returns: A new Timeline instance.</p>
+</section>
+<section id="timetoalign.Timeline.from_event_data" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.from_event_data">from_event_data</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>Timeline.from_event_data(data, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a Timeline from an existing EventData.</p>
+<p>Args: data: The EventData containing events. **kwargs: Additional arguments passed to <strong>init</strong> (except unit/number_type).</p>
+<p>Returns: A new Timeline wrapping the EventData.</p>
+</section>
+<section id="timetoalign.Timeline.from_events" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.from_events">from_events</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>Timeline.from_events(rows, unit<span class="op">=</span><span class="va">None</span>, number_type<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a Timeline from event dictionaries.</p>
+<p>The timeline length is automatically set to accommodate all events.</p>
+<p>Args: rows: List of event dictionaries with keys: - id: unique identifier - temporal_type: “instant” or “interval” - event_type: class name (e.g., “Note”, “Beat”) - instant: coordinate (for instant events) - start, end: coordinates (for interval events) unit: The time unit. Defaults to class default. number_type: The number type. Defaults to class default. **kwargs: Additional arguments passed to <strong>init</strong>.</p>
+<p>Returns: A new Timeline containing the events.</p>
+</section>
+<section id="timetoalign.Timeline.get_boundary_table" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_boundary_table">get_boundary_table</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_boundary_table(conversion_maps<span class="op">=</span><span class="va">True</span>, recursion_limit<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get timestamps for timeline boundaries only.</p>
+<p>Returns a timestamp table containing only start (0) and end (length) coordinates for this timeline and all children.</p>
+<p>Args: conversion_maps: C-Maps to include as columns (see get_timestamp_table). recursion_limit: Maximum depth for child traversal.</p>
+<p>Returns: PyArrow Table with boundary timestamps.</p>
+<p>Examples: &gt;&gt;&gt; table = timeline.get_boundary_table() &gt;&gt;&gt; table.to_pandas() axis tl:1 child:1 0 0.0 0.0 NaN 1 10.0 10.0 10.0 2 50.0 NaN 0.0 3 60.0 NaN 10.0</p>
+</section>
+<section id="timetoalign.Timeline.get_child" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_child">get_child</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_child(child_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Retrieve a child timeline by ID.</p>
+<p>Args: child_id: The ID of the child to retrieve.</p>
+<p>Returns: The child Timeline.</p>
+<p>Raises: KeyError: If no child with that ID exists.</p>
+</section>
+<section id="timetoalign.Timeline.get_child_offset" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_child_offset">get_child_offset</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_child_offset(child_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the offset of a child timeline.</p>
+<p>Args: child_id: The ID of the child.</p>
+<p>Returns: The offset Coordinate.</p>
+<p>Raises: KeyError: If no child with that ID exists.</p>
+</section>
+<section id="timetoalign.Timeline.get_children_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_children_at">get_children_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_children_at(coord)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return all children whose extent contains the given coordinate.</p>
+<p>A child contains coord if offset &lt;= coord &lt; offset + child.length.</p>
+<p>Args: coord: The coordinate to query.</p>
+<p>Returns: List of child Timeline objects, ordered by offset. Empty list if no children contain coord.</p>
+</section>
+<section id="timetoalign.Timeline.get_conversion_map" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_conversion_map">get_conversion_map</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_conversion_map(target_unit)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a conversion map by target unit <strong>or</strong> by name/id.</p>
+<p>When <em>target_unit</em> is a valid <code>TimeUnit</code> value (or an alias such as <code>"seconds"</code>), the method returns the first attached map whose <code>target_unit</code> matches.</p>
+<p>When <em>target_unit</em> is a string that does <strong>not</strong> correspond to any <code>TimeUnit</code> member, the method falls back to a name-based lookup: it searches first by <code>cmap.id</code>, then by <code>cmap.name</code>. This is useful for maps where source and target units are identical (e.g.&nbsp;a <code>ShiftMap</code> named <code>"raw_quarters"</code> that maps normalised quarters back to raw partitura quarters).</p>
+<p>Args: target_unit: A <code>TimeUnit</code> member, a unit alias string, or a conversion-map name/id string.</p>
+<p>Returns: A matching <code>ConversionMap</code>, or <code>None</code> if not found.</p>
+<p>Examples: &gt;&gt;&gt; timeline.get_conversion_map(TimeUnit.seconds) ScalarMap(…) &gt;&gt;&gt; timeline.get_conversion_map(“raw_quarters”) ShiftMap(offset=-0.5, …)</p>
+</section>
+<section id="timetoalign.Timeline.get_event" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_event">get_event</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_event(event_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Look up a single event by its <code>id</code> field.</p>
+<p>Searches this timeline’s events first, then recursively searches all children. When found in a child, coordinates are adjusted to the root timeline’s coordinate system.</p>
+<p>Args: event_id: The event identifier to search for.</p>
+<p>Returns: A dictionary representing the event row, or <code>None</code> if not found anywhere in the hierarchy.</p>
+<p>Examples: &gt;&gt;&gt; event = timeline.get_event(“notes:note:000001”) &gt;&gt;&gt; event[“id”] ‘notes:note:000001’ &gt;&gt;&gt; timeline.get_event(“nonexistent”) is None True</p>
+</section>
+<section id="timetoalign.Timeline.get_events" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_events">get_events</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_events(</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    temporal_type<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    event_type<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>    include_children<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>    min_coord<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    max_coord<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>column_filters,</span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Filter and retrieve events.</p>
+<p>When <code>include_children=True</code> (the default), events from all children are included with their coordinates adjusted to the root timeline’s coordinate system. Segment events (internal bookkeeping) are always excluded.</p>
+<p>Args: temporal_type: Filter by “instant” or “interval”. event_type: Filter by event type name. include_children: If True (default), include events from all children with root-relative coordinates. min_coord: Minimum coordinate (inclusive). Can be a float in native units or a <code>Coordinate</code> with a different unit (converted via inverse C-Map). max_coord: Maximum coordinate (exclusive). Same conversion rules as min_coord. **column_filters: Additional column equality filters. Each kwarg name is a column name, and the value is the required value (or a list of values for OR logic).</p>
+<p>Returns: A filtered EventData with all matching events.</p>
+<p>Examples: &gt;&gt;&gt; # Filter by coordinate range &gt;&gt;&gt; events = tl.get_events(min_coord=10.0, max_coord=20.0)</p>
+<pre><code>&gt;&gt;&gt; # Filter with a Coordinate in a different unit
+&gt;&gt;&gt; from timetoalign import Coordinate, TimeUnit
+&gt;&gt;&gt; coord = Coordinate(5.0, TimeUnit.seconds)
+&gt;&gt;&gt; events = tl.get_events(min_coord=coord)
+
+&gt;&gt;&gt; # Arbitrary column filters
+&gt;&gt;&gt; events = tl.get_events(pitch=60)  # Only middle C
+&gt;&gt;&gt; events = tl.get_events(pitch=[60, 62, 64])  # C, D, E</code></pre>
+</section>
+<section id="timetoalign.Timeline.get_events_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_events_at">get_events_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_events_at(coord, tolerance<span class="op">=</span><span class="fl">0.0</span>, include_children<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get all events active at a specific coordinate.</p>
+<p>Returns events from this timeline and all children that are active (containing or at) the specified coordinate.</p>
+<p>For instant events, an event is “at” the coordinate if its instant is within tolerance of the query coordinate.</p>
+<p>For interval events, an event is “active” if the coordinate falls within [start, end).</p>
+<p>Args: coord: Coordinate to query (in this timeline’s unit). tolerance: Tolerance for instant event matching (default 0). include_children: If True, include events from children.</p>
+<p>Returns: Dict mapping timeline_id to list of events active at that coordinate. Child events have coordinates in their local coordinate system.</p>
+<p>Examples: &gt;&gt;&gt; events = score.get_events_at(50.0) &gt;&gt;&gt; events[“score:1”] # Events in root at coord 50 [{“id”: “n1”, “event_type”: “Note”, …}] &gt;&gt;&gt; events[“measure_5”] # Events in measure 5 […]</p>
+</section>
+<section id="timetoalign.Timeline.get_flow_map" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_flow_map">get_flow_map</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_flow_map(<span class="bu">id</span><span class="op">=</span><span class="st">'default'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get an attached FlowMap by id.</p>
+<p>Args: id: Identifier of the FlowMap. Default is “default”.</p>
+<p>Returns: The FlowMap if found, None otherwise.</p>
+</section>
+<section id="timetoalign.Timeline.get_interval_stamp" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_interval_stamp">get_interval_stamp</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_interval_stamp(start, end, unit<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a TimeIntervalStamp for a coordinate range.</p>
+<p>Args: start: Start coordinate. end: End coordinate. unit: If provided, interpret both coords as being in this unit.</p>
+<p>Returns: TimeIntervalStamp with start and end TimeStamps.</p>
+<p>Examples: &gt;&gt;&gt; interval = timeline.get_interval_stamp(0.0, 10.0) &gt;&gt;&gt; interval.duration 10.0 &gt;&gt;&gt; interval[“child:1”] # Get (start, end) tuple for child (0.0, 7.5)</p>
+</section>
+<section id="timetoalign.Timeline.get_region" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_region">get_region</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_region(name)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a Region by name.</p>
+<p>Args: name: The region name.</p>
+<p>Returns: The Region object.</p>
+<p>Raises: KeyError: If no region with that name exists.</p>
+</section>
+<section id="timetoalign.Timeline.get_regions_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_regions_at">get_regions_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_regions_at(coord)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return all regions containing the given coordinate.</p>
+<p>A region contains coord if region.start &lt;= coord &lt; region.end (left-inclusive, right-exclusive).</p>
+<p>Args: coord: The coordinate to query.</p>
+<p>Returns: List of Region objects containing coord, ordered by start coordinate. Empty list if no regions contain coord.</p>
+<p>Examples: &gt;&gt;&gt; tl.get_regions_at(75.0) [Region(‘verse_1’, 30-90), Region(‘chorus’, 60-120)]</p>
+</section>
+<section id="timetoalign.Timeline.get_slice" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_slice">get_slice</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_slice(</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    start,</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>    end,</span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>    truncate_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>    include_children<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb49-7"><a href="#cb49-7" aria-hidden="true" tabindex="-1"></a>    copy_cmaps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb49-8"><a href="#cb49-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Extract a portion of this timeline as a new, independent timeline.</p>
+<p>Returns a new timeline containing all events within [start, end). The returned timeline has its coordinate origin at 0, with all coordinates shifted by -start.</p>
+<p>From the TTA manuscript: slicing creates a new timeline that is a structural copy of the specified interval of the source.</p>
+<p>Args: start: Start coordinate (inclusive). end: End coordinate (exclusive). truncate_events: If True (default), interval events straddling the slice boundaries are clipped to [start, end). If False, events must be fully contained to be included. include_children: If True (default), child timelines whose span overlaps [start, end) are recursively sliced and included. copy_cmaps: If True (default), ConversionMaps are bounded-copied for the slice range.</p>
+<p>Returns: New Timeline (same concrete subclass) with length = end - start, coordinates shifted to [0, end-start).</p>
+<p>Raises: ValueError: If start &gt;= end or either is outside timeline bounds.</p>
+<p>Examples: &gt;&gt;&gt; source = ContinuousLogicalTimeline(length=100) &gt;&gt;&gt; source.add_events([ … {“event_type”: “Note”, “start”: 10, “end”: 30}, … {“event_type”: “Beat”, “instant”: 25}, … ]) &gt;&gt;&gt; sliced = source.get_slice(20, 40) &gt;&gt;&gt; sliced.length.value # 40 - 20 = 20 Fraction(20, 1)</p>
+</section>
+<section id="timetoalign.Timeline.get_timestamp" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamp">get_timestamp</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamp(coord, unit<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a TimeStamp at a specific coordinate.</p>
+<p>This is the primary coordinate resolution API. The TimeStamp provides access to all equivalent coordinates across children and C-Map units.</p>
+<p>Uses InterpolationMaps for O(log n) coordinate conversion.</p>
+<p>Args: coord: Coordinate value. Can be: - int/float/Fraction: Value in timeline’s native unit - Coordinate: Must match unit or specify via <code>unit</code> param unit: If provided, interpret coord as being in this unit. The coordinate is first converted via inverse C-Map.</p>
+<p>Returns: TimeStamp object for the resolved coordinate.</p>
+<p>Raises: ValueError: If unit specified but no inverse C-Map available.</p>
+<p>Examples: &gt;&gt;&gt; ts = timeline.get_timestamp(5.0) &gt;&gt;&gt; ts[“child_a”] # Get coordinate on child_a 2.5</p>
+<pre><code>&gt;&gt;&gt; # Query with unit conversion
+&gt;&gt;&gt; ts = timeline.get_timestamp(10.5, unit=TimeUnit.seconds)
+&gt;&gt;&gt; ts.axis  # Converted from seconds to timeline's unit
+5.0</code></pre>
+</section>
+<section id="timetoalign.Timeline.get_timestamp_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamp_at">get_timestamp_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamp_at(coord, unit<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Alias for <code>get_timestamp()</code> for API consistency with TimelineGroup.</p>
+<p>TimelineGroup uses <code>get_timestamp_at(coord, tl_id)</code> with an additional timeline_id parameter. This alias provides a consistent verb across the hierarchy.</p>
+<p>Args: coord: Coordinate value (see <code>get_timestamp()</code> for details). unit: Optional unit for coordinate interpretation.</p>
+<p>Returns: TimeStamp object for the resolved coordinate.</p>
+<p>See Also: get_timestamp: The primary coordinate resolution method. timetoalign.TimelineGroup.get_timestamp_at: Group-level version.</p>
+</section>
+<section id="timetoalign.Timeline.get_timestamp_of" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamp_of">get_timestamp_of</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamp_of(event_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the timestamp for a specific event by its ID.</p>
+<p>Returns a TimeStamp for instant events, or a TimeIntervalStamp for interval events. Searches recursively through children if the event is not found on this timeline directly.</p>
+<p>Args: event_id: The event identifier to look up.</p>
+<p>Returns: TimeStamp for instant events, TimeIntervalStamp for interval events.</p>
+<p>Raises: KeyError: If no event with the given ID exists.</p>
+<p>Examples: &gt;&gt;&gt; ts = timeline.get_timestamp_of(“note:000001”) &gt;&gt;&gt; ts.axis # For instant events 5.0</p>
+<pre><code>&gt;&gt;&gt; ts = timeline.get_timestamp_of("clt1:note:000001")
+&gt;&gt;&gt; ts.start.axis  # For interval events
+0.0
+&gt;&gt;&gt; ts.end.axis
+2.5</code></pre>
+<p>See Also: get_timestamp: Get timestamp by coordinate. get_event: Get the raw event dict by ID.</p>
+</section>
+<section id="timetoalign.Timeline.get_timestamp_table" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamp_table">get_timestamp_table</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamp_table(</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>    coordinates<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a>    recursion_limit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a>    include_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a>    include_boundaries<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb55-7"><a href="#cb55-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate a timestamp table as a PyArrow Table.</p>
+<p>A Timestamp is a cross-section through the timeline hierarchy showing synchronous coordinates. This method computes local coordinates for each timeline in the hierarchy at each axis coordinate.</p>
+<p>Supports IdCoordinate for automatic child offset resolution:</p>
+<pre><code>&gt;&gt;&gt; # IdCoordinates from child timeline - offsets auto-applied!
+&gt;&gt;&gt; child_coords = [IdCoordinate(v, unit, "child_id") for v in values]
+&gt;&gt;&gt; df = parent.get_timestamps(coordinates=child_coords)</code></pre>
+<p>Args: coordinates: Explicit coordinates to use as the axis. If None, coordinates are extracted from events (and optionally boundaries). Accepts IdCoordinate objects - if timeline_id matches a child, the offset is automatically applied. conversion_maps: C-Maps to include as columns. Flexible input: - True: Include all attached conversion maps - str: Map ID or target unit name (e.g., “inches”, “seconds”) - TimeUnit: Find map by target unit enum - ConversionMap: Include the specific map - list: Mix of the above - None/False: No conversion maps recursion_limit: Maximum depth for child traversal. None = unlimited. include_events: If True and coordinates is None, extract from events. include_boundaries: If True, include timeline boundary coordinates.</p>
+<p>Returns: PyArrow Table with schema: - axis: float64 (root coordinate) - {timeline_id}: float64 (nullable, local coordinate per timeline) - {cmap_id}: varies (converted value per C-Map)</p>
+<pre><code>Each field includes metadata:
+    - unit: TimeUnit.value string (e.g., "seconds", "pixels")
+    - timeline_id: Timeline ID (for timeline columns)
+    - cmap_id: C-Map ID (for C-Map columns)
+
+Access metadata via: ``table.schema.field(col_name).metadata``</code></pre>
+<p>Examples: &gt;&gt;&gt; table = timeline.get_timestamp_table() &gt;&gt;&gt; table.column_names [‘axis’, ‘tl:1’, ‘notes’, ‘measures’]</p>
+<pre><code>&gt;&gt;&gt; # Include all attached C-Maps
+&gt;&gt;&gt; table = timeline.get_timestamp_table(conversion_maps=True)
+
+&gt;&gt;&gt; # Include specific C-Maps by target unit
+&gt;&gt;&gt; table = timeline.get_timestamp_table(conversion_maps=["inches", "cm"])
+
+&gt;&gt;&gt; # Access unit metadata
+&gt;&gt;&gt; table.schema.field('axis').metadata[b'unit']
+b'seconds'</code></pre>
+</section>
+<section id="timetoalign.Timeline.get_timestamp_table_filtered" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamp_table_filtered">get_timestamp_table_filtered</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamp_table_filtered(</span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>    event_filter,</span>
+<span id="cb59-3"><a href="#cb59-3" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb59-4"><a href="#cb59-4" aria-hidden="true" tabindex="-1"></a>    recursion_limit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb59-5"><a href="#cb59-5" aria-hidden="true" tabindex="-1"></a>    include_boundaries<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb59-6"><a href="#cb59-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate timestamps for filtered events only.</p>
+<p>.. deprecated:: This method is deprecated. Use <code>get_events(**filters)</code> combined with <code>get_timestamp_table()</code> instead. The <code>get_events()</code> method now supports arbitrary column filters via <code>**kwargs</code>.</p>
+<p>Applies an event filter before extracting coordinates from EventData. This enables efficient timestamp generation for subsets of events (e.g., only Note events, events above a certain duration, etc.).</p>
+<p>The filter is applied to each timeline in the hierarchy using either EventData.filter() (for dict filters) or EventData.where() (for PyArrow compute expressions).</p>
+<p>Args: event_filter: Filter to apply before extracting coordinates. - dict: Passed to EventData.filter() for simple filters. Example: {“event_type”: “Note”} or {“temporal_type”: “interval”} - pc.Expression: Passed to EventData.where() for complex filters. Example: pc.greater(pc.struct_field(pc.field(“start”), “value”), 10.0) conversion_maps: C-Maps to include as columns (see get_timestamp_table). recursion_limit: Maximum depth for child traversal. include_boundaries: If True, also include timeline boundary coordinates.</p>
+<p>Returns: PyArrow Table with timestamp data for filtered events only.</p>
+<p>Examples: &gt;&gt;&gt; # Dict filter: only Note events &gt;&gt;&gt; table = timeline.get_timestamp_table_filtered( … {“event_type”: “Note”} … )</p>
+<pre><code>&gt;&gt;&gt; # Dict filter: only interval events
+&gt;&gt;&gt; table = timeline.get_timestamp_table_filtered(
+...     {"temporal_type": "interval"}
+... )
+
+&gt;&gt;&gt; # PyArrow Expression: events starting after coordinate 10
+&gt;&gt;&gt; import pyarrow.compute as pc
+&gt;&gt;&gt; expr = pc.greater(
+...     pc.struct_field(pc.field("start"), "value"),
+...     10.0
+... )
+&gt;&gt;&gt; table = timeline.get_timestamp_table_filtered(expr)
+
+&gt;&gt;&gt; # Combine with C-Maps
+&gt;&gt;&gt; table = timeline.get_timestamp_table_filtered(
+...     {"event_type": "Note"},
+...     conversion_maps=["seconds"],
+... )</code></pre>
+</section>
+<section id="timetoalign.Timeline.get_timestamps" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamps">get_timestamps</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamps(</span>
+<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a>    coordinates<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb61-3"><a href="#cb61-3" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb61-4"><a href="#cb61-4" aria-hidden="true" tabindex="-1"></a>    recursion_limit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb61-5"><a href="#cb61-5" aria-hidden="true" tabindex="-1"></a>    include_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb61-6"><a href="#cb61-6" aria-hidden="true" tabindex="-1"></a>    include_boundaries<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb61-7"><a href="#cb61-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb61-8"><a href="#cb61-8" aria-hidden="true" tabindex="-1"></a>    units<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb61-9"><a href="#cb61-9" aria-hidden="true" tabindex="-1"></a>    include_ids<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb61-10"><a href="#cb61-10" aria-hidden="true" tabindex="-1"></a>    as_fractions<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb61-11"><a href="#cb61-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate timestamps as a pandas DataFrame with units in column names.</p>
+<p>Convenience wrapper around get_timestamp_table() for users who prefer working with pandas.</p>
+<p><strong>IdCoordinate support:</strong> When passing IdCoordinate objects whose <code>timeline_id</code> matches a child timeline, the offset is automatically applied. This enables the dead-simple pattern::</p>
+<pre><code>child_coords = [IdCoordinate(v, unit, "dgt_holes") for v in values]
+df = parent.get_timestamps(coordinates=child_coords)</code></pre>
+<p>Args: coordinates: CoordinateSpec or sequence of CoordinateSpec. Accepts IdCoordinate - if timeline_id matches a child, offset is auto-applied. conversion_maps: C-Maps to include as columns. Flexible input: - True: Include all attached conversion maps - str: Map ID or target unit name (e.g., “inches”, “seconds”) - TimeUnit: Find map by target unit enum - ConversionMap: Include the specific map - list: Mix of the above - None/False: No conversion maps recursion_limit: Maximum depth for child traversal. include_events: If True and coordinates is None, extract from events. include_boundaries: If True, include timeline boundary coordinates. units: If True (default), append units to column names like “name (unit)”. include_ids: If True (default), add event IDs as the DataFrame index. Each coordinate is matched to the nearest event at that coordinate, showing what each timestamp row corresponds to. as_fractions: If True, convert float values to Fraction objects for fraction number-type timelines. If None (default), auto-detect based on the timeline’s number_type.</p>
+<p>Returns: pandas DataFrame with units in column names (if units=True) and event IDs as the index (if include_ids=True). For fraction number-type timelines with as_fractions=True, coordinate columns contain Fraction objects instead of floats.</p>
+<p>Examples: &gt;&gt;&gt; df = timeline.get_timestamps() &gt;&gt;&gt; df.index.name ‘id’</p>
+</section>
+<section id="timetoalign.Timeline.get_timestamps_filtered" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamps_filtered">get_timestamps_filtered</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamps_filtered(</span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a>    event_filter,</span>
+<span id="cb63-3"><a href="#cb63-3" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb63-4"><a href="#cb63-4" aria-hidden="true" tabindex="-1"></a>    recursion_limit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb63-5"><a href="#cb63-5" aria-hidden="true" tabindex="-1"></a>    include_boundaries<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb63-6"><a href="#cb63-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate timestamps for filtered events as a pandas DataFrame.</p>
+<p>.. deprecated:: This method is deprecated. Use <code>get_events(**filters)</code> combined with <code>get_timestamps()</code> instead. The <code>get_events()</code> method now supports arbitrary column filters via <code>**kwargs</code>.</p>
+<p>Convenience wrapper around get_timestamp_table_filtered() for users who prefer working with pandas.</p>
+<p>Args: event_filter: Filter to apply (dict for simple, pc.Expression for complex). conversion_maps: C-Maps to include as columns (see get_timestamp_table). recursion_limit: Maximum depth for child traversal. include_boundaries: If True, include timeline boundary coordinates.</p>
+<p>Returns: pandas DataFrame with timestamps for filtered events.</p>
+<p>Examples: &gt;&gt;&gt; df = timeline.get_timestamps_filtered({“event_type”: “Note”}) &gt;&gt;&gt; df.head()</p>
+</section>
+<section id="timetoalign.Timeline.get_timestamps_of" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.get_timestamps_of">get_timestamps_of</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>Timeline.get_timestamps_of(event_ids)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get timestamps for multiple events, returned as a DataFrame.</p>
+<p>For each event, includes columns for start coordinate, end coordinate (if interval), event type, and temporal type.</p>
+<p>Args: event_ids: Sequence of event identifiers to look up.</p>
+<p>Returns: DataFrame indexed by event_id with columns: - <code>start</code>: Start coordinate value - <code>end</code>: End coordinate value (NaN for instant events) - <code>event_type</code>: The event type name - <code>temporal_type</code>: “instant” or “interval”</p>
+<p>Raises: KeyError: If any event ID is not found.</p>
+<p>Examples: &gt;&gt;&gt; df = timeline.get_timestamps_of([“note:000001”, “note:000002”]) &gt;&gt;&gt; df.loc[“note:000001”, “start”] 0.0</p>
+<p>See Also: get_timestamp_of: Get a single event’s timestamp. get_events: Filter events by type or coordinate range.</p>
+</section>
+<section id="timetoalign.Timeline.has_child" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.has_child">has_child</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>Timeline.has_child(child_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Check if a child with the given ID exists.</p>
+<p>Args: child_id: The child ID to check.</p>
+<p>Returns: True if such a child exists.</p>
+</section>
+<section id="timetoalign.Timeline.has_flow_map" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.has_flow_map">has_flow_map</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>Timeline.has_flow_map(<span class="bu">id</span><span class="op">=</span><span class="st">'default'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Check if a FlowMap with the given id is attached.</p>
+<p>Args: id: Identifier to check.</p>
+<p>Returns: True if a FlowMap with that id exists.</p>
+</section>
+<section id="timetoalign.Timeline.has_region" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.has_region">has_region</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>Timeline.has_region(name)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Check if a region exists.</p>
+<p>Args: name: Name of the region.</p>
+<p>Returns: True if the region exists.</p>
+</section>
+<section id="timetoalign.Timeline.iter_children" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.iter_children">iter_children</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>Timeline.iter_children(order<span class="op">=</span><span class="st">'sorted'</span>, recursion_limit<span class="op">=</span><span class="va">None</span>, include_self<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Iterate over child timelines.</p>
+<p>Args: order: Traversal order - “sorted” (by offset), “depth_first”, or “breadth_first”. recursion_limit: Maximum recursion depth. None for unlimited. include_self: If True, yield this timeline first.</p>
+<p>Yields: Tuples of (offset_coordinate, child_timeline).</p>
+</section>
+<section id="timetoalign.Timeline.iter_regions" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.iter_regions">iter_regions</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>Timeline.iter_regions()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Iterate over all regions in insertion order.</p>
+<p>Yields: Region objects.</p>
+</section>
+<section id="timetoalign.Timeline.list_children" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.list_children">list_children</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>Timeline.list_children()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>List child timeline IDs.</p>
+<p>Returns: List of child IDs in insertion order.</p>
+</section>
+<section id="timetoalign.Timeline.list_flow_maps" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.list_flow_maps">list_flow_maps</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>Timeline.list_flow_maps()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>List all attached FlowMap ids.</p>
+<p>Returns: List of id strings.</p>
+</section>
+<section id="timetoalign.Timeline.list_regions" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.list_regions">list_regions</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a>Timeline.list_regions()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>List all region names.</p>
+<p>Returns: List of region names in insertion order.</p>
+</section>
+<section id="timetoalign.Timeline.make_coordinate" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.make_coordinate">make_coordinate</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>Timeline.make_coordinate(value)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a Coordinate in this timeline’s unit.</p>
+<p>Public API for creating coordinates compatible with this timeline.</p>
+<p>Args: value: The numeric value for the coordinate.</p>
+<p>Returns: A Coordinate with this timeline’s unit.</p>
+</section>
+<section id="timetoalign.Timeline.query_events_hierarchical" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.query_events_hierarchical">query_events_hierarchical</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb74"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a>Timeline.query_events_hierarchical(</span>
+<span id="cb74-2"><a href="#cb74-2" aria-hidden="true" tabindex="-1"></a>    coord_range<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb74-3"><a href="#cb74-3" aria-hidden="true" tabindex="-1"></a>    event_types<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb74-4"><a href="#cb74-4" aria-hidden="true" tabindex="-1"></a>    include_children<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb74-5"><a href="#cb74-5" aria-hidden="true" tabindex="-1"></a>    recursion_limit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb74-6"><a href="#cb74-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Query events across the timeline hierarchy.</p>
+<p>Returns events from this timeline and all children, with coordinates adjusted to the root timeline’s coordinate system.</p>
+<p>From TTA manuscript: Hierarchical timelines should support querying events across the entire hierarchy with root-relative coordinates.</p>
+<p>Args: coord_range: Optional (min, max) range filter in ROOT coordinates. event_types: Optional set of event types to include. include_children: If True, include events from children. recursion_limit: Maximum depth for child traversal. None = unlimited.</p>
+<p>Returns: List of event dictionaries, each augmented with: - “source_timeline”: ID of the timeline containing the event - “root_start”: Root-relative start coordinate - “root_end”: Root-relative end coordinate (for intervals)</p>
+<p>Examples: &gt;&gt;&gt; # Get all notes in a range &gt;&gt;&gt; events = score.query_events_hierarchical( … coord_range=(16.0, 40.0), … event_types={“Note”}, … ) &gt;&gt;&gt; len(events) 127</p>
+</section>
+<section id="timetoalign.Timeline.resolve_subclass" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.resolve_subclass">resolve_subclass</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>Timeline.resolve_subclass(unit, number_type<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return the canonical Timeline subclass for a unit/number_type pair.</p>
+<p>Inspects all subclasses and selects the one whose <code>_allowed_units</code> includes <em>unit</em>. Among candidates the selection prefers, in order:</p>
+<ol type="1">
+<li>A class whose <code>_default_number_type</code> matches <em>number_type</em> (when supplied).</li>
+<li>The class with the <strong>smallest</strong> <code>_allowed_units</code> set (most specific domain).</li>
+</ol>
+<p>This ensures the six concrete types from <code>timetoalign.timelines.types</code> are returned rather than further-derived specialisations like <code>BeatGrid</code>.</p>
+<p>Falls back to the base <code>Timeline</code> if no subclass claims the unit.</p>
+<p>Args: unit: The time unit to look up. number_type: Optional number type for disambiguation (e.g.&nbsp;<code>NumberType.fraction</code> selects <code>ContinuousLogicalTimeline</code> over <code>DiscreteLogicalTimeline</code>).</p>
+<p>Returns: The canonical Timeline subclass that accepts <em>unit</em>.</p>
+<p>Examples: &gt;&gt;&gt; Timeline.resolve_subclass(TimeUnit.quarters, NumberType.fraction) &lt;class ‘…ContinuousLogicalTimeline’&gt; &gt;&gt;&gt; Timeline.resolve_subclass(TimeUnit.pixels) &lt;class ‘…DiscreteGraphicalTimeline’&gt;</p>
+</section>
+<section id="timetoalign.Timeline.summary" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.summary">summary</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb76"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb76-1"><a href="#cb76-1" aria-hidden="true" tabindex="-1"></a>Timeline.summary()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a summary of the timeline.</p>
+<p>Returns: Dict with timeline information.</p>
+</section>
+<section id="timetoalign.Timeline.to_dataframe" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.to_dataframe">to_dataframe</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>Timeline.to_dataframe(</span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>    coordinates<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb77-4"><a href="#cb77-4" aria-hidden="true" tabindex="-1"></a>    recursion_limit<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb77-5"><a href="#cb77-5" aria-hidden="true" tabindex="-1"></a>    include_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb77-6"><a href="#cb77-6" aria-hidden="true" tabindex="-1"></a>    include_boundaries<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb77-7"><a href="#cb77-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb77-8"><a href="#cb77-8" aria-hidden="true" tabindex="-1"></a>    columns<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb77-9"><a href="#cb77-9" aria-hidden="true" tabindex="-1"></a>    units<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb77-10"><a href="#cb77-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">format</span><span class="op">=</span><span class="st">'pandas'</span>,</span>
+<span id="cb77-11"><a href="#cb77-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate timestamps as a pandas DataFrame with formatted column names.</p>
+<p>This is the recommended high-level method for getting timestamp data. It builds on get_timestamp_table() and applies column formatting.</p>
+<p>Args: coordinates: Explicit coordinates to use as the axis. conversion_maps: C-Maps to include as columns. Defaults to True (all). recursion_limit: Maximum depth for child traversal. include_events: If True and coordinates is None, extract from events. include_boundaries: If True, include timeline boundary coordinates. columns: How to name the columns. Options: - None or ColumnNaming.name (default): Use timeline/cmap name - ColumnNaming.id: Use timeline/cmap id - Callable: Function taking (name, metadata_dict) -&gt; new_name - list[str]: Explicit column names units: If True (default), append units to column names like “name (unit)”. format: Output format. Currently only “pandas” is supported.</p>
+<p>Returns: pandas DataFrame with: - Columns named according to the <code>columns</code> parameter - Units appended if <code>units=True</code> - Integer columns using pandas nullable Int64 dtype</p>
+<p>Examples: &gt;&gt;&gt; df = timeline.to_dataframe() &gt;&gt;&gt; df.columns Index([‘axis (pixels)’, ‘dgt1 (pixels)’, ‘pixels_to_inches (inches)’])</p>
+<pre><code>&gt;&gt;&gt; # Without units in column names
+&gt;&gt;&gt; df = timeline.to_dataframe(units=False)
+&gt;&gt;&gt; df.columns
+Index(['axis', 'dgt1', 'pixels_to_inches'])</code></pre>
+</section>
+<section id="timetoalign.Timeline.to_dict" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.to_dict">to_dict</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a>Timeline.to_dict()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Convert timeline to a dictionary for serialization.</p>
+<p>Returns: A dictionary representation of the timeline.</p>
+</section>
+<section id="timetoalign.Timeline.to_typed" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.to_typed">to_typed</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>Timeline.to_typed()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return this timeline re-instantiated as the appropriate typed subclass.</p>
+<p>Uses the timeline’s unit and number type to determine the correct concrete subclass (e.g., <code>ContinuousPhysicalTimeline</code> for seconds/float). If the timeline is already an instance of the correct subclass, returns <code>self</code> unchanged.</p>
+<p>This is useful after deserialization (e.g., <code>Timeline.from_dict()</code>) or when working with generic <code>Timeline</code> instances that should carry domain-specific type information.</p>
+<p>Note: Only the timeline object itself is re-typed. Events, children, conversion maps, regions, and metadata are preserved. Children are transferred as-is (not recursively re-typed).</p>
+<p>Returns: A Timeline instance of the appropriate typed subclass, or <code>self</code> if it is already the correct type.</p>
+<p>Examples: &gt;&gt;&gt; tl = Timeline(length=10.0, unit=TimeUnit.seconds) &gt;&gt;&gt; typed = tl.to_typed() &gt;&gt;&gt; type(typed).__name__ ‘ContinuousPhysicalTimeline’ &gt;&gt;&gt; typed.is_continuous True</p>
+<pre><code>&gt;&gt;&gt; # Already typed -- returns self
+&gt;&gt;&gt; cpt = ContinuousPhysicalTimeline(length=10.0)
+&gt;&gt;&gt; cpt.to_typed() is cpt
+True</code></pre>
+</section>
+<section id="timetoalign.Timeline.unfold" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.unfold">unfold</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb82"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a>Timeline.unfold(coord, <span class="bu">id</span><span class="op">=</span><span class="st">'default'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Convert a folded coordinate to unfolded coordinates.</p>
+<p>Convenience method that delegates to the attached FlowMap. Since repeats can cause a folded coordinate to appear multiple times in the unfolded timeline, this returns a list.</p>
+<p>Args: coord: Coordinate in the folded timeline. id: Which FlowMap to use.</p>
+<p>Returns: List of coordinates in the unfolded timeline.</p>
+<p>Raises: ValueError: If no FlowMap with the given id is attached.</p>
+</section>
+<section id="timetoalign.Timeline.validate_child" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Timeline.validate_child">validate_child</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a>Timeline.validate_child(child, offset)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Validate that a timeline can be added as a child.</p>
+<p>From the TTA manuscript (Section 3.4 - Nested Timelines): “A timeline can accommodate not only events but also other timelines, called Children, as long as they use the same measuring unit.”</p>
+<p>For cross-domain relationships (e.g., physical to logical), use TimelineGroup instead of parent-child nesting.</p>
+<p>Args: child: The timeline to validate. offset: The proposed start coordinate.</p>
+<p>Raises: TypeError: If child is not a Timeline. ValueError: If units don’t match or child already has a parent.</p>
+
+
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button,
+          { trigger: "manual",
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined;
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              }
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            }
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

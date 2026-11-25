@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>beatgrid – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html">
+<span class="menu-text">Home</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html">
+<span class="menu-text">Tutorials</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html">
+<span class="menu-text">How-To Guides</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html">
+<span class="menu-text">Explanation</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="../reference.html" aria-current="page">
+<span class="menu-text">API Reference</span></a>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/BeatGrid.html">BeatGrid</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container">
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentAnchor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentAnchor</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentBundle.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentBundle</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/BeatGrid.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">BeatGrid</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ChainMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ChainMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimFilter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousPhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousPhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ConversionMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConversionMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Coordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateSpec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateSpec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateValue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateValue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscretePhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscretePhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Domain.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Domain</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EepNotesLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EepNotesLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventData.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/GraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LinearMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LinearMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchClaim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaim</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchfileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchfileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchGraph.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchGraph</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchMetadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchMetadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/NumberType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NumberType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PerfectAlignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerfectAlignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PiecewiseMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewiseMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScalarMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScopedId</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SecondsToSamples.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SecondsToSamples</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ShiftMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShiftMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SingleStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SingleStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TableMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TableMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaDictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaDictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaJsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaJsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Timeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineGroup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineGroup</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineIdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineIdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimeUnit.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeUnit</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/WarpMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">WarpMap</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+
+  <ul>
+  <li><a href="#timetoalign.BeatGrid" id="toc-timetoalign.BeatGrid" class="nav-link active" data-scroll-target="#timetoalign.BeatGrid">BeatGrid</a>
+  <ul>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#timetoalign.BeatGrid.beat_at" id="toc-timetoalign.BeatGrid.beat_at" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.beat_at">beat_at</a></li>
+  <li><a href="#timetoalign.BeatGrid.beat_at_float" id="toc-timetoalign.BeatGrid.beat_at_float" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.beat_at_float">beat_at_float</a></li>
+  <li><a href="#timetoalign.BeatGrid.beat_at_seconds" id="toc-timetoalign.BeatGrid.beat_at_seconds" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.beat_at_seconds">beat_at_seconds</a></li>
+  <li><a href="#timetoalign.BeatGrid.beat_quarters" id="toc-timetoalign.BeatGrid.beat_quarters" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.beat_quarters">beat_quarters</a></li>
+  <li><a href="#timetoalign.BeatGrid.beat_seconds" id="toc-timetoalign.BeatGrid.beat_seconds" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.beat_seconds">beat_seconds</a></li>
+  <li><a href="#timetoalign.BeatGrid.downbeat_seconds" id="toc-timetoalign.BeatGrid.downbeat_seconds" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.downbeat_seconds">downbeat_seconds</a></li>
+  <li><a href="#timetoalign.BeatGrid.export_to_csv" id="toc-timetoalign.BeatGrid.export_to_csv" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.export_to_csv">export_to_csv</a></li>
+  <li><a href="#timetoalign.BeatGrid.from_tempo" id="toc-timetoalign.BeatGrid.from_tempo" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.from_tempo">from_tempo</a></li>
+  <li><a href="#timetoalign.BeatGrid.materialize_beats" id="toc-timetoalign.BeatGrid.materialize_beats" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.materialize_beats">materialize_beats</a></li>
+  <li><a href="#timetoalign.BeatGrid.materialize_measures" id="toc-timetoalign.BeatGrid.materialize_measures" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.materialize_measures">materialize_measures</a></li>
+  <li><a href="#timetoalign.BeatGrid.measure_at" id="toc-timetoalign.BeatGrid.measure_at" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.measure_at">measure_at</a></li>
+  <li><a href="#timetoalign.BeatGrid.measure_at_seconds" id="toc-timetoalign.BeatGrid.measure_at_seconds" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.measure_at_seconds">measure_at_seconds</a></li>
+  <li><a href="#timetoalign.BeatGrid.measure_quarters" id="toc-timetoalign.BeatGrid.measure_quarters" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.measure_quarters">measure_quarters</a></li>
+  <li><a href="#timetoalign.BeatGrid.measure_seconds" id="toc-timetoalign.BeatGrid.measure_seconds" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.measure_seconds">measure_seconds</a></li>
+  <li><a href="#timetoalign.BeatGrid.metrical_position" id="toc-timetoalign.BeatGrid.metrical_position" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.metrical_position">metrical_position</a></li>
+  <li><a href="#timetoalign.BeatGrid.mn_at" id="toc-timetoalign.BeatGrid.mn_at" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.mn_at">mn_at</a></li>
+  <li><a href="#timetoalign.BeatGrid.quarter_at" id="toc-timetoalign.BeatGrid.quarter_at" class="nav-link" data-scroll-target="#timetoalign.BeatGrid.quarter_at">quarter_at</a></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/BeatGrid.html">BeatGrid</a></li></ol></nav></header>
+
+
+
+
+<section id="timetoalign.BeatGrid" class="level1">
+<h1>BeatGrid</h1>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>BeatGrid(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    length,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    beats_per_measure<span class="op">=</span><span class="dv">4</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    beat_unit<span class="op">=</span>Fraction(<span class="dv">1</span>, <span class="dv">4</span>),</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    start_measure<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    start_mn<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    anacrusis_quarters<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A metrical grid as a ContinuousLogicalTimeline in quarters.</p>
+<p>A BeatGrid represents metrical structure: measures, beats, and their numbering. It is designed to be added as a child to any parent timeline (physical, logical, or graphical).</p>
+<p>The coordinate system uses quarter notes (Fractions) for exact rhythmic representation. Built-in C-Maps automatically convert quarters to measure numbers and beat positions.</p>
+<p><strong>Architecture</strong>: BeatGrid now uses the generalized MetricMap internally, which correctly handles: - Proper integer types for measure counts (MC) - Proper Fraction types for beat positions - Anacrusis (pickup measures) - Varying time signatures (via MetricMap.from_boundaries)</p>
+<p>Attributes: beats_per_measure: Number of beats per measure. beat_unit: The note value of one beat (e.g., Fraction(1, 4) for quarter note). start_measure: The number of the first measure (default 1). quarters_per_measure: Derived: quarters per measure.</p>
+<p>C-Maps (automatically created): - quarters -&gt; mc (MetricMap): Integer measure count - quarters -&gt; beat (BeatInMeasureMap): Beat position as Fraction (1-indexed) - quarters -&gt; {mc, beat} (MetricalPositionMap): Combined output</p>
+<p>Examples: &gt;&gt;&gt; from fractions import Fraction &gt;&gt;&gt; from timetoalign import ContinuousPhysicalTimeline, TimeUnit &gt;&gt;&gt; &gt;&gt;&gt; # Create a beat grid for 4/4 time, 222 measures &gt;&gt;&gt; grid = BeatGrid( … length=Fraction(888, 1), # 888 quarter notes … beats_per_measure=4, … ) &gt;&gt;&gt; &gt;&gt;&gt; # Query measure and beat at quarter 100 &gt;&gt;&gt; grid.measure_at(100) # -&gt; 26 (integer!) &gt;&gt;&gt; grid.beat_at(100) # -&gt; Fraction(1, 1) (proper Fraction!) &gt;&gt;&gt; grid.metrical_position(100) # -&gt; {“mc”: 26, “beat”: Fraction(1, 1)} &gt;&gt;&gt; &gt;&gt;&gt; # Attach to audio timeline &gt;&gt;&gt; audio = ContinuousPhysicalTimeline(length=300.0, unit=TimeUnit.seconds) &gt;&gt;&gt; audio.add_child(grid, offset=1.3) # First beat at 1.3 seconds &gt;&gt;&gt; &gt;&gt;&gt; # Create from tempo &gt;&gt;&gt; grid2 = BeatGrid.from_tempo( … tempo_bpm=120.0, … beats_per_measure=4, … length_quarters=Fraction(888, 1), … )</p>
+<section id="attributes" class="level2">
+<h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.beat_unit">beat_unit</a></td>
+<td>Note value of one beat (fraction of whole note).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.beats_per_measure">beats_per_measure</a></td>
+<td>Number of beats per measure.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.meter_map">meter_map</a></td>
+<td>The underlying MetricMap (for advanced access).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.n_beats">n_beats</a></td>
+<td>Total number of beats in this grid.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.n_measures">n_measures</a></td>
+<td>Number of complete measures in this grid.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.quarters_per_beat">quarters_per_beat</a></td>
+<td>Quarter notes per beat.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.quarters_per_measure">quarters_per_measure</a></td>
+<td>Quarter notes per measure.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.start_measure">start_measure</a></td>
+<td>MC (measure count) of the first measure.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.start_mn">start_mn</a></td>
+<td>MN (measure number label) of the first measure.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.tempo_bpm">tempo_bpm</a></td>
+<td>Tempo in BPM, if created via from_tempo().</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.beat_at">beat_at</a></td>
+<td>Get the beat position within the measure at a given quarter-note position.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.beat_at_float">beat_at_float</a></td>
+<td>Get the beat position as a float (for backward compatibility).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.beat_at_seconds">beat_at_seconds</a></td>
+<td>Get the beat number within the measure at a given time in seconds.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.beat_quarters">beat_quarters</a></td>
+<td>All beat positions in quarters. Vectorized O(1).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.beat_seconds">beat_seconds</a></td>
+<td>All beat times in seconds. Vectorized O(1).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.downbeat_seconds">downbeat_seconds</a></td>
+<td>Alias for measure_seconds(). All downbeat times in seconds.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.export_to_csv">export_to_csv</a></td>
+<td>Export BeatGrid data to a CSV file.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.from_tempo">from_tempo</a></td>
+<td>Create a BeatGrid from tempo information.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.materialize_beats">materialize_beats</a></td>
+<td>Add Beat events to this timeline at each beat position.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.materialize_measures">materialize_measures</a></td>
+<td>Add Measure events to this timeline at each measure boundary.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.measure_at">measure_at</a></td>
+<td>Get the measure count (MC) at a given quarter-note position.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.measure_at_seconds">measure_at_seconds</a></td>
+<td>Get the measure number at a given time in seconds.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.measure_quarters">measure_quarters</a></td>
+<td>All measure start positions in quarters. Vectorized O(1).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.measure_seconds">measure_seconds</a></td>
+<td>All measure start times in seconds. Vectorized O(1).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.metrical_position">metrical_position</a></td>
+<td>Get the full metrical position (mc and beat) at a given quarter position.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.BeatGrid.mn_at">mn_at</a></td>
+<td>Get the measure number label (MN) at a given quarter-note position.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.BeatGrid.quarter_at">quarter_at</a></td>
+<td>Get the quarter-note position for a given measure and beat.</td>
+</tr>
+</tbody>
+</table>
+<section id="timetoalign.BeatGrid.beat_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.beat_at">beat_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.beat_at(quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the beat position within the measure at a given quarter-note position.</p>
+<p>Args: quarters: Position in quarter notes.</p>
+<p>Returns: The beat position as Fraction (1-indexed, e.g., Fraction(3, 2) for beat 1.5).</p>
+</section>
+<section id="timetoalign.BeatGrid.beat_at_float" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.beat_at_float">beat_at_float</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.beat_at_float(quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the beat position as a float (for backward compatibility).</p>
+<p>Args: quarters: Position in quarter notes.</p>
+<p>Returns: The beat position (1-indexed, may be fractional).</p>
+</section>
+<section id="timetoalign.BeatGrid.beat_at_seconds" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.beat_at_seconds">beat_at_seconds</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.beat_at_seconds(seconds)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the beat number within the measure at a given time in seconds.</p>
+<p>Args: seconds: Time position in seconds.</p>
+<p>Returns: Beat number (1-indexed).</p>
+<p>Raises: RuntimeError: If no tempo information is available. ValueError: If seconds is before the first beat.</p>
+</section>
+<section id="timetoalign.BeatGrid.beat_quarters" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.beat_quarters">beat_quarters</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.beat_quarters()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>All beat positions in quarters. Vectorized O(1).</p>
+<p>Returns: numpy array of beat positions in quarter notes.</p>
+<p>Examples: &gt;&gt;&gt; grid = BeatGrid(length=16, beats_per_measure=4) &gt;&gt;&gt; grid.beat_quarters() array([ 0., 1., 2., 3., 4., 5., …])</p>
+</section>
+<section id="timetoalign.BeatGrid.beat_seconds" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.beat_seconds">beat_seconds</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.beat_seconds()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>All beat times in seconds. Vectorized O(1).</p>
+<p>Requires the grid to have been created with from_tempo() and start_seconds, or to have a tempo_map attached.</p>
+<p>Returns: numpy array of beat times in seconds.</p>
+<p>Raises: RuntimeError: If no tempo information is available.</p>
+<p>Examples: &gt;&gt;&gt; grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=60, start_seconds=0.5) &gt;&gt;&gt; grid.beat_seconds()[:4] array([0.5 , 1.0 , 1.5 , 2.0 ])</p>
+</section>
+<section id="timetoalign.BeatGrid.downbeat_seconds" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.downbeat_seconds">downbeat_seconds</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.downbeat_seconds()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Alias for measure_seconds(). All downbeat times in seconds.</p>
+</section>
+<section id="timetoalign.BeatGrid.export_to_csv" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.export_to_csv">export_to_csv</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.export_to_csv(filepath, <span class="op">*</span>, <span class="bu">format</span><span class="op">=</span><span class="st">'default'</span>, labels<span class="op">=</span><span class="st">'beats'</span>, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Export BeatGrid data to a CSV file.</p>
+<p>Extends the base Timeline.export_to_csv() with special formats for audio annotation tools.</p>
+<p>Args: filepath: Output CSV file path. format: Output format. Options: - “default”: Standard timestamp table (inherited behavior). - “sonic_visualiser”: Sonic Visualiser / Audacity label track. Two columns (TIME, LABEL) with header row. - “tilia”: Tilia beat track format. Four columns (time, measure, beat, is_first_in_measure). labels: What to export when using “sonic_visualiser” format: - “beats”: All beat positions with labels like “M1B1”, “M1B2”. - “measures”: Measure start positions with labels like “M1”, “M2”. - “both”: Both beats and measures. **kwargs: Additional arguments passed to base export_to_csv() when using “default” format.</p>
+<p>Returns: Number of rows written.</p>
+<p>Raises: RuntimeError: If format requires tempo but none is available. ValueError: If format is not recognized.</p>
+<p>Examples: &gt;&gt;&gt; grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=60)</p>
+<pre><code>&gt;&gt;&gt; # Export for Sonic Visualiser
+&gt;&gt;&gt; grid.export_to_csv("beats.csv", format="sonic_visualiser")
+120
+
+&gt;&gt;&gt; # Export for Tilia
+&gt;&gt;&gt; grid.export_to_csv("beats.csv", format="tilia")
+120
+
+&gt;&gt;&gt; # Standard timestamp table
+&gt;&gt;&gt; grid.export_to_csv("data.csv", format="default")
+120</code></pre>
+</section>
+<section id="timetoalign.BeatGrid.from_tempo" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.from_tempo">from_tempo</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.from_tempo(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    tempo_bpm,</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    beats_per_measure<span class="op">=</span><span class="dv">4</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    beat_unit<span class="op">=</span>Fraction(<span class="dv">1</span>, <span class="dv">4</span>),</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    length_seconds<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    length_quarters<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    start_seconds<span class="op">=</span><span class="fl">0.0</span>,</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    start_measure<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    start_mn<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    anacrusis_quarters<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a BeatGrid from tempo information.</p>
+<p>You must provide either length_seconds or length_quarters.</p>
+<p>Args: tempo_bpm: Tempo in beats per minute. beats_per_measure: Number of beats per measure. Default 4. beat_unit: Note value of one beat. Default 1/4 (quarter note). length_seconds: Duration in seconds (converted using tempo). If start_seconds &gt; 0, this should be the TOTAL audio duration; the grid will span from start_seconds to length_seconds. length_quarters: Duration in quarter notes. start_seconds: Offset in seconds where the first beat occurs. Default 0.0. Used by beat_seconds() and measure_seconds(). start_measure: MC of the first measure. Default 1. start_mn: MN label of the first measure. Default: same as start_measure. anacrusis_quarters: If set, first measure is shorter (pickup). uid: Explicit unique identifier. name: Human-readable name.</p>
+<p>Returns: A new BeatGrid instance with vectorized accessors for beat/measure times.</p>
+<p>Raises: ValueError: If neither length_seconds nor length_quarters is provided. ValueError: If both length_seconds and length_quarters are provided.</p>
+<p>Examples: &gt;&gt;&gt; # Audio track: 279 seconds, first beat at 0.092s, 160 BPM, 4/4 &gt;&gt;&gt; grid = BeatGrid.from_tempo( … tempo_bpm=160.0, … beats_per_measure=4, … length_seconds=279.0, … start_seconds=0.092, … ) &gt;&gt;&gt; grid.n_measures 186 &gt;&gt;&gt; grid.beat_seconds()[:4] array([0.092, 0.467, 0.842, 1.217]) &gt;&gt;&gt; grid.measure_seconds()[:4] array([0.092, 1.592, 3.092, 4.592])</p>
+</section>
+<section id="timetoalign.BeatGrid.materialize_beats" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.materialize_beats">materialize_beats</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.materialize_beats(include_downbeats_only<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add Beat events to this timeline at each beat position.</p>
+<p>Args: include_downbeats_only: If True, only create events for beat 1 (downbeats).</p>
+<p>Returns: Number of beat events created.</p>
+</section>
+<section id="timetoalign.BeatGrid.materialize_measures" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.materialize_measures">materialize_measures</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.materialize_measures()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add Measure events to this timeline at each measure boundary.</p>
+<p>Creates IntervalEvents for each complete measure.</p>
+<p>Returns: Number of measure events created.</p>
+</section>
+<section id="timetoalign.BeatGrid.measure_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.measure_at">measure_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.measure_at(quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the measure count (MC) at a given quarter-note position.</p>
+<p>Args: quarters: Position in quarter notes.</p>
+<p>Returns: The measure count (integer, 1-indexed by default).</p>
+</section>
+<section id="timetoalign.BeatGrid.measure_at_seconds" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.measure_at_seconds">measure_at_seconds</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.measure_at_seconds(seconds)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the measure number at a given time in seconds.</p>
+<p>Args: seconds: Time position in seconds.</p>
+<p>Returns: Measure count (MC, 1-indexed by default).</p>
+<p>Raises: RuntimeError: If no tempo information is available. ValueError: If seconds is before the first beat.</p>
+</section>
+<section id="timetoalign.BeatGrid.measure_quarters" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.measure_quarters">measure_quarters</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.measure_quarters()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>All measure start positions in quarters. Vectorized O(1).</p>
+<p>Returns: numpy array of measure start positions in quarter notes.</p>
+<p>Examples: &gt;&gt;&gt; grid = BeatGrid(length=16, beats_per_measure=4) &gt;&gt;&gt; grid.measure_quarters() array([ 0., 4., 8., 12.])</p>
+</section>
+<section id="timetoalign.BeatGrid.measure_seconds" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.measure_seconds">measure_seconds</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.measure_seconds()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>All measure start times in seconds. Vectorized O(1).</p>
+<p>Requires the grid to have been created with from_tempo() and start_seconds, or to have a tempo_map attached.</p>
+<p>Returns: numpy array of measure start times in seconds.</p>
+<p>Raises: RuntimeError: If no tempo information is available.</p>
+<p>Examples: &gt;&gt;&gt; grid = BeatGrid.from_tempo(tempo_bpm=120, beats_per_measure=4, … length_seconds=60, start_seconds=0.5) &gt;&gt;&gt; grid.measure_seconds()[:4] array([0.5 , 2.5 , 4.5 , 6.5 ])</p>
+</section>
+<section id="timetoalign.BeatGrid.metrical_position" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.metrical_position">metrical_position</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.metrical_position(quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the full metrical position (mc and beat) at a given quarter position.</p>
+<p>Args: quarters: Position in quarter notes.</p>
+<p>Returns: Dictionary with ‘mc’ (int), ‘beat’ (Fraction), and ‘mn’ (str) keys.</p>
+</section>
+<section id="timetoalign.BeatGrid.mn_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.mn_at">mn_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.mn_at(quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the measure number label (MN) at a given quarter-note position.</p>
+<p>Args: quarters: Position in quarter notes.</p>
+<p>Returns: The measure number label (string like “1”, “0”, “1a”).</p>
+</section>
+<section id="timetoalign.BeatGrid.quarter_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.BeatGrid.quarter_at">quarter_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>BeatGrid.quarter_at(measure, beat<span class="op">=</span>Fraction(<span class="dv">1</span>, <span class="dv">1</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the quarter-note position for a given measure and beat.</p>
+<p>Args: measure: Measure count (MC, uses start_measure as reference). beat: Beat within the measure (1-indexed). Default Fraction(1, 1).</p>
+<p>Returns: Position in quarter notes.</p>
+<p>Raises: ValueError: If measure &lt; start_measure or beat &lt; 1.</p>
+
+
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button,
+          { trigger: "manual",
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined;
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              }
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            }
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

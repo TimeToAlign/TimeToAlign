@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-a0f9fd0d421825b736dc1bbcbcba2219.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -364,7 +364,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="how-to-use-advanced-conversion-maps" class="level1">
 <h1>How to Use Advanced Conversion Maps</h1>
 <p>Complex <code>ConversionMap</code> chaining, piecewise maps, and vectorised operations for transforming coordinates.</p>
-<div id="254fc88b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:26.980356Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:26.979340Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.658092Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.656653Z&quot;}}" data-execution_count="1">
+<div id="911cc133" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:20.968402Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:20.968198Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.638662Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.637287Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -381,7 +381,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="linearmap-scale-and-offset" class="level2">
 <h2 class="anchored" data-anchor-id="linearmap-scale-and-offset">LinearMap: Scale and Offset</h2>
 <p>Affine transformation: <code>y = scalar * x + offset</code></p>
-<div id="ce1e2d2e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.666160Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.665156Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.709125Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.706105Z&quot;}}" data-execution_count="2">
+<div id="5b539e33" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.641846Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.641423Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.662359Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.661118Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>recording_to_score <span class="op">=</span> LinearMap(</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    scalar<span class="op">=</span><span class="fl">2.0</span>,</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    offset<span class="op">=</span><span class="fl">0.5</span>,</span>
@@ -437,7 +437,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="1054523f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.720129Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.718133Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.737429Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.734130Z&quot;}}" data-execution_count="3">
+<div id="e23d23b3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.665841Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.665437Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.672023Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.670923Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>score_to_recording <span class="op">=</span> recording_to_score.inverse()</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"forward"</span>: <span class="ss">f"y = </span><span class="sc">{</span>recording_to_score<span class="sc">.</span>scalar<span class="sc">}</span><span class="ss">x + </span><span class="sc">{</span>recording_to_score<span class="sc">.</span>offset<span class="sc">}</span><span class="ss">"</span>,</span>
@@ -451,7 +451,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shiftmap-pure-offset" class="level2">
 <h2 class="anchored" data-anchor-id="shiftmap-pure-offset">ShiftMap: Pure Offset</h2>
 <p><code>y = x + offset</code> — useful for anacrusis adjustment.</p>
-<div id="b494ff61" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.748444Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.747431Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.767366Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.765819Z&quot;}}" data-execution_count="4">
+<div id="86be2504" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.675211Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.674942Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.687633Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.686266Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>anacrusis <span class="op">=</span> ShiftMap(offset<span class="op">=-</span><span class="fl">0.5</span>, source_unit<span class="op">=</span><span class="st">"quarters"</span>, target_unit<span class="op">=</span><span class="st">"quarters"</span>)</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>notation_beats <span class="op">=</span> [<span class="fl">0.5</span>, <span class="fl">1.0</span>, <span class="fl">1.5</span>, <span class="fl">2.0</span>, <span class="fl">2.5</span>, <span class="fl">3.0</span>]</span>
@@ -514,7 +514,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="tablemap-non-linear-mapping" class="level2">
 <h2 class="anchored" data-anchor-id="tablemap-non-linear-mapping">TableMap: Non-Linear Mapping</h2>
 <p>Explicit anchor points with interpolation. Ideal for tempo-varying conversions.</p>
-<div id="e863b519" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.774399Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.772400Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.803386Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.800351Z&quot;}}" data-execution_count="5">
+<div id="5a5e6860" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.690802Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.690381Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.707052Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.705619Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>tempo_map <span class="op">=</span> TableMap(</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    x_values<span class="op">=</span>[<span class="dv">0</span>, <span class="dv">480</span>, <span class="dv">960</span>, <span class="dv">1440</span>],</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    y_values<span class="op">=</span>[<span class="fl">0.0</span>, <span class="fl">0.5</span>, <span class="fl">1.5</span>, <span class="fl">2.0</span>],</span>
@@ -583,7 +583,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="44703dea" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.815400Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.815400Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.860871Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.857845Z&quot;}}" data-execution_count="6">
+<div id="c74f591b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.709901Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.709525Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.728231Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.726835Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># From MIDI-style tempo events</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>tempo_map <span class="op">=</span> TableMap.from_tempo_changes(</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    tick_positions<span class="op">=</span>[<span class="dv">0</span>, <span class="dv">960</span>],</span>
@@ -703,7 +703,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<div id="0b6e7538" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.871889Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.869880Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.914673Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.912652Z&quot;}}" data-execution_count="7">
+<div id="4802234d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.731512Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.731116Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.754663Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.753169Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> [<span class="dv">0</span>, <span class="dv">10</span>, <span class="dv">20</span>, <span class="dv">30</span>]</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>y <span class="op">=</span> [<span class="dv">0</span>, <span class="dv">3</span>, <span class="dv">7</span>, <span class="dv">10</span>]</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -773,7 +773,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="chainmap-composing-maps" class="level2">
 <h2 class="anchored" data-anchor-id="chainmap-composing-maps">ChainMap: Composing Maps</h2>
 <p>Chain maps with <code>&gt;&gt;</code> or <code>.then()</code>: <code>f(g(x))</code></p>
-<div id="0e9319ff" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.920667Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.919675Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.937957Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.935937Z&quot;}}" data-execution_count="8">
+<div id="a15d2766" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.757798Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.757422Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.774469Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.773262Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ticks_to_quarters <span class="op">=</span> TicksToQuarters(ppq<span class="op">=</span><span class="dv">480</span>)</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>quarters_to_seconds <span class="op">=</span> ScalarMap(</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    scalar<span class="op">=</span><span class="fl">0.5</span>, source_unit<span class="op">=</span><span class="st">"quarters"</span>, target_unit<span class="op">=</span><span class="st">"seconds"</span></span>
@@ -839,7 +839,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="4457c6bc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.945587Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.944463Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.961303Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.960279Z&quot;}}" data-execution_count="9">
+<div id="c9b7fa20" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.778003Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.777628Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.791544Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.790569Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Inverse of a chain reverses order and inverts each map</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>seconds_to_ticks <span class="op">=</span> ticks_to_seconds.inverse()</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -897,7 +897,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="piecewisemap-region-based-mapping" class="level2">
 <h2 class="anchored" data-anchor-id="piecewisemap-region-based-mapping">PiecewiseMap: Region-Based Mapping</h2>
-<div id="0c63be73" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.966301Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.966301Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:28.989832Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:28.988299Z&quot;}}" data-execution_count="10">
+<div id="8a3e1bd6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.795085Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.794706Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.811005Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.809569Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>slow <span class="op">=</span> ScalarMap(scalar<span class="op">=</span><span class="fl">2.0</span>)</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>normal <span class="op">=</span> LinearMap(scalar<span class="op">=</span><span class="fl">1.0</span>, offset<span class="op">=</span><span class="fl">10.0</span>)</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>fast <span class="op">=</span> LinearMap(scalar<span class="op">=</span><span class="fl">0.5</span>, offset<span class="op">=</span><span class="fl">25.0</span>)</span>
@@ -980,7 +980,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="vectorised-array-operations" class="level2">
 <h2 class="anchored" data-anchor-id="vectorised-array-operations">Vectorised Array Operations</h2>
-<div id="03a678aa" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:31:28.994275Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:31:28.994275Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:31:29.004401Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:31:29.003382Z&quot;}}" data-execution_count="11">
+<div id="c2c1c818" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:40:21.813630Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:40:21.813315Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:40:21.820456Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:40:21.819240Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>sample_rate <span class="op">=</span> <span class="dv">44100</span></span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>seconds <span class="op">=</span> np.linspace(<span class="dv">0</span>, <span class="dv">60</span>, <span class="dv">61</span>)</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>s2samples <span class="op">=</span> SecondsToSamples(sample_rate<span class="op">=</span>sample_rate)</span>

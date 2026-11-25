@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>timelinegroup – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html">
+<span class="menu-text">Home</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html">
+<span class="menu-text">Tutorials</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html">
+<span class="menu-text">How-To Guides</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html">
+<span class="menu-text">Explanation</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="../reference.html" aria-current="page">
+<span class="menu-text">API Reference</span></a>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/TimelineGroup.html">TimelineGroup</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container">
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentAnchor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentAnchor</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentBundle.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentBundle</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/BeatGrid.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGrid</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ChainMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ChainMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimFilter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousPhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousPhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ConversionMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConversionMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Coordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateSpec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateSpec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateValue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateValue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscretePhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscretePhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Domain.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Domain</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EepNotesLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EepNotesLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventData.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/GraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LinearMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LinearMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchClaim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaim</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchfileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchfileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchGraph.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchGraph</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchMetadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchMetadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/NumberType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NumberType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PerfectAlignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerfectAlignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PiecewiseMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewiseMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScalarMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScopedId</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SecondsToSamples.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SecondsToSamples</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ShiftMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShiftMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SingleStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SingleStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TableMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TableMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaDictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaDictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaJsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaJsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Timeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineGroup.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">TimelineGroup</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineIdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineIdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimeUnit.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeUnit</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/WarpMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">WarpMap</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+
+  <ul>
+  <li><a href="#timetoalign.TimelineGroup" id="toc-timetoalign.TimelineGroup" class="nav-link active" data-scroll-target="#timetoalign.TimelineGroup">TimelineGroup</a>
+  <ul>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#timetoalign.TimelineGroup.add_timeline" id="toc-timetoalign.TimelineGroup.add_timeline" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.add_timeline">add_timeline</a></li>
+  <li><a href="#timetoalign.TimelineGroup.convert" id="toc-timetoalign.TimelineGroup.convert" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.convert">convert</a></li>
+  <li><a href="#timetoalign.TimelineGroup.diagram" id="toc-timetoalign.TimelineGroup.diagram" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.diagram">diagram</a></li>
+  <li><a href="#timetoalign.TimelineGroup.from_reference" id="toc-timetoalign.TimelineGroup.from_reference" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.from_reference">from_reference</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_events" id="toc-timetoalign.TimelineGroup.get_events" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_events">get_events</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_range" id="toc-timetoalign.TimelineGroup.get_range" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_range">get_range</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timeline" id="toc-timetoalign.TimelineGroup.get_timeline" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timeline">get_timeline</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timestamp" id="toc-timetoalign.TimelineGroup.get_timestamp" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timestamp">get_timestamp</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timestamp_at" id="toc-timetoalign.TimelineGroup.get_timestamp_at" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timestamp_at">get_timestamp_at</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timestamp_of" id="toc-timetoalign.TimelineGroup.get_timestamp_of" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timestamp_of">get_timestamp_of</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timestamp_table" id="toc-timetoalign.TimelineGroup.get_timestamp_table" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timestamp_table">get_timestamp_table</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timestamps_at" id="toc-timetoalign.TimelineGroup.get_timestamps_at" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timestamps_at">get_timestamps_at</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timestamps_df" id="toc-timetoalign.TimelineGroup.get_timestamps_df" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timestamps_df">get_timestamps_df</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_timestamps_of" id="toc-timetoalign.TimelineGroup.get_timestamps_of" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_timestamps_of">get_timestamps_of</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_unified_interval_stamp" id="toc-timetoalign.TimelineGroup.get_unified_interval_stamp" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_unified_interval_stamp">get_unified_interval_stamp</a></li>
+  <li><a href="#timetoalign.TimelineGroup.get_unified_timestamp" id="toc-timetoalign.TimelineGroup.get_unified_timestamp" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.get_unified_timestamp">get_unified_timestamp</a></li>
+  <li><a href="#timetoalign.TimelineGroup.lock" id="toc-timetoalign.TimelineGroup.lock" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.lock">lock</a></li>
+  <li><a href="#timetoalign.TimelineGroup.remove_timeline" id="toc-timetoalign.TimelineGroup.remove_timeline" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.remove_timeline">remove_timeline</a></li>
+  <li><a href="#timetoalign.TimelineGroup.summary" id="toc-timetoalign.TimelineGroup.summary" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.summary">summary</a></li>
+  <li><a href="#timetoalign.TimelineGroup.to_dataframe" id="toc-timetoalign.TimelineGroup.to_dataframe" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.to_dataframe">to_dataframe</a></li>
+  <li><a href="#timetoalign.TimelineGroup.unfold" id="toc-timetoalign.TimelineGroup.unfold" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.unfold">unfold</a></li>
+  <li><a href="#timetoalign.TimelineGroup.unlock" id="toc-timetoalign.TimelineGroup.unlock" class="nav-link" data-scroll-target="#timetoalign.TimelineGroup.unlock">unlock</a></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/TimelineGroup.html">TimelineGroup</a></li></ol></nav></header>
+
+
+
+
+<section id="timetoalign.TimelineGroup" class="level1">
+<h1>TimelineGroup</h1>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup(<span class="bu">id</span><span class="op">=</span><span class="va">None</span>, name<span class="op">=</span><span class="va">None</span>, timelines<span class="op">=</span><span class="va">None</span>, is_locked<span class="op">=</span><span class="va">False</span>, meta<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Container for commensurable timelines.</p>
+<p>A TimelineGroup holds timelines (or sections thereof) that are commensurable - i.e., bijectively mapped to each other via linear interpolation. The group is defined by a timestamp table where each row is a boundary instant.</p>
+<p>Between any two adjacent timestamps, all present timelines have coordinates that can be converted via linear interpolation.</p>
+<p>Like Timeline, a Group can be locked to prevent extension.</p>
+<p>Attributes: id: Unique identifier for this group. name: Optional human-readable name. is_locked: Whether the group can be extended. meta: Additional metadata dictionary.</p>
+<p>Examples: &gt;&gt;&gt; # Create empty group &gt;&gt;&gt; group = TimelineGroup(id=“my_group”)</p>
+<pre><code>&gt;&gt;&gt; # Or create with initial timelines
+&gt;&gt;&gt; group = TimelineGroup(id="my_group", timelines=[dgt1, audio])
+
+&gt;&gt;&gt; # Add a timeline
+&gt;&gt;&gt; group.add_timeline(dgt1)
+
+&gt;&gt;&gt; # Add with explicit boundaries
+&gt;&gt;&gt; group.add_timeline(
+...     score_section,
+...     start=(45.0, "audio:1"),
+...     end=(135.0, "audio:1"),
+... )
+
+&gt;&gt;&gt; # Convert coordinates via timestamp lookup
+&gt;&gt;&gt; ts = group.get_timestamp_at(75.0, "audio:1")
+&gt;&gt;&gt; ts["dgt1:1"]  # -&gt; 2437.5</code></pre>
+<section id="attributes" class="level2">
+<h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.is_locked">is_locked</a></td>
+<td>Whether the group is locked.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.n_timelines">n_timelines</a></td>
+<td>Number of timelines in the group.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.n_timestamps">n_timestamps</a></td>
+<td>Number of boundary timestamps.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.reference">reference</a></td>
+<td>The first timeline added (for compatibility).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.reference_timeline_id">reference_timeline_id</a></td>
+<td>ID of the first timeline added (for compatibility).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.timeline_ids">timeline_ids</a></td>
+<td>IDs of all member timelines.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.timestamps">timestamps</a></td>
+<td>All boundary timestamps as view objects.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.add_timeline">add_timeline</a></td>
+<td>Add a timeline (or Child) to the group.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.convert">convert</a></td>
+<td>Convert a coordinate from one timeline to another.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.diagram">diagram</a></td>
+<td>Generate ASCII diagram for this group.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.from_reference">from_reference</a></td>
+<td>Create a new group with a reference timeline.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.get_events">get_events</a></td>
+<td>Get events from all timelines in the group, concatenated.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.get_range">get_range</a></td>
+<td>Get the coordinate range for a timeline in the group.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.get_timeline">get_timeline</a></td>
+<td>Get a timeline by ID.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.get_timestamp">get_timestamp</a></td>
+<td>Get a specific timestamp by index.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.get_timestamp_at">get_timestamp_at</a></td>
+<td>Get a TimeStamp at a specific coordinate.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.get_timestamp_of">get_timestamp_of</a></td>
+<td>Get the TimeStamp for a specific event by its ID.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.get_timestamp_table">get_timestamp_table</a></td>
+<td>Get the timestamp table (or a filtered subset).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.get_timestamps_at">get_timestamps_at</a></td>
+<td>Get timestamps at multiple coordinates - the batch version of get_timestamp_at.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.get_timestamps_df">get_timestamps_df</a></td>
+<td>Convenience wrapper returning pandas DataFrame with units in column names.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.get_timestamps_of">get_timestamps_of</a></td>
+<td>Get timestamps for multiple events.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.get_unified_interval_stamp">get_unified_interval_stamp</a></td>
+<td>Get a unified TimeIntervalStamp for a coordinate range.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.get_unified_timestamp">get_unified_timestamp</a></td>
+<td>Get a unified TimeStamp at a specific coordinate.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.lock">lock</a></td>
+<td>Lock the group to prevent extension.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.remove_timeline">remove_timeline</a></td>
+<td>Remove a timeline from the group.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.summary">summary</a></td>
+<td>Get a summary of the group.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.to_dataframe">to_dataframe</a></td>
+<td>Generate timestamps as a pandas DataFrame with formatted column names.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.TimelineGroup.unfold">unfold</a></td>
+<td>Unfold ALL timelines in this group via a single flow.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.TimelineGroup.unlock">unlock</a></td>
+<td>Unlock the group to allow extension.</td>
+</tr>
+</tbody>
+</table>
+<section id="timetoalign.TimelineGroup.add_timeline" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.add_timeline">add_timeline</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.add_timeline(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    timeline,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    start<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    end<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    allow_extension<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Add a timeline (or Child) to the group.</p>
+<p>The timeline’s full extent (0 to length) becomes commensurable with the group between the specified start and end boundaries.</p>
+<p>This method works the same whether the group is empty or already has timelines. For an empty group, start/end default to the timeline’s own boundaries (0 and length).</p>
+<p>Args: timeline: The timeline or Child to add. If a Child, its 0-origin extent is used. If a Timeline, its full extent (0 to length). start: Where this timeline’s section STARTS in the group. - IdCoordinate: Coordinate with explicit timeline_id (preferred) - GroupTimestamp: Use this existing timestamp - (coord, timeline_id): Legacy tuple form - float: Coordinate (only if single timeline in group) - None: Use group’s current start, or 0 if empty end: Where this timeline’s section ENDS in the group. - Same options as start - None: Use group’s current end, or timeline.length if empty allow_extension: If True and end extends beyond current group end, add a new end timestamp. If False (default) and group is locked, raise an error.</p>
+<p>Raises: ValueError: If timeline ID already exists in group. ValueError: If start/end specification is ambiguous. RuntimeError: If group is locked and extension would be required.</p>
+<p>Examples: &gt;&gt;&gt; # Add to empty group - defines initial extent &gt;&gt;&gt; group.add_timeline(dgt1)</p>
+<pre><code>&gt;&gt;&gt; # Add to existing group - maps to existing extent
+&gt;&gt;&gt; group.add_timeline(audio)
+
+&gt;&gt;&gt; # Add partial section with explicit boundaries (using IdCoordinate)
+&gt;&gt;&gt; from timetoalign import IdCoordinate, TimeUnit
+&gt;&gt;&gt; group.add_timeline(
+...     score_section,
+...     start=IdCoordinate(45.0, TimeUnit.seconds, "audio:1"),
+...     end=IdCoordinate(135.0, TimeUnit.seconds, "audio:1"),
+... )
+
+&gt;&gt;&gt; # Extend group with new timeline
+&gt;&gt;&gt; group.add_timeline(
+...     extended_audio,
+...     end=IdCoordinate(200.0, TimeUnit.seconds, "extended_audio:1"),
+...     allow_extension=True,
+... )</code></pre>
+</section>
+<section id="timetoalign.TimelineGroup.convert" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.convert">convert</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.convert(coordinate, source, target, <span class="op">*</span>, relative_to<span class="op">=</span><span class="st">'group'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Convert a coordinate from one timeline to another.</p>
+<p>This is a convenience method that gets the timestamp at the source coordinate and returns the target timeline’s coordinate from it.</p>
+<p>Args: coordinate: The coordinate value to convert. source: Source timeline ID. target: Target timeline ID. relative_to: “group” - coordinate is relative to timeline’s 0-origin IN THIS GROUP “original” - coordinate is relative to timeline’s ORIGINAL origin</p>
+<p>Returns: The converted coordinate, or None if target timeline is not present at this coordinate.</p>
+<p>Raises: KeyError: If source or target timeline is not in the group. ValueError: If coordinate is outside the source timeline’s range.</p>
+<p>Examples: &gt;&gt;&gt; group.convert(75.0, source=“audio:1”, target=“dgt1:1”) 2437.5</p>
+</section>
+<section id="timetoalign.TimelineGroup.diagram" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.diagram">diagram</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.diagram(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="dv">70</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    show_children<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    max_children<span class="op">=</span><span class="dv">6</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">unicode</span><span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate ASCII diagram for this group.</p>
+<p>Args: width: Total width of the diagram in characters. show_children: Whether to expand child timelines. max_children: Maximum children per timeline. unicode: Use Unicode characters (True) or ASCII fallback (False).</p>
+<p>Returns: Diagram object (displays as ASCII in terminal, rich HTML in Jupyter).</p>
+<p>Examples: &gt;&gt;&gt; print(group.diagram()) TimelineGroup[my_group] (2 timelines, 2 timestamps) ┌────────────────────────────────────────────────────────────┐ │ DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children) │ │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels │ │ ├─ system_1 0 ∶∶∶∶∶∶∶ 967 │ │ └─ … │ └────────────────────────────────────────────────────────────┘ Timestamps: 2</p>
+</section>
+<section id="timetoalign.TimelineGroup.from_reference" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.from_reference">from_reference</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.from_reference(reference, uid<span class="op">=</span><span class="va">None</span>, name<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a new group with a reference timeline.</p>
+<p>DEPRECATED: Use TimelineGroup(id=…, timelines=[reference]) instead.</p>
+<p>Args: reference: The timeline to use as reference. uid: Optional explicit ID. name: Optional human-readable name.</p>
+<p>Returns: A new TimelineGroup containing only the reference timeline.</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_events" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_events">get_events</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_events(timeline_id<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get events from all timelines in the group, concatenated.</p>
+<p>Collects events from all member timelines (or a specific one) and concatenates them into a single DataFrame. Each row includes a <code>timeline_id</code> column identifying the source timeline.</p>
+<p>Args: timeline_id: If provided, only return events from this timeline. Supports partial string and regex matching. **kwargs: Passed through to each timeline’s <code>get_events()</code> method (e.g., <code>min_coord</code>, <code>max_coord</code>, <code>event_type</code>).</p>
+<p>Returns: DataFrame with events from all (or specified) timelines. Includes a <code>timeline_id</code> column and standard event columns (<code>start</code>, <code>end</code>, <code>event_type</code>, etc.).</p>
+<p>Examples: &gt;&gt;&gt; # Get all events from all timelines &gt;&gt;&gt; df = group.get_events()</p>
+<pre><code>&gt;&gt;&gt; # Get events from a specific timeline
+&gt;&gt;&gt; df = group.get_events(timeline_id="clt1")
+
+&gt;&gt;&gt; # Get events with filters
+&gt;&gt;&gt; df = group.get_events(event_type="Note", min_coord=0.0, max_coord=100.0)</code></pre>
+</section>
+<section id="timetoalign.TimelineGroup.get_range" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_range">get_range</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_range(timeline_id, relative_to<span class="op">=</span><span class="st">'group'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the coordinate range for a timeline in the group.</p>
+<p>Args: timeline_id: The timeline to query. relative_to: Coordinate system for the result.</p>
+<p>Returns: (start, end) tuple, or None if timeline not in group.</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_timeline" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timeline">get_timeline</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timeline(timeline_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a timeline by ID.</p>
+<p>Supports partial string and regex matching: 1. Exact match: If <code>timeline_id</code> matches an ID exactly, returns it. 2. Substring match: If <code>timeline_id</code> is a substring of exactly one ID, returns that timeline. If multiple match, returns the first and warns. 3. Regex match: If <code>timeline_id</code> is a valid regex, matches via <code>re.search()</code>. Same first-match logic with warning.</p>
+<p>Args: timeline_id: The timeline’s unique identifier, or a partial/regex pattern.</p>
+<p>Returns: The Timeline object.</p>
+<p>Raises: KeyError: If no timeline matches the pattern.</p>
+<p>Examples: &gt;&gt;&gt; group.get_timeline(“clt1”) # Exact match &gt;&gt;&gt; group.get_timeline(“notes”) # Substring match &gt;&gt;&gt; group.get_timeline(r”^score:“) # Regex match</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_timestamp" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timestamp">get_timestamp</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timestamp(index)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a specific timestamp by index.</p>
+<p>Args: index: The row index in the timestamp table.</p>
+<p>Returns: The GroupTimestamp at that index.</p>
+<p>Raises: IndexError: If index is out of range.</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_timestamp_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timestamp_at">get_timestamp_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timestamp_at(</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    coordinate,</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    timeline_id<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    relative_to<span class="op">=</span><span class="st">'group'</span>,</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a TimeStamp at a specific coordinate.</p>
+<p>This is the primary coordinate resolution API for TimelineGroup. Returns a proper TimeStamp object (same as Timeline.get_timestamp).</p>
+<p>Args: coordinate: The query coordinate. Can be: - int/float/Fraction: Raw value, timeline_id required - Coordinate: Value with unit, timeline_id required - IdCoordinate: Value with unit AND timeline_id (timeline_id param optional) timeline_id: Which timeline the coordinate refers to. Required unless coordinate is an IdCoordinate. relative_to: “group” - coordinate is relative to timeline’s 0-origin IN THIS GROUP (default; e.g., “3 seconds into this group”) “original” - coordinate is relative to timeline’s ORIGINAL origin (e.g., “50 seconds in the original timeline”) NOTE: Currently not implemented, reserved for future use. conversion_maps: Whether to include C-Map values in timestamp. - True (default): C-Maps accessible via ts.get_unit() and ts[“unit_name”] - False/None: Only timeline coordinates</p>
+<p>Returns: TimeStamp with axis set to the input coordinate and source_id set to the timeline. Access other timelines via ts[“other_id”] or ts.get(). Access C-Maps via ts.get_unit() or ts[“unit_name”].</p>
+<p>Raises: KeyError: If timeline_id is not in the group. ValueError: If coordinate is outside the timeline’s range in the group. ValueError: If timeline_id is None and coordinate is not IdCoordinate.</p>
+<p>Examples: &gt;&gt;&gt; ts = group.get_timestamp_at(75.0, “audio:1”) &gt;&gt;&gt; ts.axis 75.0 &gt;&gt;&gt; ts[“dgt1:1”] 2437.5 &gt;&gt;&gt; ts.get_unit(TimeUnit.seconds) # C-Map conversion 75.0</p>
+<pre><code>&gt;&gt;&gt; # Using IdCoordinate (timeline_id extracted automatically)
+&gt;&gt;&gt; coord = IdCoordinate(75.0, TimeUnit.seconds, "audio:1")
+&gt;&gt;&gt; ts = group.get_timestamp_at(coord)
+&gt;&gt;&gt; ts.axis
+75.0</code></pre>
+</section>
+<section id="timetoalign.TimelineGroup.get_timestamp_of" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timestamp_of">get_timestamp_of</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timestamp_of(event_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the TimeStamp for a specific event by its ID.</p>
+<p>Searches all timelines in the group for the event and returns the corresponding TimeStamp (same structure as Timeline.get_timestamp).</p>
+<p>Args: event_id: The event’s unique identifier.</p>
+<p>Returns: TimeStamp at the event’s coordinate, with access to all timelines via ts[“timeline_id”] and C-Maps via ts.get_unit().</p>
+<p>Raises: KeyError: If the event is not found in any timeline.</p>
+<p>Examples: &gt;&gt;&gt; ts = group.get_timestamp_of(“note:000001”) &gt;&gt;&gt; ts[“audio”] # Get coordinate on audio timeline 45.5 &gt;&gt;&gt; ts.get_unit(TimeUnit.seconds) # C-Map conversion 45.5</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_timestamp_table" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timestamp_table">get_timestamp_table</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timestamp_table(timeline_filter<span class="op">=</span><span class="va">None</span>, conversion_maps<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the timestamp table (or a filtered subset).</p>
+<p>Args: timeline_filter: Only include these timeline columns. conversion_maps: Whether to include C-Map columns from member timelines. - True (default): Include all attached C-Maps from all timelines - False/None: No C-Map columns</p>
+<p>Returns: pa.Table with one row per timestamp, one column per timeline, plus C-Map columns if conversion_maps=True. Returns empty table if group has no timestamps.</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_timestamps_at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timestamps_at">get_timestamps_at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timestamps_at(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    coordinates,</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    timeline_id,</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    units<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get timestamps at multiple coordinates - the batch version of get_timestamp_at.</p>
+<p>This is the DEAD-SIMPLE API for batch coordinate transfer: pass a sequence of coordinates and get back a DataFrame with all timeline columns and C-Maps.</p>
+<p>Args: coordinates: Sequence of CoordinateSpec to query. timeline_id: Which timeline the coordinates refer to. conversion_maps: Whether to include C-Map columns from member timelines. - True (default): Include all attached C-Maps - False/None: Only timeline coordinates units: If True (default), append units to column names.</p>
+<p>Returns: DataFrame with one row per coordinate, columns for all timelines and C-Maps.</p>
+<p>Examples: &gt;&gt;&gt; # Get timestamps at multiple score positions &gt;&gt;&gt; coords = [0.0, 100.0, 200.0, 400.0] &gt;&gt;&gt; df = group.get_timestamps_at(coords, “clt1_score”) &gt;&gt;&gt; df.columns Index([‘clt1_score (quarterbeats)’, ‘dgt_holes (pixels)’, …])</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_timestamps_df" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timestamps_df">get_timestamps_df</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timestamps_df(</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    timeline_filter<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    units<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Convenience wrapper returning pandas DataFrame with units in column names.</p>
+<p>Args: timeline_filter: Only include these timeline columns. conversion_maps: Whether to include C-Map columns from member timelines. - True (default): Include all attached C-Maps - False/None: No C-Map columns units: If True (default), append units to column names like “name (unit)”.</p>
+<p>Returns: pandas DataFrame with timestamp data and units in column names, including C-Map columns if conversion_maps=True.</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_timestamps_of" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_timestamps_of">get_timestamps_of</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_timestamps_of(event_ids)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get timestamps for multiple events.</p>
+<p>Searches all timelines in the group for each event and returns a DataFrame with coordinates on all timelines.</p>
+<p>Args: event_ids: List of event IDs to look up.</p>
+<p>Returns: DataFrame with one row per event, indexed by event_id. Columns are timeline IDs with their coordinates. Events not found have NaN values.</p>
+<p>Examples: &gt;&gt;&gt; df = group.get_timestamps_of([“note:000001”, “note:000002”]) &gt;&gt;&gt; df.columns Index([‘clt1’, ‘audio’, ‘dgt1’])</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_unified_interval_stamp" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_unified_interval_stamp">get_unified_interval_stamp</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_unified_interval_stamp(start, end, timeline_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a unified TimeIntervalStamp for a coordinate range.</p>
+<p>.. deprecated:: This method is deprecated. Use <code>get_timestamp_at()</code> for start and end coordinates separately, then combine into a <code>TimeIntervalStamp</code> if needed.</p>
+<p>Args: start: Start coordinate. end: End coordinate. timeline_id: Which timeline the coordinates refer to.</p>
+<p>Returns: TimeIntervalStamp with start and end TimeStamps.</p>
+<p>Examples: &gt;&gt;&gt; interval = group.get_unified_interval_stamp(0.0, 100.0, “audio:1”) &gt;&gt;&gt; interval.duration 100.0 &gt;&gt;&gt; interval[“dgt1:1”] # Get (start, end) tuple (0.0, 3250.0)</p>
+</section>
+<section id="timetoalign.TimelineGroup.get_unified_timestamp" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.get_unified_timestamp">get_unified_timestamp</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.get_unified_timestamp(coordinate, timeline_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a unified TimeStamp at a specific coordinate.</p>
+<p>.. deprecated:: This method is deprecated. Use <code>get_timestamp_at(coordinate, timeline_id)</code> instead, which provides the same functionality.</p>
+<p>Args: coordinate: The query coordinate. timeline_id: Which timeline the coordinate refers to.</p>
+<p>Returns: TimeStamp with the axis coordinate and source set to this group.</p>
+<p>Raises: KeyError: If timeline_id is not in the group. ValueError: If group has no timestamps.</p>
+<p>Examples: &gt;&gt;&gt; ts = group.get_unified_timestamp(75.0, “audio:1”) &gt;&gt;&gt; ts.axis # The resolved coordinate 75.0 &gt;&gt;&gt; ts[“dgt1:1”] # Get coordinate on another timeline 2437.5</p>
+</section>
+<section id="timetoalign.TimelineGroup.lock" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.lock">lock</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.lock()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Lock the group to prevent extension.</p>
+</section>
+<section id="timetoalign.TimelineGroup.remove_timeline" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.remove_timeline">remove_timeline</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.remove_timeline(timeline_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Remove a timeline from the group.</p>
+<p>Updates timestamp table to remove the timeline’s column. Rows where all remaining timelines have null are removed.</p>
+<p>Args: timeline_id: ID of the timeline to remove.</p>
+<p>Returns: The removed timeline.</p>
+<p>Raises: KeyError: If timeline_id is not in the group.</p>
+</section>
+<section id="timetoalign.TimelineGroup.summary" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.summary">summary</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.summary()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a summary of the group.</p>
+<p>Returns: Dictionary with group information.</p>
+</section>
+<section id="timetoalign.TimelineGroup.to_dataframe" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.to_dataframe">to_dataframe</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.to_dataframe(</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    timeline_filter<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    conversion_maps<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    columns<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    units<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">format</span><span class="op">=</span><span class="st">'pandas'</span>,</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generate timestamps as a pandas DataFrame with formatted column names.</p>
+<p>This is the recommended high-level method for getting timestamp data. It builds on get_timestamp_table() and applies column formatting.</p>
+<p>Args: timeline_filter: Only include these timeline columns. conversion_maps: Whether to include C-Map columns from member timelines. - True (default): Include all attached C-Maps - False/None: No C-Map columns columns: How to name the columns. Options: - None or ColumnNaming.name (default): Use timeline/cmap name - ColumnNaming.id: Use timeline/cmap id - Callable: Function taking (name, metadata_dict) -&gt; new_name - list[str]: Explicit column names units: If True (default), append units to column names like “name (unit)”. format: Output format. Currently only “pandas” is supported.</p>
+<p>Returns: pandas DataFrame with: - Columns named according to the <code>columns</code> parameter - Units appended if <code>units=True</code> - Integer columns using pandas nullable Int64 dtype</p>
+<p>Examples: &gt;&gt;&gt; df = group.to_dataframe() &gt;&gt;&gt; df.columns Index([‘audio (seconds)’, ‘dgt1 (pixels)’, ‘pixels_to_beats (beats)’])</p>
+<pre><code>&gt;&gt;&gt; # Without units in column names
+&gt;&gt;&gt; df = group.to_dataframe(units=False)
+&gt;&gt;&gt; df.columns
+Index(['audio', 'dgt1', 'pixels_to_beats'])</code></pre>
+</section>
+<section id="timetoalign.TimelineGroup.unfold" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.unfold">unfold</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.unfold(</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    flow,</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    flow_controller,</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    reference_timeline_id,</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>    include_children<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>    as_segment_lines<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Unfold ALL timelines in this group via a single flow.</p>
+<p>Uses the flow controller’s repeat structure to compute section boundaries in the reference timeline’s coordinate space, then resolves those boundaries into every other timeline’s coordinates via the group’s interpolation maps. Each timeline is sliced at the corresponding coordinates and the slices are assembled into contiguous <code>SegmentLine</code> objects (or flattened into plain timelines).</p>
+<p>This is the group-level equivalent of <code>timetoalign.timelines.flow.create_unfolded_timeline</code>, but applied to every member at once.</p>
+<p>Args: flow: The computed <code>Flow</code> (from <code>controller.compute_flow()</code>). flow_controller: The <code>FlowControllerBase</code> that produced the flow. Required to convert flow sections to quarter-beat coordinates. reference_timeline_id: ID of the timeline whose coordinate space the flow is defined in (typically the score CLT). Section boundaries are resolved here first, then mapped to all other timelines. include_children: Whether to recursively slice child timelines within each section. as_segment_lines: If True, each unfolded timeline is a <code>SegmentLine</code> (one segment per section). If False (default), events are flattened into a single timeline of the source’s concrete type. name: Name for the returned group. Defaults to <code>f"{self.name} (unfolded)"</code>.</p>
+<p>Returns: A new <code>TimelineGroup</code> containing the unfolded timelines. Each timeline retains its original ID.</p>
+<p>Raises: KeyError: If <code>reference_timeline_id</code> is not in the group. ValueError: If the flow controller cannot compute QB sections.</p>
+<p>Examples: &gt;&gt;&gt; loader = TSVLoader.from_file(“notes.tsv”, “measures.tsv”) &gt;&gt;&gt; controller = loader.create_flow_controller() &gt;&gt;&gt; flow = controller.compute_flow(FlowMode.DEFAULT) &gt;&gt;&gt; score_group = TimelineGroup( … id=“score”, timelines=[clt1, dgt1, openscore] … ) &gt;&gt;&gt; unfolded = score_group.unfold(flow, controller, “clt1”)</p>
+</section>
+<section id="timetoalign.TimelineGroup.unlock" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.TimelineGroup.unlock">unlock</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.unlock()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Unlock the group to allow extension.</p>
+
+
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button,
+          { trigger: "manual",
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined;
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              }
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            }
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Conceptual Model – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./index.html">
+<span class="menu-text">Home</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="./tutorials.html">
+<span class="menu-text">Tutorials</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="./howto.html">
+<span class="menu-text">How-To Guides</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="./concepts.html" aria-current="page">
+<span class="menu-text">Explanation</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="./reference.html">
+<span class="menu-text">API Reference</span></a>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./concepts.html">Conceptual Model</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container">
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="./concepts.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Conceptual Model</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Quick Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="./glossary.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Glossary</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+
+  <ul>
+  <li><a href="#foundations" id="toc-foundations" class="nav-link active" data-scroll-target="#foundations">Foundations</a>
+  <ul>
+  <li><a href="#the-timeline" id="toc-the-timeline" class="nav-link" data-scroll-target="#the-timeline">The timeline</a></li>
+  <li><a href="#coordinates-and-instants" id="toc-coordinates-and-instants" class="nav-link" data-scroll-target="#coordinates-and-instants">Coordinates and instants</a></li>
+  <li><a href="#events" id="toc-events" class="nav-link" data-scroll-target="#events">Events</a></li>
+  <li><a href="#basic-operations" id="toc-basic-operations" class="nav-link" data-scroll-target="#basic-operations">Basic operations</a></li>
+  <li><a href="#synchrony" id="toc-synchrony" class="nav-link" data-scroll-target="#synchrony">Synchrony</a></li>
+  </ul></li>
+  <li><a href="#flow-control" id="toc-flow-control" class="nav-link" data-scroll-target="#flow-control">Flow Control</a>
+  <ul>
+  <li><a href="#contiguity" id="toc-contiguity" class="nav-link" data-scroll-target="#contiguity">Contiguity</a></li>
+  <li><a href="#breaks" id="toc-breaks" class="nav-link" data-scroll-target="#breaks">Breaks</a></li>
+  <li><a href="#jumps" id="toc-jumps" class="nav-link" data-scroll-target="#jumps">Jumps</a></li>
+  </ul></li>
+  <li><a href="#conversion-maps" id="toc-conversion-maps" class="nav-link" data-scroll-target="#conversion-maps">Conversion Maps</a>
+  <ul>
+  <li><a href="#output-types" id="toc-output-types" class="nav-link" data-scroll-target="#output-types">Output types</a></li>
+  <li><a href="#bounded-and-unbounded-maps" id="toc-bounded-and-unbounded-maps" class="nav-link" data-scroll-target="#bounded-and-unbounded-maps">Bounded and unbounded maps</a></li>
+  <li><a href="#map-families" id="toc-map-families" class="nav-link" data-scroll-target="#map-families">Map families</a></li>
+  <li><a href="#multimaps-composing-conversion-maps" id="toc-multimaps-composing-conversion-maps" class="nav-link" data-scroll-target="#multimaps-composing-conversion-maps">MultiMaps: composing conversion maps</a></li>
+  </ul></li>
+  <li><a href="#nested-timelines" id="toc-nested-timelines" class="nav-link" data-scroll-target="#nested-timelines">Nested Timelines</a>
+  <ul>
+  <li><a href="#children" id="toc-children" class="nav-link" data-scroll-target="#children">Children</a></li>
+  <li><a href="#segments-and-segmentlines" id="toc-segments-and-segmentlines" class="nav-link" data-scroll-target="#segments-and-segmentlines">Segments and SegmentLines</a></li>
+  <li><a href="#timestamps" id="toc-timestamps" class="nav-link" data-scroll-target="#timestamps">TimeStamps</a></li>
+  </ul></li>
+  <li><a href="#regions" id="toc-regions" class="nav-link" data-scroll-target="#regions">Regions and Derivative Timelines</a>
+  <ul>
+  <li><a href="#regions-1" id="toc-regions-1" class="nav-link" data-scroll-target="#regions-1">Regions</a></li>
+  <li><a href="#derivative-timelines" id="toc-derivative-timelines" class="nav-link" data-scroll-target="#derivative-timelines">Derivative Timelines</a></li>
+  </ul></li>
+  <li><a href="#alignment" id="toc-alignment" class="nav-link" data-scroll-target="#alignment">Alignment</a>
+  <ul>
+  <li><a href="#matchclaim" id="toc-matchclaim" class="nav-link" data-scroll-target="#matchclaim">MatchClaim</a></li>
+  <li><a href="#alignmentanchors" id="toc-alignmentanchors" class="nav-link" data-scroll-target="#alignmentanchors">AlignmentAnchors</a>
+  <ul class="collapse">
+  <li><a href="#matchclaim-cases" id="toc-matchclaim-cases" class="nav-link" data-scroll-target="#matchclaim-cases">MatchClaim cases</a></li>
+  </ul></li>
+  <li><a href="#matchgraph-and-matchstamp" id="toc-matchgraph-and-matchstamp" class="nav-link" data-scroll-target="#matchgraph-and-matchstamp">MatchGraph and MatchStamp</a></li>
+  <li><a href="#the-matchline" id="toc-the-matchline" class="nav-link" data-scroll-target="#the-matchline">The MatchLine</a></li>
+  <li><a href="#warpmap" id="toc-warpmap" class="nav-link" data-scroll-target="#warpmap">WarpMap</a></li>
+  <li><a href="#alignment-bundle" id="toc-alignment-bundle" class="nav-link" data-scroll-target="#alignment-bundle">AlignmentBundle</a></li>
+  <li><a href="#coordinate-transfer" id="toc-coordinate-transfer" class="nav-link" data-scroll-target="#coordinate-transfer">Coordinate transfer</a></li>
+  </ul></li>
+  <li><a href="#five-demonstration-scenarios" id="toc-five-demonstration-scenarios" class="nav-link" data-scroll-target="#five-demonstration-scenarios">Five Demonstration Scenarios</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Conceptual Model</h1>
+<p class="subtitle lead">The full specification of the TimeToAlign! cross-domain timeline model</p>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+
+
+
+  </div>
+
+
+
+</header>
+
+
+<p>This page presents the complete conceptual model underlying TimeToAlign!. The accompanying <a href="https://anonymous.example.com">TISMIR manuscript</a> introduces these concepts through five worked examples; this page serves as the authoritative reference for formal definitions and visual conventions.</p>
+<p>The model is organised in six layers, each building on the previous:</p>
+<ol type="1">
+<li><a href="#foundations"><strong>Foundations</strong></a>: Domains, timelines, coordinates, instants, events</li>
+<li><a href="#flow-control"><strong>Flow control</strong></a>: Contiguity, breaks, jumps</li>
+<li><a href="#conversion-maps"><strong>Conversion maps</strong></a>: Coordinate transformations</li>
+<li><a href="#nested-timelines"><strong>Nested timelines</strong></a>: Children, segments, timestamps</li>
+<li><a href="#regions"><strong>Regions and derivative timelines</strong></a>: Named parts, traversals, warps</li>
+<li><a href="#alignment"><strong>Alignment</strong></a>: MatchClaims, AlignmentAnchors, MatchGraph, MatchLine, WarpMap, AlignmentBundle</li>
+</ol>
+<section id="foundations" class="level2">
+<h2 class="anchored" data-anchor-id="foundations">Foundations</h2>
+<section id="the-timeline" class="level3">
+<h3 class="anchored" data-anchor-id="the-timeline">The timeline</h3>
+<p>A <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> is a positive coordinate axis minimally defined by two properties:</p>
+<ul>
+<li>an <strong>origin</strong> (the zero coordinate), and</li>
+<li>a <strong>measuring unit</strong> that determines the type of timeline.</li>
+</ul>
+<p>The measuring unit places each timeline in one of three <strong>temporal domains</strong> (physical, logical, or graphical), each of which admits both continuous and discrete representations. This yields six fundamental timeline types:</p>
+<div id="fig-timeline-types" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-timeline-types-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="figs/TTA_modelling-timelines.png" class="img-fluid figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-timeline-types-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: The six timeline types. Each row corresponds to a temporal domain; each column to a number type (continuous or discrete). The arrow convention is used throughout: timelines are drawn as arrows progressing from left to right.
+</figcaption>
+</figure>
+</div>
+<div id="tbl-timeline-types" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-timeline-types-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table&nbsp;1: The six timeline types and their typical measuring units.
+</figcaption>
+<div aria-describedby="tbl-timeline-types-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 25%">
+<col style="width: 30%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Domain</th>
+<th>Modality</th>
+<th>Continuous</th>
+<th>Discrete</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Physical</strong></td>
+<td>Hearing</td>
+<td>seconds, milliseconds, minutes</td>
+<td>samples</td>
+</tr>
+<tr class="even">
+<td><strong>Logical</strong></td>
+<td>Conceptualising</td>
+<td>quarter notes, beats</td>
+<td>ticks, divisions</td>
+</tr>
+<tr class="odd">
+<td><strong>Graphical</strong></td>
+<td>Seeing</td>
+<td>metres, centimetres, points</td>
+<td>pixels</td>
+</tr>
+</tbody>
+</table>
+</div>
+</figure>
+</div>
+<p>The physical domain captures acoustic time as experienced through hearing. The logical domain captures symbolic musical time—the temporal structure encoded in a score, independent of any particular performance or visual rendering. The graphical domain captures spatial representations of time: images, pages, and pixel coordinates.</p>
+<p>A key observation: notation is <em>both</em> graphical and logical. A printed score is, in effect, an alignment between a graphical timeline (pixel coordinates on the page) and a logical timeline (quarter notes, beats, measures). This duality is central to the model.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>On “temporal” in the graphical domain
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Images are not themselves temporal objects. The graphical domain is called “temporal” because graphical artefacts <em>encode</em> time spatially—a spectromorphological analysis maps seconds to pixels, a score maps beats to horizontal position. The timeline models this spatial encoding of time, not a time dimension intrinsic to the image.</p>
+<p>Video and animated scores straddle the physical and graphical domains: they are physical renderings (at a frame rate, in seconds) of graphical content.</p>
+</div>
+</div>
+</section>
+<section id="coordinates-and-instants" class="level3">
+<h3 class="anchored" data-anchor-id="coordinates-and-instants">Coordinates and instants</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Coordinate</p>
+</div>
+<p>A <strong>coordinate</strong> represents a time-point in terms of its distance from the timeline’s origin as a positive real number associated with the timeline’s measuring unit.</p>
+</div>
+<p>A coordinate is the model’s most basic quantity: a scalar value paired with a unit (e.g., 3.5 seconds, 480 ticks, 127 pixels). In the implementation, coordinates additionally carry a number type (integer, float, or fraction) to prevent silent rounding errors.</p>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Instant</p>
+</div>
+<p>An <strong>instant</strong> associates a coordinate (a “time-point”) with a signification such as “start of event <em>e</em>.”</p>
+</div>
+<p>Everything a timeline accommodates is associated with a coordinate through an Instant. Two Instants sharing an identical coordinate are <strong>synchronous</strong> but not identical—the instant at which a note ends is ontologically separate from the instant at which the next note begins, even when both share the same coordinate.</p>
+<div class="visualisation">
+<div class="vis-header">
+<p>Visualisation: Instant</p>
+</div>
+<p>An Instant is represented as a <strong>wedge</strong> pointing at the timeline, labelled with a coordinate value.</p>
+</div>
+<p>Two principal sub-types are distinguished:</p>
+<ul>
+<li><strong>StartInstant</strong>: marks the beginning of a <button class="glossary" title="Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive [s, e). The EndInstant’s coordinate must be >= the StartInstant’s.">TimeInterval</button>.</li>
+<li><strong>EndInstant</strong>: marks the end of a TimeInterval.</li>
+</ul>
+<p>Together, a StartInstant and an EndInstant define a <strong>TimeInterval</strong>: a half-open interval [<em>s</em>, <em>e</em>) that is left-inclusive and right-exclusive. This convention ensures that consecutive intervals (e.g., successive quarter notes) tile the timeline without gaps or overlaps: the first quarter note occupies [0, 1), the second [1, 2), and so on.</p>
+<p><strong>Constraint</strong>: The EndInstant’s coordinate must be greater than or equal to the corresponding StartInstant’s coordinate.</p>
+</section>
+<section id="events" class="level3">
+<h3 class="anchored" data-anchor-id="events">Events</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Event</p>
+</div>
+<p>We call anything associated with a timeline via an Instant or a TimeInterval an <strong>event</strong>.</p>
+</div>
+<p>This is a deliberately broad category. The model is agnostic to what events represent—they may be notes, rests, annotations, audio segments, bounding boxes, or any other entity that possesses a temporal location. Two principal sub-types:</p>
+<ul>
+<li><strong>InstantEvent</strong>: defined by a single Instant (zero duration).</li>
+<li><strong>TimeIntervalEvent</strong>: defined by a StartInstant and an EndInstant (non-zero duration).</li>
+</ul>
+<p>Events may carry arbitrary properties (pitch, dynamics, text labels, file paths) that are relevant for querying and matching but are not part of the temporal model itself.</p>
+<div id="fig-events" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-events-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="figs/TTA_modelling-instants.png" class="img-fluid figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-events-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;2: Events on a timeline. InstantEvents are marked by a single wedge; TimeIntervalEvents span a region between two wedges (start and end).
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="basic-operations" class="level3">
+<h3 class="anchored" data-anchor-id="basic-operations">Basic operations</h3>
+<p>A timeline supports four basic operations:</p>
+<ol type="1">
+<li><strong>Addition</strong>: inserting an Instant (and thereby its associated event).</li>
+<li><strong>Removal</strong>: deleting an Instant.</li>
+<li><strong>Lookup</strong>: retrieving all Instants at a given coordinate.</li>
+<li><strong>Query</strong>: retrieving all TimeIntervals spanning a given coordinate.</li>
+</ol>
+<p>The <strong>length</strong> of a timeline is the distance between its origin and its last coordinate with at least one Instant. A timeline may be <strong>locked</strong>, preventing the addition of Instants beyond the last existing time-point.</p>
+</section>
+<section id="synchrony" class="level3">
+<h3 class="anchored" data-anchor-id="synchrony">Synchrony</h3>
+<p>The model distinguishes two forms of synchrony:</p>
+<ul>
+<li><strong>Strict synchrony</strong>: Instants sharing identical coordinates on the same timeline.</li>
+<li><strong>Pragmatic synchrony</strong>: Instants binned together on the basis of a threshold (quantisation). Pragmatic synchrony is not yet implemented in the library but is planned as a configurable parameter.</li>
+</ul>
+<p>Five default propositions govern Instants on a timeline:</p>
+<ol type="1">
+<li>Instants sharing the same coordinate are synchronous.</li>
+<li>Temporally overlapping parts of TimeIntervals are strictly synchronous.</li>
+<li>A later coordinate implies later occurrence <em>in that domain</em> (no cross-domain implication is entailed).</li>
+<li>Every StartInstant necessitates a corresponding EndInstant, and vice versa.</li>
+<li>An EndInstant’s coordinate cannot be smaller than the corresponding StartInstant’s.</li>
+</ol>
+</section>
+</section>
+<section id="flow-control" class="level2">
+<h2 class="anchored" data-anchor-id="flow-control">Flow Control</h2>
+<section id="contiguity" class="level3">
+<h3 class="anchored" data-anchor-id="contiguity">Contiguity</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Contiguous TimeInterval</p>
+</div>
+<p>A TimeInterval [<em>s</em>, <em>e</em>) is <strong>contiguous</strong> in the sense that it spans all coordinates between its Start- and EndInstant monotonically. A TimeInterval is said to <strong>span</strong> a coordinate <em>c</em> if <em>s</em> &lt; <em>c</em> &lt; <em>e</em>.</p>
+</div>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Contiguous with</p>
+</div>
+<p>We call <strong>contiguous with TimeInterval [<em>s</em>, <em>e</em>)</strong> all Instants synchronous with <em>e</em>. By extension, any event located or starting at the end of a TimeIntervalEvent is called contiguous with it.</p>
+</div>
+<p>Contiguity is the default: a section of music flows into the next. Two phenomena override this default.</p>
+</section>
+<section id="breaks" class="level3">
+<h3 class="anchored" data-anchor-id="breaks">Breaks</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Break</p>
+</div>
+<p>A <strong>break</strong> is a control event that voids the contiguity at the Instant where it is located.</p>
+</div>
+<p>Events that would normally be contiguous at a break’s coordinate become discontiguous. Two constraints follow:</p>
+<ul>
+<li>A TimeInterval cannot be added if it would span a break’s coordinate.</li>
+<li>A break cannot be placed at a coordinate already spanned by a TimeInterval.</li>
+</ul>
+<p>Breaks encode phenomena such as the boundary between a <em>prima volta</em> and a <em>seconda volta</em> ending, or the boundary at a <em>coda</em> sign where the default sequential flow is interrupted.</p>
+<div class="visualisation">
+<div class="vis-header">
+<p>Visualisation: Break</p>
+</div>
+<p>Breaks are represented as <strong>red lines orthogonal to the timeline axis</strong>.</p>
+</div>
+</section>
+<section id="jumps" class="level3">
+<h3 class="anchored" data-anchor-id="jumps">Jumps</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Jump</p>
+</div>
+<p>A <strong>jump</strong> is a control event defined by two Instants: a <strong>JumpFrom</strong> and a <strong>JumpTo</strong> Instant. When active, it makes any event located or starting at JumpTo contiguous with any event ending at JumpFrom.</p>
+</div>
+<p>Jumps encode repeat signs, <em>dal segno al coda</em>, <em>da capo al fine</em>, and analogous structures. Additional event properties define conditions under which a control event is active (e.g., a <em>fine</em> is effective only after a <em>da capo al fine</em>; <em>prima</em> and <em>seconda volta</em> brackets are conditionally active depending on the traversal count).</p>
+<div class="visualisation">
+<div class="vis-header">
+<p>Visualisation: Jump</p>
+</div>
+<p>Jumps are represented as <strong>dotted arrows</strong> from the JumpFrom Instant to the JumpTo Instant. The curvature of the arrow reflects the distance between the two coordinates.</p>
+</div>
+<p>Together, breaks and jumps form the <strong>flow-control apparatus</strong> of the model. They determine how a timeline is traversed—which sections are played in what order—without altering the underlying coordinate system. The traversal itself is captured by a <button class="glossary" title="A sequence of TimeIntervals specifying a particular path through a score’s control structure (repeats, jumps); not itself a timeline. Used for unfolding a score into performance order.">FlowMap</button> (see <a href="#derivative-timelines">Derivative timelines</a>).</p>
+</section>
+</section>
+<section id="conversion-maps" class="level2">
+<h2 class="anchored" data-anchor-id="conversion-maps">Conversion Maps</h2>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: ConversionMap (C-map)</p>
+</div>
+<p>A <strong>ConversionMap</strong> is a typed function attached to a timeline that maps each coordinate to exactly one value. If the function is bijective, we can derive an <strong>InverseMap</strong>; also permits inverse conversion back to the timeline’s own unit.</p>
+</div>
+<p>Conversion maps are at the heart of the model. They connect coordinate systems, convert between units, and enable the transfer of information across timelines.</p>
+<div class="visualisation">
+<div class="vis-header">
+<p>Visualisation: ConversionMap</p>
+</div>
+<p>Conversion maps are visualised as <strong>double lines</strong> adopting colour and pattern from the type of timeline associated with the measuring unit that they output (see <a href="#fig-cmaps" class="quarto-xref">Figure&nbsp;3</a>). Maps outputting values other than coordinates (e.g., string labels) use distinctly different colours or patterns.</p>
+</div>
+<div id="fig-cmaps" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-cmaps-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="figs/TTA_modelling-cmaps.png" class="img-fluid figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-cmaps-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;3: Conversion maps map coordinates to other values, typically coordinates in a different unit. The double-line convention distinguishes C-maps from timelines.
+</figcaption>
+</figure>
+</div>
+<section id="output-types" class="level3">
+<h3 class="anchored" data-anchor-id="output-types">Output types</h3>
+<p>The output of a C-map can be:</p>
+<ul>
+<li><strong>A coordinate</strong> in the same or a different unit (e.g., pixels to seconds, ticks to quarter notes). This is the most common case.</li>
+<li><strong>A specifier</strong> such as a measure number, a filename, or a label.</li>
+<li><strong>An auxiliary constant</strong> (e.g., a fixed y-coordinate for generating a horizontal line in an image).</li>
+</ul>
+<p>When the output is a coordinate, the C-map implicitly defines a <strong>derived timeline</strong> with variant coordinates. This is how a single DiscreteGraphicalTimeline (pixels) can simultaneously express seconds, quarter notes, and <em>(x, y)</em> pairs.</p>
+</section>
+<section id="bounded-and-unbounded-maps" class="level3">
+<h3 class="anchored" data-anchor-id="bounded-and-unbounded-maps">Bounded and unbounded maps</h3>
+<p>A C-map can be:</p>
+<ul>
+<li><strong>Unbounded</strong>: applies globally across the entire timeline.</li>
+<li><strong>Bounded</strong>: defines one or several <strong>regions of vigour</strong> (<button class="glossary" title="Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive [s, e). The EndInstant’s coordinate must be >= the StartInstant’s.">TimeInterval</button>s) within which it is valid. Outside these regions, the map returns no result.</li>
+</ul>
+</section>
+<section id="map-families" class="level3">
+<h3 class="anchored" data-anchor-id="map-families">Map families</h3>
+<p>The implementation organises C-maps into families:</p>
+<div id="tbl-cmap-families" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-cmap-families-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table&nbsp;2: Families of ConversionMaps in the <code>timetoalign</code> library.
+</figcaption>
+<div aria-describedby="tbl-cmap-families-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="caption-top table">
+<colgroup>
+<col style="width: 26%">
+<col style="width: 43%">
+<col style="width: 30%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Family</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Affine</strong> (ScalarMultiplicationMap)</td>
+<td><em>y = ax + b</em></td>
+<td>pixels to seconds</td>
+</tr>
+<tr class="even">
+<td><strong>Lookup</strong> (TableMap)</td>
+<td>Explicit key-value mapping</td>
+<td>tick to tempo</td>
+</tr>
+<tr class="odd">
+<td><strong>Interpolation</strong></td>
+<td>Linear interpolation between anchor points</td>
+<td>warp path</td>
+</tr>
+<tr class="even">
+<td><strong>Constant</strong></td>
+<td>Returns the same value for any input</td>
+<td>y-coordinate of a staff line</td>
+</tr>
+<tr class="odd">
+<td><strong>Straight line</strong></td>
+<td>Generates <em>(x, y)</em> pairs for a line</td>
+<td>horizontal system in an image</td>
+</tr>
+<tr class="even">
+<td><strong>Discretisation</strong></td>
+<td>Rounds continuous to discrete</td>
+<td>seconds to samples</td>
+</tr>
+<tr class="odd">
+<td><strong>Periodic</strong> (RotationMap)</td>
+<td>Wraps coordinates cyclically</td>
+<td>repeating ostinato</td>
+</tr>
+<tr class="even">
+<td><strong>Metric-aware</strong> (FloorMap, MetricMap)</td>
+<td>Beat and measure structure</td>
+<td>BeatGrid</td>
+</tr>
+</tbody>
+</table>
+</div>
+</figure>
+</div>
+</section>
+<section id="multimaps-composing-conversion-maps" class="level3">
+<h3 class="anchored" data-anchor-id="multimaps-composing-conversion-maps">MultiMaps: composing conversion maps</h3>
+<p>Three composition strategies produce <strong>MultiMaps</strong>:</p>
+<dl>
+<dt><strong>CombinationMap</strong></dt>
+<dd>
+Yields outputs from multiple C-maps simultaneously. For instance, combining an x-map and a y-map produces <em>(x, y)</em> coordinate pairs.
+</dd>
+<dt><strong>ChainMap</strong></dt>
+<dd>
+Applies C-maps in sequence: the output of one becomes the input of the next (e.g., ticks -&gt; beats -&gt; seconds). A ChainMap defines a <strong>conversion path</strong> and is a key building block for coordinate transfer.
+</dd>
+<dt><strong>ConcatenationMap</strong></dt>
+<dd>
+Combines bounded C-maps so that each coordinate region maps to one of them. For instance, a score with five systems has a ConcatenationMap of five StraightLineMaps, each valid within its system’s pixel range.
+</dd>
+</dl>
+</section>
+</section>
+<section id="nested-timelines" class="level2">
+<h2 class="anchored" data-anchor-id="nested-timelines">Nested Timelines</h2>
+<p>A timeline can accommodate not only events but also other timelines.</p>
+<section id="children" class="level3">
+<h3 class="anchored" data-anchor-id="children">Children</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Child</p>
+</div>
+<p>A timeline is called a <strong>Child</strong> when it is recursively nested in a parent timeline.</p>
+</div>
+<p>A timeline can accommodate other timelines (Children) provided they use the same measuring unit. Constraints mirror those for TimeIntervalEvents:</p>
+<ul>
+<li>A Child cannot span an existing <button class="glossary" title="A control event that voids contiguity at its Instant. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals.">Break</button> in the parent (unless explicitly adopted).</li>
+<li>A Child may only extend the parent’s length when the parent is not locked.</li>
+<li>Once added, a Child’s length is <strong>locked</strong> to prevent side effects.</li>
+<li>Only the top-level (“root”) timeline can be extended.</li>
+</ul>
+<p>Children introduce <strong>relative coordinate systems</strong> within a parent. A Child’s local origin is mapped to a specific coordinate of the parent; its local coordinates are offsets from that origin. This is essential for modelling multi-system score pages, where each system has its own pixel range but is part of a single graphical timeline.</p>
+<div class="visualisation">
+<div class="vis-header">
+<p>Visualisation: Child</p>
+</div>
+<p>A Child is visualised as a timeline whose <strong>EndInstant is marked by a hollow diamond</strong> (in contrast to the filled arrowhead of a root timeline).</p>
+</div>
+<p>Children can overlap, leave gaps between them, carry their own C-maps, and nest recursively to arbitrary depth.</p>
+<div id="fig-segments" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-segments-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="figs/TTA_modelling-Segments.png" class="img-fluid figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-segments-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;4: Nested timelines. The parent timeline contains two children (segments), each with its own local coordinate system.
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="segments-and-segmentlines" class="level3">
+<h3 class="anchored" data-anchor-id="segments-and-segmentlines">Segments and SegmentLines</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: Segment and SegmentLine</p>
+</div>
+<p>When all Children of the same parent timeline (“siblings”) are contiguous with each other, we call them <strong>Segments</strong> and the parent a <strong>SegmentLine</strong>.</p>
+</div>
+<p>The key advantage of a SegmentLine is that contiguous siblings allow <strong>cumulative summing</strong> of segment lengths and their C-maps (provided they convert to the same unit relative to the segment’s origin). This enables efficient coordinate conversion across the entire structure.</p>
+<p>Four operations are associated with Children:</p>
+<ul>
+<li><strong>Addition</strong>: adding a timeline as a Child, including all its events and C-maps.</li>
+<li><strong>Partitioning</strong>: creating a new Child from a parent timeline and a TimeInterval.</li>
+<li><strong>Segmentation</strong> (special case of partitioning): creating <em>k</em> Segments from <em>k</em>+1 split coordinates, turning the parent into a SegmentLine.</li>
+<li><strong>Concatenation</strong>: adding a Child at the parent’s EndInstant (extending the parent).</li>
+</ul>
+<div id="tbl-children-comparison" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-children-comparison-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table&nbsp;3: Comparison of Regions, Children, and Segments.
+</figcaption>
+<div aria-describedby="tbl-children-comparison-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Property</th>
+<th>Region</th>
+<th>Child</th>
+<th>Segment</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Is a timeline (holds events)</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr class="even">
+<td>Siblings must be contiguous</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr class="odd">
+<td>Can span breaks</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+</div>
+</figure>
+</div>
+</section>
+<section id="timestamps" class="level3">
+<h3 class="anchored" data-anchor-id="timestamps">TimeStamps</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: TimeStamp</p>
+</div>
+<p>A <strong>TimeStamp</strong> is a set of values reflecting the coordinate of a root timeline, the synchronous coordinates of all Children, and the conversion results of all ConversionMaps associated respectively.</p>
+</div>
+<p>A TimeStamp is a cross-section through a timeline hierarchy at a given coordinate. It answers the question: “At coordinate <em>c</em> of the root timeline, what are the local coordinates in each Child, and what do all C-maps produce?”</p>
+<p>By analogy, a <strong>TimeIntervalStamp</strong> combines a start TimeStamp and an end TimeStamp, representing the cross-section of an interval through the hierarchy.</p>
+<div class="visualisation">
+<div class="vis-header">
+<p>Visualisation: TimeStamp</p>
+</div>
+<p>TimeStamps are visualised as a <strong>vertical cross-section</strong> through a timeline that intersects all Children and ConversionMaps at their synchronous points.</p>
+</div>
+<div id="fig-tables" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-tables-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="figs/TTA_modelling-tables.png" class="img-fluid figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-tables-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;5: A timeline’s internal data structures. The instants table records all Instants with their coordinates, IDs, and types. The intervals table is derived from the instants table and supports interval queries.
+</figcaption>
+</figure>
+</div>
+</section>
+</section>
+<section id="regions" class="level2">
+<h2 class="anchored" data-anchor-id="regions">Regions and Derivative Timelines</h2>
+<section id="regions-1" class="level3">
+<h3 class="anchored" data-anchor-id="regions-1">Regions</h3>
+<p>A <strong>Region</strong> is a named part of a timeline defined by a <button class="glossary" title="Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive [s, e). The EndInstant’s coordinate must be >= the StartInstant’s.">TimeInterval</button>. Regions are useful for referring to parts of a timeline by name (e.g., “Chorus”, “Verse”, “Development”) or by generic labels (e.g., alphabetical letters for representing traversal paths).</p>
+<p>Regions are <em>not</em> timelines: they do not accommodate events or C-maps. They can, however, be used as the basis for <strong>partitioning</strong> a timeline into Children—creating a Child whose boundaries correspond to the Region’s TimeInterval.</p>
+</section>
+<section id="derivative-timelines" class="level3">
+<h3 class="anchored" data-anchor-id="derivative-timelines">Derivative Timelines</h3>
+<p>Three kinds of derived timelines play a central role in alignment:</p>
+<dl>
+<dt><strong>FlowMap</strong></dt>
+<dd>
+A sequence of <button class="glossary" title="Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive [s, e). The EndInstant’s coordinate must be >= the StartInstant’s.">TimeInterval</button>s (often corresponding to previously defined <button class="glossary" title="A named part of a timeline defined by a TimeInterval (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button>s) specifying a particular path through the timeline’s control structure (repeats, jumps). A <button class="glossary" title="A sequence of TimeIntervals specifying a particular path through a score’s control structure (repeats, jumps); not itself a timeline. Used for unfolding a score into performance order.">FlowMap</button> is computed from flow-control events (<button class="glossary" title="A control event that voids contiguity at its Instant. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals.">Break</button>s and <button class="glossary" title="A control event with JumpFrom and JumpTo Instants. When active, makes events at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, dal segno).">Jump</button>s) or assembled manually. Its intervals can be partitioned and concatenated, yielding a new <button class="glossary" title="">SegmentLine</button> reflecting the traversal—i.e., <strong>unfolding</strong> the score into performance order.
+For example, a score with a repeat and a <em>dal segno al coda</em> has a FlowMap like [A, B, A, B, C, D] where some regions appear more than once. The resulting SegmentLine is a new timeline in performance order.
+</dd>
+<dt><strong>Converted timeline</strong></dt>
+<dd>
+A timeline whose coordinates have been transformed to another unit via a <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> or <button class="glossary" title="A MultiMap that applies multiple ConversionMaps in sequence, creating a conversion path from source to target unit.">ChainMap</button>, potentially after applying a <button class="glossary" title="A sequence of TimeIntervals specifying a particular path through a score’s control structure (repeats, jumps); not itself a timeline. Used for unfolding a score into performance order.">FlowMap</button>.
+</dd>
+<dt><strong>WarpMap</strong></dt>
+<dd>
+A derived timeline where coordinates have been re-adjusted to align with those of another timeline on the basis of <button class="glossary" title="">AlignmentAnchor</button>s. See <a href="#alignment">Alignment</a> for the full definition of WarpMap and the pipeline that produces it.
+</dd>
+</dl>
+</section>
+</section>
+<section id="alignment" class="level2">
+<h2 class="anchored" data-anchor-id="alignment">Alignment</h2>
+<p>The alignment layer is where the model’s cross-domain capability comes together.</p>
+<section id="matchclaim" class="level3">
+<h3 class="anchored" data-anchor-id="matchclaim">MatchClaim</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: MatchClaim</p>
+</div>
+<p>A <strong>MatchClaim</strong> is a claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). A MatchClaim may be <strong>synchronous</strong> (producing <button class="glossary" title="">AlignmentAnchor</button>s) or <strong>conceptual</strong> (structural equivalence without temporal commitment). It may include special <strong>sentinel values</strong> (<button class="glossary" title="A sentinel value in a MatchClaim explicitly encoding the absence of a corresponding event on the other timeline. The MatchClaim records both timeline IDs but has no AlignmentAnchors; is_synchronous is always False.">NOMATCH</button>) explicitly encoding the absence of a corresponding event on the other timeline.</p>
+</div>
+<p>A MatchClaim takes the form of named references (IDs) of claimed-equivalent events, combined with metadata on genesis:</p>
+<ul>
+<li><strong>Agent</strong>: who or what produced the claim (human annotator, DTW algorithm, neural model, …).</li>
+<li><strong>Decision criteria</strong>: what evidence was used (temporal similarity, harmonic content, expert judgement, …).</li>
+<li><strong>Certainty level</strong>: how confident the agent is in the claim.</li>
+</ul>
+<p>MatchClaims grow incrementally: an initial claim between events A and B can be extended by adding B-C, creating a <strong>match path</strong> A -&gt; B -&gt; C that connects three timelines. The model explicitly matches <em>events</em> (not coordinates) to allow richer metadata about the alignment procedure.</p>
+<p>Two levels of matching are distinguished:</p>
+<ul>
+<li><strong>Synchronous matching</strong>: the matched events occupy corresponding temporal positions (e.g., “this beat in the score corresponds to this moment in the recording”).</li>
+<li><strong>Conceptual matching</strong>: the matched events are semantically equivalent but may not share a temporal correspondence (e.g., “both versions have a Bridge section, but they differ in length and internal structure”).</li>
+</ul>
+</section>
+<section id="alignmentanchors" class="level3">
+<h3 class="anchored" data-anchor-id="alignmentanchors">AlignmentAnchors</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: AlignmentAnchor</p>
+</div>
+<p>An <strong>AlignmentAnchor</strong> is a pure coordinate pair associating one coordinate on timeline A with one coordinate on timeline B. It is a neutral record with no claim semantics—provenance and interpretation are carried by the enclosing <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension).">MatchClaim</button>. Only synchronous MatchClaims produce AlignmentAnchors.</p>
+</div>
+<p>From a <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension).">MatchClaim</button> that associates <button class="glossary" title="An event with duration, defined by a TimeInterval (start and end coordinates). Contrast with InstantEvent which has zero duration.">TimeIntervalEvent</button>s, two anchors are derived: a <strong>StartAnchor</strong> and an <strong>EndAnchor</strong>. Based on the units present in the aligned timelines, <button class="glossary" title="An interpolation-based coordinate mapping derived from a MatchLine; enables non-linear coordinate transfer between TimelineGroups.">WarpMap</button>s can be constructed.</p>
+<div class="visualisation">
+<div class="vis-header">
+<p>Visualisation: AlignmentAnchor</p>
+</div>
+<p>AlignmentAnchors are visualised as <strong>connecting lines</strong> between TimeStamps, using the same or a similar visual style as the Matches they derive from.</p>
+</div>
+<section id="matchclaim-cases" class="level4">
+<h4 class="anchored" data-anchor-id="matchclaim-cases">MatchClaim cases</h4>
+<p>A MatchClaim always knows which pair of timelines it connects. It contains 0–2 <button class="glossary" title="">AlignmentAnchor</button>s (only if synchronous), synchrony and explicitness flags, and optional metadata (agent, decision criteria, certainty). Four cases are distinguished:</p>
+<ol type="1">
+<li><strong>Event-to-event</strong> (case a): two timed things on different timelines correspond—the core alignment operation.</li>
+<li><strong>Projection</strong> (case b): an event is projected onto a timeline with no matching event—useful for transferring annotations.</li>
+<li><strong>NOMATCH</strong> (case c): an event has no equivalent on the other timeline—a positive assertion of absence.</li>
+<li><strong>Implicit</strong> (case d): generated automatically by <button class="glossary" title="An auxiliary structure formed by extending MatchClaims through shared coordinates; may be viewed as a hyperedge connecting multiple coordinates from different timelines. Connected components yield MatchStamps. Each Match box M1–M15 in the Hendrix figure is a MatchGraph.">MatchGraph</button> group extension—e.g., when a match between two timelines implies coordinates on sibling timelines within the same <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button>.</li>
+</ol>
+</section>
+</section>
+<section id="matchgraph-and-matchstamp" class="level3">
+<h3 class="anchored" data-anchor-id="matchgraph-and-matchstamp">MatchGraph and MatchStamp</h3>
+<p>A <strong>MatchGraph</strong> is an on-demand analytical structure built from MatchClaims. Nodes are <code>(timeline_id, coordinate)</code> tuples; edges derive from the <button class="glossary" title="">AlignmentAnchor</button>s of synchronous claims. Each connected component yields a <strong>MatchStamp</strong>—a synchronised instant across multiple timelines. A MatchGraph can be extended with implicit claims based on <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button> membership. In the Hendrix example, each Match box M1–M15 is a MatchGraph, not a single MatchClaim.</p>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: MatchStamp</p>
+</div>
+<p>A <strong>MatchStamp</strong> is the union of <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps.">TimeStamp</button>s from groups synchronously connected by a <button class="glossary" title="An auxiliary structure formed by extending MatchClaims through shared coordinates; may be viewed as a hyperedge connecting multiple coordinates from different timelines. Connected components yield MatchStamps. Each Match box M1–M15 in the Hendrix figure is a MatchGraph.">MatchGraph</button>. It contains one coordinate per participating timeline and, with <code>conversion_maps=True</code> (the default), the results of all <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s associated with those timelines.</p>
+</div>
+<p>A MatchStamp from a single <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension).">MatchClaim</button> contains the TimeStamps for the claim’s <button class="glossary" title="">AlignmentAnchor</button>. A MatchStamp from a MatchGraph contains <em>all</em> TimeStamps that the graph connects through its connected components. Like a <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps.">TimeStamp</button>, it can be expanded with within-group coordinates (delegating to <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button>) and C-map conversions.</p>
+</section>
+<section id="the-matchline" class="level3">
+<h3 class="anchored" data-anchor-id="the-matchline">The MatchLine</h3>
+<p>The <strong>MatchLine</strong> is an ordered sequence of <button class="glossary" title="">AlignmentAnchor</button>s derived from <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension).">MatchClaim</button>s, sorted by coordinate on a source timeline. It serves as input for <button class="glossary" title="An interpolation-based coordinate mapping derived from a MatchLine; enables non-linear coordinate transfer between TimelineGroups.">WarpMap</button> generation.</p>
+</section>
+<section id="warpmap" class="level3">
+<h3 class="anchored" data-anchor-id="warpmap">WarpMap</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: WarpMap</p>
+</div>
+<p>A <strong>WarpMap</strong> is an interpolation-based coordinate mapping derived from a <button class="glossary" title="An ordered sequence of AlignmentAnchors derived from MatchClaims, sorted by coordinate on a source timeline; input for WarpMap generation.">MatchLine</button>; it enables non-linear coordinate transfer between <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button>s.</p>
+</div>
+<p>A WarpMap is generated from a MatchLine by extracting <code>(source_coord, target_coord)</code> pairs and building an interpolation table. If the source and target timelines have different units, the warped copy is in the target’s unit and of the appropriate timeline type (e.g., a ContinuousLogicalTimeline warped to a ContinuousPhysicalTimeline). A WarpMap requires at least two matching coordinate pairs for interpolation. It is the mechanism by which non-linear temporal correspondences—such as those between a rubato performance and a metronomic score—are captured.</p>
+</section>
+<section id="alignment-bundle" class="level3">
+<h3 class="anchored" data-anchor-id="alignment-bundle">AlignmentBundle</h3>
+<div class="definition">
+<div class="definition-header">
+<p>Definition: AlignmentBundle</p>
+</div>
+<p>The <strong>AlignmentBundle</strong> is a collection of <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button>s with inter-group <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension).">MatchClaim</button> connections; it provides coordinate transfer via offset arithmetic, interpolation, and <button class="glossary" title="An interpolation-based coordinate mapping derived from a MatchLine; enables non-linear coordinate transfer between TimelineGroups.">WarpMap</button>s.</p>
+</div>
+<p>The AlignmentBundle provides coordinate transfer at two levels:</p>
+<ul>
+<li><strong>Within a group</strong>: delegates to <code>TimelineGroup.get_timestamp_at()</code>, which uses pairwise interpolation.</li>
+<li><strong>Across groups</strong>: constructs a <button class="glossary" title="An ordered sequence of AlignmentAnchors derived from MatchClaims, sorted by coordinate on a source timeline; input for WarpMap generation.">MatchLine</button> from the cross-group claims, generates <button class="glossary" title="An interpolation-based coordinate mapping derived from a MatchLine; enables non-linear coordinate transfer between TimelineGroups.">WarpMap</button>s on demand, and uses those WarpMaps for coordinate transfer.</li>
+</ul>
+<p>The canonical user-facing query is <code>bundle.get_matchstamp_at(coord, tl_id)</code>, which returns a <button class="glossary" title="The union of TimeStamps from groups synchronously connected by a MatchGraph. Contains one coordinate per participating timeline and, with conversion_maps=True (the default), C-map conversion values.">MatchStamp</button> spanning all groups connected to the queried timeline.</p>
+<p>The full alignment object hierarchy, from atomic to composite, is:</p>
+<pre><code>AlignmentAnchor      (pure coordinate pair, no semantics)
+    ↓
+MatchClaim           (semantic claim about two timelines)
+    ↓
+MatchGraph           (on-demand graph from multiple claims)
+    ↓
+MatchStamp           (synchronised instant across N timelines)
+    ↓
+MatchLine            (ordered sequence of MatchStamps)
+    ↓
+WarpMap              (materialised timeline copy)</code></pre>
+</section>
+<section id="coordinate-transfer" class="level3">
+<h3 class="anchored" data-anchor-id="coordinate-transfer">Coordinate transfer</h3>
+<p>The model implements three tiers of coordinate transfer:</p>
+<ol type="1">
+<li><strong>Offset arithmetic</strong> for parent–child relationships: a child’s coordinate is the parent’s coordinate minus the child’s offset. Exact and lossless.</li>
+<li><strong>Interpolation</strong> within <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button>s: timelines of potentially different units (e.g., seconds and samples) are connected via pairwise linear interpolation.</li>
+<li><strong>WarpMap</strong> for cross-group alignment: derived from a <button class="glossary" title="An ordered sequence of AlignmentAnchors derived from MatchClaims, sorted by coordinate on a source timeline; input for WarpMap generation.">MatchLine</button>, a WarpMap materialises a complete copy of a source timeline warped to a target timeline’s coordinates.</li>
+</ol>
+<p>Two timelines are <strong>commensurable</strong> if connected by a chain of C-maps, membership in the same <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button>, or cross-group <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (agent, method, certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension).">MatchClaim</button>s. <button class="glossary" title="Two timelines are commensurable if connected by a chain of C-maps, membership in the same TimelineGroup, or cross-group MatchClaims, enabling coordinate translation between them.">Commensurability</button> is the precondition for coordinate transfer.</p>
+<p>This layered architecture is what enables TimeToAlign! to propagate annotations, transfer coordinates, and answer queries across arbitrarily many representations of the same musical content—the central promise of the model.</p>
+</section>
+</section>
+<section id="five-demonstration-scenarios" class="level2">
+<h2 class="anchored" data-anchor-id="five-demonstration-scenarios">Five Demonstration Scenarios</h2>
+<p>The TISMIR manuscript demonstrates the model through five worked examples of increasing complexity. Each is accompanied by real-world data in the specimen collection and (where applicable) a tutorial notebook.</p>
+<div id="tbl-scenarios" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-scenarios-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table&nbsp;4: The five demonstration scenarios from the TISMIR manuscript.
+</figcaption>
+<div aria-describedby="tbl-scenarios-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table class="caption-top table">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 21%">
+<col style="width: 51%">
+<col style="width: 21%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Scenario</th>
+<th>Key concepts introduced</th>
+<th>Specimen</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td><strong>SUPRA</strong>: Aligning a historical piano roll with a digital score</td>
+<td>Timeline (six types), C-map, Child, TimelineGroup, commensurability, TimeStamp</td>
+<td><code>specimens/supra_rolls/</code></td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><strong>Chorissimo</strong>: Flow control in a school song with repeats</td>
+<td>Segment, SegmentLine, Region, Break, Jump, FlowMap, RotationMap, unfolding</td>
+<td><code>specimens/audiolabs_omr/Chorissimo_Blue081/</code></td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td><strong>Thoresen</strong>: Transferring annotations between graphical analyses</td>
+<td>MatchClaim, InverseMap, y-coordinate warping via custom C-map</td>
+<td><code>specimens/thoresen/</code></td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td><strong>Beethoven</strong>: Multimodal alignment across 23 timelines</td>
+<td>FlowMap (unfolding at scale), AlignmentBundle, AlignmentAnchor, WarpMap, MatchLine</td>
+<td><code>specimens/beethoven_op18-4_iv/</code></td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td><strong>Hendrix</strong>: Studying the genesis of a rock song across three versions</td>
+<td>MatchClaim (conceptual/synchronous), MatchGraph, NOMATCH, MatchStamp, certainty metadata</td>
+<td><code>specimens/hendrix/</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+</figure>
+</div>
+<p>For details, see the manuscript and the tutorial notebooks (links to be added when the tutorials are integrated into this site).</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button,
+          { trigger: "manual",
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined;
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              }
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            }
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

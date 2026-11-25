@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-a0f9fd0d421825b736dc1bbcbcba2219.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -493,71 +493,65 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">1. Setup</h2>
-<div id="0da12c41" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:14.850249Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:14.850249Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:18.738784Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:18.738784Z&quot;}}" data-execution_count="1">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> PIL <span class="im">import</span> Image</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    ContinuousPhysicalTimeline,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    DiscreteGraphicalTimeline,</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    NumberType,</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    RepoVizzLoader,</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    TableMap,</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    TimeUnit,</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.alignment <span class="im">import</span> (</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    AlignmentAnchor,</span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    AlignmentBundle,</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    MatchClaim,</span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    MatchLine,</span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    MatchMetadata,</span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    TimelineGroup,</span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    WarpMap,</span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.alignment.matching <span class="im">import</span> (</span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    match_notes_by_attributes,</span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    prepare_abc_notes_for_matching,</span>
-<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    prepare_eep_notes_for_matching,</span>
-<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>)</span>
+<div id="389f80fd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:42.111339Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:42.110971Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:46.287871Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:46.285252Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> PIL <span class="im">import</span> Image</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    ContinuousPhysicalTimeline,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    DiscreteGraphicalTimeline,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    NumberType,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    RepoVizzLoader,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    TableMap,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    TimeUnit,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.alignment <span class="im">import</span> (</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    AlignmentAnchor,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    AlignmentBundle,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    MatchClaim,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    MatchLine,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    MatchMetadata,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    TimelineGroup,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    WarpMap,</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.alignment.matching <span class="im">import</span> (</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    match_notes_by_attributes,</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    prepare_abc_notes_for_matching,</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    prepare_eep_notes_for_matching,</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core.enums <span class="im">import</span> FlowMode</span>
 <span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.score <span class="im">import</span> TSVLoader</span>
-<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines.flow <span class="im">import</span> FlowMode, create_unfolded_timeline</span>
-<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines.types <span class="im">import</span> SegmentLine</span>
-<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>_notebook_dir <span class="op">=</span> Path(<span class="st">"."</span>).resolve()</span>
-<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> (</span>
-<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    _notebook_dir.parent.parent</span>
-<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    <span class="op">/</span> <span class="st">"tests"</span></span>
-<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="op">/</span> <span class="st">"data"</span></span>
-<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    <span class="op">/</span> <span class="st">"score"</span></span>
-<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    <span class="op">/</span> <span class="st">"beethoven_op18-4iv_multimodal"</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines.flow <span class="im">import</span> create_unfolded_timeline</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines.types <span class="im">import</span> SegmentLine</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> ensure_data(<span class="st">"score"</span>) <span class="op">/</span> <span class="st">"beethoven_op18-4iv_multimodal"</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a><span class="co"># XML manifest paths — the loader reads metadata from these files</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>NORMAL_XML <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Normal"</span> <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Normal.xml"</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>MECHANICAL_XML <span class="op">=</span> (</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Mechanical"</span> <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Mechanical.xml"</span></span>
 <span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a><span class="co"># XML manifest paths — the loader reads metadata from these files</span></span>
-<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>NORMAL_XML <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Normal"</span> <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Normal.xml"</span></span>
-<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>MECHANICAL_XML <span class="op">=</span> (</span>
-<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Mechanical"</span> <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Mechanical.xml"</span></span>
-<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>EXAGGERATED_XML <span class="op">=</span> (</span>
-<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Exaggerated"</span> <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Exaggerated.xml"</span></span>
-<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="co"># Audio sources and instruments</span></span>
-<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>AUDIO_SOURCES <span class="op">=</span> [</span>
-<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>    <span class="st">"mono"</span>,</span>
-<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>    <span class="st">"binaural"</span>,</span>
-<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_vln1"</span>,</span>
-<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_vln2"</span>,</span>
-<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_vla"</span>,</span>
-<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_cello"</span>,</span>
-<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>]</span>
-<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>INSTRUMENTS <span class="op">=</span> [<span class="st">"vln1"</span>, <span class="st">"vln2"</span>, <span class="st">"vla"</span>, <span class="st">"cello"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>EXAGGERATED_XML <span class="op">=</span> (</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Exaggerated"</span> <span class="op">/</span> <span class="st">"StringQuartetEEP_I_Exaggerated.xml"</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a><span class="co"># Audio sources and instruments</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>AUDIO_SOURCES <span class="op">=</span> [</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>    <span class="st">"mono"</span>,</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>    <span class="st">"binaural"</span>,</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_vln1"</span>,</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_vln2"</span>,</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_vla"</span>,</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pickup_cello"</span>,</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>INSTRUMENTS <span class="op">=</span> [<span class="st">"vln1"</span>, <span class="st">"vln2"</span>, <span class="st">"vla"</span>, <span class="st">"cello"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>Each EEP recording directory contains 5 modalities (audio, 3 feature types, MoCap) plus <code>.notes</code> files with annotated note events. The function below builds a <code>TimelineGroup</code> from one such directory via the XML manifest.</p>
 <p><strong>Structure (per manuscript):</strong> - 5 parent physical timelines, each with a <code>SamplesToSeconds</code> c-map - Audio, Tonal, LowLevel, Rhythm parents: 6 children each (mono, binaural, 4 pickups) - MoCap parent: 4 children (one per instrument: vln1, vln2, vla, cello)</p>
-<div id="681cd602" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:18.743966Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:18.743966Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:18.753083Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:18.753083Z&quot;}}" data-execution_count="2">
+<div id="10147dad" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:46.296941Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:46.295450Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:46.315702Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:46.315063Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> build_recording_group(xml_path, group_id, group_name, dpt_base):</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Build a TimelineGroup from one EEP recording directory via XML manifest.</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -633,7 +627,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Each EEP recording = 5 DPTs (audio + 3 feature types + MoCap) at different sampling rates, all sharing the same physical duration. Note events live as a child of the audio DPT.</p>
 <section id="group-1-normal-recording-dpt1-dpt5" class="level2">
 <h2 class="anchored" data-anchor-id="group-1-normal-recording-dpt1-dpt5">2. Group 1: Normal Recording (DPT1-DPT5)</h2>
-<div id="e4be4f95" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:18.756153Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:18.755091Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:19.252849Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:19.252849Z&quot;}}" data-execution_count="3">
+<div id="edc96842" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:46.321025Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:46.320608Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:46.785061Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:46.782835Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>normal_group <span class="op">=</span> build_recording_group(</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    NORMAL_XML, <span class="st">"normal"</span>, <span class="st">"Normal Recording"</span>, dpt_base<span class="op">=</span><span class="dv">1</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -688,7 +682,7 @@ Timestamps: 2</pre>
 </div>
 </div>
 <p>The audio timeline now carries the note annotations as a child:</p>
-<div id="ec36a84e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:19.255865Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:19.254866Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:19.262864Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:19.262864Z&quot;}}" data-execution_count="4">
+<div id="0dee585f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:46.788950Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:46.788533Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:46.810024Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:46.809017Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>normal_group.get_timeline(<span class="st">"dpt1"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <pre style="font-family: monospace; line-height: 1.2;">DiscretePhysicalTimeline[dpt1] (6 children, 1 cmaps)
@@ -704,7 +698,7 @@ Timestamps: 2</pre>
 </section>
 <section id="group-2-mechanical-recording-dpt6-dpt10" class="level2">
 <h2 class="anchored" data-anchor-id="group-2-mechanical-recording-dpt6-dpt10">3. Group 2: Mechanical Recording (DPT6-DPT10)</h2>
-<div id="ffa6019c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:19.267041Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:19.266068Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:19.724746Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:19.723711Z&quot;}}" data-execution_count="5">
+<div id="99361d59" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:46.818834Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:46.818413Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:47.387958Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:47.386801Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>mechanical_group <span class="op">=</span> build_recording_group(</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    MECHANICAL_XML, <span class="st">"mechanical"</span>, <span class="st">"Mechanical Recording"</span>, dpt_base<span class="op">=</span><span class="dv">6</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -762,7 +756,7 @@ Timestamps: 2</pre>
 <section id="group-3-exaggerated-recording-dpt11-dpt15" class="level2">
 <h2 class="anchored" data-anchor-id="group-3-exaggerated-recording-dpt11-dpt15">4. Group 3: Exaggerated Recording (DPT11-DPT15)</h2>
 <p>Shorter recording (~186s) — stops after measure 131.</p>
-<div id="612f7b88" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:19.727791Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:19.726762Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:20.195092Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:20.194086Z&quot;}}" data-execution_count="6">
+<div id="c6cd2ffe" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:47.395062Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:47.393152Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:48.554584Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:48.546859Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>exaggerated_group <span class="op">=</span> build_recording_group(</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    EXAGGERATED_XML,</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"exaggerated"</span>,</span>
@@ -838,7 +832,7 @@ Timestamps: 2</pre>
 <p>All three go into one <code>TimelineGroup</code>. Cross-domain coordinate transfer (pixels ↔︎ quarters ↔︎ seconds) works automatically via linear interpolation.</p>
 <section id="clt1-abc-v2.6-score" class="level2">
 <h2 class="anchored" data-anchor-id="clt1-abc-v2.6-score">6. CLT1: ABC v2.6 Score</h2>
-<div id="d37bba78" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:20.197093Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:20.197093Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:22.338675Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:22.337664Z&quot;}}" data-execution_count="7">
+<div id="dbaf4d0d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:48.559367Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:48.558910Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:52.944175Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:52.939053Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>ABC_DIR <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"ABC"</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>abc_loader <span class="op">=</span> TSVLoader.from_file(</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    ABC_DIR <span class="op">/</span> <span class="st">"n04op18-4_04.notes.tsv"</span>,</span>
@@ -858,9 +852,9 @@ Timestamps: 2</pre>
 <section id="abc-flow-control-repeat-structure" class="level3">
 <h3 class="anchored" data-anchor-id="abc-flow-control-repeat-structure">6.1 ABC Flow Control: Repeat Structure</h3>
 <p>The ABC score has repeats and volta brackets. The loader’s <code>create_flow_controller()</code> derives the repeat structure from the measure data and computes the default flow (all repeats taken). This is <strong>the same</strong> flow control machinery used later for CLT2 (the recordings edition) in Part III.</p>
-<div id="e66ec13a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:22.342678Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:22.342678Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:22.374027Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:22.374027Z&quot;}}" data-execution_count="8">
+<div id="0bc71a3e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:52.948130Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:52.947673Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:53.039675Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:53.038370Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>abc_controller <span class="op">=</span> abc_loader.create_flow_controller()</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>abc_flow <span class="op">=</span> abc_controller.compute_flow(FlowMode.DEFAULT)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>abc_flow <span class="op">=</span> abc_controller.compute_flow(FlowMode.default)</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>abc_flow</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <pre style="font-family: monospace; line-height: 1.2;">Flow(default): 226 folded → 291 unfolded (×1.29), 11 sections
@@ -889,14 +883,14 @@ Sequence: A A B B C C D E D F G G H I H J K L K M</pre>
 <h2 class="anchored" data-anchor-id="dgt1-omr-ground-truth">7. DGT1: OMR Ground Truth</h2>
 <p>The OMR data contains 3,190 note head bounding boxes across 22 score pages. Each page has 2 systems (except the last which has 1), giving 43 system segments in reading order. Note events use <code>Left</code> (start) and <code>Width</code> (duration) as pixel coordinates. Each system’s <code>onset_beats</code> values provide a c-map from pixels to quarters.</p>
 <p><strong>Architecture:</strong> <code>SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]</code> → 22 page <code>SegmentLine[DiscreteGraphicalTimeline]</code> segments → 2 system sub-segments each.</p>
-<div id="712e06dc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:22.377040Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:22.377040Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:22.462610Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:22.462105Z&quot;}}" data-execution_count="9">
+<div id="b57e0b6f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:53.048831Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:53.048447Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:53.175361Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:53.173871Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>OMR_CSV <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"OMR_groundtruth"</span> <span class="op">/</span> <span class="st">"OMR_xml_by_score"</span> <span class="op">/</span> <span class="st">"omr_note_heads.csv"</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>OMR_IMAGES <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"OMR_groundtruth"</span> <span class="op">/</span> <span class="st">"Images"</span></span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>omr_df <span class="op">=</span> pd.read_csv(OMR_CSV)</span>
 <span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>IMAGE_WIDTH <span class="op">=</span> Image.<span class="bu">open</span>(<span class="bu">next</span>(OMR_IMAGES.glob(<span class="st">"*.png"</span>))).size[<span class="dv">0</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>Build the DGT1 bottom-up: system segments → page <code>SegmentLine[DiscreteGraphicalTimeline]</code> → top-level <code>SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]</code>. Events and c-maps must be added <strong>before</strong> a timeline is locked as a child.</p>
-<div id="c61fb175" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:22.465617Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:22.464619Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:22.714673Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:22.713803Z&quot;}}" data-execution_count="10">
+<div id="b5e89367" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:53.183438Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:53.183004Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:53.854347Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:53.852243Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>noteheads <span class="op">=</span> pd.DataFrame(</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    {</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">"start"</span>: omr_df[<span class="st">"Nodes.Node.Left"</span>].astype(<span class="bu">int</span>),</span>
@@ -982,7 +976,7 @@ Sequence: A A B B C C D E D F G G H I H J K L K M</pre>
 <section id="openscore-4th-movement-only" class="level2">
 <h2 class="anchored" data-anchor-id="openscore-4th-movement-only">8. OpenScore (4th Movement Only)</h2>
 <p>The OpenScore edition covers all 4 movements. We use the flow controller to identify section breaks (movement boundaries) and extract the 4th movement as a child timeline.</p>
-<div id="26e7a07a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:22.718723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:22.718723Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:25.173154Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:25.173154Z&quot;}}" data-execution_count="11">
+<div id="425d0570" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:53.858323Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:53.857884Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:41:58.021690Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:41:58.020933Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>OPENSCORE_DIR <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"OpenScoreSQ"</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>os_loader <span class="op">=</span> TSVLoader.from_file(</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    OPENSCORE_DIR <span class="op">/</span> <span class="st">"sq8913219.notes.tsv"</span>,</span>
@@ -998,7 +992,7 @@ Sequence: A A B B C C D E D F G G H I H J K L K M</pre>
 </div>
 </div>
 <p>The loader’s <code>create_flow_controller()</code> derives section boundaries from the score’s flow control markup. Splitting at those coordinates creates one region per movement.</p>
-<div id="ad7104d9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:25.176164Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:25.175166Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:27.446479Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:27.445469Z&quot;}}" data-execution_count="12">
+<div id="ef22a822" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:41:58.023861Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:41:58.023686Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:01.104194Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:01.101984Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>os_flow_controller <span class="op">=</span> os_loader.create_flow_controller()</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>boundaries <span class="op">=</span> os_flow_controller.get_section_boundary_coordinates()</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>os_full.create_regions_from_boundaries(</span>
@@ -1012,7 +1006,7 @@ Sequence: A A B B C C D E D F G G H I H J K L K M</pre>
 </div>
 </div>
 <p>The four movement regions and the extracted child timeline:</p>
-<div id="ec9a6617" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:27.449479Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:27.448508Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:27.458813Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:27.458813Z&quot;}}" data-execution_count="13">
+<div id="27f60a5b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:01.111065Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:01.110697Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:01.130932Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:01.126483Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>os_full.diagram(show<span class="op">=</span>{<span class="st">"regions"</span>, <span class="st">"children"</span>})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="13">
 <pre style="font-family: monospace; line-height: 1.2;">ContinuousLogicalTimeline[openscore_full] (16089 events, 3 children, 4 regions, 2 cmaps)
@@ -1030,7 +1024,7 @@ Sequence: A A B B C C D E D F G G H I H J K L K M</pre>
 <section id="score-group-group-4" class="level2">
 <h2 class="anchored" data-anchor-id="score-group-group-4">9. Score Group (Group 4)</h2>
 <p>All three score representations in one <code>TimelineGroup</code>. Cross-domain coordinate transfer (pixels ↔︎ quarters) works via linear interpolation.</p>
-<div id="b68a980d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:27.462824Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:27.462824Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:27.498144Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:27.497131Z&quot;}}" data-execution_count="14">
+<div id="75208de5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:01.137025Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:01.136612Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:01.204023Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:01.201772Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>score_group <span class="op">=</span> TimelineGroup(</span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"score"</span>,</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"Score (ABC + OMR + OpenScore)"</span>,</span>
@@ -1065,7 +1059,7 @@ Timestamps: 2</pre>
 <section id="cross-domain-section-boundaries-quarters-pixels-pages" class="level3">
 <h3 class="anchored" data-anchor-id="cross-domain-section-boundaries-quarters-pixels-pages">9.1 Cross-Domain Section Boundaries (Quarters → Pixels → Pages)</h3>
 <p>The playthrough section boundaries (from §6.1) can now be mapped through the score group to DGT1 pixel coordinates. This demonstrates cross-domain coordinate transfer within a <code>TimelineGroup</code>: the <code>InterpolationMap</code> between CLT1 (quarters) and DGT1 (pixels) uses each system’s pixel-to-quarter <code>TableMap</code> as its C-map anchor.</p>
-<div id="4c37001e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:27.501146Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:27.501146Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:27.528599Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:27.527579Z&quot;}}" data-execution_count="15">
+<div id="3e9b83ac" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:01.209138Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:01.207708Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:01.251558Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:01.248529Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a page-boundary lookup from DGT1's segment structure</span></span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>_page_bounds <span class="op">=</span> []</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _seg_id <span class="kw">in</span> dgt1.list_segments():</span>
@@ -1197,7 +1191,7 @@ Timestamps: 2</pre>
 <section id="unfolding-the-entire-score-group" class="level3">
 <h3 class="anchored" data-anchor-id="unfolding-the-entire-score-group">9.2 Unfolding the Entire Score Group</h3>
 <p>The score has repeats and volta brackets. Rather than unfolding each timeline individually, <code>TimelineGroup.unfold()</code> does it in one call: the flow controller’s section boundaries are resolved via the group’s interpolation maps, so every timeline — regardless of domain — is sliced and reassembled in playthrough order.</p>
-<div id="029df91d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:27.533596Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:27.532600Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:50.440433Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:50.439428Z&quot;}}" data-execution_count="16">
+<div id="3300b27e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:01.256512Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:01.256094Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:18.332411Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:18.331443Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>score_group_unfolded <span class="op">=</span> score_group.unfold(</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    abc_flow, abc_controller, reference_timeline_id<span class="op">=</span><span class="st">"clt1"</span></span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -1288,7 +1282,7 @@ Timestamps: 2</pre>
 </div>
 </div>
 <p>The unfolded CLT1 carries all note events in playthrough order. Extract them for note matching:</p>
-<div id="9505c73b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:50.444434Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:50.443436Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:50.870975Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:50.870975Z&quot;}}" data-execution_count="17">
+<div id="4f88d7e8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:18.334544Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:18.334346Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:18.688956Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:18.688211Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>clt1_unfolded <span class="op">=</span> score_group_unfolded.get_timeline(<span class="st">"clt1"</span>)</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>abc_notes_df <span class="op">=</span> clt1_unfolded.get_events(</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    event_type<span class="op">=</span><span class="st">"Note"</span>, include_children<span class="op">=</span><span class="va">False</span></span>
@@ -1315,7 +1309,7 @@ Timestamps: 2</pre>
 <p>Each EEP recording’s note events (seconds, pitch, staff) are matched against the ABC <strong>unfolded</strong> score notes (quarterbeats, pitch, staff) prepared in §9.2 using greedy sequential matching. The result: <code>MatchClaim</code> objects that connect recording coordinates to score coordinates. No pre-computed TSV is needed — the unfolded CLT1 carries all the notes.</p>
 <p>Match each recording against the score. The <code>source_timeline_id</code> and <code>target_timeline_id</code> are the audio DPT and CLT1 respectively — these appear in the resulting <code>MatchClaim</code> anchors.</p>
 <p>We use <code>rv.store.notes</code> to access the EEP notes from the XML manifest’s score section — no direct <code>EepNotesLoader</code> import needed.</p>
-<div id="7f7f5000" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:50.873981Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:50.872980Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:58.518660Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:58.516934Z&quot;}}" data-execution_count="18">
+<div id="67946559" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:18.690978Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:18.690779Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:26.883631Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:26.882727Z&quot;}}" data-execution_count="18">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>match_results <span class="op">=</span> {}</span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> xml_path, dpt_id <span class="kw">in</span> [</span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    (NORMAL_XML, <span class="st">"dpt1"</span>),</span>
@@ -1339,7 +1333,7 @@ Timestamps: 2</pre>
 <span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a>mechanical_match <span class="op">=</span> match_results[<span class="st">"dpt6"</span>]</span>
 <span id="cb20-22"><a href="#cb20-22" aria-hidden="true" tabindex="-1"></a>exaggerated_match <span class="op">=</span> match_results[<span class="st">"dpt11"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<div id="e1d29dcd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:58.522558Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:58.522558Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:58.530763Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:58.528646Z&quot;}}" data-execution_count="19">
+<div id="92e74187" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:26.886110Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:26.885885Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:26.890946Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:26.890076Z&quot;}}" data-execution_count="19">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Normal"</span>: normal_match.summary(),</span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Mechanical"</span>: mechanical_match.summary(),</span>
@@ -1411,7 +1405,7 @@ Timestamps: 2</pre>
 <section id="clt2-recordings-edition-score" class="level3">
 <h3 class="anchored" data-anchor-id="clt2-recordings-edition-score">11.1 CLT2: Recordings Edition Score</h3>
 <p>The recordings edition uses the same measure/repeat structure as CLT1 but was encoded independently (ABC v1.0). We load it via TSVLoader and use its flow controller to compute the traversal map.</p>
-<div id="0ff6bb99" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:58.535769Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:58.535769Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:59.578331Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:59.577215Z&quot;}}" data-execution_count="20">
+<div id="df2bd0a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:26.893680Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:26.893464Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:27.655541Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:27.654539Z&quot;}}" data-execution_count="20">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>REC_DIR <span class="op">=</span> DATA_DIR <span class="op">/</span> <span class="st">"recordings"</span></span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>rec_loader <span class="op">=</span> TSVLoader.from_file(</span>
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    REC_DIR <span class="op">/</span> <span class="st">"Beethoven_Op018No4-04.notes.tsv"</span>,</span>
@@ -1432,7 +1426,7 @@ Timestamps: 2</pre>
 <section id="flow-control-inspect-the-scores-repeat-structure" class="level3">
 <h3 class="anchored" data-anchor-id="flow-control-inspect-the-scores-repeat-structure">11.2 Flow Control: Inspect the Score’s Repeat Structure</h3>
 <p>The loader’s <code>create_flow_controller()</code> identifies atomic sections and flow control events (repeats, voltas) from the measure data.</p>
-<div id="377299cd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:59.582299Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:59.581359Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:59.623993Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:59.622987Z&quot;}}" data-execution_count="21">
+<div id="c22cdab0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:27.657567Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:27.657369Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:27.676658Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:27.675729Z&quot;}}" data-execution_count="21">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>rec_controller <span class="op">=</span> rec_loader.create_flow_controller()</span>
 <span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>rec_controller</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
@@ -1470,8 +1464,8 @@ Section transitions:
 </div>
 </div>
 <p>Compute the default flow (all repeats taken) and a single-pass flow (no repeats, last volta only) for comparison:</p>
-<div id="29f4997b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:59.629110Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:59.628100Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:59.640677Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:59.639565Z&quot;}}" data-execution_count="22">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>default_flow <span class="op">=</span> rec_controller.compute_flow(FlowMode.DEFAULT)</span>
+<div id="55d44b51" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:27.678981Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:27.678697Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:27.685379Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:27.684578Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>default_flow <span class="op">=</span> rec_controller.compute_flow(FlowMode.default)</span>
 <span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>default_flow</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="22">
 <pre style="font-family: monospace; line-height: 1.2;">Flow(default): 226 folded → 291 unfolded (×1.29), 10 sections
@@ -1492,8 +1486,8 @@ Section transitions:
 Sequence: A A B B C C D E F E G H H I I J K L K M</pre>
 </div>
 </div>
-<div id="f3faafb1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:59.644575Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:59.644575Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:33:59.655301Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:33:59.654677Z&quot;}}" data-execution_count="23">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>single_flow <span class="op">=</span> rec_controller.compute_flow(FlowMode.SINGLE_PASS)</span>
+<div id="e608d36a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:27.687438Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:27.687247Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:27.692698Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:27.691952Z&quot;}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>single_flow <span class="op">=</span> rec_controller.compute_flow(FlowMode.single)</span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>single_flow</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="23">
 <pre style="font-family: monospace; line-height: 1.2;">Flow(single): 226 folded → 224 unfolded (×0.99), 3 sections
@@ -1511,7 +1505,7 @@ Sequence: A B C D E G H I J K M</pre>
 <section id="unfolding-clt2" class="level3">
 <h3 class="anchored" data-anchor-id="unfolding-clt2">11.3 Unfolding CLT2</h3>
 <p>The recordings edition has the same repeat structure as CLT1. We unfold it via the standalone <code>create_unfolded_timeline()</code> function, passing the default flow (all repeats taken). The result is a flat timeline with all sections concatenated in playthrough order — coordinates in quarter-beats, suitable for matching against the Emerson CSV’s unfolded floating-measure boundaries.</p>
-<div id="02133f89" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:33:59.660415Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:33:59.659419Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:14.891399Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:14.890247Z&quot;}}" data-execution_count="24">
+<div id="2bfdc152" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:27.694771Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:27.694587Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:34.913218Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:34.912661Z&quot;}}" data-execution_count="24">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>clt2_unfolded <span class="op">=</span> create_unfolded_timeline(</span>
 <span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    clt2, default_flow, flow_controller<span class="op">=</span>rec_controller</span>
 <span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -1585,7 +1579,7 @@ Interval inconsistency: start=376.0, end=757.0, duration=0.0 (expected 381.0). R
 <section id="dpt16-emerson-recording" class="level3">
 <h3 class="anchored" data-anchor-id="dpt16-emerson-recording">11.4 DPT16: Emerson Recording</h3>
 <p>The <code>measureMapAudio.csv</code> provides a 10-segment alignment between the unfolded score (floating measures) and the Emerson recording (seconds). Each segment is labelled with a Greek letter (alpha through kappa).</p>
-<div id="62299028" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:14.897394Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:14.896314Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:14.951321Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:14.950217Z&quot;}}" data-execution_count="25">
+<div id="622b6380" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:34.915449Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:34.915213Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:34.935777Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:34.934937Z&quot;}}" data-execution_count="25">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>ema_df <span class="op">=</span> pd.read_csv(</span>
 <span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    REC_DIR <span class="op">/</span> <span class="st">"Beethoven_Op018No4-04_EmersonStringQuartet_DG_measureMapAudio.csv"</span>,</span>
 <span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>,</span>
@@ -1706,7 +1700,7 @@ Interval inconsistency: start=376.0, end=757.0, duration=0.0 (expected 381.0). R
 </div>
 </div>
 <p>Create DPT16 as a <code>ContinuousPhysicalTimeline</code> in seconds. Unlike the EEP recordings (per-note alignment), the Emerson alignment operates at the level of section boundaries — the coordinates in <code>ema_df</code> will become MatchClaims in §11.5 rather than a C-map.</p>
-<div id="bfb55a1b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:14.955264Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:14.955264Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:14.967217Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:14.966203Z&quot;}}" data-execution_count="26">
+<div id="65ba4ac6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:34.937677Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:34.937482Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:34.942650Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:34.941813Z&quot;}}" data-execution_count="26">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>dpt16_duration <span class="op">=</span> <span class="bu">float</span>(ema_df[<span class="st">"seconds_end"</span>].iloc[<span class="op">-</span><span class="dv">1</span>])</span>
 <span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>dpt16 <span class="op">=</span> ContinuousPhysicalTimeline(length<span class="op">=</span>dpt16_duration, uid<span class="op">=</span><span class="st">"dpt16"</span>)</span>
 <span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>dpt16</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1720,7 +1714,7 @@ Interval inconsistency: start=376.0, end=757.0, duration=0.0 (expected 381.0). R
 <h3 class="anchored" data-anchor-id="emerson-matchclaims-alpha-through-kappa">11.5 Emerson MatchClaims (alpha through kappa)</h3>
 <p>Each row in the measure-map CSV defines a section boundary: a correspondence between an unfolded floating-measure coordinate on CLT2 and a seconds coordinate on DPT16. We create one MatchClaim per boundary, plus the final end boundary.</p>
 <p>These cross-group claims are the key connection between the Emerson recording and the score group.</p>
-<div id="49de25b9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:14.972220Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:14.971217Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:14.989337Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:14.988317Z&quot;}}" data-execution_count="27">
+<div id="ee9bbaf0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:34.944509Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:34.944327Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:34.951886Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:34.951053Z&quot;}}" data-execution_count="27">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>emerson_claims <span class="op">=</span> []</span>
 <span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _, row <span class="kw">in</span> ema_df.iterrows():</span>
 <span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    anchor <span class="op">=</span> AlignmentAnchor(</span>
@@ -1775,7 +1769,7 @@ Interval inconsistency: start=376.0, end=757.0, duration=0.0 (expected 381.0). R
 <p>The insight: CLT1_unfolded and CLT2_unfolded encode the <em>same music</em> from different editions. By adding CLT2_unfolded to the Unfolded Score Group, any coordinate on CLT1_unfolded can be transferred to CLT2_unfolded via within-group interpolation, and from there to DPT16 via the Emerson MatchLine’s WarpMap. The cascading path:</p>
 <p><strong>DPT1 -&gt; (WarpMap) -&gt; CLT1 -&gt; (interpolation) -&gt; CLT2_unfolded -&gt; (WarpMap) -&gt; DPT16</strong></p>
 <p>A single additional group membership retroactively enriches every timeline in both groups.</p>
-<div id="49bbbbe7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:14.995337Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:14.993340Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.085356Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.084343Z&quot;}}" data-execution_count="28">
+<div id="200dca04" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:34.953694Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:34.953522Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.003690Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.002715Z&quot;}}" data-execution_count="28">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>clt1_unfolded <span class="op">=</span> score_group_unfolded.get_timeline(<span class="st">"clt1"</span>)</span>
 <span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>score_group_unfolded.add_timeline(</span>
 <span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    clt2_unfolded,</span>
@@ -1821,7 +1815,7 @@ Timestamps: 2</pre>
 <section id="the-emerson-group" class="level3">
 <h3 class="anchored" data-anchor-id="the-emerson-group">12.2 The Emerson Group</h3>
 <p>The Emerson group contains only DPT16 — the recording timeline. CLT2_unfolded lives in the score group, and the Emerson MatchClaims connect the two groups via cross-group claims.</p>
-<div id="4cdde894" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.091358Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.090355Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.101888Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.100357Z&quot;}}" data-execution_count="29">
+<div id="799be6b7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.005719Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.005453Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.011609Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.010296Z&quot;}}" data-execution_count="29">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>emerson_group <span class="op">=</span> TimelineGroup(</span>
 <span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"emerson"</span>,</span>
 <span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"Emerson Recording (DG 1997)"</span>,</span>
@@ -1842,7 +1836,7 @@ Timestamps: 2</pre>
 <section id="the-alignmentbundle" class="level2">
 <h2 class="anchored" data-anchor-id="the-alignmentbundle">13. The AlignmentBundle</h2>
 <p>The bundle collects all 5 groups and connects them via MatchClaims. Within each group, coordinate transfer uses linear interpolation. Between groups, WarpMaps (built from MatchClaims) enable cross-domain transfer.</p>
-<div id="1491090d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.106886Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.105886Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.274872Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.273339Z&quot;}}" data-execution_count="30">
+<div id="5593a0f9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.014442Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.014047Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.098661Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.097982Z&quot;}}" data-execution_count="30">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> AlignmentBundle(name<span class="op">=</span><span class="st">"Beethoven Op.18/4 — Multimodal Alignment"</span>)</span>
 <span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>bundle.add_group(score_group_unfolded)</span>
@@ -2045,7 +2039,7 @@ Timestamps: 2</pre>
 </div>
 </div>
 <p>Match claims per connection:</p>
-<div id="ffb42f21" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.279868Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.279868Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.296380Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.295868Z&quot;}}" data-execution_count="31">
+<div id="383e980c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.100623Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.100444Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.110450Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.109939Z&quot;}}" data-execution_count="31">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>pd.DataFrame(</span>
 <span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    [</span>
 <span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>        {</span>
@@ -2138,7 +2132,7 @@ Timestamps: 2</pre>
 <section id="explicit-matchline-and-warpmap" class="level3">
 <h3 class="anchored" data-anchor-id="explicit-matchline-and-warpmap">13.1 Explicit MatchLine and WarpMap</h3>
 <p>Before demonstrating bundle-level coordinate transfer, it is instructive to see the intermediate MatchLine and WarpMap that the bundle constructs internally. The MatchLine orders the 11 Emerson anchors by source coordinate; the WarpMap interpolates between them.</p>
-<div id="9e0f6278" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.301393Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.301393Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.310768Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.309750Z&quot;}}" data-execution_count="32">
+<div id="55c377a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.112599Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.112356Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.117369Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.116735Z&quot;}}" data-execution_count="32">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>emerson_matchline <span class="op">=</span> MatchLine.from_claims(</span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    emerson_claims, source_timeline_id<span class="op">=</span><span class="st">"clt2_unfolded"</span></span>
 <span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -2147,7 +2141,7 @@ Timestamps: 2</pre>
 <pre><code>MatchLine(source='clt2_unfolded', stamps=11, targets=[dpt16])</code></pre>
 </div>
 </div>
-<div id="5b211af8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.314767Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.313772Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.323961Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.322947Z&quot;}}" data-execution_count="33">
+<div id="9371d642" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.119376Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.119154Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.123147Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.122540Z&quot;}}" data-execution_count="33">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>emerson_warpmap <span class="op">=</span> WarpMap.from_match_line(emerson_matchline, target_timeline_id<span class="op">=</span><span class="st">"dpt16"</span>)</span>
 <span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>emerson_warpmap</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="33">
@@ -2155,7 +2149,7 @@ Timestamps: 2</pre>
 </div>
 </div>
 <p>Verify the WarpMap manually: transfer a coordinate from CLT2_unfolded to DPT16 and compare with a known section boundary:</p>
-<div id="106f7e81" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.328962Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.327964Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.337742Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.337388Z&quot;}}" data-execution_count="34">
+<div id="0cf6c68f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.125396Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.125217Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.130136Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.129439Z&quot;}}" data-execution_count="34">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The first section boundary from ema_df</span></span>
 <span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>first_fm <span class="op">=</span> <span class="bu">float</span>(ema_df[<span class="st">"measure_unfold_start"</span>].iloc[<span class="dv">0</span>])</span>
 <span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>first_sec <span class="op">=</span> <span class="bu">float</span>(ema_df[<span class="st">"seconds_start"</span>].iloc[<span class="dv">0</span>])</span>
@@ -2179,7 +2173,7 @@ Timestamps: 2</pre>
 <section id="inspecting-clt1s-harmony-annotations" class="level3">
 <h3 class="anchored" data-anchor-id="inspecting-clt1s-harmony-annotations">14.1 Inspecting CLT1’s Harmony Annotations</h3>
 <p>Before transferring coordinates, let us see what harmonic events live on CLT1. The annotations child carries all harmony labels from the ABC score:</p>
-<div id="fb4aaaff" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.340418Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.340418Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:15.368662Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:15.367543Z&quot;}}" data-execution_count="35">
+<div id="e290502e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.131893Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.131707Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.147809Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.146940Z&quot;}}" data-execution_count="35">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>annotations_df <span class="op">=</span> clt1.get_child(<span class="st">"annotations"</span>).get_events().to_pandas()</span>
 <span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>annotations_df[[<span class="st">"start"</span>, <span class="st">"name"</span>]].head(<span class="dv">15</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="35">
@@ -2280,7 +2274,7 @@ Timestamps: 2</pre>
 <section id="use-case-a-transfer-a-harmony-across-all-groups" class="level3">
 <h3 class="anchored" data-anchor-id="use-case-a-transfer-a-harmony-across-all-groups">14.2 USE CASE A — Transfer a Harmony Across All Groups</h3>
 <p>The <code>V7</code> at quarterbeat 79 (m. 20) is a dominant seventh — one of the most recognisable sonorities. Where does this moment land across all 5 groups, in every domain? The nested format groups results by <code>TimelineGroup</code>:</p>
-<div id="c79c0896" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:15.372675Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:15.371667Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:16.460136Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:16.460136Z&quot;}}" data-execution_count="36">
+<div id="7d9dca80" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.150311Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.149988Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.860121Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.859247Z&quot;}}" data-execution_count="36">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>bundle.get_timestamp_at(<span class="fl">79.0</span>, <span class="st">"clt1"</span>, <span class="bu">format</span><span class="op">=</span><span class="st">"nested"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>MatchLine: dropped 11 stamp(s) that do not contain source timeline 'clt1'
@@ -2293,48 +2287,48 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
   'dgt1 (pixels)': 8015,
   'openscore (quarters)': 66.16435272045028,
   'clt2_unfolded (quarters)': 81.69756097560976},
- 'normal': {'dpt1 (samples)': 837936,
+ 'normal': {'dpt1 (samples)': 838206,
   'dpt2 (samples)': 798,
-  'dpt3 (samples)': 1596,
-  'dpt4 (samples)': 3268,
-  'dpt5 (samples)': 4560},
- 'mechanical': {'dpt6 (samples)': 911828,
-  'dpt7 (samples)': 868,
-  'dpt8 (samples)': 1737,
-  'dpt9 (samples)': 3556,
-  'dpt10 (samples)': 4962},
- 'exaggerated': {'dpt11 (samples)': 848192,
+  'dpt3 (samples)': 1597,
+  'dpt4 (samples)': 3269,
+  'dpt5 (samples)': 4562},
+ 'mechanical': {'dpt6 (samples)': 910548,
+  'dpt7 (samples)': 867,
+  'dpt8 (samples)': 1734,
+  'dpt9 (samples)': 3551,
+  'dpt10 (samples)': 4955},
+ 'exaggerated': {'dpt11 (samples)': 848720,
   'dpt12 (samples)': 808,
-  'dpt13 (samples)': 1616,
-  'dpt14 (samples)': 3308,
-  'dpt15 (samples)': 4616},
+  'dpt13 (samples)': 1617,
+  'dpt14 (samples)': 3310,
+  'dpt15 (samples)': 4619},
  'emerson': {'dpt16 (seconds)': 74.19603380264199}}</code></pre>
 </div>
 </div>
 <p>Note that the <code>emerson</code> group now appears in the output: the cascading path CLT1 -&gt; CLT2_unfolded -&gt; DPT16 connects the Emerson recording to the rest of the bundle.</p>
 <p>The flat format is useful for programmatic access:</p>
-<div id="493251e8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:16.462826Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:16.462826Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:16.468695Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:16.468695Z&quot;}}" data-execution_count="37">
+<div id="0ad79d3c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.862173Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.861989Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:35.867707Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:35.866919Z&quot;}}" data-execution_count="37">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>bundle.get_timestamp_at(<span class="fl">79.0</span>, <span class="st">"clt1"</span>, <span class="bu">format</span><span class="op">=</span><span class="st">"flat"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="37">
 <pre><code>{'clt1 (quarters)': 79.0,
  'dgt1 (pixels)': 8015,
  'openscore (quarters)': 66.16435272045028,
  'clt2_unfolded (quarters)': 81.69756097560976,
- 'dpt1 (samples)': 837936,
+ 'dpt1 (samples)': 838206,
  'dpt2 (samples)': 798,
- 'dpt3 (samples)': 1596,
- 'dpt4 (samples)': 3268,
- 'dpt5 (samples)': 4560,
- 'dpt6 (samples)': 911828,
- 'dpt7 (samples)': 868,
- 'dpt8 (samples)': 1737,
- 'dpt9 (samples)': 3556,
- 'dpt10 (samples)': 4962,
- 'dpt11 (samples)': 848192,
+ 'dpt3 (samples)': 1597,
+ 'dpt4 (samples)': 3269,
+ 'dpt5 (samples)': 4562,
+ 'dpt6 (samples)': 910548,
+ 'dpt7 (samples)': 867,
+ 'dpt8 (samples)': 1734,
+ 'dpt9 (samples)': 3551,
+ 'dpt10 (samples)': 4955,
+ 'dpt11 (samples)': 848720,
  'dpt12 (samples)': 808,
- 'dpt13 (samples)': 1616,
- 'dpt14 (samples)': 3308,
- 'dpt15 (samples)': 4616,
+ 'dpt13 (samples)': 1617,
+ 'dpt14 (samples)': 3310,
+ 'dpt15 (samples)': 4619,
  'dpt16 (seconds)': 74.19603380264199}</code></pre>
 </div>
 </div>
@@ -2342,7 +2336,7 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <section id="use-case-b-reverse-transfer-emerson-to-all-groups" class="level3">
 <h3 class="anchored" data-anchor-id="use-case-b-reverse-transfer-emerson-to-all-groups">14.3 USE CASE B — Reverse Transfer: Emerson to All Groups</h3>
 <p>The cascading alignment is bidirectional. Starting from a seconds coordinate on DPT16 (the Emerson recording), we can reach every connected timeline — including the three EEP recording groups:</p>
-<div id="6d52f667" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:16.471709Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:16.470708Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:16.709787Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:16.708721Z&quot;}}" data-execution_count="38">
+<div id="7a41ea6a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:35.869631Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:35.869454Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:36.002979Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:36.002182Z&quot;}}" data-execution_count="38">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>bundle.get_timestamp_at(<span class="fl">120.0</span>, <span class="st">"dpt16"</span>, <span class="bu">format</span><span class="op">=</span><span class="st">"nested"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'dpt16'</code></pre>
@@ -2360,7 +2354,7 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <section id="use-case-c-section-boundaries-across-all-groups" class="level3">
 <h3 class="anchored" data-anchor-id="use-case-c-section-boundaries-across-all-groups">14.4 USE CASE C — Section Boundaries Across All Groups</h3>
 <p>The score’s repeat structure defines atomic sections (A through M). The flow controller (from §6.1) computes each section’s <strong>unfolded</strong> quarterbeat start coordinate. With the Emerson group now connected, the boundary table includes DPT16:</p>
-<div id="f08d9af0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:16.712788Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:16.712788Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:16.720849Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:16.719780Z&quot;}}" data-execution_count="39">
+<div id="773d72e9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:36.005033Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:36.004846Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:36.009618Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:36.008803Z&quot;}}" data-execution_count="39">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>section_coords <span class="op">=</span> abc_controller.get_atomic_section_coordinates(flow<span class="op">=</span>abc_flow)</span>
 <span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>section_coords</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="39">
@@ -2379,7 +2373,7 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
  'M': Fraction(621, 1)}</code></pre>
 </div>
 </div>
-<div id="9b84f1c2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:34:16.723951Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:34:16.723951Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:34:16.764231Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:34:16.763173Z&quot;}}" data-execution_count="40">
+<div id="68ef5aef" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:42:36.011578Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:42:36.011390Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:42:36.042318Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:42:36.041356Z&quot;}}" data-execution_count="40">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>boundary_df <span class="op">=</span> pd.DataFrame(</span>
 <span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>    [</span>
 <span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a>        bundle.get_timestamp_at(<span class="bu">float</span>(qb), <span class="st">"clt1"</span>, <span class="bu">format</span><span class="op">=</span><span class="st">"flat"</span>)</span>
@@ -2541,21 +2535,21 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <td>25670</td>
 <td>211.893433</td>
 <td>261.639024</td>
-<td>2487974</td>
-<td>2370</td>
-<td>4739</td>
-<td>9704</td>
-<td>13540</td>
+<td>2695611</td>
+<td>2567</td>
+<td>5135</td>
+<td>10514</td>
+<td>14670</td>
 <td>2905988</td>
 <td>2768</td>
 <td>5535</td>
 <td>11334</td>
 <td>15815</td>
-<td>2684332</td>
-<td>2557</td>
-<td>5113</td>
-<td>10470</td>
-<td>14609</td>
+<td>2685233</td>
+<td>2558</td>
+<td>5115</td>
+<td>10474</td>
+<td>14614</td>
 <td>227.816407</td>
 </tr>
 <tr class="even">
@@ -2564,21 +2558,21 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <td>32163</td>
 <td>265.494934</td>
 <td>327.824390</td>
-<td>3370708</td>
+<td>3371444</td>
 <td>3211</td>
-<td>6421</td>
-<td>13147</td>
-<td>18344</td>
-<td>3625860</td>
-<td>3454</td>
-<td>6907</td>
-<td>14142</td>
-<td>19732</td>
-<td>3334448</td>
-<td>3176</td>
-<td>6352</td>
-<td>13006</td>
-<td>18147</td>
+<td>6422</td>
+<td>13150</td>
+<td>18348</td>
+<td>3625348</td>
+<td>3453</td>
+<td>6906</td>
+<td>14140</td>
+<td>19730</td>
+<td>3336652</td>
+<td>3178</td>
+<td>6356</td>
+<td>13014</td>
+<td>18159</td>
 <td>283.625382</td>
 </tr>
 <tr class="odd">
@@ -2633,16 +2627,16 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <td>53268</td>
 <td>439.699812</td>
 <td>542.926829</td>
-<td>5552728</td>
-<td>5289</td>
-<td>10577</td>
-<td>21658</td>
-<td>30219</td>
-<td>6400772</td>
-<td>6097</td>
-<td>12193</td>
-<td>24966</td>
-<td>34834</td>
+<td>5970403</td>
+<td>5687</td>
+<td>11373</td>
+<td>23287</td>
+<td>32492</td>
+<td>5969028</td>
+<td>5685</td>
+<td>11370</td>
+<td>23282</td>
+<td>32484</td>
 <td>5870768</td>
 <td>5592</td>
 <td>11183</td>
@@ -2656,21 +2650,21 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <td>56514</td>
 <td>466.500563</td>
 <td>576.019512</td>
-<td>5861765</td>
-<td>5583</td>
-<td>11166</td>
-<td>22863</td>
-<td>31901</td>
+<td>5997231</td>
+<td>5712</td>
+<td>11424</td>
+<td>23392</td>
+<td>32638</td>
 <td>6423992</td>
 <td>6119</td>
 <td>12237</td>
 <td>25056</td>
 <td>34960</td>
-<td>5827762</td>
-<td>5551</td>
-<td>11101</td>
-<td>22731</td>
-<td>31716</td>
+<td>5826232</td>
+<td>5550</td>
+<td>11098</td>
+<td>22725</td>
+<td>31708</td>
 <td>492.909037</td>
 </tr>
 <tr class="odd">
@@ -2679,21 +2673,21 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <td>56920</td>
 <td>469.850657</td>
 <td>580.156098</td>
-<td>5930346</td>
-<td>5648</td>
-<td>11296</td>
-<td>23131</td>
-<td>32274</td>
+<td>6017811</td>
+<td>5732</td>
+<td>11463</td>
+<td>23472</td>
+<td>32750</td>
 <td>6401064</td>
 <td>6097</td>
 <td>12193</td>
 <td>24967</td>
 <td>34836</td>
-<td>5868885</td>
-<td>5591</td>
-<td>11180</td>
-<td>22891</td>
-<td>31940</td>
+<td>5906736</td>
+<td>5627</td>
+<td>11252</td>
+<td>23039</td>
+<td>32146</td>
 <td>496.397098</td>
 </tr>
 <tr class="even">
@@ -2702,21 +2696,21 @@ MatchLine: dropped 1419 stamp(s) that do not contain source timeline 'clt2_unfol
 <td>59761</td>
 <td>493.301313</td>
 <td>609.112195</td>
-<td>6210052</td>
-<td>5915</td>
-<td>11829</td>
-<td>24222</td>
-<td>33796</td>
+<td>6229491</td>
+<td>5933</td>
+<td>11866</td>
+<td>24298</td>
+<td>33902</td>
 <td>6729385</td>
 <td>6410</td>
 <td>12818</td>
 <td>26247</td>
 <td>36622</td>
-<td>6144432</td>
-<td>5853</td>
-<td>11705</td>
-<td>23966</td>
-<td>33439</td>
+<td>6163760</td>
+<td>5871</td>
+<td>11741</td>
+<td>24042</td>
+<td>33545</td>
 <td>520.813524</td>
 </tr>
 <tr class="odd">

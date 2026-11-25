@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-a0f9fd0d421825b736dc1bbcbcba2219.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -341,7 +341,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tbody>
 </table>
 <p>This whirlwind tour covers the core concepts in under five minutes. Each section links to a full tutorial.</p>
-<div id="74afab6c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:35.888568Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:35.887588Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:41.450320Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:41.449808Z&quot;}}" data-execution_count="1">
+<div id="72eac400" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:05.854177Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:05.853377Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:09.474545Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:09.473341Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> BeatGrid, MatchfileLoader, TimelineGroup</span>
@@ -351,21 +351,25 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.maps <span class="im">import</span> TicksToQuarters</span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> Path(<span class="st">"."</span>).resolve().parents[<span class="dv">1</span>] <span class="op">/</span> <span class="st">"tests"</span> <span class="op">/</span> <span class="st">"data"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/home/laser/miniconda3/envs/timetoalign/lib/python3.11/site-packages/partitura/__init__.py:9: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools&lt;81.
+  import pkg_resources</code></pre>
+</div>
 </div>
 <section id="same-content-different-formats" class="level2">
 <h2 class="anchored" data-anchor-id="same-content-different-formats">Same content, different formats</h2>
 <p>Before the tour, a quick demonstration of what Time To Align! is for. We load Chopin’s Etude Op. 10 No.&nbsp;3 from both MusicXML and a TSV note list, and check that both loaders see the same musical content.</p>
-<div id="da36be42" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:41.453328Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:41.453328Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:48.091422Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:48.091422Z&quot;}}" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>pt_loader <span class="op">=</span> PartituraLoader()</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>pt_loader.load(DATA_DIR <span class="op">/</span> <span class="st">"vienna_1x22"</span> <span class="op">/</span> <span class="st">"Chopin_op10_no3.musicxml"</span>)</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>tsv_loader <span class="op">=</span> TSVLoader.from_file(</span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"vienna_1x22"</span> <span class="op">/</span> <span class="st">"ms3"</span> <span class="op">/</span> <span class="st">"chopin_op10_no3.notes.tsv"</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Partitura (MusicXML)"</span>: <span class="bu">len</span>(pt_loader.store.notes),</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"TSV (MS3 export)"</span>: <span class="bu">len</span>(tsv_loader.store.notes),</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="97d21067" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:09.477304Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:09.476632Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:13.397447Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:13.395871Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>pt_loader <span class="op">=</span> PartituraLoader()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>pt_loader.load(DATA_DIR <span class="op">/</span> <span class="st">"vienna_1x22"</span> <span class="op">/</span> <span class="st">"Chopin_op10_no3.musicxml"</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>tsv_loader <span class="op">=</span> TSVLoader.from_file(</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"vienna_1x22"</span> <span class="op">/</span> <span class="st">"ms3"</span> <span class="op">/</span> <span class="st">"chopin_op10_no3.notes.tsv"</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Partitura (MusicXML)"</span>: <span class="bu">len</span>(pt_loader.store.notes),</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"TSV (MS3 export)"</span>: <span class="bu">len</span>(tsv_loader.store.notes),</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
 <pre><code>{'Partitura (MusicXML)': 498, 'TSV (MS3 export)': 498}</code></pre>
 </div>
@@ -375,23 +379,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="timelines-events" class="level2">
 <h2 class="anchored" data-anchor-id="timelines-events">1. Timelines &amp; Events</h2>
 <p>Promote the loaded score into a timeline with nested children. (<a href="../tutorials/tut01a_timelines_events_maps.html">Full tutorial</a>)</p>
-<div id="6e23e3b3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:48.093755Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:48.093755Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:48.350015Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:48.350015Z&quot;}}" data-execution_count="3">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> pt_loader.create_timeline(uid<span class="op">=</span><span class="st">"score"</span>)</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>score</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="07b11c80" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:13.401465Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:13.401085Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:13.454442Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:13.453386Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> pt_loader.create_timeline(uid<span class="op">=</span><span class="st">"score"</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>score</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<pre style="font-family: monospace; line-height: 1.2;">ContinuousLogicalTimeline[score] (547 events, 3 children, 3 cmaps)
+<pre style="font-family: monospace; line-height: 1.2;">ContinuousLogicalTimeline[score] (547 events, 4 children, 3 cmaps)
                       0 ________________________________ 41.5 quarters
   ├─ notes            0 ________________________________ 41.5 (498 events)
   ├─ measures         0 ________________________________ 41.5 (22 events)
-  └─ controls         0 ______________________________   40 (27 events)</pre>
+  ├─ controls         0 ______________________________   40 (22 events)
+  └─ annotations      0 _________________________        32.5 (5 events)</pre>
 </div>
 </div>
 </section>
 <section id="timestamps" class="level2">
 <h2 class="anchored" data-anchor-id="timestamps">2. Timestamps</h2>
 <p>A cross-section showing coordinates in the root and all children. (<a href="../tutorials/tut01b_children_regions_timestamps.html">Full tutorial</a>)</p>
-<div id="ef296d45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:48.355027Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:48.354028Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:48.500387Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:48.500387Z&quot;}}" data-execution_count="4">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>score.get_timestamps().head(<span class="dv">5</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="b170eddb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:13.464085Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:13.463455Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:13.661064Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:13.658918Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>score.get_timestamps().head(<span class="dv">5</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <div>
 
@@ -405,12 +410,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">notes (quarters)</th>
 <th data-quarto-table-cell-role="th">measures (quarters)</th>
 <th data-quarto-table-cell-role="th">controls (quarters)</th>
+<th data-quarto-table-cell-role="th">annotations (quarters)</th>
 <th data-quarto-table-cell-role="th">quarters_to_ticks (ticks)</th>
 <th data-quarto-table-cell-role="th">quarters_to_measures (measures)</th>
 <th data-quarto-table-cell-role="th">raw_quarters (quarters)</th>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th"></th>
 <th data-quarto-table-cell-role="th"></th>
 <th data-quarto-table-cell-role="th"></th>
 <th data-quarto-table-cell-role="th"></th>
@@ -430,11 +437,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>0</td>
 <td>0</td>
 <td>0</td>
+<td>0</td>
 <td>1</td>
 <td>-1/2</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">notes:note:000002</th>
+<td>1/2</td>
 <td>1/2</td>
 <td>1/2</td>
 <td>1/2</td>
@@ -451,6 +460,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>3/4</td>
 <td>3/4</td>
 <td>3/4</td>
+<td>3/4</td>
 <td>360</td>
 <td>17/8</td>
 <td>1/4</td>
@@ -462,12 +472,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>1</td>
 <td>1</td>
 <td>1</td>
+<td>1</td>
 <td>480</td>
 <td>9/4</td>
 <td>1/2</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">notes:note:000010</th>
+<td>5/4</td>
 <td>5/4</td>
 <td>5/4</td>
 <td>5/4</td>
@@ -487,10 +499,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="conversion-maps" class="level2">
 <h2 class="anchored" data-anchor-id="conversion-maps">3. Conversion Maps</h2>
 <p>Translate between units (e.g., quarters to MIDI ticks). (<a href="../tutorials/tut01a_timelines_events_maps.html">Full tutorial</a>)</p>
-<div id="da16ec71" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:48.503396Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:48.503396Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:48.508801Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:48.508801Z&quot;}}" data-execution_count="5">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>q2t <span class="op">=</span> TicksToQuarters(ppq<span class="op">=</span><span class="dv">480</span>).inverse()</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>score.add_conversion_map(q2t)</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>score.convert_to(score.make_coordinate(<span class="dv">8</span>), target_unit<span class="op">=</span><span class="st">"ticks"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="d967e16c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:13.664872Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:13.664494Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:13.675513Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:13.673520Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>q2t <span class="op">=</span> TicksToQuarters(ppq<span class="op">=</span><span class="dv">480</span>).inverse()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>score.add_conversion_map(q2t)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>score.convert_to(score.make_coordinate(<span class="dv">8</span>), target_unit<span class="op">=</span><span class="st">"ticks"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
 <pre><code>Coordinate(3840, ticks)</code></pre>
 </div>
@@ -499,17 +511,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="timeline-groups" class="level2">
 <h2 class="anchored" data-anchor-id="timeline-groups">4. Timeline Groups</h2>
 <p>Link timelines for coordinate transfer. (<a href="../tutorials/tut02_timeline_groups.html">Full tutorial</a>)</p>
-<div id="5cee2dd7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:48.511810Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:48.510810Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:48.526220Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:48.526220Z&quot;}}" data-execution_count="6">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>perf <span class="op">=</span> PerformanceMidiLoader.from_file(</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"performance"</span> <span class="op">/</span> <span class="st">"rachmaninoff_perf.mid"</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>).create_timeline(uid<span class="op">=</span><span class="st">"perf"</span>)</span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>group <span class="op">=</span> TimelineGroup(<span class="bu">id</span><span class="op">=</span><span class="st">"demo"</span>)</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>group.add_timeline(score)</span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>group.add_timeline(perf)</span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>ts <span class="op">=</span> group.get_timestamp_at(<span class="fl">20.0</span>, <span class="st">"score"</span>)</span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="3cff1f2e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:13.678676Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:13.678310Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:13.707062Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:13.705128Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>perf <span class="op">=</span> PerformanceMidiLoader.from_file(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    DATA_DIR <span class="op">/</span> <span class="st">"midi"</span> <span class="op">/</span> <span class="st">"performance"</span> <span class="op">/</span> <span class="st">"rachmaninoff_perf.mid"</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>).create_timeline(uid<span class="op">=</span><span class="st">"perf"</span>)</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>group <span class="op">=</span> TimelineGroup(<span class="bu">id</span><span class="op">=</span><span class="st">"demo"</span>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>group.add_timeline(score)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>group.add_timeline(perf)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>ts <span class="op">=</span> group.get_timestamp_at(<span class="fl">20.0</span>, <span class="st">"score"</span>)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
 <div style="font-family: monospace;"><strong>TimeStamp</strong> <span style="background: #ffeb3b; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">interpolated</span>
 <table class="caption-top table table-sm table-striped small">
@@ -532,8 +544,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><em>child</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">quarters</td>
-<td style="text-align: right;">19.5 quarters</td>
+<td style="color: #666">measures</td>
+<td style="text-align: right;">11.75 measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
@@ -542,8 +554,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">measures</td>
-<td style="text-align: right;">11.75 measures</td>
+<td style="color: #666">quarters</td>
+<td style="text-align: right;">19.5 quarters</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 </tbody>
@@ -555,11 +567,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="alignment-bundles" class="level2">
 <h2 class="anchored" data-anchor-id="alignment-bundles">5. Alignment Bundles</h2>
 <p>Load 22 performances from <code>.match</code> files in one go. (<a href="../tutorials/tut03_alignment_bundles.html">Full tutorial</a>)</p>
-<div id="00d53ea1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:48.528228Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:48.528228Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:54.098046Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:54.098046Z&quot;}}" data-execution_count="7">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>match_files <span class="op">=</span> <span class="bu">sorted</span>((DATA_DIR <span class="op">/</span> <span class="st">"vienna_1x22"</span>).glob(<span class="st">"*.match"</span>))</span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> MatchfileLoader().load(<span class="op">*</span>match_files).create_alignment_bundle()</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>{<span class="st">"timelines"</span>: <span class="bu">len</span>(bundle.timeline_ids), <span class="st">"groups"</span>: <span class="bu">len</span>(bundle.group_ids)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="aa5618cb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:13.710595Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:13.710237Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:22.303992Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:22.302613Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>match_files <span class="op">=</span> <span class="bu">sorted</span>((DATA_DIR <span class="op">/</span> <span class="st">"vienna_1x22"</span>).glob(<span class="st">"*.match"</span>))</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> MatchfileLoader().load(<span class="op">*</span>match_files).create_alignment_bundle()</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>{<span class="st">"timelines"</span>: <span class="bu">len</span>(bundle.timeline_ids), <span class="st">"groups"</span>: <span class="bu">len</span>(bundle.group_ids)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
 <pre><code>{'timelines': 23, 'groups': 1}</code></pre>
 </div>
@@ -568,9 +580,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="beat-grids" class="level2">
 <h2 class="anchored" data-anchor-id="beat-grids">6. Beat Grids</h2>
 <p>Rapid measure/beat queries for metrical structure. (<a href="../tutorials/tut04_flow_and_grids.html">Full tutorial</a>)</p>
-<div id="8e41c010" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-13T10:29:54.100054Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-13T10:29:54.100054Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-13T10:29:54.106054Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-13T10:29:54.106054Z&quot;}}" data-execution_count="8">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>grid <span class="op">=</span> BeatGrid.from_tempo(tempo_bpm<span class="op">=</span><span class="dv">120</span>, beats_per_measure<span class="op">=</span><span class="dv">4</span>, length_seconds<span class="op">=</span><span class="dv">30</span>)</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>{<span class="st">"quarters"</span>: <span class="fl">6.0</span>, <span class="st">"measure"</span>: grid.measure_at(<span class="fl">6.0</span>), <span class="st">"beat"</span>: grid.beat_at(<span class="fl">6.0</span>)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="653f16c1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-05-14T10:39:22.306619Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-05-14T10:39:22.306269Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-05-14T10:39:22.314788Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-05-14T10:39:22.313593Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>grid <span class="op">=</span> BeatGrid.from_tempo(tempo_bpm<span class="op">=</span><span class="dv">120</span>, beats_per_measure<span class="op">=</span><span class="dv">4</span>, length_seconds<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>{<span class="st">"quarters"</span>: <span class="fl">6.0</span>, <span class="st">"measure"</span>: grid.measure_at(<span class="fl">6.0</span>), <span class="st">"beat"</span>: grid.beat_at(<span class="fl">6.0</span>)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <pre><code>{'quarters': 6.0, 'measure': 2, 'beat': Fraction(3, 1)}</code></pre>
 </div>

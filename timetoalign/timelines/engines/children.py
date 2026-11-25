@@ -1347,7 +1347,9 @@ class ChildrenMixin:
         to hold an event running past *end*; an event starting before
         *start* is not taken. Where this timeline holds Boxes, *target*
         states its place in the image first (:meth:`_move_rows_onto_cut`),
-        with or without events.
+        with or without events. An event ID met twice (a child cut from an
+        overlapping region holds a copy of the event) is taken once, from
+        the first row, which is this timeline's own before any child's.
 
         Args:
             target: The new timeline, standing at *start* of this one.
@@ -1362,7 +1364,16 @@ class ChildrenMixin:
         """
         rows: list[dict[str, Any]] = []
         if copy_events:
+            taken: set[str] = set()
             for event in self.get_events(min_coord=start, max_coord=end):
+                # A child cut from an overlapping region holds a copy of an
+                # event of this timeline under the same ID; the timeline's
+                # own row comes first and is the one taken.
+                event_id = event.get("id")
+                if event_id is not None:
+                    if event_id in taken:
+                        continue
+                    taken.add(event_id)
                 row = dict(event)
                 for key in ("instant", "start", "end"):
                     if row.get(key) is not None:

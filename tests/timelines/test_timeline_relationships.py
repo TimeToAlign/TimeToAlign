@@ -2029,6 +2029,46 @@ class TestCreateChildrenFromRegions:
         assert children[0].name == "A"
         assert children[1].name == "C"
 
+    @staticmethod
+    def _own_events(child: Timeline) -> list[tuple[str, int, int]]:
+        return [
+            (row["id"], row["start"]["numerator"], row["end"]["numerator"])
+            for row in child.get_events(include_children=False).table.to_pylist()
+        ]
+
+    @pytest.mark.parametrize(
+        ("regions", "expected"),
+        [
+            (
+                [(0, 8), (4, 12)],
+                [[("fast_1", 0, 2), ("fast_2", 6, 7)], [("fast_2", 2, 3)]],
+            ),
+            (
+                [(0, 8), (0, 8)],
+                [
+                    [("fast_1", 0, 2), ("fast_2", 6, 7)],
+                    [("fast_1", 0, 2), ("fast_2", 6, 7)],
+                ],
+            ),
+        ],
+    )
+    def test_overlapping_regions_give_independent_children(self, regions, expected):
+        """Each child copies the timeline's own events, once each."""
+        tl = ContinuousLogicalTimeline(length=16, uid="clt_1")
+        tl.add_events(
+            [
+                {"event_type": "Fast", "start": 0, "end": 2},
+                {"event_type": "Fast", "start": 6, "end": 7},
+            ]
+        )
+        for start, end in regions:
+            tl.create_region(start, end)
+
+        children = tl.create_children_from_regions()
+
+        assert [self._own_events(child) for child in children] == expected
+        assert tl.n_events == 2
+
 
 class TestGetRegionsAt:
     """Test Timeline.get_regions_at()."""

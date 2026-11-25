@@ -4551,6 +4551,15 @@ measures.
 8. **Children and regions — create_children_from_regions()** (3 tests)
    - Creates children for all or specified regions
    - Returns list of created children
+   - Overlapping regions give independent children, as the method
+     promises: on a 16-quarter timeline holding `fast_1` [0, 2) and
+     `fast_2` [6, 7), regions [0, 8) and [4, 12) give one child holding
+     `fast_1` [0, 2) and `fast_2` [6, 7), and one holding `fast_2` [2, 3)
+     alone; the same region [0, 8) twice gives two children holding both
+     events at their own positions; the timeline keeps its two events. The
+     second child's cut also meets the first child's copy of an event,
+     under the same ID: a copy taking both rows refused the call
+     (`Event id 'fast_2' is given twice in one call to add_events`).
 
 9. **Children and regions — get_regions_at() / get_children_at()** (6 tests)
    - `get_regions_at(coord)` returns all regions containing that coordinate

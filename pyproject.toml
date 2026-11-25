@@ -184,6 +184,7 @@ strict = [
     "timetoalign/core/enums.py",
     "timetoalign/core/fields.py",
     "timetoalign/core/ids.py",
+    "timetoalign/core/provenance.py",
     "timetoalign/core/protocols.py",
     "timetoalign/core/retrieval.py",
     "timetoalign/core/time.py",

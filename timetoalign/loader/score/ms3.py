@@ -50,6 +50,12 @@ def _holds_no_table(source: Path) -> ValueError:
     )
 
 
+def _states_a_table(path: Path) -> bool:
+    """Whether *path* holds anything but whitespace (an ms3 TSV states its columns)."""
+    with path.open("rb") as file:
+        return any(line.strip() for line in file)
+
+
 class Ms3Loader(ScoreLoader):
     """Load symbolic scores from DCML-style TSV files.
 
@@ -226,7 +232,9 @@ class Ms3Loader(ScoreLoader):
         When ``auto_discover`` is enabled, each source file is expanded to
         include its companion facet files (measures, chords, harmonies,
         etc.) before loading. Files that have already been loaded (or that
-        appear more than once in the expanded set) are silently skipped.
+        appear more than once in the expanded set) are silently skipped, and
+        so is a discovered companion that holds no table (an empty file); a
+        source the caller names that holds no table is refused.
         A facet the piece does not have is not looked for further; a source
         for which no companion at all is found raises a ``UserWarning``
         naming the paths that were looked at, and is loaded alone.
@@ -256,6 +264,9 @@ class Ms3Loader(ScoreLoader):
             for companion in companions:
                 if companion not in seen:
                     seen.add(companion)
+                    if not _states_a_table(companion):
+                        logger.debug("Companion holds no table, skipped: %s", companion)
+                        continue
                     expanded.append(companion)
                     logger.debug("Auto-discovered companion: %s", companion)
 
@@ -464,10 +475,8 @@ class Ms3Loader(ScoreLoader):
 
         Returns:
             The exact end position in quarters, or None when no measures
-            companion is available or its cells are not exact.
-
-        Raises:
-            ValueError: If the measures companion holds no table.
+            companion is available, cannot be read, holds no table (it is
+            empty) or its cells are not exact.
         """
         try:
             import ms3
@@ -483,7 +492,8 @@ class Ms3Loader(ScoreLoader):
                 logger.debug("Could not read measures companion: %s", companion)
                 return None
             if measures is None:
-                raise _holds_no_table(companion)
+                logger.debug("Measures companion holds no table: %s", companion)
+                return None
 
             end: Fraction | None = None
             for _, row in measures.iterrows():

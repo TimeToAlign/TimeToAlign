@@ -335,12 +335,25 @@ def test_an_empty_file_is_refused_naming_it(tmp_path, name):
 
 
 @pytest.mark.parametrize("auto_discover", [True, False])
-def test_an_empty_measures_companion_is_refused_naming_it(tmp_path, auto_discover):
-    harmonies = tmp_path / "p.harmonies.tsv"
-    harmonies.write_text(HARMONIES, encoding="utf-8")
-    Ms3Loader.from_file(harmonies, auto_discover=auto_discover)
-    measures = tmp_path / "p.measures.tsv"
-    measures.write_bytes(b"")
-    with pytest.raises(ValueError) as excinfo:
-        Ms3Loader.from_file(harmonies, auto_discover=auto_discover)
-    assert str(excinfo.value) == _holds_no_table(measures)
+def test_an_empty_measures_companion_is_passed_over_as_a_missing_one(
+    tmp_path, auto_discover
+):
+    alone = tmp_path / "alone" / "p.harmonies.tsv"
+    beside_empty = tmp_path / "beside_empty" / "p.harmonies.tsv"
+    for harmonies in (alone, beside_empty):
+        harmonies.parent.mkdir()
+        harmonies.write_text(HARMONIES, encoding="utf-8")
+    (beside_empty.parent / "p.measures.tsv").write_bytes(b"")
+
+    with warnings.catch_warnings():
+        # Loaded alone with auto_discover, the file warns that no companion exists.
+        warnings.simplefilter("ignore")
+        expected = Ms3Loader.from_file(alone, auto_discover=auto_discover)
+    loaded = _load(beside_empty, auto_discover=auto_discover)
+
+    table = loaded.store.annotations.table
+    assert table.equals(expected.store.annotations.table)
+    assert table.column("duration").to_pylist() == [
+        {"value": 6.0, "numerator": 6, "denominator": 1},
+        None,
+    ]

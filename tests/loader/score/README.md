@@ -395,17 +395,22 @@ so a file without one is no facet the loader could read, and loading it as an em
 claim that the piece has no notes, chords, labels or measures. The loader used to fail on it
 with whatever came first (`AttributeError: 'NoneType' object has no attribute 'empty'` for a
 notes, chords or harmonies file, `... 'columns'` for a file naming no facet, pandas'
-`EmptyDataError` for a measures file), and a harmonies file whose measures companion was empty
-failed with `... 'iterrows'`. Now each is refused with a `ValueError` naming the file.
+`EmptyDataError` for a measures file). Now each is refused with a `ValueError` naming the file.
+A companion is different: the caller did not name it, and a harmonies file is complete without
+its measures companion (that companion only states where the last label ends). A harmonies file
+whose measures companion was empty used to fail with `... 'iterrows'`, then was refused; an
+empty companion is now passed over exactly as a missing one is, so the harmonies load.
 
 The proof writes zero-byte files in `tmp_path`. `Ms3Loader.from_file` of each of
 `p.notes.tsv`, `p.chords.tsv`, `p.harmonies.tsv`, `p.tsv` and `p.measures.tsv` must raise
 `ValueError` with exactly `Ms3Loader cannot read '<path>': the file holds no table (an ms3 TSV
 file states its columns in its first line).`, `<path>` the file's full path. The harmonies
-table of "MS3 facet discovery" beside an empty `p.measures.tsv` raises the same message naming
-the measures file, with and without `auto_discover` (the end of the last label is read from the
-measures companion either way). The same harmonies table without a measures file still loads,
-so the refusal is not passed by refusing the harmonies.
+table of "MS3 facet discovery" beside an empty `p.measures.tsv` loads, with and without
+`auto_discover` (with it, the empty file is discovered and must be passed over rather than
+loaded; without it, the end of the last label is still looked up in the measures companion).
+Its annotations table equals, row for row, the one loaded from the same harmonies table with no
+measures file at all, and its two label spans are exactly `6` quarters and null: the last
+label's end is stated nowhere, so an empty companion must not invent one.
 
 ## Coordinate exactness
 

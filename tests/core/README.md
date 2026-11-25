@@ -2588,6 +2588,42 @@ TSV has 386 rows, one `DcmlHarmony` each.
 A non-null struct reads back as the coordinate it was built from
 (`1.0` and `3.0` seconds), a null one as `None`.
 
+### `test_arrow_stub_helpers.py` - The PyArrow types the stub helpers state
+
+`core/fields.py` routes a few PyArrow calls through helpers whose only
+content is the call and a statement of the type PyArrow returns, because the
+PyArrow type stubs declare those calls with a different type. A type checker
+believes the stated type without looking, so nothing but a runtime test can
+tell when it stops being true. These tests are that check: each calls one
+helper on a small input and asserts the exact runtime class the helper's
+annotation names (`type(result) is pa.StructArray`, not `isinstance` against
+a base class, so that a PyArrow change to a different array class fails) and
+the exact values, nulls included. If PyArrow ever returns something else, the
+helper's annotation is false and its test fails.
+
+- **Struct array from rows.** Two rows, a dict and `None`, of a two-member
+  struct type, and no rows: a `pa.StructArray` of that type each time, the
+  second row null.
+- **Valid struct cell.** The first cell of that array: a `dict` equal to the
+  row it was built from.
+- **Filled mask.** `[True, None, False]` filled with `False`: a
+  `pa.BooleanArray` `[True, False, False]` without nulls.
+- **Joined strings.** `["C", None]` and `["4", "5"]` joined by `""`: a
+  `pa.StringArray` `["C4", None]`.
+- **Struct if-else.** Choosing between two struct arrays by `[True, False]`:
+  a `pa.StructArray` holding the first array's first row and the second's
+  second row.
+- **Dictionary chunked array.** Two dictionary chunks and zero chunks: a
+  `pa.ChunkedArray` of the given dictionary type, its chunk count and values
+  as given.
+- **Cast column.** An int64 array and a chunked int64 array cast to float64:
+  a `pa.DoubleArray` and a `pa.ChunkedArray`, values equal.
+- **Struct child.** The member of a struct array whose second row is null:
+  the stored child, its placeholder kept (the helper reads the child as
+  stored, ignoring the struct's validity, as `StructArray.field` does).
+- **Struct array from arrays.** Two member arrays with fields, with and
+  without a mask: a `pa.StructArray`, the masked row null.
+
 ## Running Tests
 
 ```bash

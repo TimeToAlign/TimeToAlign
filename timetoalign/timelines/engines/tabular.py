@@ -23,6 +23,7 @@ from timetoalign.core import (
     combine_number_columns,
     resolve_coordinate_spec,
 )
+from timetoalign.core.fields import _struct_array, _struct_array_of
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateInput,
@@ -52,7 +53,7 @@ if TYPE_CHECKING:
 
 def _empty_coordinates() -> pa.StructArray:
     """Return an empty coordinate column of the canonical storage shape."""
-    return pa.array([], type=RATIONAL_STRUCT_TYPE)
+    return _struct_array_of([], RATIONAL_STRUCT_TYPE)
 
 
 def _coordinate_column(values: Any, number_type: NumberType) -> pa.StructArray:
@@ -62,7 +63,7 @@ def _coordinate_column(values: Any, number_type: NumberType) -> pa.StructArray:
     )
 
 
-def _unique_sorted_coordinates(arrays: Sequence[pa.Array]) -> pa.StructArray:
+def _unique_sorted_coordinates(arrays: Sequence[pa.StructArray]) -> pa.StructArray:
     """Concatenate coordinate columns, drop repeats, and sort ascending.
 
     Ordering and deduplication read the float member, so they stay a single
@@ -102,7 +103,7 @@ def _positions_within(within: pa.Array) -> pa.Array:
 
 def _null_where(column: pa.StructArray, mask: pa.Array) -> pa.StructArray:
     """Null out whole coordinate cells wherever *mask* is true."""
-    nulled = pc.fill_null(mask, True)
+    nulled = pc.fill_null(mask, pa.scalar(True))
     return pa.StructArray.from_arrays(
         [
             pc.if_else(nulled, pa.scalar(None, type=member.type), column.field(name))
@@ -200,18 +201,20 @@ class TabularExportMixin:
         coordinates: dict[str, Coordinate] = {self._id: native_coord}
         descendants = getattr(self, "_get_descendant_timeline_ids", lambda: [])()
         child_getter = getattr(self, "_get_child_coordinate", None)
-        for timeline_id in descendants:
-            if timeline_id == self._id or child_getter is None:
+        for descendant_id in descendants:
+            if descendant_id == self._id or child_getter is None:
                 continue
-            value = child_getter(timeline_id, native_coord.value)
+            value = child_getter(descendant_id, native_coord.value)
             if value is None:
                 continue
-            unit_for = self._get_unit_for_timeline(timeline_id)
-            number_type_for = self._get_number_type_for_timeline(timeline_id)
+            unit_for = self._get_unit_for_timeline(descendant_id)
+            number_type_for = self._get_number_type_for_timeline(descendant_id)
             if unit_for is None:
                 continue
             declared = number_type_for or unit_for.default_number_type
-            coordinates[timeline_id] = Coordinate(value, unit_for, number_type=declared)
+            coordinates[descendant_id] = Coordinate(
+                value, unit_for, number_type=declared
+            )
 
         return TimeStamp(
             coordinates=coordinates,
@@ -513,8 +516,8 @@ class TabularExportMixin:
         if table.num_rows == 0:
             return _empty_coordinates()
 
-        starts = table.column("start").combine_chunks()
-        ends = table.column("end").combine_chunks()
+        starts = _struct_array(table.column("start"))
+        ends = _struct_array(table.column("end"))
         return _unique_sorted_coordinates([starts, ends.filter(ends.is_valid())])
 
     def _collect_all_coordinates(
@@ -851,12 +854,16 @@ class TabularExportMixin:
                     # MetricalPositionMap answers {"mc": ..., "beat": ...},
                     # which has no column type here.
                     continue
+                # A map with a target unit always declares how it writes its
+                # results: output_number_type is None only without one.
+                number_type = cmap.output_number_type
+                assert number_type is not None
                 columns.append(
                     TimestampColumn(
                         name=cmap.name,
                         values=pa.array(cmap.convert_array(axis_np)),
                         unit=target_unit,
-                        number_type=cmap.output_number_type,
+                        number_type=number_type,
                         metadata={"cmap_id": cmap.id},
                     )
                 )
@@ -865,7 +872,13 @@ class TabularExportMixin:
 
     def _resolve_coordinate_spec(
         self,
-        coordinates: CoordinateSpec | Sequence[CoordinateSpec],
+        coordinates: (
+            CoordinateSpec
+            | Sequence[CoordinateSpec]
+            | pa.Array[Any]
+            | pa.ChunkedArray[Any]
+            | np.ndarray
+        ),
     ) -> pa.StructArray:
         """Resolve CoordinateSpec to axis coordinates.
 
@@ -907,7 +920,10 @@ class TabularExportMixin:
         if isinstance(coordinates, (pa.Array, pa.ChunkedArray)):
             if isinstance(coordinates, pa.ChunkedArray):
                 coordinates = coordinates.combine_chunks()
-            if coordinates.type == RATIONAL_STRUCT_TYPE:
+            if (
+                isinstance(coordinates, pa.StructArray)
+                and coordinates.type == RATIONAL_STRUCT_TYPE
+            ):
                 return coordinates
             return _coordinate_column(coordinates, self._number_type)
         if isinstance(coordinates, np.ndarray):
@@ -1115,8 +1131,9 @@ class TabularExportMixin:
             own_column = df.columns[table.column_names.index(self._id)]
             ids = []
             for value in df[own_column]:
-                float_value = float(value) if pd.notna(value) else None
-                ids.append(coord_to_ids.get(float_value, ""))
+                ids.append(
+                    coord_to_ids.get(float(value), "") if pd.notna(value) else ""
+                )
             df.index = pd.Index(ids, name="id")
         return df
 

@@ -9,18 +9,20 @@ of the piece's ``.flow.csv`` file. See ``README.md``, "Gold flows" and
 from __future__ import annotations
 
 import logging
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from timetoalign.core import Coordinate
 from timetoalign.core.enums import (
     FlowFindingKind,
     FlowManifestation,
     MeasureFindingKind,
 )
-from timetoalign.loader.score import Ms3Loader
-from timetoalign.timelines import Timeline
+from timetoalign.loader.score import MeasureMapLoader, Ms3Loader, PartituraLoader
+from timetoalign.timelines import StatedFlow, Timeline
 from timetoalign.timelines.flow import (
     MeasureFinding,
     MeasureRange,
@@ -183,6 +185,97 @@ def test_the_repaired_stress_score_plays_its_gold_flow(convention: str) -> None:
     assert ranges == gold[convention]
     assert result.findings == ()
     assert atomic_ranges(timeline, registry=registry) == gold["atomic"]
+
+
+# endregion
+
+# region The order a source states
+
+
+def _stated_rows(timeline: Timeline, stated: StatedFlow) -> list[tuple[int, int]]:
+    """A stated FlowMap in measure counts, divided as a gold file's rows are."""
+    stretches = [chunk.source for chunk in stated.flow_map.resolve(timeline).chunks]
+    rows = measure_ranges(
+        stretches,
+        timeline.measure_map,
+        divide_at=[e.coordinate for e in timeline.flow_control.section_breaks],
+    )
+    return [(row.start, row.end) for row in rows]
+
+
+@pytest.mark.parametrize(
+    "specimen", ["c05n05_musete", "c11n08_Rondeau", "op18_no4_mov4_flow", "WoO71"]
+)
+def test_the_successors_of_an_ms3_table_state_the_gold_flow(
+    specimen: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    loader = Ms3Loader().load(get_specimen_path(SPECIMENS[specimen], "tsv"))
+    timeline = loader.create_timeline()
+    with caplog.at_level(logging.WARNING):
+        stated = loader.create_stated_flow_map(timeline)
+    assert _stated_rows(timeline, stated) == [
+        (row.start, row.end) for row in gold_flows(specimen)["default"]
+    ]
+    assert stated.differs_at is None
+    assert caplog.records == []
+    assert stated.flow_map.to_dict() == {
+        "id": "flow_map_1",
+        "timeline": timeline.id,
+        "chunks": list(stated.flow_map.chunks),
+        "provenance": [{"method": "imported"}],
+    }
+    assert timeline.list_flow_maps() == ["flow_map_1"]
+
+
+def test_the_stress_score_s_successors_state_another_flow_than_its_signs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    loader = Ms3Loader().load(get_specimen_path(SPECIMENS[STRESS], "tsv"))
+    timeline = loader.create_timeline()
+    with caplog.at_level(logging.WARNING):
+        stated = loader.create_stated_flow_map(timeline)
+    ms3_rows = gold_flows(STRESS)["ms3"]
+    assert len(ms3_rows) == 16
+    assert _stated_rows(timeline, stated) == [(row.start, row.end) for row in ms3_rows]
+    # The default flow ends at the Break at 10: [0,6) [0,9) [6,7) [9,10).
+    assert stated.differs_at == Coordinate(Fraction(17), "quarters")
+    assert [record.getMessage() for record in caplog.records] == [
+        f"Timeline '{timeline.id}': the order of measures its source states "
+        "differs from the default flow of its flow control. They agree for the "
+        "first 17 quarters played."
+    ]
+
+
+def test_a_measure_map_file_s_successors_against_its_repeats_without_brackets() -> None:
+    specimen = SPECIMENS["op18_no4_mov4_flow"]
+    loader = MeasureMapLoader().load(get_specimen_path(specimen, "mm_json"))
+    timeline = loader.create_timeline()
+    assert {measure.volta for measure in timeline.measure_map} == {None}
+    stated = loader.create_stated_flow_map(timeline)
+
+    from_table = Ms3Loader().load(get_specimen_path(specimen, "tsv"))
+    table_timeline = from_table.create_timeline()
+    assert [str(region.as_interval) for region in stated.regions] == [
+        str(region.as_interval)
+        for region in from_table.create_stated_flow_map(table_timeline).regions
+    ]
+    assert [str(region.as_interval) for region in stated.regions[:5]] == [
+        "[0, 32) quarters",
+        "[0, 64) quarters",
+        "[32, 96) quarters",
+        "[64, 160) quarters",
+        "[96, 157) quarters",
+    ]
+    # 32 + 64 + 64 + 96 + 61: then the file's repeats play the first ending again.
+    assert stated.differs_at == Coordinate(Fraction(317), "quarters")
+
+
+def test_a_source_without_successors_states_no_order() -> None:
+    specimen = SPECIMENS["op18_no4_mov4_flow"]
+    loader = PartituraLoader().load(get_specimen_path(specimen, "musicxml"))
+    timeline = loader.create_timeline()
+    assert loader.create_stated_flow_map(timeline) is None
+    assert (timeline.list_regions(), timeline.list_flow_maps()) == ([], [])
 
 
 # endregion

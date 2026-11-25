@@ -573,6 +573,38 @@ start, and one Jump has one destination per place); a `play_until` and a `jump_f
 marker no measure carries; a `jump_fwd` without `play_until`; and a To Coda in the measure of
 its own leap.
 
+## The order a source states
+
+Two kinds of source state the order of their measures beside the signs: an ms3 measures table
+and a Measure Map file list each measure's successors (`next`), and Verovio writes an
+expansion out. `loader.create_stated_flow_map(timeline)` writes that order as a FlowMap of the
+score's timeline (provenance method `imported`, no convention) and says where the default flow
+of the timeline's flow control differs from it. The walk and the writing are proved on
+synthetic measures (`tests/timelines/README.md`, "Measures and flow control"); here the
+question is whether real sources agree with the engine, and each expected value has an oracle
+that is neither the walk nor the engine:
+
+- **ms3, where source and engine agree.** For the Musette, the Rondeau, Op. 18 no. 4 and
+  WoO 71 the stated FlowMap, resolved and written as measure counts in the form of the gold
+  file, equals the file's `default` rows; `differs_at` is None and no warning is logged. The
+  gold rows were written by hand, so the equality proves the walk on `next` with a D.S. al Fine
+  (the `-1` after the Fine, which the measure map does not keep and the measure table does),
+  brackets and nested repeats.
+- **ms3, where they differ.** The stress score's `next` is ms3's own reading of the score. The
+  stated FlowMap equals the file's `ms3` rows (sixteen, never computed by this library), and
+  the default flow ends at the Break between the second and the third bracket: the two agree
+  for the first four runs, 6 + 9 + 1 + 1 = 17 quarters, so `differs_at` is 17 quarters and one
+  warning says so.
+- **A Measure Map file.** `n04op18-4_04.measures.mm.json` states `next` and no `volta`. Its
+  flow control therefore holds the repeats without the brackets, and its default flow plays the
+  first ending (MC 44, [157, 160)) again on the second pass, where `next` goes from MC 43 to
+  MC 45. They agree for the runs [0, 32), [0, 64), [32, 96), [64, 160) and for [96, 157) of
+  the fifth: 32 + 64 + 64 + 96 + 61 = 317 quarters. The stated order itself is the same eleven
+  stretches as the ms3 table's of the same score.
+- **A source that states none.** A MusicXML score read by `PartituraLoader` gives None, and
+  the timeline holds no Region and no FlowMap afterwards.
+- **Verovio**: see "Fixtures and what they prove", `repeat.mei`, and the hardening test.
+
 ## VerovioLoader
 
 `test_verovio_loader.py` loads small MEI files written by the test module itself (into
@@ -655,9 +687,15 @@ them.
   events have `notated_id` `m1n`, `m2n`. The tempo indication appears once per pass: `tp1` at 1
   and `tp1-rend2` at 5 (beat 2 of 2/4 is one quarter after the measure start).
 - The timeline is the unfolded one: its `MeasureMap` lists `m1`, `m2`, `m1-rend2`, `m2-rend2`,
-  `m3` named `1`, `2`, `1`, `2`, `3`, all 2/4, without flow control. FlowMap `forward_verovio` has the
-  sections `[0, 4) → 0` and `[0, 6) → 4` on the printed axis (folded position 1 unfolds to 1 and
-  5); FlowMap `source` is its inverse (5 folds to 1).
+  `m3` named `1`, `2`, `1`, `2`, `3`, all 2/4, without flow control and without a FlowMap.
+- The order of the expansion is a FlowMap of the printed score. The printed timeline is the
+  one the same file gives with `expandNever`; `create_stated_flow_map` of the expanding loader
+  writes onto it the Regions [0, 4) and [0, 6) and a FlowMap listing them, provenance method
+  `imported`. Resolved, the stretches lie at 0 and 4 of the played axis (printed position 1
+  unfolds to 1 and 5; played position 5 folds to 1), and the default flow of the printed
+  timeline's flow control is the same (`differs_at` None). Given the unfolded timeline, the
+  call is refused: its measures are not the printed ones. A loader with `expandNever` states
+  no order and returns None.
 - The store's measure table is the printed one: three rows at 0, 2, 4, `m1` opening and `m2`
   closing the repeat. The flow control written from it plays MC 1 2 1 2 3, Verovio's order.
 - With `options={"expandNever": True}` nothing is expanded: three events, the printed
@@ -843,8 +881,10 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
 - **Hardening: Verovio's expansion against the played flow control** (slow). For each specimen
   the flow control written from the printed measure table (`store.measures`) is played by the
   engine (`default`), and the resulting
-  MC sequence must equal Verovio's rendered measure order, read through the public surface: each
-  rendered measure's start, folded through FlowMap `source`, is a printed measure start. On the
+  MC sequence must equal Verovio's rendered measure order, read through the public surface: the
+  expansion's order is written as the stated FlowMap of the printed timeline (the file loaded
+  with `expandNever`), and each rendered measure's start, folded through that FlowMap, is a
+  printed measure start. On the
   `repeat.mei` fixture they are equal (above). Every provisioned score differs, each a strict
   `xfail` with its cause:
   - `couperin_concerts/c05n05_musete.mei` and `couperin_concerts/c11n08_Rondeau.mei`:

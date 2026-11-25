@@ -44,6 +44,7 @@ Flow:
 - PlacedChunk, PlacedGap: One stretch or one gap of a resolved FlowMap
 - VirtualTimeline: The statement that a map was applied to a timeline
 - ComputedFlows: The atomic sections and FlowMaps written from flow control
+- StatedFlow: The Regions and the FlowMap written from an order a source states
 - Gap: A stretch of a FlowMap in which nothing of the timeline is played
 
 Flow control (the elements, their registry, the engine that plays them and
@@ -75,6 +76,7 @@ from .flow import (
     PlacedChunk,
     PlacedGap,
     ResolvedFlowMap,
+    StatedFlow,
     VirtualTimeline,
 )
 from .groups import TimelineGroup
@@ -151,6 +153,7 @@ __all__ = [
     "PlacedChunk",
     "PlacedGap",
     "ComputedFlows",
+    "StatedFlow",
     "VirtualTimeline",
     "Gap",
 ]

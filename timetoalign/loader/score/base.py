@@ -21,7 +21,7 @@ from .store import ScoreStore
 from .stores.notes import NoteEventData
 
 if TYPE_CHECKING:
-    from timetoalign.timelines import MeasureMap, Timeline
+    from timetoalign.timelines import MeasureMap, StatedFlow, Timeline
     from timetoalign.timelines.flow.measures import _FlowControlDraft
     from timetoalign.timelines.flowcontrol import FlowControlElement
 
@@ -473,6 +473,74 @@ class ScoreLoader(EventLoader):
             manifestation = self._barline_manifestations.get(row.get("barline"))
             if manifestation is not None:
                 draft.add(Barline, end, manifestation=manifestation)
+
+    def create_stated_flow_map(
+        self,
+        timeline: Timeline,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> StatedFlow | None:
+        """Write the order of measures the source states as a FlowMap of *timeline*.
+
+        Some sources state the order in which their measures are played
+        beside the signs that give it: an ms3 measures table and a Measure
+        Map file list the successors of each measure (``next``). That order
+        is written as a FlowMap of the timeline over Regions of consecutive
+        measures, its provenance saying that the source states it
+        (:meth:`Timeline.create_flow_map_from_measure_order
+        <timetoalign.timelines.Timeline.create_flow_map_from_measure_order>`).
+        It is compared with the default flow of the timeline's flow control:
+        where the two differ, a warning is logged and the result says from
+        where.
+
+        Args:
+            timeline: The root timeline of this loader's score, holding its
+                measure map (:meth:`create_timeline`).
+            id: The FlowMap's ID; minted when None.
+            name: Optional display name of the FlowMap.
+
+        Returns:
+            The Regions and the FlowMap written and where the default flow
+            differs, or None where the source states no order (nothing is
+            written then).
+
+        Raises:
+            ValueError: As
+                :meth:`Timeline.create_flow_map_from_measure_order
+                <timetoalign.timelines.Timeline.create_flow_map_from_measure_order>`,
+                or if the successors the source states never end.
+        """
+        order = self._stated_measure_order()
+        if order is None:
+            return None
+        return timeline.create_flow_map_from_measure_order(order, id=id, name=name)
+
+    def _stated_measure_order(self) -> tuple[int, ...] | None:
+        """Return the measure counts in the order the source states, if it does.
+
+        Read from the ``next`` column of the measure table, which keeps the
+        successors as the source lists them, the ``-1`` that ends the piece
+        included. None where no measure states a successor.
+        """
+        from timetoalign.timelines.flow import measure_order_from_successors
+
+        measures = self._store.measures
+        if len(measures) == 0 or "next" not in measures._table.column_names:
+            return None
+        counts = measures._table.column("mc").to_pylist()
+        stated = measures._table.column("next").to_pylist()
+        if all(cell is None or str(cell).strip() == "" for cell in stated):
+            return None
+        successors = {
+            count: (
+                []
+                if cell is None
+                else [int(entry) for entry in str(cell).split(",") if entry.strip()]
+            )
+            for count, cell in zip(counts, stated, strict=True)
+        }
+        return measure_order_from_successors(successors, counts[0])
 
     # endregion
 

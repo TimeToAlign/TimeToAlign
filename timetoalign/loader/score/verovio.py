@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from timetoalign.timelines import (
         ContinuousLogicalTimeline,
         ContinuousPhysicalTimeline,
+        StatedFlow,
         Timeline,
     )
 
@@ -487,9 +488,10 @@ class VerovioLoader(ScoreLoader):
     that table as its ``MeasureMap`` and what it states as its flow control
     (a ``dbl`` and an ``end`` barline as barlines). With an expansion the
     timeline is already unfolded: its ``MeasureMap`` lists the rendered
-    measures (row id = rendered id, name = ``@n``) without flow control, and
-    two FlowMaps state the playback order of the printed measures:
-    ``"forward_verovio"`` (printed → rendered) and ``"source"`` (its inverse).
+    measures (row id = rendered id, name = ``@n``) without flow control. The
+    order in which the expansion plays the printed measures is a FlowMap of
+    the printed score: :meth:`create_stated_flow_map` writes it onto the
+    timeline that a loader of the same file with ``expandNever`` creates.
 
     **Ids.** Every event keeps its element's ``xml:id`` verbatim. Verovio
     generates ids only where the source has none, from a random seed unless
@@ -809,7 +811,8 @@ class VerovioLoader(ScoreLoader):
         """Create the score's logical timeline in quarters.
 
         The root carries the measures as its ``MeasureMap``, the flow
-        control (or, for an expanded rendering, the FlowMaps) and the C-Map;
+        control (none for an expanded rendering, which is unfolded) and the
+        C-Map;
         each loaded named ``<mdiv>`` is a child holding its events, and the
         root holds those of no named ``<mdiv>``.
 
@@ -987,17 +990,66 @@ class VerovioLoader(ScoreLoader):
             parent.add_child(child, offset=span_start - parent_start)
         return root
 
+    def create_stated_flow_map(
+        self,
+        timeline: Timeline,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> StatedFlow | None:
+        """Write the order of Verovio's expansion as a FlowMap of the printed score.
+
+        An expanded rendering states the order in which the printed measures
+        are played. It is an order of the printed score, so *timeline* is
+        the printed score's timeline: the one a loader of the same file
+        creates with the option ``expandNever``. The timeline of an expanded
+        rendering is unfolded already and takes no FlowMap. See
+        :meth:`ScoreLoader.create_stated_flow_map
+        <timetoalign.loader.score.ScoreLoader.create_stated_flow_map>`.
+
+        Returns:
+            What was written, or None for a rendering that expands nothing.
+
+        Raises:
+            ValueError: If the measures of *timeline* are not the printed
+                measures of this loader's score.
+        """
+        rendering = self._require_rendering()
+        if not rendering.expanded:
+            return None
+        printed = [measure.xml_id for measure, _, _ in rendering.printed]
+        measure_map = timeline.measure_map
+        held = [] if measure_map is None else [measure.id for measure in measure_map]
+        if held != printed:
+            raise ValueError(
+                f"the measures of timeline {timeline.id!r} are not the printed "
+                "measures of this score: Verovio's expansion states an order of "
+                "the printed score, whose timeline a loader with the option "
+                "expandNever creates"
+            )
+        return super().create_stated_flow_map(timeline, id=id, name=name)
+
+    def _stated_measure_order(self) -> tuple[int, ...] | None:
+        """Return the printed measure counts in the order Verovio rendered them."""
+        rendering = self._require_rendering()
+        if not rendering.expanded:
+            return None
+        count = {
+            measure.xml_id: index
+            for index, (measure, _, _) in enumerate(rendering.printed, start=1)
+        }
+        return tuple(count[measure.notated_id] for measure in rendering.measures)
+
     def _attach_rendered_structure(
         self, timeline: Timeline, rendering: _Rendering
     ) -> None:
-        """Attach the rendered measures and the playback-order FlowMaps.
+        """Attach the rendered measures.
 
         The timeline ends where the last rendered measure ends, the length
         the rendered measures state, so it is locked: content added later
         never lengthens it silently.
         """
         from timetoalign.timelines import MeasureMap
-        from timetoalign.timelines.flow import FlowMap
 
         printed_index = {
             measure.xml_id: index
@@ -1020,23 +1072,6 @@ class VerovioLoader(ScoreLoader):
                 )
             )
         )
-        spans: list[tuple[Fraction, Fraction]] = []
-        for measure in rendering.measures:
-            _, start, length = rendering.printed[printed_index[measure.notated_id]]
-            if spans and spans[-1][1] == start:
-                spans[-1] = (spans[-1][0], start + length)
-            else:
-                spans.append((start, start + length))
-        _, last_start, last_length = rendering.printed[-1]
-        printed_end = last_start + last_length
-        forward = FlowMap(
-            spans,
-            id="verovio",
-            source_length=printed_end,
-            target_length=rendering.end,
-        )
-        timeline.add_flow_map(forward, id="forward_verovio")
-        timeline.add_flow_map(forward.inverse(), id="source")
         timeline.lock()
 
 

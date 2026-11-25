@@ -20,7 +20,13 @@ from timetoalign.core.timestamp import _format_coordinate_value
 from ..regions import Region
 
 if TYPE_CHECKING:
-    from ..flow.flowmap import ComputedFlows, FlowMap, ResolvedFlowMap, VirtualTimeline
+    from ..flow.flowmap import (
+        ComputedFlows,
+        FlowMap,
+        ResolvedFlowMap,
+        StatedFlow,
+        VirtualTimeline,
+    )
     from ..types import SegmentLine
 
 
@@ -728,6 +734,173 @@ class SegmentsMixin:
                     length=rewritten[virtual.map].resolve(self).length,
                 )
         return ComputedFlows(regions, tuple(written))
+
+    def create_flow_map_from_measure_order(
+        self,
+        order: Iterable[int],
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> "StatedFlow":
+        """Write an order of measures a source states as a FlowMap of this root.
+
+        A source may state the order in which its measures are played
+        itself: the successors of a measure table
+        (:func:`~timetoalign.timelines.flow.measure_order_from_successors`),
+        or an expansion a renderer wrote out. Each stretch of measures
+        consecutive in the timeline's measure map becomes a Region (one
+        Region for a stretch played more than once), and the FlowMap lists
+        them in the order stated. The FlowMap says by its provenance that
+        the source states it (method ``imported``) and follows no
+        convention: it is no flow computed from flow control.
+
+        The stated order is compared with the default flow of the
+        timeline's flow control (:meth:`get_flow`). Where they differ a
+        warning is logged and the result says from where.
+
+        Each call writes its Regions and its FlowMap anew.
+
+        Args:
+            order: The measure counts in the order played.
+            id: The FlowMap's ID, kept verbatim. When None, ``flow_map_{N}``
+                is minted.
+            name: Optional display name of the FlowMap.
+
+        Returns:
+            The Regions and the FlowMap written, and where the default flow
+            differs.
+
+        Raises:
+            ValueError: If this timeline is a child, holds no measure map or
+                is not in quarters; the order is empty or names a count that
+                is no measure of the measure map or whose length is unknown;
+                the flow control cannot be played; or the given ID is
+                already held. Nothing has changed then.
+            UnknownLengthError: If the length is unknown.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
+            >>> from timetoalign.timelines.flowcontrol import Jump, JumpDestination
+            >>> score = ContinuousLogicalTimeline(length=12, uid="score")
+            >>> _ = score.add_measure_map(MeasureMap.from_rows(
+            ...     [{"count": 1, "time_signature": "4/4"}, {"count": 2}, {"count": 3}]))
+            >>> _ = score.flow_control.add(
+            ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+            >>> stated = score.create_flow_map_from_measure_order([1, 2, 1, 2, 3])
+            >>> [str(region.as_interval) for region in stated.regions]
+            ['[0, 8) quarters', '[0, 12) quarters']
+            >>> stated.flow_map.chunks, stated.differs_at
+            (('region_1', 'region_2'), None)
+            >>> score.create_flow_map_from_measure_order([1, 2, 3]).differs_at
+            Coordinate(Fraction(8, 1), quarters)
+        """
+        from timetoalign.core import Coordinate
+        from timetoalign.core.enums import TimeUnit
+
+        from ..flow.flowmap import FlowMap, StatedFlow
+
+        what = f"timeline {quote_id(self._id)}"
+        if self._parent is not None:
+            raise ValueError(
+                f"{what} is a child of {quote_id(self._parent.id)}: a FlowMap "
+                "names a root timeline"
+            )
+        measure_map = self.measure_map
+        if measure_map is None:
+            raise ValueError(
+                f"{what} holds no measure map: an order of measures names none "
+                "of its stretches"
+            )
+        if self._unit is not TimeUnit.quarters:
+            raise ValueError(
+                f"{what} is in {self._unit}: measures lie on an axis in quarters"
+            )
+        spans = {
+            measure.count: (measure.qstamp, measure.actual_length)
+            for measure in measure_map
+        }
+        stretches: list[tuple[Fraction, Fraction]] = []
+        before: int | None = None
+        for count in order:
+            if count not in spans:
+                raise ValueError(
+                    f"the order names measure count {count!r}, which is no "
+                    f"measure of the measure map of {what} (counts "
+                    f"{min(spans)} to {max(spans)})"
+                )
+            start, length = spans[count]
+            if start is None or length is None:
+                raise ValueError(
+                    f"measure count {count} of {what} states no position or no "
+                    "length: it names no stretch"
+                )
+            if before == count - 1 and stretches and stretches[-1][1] == start:
+                stretches[-1] = (stretches[-1][0], start + length)
+            else:
+                stretches.append((start, start + length))
+            before = count
+        if not stretches:
+            raise ValueError(f"the order of measures given for {what} is empty")
+
+        def joined(runs: Iterable[tuple[Any, Any]]) -> list[tuple[Any, Any]]:
+            together: list[tuple[Any, Any]] = []
+            for start, end in runs:
+                if together and together[-1][1] == start:
+                    together[-1] = (together[-1][0], end)
+                else:
+                    together.append((start, end))
+            return together
+
+        default = joined(
+            (chunk.source.start.value, chunk.source.end.value)
+            for chunk in self.get_flow().chunks
+        )
+        agreed: Any = 0
+        differs = False
+        stated_runs = joined(stretches)
+        for index in range(max(len(stated_runs), len(default))):
+            if index >= len(stated_runs) or index >= len(default):
+                differs = True
+                break
+            (start, end), (other_start, other_end) = stated_runs[index], default[index]
+            if start != other_start:
+                differs = True
+                break
+            agreed += min(end, other_end) - start
+            if end != other_end:
+                differs = True
+                break
+        differs_at = (
+            Coordinate(agreed, self._unit, number_type=self._number_type)
+            if differs
+            else None
+        )
+
+        bounds = list(dict.fromkeys(stretches))
+        regions = [self.create_region(start, end) for start, end in bounds]
+        chunk_of = dict(zip(bounds, regions, strict=True))
+        try:
+            flow_map = self.add_flow_map(
+                FlowMap(
+                    self._id,
+                    tuple(chunk_of[stretch].id for stretch in stretches),
+                    id=id,
+                    name=name,
+                    provenance=(Provenance(method="imported"),),
+                )
+            )
+        except ValueError:
+            for region in regions:
+                del self._regions[region.id]
+            raise
+        if differs_at is not None:
+            self._logger.warning(
+                f"Timeline '{self._id}': the order of measures its source states "
+                "differs from the default flow of its flow control. They agree "
+                f"for the first {differs_at} played."
+            )
+        return StatedFlow(tuple(regions), flow_map, differs_at)
 
     def add_virtual_timeline(self, virtual: "VirtualTimeline") -> "VirtualTimeline":
         """Attach a virtual timeline to this root timeline.

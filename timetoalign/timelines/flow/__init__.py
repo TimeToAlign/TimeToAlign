@@ -8,6 +8,7 @@ from .flowmap import (
     PlacedChunk,
     PlacedGap,
     ResolvedFlowMap,
+    StatedFlow,
     VirtualTimeline,
 )
 from .measures import (
@@ -15,6 +16,7 @@ from .measures import (
     MeasureRange,
     flow_control_from_measures,
     measure_keys_from_flow_control,
+    measure_order_from_successors,
     measure_ranges,
     read_flow_csv,
     repeat_end_findings,
@@ -28,9 +30,11 @@ __all__ = [
     "PlacedChunk",
     "PlacedGap",
     "ResolvedFlowMap",
+    "StatedFlow",
     "VirtualTimeline",
     "flow_control_from_measures",
     "measure_keys_from_flow_control",
+    "measure_order_from_successors",
     "measure_ranges",
     "read_flow_csv",
     "repeat_end_findings",

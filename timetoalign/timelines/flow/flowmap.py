@@ -711,6 +711,27 @@ class ComputedFlows(NamedTuple):
     flow_maps: tuple[FlowMap, ...]
 
 
+class StatedFlow(NamedTuple):
+    """What writing the order of measures a source states wrote.
+
+    Attributes:
+        regions: The stretches of consecutive measures the order plays,
+            Regions of the timeline in the order first played; a stretch
+            played more than once is one Region.
+        flow_map: The FlowMap listing those Regions in the order stated. It
+            follows no convention and its provenance gives the method
+            ``imported``.
+        differs_at: Where the default flow of the timeline's flow control
+            first plays something else than the stated order: the position
+            along the played flow up to which the two agree, on the
+            timeline's unit. None where they are the same flow.
+    """
+
+    regions: tuple[Region, ...]
+    flow_map: FlowMap
+    differs_at: Coordinate | None
+
+
 # endregion
 
 

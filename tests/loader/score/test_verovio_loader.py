@@ -986,17 +986,48 @@ class TestRepeats:
             0,
         )
 
-    def test_flow_maps(self, rendered: ContinuousLogicalTimeline) -> None:
-        assert sorted(rendered.list_flow_maps()) == ["forward_verovio", "source"]
-        forward = rendered.get_flow_map("forward_verovio")
+    def test_stated_flow_map(
+        self,
+        repeat: VerovioLoader,
+        rendered: ContinuousLogicalTimeline,
+        mei: dict[str, Path],
+    ) -> None:
+        assert rendered.list_flow_maps() == []
+        unexpanded = VerovioLoader.from_file(
+            mei["repeat"], options={"expandNever": True}
+        )
+        printed = unexpanded.create_timeline()
+        assert unexpanded.create_stated_flow_map(printed) is None
+
+        stated = repeat.create_stated_flow_map(printed)
+        assert [str(region.as_interval) for region in stated.regions] == [
+            "[0, 4) quarters",
+            "[0, 6) quarters",
+        ]
+        flow_map = stated.flow_map
+        assert printed.list_flow_maps() == [flow_map.id]
+        assert flow_map.chunks == tuple(region.id for region in stated.regions)
+        assert flow_map.convention is None
+        assert [entry.to_dict() for entry in flow_map.provenance] == [
+            {"method": "imported"}
+        ]
+        resolved = flow_map.resolve(printed)
         assert [
-            (s.source_start, s.source_end, s.target_start) for s in forward._sections
+            (c.source.start.value, c.source.end.value, c.start.value)
+            for c in resolved.chunks
         ] == [
             (Fraction(0), Fraction(4), Fraction(0)),
             (Fraction(0), Fraction(6), Fraction(4)),
         ]
-        assert forward.unfold_coordinate(1) == [Fraction(1), Fraction(5)]
-        assert rendered.get_flow_map("source").unfold_coordinate(5) == [Fraction(1)]
+        assert [c.value for c in resolved.unfold(1)] == [Fraction(1), Fraction(5)]
+        assert resolved.fold(5).value == Fraction(1)
+        assert resolved.length == rendered.length
+        # The printed score's own signs play the same flow.
+        assert stated.differs_at is None
+
+        with pytest.raises(ValueError, match="are not the printed measures"):
+            repeat.create_stated_flow_map(rendered)
+        assert rendered.list_flow_maps() == []
 
     def test_printed_table_unfolds_to_verovio_order(
         self, repeat: VerovioLoader
@@ -1075,8 +1106,8 @@ class TestRepeats:
 def _flow(loader: VerovioLoader) -> list[int]:
     """Return the MC sequence that the printed table's flow control plays.
 
-    A loader that rendered an expansion puts FlowMaps, not flow control, on
-    its timeline, so the elements are written from the printed table here.
+    The timeline of an expanded rendering is unfolded and holds no flow
+    control, so the elements are written from the printed table here.
     """
     measure_map = loader._measure_map()
     registry = FlowControlRegistry(unit="quarters")
@@ -1490,9 +1521,13 @@ def test_expansion_matches_flow_control(relative: str) -> None:
     loader = VerovioLoader.from_file(SCORE_DIR / relative)
     timeline = loader.create_timeline()
     printed = {_q(row["start"]): row["mc"] for row in loader.store.measures}
-    source = timeline.get_flow_map("source")
+    printed_timeline = VerovioLoader.from_file(
+        SCORE_DIR / relative, options={"expandNever": True}
+    ).create_timeline()
+    stated = loader.create_stated_flow_map(printed_timeline)
+    source = None if stated is None else stated.flow_map.resolve(printed_timeline)
     rendered = [
-        printed[source.unfold_coordinate(m.qstamp)[0] if source else m.qstamp]
+        printed[source.fold(m.qstamp).value if source else m.qstamp]
         for m in timeline.measure_map.measures
     ]
     assert _flow(loader) == rendered

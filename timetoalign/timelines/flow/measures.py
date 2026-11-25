@@ -24,6 +24,10 @@ A flow is played on the axis (:func:`timetoalign.timelines.flow.engine.play`);
 :func:`measure_ranges` states its runs, or the atomic sections, as right-open
 ranges of measure counts, the form of a ``.flow.csv`` file, which
 :func:`read_flow_csv` reads.
+
+A source may also state, for each measure, the measures that can follow it
+(the ``next`` of a measure table). :func:`measure_order_from_successors`
+walks that statement into the one order of measures it gives.
 """
 
 from __future__ import annotations
@@ -620,6 +624,76 @@ def read_flow_csv(path: Path | str) -> dict[str, tuple[MeasureRange, ...]]:
                 )
             )
     return {mode: tuple(ranges) for mode, ranges in flows.items()}
+
+
+# endregion
+
+# region The order a source states
+
+
+def measure_order_from_successors(
+    successors: Mapping[int, Sequence[int]], first: int
+) -> tuple[int, ...]:
+    """Walk the successors a source states into the order of measures they give.
+
+    A measure table may list, for each measure count, the counts of the
+    measures that can follow it, in the order of the times the measure is
+    reached (the ``next`` of a Measure Map row or of an ms3 measures table).
+    The walk begins at *first*; on its n-th arrival at a measure it goes on
+    to that measure's n-th successor, and to the last one once they are used
+    up. It ends at a measure without successors and where the successor is
+    no measure of *successors* (``-1`` is the customary spelling of the end
+    of the piece).
+
+    Nothing is derived here: the order is what the source's successors say,
+    read as their format defines them.
+
+    Args:
+        successors: For each measure count, the counts that can follow it.
+        first: The count the walk begins at.
+
+    Returns:
+        The measure counts in the order stated.
+
+    Raises:
+        ValueError: If *first* is no measure of *successors*, or the walk
+            never ends (it comes back to a measure whose successors are
+            used up without any other measure having used one up since).
+
+    Examples:
+        >>> measure_order_from_successors({1: [2], 2: [1, 3], 3: [-1]}, 1)
+        (1, 2, 1, 2, 3)
+    """
+    if first not in successors:
+        raise ValueError(
+            f"measure count {first} is no measure of the successors given: "
+            f"{sorted(successors)[:10]}"
+        )
+    order: list[int] = []
+    arrivals: dict[int, int] = {}
+    # A measure arrived at twice with its successors used up, and no other
+    # successor used up in between, is arrived at in the same state.
+    used_up_at: dict[int, int] = {}
+    progress = 0
+    current = first
+    while current in successors:
+        order.append(current)
+        following = successors[current]
+        if not following:
+            break
+        arrival = arrivals.get(current, 0) + 1
+        arrivals[current] = arrival
+        if arrival <= len(following):
+            progress += 1
+        elif used_up_at.get(current) == progress:
+            raise ValueError(
+                f"the successors of measure count {current} lead back to it "
+                "for ever: the order they state never ends"
+            )
+        else:
+            used_up_at[current] = progress
+        current = following[min(arrival, len(following)) - 1]
+    return tuple(order)
 
 
 # endregion

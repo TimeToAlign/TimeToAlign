@@ -1264,6 +1264,47 @@ on the stress score's file, whose `ms3` and `music21` rows must stay
 readable though nothing here computes them. A file lacking a column is
 refused naming the columns it has.
 
+**The order a source states.** `measure_order_from_successors` reads the
+successors a measure table lists for each measure (`next`) as their format
+defines them: the n-th arrival at a measure goes on to its n-th successor,
+the last one once they are used up, and the walk ends at a measure without
+successors or at a successor that is no measure (`-1`). The rule is proved
+on successors written by hand, each with the order worked out on paper: a
+repeat (`1 → 2`, `2 → 1, 3`: 1 2 1 2 3), brackets (`1 → 2, 3`, `2 → 1`: 1 2
+1 3), a da capo al fine (`1 → 2, -1`, `2 → 1`: 1 2 1), the last successor
+serving again (`3 → 2, -1` after a repeat of 1 2: 1 2 1 2 3 2 3), a walk
+beginning at another measure than the first, and printed order. Successors
+that never end (`1 → 2`, `2 → 1`) are refused naming the measure; so is a
+first measure that is none. An arbitrary step limit would pass or cut a
+long piece by its size; the refusal rests on the state instead (a measure
+arrived at again with its successors used up and no other successor used
+up since).
+
+`Timeline.create_flow_map_from_measure_order(order)` writes such an order
+as a FlowMap. On three 4/4 bars with a repeat end at 8 (the engine's
+default flow is [0, 8) [0, 12)):
+
+| Order | Regions | Chunks | `differs_at` |
+|---|---|---|---|
+| 1 2 1 2 3 | [0, 8), [0, 12) | both, in order | None |
+| 1 2 1 2 | [0, 8) | the one Region twice | 16 (the default flow goes on with bar 3) |
+| 1 2 3 | [0, 12) | one | 8 (the default flow goes back) |
+| 1 3 | [0, 4), [8, 12) | both | 4 |
+| 3 1 | [8, 12), [0, 4) | both | 0 (the first stretch begins elsewhere) |
+
+A stretch is a run of measures consecutive in the measure map; a stretch
+played twice is one Region. The FlowMap names no convention, its
+provenance is `[{method: imported}]`, and it is not a computed one
+(`is_computed` false), so computing the flows from flow control afterwards
+leaves it standing. Where `differs_at` is a position, exactly one warning
+is logged, its text asserted; where it is None, none. The position is
+where the two flows, read as stretches played end to end, stop being the
+same, so it is checkable by adding lengths. Refused, with the timeline
+holding the Regions and FlowMaps it held before: a count that is no
+measure, an empty order, a child timeline, a timeline without a measure
+map, and a given FlowMap ID that is already held (the Regions written for
+it are taken out again).
+
 **The finding.** `repeat_end_findings` returns a repeat end without a
 printed start when the last sign before it that closes anything is a last
 bracket. One positive case (`|: A |1 B :|2 C | D :|`: count 4) and five

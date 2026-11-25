@@ -2001,6 +2001,31 @@ print(interval)            # Two-column (start, end) display with '-' for out-of
 - **TimeIntervalStamp.__str__**: Shows a `-` when one endpoint is out of range for a
   child, making it easy to see events that straddle children.
 
+### `test_timestamp_table_cells.py` - A cell without a number is refused, not crashed on
+
+`timestamp_table_to_dataframe` decodes each timestamp column cell by cell
+into the representation its axis declares. On an exact (fraction) axis it
+reads the ratio, and falls back to the float side only for a cell that
+carries no complete ratio. The library never writes a cell holding a
+numerator but neither a denominator nor a float side, but a table built by
+hand can; the cell decoder `struct_to_coordinate` already refuses exactly
+this cell with a `ValueError` ("carries no usable value"). The column
+decoder must give the same answer for it, a `ValueError`, instead of
+reaching `float(None)` and failing with an unrelated `TypeError`.
+
+- **Refused through the public function.** A two-row column whose first
+  cell is a complete `1/2` and whose second holds only the numerator `5`,
+  declared fraction by its `number_type`, and the same column declared only
+  by the unit `quarters` (whose default number type is fraction): each
+  raises `ValueError` naming row 1, the message
+  `cell 1 of column carries no usable value: no ratio and no float side`.
+  `struct_to_coordinate` raises a `ValueError` for that very cell, so both
+  decoders agree on what the cell is.
+- **The fallback still answers.** The same incomplete ratio with a float
+  side `2.5` decodes to `Fraction(5, 2)` beside `Fraction(1, 2)`: only the
+  cell with no number at all is refused, and a cell with no numerator and
+  no float side is still a null (`None`) as before.
+
 ### `test_stamp_interface.py` - Stamp Family Contract
 
 **Purpose:** Pins the shared `Stamp` contract across `TimeStamp` and `MatchStamp`.

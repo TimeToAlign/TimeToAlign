@@ -1373,7 +1373,13 @@ def _column_on_declared_axis(
             if not is_valid or (numerator is None and doubles[position] is None):
                 cells.append(None)
             elif numerator is None or denominator is None:
-                cells.append(Fraction(float(doubles[position])))
+                value = doubles[position]
+                if value is None:
+                    raise ValueError(
+                        f"cell {position} of column carries no usable value: "
+                        "no ratio and no float side"
+                    )
+                cells.append(Fraction(float(value)))
             else:
                 cells.append(Fraction(numerator, denominator))
         return pd.Series(cells, dtype=object)

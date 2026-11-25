@@ -26,7 +26,7 @@ Design rationale:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, overload
 
 import numpy as np
 from numpy.typing import NDArray
@@ -151,7 +151,7 @@ class InterpolationMap(ConversionMap[float]):
         if not np.all(np.diff(self.source_coords) > 0):
             raise ValueError("source_coords must be strictly monotonically increasing")
 
-        self._inverse: InterpolationMap | None = None
+        self._inverse: Self | None = None
 
     def _computes_in_doubles(self) -> bool:
         """True: the map interpolates over float64 anchors, whatever its input."""
@@ -193,9 +193,25 @@ class InterpolationMap(ConversionMap[float]):
 
     # region Conversion
 
+    @overload
     @staticmethod
     def _interp_with_extrapolation(
-        values: float | NDArray[np.floating[Any]],
+        values: float,
+        xp: NDArray[np.floating[Any]],
+        fp: NDArray[np.floating[Any]],
+    ) -> float: ...
+
+    @overload
+    @staticmethod
+    def _interp_with_extrapolation(
+        values: NDArray[Any],
+        xp: NDArray[np.floating[Any]],
+        fp: NDArray[np.floating[Any]],
+    ) -> NDArray[np.floating[Any]]: ...
+
+    @staticmethod
+    def _interp_with_extrapolation(
+        values: float | NDArray[Any],
         xp: NDArray[np.floating[Any]],
         fp: NDArray[np.floating[Any]],
     ) -> float | NDArray[np.floating[Any]]:
@@ -293,7 +309,7 @@ class InterpolationMap(ConversionMap[float]):
             new_source = self.target_coords.copy()
             new_target = self.source_coords.copy()
 
-        inv = InterpolationMap(
+        inv = type(self)(
             source_coords=new_source,
             target_coords=new_target,
             source_id=self.target_id,

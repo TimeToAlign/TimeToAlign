@@ -193,8 +193,11 @@ Finding: |
   (endless_loop), a flow ending at a Break that states no condition before
   the end (flow_ends_at_break), two destinations of one Jump holding at once
   (ambiguous_targets), a destination nobody can check (undetermined_target),
-  and a stretch never played (never_played). Only the default flow has
-  findings; Timeline.get_flow() returns them with the flow.
+  and a stretch never played (never_played). The default and single flows
+  have findings, the printed flow none; Timeline.get_flow(convention)
+  returns them with the flow. A finding may name its cause: a stretch the
+  single flow leaves out that the default flow plays has the cause
+  single_playback (going through once takes the last volta ending).
 
 Flow control element: |
   One of the elements a timeline holds as its flow control (written as its

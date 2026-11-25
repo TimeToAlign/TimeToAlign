@@ -1,0 +1,13 @@
+# FlowFindingCause { #timetoalign.core.FlowFindingCause }
+
+```python
+core.FlowFindingCause()
+```
+
+Why a convention other than ``default`` found what it found.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [single_playback](#timetoalign.core.FlowFindingCause.single_playback) | Going through once left out a stretch the ``default`` flow plays: it |

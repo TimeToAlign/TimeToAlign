@@ -316,6 +316,8 @@ quartodoc:
           package: timetoalign.core
         - name: FlowFindingKind
           package: timetoalign.core
+        - name: FlowFindingCause
+          package: timetoalign.core
         - name: MeasureFindingKind
           package: timetoalign.core
         - name: FlowControlDraft

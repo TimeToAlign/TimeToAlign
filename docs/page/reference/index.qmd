@@ -109,6 +109,7 @@ The elements of a timeline's flow control, the engine that plays them, FlowMaps 
 | [FlowManifestation](FlowManifestation.qmd#timetoalign.core.FlowManifestation) | What a flow-control element looks like in the score. |
 | [FlowConvention](FlowConvention.qmd#timetoalign.core.FlowConvention) | How flow control is played into a flow. |
 | [FlowFindingKind](FlowFindingKind.qmd#timetoalign.core.FlowFindingKind) | What playing flow control found. |
+| [FlowFindingCause](FlowFindingCause.qmd#timetoalign.core.FlowFindingCause) | Why a convention other than ``default`` found what it found. |
 | [MeasureFindingKind](MeasureFindingKind.qmd#timetoalign.core.MeasureFindingKind) | What a look at a score's measures found about their flow control. |
 | [FlowControlDraft](FlowControlDraft.qmd#timetoalign.timelines.flow.FlowControlDraft) | Flow control being written from a score, before it joins a registry. |
 | [MeasureRange](MeasureRange.qmd#timetoalign.timelines.flow.MeasureRange) | A right-open range of measure counts, as a ``.flow.csv`` row states one. |

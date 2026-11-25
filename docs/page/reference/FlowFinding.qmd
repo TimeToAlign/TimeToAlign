@@ -1,16 +1,17 @@
 # FlowFinding { #timetoalign.timelines.FlowFinding }
 
 ```python
-timelines.FlowFinding(kind, coordinate, end, message)
+timelines.FlowFinding(kind, coordinate, end, message, cause=None)
 ```
 
 Something playing flow control found.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name       | Type                                                        | Description                                                              |
-|------------|-------------------------------------------------------------|--------------------------------------------------------------------------|
-| kind       | [FlowFindingKind](`timetoalign.core.enums.FlowFindingKind`) | What was found.                                                          |
-| coordinate | [Coordinate](`timetoalign.core.Coordinate`)                 | Where: the element's coordinate, or the start of a stretch never played. |
-| end        | [Coordinate](`timetoalign.core.Coordinate`) \| None         | The end of a stretch never played; None otherwise.                       |
-| message    | [str](`str`)                                                | The finding as a sentence.                                               |
+| Name       | Type                                                                  | Description                                                                                                                                                        |
+|------------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| kind       | [FlowFindingKind](`timetoalign.core.enums.FlowFindingKind`)           | What was found.                                                                                                                                                    |
+| coordinate | [Coordinate](`timetoalign.core.Coordinate`)                           | Where: the element's coordinate, or the start of a stretch never played.                                                                                           |
+| end        | [Coordinate](`timetoalign.core.Coordinate`) \| None                   | The end of a stretch never played; None otherwise.                                                                                                                 |
+| message    | [str](`str`)                                                          | The finding as a sentence.                                                                                                                                         |
+| cause      | [FlowFindingCause](`timetoalign.core.enums.FlowFindingCause`) \| None | Why the convention played found it: ``single_playback`` for a stretch the ``single`` flow leaves out and the ``default`` flow plays; None for every other finding. |

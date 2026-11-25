@@ -15,23 +15,24 @@ Play flow control over an axis of *length*.
 
 ## Parameters {.doc-section .doc-section-parameters}
 
-| Name       | Type                                                                                                  | Description                                                                                                                                                                                                                   | Default                  |
-|------------|-------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------|
-| registry   | [FlowControlRegistry](`timetoalign.timelines.flowcontrol.FlowControlRegistry`)                        | The flow control.                                                                                                                                                                                                             | _required_               |
-| length     | [_Number](`timetoalign.timelines.flow.engine._Number`) \| [Coordinate](`timetoalign.core.Coordinate`) | The length of the axis: a coordinate on the registry's axis, or a bare number on a bound registry.                                                                                                                            | _required_               |
-| convention | [FlowConvention](`timetoalign.core.enums.FlowConvention`) \| [str](`str`)                             | ``default`` (every Jump and Break acts), ``single`` (once through) or ``printed`` (the axis as it stands).                                                                                                                    | `FlowConvention.default` |
-| believer   | [str](`str`) \| None                                                                                  | The actor whose beliefs alone decide which elements are read (:meth:`FlowControlRegistry.active_elements <timetoalign.timelines.flowcontrol.FlowControlRegistry.active_elements>`); None reads the elements no actor rejects. | `None`                   |
-| beliefs    | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                | With a believer, the belief states read; every state but ``"false"`` by default.                                                                                                                                              | `DEFAULT_BELIEFS`        |
+| Name       | Type                                                                                                  | Description                                                                                                                                                                                                           | Default                  |
+|------------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------|
+| registry   | [FlowControlView](`timetoalign.timelines.flowcontrol.FlowControlView`)                                | The flow control.                                                                                                                                                                                                     | _required_               |
+| length     | [_Number](`timetoalign.timelines.flow.engine._Number`) \| [Coordinate](`timetoalign.core.Coordinate`) | The length of the axis: a coordinate on the registry's axis, or a bare number on a bound registry.                                                                                                                    | _required_               |
+| convention | [FlowConvention](`timetoalign.core.enums.FlowConvention`) \| [str](`str`)                             | ``default`` (every Jump and Break acts), ``single`` (once through) or ``printed`` (the axis as it stands).                                                                                                            | `FlowConvention.default` |
+| believer   | [str](`str`) \| None                                                                                  | The actor whose beliefs alone decide which elements are read (:meth:`FlowControlView.active_elements <timetoalign.timelines.flowcontrol.FlowControlView.active_elements>`); None reads the elements no actor rejects. | `None`                   |
+| beliefs    | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                | With a believer, the belief states read; every state but ``"false"`` by default.                                                                                                                                      | `DEFAULT_BELIEFS`        |
 
 ## Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                         | Description                                                    |
-|--------|--------------------------------------------------------------|----------------------------------------------------------------|
-|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | The runs in the order played and the findings. Findings are a  |
-|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | result of ``default`` alone: ``single`` and ``printed`` return |
-|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | none, also where going through once ends at a Break before the |
-|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | length or leaves a stretch unplayed. What is wrong with flow   |
-|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | control shows in its ``default`` flow.                         |
+| Name   | Type                                                         | Description                                                       |
+|--------|--------------------------------------------------------------|-------------------------------------------------------------------|
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | The runs in the order played and the findings. ``default`` and    |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | ``single`` find a flow that never ends, a flow ending at a Break, |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | destinations not determined or holding together, and the          |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | stretches never played; ``printed`` finds nothing. A stretch      |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | ``single`` never plays that the ``default`` flow plays has the    |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | cause ``single_playback``; every other finding has none.          |
 
 ## Raises {.doc-section .doc-section-raises}
 
@@ -52,4 +53,20 @@ Play flow control over an axis of *length*.
 ['[0, 8) quarters', '[0, 12) quarters']
 >>> [str(run) for run in play(registry, 12, convention="single").runs]
 ['[0, 12) quarters']
+```
+
+Going through once takes the second of two brackets at once:
+
+```python
+>>> from timetoalign.timelines.flowcontrol import JumpTarget
+>>> brackets = FlowControlRegistry(unit="quarters")
+>>> _ = brackets.add_all([
+...     Jump(Coordinate(4, "quarters"), [
+...         JumpDestination(by=0, passes=[1]),
+...         JumpDestination(to="second", passes=[2])]),
+...     JumpTarget(Coordinate(8, "quarters"), id="second"),
+...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)])])
+>>> [(str(f.kind), str(f.coordinate), str(f.end), str(f.cause))
+...  for f in play(brackets, 12, convention="single").findings]
+[('never_played', '4 quarters', '8 quarters', 'single_playback')]
 ```

@@ -1412,8 +1412,9 @@ away and never lets a Region's ID name another stretch:
 |--------|---------------------------|----------------------------------------------------------------|
 |        | \'ComputedFlows \| None\' | The atomic sections as they stand now (Regions kept and        |
 |        | \'ComputedFlows \| None\' | written, in the order of the axis), the computed FlowMaps, and |
-|        | \'ComputedFlows \| None\' | the findings of the ``default`` flow; or None for a timeline   |
-|        | \'ComputedFlows \| None\' | whose tree holds no flow control, which writes nothing.        |
+|        | \'ComputedFlows \| None\' | the findings of the ``default`` flow (those of ``single`` are  |
+|        | \'ComputedFlows \| None\' | meth:`get_flow`'s); or None for a timeline whose tree holds no |
+|        | \'ComputedFlows \| None\' | flow control, which writes nothing.                            |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -2811,15 +2812,16 @@ its whole tree, a child its own subtree.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type           | Description                                                             |
-|--------|----------------|-------------------------------------------------------------------------|
-|        | \'PlayedFlow\' | The runs of the flow (:func:`~timetoalign.timelines.flow.engine.play`)  |
-|        | \'PlayedFlow\' | placed one after the other: positions of this timeline's axis           |
-|        | \'PlayedFlow\' | and of the flow convert through it. Its ``findings`` are what           |
-|        | \'PlayedFlow\' | playing found on the way (a flow that never ends, a flow ending         |
-|        | \'PlayedFlow\' | at a Break, a stretch never played); only the ``default`` flow          |
-|        | \'PlayedFlow\' | has any. A timeline whose tree holds no flow control is played from its |
-|        | \'PlayedFlow\' | start to its end.                                                       |
+| Name   | Type           | Description                                                                   |
+|--------|----------------|-------------------------------------------------------------------------------|
+|        | \'PlayedFlow\' | The runs of the flow (:func:`~timetoalign.timelines.flow.engine.play`)        |
+|        | \'PlayedFlow\' | placed one after the other: positions of this timeline's axis                 |
+|        | \'PlayedFlow\' | and of the flow convert through it. Its ``findings`` are what                 |
+|        | \'PlayedFlow\' | playing found on the way (a flow that never ends, a flow ending               |
+|        | \'PlayedFlow\' | at a Break, a stretch never played, with its cause where                      |
+|        | \'PlayedFlow\' | ``single`` leaves out what ``default`` plays); the ``printed``                |
+|        | \'PlayedFlow\' | flow has none. A timeline whose tree holds no flow control is played from its |
+|        | \'PlayedFlow\' | start to its end.                                                             |
 
 #### Raises {.doc-section .doc-section-raises}
 

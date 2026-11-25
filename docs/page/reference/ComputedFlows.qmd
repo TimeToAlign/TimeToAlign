@@ -8,8 +8,8 @@ What computing a timeline's flows from its flow control wrote.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name      | Type                                                                                    | Description                                                                                                      |
-|-----------|-----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| sections  | [tuple](`tuple`)\[[Region](`timetoalign.timelines.regions.Region`), ...\]               | The atomic sections, Regions of the timeline in the order of its axis.                                           |
-| flow_maps | [tuple](`tuple`)\[[FlowMap](`timetoalign.timelines.flow.flowmap.FlowMap`), ...\]        | The FlowMaps written: ``default``, then ``single`` and ``printed`` where their chunks differ from ``default``'s. |
-| findings  | [tuple](`tuple`)\[[FlowFinding](`timetoalign.timelines.flow.engine.FlowFinding`), ...\] | What playing the flow control found: the findings of the ``default`` flow, in the order found.                   |
+| Name      | Type                                                                                    | Description                                                                                                                                                                                   |
+|-----------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| sections  | [tuple](`tuple`)\[[Region](`timetoalign.timelines.regions.Region`), ...\]               | The atomic sections, Regions of the timeline in the order of its axis.                                                                                                                        |
+| flow_maps | [tuple](`tuple`)\[[FlowMap](`timetoalign.timelines.flow.flowmap.FlowMap`), ...\]        | The FlowMaps written: ``default``, then ``single`` and ``printed`` where their chunks differ from ``default``'s.                                                                              |
+| findings  | [tuple](`tuple`)\[[FlowFinding](`timetoalign.timelines.flow.engine.FlowFinding`), ...\] | What playing the flow control found: the findings of the ``default`` flow, in the order found; those of ``single`` are :meth:`Timeline.get_flow <timetoalign.timelines.Timeline.get_flow>`'s. |

@@ -341,8 +341,12 @@ to the relevant section of the conceptual model.
     {{< glossary Destination >}}s of one Jump holding at once
     (`ambiguous_targets`), a destination nobody can check
     (`undetermined_target`), and a stretch never played (`never_played`).
-    Only the `default` flow has findings; `Timeline.get_flow()` returns them
-    with the flow.
+    The `default` and `single` flows have findings, the `printed` flow none;
+    `Timeline.get_flow(convention)` returns them with the flow. A finding
+    may name its cause (`FlowFinding.cause`, a `FlowFindingCause`): a
+    stretch the `single` flow leaves out that the `default` flow plays has
+    the cause `single_playback` (going through once takes the last volta
+    ending).
     See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 **Flow control element**

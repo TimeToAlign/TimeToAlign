@@ -465,148 +465,74 @@ class ColumnNaming(FancyStrEnum):
 
 
 class FlowManifestation(FancyStrEnum):
-    """Canonical taxonomy of flow control markers in musical scores.
+    """What a flow-control element looks like in the score.
 
-    This enum provides a unified vocabulary for flow control across all loaders
-    (MeasureMapLoader, Ms3Loader, PartituraLoader, Music21Loader).
+    A manifestation names the sign a source prints for an element or for a
+    destination of a Jump. It is optional everywhere and nothing computes
+    with it: the flow follows from the elements' classes, places and
+    conditions alone. A word outside this vocabulary is kept as given.
 
-    **Design Principles**:
+    Which words each class of
+    :mod:`timetoalign.timelines.flowcontrol` admits:
 
-    1. **Types vs Names**: This enum defines marker TYPES, not instance names.
-       Jump target markers (segno, coda, fine) are TYPES. Each marker INSTANCE
-       has a NAME attribute (e.g., "coda", "codab", "segno2") that differentiates
-       multiple markers of the same type. Jump instructions reference targets
-       by NAME, which defaults to the type name but can be customized.
-
-    2. **Structural vs Flow Control**: Some markers are purely structural (barlines),
-       while others affect traversal (jumps, breaks). The `is_structural_marker`
-       property distinguishes these.
-
-    3. **Alternatives**: ``volta`` names a bracket of alternative endings
-       wherever it shows in flow control (the destination of the Jump before
-       the brackets, the place it lands on, the Break between two brackets),
-       ``ossia`` an alternative text nobody can choose by rule.
-
-    **Taxonomy** (aligned with the Conceptual Model documentation and
-    MeasureMap paper):
-
-    **Repeat Markers**:
-    - repeat_start: Structural marker (||:) - target for repeat_end jumps
-    - repeat_end: Jump instruction (:||) - triggers backward jump; MAY also
-      constitute a section_break when it coincides with an end-type barline
-
-    **Jump Instructions** (triggers navigation):
-    - da_capo: Jump to beginning (D.C.)
-    - dal_segno: Jump to marker named "segno" by default (D.S.)
-    - dal_segno_al_coda: D.S., play until "coda" marker, then jump to coda section
-    - dal_segno_al_fine: D.S., play until "fine" marker
-    - da_capo_al_coda: D.C., play until "coda" marker, then jump to coda section
-    - da_capo_al_fine: D.C., play until "fine" marker
-    - to_coda: Jump to marker named "coda" by default
-
-    **Jump Target Markers** (destinations - TYPE, instances have names):
-    - segno: Target for dal_segno (instance name defaults to "segno")
-    - coda: Target for to_coda (instance name defaults to "coda")
-    - fine: End marker (instance name defaults to "fine")
-
-    **Structural Breaks** (void contiguity - single instant, not start/end pair):
-    - section_break: Voids contiguity at this instant (e.g., section boundary)
-
-    **Structural Markers** (do NOT void contiguity, mark boundaries):
-    - double_barline: Double bar line (structural boundary, not a break)
-    - final_barline: Final bar line (end of piece)
-
-    **Boundary Markers** (reference markers for addressing):
-    - first_measure: First measure of piece (ms3 convention)
-    - last_measure: Last measure of piece (ms3 convention)
-
-    **Abstract Jump Roles** (super-categories carried alongside concrete types):
-    - jump_from: Abstract origin of any jump (super-category of repeat_end,
-      da_capo, dal_segno, to_coda, ...). Emitted by loaders into
-      `flow_control_types` so consumers can filter jump-origin positions
-      without enumerating every concrete instruction type.
-    - jump_to: Abstract destination of any jump (super-category of repeat_start,
-      segno, coda). Symmetric counterpart of `jump_from`.
-
-    **Loader Mappings**:
-
-    | FlowManifestation | MeasureMap | ms3/TSV | partitura | music21 |
-    |-----------------|------------|---------|-----------|---------|
-    | repeat_start | start_repeat=true | repeats="start" | Repeat.start | leftBarline.type="heavy-light" |
-    | repeat_end | end_repeat=true | repeats="end" | Repeat.end | rightBarline.type="light-heavy" |
-    | da_capo | next=[1] pattern | jump_bwd="dacapo" | DaCapo | DaCapo |
-    | dal_segno | next=[segno_mc] | jump_bwd="dalsegno" | DalSegno | DalSegno* |
-    | to_coda | - | jump_fwd="tocoda" | ToCoda | Coda(type="to") |
-    | fine | next=[-1] + marker | play_until="fine" | Fine | Fine |
-    | segno | marker in JSON | marker="segno" | Segno | Segno |
-    | coda | marker in JSON | marker="coda" | Coda | Coda |
-    | section_break | - | breaks="section" | - | - |
-    | double_barline | - | breaks="double" | - | barline.type="double" |
-    | final_barline | - | - | - | barline.type="final" |
-    | jump_from | derived | derived | derived | derived |
-    | jump_to | derived | derived | derived | derived |
+    - a destination of a ``Jump``: ``repeat_end``, ``da_capo``,
+      ``da_capo_al_fine``, ``da_capo_al_coda``, ``dal_segno``,
+      ``dal_segno_al_fine``, ``dal_segno_al_coda``, ``to_coda``, ``volta``,
+      ``ossia``;
+    - a ``JumpTarget``: ``repeat_start``, ``segno``, ``coda``, ``volta``,
+      ``ossia``;
+    - a ``Break``: ``fine``, ``volta``;
+    - a ``Barline``: ``double_barline``, ``final_barline``;
+    - a ``SectionBreak``: none.
     """
 
-    # Repeat markers
     repeat_start = auto()
-    """Structural marker (||:) - target for repeat_end jumps."""
+    """A repeat start sign (``|:``), the place a repeat end goes back to."""
     repeat_end = auto()
-    """Jump instruction (:||) - may also be a section_break when coinciding with end barline."""
+    """A repeat end sign (``:|``)."""
 
-    # Jump instructions
     da_capo = auto()
-    """Jump to beginning (D.C.)"""
+    """Back to the beginning (D.C.)."""
     dc = da_capo
     """Alias for da_capo"""
 
     dal_segno = auto()
-    """Jump to segno marker by name (D.S.)"""
+    """Back to the segno (D.S.)."""
     ds = dal_segno
     """Alias for dal_segno"""
 
     dal_segno_al_coda = auto()
-    """Jump to segno, play until coda, then jump to coda section (D.S. al Coda)"""
+    """Back to the segno, then from the To Coda sign to the coda (D.S. al Coda)."""
     dsac = dal_segno_al_coda
     """Alias for dal_segno_al_coda"""
 
     dal_segno_al_fine = auto()
-    """Jump to segno, play until fine (D.S. al Fine)"""
+    """Back to the segno, then up to the Fine (D.S. al Fine)."""
     dsaf = dal_segno_al_fine
     """Alias for dal_segno_al_fine"""
 
     da_capo_al_coda = auto()
-    """Jump to beginning, play until coda, then jump to coda section (D.C. al Coda)"""
+    """Back to the beginning, then from the To Coda sign to the coda (D.C. al Coda)."""
     dcac = da_capo_al_coda
     """Alias for da_capo_al_coda"""
 
     da_capo_al_fine = auto()
-    """Jump to beginning, play until fine (D.C. al Fine)"""
+    """Back to the beginning, then up to the Fine (D.C. al Fine)."""
     dcaf = da_capo_al_fine
     """Alias for da_capo_al_fine"""
 
     to_coda = auto()
-    """Jump to coda marker by name (typically to "codab", the second coda marker)"""
+    """The To Coda sign, from which the flow goes on at the coda after a leap."""
 
-    # Jump target markers (TYPE - instances have names like "coda", "codab", "segno2")
     segno = auto()
-    """Target marker TYPE for dal_segno (instance name defaults to "segno")"""
+    """The segno sign, the place a dal segno goes back to."""
 
     coda = auto()
-    """Target marker TYPE for coda symbols.
-
-    In "D.S./D.C. al Coda" structures, there are typically TWO coda markers:
-    - First coda marker (name="coda"): Where `to_coda` instruction is placed (JumpFrom).
-      This marker becomes active after the D.S./D.C. jump.
-    - Second coda marker (name="codab"): Where the jump lands (JumpTo).
-      This is the beginning of the coda section. MuseScore uses "codab" as default name.
-
-    Both markers have TYPE `coda` but different instance NAMES.
-    """
+    """The coda sign at the start of the coda, the place a To Coda goes on at."""
 
     fine = auto()
-    """End marker TYPE (instance name defaults to "fine")"""
+    """The Fine, where the flow ends after a leap."""
 
-    # Alternatives
     volta = auto()
     """A bracket of alternative endings: its Jump's destination, the place
     the Jump lands on, or the Break between two brackets."""
@@ -615,159 +541,11 @@ class FlowManifestation(FancyStrEnum):
     """An alternative text nobody can choose by rule: its Jump's destination
     or the place the Jump lands on."""
 
-    # Structural breaks (void contiguity - single instant)
-    section_break = auto()
-    """Single instant that voids contiguity (e.g., section boundary)"""
-
-    # Structural markers (do NOT void contiguity)
     double_barline = auto()
-    """Double bar line - structural boundary marker, does NOT void contiguity"""
+    """A double bar line."""
 
     final_barline = auto()
-    """Final bar line - end of piece marker"""
-
-    # Boundary markers (for reference/addressing)
-    first_measure = auto()
-    """First measure of piece (ms3 convention)"""
-
-    last_measure = auto()
-    """Last measure of piece (ms3 convention)"""
-
-    # Abstract jump roles (super-categories of the concrete jump/target types)
-    jump_from = auto()
-    """Abstract origin role: this position is the source of some jump.
-
-    Emitted by loaders alongside the concrete instruction type (da_capo,
-    dal_segno, to_coda, repeat_end, ...) so that downstream consumers can
-    filter all jump origins without enumerating every concrete subtype.
-    """
-
-    jump_to = auto()
-    """Abstract destination role: this position is the target of some jump.
-
-    Emitted by loaders alongside the concrete target type (repeat_start,
-    segno, coda) so that downstream consumers can filter all jump
-    destinations without enumerating every concrete subtype.
-    """
-
-    @classmethod
-    def from_ms3_repeats(cls, value: str | None) -> "FlowManifestation | None":
-        """Convert ms3 'repeats' column value to FlowManifestation.
-
-        Args:
-            value: Value from ms3 repeats column ("start", "end", "firstMeasure", etc.)
-
-        Returns:
-            Corresponding FlowManifestation or None.
-        """
-        if not value:
-            return None
-        mapping = {
-            "start": cls.repeat_start,
-            "end": cls.repeat_end,
-            "firstMeasure": cls.first_measure,
-            "lastMeasure": cls.last_measure,
-        }
-        return mapping.get(value)
-
-    @classmethod
-    def from_ms3_breaks(cls, value: str | None) -> "FlowManifestation | None":
-        """Convert ms3 'breaks' column value to FlowManifestation.
-
-        Args:
-            value: Value from ms3 breaks column ("section", "double", etc.)
-
-        Returns:
-            Corresponding FlowManifestation or None.
-        """
-        if not value:
-            return None
-        mapping = {
-            "section": cls.section_break,
-            "double": cls.double_barline,
-        }
-        return mapping.get(value)
-
-    @classmethod
-    def from_measuremap(
-        cls, start_repeat: bool = False, end_repeat: bool = False
-    ) -> list["FlowManifestation"]:
-        """Convert MeasureMap flow control fields to FlowManifestation list.
-
-        Args:
-            start_repeat: Whether start_repeat is true in MeasureMap.
-            end_repeat: Whether end_repeat is true in MeasureMap.
-
-        Returns:
-            List of corresponding FlowManifestations.
-        """
-        result: list[FlowManifestation] = []
-        if start_repeat:
-            result.append(cls.repeat_start)
-        if end_repeat:
-            result.append(cls.repeat_end)
-        return result
-
-    @property
-    def is_jump(self) -> bool:
-        """Whether this marker triggers a jump to another location.
-
-        True for every concrete jump instruction AND for the abstract
-        ``jump_from`` role.
-        """
-        return self in {
-            FlowManifestation.repeat_end,
-            FlowManifestation.da_capo,
-            FlowManifestation.dal_segno,
-            FlowManifestation.dal_segno_al_coda,
-            FlowManifestation.dal_segno_al_fine,
-            FlowManifestation.da_capo_al_coda,
-            FlowManifestation.da_capo_al_fine,
-            FlowManifestation.to_coda,
-            FlowManifestation.jump_from,
-        }
-
-    @property
-    def is_target(self) -> bool:
-        """Whether this marker TYPE is a jump destination.
-
-        True for every concrete target marker AND for the abstract
-        ``jump_to`` role.
-
-        Note: Actual target resolution uses instance NAMES, not just types.
-        Multiple markers of the same type (e.g., two coda markers named
-        "coda" and "codab") are differentiated by name.
-        """
-        return self in {
-            FlowManifestation.repeat_start,
-            FlowManifestation.segno,
-            FlowManifestation.coda,
-            FlowManifestation.jump_to,
-        }
-
-    @property
-    def is_break(self) -> bool:
-        """Whether this marker voids contiguity.
-
-        Note: repeat_end MAY also void contiguity when it coincides with
-        an end-type barline, but this is context-dependent and not
-        intrinsic to the type.
-        """
-        return self in {
-            FlowManifestation.fine,
-            FlowManifestation.section_break,
-        }
-
-    @property
-    def is_structural_marker(self) -> bool:
-        """Whether this is a structural marker that does NOT void contiguity."""
-        return self in {
-            FlowManifestation.repeat_start,
-            FlowManifestation.double_barline,
-            FlowManifestation.final_barline,
-            FlowManifestation.first_measure,
-            FlowManifestation.last_measure,
-        }
+    """A final bar line."""
 
 
 class InterpolationKind(FancyStrEnum):

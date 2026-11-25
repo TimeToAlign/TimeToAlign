@@ -58,6 +58,8 @@ Install with ``pip install -e ".[<extra>]"`` from the repository root.
 +---------------+--------------------------------------+----------------------------------------------+
 | ``rdf``       | ``rdflib``                           | MeLODy Turtle import (``MelodyLoader``)      |
 +---------------+--------------------------------------+----------------------------------------------+
+| ``mpm``       | ``lxml``                             | MPM performance files (``MpmLoader``)        |
++---------------+--------------------------------------+----------------------------------------------+
 
 Composite extras — convenience bundles
 --------------------------------------
@@ -68,7 +70,7 @@ Composite extras — convenience bundles
 | ``scores``    | ``partitura``, ``music21``, ``ms3``     | All score-loader backends                    |
 +---------------+-----------------------------------------+----------------------------------------------+
 | ``loaders``   | ``midi``, ``scores``, ``audio``,        | Every loader dependency                      |
-|               | ``graphical``                           |                                              |
+|               | ``graphical``, ``rdf``, ``mpm``         |                                              |
 +---------------+-----------------------------------------+----------------------------------------------+
 | ``tutorial``  | ``loaders``, ``plot``, plus             | Everything needed for the tutorial notebooks |
 |               | ``jupytext``, ``jupyter``               |                                              |
@@ -83,7 +85,7 @@ Composite extras — convenience bundles
 
 The inclusion chain is::
 
-    dev  ⊃  all  ⊃  tutorial  ⊃  loaders  ⊃  { midi, scores, audio, graphical }
+    dev  ⊃  all  ⊃  tutorial  ⊃  loaders  ⊃  { midi, scores, audio, graphical, rdf, mpm }
                                             +  plot, jupytext, jupyter
                                +  delta, rdf
 

@@ -452,7 +452,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="how-to-encode-and-play-flow-control" class="level1">
 <h1>How to Encode and Play Flow Control</h1>
-<p>A score prints a passage once and has it played several times: repeat signs, alternative endings, a <em>Dal Segno</em> and a <em>Fine</em> say in which order. A <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> holds these signs as its <strong>flow control</strong>, a list of <button class="glossary" title="One of the elements a timeline holds as its flow control (written as its flow_control array): a Jump, a JumpTarget, a Break, a SectionBreak or a Barline. Each lies at one coordinate and has an element id; how it looks in the source is its manifestation, which decides nothing. An element is never changed or deleted to repair flow control: an actor’s belief “false” rejects it, and the right one is added. Timeline.get_flow() plays the elements no actor rejects.">Flow control element</button>s of five classes:</p>
+<p>A score prints a passage once and has it played several times: repeat signs, alternative endings, a <em>Dal Segno</em> and a <em>Fine</em> say in which order. A <button class="glossary" title="">Timeline</button> holds these signs as its <strong>flow control</strong>, a list of <button class="glossary" title="One of the elements a timeline holds as its flow control (written as its flow_control array): a Jump, a JumpTarget, a Break, a SectionBreak or a Barline. Each lies at one coordinate and has an element id; how it looks in the source is its manifestation, which decides nothing. An element is never changed or deleted to repair flow control: an actor’s belief “false” rejects it, and the right one is added. Timeline.get_flow() plays the elements no actor rejects.">Flow control element</button>s of five classes:</p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 50%">
@@ -470,7 +470,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>one of its destinations that holds is taken</td>
 </tr>
 <tr class="even">
-<td><p><button class="glossary" title="">JumpTarget</button></p></td>
+<td><p><button class="glossary" title="A flow-control element marking a place a destination names by its element id: a repeat start, a segno, a coda, a bracket. Nothing happens when the flow plays up to it.">JumpTarget</button></p></td>
 <td>nothing: it is a place a destination names</td>
 </tr>
 <tr class="odd">
@@ -482,7 +482,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>the flow goes on; a section ends</td>
 </tr>
 <tr class="odd">
-<td><p><button class="glossary" title="">Barline</button></p></td>
+<td><p><button class="glossary" title="A flow-control element recording a barline the source prints (a double or a final barline). It changes nothing in the flow.">Barline</button></p></td>
 <td>nothing: a barline the source prints</td>
 </tr>
 </tbody>
@@ -633,7 +633,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="the-places-a-destination-names" class="level2">
 <h2 class="anchored" data-anchor-id="the-places-a-destination-names">The places a destination names</h2>
-<p>A <button class="glossary" title="">JumpTarget</button> is a place: nothing happens when the flow plays up to it. Its <code>manifestation</code> says what it looks like in the source and decides nothing. A given <code>id</code> is kept; the IDs here make the destinations below readable.</p>
+<p>A <button class="glossary" title="A flow-control element marking a place a destination names by its element id: a repeat start, a segno, a coda, a bracket. Nothing happens when the flow plays up to it.">JumpTarget</button> is a place: nothing happens when the flow plays up to it. Its <code>manifestation</code> says what it looks like in the source and decides nothing. A given <code>id</code> is kept; the IDs here make the destinations below readable.</p>
 <div id="59f07676" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.025684Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.025474Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.029211Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.028509Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>places <span class="op">=</span> [</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    JumpTarget(q(<span class="dv">4</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"segno"</span>, manifestation<span class="op">=</span><span class="st">"segno"</span>),</span>
@@ -722,7 +722,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="sections" class="level2">
 <h2 class="anchored" data-anchor-id="sections">Sections</h2>
-<p>A <button class="glossary" title="A flow-control element where a section ends (a movement, a section of a piece); the flow goes on across it. A destination without place goes on at the nearest SectionBreak before its Jump, and a flow ended by a Break begins again at the next one.">SectionBreak</button> ends a section and lets the flow go on. A destination without a place goes on at the nearest section break before its Jump, never before the start of the timeline stating the Jump (here the score’s 0), so the repeat end at measure 12 repeats the second section only. A flow ended by a Break begins again at the next section break: after the <em>Fine</em>, the second section is played. A <button class="glossary" title="">Barline</button> records the final barline and changes nothing.</p>
+<p>A <button class="glossary" title="A flow-control element where a section ends (a movement, a section of a piece); the flow goes on across it. A destination without place goes on at the nearest SectionBreak before its Jump, and a flow ended by a Break begins again at the next one.">SectionBreak</button> ends a section and lets the flow go on. A destination without a place goes on at the nearest section break before its Jump, never before the start of the timeline stating the Jump (here the score’s 0), so the repeat end at measure 12 repeats the second section only. A flow ended by a Break begins again at the next section break: after the <em>Fine</em>, the second section is played. A <button class="glossary" title="A flow-control element recording a barline the source prints (a double or a final barline). It changes nothing in the flow.">Barline</button> records the final barline and changes nothing.</p>
 <div id="56f607ab" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.043899Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.043681Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.047365Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.046645Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>second_section <span class="op">=</span> [</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    SectionBreak(q(<span class="dv">32</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"first_section_end"</span>),</span>
@@ -946,7 +946,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="conditions-nobody-can-check" class="level2">
 <h2 class="anchored" data-anchor-id="conditions-nobody-can-check">Conditions nobody can check</h2>
-<p><code>determined=False</code> marks a destination nobody can check, such as an ossia: it is never taken, and passing it is a <button class="glossary" title="What playing flow control found, without raising: a flow that never ends (endless_loop), a flow ending at a Break that states no condition before the end (flow_ends_at_break), two destinations of one Jump holding at once (ambiguous_targets), a destination nobody can check (undetermined_target), and a stretch never played (never_played). The default and single flows have findings, the printed flow none; Timeline.get_flow(convention) returns them with the flow. A finding may name its cause: a stretch the single flow leaves out that the default flow plays has the cause single_playback (going through once takes the last volta ending).">Finding</button>. Here an ossia is added to a copy of the registry; the copy belongs to no timeline, so <code>play()</code> gets the length.</p>
+<p><code>determined=False</code> marks a destination nobody can check, such as an ossia: it is never taken, and passing it is a <button class="glossary" title="">Finding</button>. Here an ossia is added to a copy of the registry; the copy belongs to no timeline, so <code>play()</code> gets the length.</p>
 <div id="1796e227" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.187651Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.187400Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.199450Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.198508Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>with_ossia <span class="op">=</span> score.flow_control.copy()</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>with_ossia.add(</span>

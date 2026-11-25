@@ -57,7 +57,7 @@ import json
 import math
 import os
 import re
-from collections.abc import Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
@@ -1812,6 +1812,12 @@ class ManifestFileMixin:
     _file_form: FileForm | None = None
     """The form of the file the object was read from, or None."""
 
+    from_dict: ClassVar[Callable[..., Any]]
+    """The classmethod reading the object from a manifest, which each class
+    using the mixin defines with its own selection keywords (``timeline_id``
+    and ``name`` for a timeline, ``group_id`` and ``name`` for a group);
+    :meth:`from_file` calls it with the manifest and those keywords."""
+
     def _read_tables(self, directory: Path, data: Mapping[str, Any]) -> None:
         """Read the tables the manifest names, lying in *directory*.
 
@@ -1831,17 +1837,6 @@ class ManifestFileMixin:
             naming it is written anew.
         """
         return False
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any], **selection: str | None) -> Self:
-        """Read the object from a manifest; each class using the mixin defines it.
-
-        Args:
-            data: The manifest.
-            **selection: The keyword arguments that select one timeline or
-                group of the manifest.
-        """
-        raise NotImplementedError
 
     def to_dict(
         self,

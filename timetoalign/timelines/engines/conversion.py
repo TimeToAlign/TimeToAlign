@@ -353,25 +353,14 @@ class ConversionMapsMixin:
         Returns:
             Coordinate on the descendant timeline, or None if it is not held.
         """
-        descendant = self._find_descendant(child_id)
-        if descendant is None or descendant is self:
+        path = self._descendant_offset_path(child_id)
+        if path is None or not path[0]:
             return None
-        path: list[Timeline] = []
-        node: Timeline | None = descendant
-        while node is not self:
-            # The descendant lies in this subtree, so its parents lead here.
-            assert node is not None
-            path.append(node)
-            node = node._parent
         child_coord = parent_coord
-        parent = self
-        for node in reversed(path):
-            child_coord = shift_number(
-                child_coord, parent._child_offsets[node._id].value, subtract=True
-            )
+        for offset, node in path[0]:
+            child_coord = shift_number(child_coord, offset.value, subtract=True)
             if not node._holds_position(child_coord):
                 return None
-            parent = node
         return child_coord
 
     def _get_parent_coordinate_from_child(
@@ -395,7 +384,7 @@ class ConversionMapsMixin:
         if path is None or not path[0]:
             raise KeyError(child_id)
         parent_coord = child_coord
-        for offset in reversed(path[0]):
+        for offset, _ in reversed(path[0]):
             parent_coord = shift_number(parent_coord, offset.value, subtract=False)
         return parent_coord
 
@@ -496,23 +485,29 @@ class ConversionMapsMixin:
 
     def _descendant_offset_path(
         self, timeline_id: str
-    ) -> tuple[list[Coordinate], Timeline] | None:
-        """Find the offset path to a timeline in this subtree.
+    ) -> tuple[list[tuple[Coordinate, Timeline]], Timeline] | None:
+        """Find the path down this subtree to a timeline.
+
+        The path is read from this timeline's children downwards, so it is
+        the path through this tree even where a timeline on it names
+        another timeline as its parent.
 
         Args:
             timeline_id: Timeline ID to find.
 
         Returns:
-            The offsets from this timeline to the owner and the owner itself,
-            or None when the ID is unknown.
+            The steps from this timeline to the owner, each the offset of a
+            child in its parent and that child (the child of this timeline
+            first, the owner last), and the owner itself; or None when the
+            ID is unknown.
         """
         if timeline_id == self._id:
             return [], self  # type: ignore[return-value]
         for child_id, child in self._children.items():
             child_path = child._descendant_offset_path(timeline_id)
             if child_path is not None:
-                offsets, owner = child_path
-                return [self._child_offsets[child_id], *offsets], owner
+                steps, owner = child_path
+                return [(self._child_offsets[child_id], child), *steps], owner
         return None
 
     def _get_descendant_timeline_ids(self) -> list[str]:
@@ -613,7 +608,7 @@ class ConversionMapsMixin:
                 f"Timeline ID '{owner_id}' is not this timeline "
                 f"'{self._id}' or one of its descendants"
             )
-        offsets, owner = path
+        steps, owner = path
         native_value = resolved.value
         if resolved.unit is not None and resolved.unit != self._unit:
             candidates: list[tuple[int, Timeline]] = [(0, owner)]
@@ -624,7 +619,7 @@ class ConversionMapsMixin:
                 if candidate_path is not None:
                     candidates.append((len(candidate_path[0]), candidate))
             if self is not owner:
-                candidates.append((len(offsets), self))
+                candidates.append((len(steps), self))
             unit_map = None
             for _, candidate in sorted(candidates, key=lambda item: item[0]):
                 unit_map = candidate._get_unit_map(resolved.unit)
@@ -655,7 +650,7 @@ class ConversionMapsMixin:
                     f"pass an int or a Fraction."
                 ) from error
 
-        for offset in reversed(offsets):
+        for offset, _ in reversed(steps):
             native_value = shift_number(native_value, offset.value, subtract=False)
         return native_value
 

@@ -499,4 +499,24 @@ class TestZeroLengthChild:
         assert _row(parent, 4) == expected
 
 
+def test_a_timeline_in_two_parents_is_answered_through_the_tree_queried() -> None:
+    """Each parent reaches the shared child and its child by its own offset."""
+    first = ContinuousLogicalTimeline(length=8, uid="P1")
+    second = ContinuousLogicalTimeline(length=8, uid="P2")
+    child = ContinuousLogicalTimeline(length=2, uid="CH")
+    child.add_child(ContinuousLogicalTimeline(length=1, uid="G"), 0)
+    first.add_child(child, 1)
+    second.add_child(child, 3)
+    expected_first = {"P1": 2, "CH": 1, "G": 1}
+    assert _present(first.get_timestamp_at(2)) == expected_first
+    assert _row(first, 2) == expected_first
+    expected_second = {
+        "P2": Fraction(7, 2),
+        "CH": Fraction(1, 2),
+        "G": Fraction(1, 2),
+    }
+    assert _present(second.get_timestamp_at(Fraction(7, 2))) == expected_second
+    assert _row(second, Fraction(7, 2)) == expected_second
+
+
 # endregion

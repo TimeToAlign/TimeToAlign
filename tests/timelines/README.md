@@ -2580,6 +2580,17 @@ a lane deciding otherwise would differ:
   at 4 in the first case; a lone child ending at 4 inside a parent of length 8
   at 4 (formerly left out, its end then on no child).
 
+- **A timeline placed in two parents is answered through the tree
+  queried.** `add_child` still accepts a timeline that already has a
+  parent; it then sits in both parents' children while naming the second
+  as its parent. `CH` (length 2, holding `G` of length 1 at 0) placed in
+  `P1` (length 8) at 1 and then in `P2` (length 8) at 3: `P1` at 2 names
+  `P1` 2, `CH` 1, `G` 1, and `P2` at `7/2` names `P2` `7/2`, `CH` `1/2`,
+  `G` `1/2`, each stamp equal to its table row. A stamp that found the way
+  from `CH` up through its parent reference left `P1`'s tree at `P2` and
+  failed; one walking down the queried tree cannot. Whether `add_child` should refuse such a timeline is not
+  decided here.
+
 | Test | Validates |
 |------|-----------|
 | `test_exact_parent_to_child` | `_get_child_coordinate()` returns the exact result |
@@ -2597,6 +2608,7 @@ a lane deciding otherwise would differ:
 | `TestExactTableContainment` | The two exact-axis cases |
 | `test_lanes_agree_at_every_position` | Stamp, table and bundle agree on three axes, values included |
 | `TestZeroLengthChild` | A zero-length child is held at its offset and takes no end away |
+| `test_a_timeline_in_two_parents_is_answered_through_the_tree_queried` | The stamp and table of each parent follow that parent's own offsets |
 
 ### `test_fraction_generation.py` - Exact Logical Coordinate Generation
 

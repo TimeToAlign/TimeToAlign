@@ -48,6 +48,7 @@ from typing import (
     get_origin,
 )
 
+import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel
@@ -779,17 +780,29 @@ def _dictionary_chunked_array(
 
 
 def _cast_column(
-    array: pa.Array[Any] | pa.ChunkedArray[Any], target_type: pa.DataType
+    array: (
+        pa.Array[Any]
+        | pa.ChunkedArray[Any]
+        | list[Any]
+        | tuple[Any, ...]
+        | npt.NDArray[Any]
+    ),
+    target_type: pa.DataType,
 ) -> pa.Array[Any] | pa.ChunkedArray[Any]:
     """``pc.cast(array, target_type)``.
 
     pyarrow-stubs 20.0 declares the ``pc.cast`` overloads with bare
     ``Scalar`` / ``Array`` / ``ChunkedArray`` parameters, so the function's
-    type is partially unknown; PyArrow returns an array for an array and a
-    chunked array for a chunked array. Remove once pyarrow-stubs parametrises
-    those overloads; call ``pc.cast`` directly then.
+    type is partially unknown, and admits no plain sequence; PyArrow packs a
+    list, tuple or NumPy array into an array first, and returns an array for
+    an array or a plain sequence and a chunked array for a chunked array.
+    Remove once pyarrow-stubs parametrises those overloads and admits plain
+    sequences; call ``pc.cast`` directly then.
     """
-    return cast("pa.Array[Any] | pa.ChunkedArray[Any]", pc.cast(array, target_type))
+    return cast(
+        "Callable[..., pa.Array[Any] | pa.ChunkedArray[Any]]",
+        pc.cast,
+    )(array, target_type)
 
 
 def _struct_child(array: pa.StructArray, name: str) -> pa.Array[Any]:

@@ -4781,10 +4781,14 @@ it applies. With `twice` = `first, first` (length 16) applied as the
 virtual timeline `z`, the FlowMap `z, Gap(1), second` plays [0, 8), [0, 8),
 a gap of 1, [8, 20): length 29, `unfold(2)` = [2, 10], `fold(16)` = None,
 `fold(17)` = 8. A FlowMap whose chunk is a virtual timeline applying that
-same FlowMap names itself and is refused when read; so is a chunk naming a
-virtual timeline that states another unit than the root's (the one way a
-chunk can lie on an axis in another unit, since the regions and children
-of a tree share the root's unit). Both are built as manifests, which the
+same FlowMap names itself. The format refuses such a manifest (no length
+the virtual timeline could state is the sum of chunks that include
+itself), which is asserted in its words; the library's own refusal is
+asserted on the same two objects held in memory, where no validator
+stands before it. A chunk naming a virtual timeline that states another
+unit than the root's (the one way a chunk can lie on an axis in another
+unit, since the regions and children of a tree share the root's unit) is
+refused when read against its root; it is built as a manifest, which the
 format admits.
 
 **The dictionary form** is the manifest's, IDs bare as in every object of
@@ -4966,7 +4970,9 @@ written.
   complete and the minimal form, through `Timeline` and through
   `AlignmentBundle`. That alone would also hold for keys kept unread, so
   the objects read are compared with literals as well: the three FlowMaps
-  of the exposition with their conventions and chunks, its virtual timeline
+  of the exposition with their conventions, their chunks and the
+  provenance `inferred` that says they were computed from its flow control
+  (`is_computed`), its virtual timeline
   (length 36: A 12 + B 4 + A 12 + C 8), and the by-hand FlowMap with its
   gap of `Fraction(4)`, its name and its provenance entry.
 - **Built in memory, written, read, equal.** A bundle of two root

@@ -33,6 +33,7 @@ from timetoalign.timelines import (
     ResolvedFlowMap,
     Timeline,
     UnknownLengthError,
+    VirtualTimeline,
 )
 
 Q = TimeUnit.quarters
@@ -480,9 +481,19 @@ class TestVirtualTimelineAsChunk:
     def test_a_flow_map_naming_itself_is_refused_when_read_against_its_root(
         self,
     ) -> None:
-        manifest = self._manifest()
-        root = Timeline.from_dict(manifest)
-        assert root.to_dict() == Timeline.from_dict(root.to_dict()).to_dict()
+        # No length is the sum of chunks that include the virtual timeline
+        # itself, so the format refuses the manifest ...
+        with pytest.raises(ValueError) as refused:
+            Timeline.from_dict(self._manifest())
+        assert str(refused.value) == (
+            "#/virtual_timelines/0/length: length [4, 1] of 'v' is not the sum of "
+            "the chunks and gaps of 'f', [8, 1]"
+        )
+        # ... and the library refuses the same objects held in memory.
+        root = ContinuousLogicalTimeline(length=16, uid="root")
+        root.create_region(0, 4, id="a")
+        root._flow_maps["f"] = FlowMap("root", ("a", "v"), id="f")
+        root._virtual_timelines["v"] = VirtualTimeline("f", "root", q(4), id="v")
         with pytest.raises(ValueError) as raised:
             root.get_flow_map("f").resolve(root)
         assert str(raised.value) == (

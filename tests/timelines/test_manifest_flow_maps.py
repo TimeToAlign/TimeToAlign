@@ -59,6 +59,7 @@ class TestFixtures:
     )
     def test_the_exposition_is_read_into_objects(self, name: str) -> None:
         score = Timeline.from_file(FIXTURES / name)
+        inferred = (Provenance(method="inferred"),)
         assert [
             score.get_flow_map(flow_map_id) for flow_map_id in score.list_flow_maps()
         ] == [
@@ -66,21 +67,28 @@ class TestFixtures:
                 "score",
                 ("region_1", "region_2", "region_1", "region_3"),
                 convention=FlowConvention.default,
+                provenance=inferred,
                 id="flow_map_1",
             ),
             FlowMap(
                 "score",
                 ("region_1", "region_3"),
                 convention=FlowConvention.single,
+                provenance=inferred,
                 id="flow_map_2",
             ),
             FlowMap(
                 "score",
                 ("region_1", "region_2", "region_3"),
                 convention=FlowConvention.printed,
+                provenance=inferred,
                 id="flow_map_3",
             ),
         ]
+        assert all(
+            score.get_flow_map(flow_map_id).is_computed
+            for flow_map_id in score.list_flow_maps()
+        )
         virtual = score.get_virtual_timeline("virtual_1")
         assert virtual == VirtualTimeline(
             "flow_map_1", "score", q(36), name="Score, as played", id="virtual_1"

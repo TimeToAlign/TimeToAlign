@@ -14,13 +14,32 @@ import pyarrow.compute as pc
 from timetoalign.core import TimeUnit
 from timetoalign.loader import EventLoader
 from timetoalign.loader._optional import missing_dependency
-from timetoalign.loader.base import LoadSourceResult
+from timetoalign.loader.base import LoadSourceResult, Source
 
 from .constants import MidiEventType
 from .events import MidiEventData
 
 if TYPE_CHECKING:
+    import mido
+
     from timetoalign.loader.midi.store import MidiStore
+
+
+def read_midi_file(source: Source) -> mido.MidiFile:
+    """Parse the MIDI file *source* with mido.
+
+    A filesystem path is parsed as mido parses it. A member of a ZIP archive
+    is parsed from its open file object, in place.
+
+    Raises:
+        ImportError: If mido is not installed (the caller names the extra).
+    """
+    import mido
+
+    if isinstance(source, Path):
+        return mido.MidiFile(source)
+    with source.open("rb") as handle:
+        return mido.MidiFile(file=handle)
 
 
 class MidiLoader(EventLoader):
@@ -47,7 +66,7 @@ class MidiLoader(EventLoader):
 
     def _parse_mido_source(
         self,
-        source: Path,
+        source: Source,
         *,
         parse_durations: bool,
         include_controls: bool,
@@ -70,14 +89,15 @@ class MidiLoader(EventLoader):
             ImportError: If ``mido`` is not installed, naming the extra.
             ValueError: If the file is no valid MIDI file.
         """
+        # The missing extra is named before any file is read.
         try:
-            import mido
+            import mido  # noqa: F401
         except ModuleNotFoundError as error:
             raise ImportError(
                 missing_dependency(type(self).__name__, error.name, "midi")
             ) from error
         try:
-            mid = mido.MidiFile(source)
+            mid = read_midi_file(source)
         except (OSError, EOFError, ValueError) as e:
             # mido raises diverse exceptions for invalid files
             raise ValueError(f"Invalid MIDI file {source}: {e}") from e

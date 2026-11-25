@@ -34,7 +34,6 @@ NO FOR LOOPS OVER ROWS. EVER.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
@@ -57,7 +56,7 @@ from timetoalign.core.time import (
     build_number_struct_array,
     combine_number_columns,
 )
-from timetoalign.loader.base import EventLoader, LoadSourceResult
+from timetoalign.loader.base import EventLoader, LoadSourceResult, Source, readable
 from timetoalign.storage.schema import (
     ComputedField,
     Field,
@@ -540,7 +539,7 @@ class TabularLoader(EventLoader):
 
     # region Vectorized Loading
 
-    def _load_source(self, source: Path) -> LoadSourceResult:
+    def _load_source(self, source: Source) -> LoadSourceResult:
         """Load a single source file (VECTORIZED).
 
         Reads the tabular file using vectorized pandas operations and
@@ -560,7 +559,7 @@ class TabularLoader(EventLoader):
             7. Return column dict (NOT row dicts).
 
         Args:
-            source: Path to the source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             A tuple of (metadata_dict, column_dict):
@@ -607,25 +606,26 @@ class TabularLoader(EventLoader):
 
     # region DataFrame Processing
 
-    def _read_dataframe(self, source: Path) -> pd.DataFrame:
+    def _read_dataframe(self, source: Source) -> pd.DataFrame:
         """Read source file into a DataFrame.
 
         Subclasses can override for custom reading logic.
 
         Args:
-            source: Path to the source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             DataFrame containing the tabular data.
         """
-        return pd.read_csv(
-            source,
-            sep=self.delimiter,
-            header=self.header_row,
-            encoding=self.encoding,
-        )
+        with readable(source) as table:
+            return pd.read_csv(
+                table,
+                sep=self.delimiter,
+                header=self.header_row,
+                encoding=self.encoding,
+            )
 
-    def _validate_columns(self, df: pd.DataFrame, source: Path) -> None:
+    def _validate_columns(self, df: pd.DataFrame, source: Source) -> None:
         """Validate that required columns exist.
 
         Handles string column names, Field references, and ComputedField.
@@ -1216,11 +1216,11 @@ class TabularLoader(EventLoader):
 
     # region Utilities
 
-    def _infer_format(self, source: Path) -> str:
+    def _infer_format(self, source: Source) -> str:
         """Infer the format name from the file extension.
 
         Args:
-            source: Path to the source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             Format name string.

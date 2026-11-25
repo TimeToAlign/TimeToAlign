@@ -6,12 +6,12 @@ import xml.etree.ElementTree as ET
 from bisect import bisect_right
 from dataclasses import dataclass
 from fractions import Fraction
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlparse
 
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source, readable
 
 if TYPE_CHECKING:
     from timetoalign.timelines import BeatGrid, BeatGridSegment, MeasureMap
@@ -58,11 +58,6 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         super().__init__()
         self._tracks: list[RekordboxTrack] = []
 
-    @classmethod
-    def from_file(cls, path: Path | str) -> RekordboxLoader:
-        """Parse *path* and return a loaded collection reader."""
-        return cls().load(path)
-
     @property
     def tracks(self) -> tuple[RekordboxTrack, ...]:
         """Return collection tracks in XML order."""
@@ -73,8 +68,9 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         super().clear()
         self._tracks.clear()
 
-    def _load_source(self, source: Path) -> list[RekordboxTrack]:
-        root = ET.parse(source).getroot()
+    def _load_source(self, source: Source) -> list[RekordboxTrack]:
+        with readable(source) as document:
+            root = ET.parse(document).getroot()
         collection = root if root.tag == "COLLECTION" else root.find("COLLECTION")
         if collection is None:
             raise ValueError(f"Rekordbox XML {source} has no COLLECTION element")
@@ -82,7 +78,7 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
 
     def _accept_source(
         self,
-        path: Path,
+        path: Source,
         source_meta: dict[str, Any],
         payload: list[RekordboxTrack],
     ) -> None:

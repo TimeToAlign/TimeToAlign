@@ -133,6 +133,7 @@ from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import NumberType, Provenance, TimeScalarValue, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
+from timetoalign.loader.base import LoadSourceResult, Source
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap
@@ -464,26 +465,19 @@ class Ieee1599Loader(XmlLoader):
 
     # region Loading
 
-    def load(self, *sources: Path | str) -> Self:
+    def _load_source(self, source: Source) -> LoadSourceResult:
         """Ingest exactly one IEEE 1599 document.
 
-        Args:
-            *sources: A single path to an IEEE 1599 XML file.  The file may
-                carry a UTF-8 BOM and a DOCTYPE declaration; no DTD is
-                fetched and no media file is opened.
-
-        Returns:
-            Self, for method chaining.
-
-        Raises:
-            ValueError: If no source or more than one is given, or if this
-                loader already holds a document.  One IEEE 1599 document is one
-                self-contained work with its own spine; two documents are two
-                bundles, so they need two loaders.
+        ``load()`` takes a single path to an IEEE 1599 XML file, or a member
+        of a ZIP archive. The file may carry a UTF-8 BOM and a DOCTYPE
+        declaration; no DTD is fetched and no media file is opened. A loader
+        given no source or more than one, or holding a document already,
+        refuses with ``ValueError``: one IEEE 1599 document is one
+        self-contained work with its own spine; two documents are two
+        bundles, so they need two loaders.
         """
-        self._refuse_further_source(*sources)
-        self._name = Path(sources[0]).stem
-        return super().load(*sources)
+        self._name = source.stem
+        return super()._load_source(source)
 
     def load_string(self, xml_string: str) -> Self:
         """Ingest exactly one IEEE 1599 document from an XML string.

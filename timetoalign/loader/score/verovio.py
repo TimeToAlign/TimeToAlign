@@ -10,7 +10,6 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, TypeVar, cast
 
 import pyarrow as pa
@@ -20,6 +19,7 @@ from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.enums import ExtrapolationPolicy, FlowManifestation
 from timetoalign.core.time import build_number_struct_array, rational_to_struct
 from timetoalign.loader._xml import XML_ID
+from timetoalign.loader.base import Source, materialize
 
 from .base import ScoreLoader
 from .events import ScoreEventType
@@ -624,7 +624,7 @@ class VerovioLoader(ScoreLoader):
             options["mdivAll"] = True
         return options
 
-    def _load_source(self, source: Path) -> ScoreStore:
+    def _load_source(self, source: Source) -> ScoreStore:
         """Load one file into a ScoreStore through a fresh toolkit."""
         toolkit = verovio.toolkit()
         version = toolkit.getVersion()
@@ -1118,16 +1118,17 @@ def _timeline(
 
 
 def _load_file(
-    toolkit: Any, source: Path, options: dict[str, Any], data: str | None = None
+    toolkit: Any, source: Source, options: dict[str, Any], data: str | None = None
 ) -> None:
     """Set the toolkit's options and load *source*, or raise with Verovio's log.
 
     Given *data*, an MEI text made from *source*, the toolkit reads it as MEI
-    instead of the file.
+    instead of the file. Verovio reads files on disk only: a member of a ZIP
+    archive is read from its copy (:func:`~timetoalign.loader.base.materialize`).
     """
     if data is None:
         toolkit.setOptions(options)
-        loaded = toolkit.loadFile(str(source))
+        loaded = toolkit.loadFile(str(materialize(source)))
     else:
         toolkit.setOptions({**options, "inputFrom": "mei"})
         loaded = toolkit.loadData(data)
@@ -1150,7 +1151,7 @@ def _verovio_reason(toolkit: Any) -> str:
 _MUSIC_PATH = ("music", "body", "mdiv", "score", "section")
 
 
-def _refuse_without_music(source: Path) -> None:
+def _refuse_without_music(source: Source) -> None:
     """Raise if *source* is MEI whose ``<music>`` holds no measure and no staff.
 
     Such a file can give no timeline. Verovio declines most of its shapes
@@ -1197,7 +1198,7 @@ def _refuse_without_music(source: Path) -> None:
     )
 
 
-def _timemap(toolkit: Any, source: Path) -> list[dict[str, Any]]:
+def _timemap(toolkit: Any, source: Source) -> list[dict[str, Any]]:
     """Return the toolkit's exact timemap, cross-checked against the float one."""
     timemap = toolkit.renderToTimemap({**_TIMEMAP_OPTIONS, "useFractions": True})
     if not timemap:
@@ -1395,7 +1396,7 @@ def _measure_lengths(rendered: list[_RenderedMeasure]) -> dict[str, Fraction]:
 
 
 def _unexpanded_lengths(
-    source: Path,
+    source: Source,
     data: str | None,
     options: dict[str, Any],
     lengths: dict[str, Fraction],

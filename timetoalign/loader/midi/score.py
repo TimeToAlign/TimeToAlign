@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import warnings
-from pathlib import Path
 from typing import Any
 
 import mido
@@ -20,9 +19,9 @@ with suppressed_backend_warnings():
     from partitura.score import Part, PartGroup, Score
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import LoadSourceResult
+from timetoalign.loader.base import LoadSourceResult, Source
 
-from .base import MidiLoader
+from .base import MidiLoader, read_midi_file
 from .constants import MidiEventType
 from .events import MidiEventData, ScoreMidiEventData
 
@@ -175,7 +174,7 @@ class ScoreMidiLoader(MidiLoader):
         self,
         note_array: Any,
         stated: list[tuple[int | float, int, int | float, int]],
-        source: Path,
+        source: Source,
     ) -> list[int | None]:
         """Return the velocity the file states for each of Partitura's notes.
 
@@ -223,11 +222,11 @@ class ScoreMidiLoader(MidiLoader):
             )
         return velocities
 
-    def _load_source(self, source: Path) -> LoadSourceResult:
+    def _load_source(self, source: Source) -> LoadSourceResult:
         """Load a MIDI file using the configured parser.
 
         Args:
-            source: Path to the MIDI file.
+            source: The MIDI file: a path or a ZIP archive member.
 
         Returns:
             Tuple of metadata and vectorized event field arrays.
@@ -244,7 +243,7 @@ class ScoreMidiLoader(MidiLoader):
         # Load score using partitura, from the file parsed once: the same
         # messages give the velocities partitura's score parse leaves out.
         # Note: partitura can return Score, Part, PartGroup, or list
-        mid = mido.MidiFile(source)
+        mid = read_midi_file(source)
         with suppressed_backend_warnings():
             score_data = pt.load_score_midi(
                 mid,

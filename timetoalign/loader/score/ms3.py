@@ -19,6 +19,14 @@ from timetoalign.core.time import (
     rational_to_struct,
 )
 from timetoalign.loader._optional import missing_dependency
+from timetoalign.loader.base import (
+    Source,
+    SourceLike,
+    as_source,
+    readable,
+    source_metadata,
+    source_parent,
+)
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -42,7 +50,7 @@ if TYPE_CHECKING:
     from timetoalign.timelines import MeasureMap, Timeline
 
 
-def _holds_no_table(source: Path) -> ValueError:
+def _holds_no_table(source: Source) -> ValueError:
     """The refusal of an ms3 TSV file that holds no table, naming it."""
     return ValueError(
         f"Ms3Loader cannot read '{source}': the file holds no table (an ms3 TSV "
@@ -50,10 +58,18 @@ def _holds_no_table(source: Path) -> ValueError:
     )
 
 
-def _states_a_table(path: Path) -> bool:
+def _states_a_table(path: Source) -> bool:
     """Whether *path* holds anything but whitespace (an ms3 TSV states its columns)."""
     with path.open("rb") as file:
         return any(line.strip() for line in file)
+
+
+def _source_key(source: Source) -> Path | tuple[str, str]:
+    """What tells two sources apart: a resolved path, or archive and member."""
+    if isinstance(source, Path):
+        return source.resolve()
+    provenance = source_metadata(source)
+    return provenance["path"], provenance["member"]
 
 
 class Ms3Loader(ScoreLoader):
@@ -111,35 +127,10 @@ class Ms3Loader(ScoreLoader):
         super().__init__(*args, **kwargs)
         self._auto_discover = auto_discover
 
-    @classmethod
-    def from_file(cls, *paths: Path | str, auto_discover: bool = False) -> "Ms3Loader":
-        """Create a loader and load TSV files in one step.
-
-        Convenience constructor for loading one or more TSV files.
-
-        Args:
-            *paths: Paths to TSV files (notes, measures, harmonies, chords).
-            auto_discover: If True, automatically locate companion facet
-                files for each source.
-
-        Returns:
-            A new Ms3Loader instance with the files already loaded.
-
-        Examples:
-            >>> loader = Ms3Loader.from_file("score.notes.tsv", "score.measures.tsv")
-            >>> loader.store.summary()
-
-            >>> # Auto-discover all facet files from a single notes file:
-            >>> loader = Ms3Loader.from_file("score.notes.tsv", auto_discover=True)
-        """
-        loader = cls(auto_discover=auto_discover)
-        loader.load(*paths)
-        return loader
-
     # region Auto-discovery
 
     @staticmethod
-    def _parse_facet(path: Path) -> str | None:
+    def _parse_facet(path: Source) -> str | None:
         """Extract the facet name from a TSV filename.
 
         Recognises two naming conventions:
@@ -162,7 +153,7 @@ class Ms3Loader(ScoreLoader):
         return None
 
     @staticmethod
-    def _companion_candidates(source: Path) -> dict[str, list[Path]]:
+    def _companion_candidates(source: Source) -> dict[str, list[Source]]:
         """Paths where each other facet of *source*'s piece may be stored.
 
         A facet file is named ``<piece>.<facet>.tsv`` (or ``<facet>.tsv``
@@ -179,8 +170,10 @@ class Ms3Loader(ScoreLoader):
         matched only to ``_unfolded`` files and a folded file only to folded
         ones.
 
+        The candidates of an archive member are members of the same archive.
+
         Args:
-            source: Resolved path to a TSV file.
+            source: Resolved path to a TSV file, or a member of a ZIP archive.
 
         Returns:
             For each facet other than *source*'s, the candidate paths in
@@ -191,19 +184,20 @@ class Ms3Loader(ScoreLoader):
             return {}
         # "<piece>.<facet>.tsv" -> "<piece>"; a bare "<facet>.tsv" -> "".
         piece = source.name[: max(len(source.name) - len(f".{facet}.tsv"), 0)]
-        in_facet_directory = source.parent.name.lower() == facet
-        candidates: dict[str, list[Path]] = {}
+        directory = source_parent(source)
+        in_facet_directory = directory.name.lower() == facet
+        candidates: dict[str, list[Source]] = {}
         for other in Ms3Loader._FACETS:
             if other == facet:
                 continue
             file_name = f"{piece}.{other}.tsv" if piece else f"{other}.tsv"
-            candidates[other] = [source.parent / file_name]
+            candidates[other] = [directory / file_name]
             if in_facet_directory:
-                candidates[other].append(source.parent.parent / other / file_name)
+                candidates[other].append(source_parent(directory) / other / file_name)
         return candidates
 
     @staticmethod
-    def _discover_companions(source: Path) -> list[Path]:
+    def _discover_companions(source: Source) -> list[Source]:
         """Locate companion facet files for *source*.
 
         For each other facet, the first existing candidate of
@@ -211,22 +205,29 @@ class Ms3Loader(ScoreLoader):
         beside its notes and others in facet directories.
 
         Args:
-            source: Path to a TSV file.
+            source: Path to a TSV file, or a member of a ZIP archive.
 
         Returns:
-            Companion paths, resolved, in facet order (may be empty). Never
-            includes *source* itself.
+            Companion paths, resolved (members of *source*'s archive for a
+            member), in facet order (may be empty). Never includes *source*
+            itself.
         """
-        source = source.resolve()
-        companions: list[Path] = []
+        if isinstance(source, Path):
+            source = source.resolve()
+        key = _source_key(source)
+        companions: list[Source] = []
         for candidates in Ms3Loader._companion_candidates(source).values():
             for candidate in candidates:
-                if candidate.is_file() and candidate.resolve() != source:
-                    companions.append(candidate.resolve())
+                if candidate.is_file() and _source_key(candidate) != key:
+                    companions.append(
+                        candidate.resolve()
+                        if isinstance(candidate, Path)
+                        else candidate
+                    )
                     break
         return companions
 
-    def load(self, *sources: Path | str) -> Self:
+    def load(self, *sources: SourceLike) -> Self:
         """Load one or more TSV source files.
 
         When ``auto_discover`` is enabled, each source file is expanded to
@@ -239,8 +240,11 @@ class Ms3Loader(ScoreLoader):
         for which no companion at all is found raises a ``UserWarning``
         naming the paths that were looked at, and is loaded alone.
 
+        A member of a ZIP archive (``zipfile.Path``) finds its companions
+        among the members of the same archive.
+
         Args:
-            *sources: Paths to TSV files.
+            *sources: Paths to TSV files, or members of ZIP archives.
 
         Returns:
             Self, for method chaining.
@@ -249,21 +253,25 @@ class Ms3Loader(ScoreLoader):
             return super().load(*sources)
 
         # Expand sources with discovered companions, preserving order and
-        # deduplicating by resolved path.
-        seen: set[Path] = {p.resolve() for p in self._sources}
-        expanded: list[Path] = []
+        # deduplicating by resolved path (by archive and member for a member).
+        seen: set[Path | tuple[str, str]] = {_source_key(p) for p in self._sources}
+        expanded: list[Source] = []
         for source in sources:
-            path = Path(source).resolve()
-            if path in seen:
+            path = as_source(source)
+            if isinstance(path, Path):
+                path = path.resolve()
+            key = _source_key(path)
+            if key in seen:
                 continue
-            seen.add(path)
+            seen.add(key)
             expanded.append(path)
             companions = self._discover_companions(path)
             if not companions:
                 self._warn_no_companion(path)
             for companion in companions:
-                if companion not in seen:
-                    seen.add(companion)
+                companion_key = _source_key(companion)
+                if companion_key not in seen:
+                    seen.add(companion_key)
                     if not _states_a_table(companion):
                         logger.debug("Companion holds no table, skipped: %s", companion)
                         continue
@@ -273,7 +281,7 @@ class Ms3Loader(ScoreLoader):
         return super().load(*expanded)
 
     @staticmethod
-    def _warn_no_companion(source: Path) -> None:
+    def _warn_no_companion(source: Source) -> None:
         """Warn that auto-discovery found no companion facet for *source*."""
         candidates = Ms3Loader._companion_candidates(source)
         if not candidates:
@@ -293,11 +301,12 @@ class Ms3Loader(ScoreLoader):
 
     # endregion
 
-    def _load_source(self, source: Path) -> ScoreStore:
+    def _load_source(self, source: Source) -> ScoreStore:
         """Load TSV file(s) and return ScoreStore.
 
         Args:
-            source: Path to TSV file or directory.
+            source: Path to a TSV file, or a member of a ZIP archive (read
+                in place).
 
         Returns:
             ScoreStore with populated data.
@@ -313,7 +322,8 @@ class Ms3Loader(ScoreLoader):
                     "Ms3Loader requires pandas to read measures TSV files"
                 )
             try:
-                df = pd.read_csv(source, sep="\t")
+                with readable(source) as table:
+                    df = pd.read_csv(table, sep="\t")
             except pd.errors.EmptyDataError as error:
                 raise _holds_no_table(source) from error
         else:
@@ -323,7 +333,8 @@ class Ms3Loader(ScoreLoader):
                 raise ImportError(
                     missing_dependency("Ms3Loader", error.name, "ms3")
                 ) from error
-            df = ms3.load_tsv(str(source))
+            with readable(source) as table:
+                df = ms3.load_tsv(table)
             if df is None:
                 raise _holds_no_table(source)
 
@@ -462,7 +473,7 @@ class Ms3Loader(ScoreLoader):
             return Fraction(0)
         return None
 
-    def _piece_end_from_measures(self, source: Path) -> Fraction | None:
+    def _piece_end_from_measures(self, source: Source) -> Fraction | None:
         """Exact end of the piece, read from the companion measures facet.
 
         A label's span runs to the next label; the final label runs to the end
@@ -487,7 +498,8 @@ class Ms3Loader(ScoreLoader):
             if self._parse_facet(companion) != "measures":
                 continue
             try:
-                measures = ms3.load_tsv(str(companion))
+                with readable(companion) as table:
+                    measures = ms3.load_tsv(table)
             except Exception:
                 logger.debug("Could not read measures companion: %s", companion)
                 return None
@@ -509,7 +521,7 @@ class Ms3Loader(ScoreLoader):
         return None
 
     def _derive_label_spans(
-        self, starts: list[Fraction | float | None], source: Path
+        self, starts: list[Fraction | float | None], source: Source
     ) -> list[Fraction | None]:
         """Span of each label: exactly up to the label that follows it.
 
@@ -579,7 +591,7 @@ class Ms3Loader(ScoreLoader):
         # Fallback: plain quarterbeats
         return self._coordinate_value(row.get("quarterbeats"))
 
-    def _load_notes(self, df: pandas.DataFrame, source: Path) -> ScoreStore:
+    def _load_notes(self, df: pandas.DataFrame, source: Source) -> ScoreStore:
         """Load notes TSV into NoteEventData."""
         import pandas as pd
 
@@ -795,7 +807,7 @@ class Ms3Loader(ScoreLoader):
 
         return timeline
 
-    def _load_measures(self, df: pandas.DataFrame, source: Path) -> ScoreStore:
+    def _load_measures(self, df: pandas.DataFrame, source: Source) -> ScoreStore:
         """Parse a measures TSV as an immutable measure map.
 
         Parses ms3/DCML measures.tsv format with columns:
@@ -817,7 +829,7 @@ class Ms3Loader(ScoreLoader):
 
         Args:
             df: pandas DataFrame from ms3.load_tsv.
-            source: Path to source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             ScoreStore holding the measure table with the source's columns.
@@ -1034,7 +1046,7 @@ class Ms3Loader(ScoreLoader):
         )
 
     def _load_annotations(
-        self, df: pandas.DataFrame, source: Path, subtype: str
+        self, df: pandas.DataFrame, source: Source, subtype: str
     ) -> ScoreStore:
         """Load annotations from TSV (harmonies).
 
@@ -1046,7 +1058,7 @@ class Ms3Loader(ScoreLoader):
 
         Args:
             df: pandas DataFrame from ms3.load_tsv.
-            source: Path to source file.
+            source: The source file: a path or a ZIP archive member.
             subtype: The annotation subtype ("Harmony").
 
         Returns:
@@ -1150,7 +1162,7 @@ class Ms3Loader(ScoreLoader):
         )
 
     def _load_controls(
-        self, df: pandas.DataFrame, source: Path, subtype: str
+        self, df: pandas.DataFrame, source: Source, subtype: str
     ) -> ScoreStore:
         """Load control events from TSV (chords).
 
@@ -1162,7 +1174,7 @@ class Ms3Loader(ScoreLoader):
 
         Args:
             df: pandas DataFrame from ms3.load_tsv.
-            source: Path to source file.
+            source: The source file: a path or a ZIP archive member.
             subtype: The control subtype ("Chord").
 
         Returns:

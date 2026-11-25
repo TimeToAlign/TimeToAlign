@@ -44,12 +44,11 @@ import xml.etree.ElementTree as ET
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
-from pathlib import Path
 from typing import Any, ClassVar
 
 from timetoalign.core import Shape, TimeUnit
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source, readable
 from timetoalign.loader.graphical._located import located
 from timetoalign.loader.graphical._pages import (
     Ids,
@@ -201,13 +200,14 @@ def _surface(surface: ET.Element, missing: list[str]) -> _MeiSurface:
     )
 
 
-def _read_facsimile(source: Path) -> _MeiFacsimile:
+def _read_facsimile(source: Source) -> _MeiFacsimile:
     """Parse the surfaces, zones and ``@facs`` links of the MEI file *source*.
 
     Raises:
         ValueError: As :meth:`MeiFacsimileLoader._load_source` states.
     """
-    root = ET.parse(source).getroot()
+    with readable(source) as document:
+        root = ET.parse(document).getroot()
     if not root.tag.startswith(_MEI):
         raise ValueError(
             f"{source} is no MEI document: its root <{root.tag}> is not in the MEI "
@@ -313,11 +313,11 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
         """The ids of the zones stating neither corners nor points."""
         return self._require_facsimile().zones_without_coordinates
 
-    def _load_source(self, source: Path) -> _MeiFacsimile:
+    def _load_source(self, source: Source) -> _MeiFacsimile:
         """Read the facsimile of one MEI file.
 
         Args:
-            source: Path to the MEI file.
+            source: The MEI file: a path or a ZIP archive member.
 
         Returns:
             Its surfaces, zones and ``@facs`` links.
@@ -334,7 +334,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
         return _read_facsimile(source)
 
     def _accept_source(
-        self, path: Path, source_meta: dict[str, Any], payload: _MeiFacsimile
+        self, path: Source, source_meta: dict[str, Any], payload: _MeiFacsimile
     ) -> None:
         """Keep the facsimile of the one source."""
         super()._accept_source(path, source_meta, payload)

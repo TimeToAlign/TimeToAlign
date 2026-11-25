@@ -46,14 +46,13 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import LoadSourceResult
+from timetoalign.loader.base import LoadSourceResult, Source
 from timetoalign.storage.store import DictStore
 
 from ._tables import NormalisedTablesLoader
@@ -415,44 +414,25 @@ class JsonLoader(NormalisedTablesLoader):
 
     # region Loading
 
-    def _load_source(self, source: Path) -> LoadSourceResult:
-        """Not used directly; ``load()`` is overridden.
+    def _load_source(self, source: Source) -> LoadSourceResult:
+        """Parse one JSON file into the loader's tables.
 
-        ``JsonLoader`` overrides ``load()`` to handle its own JSON
-        parsing and multi-table normalisation.  This stub satisfies the
-        abstract method requirement from ``Loader``.
-
-        Raises:
-            NotImplementedError: Always.
-        """
-        raise NotImplementedError(
-            "JsonLoader overrides load() directly. "
-            "Use load() instead of _load_source()."
-        )
-
-    def load(self, *sources: Path | str) -> Self:
-        """Load one or more JSON files.
-
-        For multiple files the tables are concatenated (same keys) or
-        added (new keys).
+        ``load()`` reads each source through this hook. For multiple files
+        the tables are concatenated (same keys) or added (new keys). The
+        tables are the loader's store, so no event arrays are returned.
 
         Args:
-            *sources: Paths to JSON files.
+            source: The JSON file: a path or a ZIP archive member.
 
         Returns:
-            Self, for method chaining.
+            No metadata and no event arrays.
         """
-        for source in sources:
-            path = Path(source)
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-
-            self._sources.append(path)
-            self._raw_data = data
-            self._process_json(data)
-            self._logger.debug("Loaded %s: %s", path.name, list(self._store.keys()))
-
-        return self
+        with source.open(encoding="utf-8") as f:
+            data = json.load(f)
+        self._raw_data = data
+        self._process_json(data)
+        self._logger.debug("Loaded %s: %s", source.name, list(self._store.keys()))
+        return {}, {}
 
     def load_dict(self, data: dict[str, Any]) -> Self:
         """Load from an already-parsed Python dict.
@@ -472,6 +452,7 @@ class JsonLoader(NormalisedTablesLoader):
     def clear(self) -> None:
         """Clear all loaded data."""
         self._sources.clear()
+        self._source_metadata.clear()
         self._store = DictStore()
         self._file_metadata.clear()
         self._raw_data = None

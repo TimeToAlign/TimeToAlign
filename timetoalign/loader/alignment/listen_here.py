@@ -71,7 +71,14 @@ from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import (
+    AlignmentLoader,
+    Source,
+    SourceLike,
+    as_source,
+    join_source,
+    source_parent,
+)
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps import SamplesToSeconds
 from timetoalign.storage.events import mint_event_ids
@@ -154,7 +161,7 @@ class ListenHereLoader(AlignmentLoader):
 
     # region Abstract-method satisfaction
 
-    def _load_source(self, source: Path) -> Any:
+    def _load_source(self, source: Source) -> Any:
         """Not used: a Listen Here! export is a single coherent file.
 
         :class:`ListenHereLoader` ingests one alignment JSON file through
@@ -170,11 +177,13 @@ class ListenHereLoader(AlignmentLoader):
 
     # region Loading
 
-    def load(self, source: str | Path) -> Self:
+    def load(self, source: SourceLike) -> Self:
         """Ingest one Listen Here! alignment JSON file.
 
         Args:
-            source: Path to the ``alignment.json`` file.
+            source: Path to the ``alignment.json`` file, or its member in a
+                ZIP archive (recordings named relative to it are then looked
+                up in the same archive).
 
         Returns:
             Self, for method chaining.
@@ -185,8 +194,8 @@ class ListenHereLoader(AlignmentLoader):
                 or if the per-recording ``times`` arrays are not all the same
                 length.
         """
-        path = Path(source)
-        with open(path, "r", encoding="utf-8") as handle:
+        path = as_source(source)
+        with path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
 
         header = data.get("header", {})
@@ -258,7 +267,7 @@ class ListenHereLoader(AlignmentLoader):
         return times, duration
 
     @staticmethod
-    def _resolve_sample_rate(source: Path, key: str) -> tuple[int, str]:
+    def _resolve_sample_rate(source: Source, key: str) -> tuple[int, str]:
         """Return a recording's rate and whether it came from the file.
 
         Audio paths in Listen Here! JSON are conventionally relative to the
@@ -267,7 +276,11 @@ class ListenHereLoader(AlignmentLoader):
         fallback.
         """
         key_path = Path(key)
-        candidate = key_path if key_path.is_absolute() else source.parent / key_path
+        candidate: Source = (
+            key_path
+            if key_path.is_absolute()
+            else join_source(source_parent(source), key)
+        )
         if candidate.is_file():
             try:
                 return AudioLoader.from_file(candidate).sample_rate, "file"

@@ -61,14 +61,21 @@ import csv
 import json
 import logging
 from fractions import Fraction
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
 from timetoalign.alignment.claims import ClaimSide
 from timetoalign.core import Provenance, TimeUnit
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import (
+    AlignmentLoader,
+    Source,
+    SourceLike,
+    as_source,
+    find_sources,
+    materialize,
+    source_parent,
+)
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
 from timetoalign.timelines.types import (
@@ -157,7 +164,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     # region Abstract-method satisfaction
 
-    def _load_source(self, source: Path) -> Any:
+    def _load_source(self, source: Source) -> Any:
         """Not used: a specimen directory is a single coherent unit.
 
         :class:`PerformancePrecisionLoader` ingests an entire specimen
@@ -191,13 +198,14 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     # region Loading
 
-    def load(self, specimen_dir: str | Path) -> Self:
+    def load(self, specimen_dir: SourceLike) -> Self:
         """Ingest a whole Performance Precision specimen directory.
 
         Args:
-            specimen_dir: Path to the directory containing the ``.solo``
+            specimen_dir: Source to the directory containing the ``.solo``
                 file, the Verovio timemap ``.json``, and the
-                ``Alignments/`` subdirectory.
+                ``Alignments/`` subdirectory, or that directory as a member
+                of a ZIP archive, read in place.
 
         Returns:
             Self, for method chaining.
@@ -207,7 +215,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                 missing.
             ValueError: If more than one ``.solo`` or timemap is present.
         """
-        directory = Path(specimen_dir)
+        directory = as_source(specimen_dir)
         if not directory.is_dir():
             raise FileNotFoundError(f"Not a directory: {directory}")
 
@@ -223,7 +231,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         self._name = solo_path.stem
 
         # Measure structure first — needed to resolve every label.
-        self._metric_map = MetricMap.from_verovio_timemap(timemap_path)
+        self._metric_map = MetricMap.from_verovio_timemap(materialize(timemap_path))
         self._metrical_position_map = MetricalPositionMap(self._metric_map)
         first_meter_quarters = self._first_meter_quarters(timemap_path)
         starts, m0_downbeat = self._build_measure_lookup(
@@ -238,9 +246,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
         return self
 
     @staticmethod
-    def _resolve_single(directory: Path, pattern: str) -> Path:
+    def _resolve_single(directory: Source, pattern: str) -> Source:
         """Return the single file in *directory* matching *pattern*."""
-        matches = sorted(directory.glob(pattern))
+        matches = find_sources(directory, pattern)
         if not matches:
             raise FileNotFoundError(
                 f"No file matching '{pattern}' in specimen: {directory}"
@@ -253,7 +261,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         return matches[0]
 
     @staticmethod
-    def _first_meter_quarters(timemap_path: Path) -> Fraction:
+    def _first_meter_quarters(timemap_path: Source) -> Fraction:
         """Nominal length, in quarters, of the first measure.
 
         Read from the first ``measureOn`` entry's ``meterSig`` time
@@ -263,7 +271,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         stored length, which is only the gap to the first real boundary
         and is shortened by the anacrusis.
         """
-        timemap = json.loads(Path(timemap_path).read_text(encoding="utf-8"))
+        timemap = json.loads(timemap_path.read_text(encoding="utf-8"))
         for entry in timemap:
             if "measureOn" in entry:
                 timesig = str(entry["meterSig"]).split()[1]
@@ -331,7 +339,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     def _build_score_timeline(
         self,
-        solo_path: Path,
+        solo_path: Source,
         starts: list[Fraction],
         m0_downbeat: Fraction,
     ) -> None:
@@ -395,17 +403,17 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     def _build_performers(
         self,
-        alignments_dir: Path,
+        alignments_dir: Source,
         starts: list[Fraction],
         m0_downbeat: Fraction,
     ) -> None:
         """Build one physical timeline + claim set per performer."""
         # Group the CSVs by performer key (the note-level stem).
-        note_files = sorted(
+        note_files = [
             p
-            for p in alignments_dir.glob("*.csv")
+            for p in find_sources(alignments_dir, "*.csv")
             if not p.stem.endswith(("_bar", "_beats"))
-        )
+        ]
 
         for note_file in note_files:
             performer_key = note_file.stem
@@ -414,7 +422,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
     def _build_one_performer(
         self,
         performer_key: str,
-        note_file: Path,
+        note_file: Source,
         starts: list[Fraction],
         m0_downbeat: Fraction,
     ) -> None:
@@ -431,7 +439,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         # Read all three granularity files up front.
         granularity_rows: dict[str, list[tuple[int, Fraction, str]]] = {}
         for gran, suffix in _GRANULARITIES.items():
-            path = note_file.with_name(f"{stem}{suffix}.csv")
+            path = source_parent(note_file) / f"{stem}{suffix}.csv"
             granularity_rows[gran] = self._read_alignment_csv(path)
 
         # Physical timeline length = max aligned TIME of the note level.
@@ -506,7 +514,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
             self._rows.append((gran, perf_tl, sides))
 
     @staticmethod
-    def _read_alignment_csv(path: Path) -> list[tuple[int, Fraction, str]]:
+    def _read_alignment_csv(path: Source) -> list[tuple[int, Fraction, str]]:
         """Read a ``LABEL,TIME,FRAME`` alignment CSV.
 
         Returns:
@@ -515,7 +523,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
             dangling ``"N"`` sentinel survives.
         """
         rows: list[tuple[int, Fraction, str]] = []
-        with open(path, "r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.reader(handle)
             next(reader, None)  # header
             for record in reader:

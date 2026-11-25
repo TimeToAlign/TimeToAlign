@@ -22,11 +22,10 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
-from pathlib import Path
 from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, TimeUnit
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source, readable
 from timetoalign.timelines import ContinuousGraphicalTimeline
 
 module_logger = logging.getLogger(__name__)
@@ -108,13 +107,14 @@ def _decimal(text: str) -> Decimal | None:
     return number if number.is_finite() else None
 
 
-def _read_axis(source: Path) -> _ScoreWarpAxis:
+def _read_axis(source: Source) -> _ScoreWarpAxis:
     """Parse the ScoreWarp time axis of the SVG at *source*.
 
     Raises:
         ValueError: As :meth:`ScoreWarpLoader.load` states.
     """
-    root = ET.parse(source).getroot()
+    with readable(source) as document:
+        root = ET.parse(document).getroot()
     if _local_name(root) != "svg":
         raise ValueError(f"{source} is no SVG: its root is <{_local_name(root)}>.")
     width, viewport_width = _css_pixels(root, "width")
@@ -255,11 +255,11 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
         self._axis: _ScoreWarpAxis | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
-    def _load_source(self, source: Path) -> _ScoreWarpAxis:
+    def _load_source(self, source: Source) -> _ScoreWarpAxis:
         """Read the time axis of one ScoreWarp SVG.
 
         Args:
-            source: Path to the SVG file.
+            source: The SVG file: a path or a ZIP archive member.
 
         Returns:
             The axis as drawn.
@@ -279,7 +279,7 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
         return _read_axis(source)
 
     def _accept_source(
-        self, path: Path, source_meta: dict[str, Any], payload: _ScoreWarpAxis
+        self, path: Source, source_meta: dict[str, Any], payload: _ScoreWarpAxis
     ) -> None:
         """Keep the axis of the one source."""
         super()._accept_source(path, source_meta, payload)

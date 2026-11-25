@@ -13,10 +13,9 @@ belongs in test fixtures, not production code.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source, SourceLike
 
 from .paths import HorizontalLinePath, TimeAxisPath, VerticalLinePath
 from .segment import GraphicalSegment
@@ -66,7 +65,7 @@ class GraphicalLoader(Loader[GraphicalStore]):
         self._metadata = metadata or {}
         self._logger = module_logger.getChild("GraphicalLoader")
 
-    def _load_source(self, source: Path) -> GraphicalStore:
+    def _load_source(self, source: Source) -> GraphicalStore:
         """Reject file loading because graphical sources are structural."""
         raise NotImplementedError(
             "GraphicalLoader builds stores through add_* methods."
@@ -74,11 +73,11 @@ class GraphicalLoader(Loader[GraphicalStore]):
 
     # --- Source Addition Methods ---
 
-    def add_image(self, path: Path | str) -> int:
+    def add_image(self, path: SourceLike) -> int:
         """Add an image file as a source.
 
         Args:
-            path: Path to the image file.
+            path: Path to the image file, or its member in a ZIP archive.
 
         Returns:
             Index of the added source (for use in add_segment).

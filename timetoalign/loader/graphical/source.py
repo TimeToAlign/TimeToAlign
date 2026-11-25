@@ -18,6 +18,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 from timetoalign.loader._optional import missing_dependency
+from timetoalign.loader.base import Source, SourceLike, as_source
 
 module_logger = logging.getLogger(__name__)
 
@@ -93,7 +94,8 @@ class ImageMetadata:
         width: Image width in pixels.
         height: Image height in pixels.
         source_type: Type of source ("file", "pdf_page", "pdf_embedded").
-        source_path: Path to source file (if applicable).
+        source_path: The source file, a path or a ZIP archive member (if
+            applicable).
         page_index: PDF page index (if from PDF).
         xref: PDF xref number (if embedded image).
         dpi: Resolution in dots per inch (if known).
@@ -104,7 +106,7 @@ class ImageMetadata:
     width: int
     height: int
     source_type: str
-    source_path: Path | None = None
+    source_path: Source | None = None
     page_index: int | None = None
     xref: int | None = None
     dpi: tuple[float, float] | None = None
@@ -164,13 +166,14 @@ class ImageSource:
         self._logger = module_logger.getChild("ImageSource")
 
     @classmethod
-    def from_image_file(cls, path: Path | str) -> "ImageSource":
+    def from_image_file(cls, path: SourceLike) -> "ImageSource":
         """Load from a standalone image file.
 
         Supports: JPEG, PNG, BMP, TIFF, GIF, PNM, PAM, JXR, JPX.
 
         Args:
-            path: Path to the image file.
+            path: Path to the image file, or its member in a ZIP archive
+                (decoded from its bytes, in place).
 
         Returns:
             ImageSource wrapping the loaded image.
@@ -180,21 +183,24 @@ class ImageSource:
             ValueError: If file format is not supported.
         """
         pymupdf = _get_pymupdf()
-        path = Path(path)
+        source = as_source(path)
 
-        if not path.exists():
-            raise FileNotFoundError(f"Image file not found: {path}")
+        if not source.exists():
+            raise FileNotFoundError(f"Image file not found: {source}")
 
         try:
-            pix = pymupdf.Pixmap(str(path))
+            if isinstance(source, Path):
+                pix = pymupdf.Pixmap(str(source))
+            else:
+                pix = pymupdf.Pixmap(source.read_bytes())
         except Exception as e:
-            raise ValueError(f"Failed to load image from {path}: {e}") from e
+            raise ValueError(f"Failed to load image from {source}: {e}") from e
 
         metadata = ImageMetadata(
             width=pix.width,
             height=pix.height,
             source_type="file",
-            source_path=path,
+            source_path=source,
             dpi=(pix.xres, pix.yres) if pix.xres > 0 else None,
             colorspace=pix.colorspace.name if pix.colorspace else None,
         )

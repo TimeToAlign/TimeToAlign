@@ -53,6 +53,7 @@ from timetoalign.core import (
     StringField,
     TimeUnit,
 )
+from timetoalign.loader.base import readable
 
 from .csv import CsvLoader
 from .field_parsers import CompositeFieldParser
@@ -145,14 +146,15 @@ class SoloLoader(CsvLoader):
 
         # Positional names matched to column_specs declaration order.
         names = ["position", "duration", "channel", "pitch", "velocity", "note_id"]
-        return pd.read_csv(
-            source,
-            sep=self.delimiter,
-            header=None,
-            names=names,
-            encoding=self.encoding,
-            dtype=str,
-        )
+        with readable(source) as table:
+            return pd.read_csv(
+                table,
+                sep=self.delimiter,
+                header=None,
+                names=names,
+                encoding=self.encoding,
+                dtype=str,
+            )
 
 
 # endregion

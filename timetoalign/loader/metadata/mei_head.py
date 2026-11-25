@@ -57,7 +57,6 @@ import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, ClassVar, Literal
 from urllib.parse import quote, urljoin
 
@@ -66,7 +65,7 @@ from timetoshare import load_catalogue, to_file_id
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import TimeUnit
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source, readable
 from timetoalign.loader.metadata._statements import (
     Plan,
     Target,
@@ -249,7 +248,7 @@ class MeiHead:
     """A parsed ``meiHead`` and the file it was read from."""
 
     element: ET.Element
-    path: Path
+    path: Source
 
 
 @dataclass(frozen=True)
@@ -294,14 +293,15 @@ class MeiHeadLoader(Loader[MeiHead]):
         super().__init__()
         self._head: MeiHead | None = None
 
-    def _load_source(self, source: Path) -> MeiHead:
+    def _load_source(self, source: Source) -> MeiHead:
         """Parse *source* and return its ``meiHead``.
 
         Raises:
             ValueError: If the file's root is neither an ``mei`` element
                 holding a ``meiHead`` nor a ``meiHead``.
         """
-        root = ET.parse(source).getroot()
+        with readable(source) as document:
+            root = ET.parse(document).getroot()
         if root.tag == _tag("meiHead"):
             head: ET.Element | None = root
         elif root.tag == _tag("mei"):
@@ -313,7 +313,7 @@ class MeiHeadLoader(Loader[MeiHead]):
         return MeiHead(head, source)
 
     def _accept_source(
-        self, path: Path, source_meta: dict[str, Any], payload: MeiHead
+        self, path: Source, source_meta: dict[str, Any], payload: MeiHead
     ) -> None:
         super()._accept_source(path, source_meta, payload)
         self._head = payload
@@ -397,7 +397,7 @@ class MeiHeadLoader(Loader[MeiHead]):
         return bundle
 
 
-def _stem_id(path: Path) -> str:
+def _stem_id(path: Source) -> str:
     """The file's stem with every character outside ``[A-Za-z0-9_.-]`` replaced."""
     return re.sub(r"[^A-Za-z0-9_.-]", "_", path.stem)
 

@@ -15,6 +15,7 @@ from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.time import (
     rational_to_struct,
 )
+from timetoalign.loader.base import Source, materialize
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -69,9 +70,14 @@ class Music21Loader(ScoreLoader):
         """
         return self._anacrusis_offset
 
-    def _load_source(self, source: Path) -> ScoreStore:
-        """Load score and return ScoreStore."""
-        score = m21.converter.parse(str(source), forceSource=True)
+    def _load_source(self, source: Source) -> ScoreStore:
+        """Load score and return ScoreStore.
+
+        music21 reads files on disk only: a member of a ZIP archive is read
+        from its copy (:func:`~timetoalign.loader.base.materialize`).
+        """
+        path = materialize(source)
+        score = m21.converter.parse(str(path), forceSource=True)
 
         note_rows = []
         measure_rows = []
@@ -90,7 +96,7 @@ class Music21Loader(ScoreLoader):
         #    are not translated to RepeatBracket spanners by music21.
         is_mei = source.suffix.lower() == ".mei"
         mei_measure_info: dict[int, dict[str, Any]] = (
-            self._parse_mei_measure_info(source) if is_mei else {}
+            self._parse_mei_measure_info(path) if is_mei else {}
         )  # mc -> {number, volta, start_repeat, end_repeat}
 
         for part_idx, part in enumerate(parts):
@@ -473,7 +479,9 @@ class Music21Loader(ScoreLoader):
         }
 
     @staticmethod
-    def _refuse_measures_without_length(measure_list: list[Any], source: Path) -> None:
+    def _refuse_measures_without_length(
+        measure_list: list[Any], source: Source
+    ) -> None:
         """Raise if music21 gives a measure of *source* no length.
 
         music21 times a measure by its content: one without timed content

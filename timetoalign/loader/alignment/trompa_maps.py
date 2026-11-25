@@ -39,13 +39,12 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.time import Coordinate
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import AlignmentLoader, Source
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -100,11 +99,11 @@ class MapsLoader(AlignmentLoader):
     # region Loading
 
     # The payload is the rows; AlignmentLoader's hooks are typed for a store.
-    def _load_source(self, source: Path) -> list[dict[str, Any]]:  # type: ignore[override]
+    def _load_source(self, source: Source) -> list[dict[str, Any]]:  # type: ignore[override]
         """Read and validate the rows of one MAPS file.
 
         Args:
-            source: Path to the MAPS JSON file.
+            source: The MAPS JSON file: a path or a ZIP archive member.
 
         Returns:
             The rows, verbatim.
@@ -113,14 +112,14 @@ class MapsLoader(AlignmentLoader):
             ValueError: If the file does not hold valid MAPS rows (see the
                 class docstring).
         """
-        with open(source, "r", encoding="utf-8") as handle:
+        with source.open("r", encoding="utf-8") as handle:
             rows = json.load(handle)
         _validate_rows(rows, source)
         return rows
 
     # The payload is the rows; AlignmentLoader's hooks are typed for a store.
     def _accept_source(  # type: ignore[override]
-        self, path: Path, source_meta: dict[str, Any], payload: list[dict[str, Any]]
+        self, path: Source, source_meta: dict[str, Any], payload: list[dict[str, Any]]
     ) -> None:
         """Keep the rows of the one file this loader reads, and log their kinds."""
         self._rows = payload
@@ -341,7 +340,7 @@ def _ids(row: dict[str, Any]) -> list[str]:
     return [ids] if isinstance(ids, str) else ids
 
 
-def _validate_rows(rows: Any, source: Path) -> None:
+def _validate_rows(rows: Any, source: Source) -> None:
     """Raise unless *rows* are MAPS rows this loader reads as stated."""
     if not isinstance(rows, list):
         raise ValueError(f"A MAPS file holds a JSON list of rows; {source} does not.")

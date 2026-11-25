@@ -20,10 +20,9 @@ import json
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source
 from timetoalign.loader.graphical._pages import Page, build_pages, build_volume
 from timetoalign.loader.graphical.paths import (
     HorizontalLinePath,
@@ -137,14 +136,14 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         """Initialize the loader."""
         super().__init__()
         self._manifest_info: IIIFManifestInfo | None = None
-        self._source_path: Path | None = None
+        self._source_path: Source | None = None
         self._logger = module_logger.getChild("IIIFManifestLoader")
 
-    def _load_source(self, source: Path) -> IIIFManifestInfo:
+    def _load_source(self, source: Source) -> IIIFManifestInfo:
         """Load and parse one IIIF manifest file.
 
         Args:
-            source: Path to the IIIF manifest JSON file.
+            source: The IIIF manifest JSON file: a path or a ZIP archive member.
 
         Returns:
             Parsed IIIF manifest information.
@@ -157,13 +156,13 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         if not source.exists():
             raise FileNotFoundError(f"Manifest file not found: {source}")
 
-        with open(source, encoding="utf-8") as f:
+        with source.open(encoding="utf-8") as f:
             manifest_data = json.load(f)
         return self._parse_manifest(manifest_data, source)
 
     def _accept_source(
         self,
-        path: Path,
+        path: Source,
         source_meta: dict[str, Any],
         payload: IIIFManifestInfo,
     ) -> None:
@@ -176,7 +175,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
             f"{len(self._manifest_info.canvases)} canvas(es)"
         )
 
-    def _parse_manifest(self, data: dict[str, Any], source: Path) -> IIIFManifestInfo:
+    def _parse_manifest(self, data: dict[str, Any], source: Source) -> IIIFManifestInfo:
         """Parse manifest data into structured info.
 
         Handles IIIF Presentation API 2.x and 3.x. The version is the one
@@ -427,7 +426,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         return self.manifest_info.label
 
     @property
-    def source_path(self) -> Path | None:
+    def source_path(self) -> Source | None:
         """Path to the loaded manifest file."""
         return self._source_path
 

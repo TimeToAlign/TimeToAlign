@@ -45,6 +45,11 @@ NOTE: Class naming was updated in the 2026-01 API refactoring:
 - EventBundle -> EventStore (container for EventData)
 - SingleStoreBundle -> SingleStore
 
+Every loader reads a source from a filesystem path or, without extracting
+the archive, from a member of a ZIP archive given as a ``zipfile.Path``
+(:data:`SourceLike`); :func:`materialize` gives a parser that needs a file on
+disk a cached copy of a member.
+
 The package also exports schema utilities for working with coordinate
 structures and table metadata.
 """
@@ -72,7 +77,15 @@ from timetoalign.storage.schema import (
 
 from ._optional import import_optional, resolve_optional
 from .alignment import MapsLoader, TiliaDictStore, TiliaJsonLoader
-from .base import AlignmentLoader, EventLoader, Loader, ManifestData, ManifestLoader
+from .base import (
+    AlignmentLoader,
+    EventLoader,
+    Loader,
+    ManifestData,
+    ManifestLoader,
+    SourceLike,
+    materialize,
+)
 from .metadata import MeiHeadLoader, MelodyLoader
 from .physical import (
     AudioInfo,
@@ -94,6 +107,9 @@ __all__ = [
     "EventLoader",
     "ManifestLoader",
     "AlignmentLoader",
+    # Sources: filesystem paths and members of ZIP archives
+    "SourceLike",
+    "materialize",
     # Alignment loaders
     "MapsLoader",
     *import_optional(__name__, _OPTIONAL_LOADERS, globals()),

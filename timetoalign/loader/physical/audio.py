@@ -30,13 +30,13 @@ import os
 import struct
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Literal, TypeVar
 
 from timetoalign.loader._optional import optional_module
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source, materialize
 
 if TYPE_CHECKING:
     from timetoalign.core import NumberType, TimeUnit
@@ -312,7 +312,7 @@ class AudioInfo:
         format: Audio format/codec (e.g., "WAV", "FLAC", "MP3").
         subtype: Audio subtype/encoding (e.g., "PCM_16", "PCM_24", "VORBIS").
         bits_per_sample: Bit depth (e.g., 16, 24, 32). May be None for lossy formats.
-        source_path: Path to the source file.
+        source_path: The source file: a path or a ZIP archive member.
         extra: Additional format-specific metadata.
         backend: The backend that read the file: ``"soundfile"``, ``"wave"``,
             ``"riff"`` or ``"mutagen"``; None for metadata not read by the loader.
@@ -325,7 +325,7 @@ class AudioInfo:
     format: str
     subtype: str | None = None
     bits_per_sample: int | None = None
-    source_path: Path | None = None
+    source_path: Source | None = None
     extra: dict[str, Any] = field(default_factory=dict)
     backend: Literal["soundfile", "wave", "riff", "mutagen"] | None = None
 
@@ -429,10 +429,10 @@ class AudioLoader(Loader[AudioInfo]):
         """Initialize the loader."""
         super().__init__()
         self._audio_info: AudioInfo | None = None
-        self._source_path: Path | None = None
+        self._source_path: Source | None = None
         self._logger = module_logger.getChild("AudioLoader")
 
-    def _load_source(self, source: Path) -> AudioInfo:
+    def _load_source(self, source: Source) -> AudioInfo:
         """Load metadata from one audio file.
 
         The backends are tried in order, exact sample counts first: soundfile,
@@ -441,8 +441,12 @@ class AudioLoader(Loader[AudioInfo]):
         it on to the next; any other exception is a defect and propagates.
         When no backend reads the file, the error names every backend's reason.
 
+        The backends read files on disk: a member of a ZIP archive is read from
+        its copy (:func:`~timetoalign.loader.base.materialize`), and the info
+        names the member as its ``source_path``.
+
         Args:
-            source: Path to the audio file.
+            source: The audio file: a path or a ZIP archive member.
 
         Returns:
             Parsed audio metadata.
@@ -453,6 +457,7 @@ class AudioLoader(Loader[AudioInfo]):
         """
         if not source.exists():
             raise FileNotFoundError(f"Audio file not found: {source}")
+        path = materialize(source)
 
         readers = [("soundfile", self._load_with_soundfile)]
         if source.suffix.lower() in _WAV_SUFFIXES:
@@ -466,7 +471,7 @@ class AudioLoader(Loader[AudioInfo]):
         missing_package = False
         for backend, read in readers:
             try:
-                info = read(source)
+                info = read(path)
             except _CannotRead as e:
                 self._logger.debug(f"{backend} cannot read {source}: {e}")
                 reasons.append(f"  {backend}: {e}")
@@ -476,7 +481,9 @@ class AudioLoader(Loader[AudioInfo]):
                 f"Read audio metadata from {source} using {info.backend}: "
                 f"{info.n_samples} samples @ {info.sample_rate} Hz"
             )
-            return info
+            return (
+                info if isinstance(source, Path) else replace(info, source_path=source)
+            )
 
         message = f"Cannot read audio file '{source}':\n" + "\n".join(reasons)
         if missing_package:
@@ -487,7 +494,7 @@ class AudioLoader(Loader[AudioInfo]):
 
     def _accept_source(
         self,
-        path: Path,
+        path: Source,
         source_meta: dict[str, Any],
         payload: AudioInfo,
     ) -> None:
@@ -816,8 +823,8 @@ class AudioLoader(Loader[AudioInfo]):
         return self.audio_info.format
 
     @property
-    def source_path(self) -> Path | None:
-        """Path to the loaded audio file."""
+    def source_path(self) -> Source | None:
+        """The loaded audio file: a path or a ZIP archive member."""
         return self._source_path
 
     # endregion
@@ -973,28 +980,6 @@ class AudioLoader(Loader[AudioInfo]):
             locked=True,
         )
         return timeline
-
-    # endregion
-
-    # region Convenience Methods
-
-    @classmethod
-    def from_file(cls, path: Path | str) -> "AudioLoader":
-        """Load an audio file and return the loader (convenience constructor).
-
-        Args:
-            path: Path to the audio file.
-
-        Returns:
-            An AudioLoader with the file already loaded.
-
-        Examples:
-            >>> loader = AudioLoader.from_file("song.wav")
-            >>> print(loader.duration_seconds)
-        """
-        loader = cls()
-        loader.load(path)
-        return loader
 
     # endregion
 

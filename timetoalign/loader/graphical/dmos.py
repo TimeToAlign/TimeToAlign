@@ -47,11 +47,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, ClassVar
 
 from timetoalign.core import Quadrilateral, TimeUnit
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source
 from timetoalign.loader.graphical._located import located
 from timetoalign.loader.graphical._pages import (
     Ids,
@@ -205,7 +204,7 @@ def _within(measure: Quadrilateral, system: Quadrilateral, where: str) -> Quadri
     return measure
 
 
-def _read_document(source: Path) -> _DmosDocument:
+def _read_document(source: Source) -> _DmosDocument:
     """Parse the pages, systems and measures of the DMOS file at *source*.
 
     Raises:
@@ -325,11 +324,11 @@ class DmosLoader(Loader[_DmosDocument]):
             f"measures={measures})"
         )
 
-    def _load_source(self, source: Path) -> _DmosDocument:
+    def _load_source(self, source: Source) -> _DmosDocument:
         """Read the pages, systems and measures of one DMOS JSON file.
 
         Args:
-            source: Path to the JSON file.
+            source: The JSON file: a path or a ZIP archive member.
 
         Returns:
             The document: its pages, in document order.
@@ -346,7 +345,7 @@ class DmosLoader(Loader[_DmosDocument]):
         return _read_document(source)
 
     def _accept_source(
-        self, path: Path, source_meta: dict[str, Any], payload: _DmosDocument
+        self, path: Source, source_meta: dict[str, Any], payload: _DmosDocument
     ) -> None:
         """Keep the document of the one source."""
         super()._accept_source(path, source_meta, payload)

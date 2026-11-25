@@ -5,7 +5,6 @@ from __future__ import annotations
 import bisect
 from fractions import Fraction
 from numbers import Integral
-from pathlib import Path
 from typing import Any
 
 from timetoalign.core.backends import suppressed_backend_warnings
@@ -15,6 +14,7 @@ with suppressed_backend_warnings():
     import partitura.score as pts
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.loader.base import Source, materialize
 
 from .base import ScoreLoader, _coordinate_struct
 from .store import ScoreStore
@@ -103,14 +103,20 @@ class PartituraLoader(ScoreLoader):
         """
         return self._anacrusis_offset
 
-    def _load_source(self, source: Path) -> ScoreStore:
+    def _load_source(self, source: Source) -> ScoreStore:
         """Load score and return ScoreStore."""
         return self._do_load(source)
 
-    def _do_load(self, source: Path) -> ScoreStore:
-        """Core loading logic for a single source file."""
+    def _do_load(self, source: Source) -> ScoreStore:
+        """Core loading logic for a single source file.
+
+        Partitura reads files on disk only: a member of a ZIP archive is read
+        from its copy (:func:`~timetoalign.loader.base.materialize`).
+        """
         with suppressed_backend_warnings():
-            score = pt.load_score(str(source), force_note_ids=self._force_note_ids)
+            score = pt.load_score(
+                str(materialize(source)), force_note_ids=self._force_note_ids
+            )
 
         # Flatten parts
         parts = []

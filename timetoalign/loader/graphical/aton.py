@@ -18,14 +18,11 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-from typing_extensions import Self
 
 from timetoalign.core import TimeUnit
 from timetoalign.core.events import BoundingBox
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source
 from timetoalign.timelines import DiscreteGraphicalTimeline
 
 if TYPE_CHECKING:
@@ -129,63 +126,41 @@ class ATONLoader(Loader[list[ATONHole]]):
         super().__init__()
         self._rollinfo: dict[str, Any] = {}
         self._holes: list[ATONHole] = []
-        self._source_path: Path | None = None
+        self._source_path: Source | None = None
         self._logger = module_logger.getChild("ATONLoader")
-
-    def _load_source(self, source: Path) -> list[ATONHole]:
-        """Reject the event-oriented root lifecycle for ATON parsing."""
-        raise NotImplementedError("ATONLoader uses its text-specific load() method.")
-
-    @classmethod
-    def from_file(cls, path: Path | str) -> Self:
-        """Create a loader and load an ATON file in one step.
-
-        Convenience constructor for loading a single file.
-
-        Args:
-            path: Path to the ATON file.
-
-        Returns:
-            A new ATONLoader instance with the file already loaded.
-
-        Examples:
-            >>> loader = ATONLoader.from_file("analysis.txt")
-            >>> loader.musical_holes
-            30092
-        """
-        return cls().load(path)
 
     # region Loading
 
-    def load(self, path: Path | str) -> Self:
-        """Load and parse an ATON file.
+    def _load_source(self, source: Source) -> list[ATONHole]:
+        """Read and parse one ATON file.
 
         Args:
-            path: Path to the ATON file.
+            source: The ATON file: a path or a ZIP archive member.
 
         Returns:
-            Self, for method chaining.
+            The holes parsed so far.
 
         Raises:
             FileNotFoundError: If the file doesn't exist.
             ValueError: If the file format is invalid.
         """
-        path = Path(path)
-        if not path.exists():
-            raise FileNotFoundError(f"ATON file not found: {path}")
+        if not source.exists():
+            raise FileNotFoundError(f"ATON file not found: {source}")
 
-        with open(path, encoding="utf-8") as f:
-            content = f.read()
-
-        self._parse_content(content)
-        self._source_path = path
+        self._parse_content(source.read_text(encoding="utf-8"))
 
         self._logger.debug(
-            f"Loaded ATON file from {path}: "
+            f"Loaded ATON file from {source}: "
             f"rollinfo keys={len(self._rollinfo)}, holes={len(self._holes)}"
         )
+        return self._holes
 
-        return self
+    def _accept_source(
+        self, path: Source, source_meta: dict[str, Any], payload: list[ATONHole]
+    ) -> None:
+        """Record the ATON file read."""
+        super()._accept_source(path, source_meta, payload)
+        self._source_path = path
 
     def _parse_content(self, content: str) -> None:
         """Parse ATON file content.
@@ -433,7 +408,7 @@ class ATONLoader(Loader[list[ATONHole]]):
         return float(self._rollinfo.get("LENGTH_DPI", 0))
 
     @property
-    def source_path(self) -> Path | None:
+    def source_path(self) -> Source | None:
         """Path to the loaded ATON file."""
         return self._source_path
 

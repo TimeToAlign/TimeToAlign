@@ -32,13 +32,13 @@ Reference:
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import ClassVar
 
 import pandas as pd
 
 from timetoalign.core import TimeUnit
 from timetoalign.core.events import canonical_pitch_names
+from timetoalign.loader.base import Source, readable
 from timetoalign.loader.tabular.csv import CsvLoader
 
 module_logger = logging.getLogger(__name__)
@@ -104,24 +104,25 @@ class EepNotesLoader(CsvLoader):
     # filename suffix in _read_dataframe.
     column_specs = {"pitch": str, "staff": int}
 
-    def _read_dataframe(self, source: Path) -> pd.DataFrame:
+    def _read_dataframe(self, source: Source) -> pd.DataFrame:
         """Read a headerless .notes file with staff inference from filename.
 
         Args:
-            source: Path to the .notes file.
+            source: The .notes file: a path or a ZIP archive member.
 
         Returns:
             DataFrame with columns: start, end, pitch (accidentals
             respelled ``♯``/``♭``), staff.
         """
-        df = pd.read_csv(
-            source,
-            sep=r"\s+",
-            header=None,
-            names=["start", "end", "pitch"],
-            encoding=self.encoding,
-            engine="python",
-        )
+        with readable(source) as table:
+            df = pd.read_csv(
+                table,
+                sep=r"\s+",
+                header=None,
+                names=["start", "end", "pitch"],
+                encoding=self.encoding,
+                engine="python",
+            )
         df["pitch"] = canonical_pitch_names(df["pitch"], sep=",")
 
         # Infer staff from filename suffix (e.g., "*_align_vln1.notes" -> 1)

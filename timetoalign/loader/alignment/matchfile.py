@@ -36,7 +36,13 @@ with suppressed_backend_warnings():
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit, resolve_id
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import (
+    AlignmentLoader,
+    Source,
+    SourceLike,
+    as_source,
+    materialize,
+)
 from timetoalign.maps.linear import ScalarMap, ShiftMap
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -161,8 +167,7 @@ class MatchfileLoader(AlignmentLoader):
         self._score_timeline: ContinuousLogicalTimeline | None = None
         self._performance_timelines: list[DiscreteLogicalTimeline] = []
         self._claims: list[MatchClaim] = []
-        self._rejected_files: list[Path] = []
-        self._sources: list[Path] = []
+        self._rejected_files: list[Source] = []
 
         # Score event tracking: snote_id -> (start, end) in TTA coords
         self._score_events: dict[str, tuple[Fraction, Fraction]] = {}
@@ -179,7 +184,7 @@ class MatchfileLoader(AlignmentLoader):
 
     def _accept_source(
         self,
-        path: Path,
+        path: Source,
         source_meta: dict[str, Any],
         payload: None,
     ) -> None:
@@ -198,12 +203,12 @@ class MatchfileLoader(AlignmentLoader):
         return self._anacrusis_offset
 
     @property
-    def rejected_files(self) -> list[Path]:
+    def rejected_files(self) -> list[Source]:
         """Files rejected due to incompatible score coordinates."""
         return list(self._rejected_files)
 
     @property
-    def sources(self) -> list[Path]:
+    def sources(self) -> list[Source]:
         """All files passed to ``load()`` (including rejected ones)."""
         return list(self._sources)
 
@@ -211,7 +216,7 @@ class MatchfileLoader(AlignmentLoader):
 
     # region Loading
 
-    def load(self, *sources: Path | str) -> Self:
+    def load(self, *sources: SourceLike) -> Self:
         """Load one or more .match files.
 
         Parses each file via partitura, builds a shared score timeline
@@ -223,7 +228,7 @@ class MatchfileLoader(AlignmentLoader):
         incrementally.
 
         Args:
-            *sources: Paths to ``.match`` files.
+            *sources: Paths to ``.match`` files, or members of ZIP archives.
 
         Returns:
             Self, for method chaining.
@@ -239,7 +244,7 @@ class MatchfileLoader(AlignmentLoader):
             >>> loader.load(*sorted(data_dir.glob("*.match")))
         """
         for source in sources:
-            path = Path(source)
+            path = as_source(source)
 
             if not path.exists():
                 raise FileNotFoundError(f"File not found: {path}")
@@ -269,7 +274,7 @@ class MatchfileLoader(AlignmentLoader):
 
     @staticmethod
     def _read_exact_score_coordinates(
-        path: Path,
+        path: Source,
     ) -> dict[str, tuple[Fraction, Fraction]]:
         """Read exact score onsets and offsets from matchfile text.
 
@@ -360,7 +365,7 @@ class MatchfileLoader(AlignmentLoader):
             )
         return True
 
-    def _load_source(self, path: Path) -> None:
+    def _load_source(self, path: Source) -> None:
         """Parse a single .match file and accumulate internal state.
 
         On the first compatible file: builds the shared score timeline
@@ -369,13 +374,16 @@ class MatchfileLoader(AlignmentLoader):
         incompatibility.
 
         Args:
-            path: Path to the .match file.
+            path: The .match file: a path or a ZIP archive member (Partitura
+                reads its copy, :func:`~timetoalign.loader.base.materialize`).
         """
         self._logger.debug(f"Loading {path.name}")
 
         # Parse with partitura
         with suppressed_backend_warnings():
-            perf, alignment, score = pt.load_match(str(path), create_score=True)
+            perf, alignment, score = pt.load_match(
+                str(materialize(path)), create_score=True
+            )
 
         # Extract header info from file
         header = self._parse_header(path)
@@ -611,7 +619,7 @@ class MatchfileLoader(AlignmentLoader):
     # region Header Parsing
 
     @staticmethod
-    def _parse_header(path: Path) -> dict[str, Any]:
+    def _parse_header(path: Source) -> dict[str, Any]:
         """Parse ``info(...)`` header lines from a .match file.
 
         Args:
@@ -623,7 +631,7 @@ class MatchfileLoader(AlignmentLoader):
         header: dict[str, Any] = {}
         info_pattern = re.compile(r"^info\((\w+),(.+)\)\.\s*$")
 
-        with open(path, "r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8") as f:
             for line in f:
                 if not line.startswith("info("):
                     # Headers are at the top; stop at first non-info line

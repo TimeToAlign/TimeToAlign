@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from abc import abstractmethod
 from collections.abc import Mapping
-from datetime import datetime, timezone
 from fractions import Fraction
 from numbers import Integral
 from pathlib import Path
@@ -15,7 +14,7 @@ from typing_extensions import Self
 
 from timetoalign.core import TimeUnit
 from timetoalign.core.enums import FlowManifestation
-from timetoalign.loader.base import EventLoader
+from timetoalign.loader.base import EventLoader, Source
 from timetoalign.storage import EventData
 
 from .store import ScoreStore
@@ -162,49 +161,30 @@ class ScoreLoader(EventLoader):
         return self._assemble_events_table(properties)
 
     @abstractmethod
-    def _load_source(self, source: Path) -> ScoreStore:
+    def _load_source(self, source: Source) -> ScoreStore:
         """Load a single source file into a ScoreStore.
 
         Args:
-            source: Path to the source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             A ScoreStore containing the loaded data.
         """
         ...
 
-    def load(self, *sources: Path | str) -> Self:
-        """Load sources into the store.
+    def _unpack_source_result(
+        self, result: ScoreStore
+    ) -> tuple[dict[str, Any], ScoreStore]:
+        """Split a parsed store into its metadata and the store itself."""
+        return result.metadata.copy(), result
 
-        Args:
-            *sources: Paths to source files.
-
-        Returns:
-            Self, for method chaining.
-
-        Raises:
-            ValueError: If the loader reads one source and is given none or
-                more than one, or any while it holds one.
-        """
-        self._refuse_further_source(*sources)
-        for source in sources:
-            path = Path(source)
-
-            # Load store from source
-            loaded_store = self._load_source(path)
-
-            # Update metadata
-            meta = loaded_store.metadata.copy()
-            meta["path"] = str(path)
-            meta["loaded_at"] = datetime.now(timezone.utc).isoformat()
-
-            self._sources.append(path)
-            self._source_metadata.append(meta)
-
-            # Extend internal store
-            self._store.extend(loaded_store)
-
-        return self
+    def _accept_source(
+        self, path: Source, source_meta: dict[str, Any], payload: ScoreStore
+    ) -> None:
+        """Record one source and extend the loader's store with its data."""
+        self._sources.append(path)
+        self._source_metadata.append(source_meta)
+        self._store.extend(payload)
 
     def clear(self) -> None:
         """Clear all loaded sources and store data."""

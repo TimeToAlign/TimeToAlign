@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
+
+from timetoalign.loader.base import Source
 
 
 @dataclass(frozen=True)
@@ -69,7 +70,7 @@ class _XmlCatalogueParser:
 
     def __init__(
         self,
-        xml_root_path: Path,
+        xml_root_path: Source,
         metadata: dict[str, Any],
         logger: logging.Logger,
     ) -> None:

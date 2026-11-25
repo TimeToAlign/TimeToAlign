@@ -10,6 +10,7 @@ import logging
 from typing import ClassVar
 
 from timetoalign.core import TimeUnit
+from timetoalign.loader.base import readable
 
 from .base import TabularLoader
 
@@ -142,13 +143,14 @@ class LabLoader(TabularLoader):
         """Read lab file without header."""
         import pandas as pd
 
-        df = pd.read_csv(
-            source,
-            sep=self.delimiter,
-            header=None,
-            names=["start", "end", "label"],
-            encoding=self.encoding,
-        )
+        with readable(source) as table:
+            df = pd.read_csv(
+                table,
+                sep=self.delimiter,
+                header=None,
+                names=["start", "end", "label"],
+                encoding=self.encoding,
+            )
         return df
 
     # Override field names to match the names we assigned

@@ -37,14 +37,23 @@ from __future__ import annotations
 import logging
 import re
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit, resolve_id
 from timetoalign.display.html import code
-from timetoalign.loader.base import ManifestData, ManifestLoader
+from timetoalign.loader.base import (
+    ManifestData,
+    ManifestLoader,
+    Source,
+    SourceLike,
+    as_source,
+    join_source,
+    readable,
+    sort_sources,
+    source_parent,
+)
 from timetoalign.storage.events import EventData
 
 from .repovizz_catalogue import CatalogueEntry, _XmlCatalogueParser
@@ -70,7 +79,7 @@ class RepoVizzInfo:
         frame_rate: Sampling rate in Hz (from ``framerate`` in the header).
         duration_seconds: Computed as ``n_samples / frame_rate``.
         metadata: Full key=value dict from the header line.
-        source_path: Path to the source file.
+        source_path: The source file: a path or a ZIP archive member.
     """
 
     def __init__(
@@ -78,7 +87,7 @@ class RepoVizzInfo:
         n_samples: int,
         frame_rate: int,
         metadata: dict[str, str],
-        source_path: Path | None = None,
+        source_path: Source | None = None,
     ) -> None:
         self.n_samples = n_samples
         self.frame_rate = frame_rate
@@ -160,7 +169,7 @@ class RepoVizzLoader(ManifestLoader):
         self._timeline_specs: list[dict[str, Any]] = []
         self._timeline_cache: dict[str, "DiscretePhysicalTimeline"] = {}
         self._xml_metadata: dict[str, Any] = {}
-        self._xml_root_path: Path | None = None
+        self._xml_root_path: Source | None = None
         self._is_xml_mode: bool = False
 
         # Legacy CSV mode state
@@ -169,14 +178,16 @@ class RepoVizzLoader(ManifestLoader):
 
     # region Loading
 
-    def load(self, *sources: Path | str) -> Self:
+    def load(self, *sources: SourceLike) -> Self:
         """Load one or more source files.
 
         If the source is an ``.xml`` file, uses XML manifest mode.
-        Otherwise, falls back to legacy CSV mode.
+        Otherwise, falls back to legacy CSV mode. A manifest that is a member
+        of a ZIP archive finds its data files among the members beside it.
 
         Args:
-            *sources: Paths to XML manifest or CSV files.
+            *sources: Paths to XML manifest or CSV files, or members of ZIP
+                archives.
 
         Returns:
             Self, for method chaining.
@@ -186,7 +197,7 @@ class RepoVizzLoader(ManifestLoader):
             ValueError: If any source is invalid.
         """
         for source in sources:
-            path = Path(source)
+            path = as_source(source)
 
             if path.suffix.lower() == ".xml":
                 self._load_xml(path)
@@ -199,7 +210,7 @@ class RepoVizzLoader(ManifestLoader):
 
         return self
 
-    def _load_source(self, source: Path) -> ManifestData:
+    def _load_source(self, source: Source) -> ManifestData:
         """Parse a RepoVizz CSV file (legacy mode).
 
         Reads only the first two lines:
@@ -207,7 +218,7 @@ class RepoVizzLoader(ManifestLoader):
         - Line 2: counts comma-separated values to determine ``n_samples``
 
         Args:
-            source: Path to the RepoVizz CSV file.
+            source: The RepoVizz CSV file: a path or a ZIP archive member.
 
         Returns:
             ManifestData with dimensions and metadata.
@@ -219,7 +230,7 @@ class RepoVizzLoader(ManifestLoader):
         if not source.exists():
             raise FileNotFoundError(f"RepoVizz CSV file not found: {source}")
 
-        with open(source, "r", encoding="utf-8") as f:
+        with source.open("r", encoding="utf-8") as f:
             metadata_line = f.readline().strip()
             data_line = f.readline().strip()
 
@@ -269,14 +280,14 @@ class RepoVizzLoader(ManifestLoader):
             source_type="sensor",
         )
 
-    def _load_xml(self, source: Path) -> None:
+    def _load_xml(self, source: Source) -> None:
         """Parse a RepoVizz XML manifest file.
 
         Builds the catalogue by walking the XML element tree and extracting
         metadata for each Audio, Signal, Annotation, and File element.
 
         Args:
-            source: Path to the XML manifest file.
+            source: The XML manifest file: a path or a ZIP archive member.
 
         Raises:
             FileNotFoundError: If the file doesn't exist.
@@ -285,18 +296,21 @@ class RepoVizzLoader(ManifestLoader):
         if not source.exists():
             raise FileNotFoundError(f"RepoVizz XML manifest not found: {source}")
 
-        tree = ET.parse(source)
+        with readable(source) as document:
+            tree = ET.parse(document)
         root = tree.getroot()
 
         self._sources.append(source)
-        self._xml_root_path = source.parent
+        self._xml_root_path = source_parent(source)
         self._is_xml_mode = True
 
         self._xml_metadata = {
             "root_id": root.get("ID", ""),
             "source_path": str(source),
         }
-        parser = _XmlCatalogueParser(source.parent, self._xml_metadata, self._logger)
+        parser = _XmlCatalogueParser(
+            source_parent(source), self._xml_metadata, self._logger
+        )
         catalogue, specs = parser.parse_catalogue(root)
         self._store.set_catalogue(catalogue)
         self._timeline_specs = specs
@@ -329,11 +343,11 @@ class RepoVizzLoader(ManifestLoader):
         if not score_ids:
             return
 
-        notes_files: list[Path] = []
+        notes_files: list[Source] = []
         for entry_id in score_ids:
             entry = catalogue[entry_id]
             if entry.filename:
-                notes_path = self._xml_root_path / entry.filename
+                notes_path = join_source(self._xml_root_path, entry.filename)
                 if notes_path.exists():
                     notes_files.append(notes_path)
 
@@ -342,7 +356,7 @@ class RepoVizzLoader(ManifestLoader):
 
         # Load all notes via EepNotesLoader
         loader = EepNotesLoader()
-        loader.load(*sorted(notes_files))
+        loader.load(*sort_sources(notes_files))
 
         # Store combined notes
         combined_notes = loader.events
@@ -509,13 +523,13 @@ class RepoVizzLoader(ManifestLoader):
         if self._xml_root_path is None or not entry.filename:
             return 0
 
-        csv_path = self._xml_root_path / entry.filename
+        csv_path = join_source(self._xml_root_path, entry.filename)
         if not csv_path.exists():
             self._logger.warning("CSV file not found: %s", csv_path)
             return 0
 
         try:
-            with open(csv_path, "r", encoding="utf-8") as f:
+            with csv_path.open("r", encoding="utf-8") as f:
                 f.readline()  # skip header
                 data_line = f.readline().strip()
             if not data_line:

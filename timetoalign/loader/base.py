@@ -11,19 +11,31 @@ Design principles:
 - Metadata in table: Deterministic, stored in PyArrow schema metadata
 - Polymorphic returns: Different loader categories return different types
 - Subclassable: Domain-specific loaders extend these ABCs
+- Sources anywhere: a source is a filesystem path or a member of a ZIP
+  archive (``zipfile.Path``), read in place; a parser that needs a file on
+  disk gets the member through :func:`materialize`
 """
 
 from __future__ import annotations
 
+import fnmatch
+import hashlib
 import html
 import logging
+import os
+import posixpath
 import re
+import shutil
+import tempfile
+import zipfile
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from fractions import Fraction
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
+from pathlib import Path, PurePosixPath
+from typing import IO, TYPE_CHECKING, Any, ClassVar, Generic, TypeAlias, TypeVar
 
 import numpy as np
 import pyarrow as pa
@@ -56,6 +68,294 @@ module_logger = logging.getLogger(__name__)
 # Type variable for polymorphic loader payloads.
 PayloadT = TypeVar("PayloadT")
 
+# region Sources
+
+#: What a loader reads: a filesystem path, as a ``Path`` or a ``str``, or a
+#: member of a ZIP archive, as a ``zipfile.Path`` (the archive is read in
+#: place, never extracted). A string always names a filesystem path:
+#: ``"corpus.zip/notes/x.tsv"`` is a file of that name, not a member of
+#: ``corpus.zip``.
+SourceLike: TypeAlias = Path | str | zipfile.Path
+
+#: A source as a loader holds it: a ``Path``, or a ``zipfile.Path`` member.
+Source: TypeAlias = Path | zipfile.Path
+
+#: Environment variable naming the folder that holds the copies
+#: :func:`materialize` makes; unset, it is ``~/.cache/timetoalign``.
+CACHE_DIR_VARIABLE = "TTA_CACHE_DIR"
+
+
+def _archive_path(source: zipfile.Path) -> Path:
+    """The absolute path of the ZIP archive *source* is a member of.
+
+    Raises:
+        ValueError: If the archive was opened from a file object, so it has
+            no path to record or to key a copy by.
+    """
+    filename = source.root.filename
+    if filename is None:
+        raise ValueError(
+            f"The ZIP archive of member '{source.at}' was opened from a file object; "
+            "a loader reads members of an archive opened from its path."
+        )
+    return Path(filename).absolute()
+
+
+def _member_name(source: zipfile.Path) -> str:
+    """The POSIX path of *source* inside its archive, without a closing ``/``."""
+    return source.at.rstrip("/")
+
+
+def as_source(source: SourceLike) -> Source:
+    """Return *source* as a loader holds it.
+
+    A ``str`` or ``Path`` becomes a ``Path`` (existence is the loader's
+    concern, as it always was). A ``zipfile.Path`` is kept as it is; a member
+    named without its closing ``/`` that is a directory is taken as that
+    directory.
+
+    Args:
+        source: A filesystem path or a member of a ZIP archive.
+
+    Returns:
+        A ``Path`` or a ``zipfile.Path``.
+
+    Raises:
+        FileNotFoundError: If *source* is a member its archive does not hold,
+            naming both the archive and the member.
+        ValueError: If *source*'s archive was opened from a file object.
+    """
+    if not isinstance(source, zipfile.Path):
+        return Path(source)
+    archive = _archive_path(source)
+    if source.exists():
+        return source
+    if source.at and not source.at.endswith("/"):
+        directory = zipfile.Path(source.root, f"{source.at}/")
+        if directory.exists():
+            return directory
+    raise FileNotFoundError(
+        f"The ZIP archive '{archive}' holds no member '{_member_name(source)}'."
+    )
+
+
+def source_parent(source: Source) -> Source:
+    """The directory holding *source*.
+
+    A member's parent stays inside its archive: the archive's root directory
+    is its own parent (``zipfile.Path.parent`` would leave the archive there,
+    for the folder holding it).
+    """
+    if isinstance(source, Path):
+        return source.parent
+    parent = posixpath.dirname(source.at.rstrip("/"))
+    return zipfile.Path(source.root, f"{parent}/" if parent else "")
+
+
+def join_source(directory: Source, relative: str) -> Source:
+    """The file a path written in a source names, relative to *directory*.
+
+    A filesystem directory joins *relative* as ``directory / relative``
+    does. Inside an archive, ``.`` and ``..`` segments are resolved, as the
+    filesystem resolves them (``./audio/take.png`` names ``audio/take.png``);
+    a path leading above the archive's root names no member.
+    """
+    if isinstance(directory, Path):
+        return directory / relative
+    joined = posixpath.normpath(posixpath.join(directory.at, relative))
+    return zipfile.Path(directory.root).joinpath("" if joined == "." else joined)
+
+
+def source_metadata(source: Source) -> dict[str, str]:
+    """The provenance of *source* that a loader's per-source metadata records.
+
+    A filesystem source records ``path`` as given; an archive member records
+    ``path`` as the archive's absolute path and ``member`` as its POSIX path
+    inside the archive.
+    """
+    if isinstance(source, Path):
+        return {"path": str(source)}
+    return {"path": str(_archive_path(source)), "member": _member_name(source)}
+
+
+@contextmanager
+def readable(source: Source) -> Iterator[Path | IO[bytes]]:
+    """Give a reader that takes a path or a binary file object what it reads.
+
+    A filesystem source is given as its ``Path``, so the reader sees exactly
+    what it always saw (pandas, for instance, infers compression from the
+    name). An archive member is opened in binary mode and closed afterwards;
+    nothing is copied.
+
+    Args:
+        source: A filesystem path or a member of a ZIP archive.
+
+    Yields:
+        The ``Path``, or the member's open binary file object.
+    """
+    if isinstance(source, Path):
+        yield source
+        return
+    with source.open("rb") as handle:
+        yield handle
+
+
+def sort_sources(sources: Iterable[Source]) -> list[Source]:
+    """*sources* in path order.
+
+    Filesystem paths come first, ordered as ``sorted`` orders them; archive
+    members follow, ordered by archive and by the parts of their paths inside
+    it.
+    """
+    held = list(sources)
+    paths = sorted(source for source in held if isinstance(source, Path))
+    members = sorted(
+        (source for source in held if not isinstance(source, Path)),
+        key=lambda member: (str(_archive_path(member)), PurePosixPath(member.at).parts),
+    )
+    return [*paths, *members]
+
+
+def find_sources(
+    directory: Source, pattern: str, *, recursive: bool = False
+) -> list[Source]:
+    """The entries of *directory* whose name matches *pattern*, sorted.
+
+    For a filesystem directory this is ``sorted(directory.glob(pattern))``
+    (``rglob`` when *recursive*); an archive directory is searched the same
+    way among its members, without extracting anything.
+
+    Args:
+        directory: A filesystem directory or a directory member of a ZIP
+            archive.
+        pattern: A shell-style pattern matched against entry names
+            (``"*.wav"``).
+        recursive: Whether to search every level below *directory*.
+
+    Returns:
+        The matching entries, in the order of :func:`sort_sources`.
+    """
+    if isinstance(directory, Path):
+        return sort_sources(
+            directory.rglob(pattern) if recursive else directory.glob(pattern)
+        )
+    prefix = directory.at
+    matches: list[Source] = []
+    for name in directory.root.namelist():
+        if not name.startswith(prefix) or name == prefix:
+            continue
+        relative = name.removeprefix(prefix).rstrip("/")
+        if not recursive and "/" in relative:
+            continue
+        if fnmatch.fnmatchcase(PurePosixPath(relative).name, pattern):
+            matches.append(zipfile.Path(directory.root, name))
+    return sort_sources(matches)
+
+
+def archive_cache_dir() -> Path:
+    """The folder holding the copies :func:`materialize` makes.
+
+    The value of the environment variable ``TTA_CACHE_DIR`` when it is set,
+    else ``~/.cache/timetoalign``.
+    """
+    configured = os.environ.get(CACHE_DIR_VARIABLE)
+    if configured:
+        return Path(configured)
+    return Path.home() / ".cache" / "timetoalign"
+
+
+def _copy_folder(source: zipfile.Path) -> Path:
+    """The folder holding the copies of members of *source*'s archive.
+
+    It is keyed by the archive's absolute path, size and modification time,
+    so an archive that changes gets fresh copies.
+    """
+    archive = _archive_path(source)
+    status = archive.stat()
+    key = f"{archive}\0{status.st_size}\0{status.st_mtime_ns}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    return archive_cache_dir() / "archives" / f"{archive.stem}-{digest}"
+
+
+def _copy_member(archive: zipfile.ZipFile, name: str, folder: Path) -> Path:
+    """Copy the file member *name* of *archive* below *folder* once.
+
+    The copy is written to a temporary file beside its place and renamed into
+    it, so no reader ever sees half a copy; a copy already in place is
+    returned as it is.
+
+    Raises:
+        ValueError: If *name* points outside the archive (``..``, an
+            absolute path).
+    """
+    parts = PurePosixPath(name).parts
+    target = folder.joinpath(*parts)
+    if (
+        not parts
+        or PurePosixPath(name).is_absolute()
+        or ".." in parts
+        or not target.resolve().is_relative_to(folder.resolve())
+    ):
+        raise ValueError(f"The ZIP member '{name}' names a path outside its archive.")
+    if target.is_file():
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=target.parent, prefix=f".{target.name}.", suffix=".part"
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as copy, archive.open(name) as member:
+            shutil.copyfileobj(member, copy)
+        os.replace(temporary, target)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+    return target
+
+
+def materialize(source: SourceLike) -> Path:
+    """Return a filesystem path holding *source*, for a parser that needs one.
+
+    A filesystem path is returned unchanged. A file member of a ZIP archive
+    is copied once into the cache (:func:`archive_cache_dir`, subfolder
+    ``archives/<archive key>/<member path>``) and the copy's path returned;
+    a directory member is copied with everything below it. The archive key
+    derives from the archive's absolute path, size and modification time, so
+    a later call for the same member of the same archive copies nothing,
+    and a changed archive gets a fresh copy. Copies are written atomically,
+    so parallel processes never see half of one.
+
+    Args:
+        source: A filesystem path or a member of a ZIP archive.
+
+    Returns:
+        The path itself, or the path of the member's copy.
+
+    Raises:
+        FileNotFoundError: If *source* is a member its archive does not hold.
+        ValueError: If *source*'s archive was opened from a file object.
+
+    Examples:
+        >>> from zipfile import Path as ZipPath
+        >>> score = materialize(ZipPath("corpus.zip", at="scores/piece.mei"))
+    """
+    held = as_source(source)
+    if isinstance(held, Path):
+        return held
+    folder = _copy_folder(held)
+    if not held.is_dir():
+        return _copy_member(held.root, held.at, folder)
+    for name in held.root.namelist():
+        if name.startswith(held.at) and not name.endswith("/"):
+            _copy_member(held.root, name, folder)
+    member = PurePosixPath(_member_name(held))
+    directory = folder.joinpath(*member.parts)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+# endregion
+
 
 class Loader(ABC, Generic[PayloadT]):
     """Shared lifecycle for all loader families.
@@ -72,13 +372,19 @@ class Loader(ABC, Generic[PayloadT]):
 
     def __init__(self) -> None:
         """Initialize shared loader state."""
-        self._sources: list[Path] = []
+        self._sources: list[Source] = []
         self._source_metadata: list[dict[str, Any]] = []
         self._minted_timeline_ids: set[str] = set()
 
     @abstractmethod
-    def _load_source(self, source: Path) -> PayloadT:
-        """Parse one source and return the family-specific payload."""
+    def _load_source(self, source: Source) -> PayloadT:
+        """Parse one source and return the family-specific payload.
+
+        *source* is a ``Path`` or a member of a ZIP archive (``zipfile.Path``).
+        A parser taking a file object reads it through :func:`readable` or
+        ``source.open()``; one that needs a file on disk reads
+        :func:`materialize`'s path.
+        """
         ...
 
     def _unpack_source_result(
@@ -88,7 +394,7 @@ class Loader(ABC, Generic[PayloadT]):
         return {}, result
 
     def _accept_source(
-        self, path: Path, source_meta: dict[str, Any], payload: PayloadT
+        self, path: Source, source_meta: dict[str, Any], payload: PayloadT
     ) -> None:
         """Record a parsed payload.
 
@@ -131,33 +437,52 @@ class Loader(ABC, Generic[PayloadT]):
         """Name the source this loader holds, or ``None`` when it holds none."""
         return str(self._sources[0]) if self._sources else None
 
-    def load(self, *sources: Path | str) -> Self:
+    def load(self, *sources: SourceLike) -> Self:
         """Load and accept one or more sources through the shared template.
 
+        Each source is a filesystem path (``Path`` or ``str``) or a member of
+        a ZIP archive (``zipfile.Path``), which is read without extracting
+        the archive. Its entry in ``metadata["sources"]`` records ``path``
+        (for a member: the archive's absolute path, and ``member``, the
+        member's path inside it) and ``loaded_at``.
+
         Raises:
+            FileNotFoundError: If a ``zipfile.Path`` names a member its
+                archive does not hold.
             ValueError: If the loader reads one source and is given none or
                 more than one, or any while it holds one (after ``clear()``
                 it reads one again). Nothing is parsed then.
         """
         self._refuse_further_source(*sources)
         for source in sources:
-            path = Path(source)
-            source_meta, payload = self._unpack_source_result(self._load_source(path))
-            source_meta["path"] = str(path)
+            held = as_source(source)
+            source_meta, payload = self._unpack_source_result(self._load_source(held))
+            source_meta.update(source_metadata(held))
             source_meta["loaded_at"] = datetime.now(timezone.utc).isoformat()
-            self._accept_source(path, source_meta, payload)
+            self._accept_source(held, source_meta, payload)
         return self
 
     @classmethod
-    def from_file(cls, *paths: Path | str, **kwargs: Any) -> Self:
-        """Instantiate the loader, load *paths*, and return it."""
+    def from_file(cls, *paths: SourceLike, **kwargs: Any) -> Self:
+        """Instantiate the loader with *kwargs*, load *paths*, and return it.
+
+        Args:
+            *paths: Filesystem paths or members of ZIP archives
+                (``zipfile.Path``), as :meth:`load` takes them.
+            **kwargs: Passed to the loader's constructor.
+
+        Examples:
+            >>> from zipfile import Path as ZipPath
+            >>> member = ZipPath("corpus.zip", at="corpus/measures/piece.measures.tsv")
+            >>> loader = Ms3Loader.from_file(member)
+        """
         loader = cls(**kwargs)
         loader.load(*paths)
         return loader
 
     @property
-    def sources(self) -> list[Path]:
-        """List of loaded source paths."""
+    def sources(self) -> list[Source]:
+        """The loaded sources: ``Path`` objects and ZIP members (``zipfile.Path``)."""
         return list(self._sources)
 
     @property
@@ -273,7 +598,7 @@ class EventLoader(Loader[LoadSourceResult]):
     # region Abstract Methods
 
     @abstractmethod
-    def _load_source(self, source: Path) -> LoadSourceResult:
+    def _load_source(self, source: Source) -> LoadSourceResult:
         """Load a single source file.
 
         Subclasses implement this to parse their specific format.
@@ -283,7 +608,7 @@ class EventLoader(Loader[LoadSourceResult]):
         loader families may return their payload directly.
 
         Args:
-            source: Path to the source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             A source result. Event loaders return a tuple of file metadata and
@@ -303,11 +628,6 @@ class EventLoader(Loader[LoadSourceResult]):
     def events(self) -> EventData:
         """The EventData containing all loaded events."""
         return self._events
-
-    @property
-    def sources(self) -> list[Path]:
-        """List of loaded source file paths."""
-        return list(self._sources)
 
     @property
     def unit(self) -> TimeUnit:
@@ -558,7 +878,7 @@ class EventLoader(Loader[LoadSourceResult]):
 
     def _accept_source(
         self,
-        path: Path,
+        path: Source,
         source_meta: dict[str, Any],
         payload: dict[str, np.ndarray | pa.Array | pa.ChunkedArray],
     ) -> None:
@@ -969,7 +1289,7 @@ class ManifestData:
     Attributes:
         dimensions: Dict of named dimensions (e.g., {"width": 1920, "height": 1080}).
         metadata: Additional metadata about the source.
-        source_path: Path to the source file.
+        source_path: The source file: a path or a ZIP archive member.
         source_type: Type of source (e.g., "audio", "image", "pdf").
 
     Examples:
@@ -990,7 +1310,7 @@ class ManifestData:
 
     dimensions: dict[str, int | float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
-    source_path: Path | None = None
+    source_path: Source | None = None
     source_type: str = "unknown"
 
     def __repr__(self) -> str:
@@ -1039,13 +1359,13 @@ class ManifestLoader(Loader[ManifestData]):
     # region Abstract Methods
 
     @abstractmethod
-    def _load_source(self, source: Path) -> ManifestData:
+    def _load_source(self, source: Source) -> ManifestData:
         """Load a single source file into ManifestData.
 
         Subclasses implement this to parse their specific format.
 
         Args:
-            source: Path to the source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             ManifestData containing dimensions and metadata.
@@ -1060,7 +1380,7 @@ class ManifestLoader(Loader[ManifestData]):
 
     def _accept_source(
         self,
-        path: Path,
+        path: Source,
         source_meta: dict[str, Any],
         payload: ManifestData,
     ) -> None:
@@ -1072,11 +1392,6 @@ class ManifestLoader(Loader[ManifestData]):
         self._logger.debug(f"Loaded manifest from {path}")
 
     # region Properties
-
-    @property
-    def sources(self) -> list[Path]:
-        """List of loaded source file paths."""
-        return list(self._sources)
 
     @property
     def manifests(self) -> list[ManifestData]:
@@ -1229,13 +1544,13 @@ class AlignmentLoader(Loader["AlignmentStore"]):
     # region Abstract Methods
 
     @abstractmethod
-    def _load_source(self, source: Path) -> "AlignmentStore":
+    def _load_source(self, source: Source) -> "AlignmentStore":
         """Load a single source file into AlignmentStore.
 
         Subclasses implement this to parse their specific format.
 
         Args:
-            source: Path to the source file.
+            source: The source file: a path or a ZIP archive member.
 
         Returns:
             AlignmentStore containing events and C-maps.
@@ -1250,7 +1565,7 @@ class AlignmentLoader(Loader["AlignmentStore"]):
 
     def _accept_source(
         self,
-        path: Path,
+        path: Source,
         source_meta: dict[str, Any],
         payload: "AlignmentStore",
     ) -> None:
@@ -1264,11 +1579,6 @@ class AlignmentLoader(Loader["AlignmentStore"]):
         self._logger.debug(f"Loaded alignment from {path}")
 
     # region Properties
-
-    @property
-    def sources(self) -> list[Path]:
-        """List of loaded source file paths."""
-        return list(self._sources)
 
     @property
     def store(self) -> "AlignmentStore | None":

@@ -81,7 +81,6 @@ from __future__ import annotations
 import csv
 import logging
 from fractions import Fraction
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
@@ -91,7 +90,13 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.display.html import code
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import (
+    AlignmentLoader,
+    Source,
+    SourceLike,
+    as_source,
+    find_sources,
+)
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds
 from timetoalign.maps.linear import LinearMap
@@ -174,7 +179,7 @@ class ParangonadaLoader(AlignmentLoader):
 
     # region Abstract-method satisfaction
 
-    def _load_source(self, source: Path) -> Any:
+    def _load_source(self, source: Source) -> Any:
         """Not used: a parangonada dataset is a single coherent unit.
 
         :class:`ParangonadaLoader` ingests an entire dataset directory
@@ -190,12 +195,13 @@ class ParangonadaLoader(AlignmentLoader):
 
     # region Loading
 
-    def load(self, dataset_dir: str | Path) -> Self:
+    def load(self, dataset_dir: SourceLike) -> Self:
         """Ingest a whole parangonada dataset directory.
 
         Args:
-            dataset_dir: Path to the dataset directory (the one that
-                contains the ``match/`` and ``audio/`` subdirectories).
+            dataset_dir: Source to the dataset directory (the one that
+                contains the ``match/`` and ``audio/`` subdirectories), or
+                that directory as a member of a ZIP archive, read in place.
 
         Returns:
             Self, for method chaining.
@@ -204,7 +210,7 @@ class ParangonadaLoader(AlignmentLoader):
             FileNotFoundError: If the directory or a required subdirectory
                 is missing.
         """
-        directory = Path(dataset_dir)
+        directory = as_source(dataset_dir)
         if not directory.is_dir():
             raise FileNotFoundError(f"Not a directory: {directory}")
 
@@ -238,7 +244,7 @@ class ParangonadaLoader(AlignmentLoader):
         return self
 
     @staticmethod
-    def _discover_performers(match_dir: Path) -> list[tuple[str, Path]]:
+    def _discover_performers(match_dir: Source) -> list[tuple[str, Source]]:
         """Find every performer subdirectory holding the required CSV triple.
 
         Performers are the immediate *subdirectories* of *match_dir*
@@ -257,7 +263,7 @@ class ParangonadaLoader(AlignmentLoader):
         Raises:
             FileNotFoundError: If no performer subdirectory is found.
         """
-        performers: list[tuple[str, Path]] = []
+        performers: list[tuple[str, Source]] = []
         for child in match_dir.iterdir():
             if not child.is_dir():
                 continue
@@ -276,15 +282,15 @@ class ParangonadaLoader(AlignmentLoader):
         return performers
 
     @staticmethod
-    def _read_csv(path: Path) -> list[dict[str, str]]:
+    def _read_csv(path: Source) -> list[dict[str, str]]:
         """Read a header-based CSV into a list of row dicts."""
-        with open(path, "r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8", newline="") as handle:
             return list(csv.DictReader(handle))
 
     @staticmethod
-    def _read_tsv(path: Path) -> list[dict[str, str]]:
+    def _read_tsv(path: Source) -> list[dict[str, str]]:
         """Read a header-based TAB-separated file into a list of row dicts."""
-        with open(path, "r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8", newline="") as handle:
             return list(csv.DictReader(handle, delimiter="\t"))
 
     def _build_score_timelines(self, score_rows: list[dict[str, str]]) -> None:
@@ -361,9 +367,9 @@ class ParangonadaLoader(AlignmentLoader):
     def _build_one_performer(
         self,
         performer_key: str,
-        performer_dir: Path,
-        audio_dir: Path,
-        features_dir: Path,
+        performer_dir: Source,
+        audio_dir: Source,
+        features_dir: Source,
         score_q_by_id: dict[str, Fraction],
     ) -> None:
         """Build a performance's two physical timelines and its MatchClaims.
@@ -450,7 +456,7 @@ class ParangonadaLoader(AlignmentLoader):
     def _add_feature_events(
         cls,
         performer_key: str,
-        features_dir: Path,
+        features_dir: Source,
         perf_cpt: ContinuousPhysicalTimeline,
     ) -> None:
         """Add measured ``Beat`` / ``Dynamics`` events to the seconds timeline.
@@ -533,7 +539,9 @@ class ParangonadaLoader(AlignmentLoader):
         perf_cpt.add_events(dyn_events, allow_expansion=True)
 
     @staticmethod
-    def _glob_feature_file(features_dir: Path, performer_key: str, suffix: str) -> Path:
+    def _glob_feature_file(
+        features_dir: Source, performer_key: str, suffix: str
+    ) -> Source:
         """Return the single ``<key>_measure*.<suffix>`` file for a performer.
 
         Args:
@@ -546,7 +554,7 @@ class ParangonadaLoader(AlignmentLoader):
             FileNotFoundError: If no matching file (or more than one) is
                 found.
         """
-        matches = sorted(features_dir.glob(f"{performer_key}_measure*.{suffix}"))
+        matches = find_sources(features_dir, f"{performer_key}_measure*.{suffix}")
         if len(matches) != 1:
             raise FileNotFoundError(
                 f"Expected exactly one '{performer_key}_measure*.{suffix}' file "
@@ -558,7 +566,7 @@ class ParangonadaLoader(AlignmentLoader):
     def _build_claims(
         self,
         performer_key: str,
-        performer_dir: Path,
+        performer_dir: Source,
         perf_cpt: ContinuousPhysicalTimeline,
     ) -> None:
         """Emit one cross-group MatchClaim per ``align.csv`` row (faithfully).
@@ -621,7 +629,7 @@ class ParangonadaLoader(AlignmentLoader):
         }
 
     @staticmethod
-    def _resolve_audio_info(performer_key: str, audio_dir: Path) -> Any:
+    def _resolve_audio_info(performer_key: str, audio_dir: Source) -> Any:
         """Return the :class:`AudioInfo` for a performer's ``.wav``, or None.
 
         The recording shares the performer's original directory name, so
@@ -630,13 +638,13 @@ class ParangonadaLoader(AlignmentLoader):
         """
         if not audio_dir.is_dir():
             return None
-        matches = sorted(audio_dir.glob(f"{performer_key}*.wav"))
+        matches = find_sources(audio_dir, f"{performer_key}*.wav")
         if not matches:
             return None
         return AudioLoader.from_file(matches[0]).audio_info
 
     @classmethod
-    def _resolve_sample_rate(cls, performer_key: str, audio_dir: Path) -> int:
+    def _resolve_sample_rate(cls, performer_key: str, audio_dir: Source) -> int:
         """Return a performer recording's sample rate (Hz).
 
         Falls back to the dataset's known 44100 Hz when no audio file is

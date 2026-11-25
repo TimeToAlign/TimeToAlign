@@ -46,14 +46,13 @@ from __future__ import annotations
 
 import logging
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import LoadSourceResult
+from timetoalign.loader.base import LoadSourceResult, Source, readable
 from timetoalign.storage.store import DictStore
 
 from ._tables import NormalisedTablesLoader
@@ -396,44 +395,25 @@ class XmlLoader(NormalisedTablesLoader):
 
     # region Loading
 
-    def _load_source(self, source: Path) -> LoadSourceResult:
-        """Not used directly; ``load()`` is overridden.
+    def _load_source(self, source: Source) -> LoadSourceResult:
+        """Parse one XML file into the loader's tables.
 
-        ``XmlLoader`` overrides ``load()`` to handle its own XML
-        parsing and multi-table normalisation.  This stub satisfies the
-        abstract method requirement from ``Loader``.
-
-        Raises:
-            NotImplementedError: Always.
-        """
-        raise NotImplementedError(
-            "XmlLoader overrides load() directly. "
-            "Use load() instead of _load_source()."
-        )
-
-    def load(self, *sources: Path | str) -> Self:
-        """Load one or more XML files.
-
-        For multiple files the tables are concatenated (same tags) or
-        added (new tags).
+        ``load()`` reads each source through this hook. For multiple files
+        the tables are concatenated (same tags) or added (new tags). The
+        tables are the loader's store, so no event arrays are returned.
 
         Args:
-            *sources: Paths to XML files.
+            source: The XML file: a path or a ZIP archive member.
 
         Returns:
-            Self, for method chaining.
+            No metadata and no event arrays.
         """
-        for source in sources:
-            path = Path(source)
-            tree = ET.parse(path)
-            root = tree.getroot()
-
-            self._sources.append(path)
-            self._raw_root = root
-            self._process_xml(root)
-            self._logger.debug("Loaded %s: %s", path.name, list(self._store.keys()))
-
-        return self
+        with readable(source) as document:
+            root = ET.parse(document).getroot()
+        self._raw_root = root
+        self._process_xml(root)
+        self._logger.debug("Loaded %s: %s", source.name, list(self._store.keys()))
+        return {}, {}
 
     def load_string(self, xml_string: str) -> Self:
         """Load from an XML string.
@@ -469,6 +449,7 @@ class XmlLoader(NormalisedTablesLoader):
     def clear(self) -> None:
         """Clear all loaded data."""
         self._sources.clear()
+        self._source_metadata.clear()
         self._store = DictStore()
         self._file_metadata.clear()
         self._raw_root = None

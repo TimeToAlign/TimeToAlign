@@ -91,7 +91,15 @@ from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.display.html import code
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import (
+    AlignmentLoader,
+    Source,
+    SourceLike,
+    as_source,
+    find_sources,
+    join_source,
+    source_parent,
+)
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds, TicksToQuarters
 from timetoalign.maps.linear import ScalarMap
@@ -231,7 +239,7 @@ class MpmLoader(AlignmentLoader):
 
     # region Abstract-method satisfaction
 
-    def _load_source(self, source: Path) -> Any:
+    def _load_source(self, source: Source) -> Any:
         """Not used: an MPM-Toolbox project is a single coherent unit.
 
         :class:`MpmLoader` ingests an entire project through :meth:`load`;
@@ -267,13 +275,14 @@ class MpmLoader(AlignmentLoader):
 
     # region Loading
 
-    def load(self, mpr_path: str | Path, *, performance: str | None = None) -> Self:
+    def load(self, mpr_path: SourceLike, *, performance: str | None = None) -> Self:
         """Ingest a whole MPM-Toolbox project.
 
         Args:
-            mpr_path: Path to the ``.mpr`` project file.  The sibling
-                ``.msm`` / ``.mpm`` are resolved from the bare filenames
-                the project names.
+            mpr_path: Path to the ``.mpr`` project file, or its member in a
+                ZIP archive.  The sibling ``.msm`` / ``.mpm`` are resolved
+                from the bare filenames the project names (members of the
+                same archive for a member).
             performance: Name of the ``<performance>`` block to use.  When
                 ``None`` (the default), the first performance is selected.
 
@@ -285,7 +294,7 @@ class MpmLoader(AlignmentLoader):
                 missing.
             ValueError: If a named performance is not present in the MPM.
         """
-        mpr = Path(mpr_path)
+        mpr = as_source(mpr_path)
         if not mpr.is_file():
             raise FileNotFoundError(f"Not a file: {mpr}")
 
@@ -318,7 +327,7 @@ class MpmLoader(AlignmentLoader):
         return self
 
     @staticmethod
-    def _parse_xml(path: Path) -> Any:
+    def _parse_xml(path: Source) -> Any:
         """Parse an XML file with id-collection disabled.
 
         The MSM / MPM / MPR reuse ``xml:id`` values across files, so a
@@ -327,10 +336,13 @@ class MpmLoader(AlignmentLoader):
         is on for robustness against minor markup quirks.
         """
         parser = etree.XMLParser(recover=True, collect_ids=False)
-        return etree.parse(str(path), parser).getroot()
+        if isinstance(path, Path):
+            return etree.parse(str(path), parser).getroot()
+        with path.open("rb") as handle:
+            return etree.parse(handle, parser).getroot()
 
     @staticmethod
-    def _resolve_siblings(mpr: Path, mpr_root: Any) -> tuple[Path, Path]:
+    def _resolve_siblings(mpr: Source, mpr_root: Any) -> tuple[Source, Source]:
         """Resolve the ``.msm`` / ``.mpm`` siblings the project names.
 
         The ``.mpr`` carries ``<msm file="bareName.msm">`` /
@@ -349,8 +361,8 @@ class MpmLoader(AlignmentLoader):
             raise FileNotFoundError(
                 f"Project {mpr.name} does not name both an .msm and an .mpm."
             )
-        msm_path = mpr.parent / Path(msm_name).name
-        mpm_path = mpr.parent / Path(mpm_name).name
+        msm_path = join_source(source_parent(mpr), Path(msm_name).name)
+        mpm_path = join_source(source_parent(mpr), Path(mpm_name).name)
         if not msm_path.is_file():
             raise FileNotFoundError(f"Sibling MSM not found: {msm_path}")
         if not mpm_path.is_file():
@@ -713,20 +725,20 @@ class MpmLoader(AlignmentLoader):
         return notes
 
     @staticmethod
-    def _resolve_sample_rate(mpr: Path) -> int:
+    def _resolve_sample_rate(mpr: Source) -> int:
         """Read the recording's sample rate (Hz) from a sibling ``.wav``.
 
         The ``.mpr``'s ``<audio>`` points at an ``.mp3``; the ``.wav`` is
         preferred and located by globbing ``*.wav`` under the project
         directory tree.  Falls back to 44100 Hz when no ``.wav`` is found.
         """
-        wavs = sorted(mpr.parent.rglob("*.wav"))
+        wavs = find_sources(source_parent(mpr), "*.wav", recursive=True)
         if not wavs:
             return _DEFAULT_SAMPLE_RATE
         return AudioLoader.from_file(wavs[0]).audio_info.sample_rate
 
     @staticmethod
-    def _parse_spectrogram(mpr: Path, mpr_root: Any) -> dict[str, Any] | None:
+    def _parse_spectrogram(mpr: Source, mpr_root: Any) -> dict[str, Any] | None:
         """Parse the ``<spectrogram>`` element (under ``<audios>/<audio>``).
 
         The spectrogram's x-axis is time in frame columns: each column
@@ -755,7 +767,7 @@ class MpmLoader(AlignmentLoader):
         if hop_size_text is None or file_attr is None:
             return None
 
-        png_path = mpr.parent / Path(file_attr)
+        png_path = join_source(source_parent(mpr), file_attr)
         if not png_path.is_file():
             return None
 
@@ -766,7 +778,7 @@ class MpmLoader(AlignmentLoader):
         return {"hop_size": int(float(hop_size_text)), "n_columns": n_columns}
 
     @staticmethod
-    def _read_png_width(png_path: Path) -> int | None:
+    def _read_png_width(png_path: Source) -> int | None:
         """Read a PNG's pixel width from its IHDR header.
 
         A PNG file begins with the 8-byte signature, then the IHDR chunk

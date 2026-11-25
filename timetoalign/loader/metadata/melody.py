@@ -33,7 +33,6 @@ import re
 import urllib.parse
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import timetoshare
@@ -41,7 +40,7 @@ from timetoshare import load_catalogue
 
 from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.core import TimeUnit
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, Source, materialize
 from timetoalign.loader.metadata._statements import (
     Plan,
     Target,
@@ -95,14 +94,15 @@ class MelodyRecord:
     """One source read: a Turtle file or a MeLODy repository directory.
 
     Attributes:
-        source: The path given to :meth:`MelodyLoader.load`.
+        source: The path given to :meth:`MelodyLoader.load`, or the member of
+            a ZIP archive.
         files: Per Turtle file read, its path relative to the directory (a
             file given directly: its name) and its ``rdflib.Graph``, in
             sorted relative-path order. Two sources may hold files of one
             relative path; each is read.
     """
 
-    source: Path
+    source: Source
     files: tuple[tuple[str, Any], ...]
 
 
@@ -144,23 +144,28 @@ class MelodyLoader(Loader[MelodyRecord]):
         super().__init__()
         self._records: list[MelodyRecord] = []
 
-    def _load_source(self, source: Path) -> MelodyRecord:
+    def _load_source(self, source: Source) -> MelodyRecord:
         """Parse a Turtle file, or every entity file of a repository directory.
+
+        rdflib resolves relative IRIs against the file's location, so a
+        member of a ZIP archive (a file or a directory) is read from its copy
+        (:func:`~timetoalign.loader.base.materialize`).
 
         Raises:
             ValueError: If a file is no Turtle (``<path>: <rdflib's error>``).
             ImportError: If rdflib is not installed.
         """
         rdflib = _rdflib()
-        if source.is_dir():
+        local = materialize(source)
+        if local.is_dir():
             paths = sorted(
-                (path.relative_to(source).as_posix(), path)
-                for path in source.rglob("*.ttl")
+                (path.relative_to(local).as_posix(), path)
+                for path in local.rglob("*.ttl")
                 if path.is_file()
-                and path.relative_to(source).parts[0] not in _NOT_ENTITIES
+                and path.relative_to(local).parts[0] not in _NOT_ENTITIES
             )
         else:
-            paths = [(source.name, source)]
+            paths = [(local.name, local)]
         files = []
         for relative, path in paths:
             graph = rdflib.Graph()
@@ -172,7 +177,7 @@ class MelodyLoader(Loader[MelodyRecord]):
         return MelodyRecord(source=source, files=tuple(files))
 
     def _accept_source(
-        self, path: Path, source_meta: dict[str, Any], payload: MelodyRecord
+        self, path: Source, source_meta: dict[str, Any], payload: MelodyRecord
     ) -> None:
         super()._accept_source(path, source_meta, payload)
         self._records.append(payload)

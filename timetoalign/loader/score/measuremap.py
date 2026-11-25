@@ -37,10 +37,10 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 from typing import Any
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.loader.base import Source
 from timetoalign.timelines.structure import MeasureMap
 
 from .base import ScoreLoader
@@ -110,11 +110,11 @@ class MeasureMapLoader(ScoreLoader):
         """The fully expanded measure data after loading."""
         return self._expanded_data
 
-    def _load_source(self, source: Path) -> ScoreStore:
+    def _load_source(self, source: Source) -> ScoreStore:
         """Load a MeasureMap JSON file.
 
         Args:
-            source: Path to the .mm.json file.
+            source: The .mm.json file: a path or a ZIP archive member.
 
         Returns:
             ScoreStore with populated MeasureData.
@@ -127,7 +127,7 @@ class MeasureMapLoader(ScoreLoader):
         if not source.exists():
             raise FileNotFoundError(f"MeasureMap file not found: {source}")
 
-        with open(source, encoding="utf-8") as f:
+        with source.open(encoding="utf-8") as f:
             raw_data = json.load(f)
 
         if not isinstance(raw_data, list):

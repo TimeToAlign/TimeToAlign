@@ -28,7 +28,6 @@ from timetoalign.timelines import (
     TimelineGroup,
     UnknownLengthError,
 )
-from timetoalign.timelines.flow import FlowMap
 from timetoalign.timelines.flowcontrol import (
     Break,
     Jump,
@@ -276,12 +275,12 @@ def test_derive_keeps_the_length_unknown() -> None:
     assert audio.derive(Q).length is None
 
 
-def test_explicit_flow_sections_unfold_without_the_end() -> None:
+def test_a_flow_map_over_regions_resolves_without_the_end() -> None:
     timeline = _q(uid="t")
-    timeline.create_flow_map([(0, 4), (0, 4)], id="twice")
-    unfolded = timeline.apply_flow("twice")
-    assert unfolded.length == Coordinate(8, Q)
-    assert timeline.get_flow_map("twice").source_length is None
+    section = timeline.create_region(0, 4)
+    twice = timeline.create_flow_map([section, section], id="twice")
+    assert twice.resolve(timeline).length == Coordinate(8, Q)
+    assert timeline.length is None
 
 
 def test_to_typed_keeps_the_length_unknown() -> None:
@@ -360,17 +359,6 @@ def test_a_group_position_needs_no_end_until_it_is_converted(
     with pytest.raises(UnknownLengthError) as raised:
         group.get_timestamp_at(8.0, "b")
     assert str(raised.value) == _message("b", "convert a position from 'b' to 'a'")
-
-
-def test_unfolding_a_group_with_an_unknown_member_raises_before_building(
-    group: TimelineGroup,
-) -> None:
-    with pytest.raises(UnknownLengthError) as raised:
-        group.apply_flow(FlowMap([(0, 16)]), "a")
-    assert str(raised.value) == _message("b", "convert a position from 'a' to 'b'")
-    for member in group:
-        assert (member.list_children(), member.list_flow_maps()) == ([], [])
-    assert group.get_timeline("b").length is None
 
 
 def test_the_group_tables_and_intervals_need_the_end(group: TimelineGroup) -> None:
@@ -453,12 +441,12 @@ def test_splitting_short_of_the_end_works() -> None:
     assert [(r.start.value, r.end.value) for r in regions] == [(0, 4)]
 
 
-def test_a_timeline_of_unknown_length_is_no_flow_interval() -> None:
+def test_a_timeline_of_unknown_length_is_no_chunk_of_a_flow_map() -> None:
     parent = _q(8, uid="parent")
     kid = parent.create_child(length=None, offset=0, uid="kid")
     with pytest.raises(UnknownLengthError) as raised:
         parent.create_flow_map([kid], id="by_child")
-    assert str(raised.value) == _message("kid", "read the timeline as an interval")
+    assert str(raised.value) == _message("kid", "read it as a chunk of a FlowMap")
     assert parent.list_flow_maps() == []
 
 

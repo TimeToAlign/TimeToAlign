@@ -1040,6 +1040,8 @@ class Manifest(_OpenObject):
         "groups",
         "measure_maps",
         "resources",
+        "flow_maps",
+        "virtual_timelines",
         *STATE_KEYS,
         "graphical",
     )
@@ -1068,6 +1070,10 @@ class Manifest(_OpenObject):
         holds them. The measure maps are read next, then every root timeline
         is rebuilt, its conversion maps reading the measure maps they name,
         and every element of the manifest is indexed by id (:func:`unique_ids`).
+        Each FlowMap joins the root timeline it names and each virtual
+        timeline the root of the tree it comes from
+        (:func:`~timetoalign.timelines.flow.flowmap.place_on_roots`), so that
+        a timeline carries them wherever it goes.
         Groups are left as JSON for the class reading them.
         ``graphical.order`` is split by its keys: a group's display order
         goes to the content, a timeline's band order to the envelope. The
@@ -1092,8 +1098,11 @@ class Manifest(_OpenObject):
             ValueError: If the manifest is valid but breaks a rule of the
                 library alone: a negative child offset, a region ending
                 before it starts, a measure map or conversion map the library
-                cannot read (see the element readers).
+                cannot read (see the element readers), virtual timelines
+                naming one another in a circle.
         """
+        from .flow.flowmap import FlowMap, VirtualTimeline, place_on_roots
+
         timetoshare.validate(data)
         bare = timetoshare.with_bare_ids(data)
         own = {
@@ -1126,6 +1135,14 @@ class Manifest(_OpenObject):
         if own:
             for timeline in timelines.values():
                 timeline._take_prefixes(own)
+        place_on_roots(
+            [FlowMap.from_dict(item) for item in data.get("flow_maps", [])],
+            [
+                VirtualTimeline.from_dict(item)
+                for item in data.get("virtual_timelines", [])
+            ],
+            timelines,
+        )
         holders.extend(
             (element_id, description)
             for root in roots
@@ -1192,7 +1209,10 @@ class Manifest(_OpenObject):
         :attr:`~timetoalign.timelines.Timeline.root_offset` as its
         ``offset`` when it has one. ``measure_maps`` holds every measure map
         the timelines name and every one the manifest kept, sorted by id
-        (see :class:`MeasureMapEntries`). ``graphical.order`` holds the
+        (see :class:`MeasureMapEntries`). ``flow_maps`` and
+        ``virtual_timelines`` hold the FlowMaps and virtual timelines the
+        timelines written hold, each sorted by id, and are written only when
+        there is one. ``graphical.order`` holds the
         groups' member orders and, unchanged, the band order of every
         written timeline that has one; the band order of a timeline not
         written, removed or given another id, is left out, so that every
@@ -1306,6 +1326,20 @@ class Manifest(_OpenObject):
             groups=list(groups),
             measure_maps=entries.write(),
         )
+        for key, held in (
+            ("flow_maps", "_flow_maps"),
+            ("virtual_timelines", "_virtual_timelines"),
+        ):
+            elements = [
+                element
+                for timeline in trees
+                for element in getattr(timeline, held).values()
+            ]
+            if elements:
+                fields[key] = [
+                    element.to_dict(minimal=False)
+                    for element in sorted(elements, key=lambda element: element.id)
+                ]
         fields.update(copy.deepcopy(self.statement_state))
         fields = _leave_out_unwritten(
             fields,

@@ -1994,17 +1994,6 @@ stamp is a projection of the one position its axis names, so the rounding is
 visible in the answer instead of only in the pixel column. The same applies to
 `test_thoresen_poc.py`, whose width `4835` puts its midpoint at pixel `2418`.
 
-**Group unfolding.** `apply_flow` cuts every member at the same section
-labels. The labels name the section children, never identify them: the test
-pins the eleven names on each member, requires every descendant id to be a
-minted `clt_N`, and requires the group's trees to hold as many distinct
-timeline ids as they hold timelines and no id twice among all their elements
-(the regions each unfolded member mints are minted again across members).
-The unfolded reference `clt_1` holds 3869 Note events across its section
-children, the note count of ms3's own unfolding of the same score
-(`n04op18-4_04_unfolded.notes.tsv`), and exactly two FlowMaps, the reverse
-`source` map and one forward map.
-
 `test_three_timeline_group` places an image over audio seconds 0–150 and a
 score over audio seconds 45–135: each part is a child of the audio, grouped
 with the timeline spanning it, and the score's `100 · 30/90` is the float
@@ -2047,11 +2036,10 @@ infers a length from content.
 | group position check | no | the member bounds its positions below only: a group of one unknown member answers `1000` and refuses `-1` |
 | group stored table, `get_interval_for` | yes | raises |
 | matchstamp through a group with an unknown member | yes | raises (not swallowed) |
-| `TimelineGroup.apply_flow` with an unknown member | yes | raises at the first boundary converted, before anything is built |
 | `append_child` on an unknown parent, `append_segment` after an unknown segment | yes | raises |
 | `append_segment` on a line of unknown length, empty or after a known segment | no | appends at `0`, then at the known segment's end; the line stays unknown |
 | splitting with `include_after_last=True` | yes | raises; with `False` it works |
-| a timeline of unknown length used as a flow interval | yes | raises |
+| a child timeline of unknown length named as a chunk of a FlowMap | yes | raises when the FlowMap joins the timeline; a FlowMap over Regions of a timeline of unknown length resolves |
 | `WarpMap.materialise` on an unknown source or descendant | yes | raises |
 | WarpMap queries | no | the support ends at the last anchor whatever the timeline's length |
 
@@ -3013,8 +3001,7 @@ event cells):
 
 **Purpose:** Four operations make a timeline from a part of another and move
 the source's events onto it, each event's start re-based by the cut's start
-`a` (offset arithmetic, `start − a`): `get_slice` (hence `apply_flow`, which
-slices), `create_child_from_region` / `create_children_from_regions`,
+`a` (offset arithmetic, `start − a`): `get_slice`, `create_child_from_region` / `create_children_from_regions`,
 `create_segment_line` (hence `_from_regions`, `_by_grouping`,
 `_by_splitting`) and `SegmentLine.from_segmentation`. A Box holds its
 shape in the image's space, so the shape never moves; what moves is the
@@ -4537,135 +4524,211 @@ creates a fresh `Ms3Loader` instance, ensuring no shared state between tests.
 
 ---
 
-### `test_flow_intervals.py` - Interval-Built FlowMaps
+### FlowMaps (`test_flowmap.py`)
 
-**Purpose:** Validates constructing a `FlowMap` directly from anything that
-describes an interval — a singleton or a collection — through the single
-polymorphic positional argument of `FlowMap(source)`, and the
-`Timeline.create_flow_map(intervals)` convenience that constructs, attaches,
-and returns such a map. There are no new `from_*` constructors: one argument
-accepts singleton-or-collection via coercion, plus keyword-only options
-(`id`, `resolve`), matching `create_regions_from_boundaries(boundaries, *, …)`.
+A `FlowMap` is written as the ID of ONE root timeline and an ordered list of
+chunks, each the ID of a Region (of the root or of a descendant), of a child
+timeline at any depth or of a virtual timeline of that tree, or a `Gap` of
+positive length. Read against its root it is a list of intervals of the
+ROOT's axis placed one after the other on a virtual axis that starts at 0.
+Everything a FlowMap answers is arithmetic on intervals that the test
+states itself, so every expected value is worked out by hand from the
+stated offsets and bounds and written as a literal; none is taken from the
+code. The timelines hold no flow control, no measures and no events: a
+FlowMap needs none.
 
-**Motivating case.** A performance that skips score measures 42 and 43. The
-child timeline lives in quarterbeat (QB) space and keeps two played spans,
-`[0, 123)` and `[129, length)`. Measures 42–43 occupy QB `123–129`; they fall
-in the gap and map to nothing. The two played spans concatenate in the
-unfolded (target) axis, so QB `129` in the source becomes QB `123` in the
-target.
+**The quarters case** (fraction axis). Root `set`, length 40. Children
+`first` (offset 0, length 8) and `second` (offset 8, length 12); `second`
+holds the child `trio` (offset 4, length 6) and the Region `coda`
+([10, 12) on its own axis). The root holds the Regions `intro` [0, 3) and
+`tail` [30, 40). On the root's axis, by adding the offsets from the root
+down: `first` = [0, 8), `second` = [8, 20), `trio` = [12, 18), `coda` =
+[18, 20).
 
-#### Coercion primitives (`_interval_value`, `_as_interval`, `_coerce_intervals`)
+The FlowMap `second, Gap(4), first, trio, coda, intro`:
 
-The module-private helpers in `timetoalign/timelines/flow/sections.py` are
-duck-typed (no hard imports of `Timeline`/`Region`/`Coordinate`). `_as_interval`
-recognises descriptors in strict priority order and each variant yields an
-**exact** `(Fraction, Fraction, label)` triple. The `label` is a best-effort
-identity — a region id for a `str` or a `Region`, the `id` for a `Timeline`,
-and `None` for a bare coordinate pair or an id-less event — carried through so
-unfolding can identify the child timeline it derives from each span (the
-identity, never the display name: a region `A8_1` named `Opening` labels its
-span `A8_1`; a timeline `clt_1` named `Score` labels its span `clt_1`):
+| Chunk | Root interval | Virtual interval |
+|---|---|---|
+| `second` | [8, 20) | [0, 12) |
+| gap 4 | none | [12, 16) |
+| `first` | [0, 8) | [16, 24) |
+| `trio` | [12, 18) | [24, 30) |
+| `coda` | [18, 20) | [30, 32) |
+| `intro` | [0, 3) | [32, 35) |
 
-| Input | Recognised as | Expected `(start, end, label)` |
-|-------|---------------|--------------------------------|
-| `(0, 123)` (raw ints) | 2-element sequence | `(Fraction(0), Fraction(123), None)` |
-| `(Coordinate(0), Coordinate(129))` | 2-element sequence | `(Fraction(0), Fraction(129), None)` |
-| `Region(0, 123, id="A8_1", name="Opening")` | has `.start`/`.end` | `(Fraction(0), Fraction(123), "A8_1")` |
-| a `Timeline` of length 200, id `clt_1`, name `Score` | has `.origin`/`.length` | `(Fraction(0), Fraction(200), "clt_1")` |
-| `Note(start=0, end=123)` interval event | has `.start`/`.end` | `(Fraction(0), Fraction(123), None)` |
-| `"A8_1"` with a `resolve` callable | `str` → resolved region | `(Fraction(0), Fraction(123), "A8_1")` |
-| `"A8_1"` with `resolve=None` | `str`, no resolver | raises `ValueError` |
+Length 35. `unfold` returns one virtual position per chunk covering the
+root position, in played order (a chunk is half-open): 2 → [18, 34]
+(`first`, `intro`); 13 → [5, 25] (`second`, `trio`); 19 → [11, 31]
+(`second`, `coda`); 20 → [] (the end of `second` is excluded and nothing
+else covers it); 25 → [] (never played). `fold` returns the root position
+of a virtual position: 0 → 8, 11 → 19, 16 → 0, 24 → 12, 31 → 19, 34 → 2;
+12 and 15 → None (inside the gap); 35 and -1 are refused (the virtual axis
+is [0, 35)).
 
-`_coerce_intervals` disambiguates singleton-vs-collection by trying the whole
-spec as one interval first, and only iterating on failure:
+**The seconds case** (float axis; every number a multiple of 0.25, so the
+float arithmetic is exact). Root `audio`, length 30.0, Regions `verse`
+[0.5, 10.25) and `chorus` [10.25, 20.0). FlowMap `chorus, verse, Gap(1.5),
+chorus`: `chorus` at [0, 9.75), `verse` at [9.75, 19.5), the gap at
+[19.5, 21.0), `chorus` at [21.0, 30.75); length 30.75. `unfold(12.0)` =
+[1.75, 22.75]; `unfold(0.25)` = []; `fold(10.0)` = 0.75; `fold(20.0)` =
+None; `fold(30.0)` = 19.25. Every result is a `Coordinate` holding a float
+on a float axis and a `Fraction` on the fraction axis: the number type is
+the root's, whatever form the question had.
 
-- A `str` is **always** a singleton — never iterated character by character
-  (`_coerce_intervals("A8_1", resolve=…)` → one interval, not five).
-- `[0, 123]` is one coordinate pair (singleton), yielding one interval.
-- `[region1, region2]` and `["A8_1", "A8_2"]` are collections, yielding two
-  intervals each (the singleton attempt fails because the first element is not
-  a coordinate value, so the fallback iterates).
-- `[(0, 123), (129, 200)]` yields two intervals.
-- Any interval with `end < start` raises `ValueError`.
+**Positions in and out.** A position is given as a bare number, a
+`Coordinate` or an `IdCoordinate`, and every answer is a `Coordinate`.
+Refused: a Coordinate in another unit; an IdCoordinate naming another
+timeline than the root on `unfold`; one naming the root on `fold` (a root
+position is no virtual position).
 
-All assertions are exact `Fraction` equality — no ranges, no `pytest.approx`.
+**Gaps keep their length in the axis's number type.** `Gap(4)` on the
+fraction axis is stored and written as `[4, 1]`, on a float axis as `4.0`;
+a gap whose length is no value of the axis's number type (`Gap(4.5)` on a
+samples axis, `Gap(Fraction(1, 3))` on a float axis) is refused, since no
+value is rounded. `Gap(0)` and a negative length are refused by `Gap`
+itself.
 
-#### Interval-built `FlowMap`
+**Refusals**, each leaving the timeline's FlowMaps unchanged: a chunk
+naming nothing in the root's tree (a Region of another root, an unknown
+ID); the root itself as a chunk (refused when the FlowMap is constructed);
+a FlowMap naming another timeline than the one it is given to; a FlowMap
+given to, or read against, a child timeline; a child timeline of unknown
+length as a chunk (`UnknownLengthError`); a second canonical FlowMap of
+one timeline; a given ID the manifest already holds; a chunk that is
+neither an ID nor a `Gap`. A root that holds FlowMaps and is then placed
+in another timeline as a child keeps them, and the manifest is refused when
+written, in the format's words (`'set' is a child timeline; a FlowMap names
+a root timeline`): a FlowMap is never dropped silently.
 
-Sections are built directly from the coerced `(start, end, label)` ranges with
-a **cumulative target position**, each
-section carrying its `label`, and `flow` is `None`. For the two motivating
-spans `[0, 123)` and `[129, 252)` (length 252):
+**A virtual timeline as a chunk** stands for the stretches of the FlowMap
+it applies. With `twice` = `first, first` (length 16) applied as the
+virtual timeline `z`, the FlowMap `z, Gap(1), second` plays [0, 8), [0, 8),
+a gap of 1, [8, 20): length 29, `unfold(2)` = [2, 10], `fold(16)` = None,
+`fold(17)` = 8. A FlowMap whose chunk is a virtual timeline applying that
+same FlowMap names itself and is refused when read; so is a chunk naming a
+virtual timeline that states another unit than the root's (the one way a
+chunk can lie on an axis in another unit, since the regions and children
+of a tree share the root's unit). Both are built as manifests, which the
+format admits.
 
-| Query | Method | Exact result | Derivation |
-|-------|--------|--------------|------------|
-| `unfold_coordinate(50)` | source → target | `[Fraction(50)]` | span 1: `0 + (50-0)` |
-| `unfold_coordinate(125)` | source → target (gap) | `[]` | QB 125 is in the skipped gap |
-| `unfold_coordinate(150)` | source → target | `[Fraction(144)]` | span 2: `123 + (150-129)` |
-| `fold(144)` | target → source | `Fraction(150)` | inverse of the above |
-| `fold(50)` | target → source | `Fraction(50)` | span 1 |
-| `total_target_length` | — | `Fraction(246)` | `123 + (252-129)` |
-| `n_sections` | — | `2` | two played spans |
+**The dictionary form** is the manifest's, IDs bare as in every object of
+the library: `{id, timeline, chunks, convention?, canonical?, name?,
+provenance?}`, a gap written `{gap: <Number>}`. The tests read literals
+and compare objects, and write objects and compare literals: the minimal
+form leaves `canonical: false` and `name: null` out and the complete form
+writes them; `convention` and `provenance` are written only when stated,
+in both forms; `default`, `single` and `printed` are read as the
+enumeration's members and any other word is kept as given; a key the
+library does not know is kept and written back, on the FlowMap and on a
+gap.
 
-`inverse()` round-trips (`inverse().unfold_coordinate(144) == [Fraction(150)]`) and does
-not require a non-`None` `flow`. `__repr__` reads the `id`, so an interval map
-built with `id="A8"` reprs as `FlowMap(A8: 2 sections)` and its inverse as
-`FlowMap(A8_inverse: 2 sections)`.
+**IDs and references stay true.** A FlowMap ID is minted `flow_map_{N}`
+in the timeline's manifest. When two trees whose minted IDs collide join
+one bundle, the second tree's Region, FlowMap and virtual timeline are
+minted again and the FlowMap's chunks, its `timeline` and the virtual
+timeline's `map` name the new IDs; the test states the expected IDs from
+the minting rule (the number above the highest held).
 
-#### `Timeline.create_flow_map`
+### Atomic sections and computed FlowMaps (`test_flow_maps_from_flow_control.py`)
 
-`create_flow_map(intervals, *, id="default")` constructs the FlowMap
-(resolving region-name strings via `self.get_region`), attaches it under `id`,
-and returns it — the `create` verb×noun contract. The four equivalent target
-calls all build the same two-span map on a length-252 child:
-`create_flow_map(["A8_1", "A8_2"], id="A8")`,
-`create_flow_map([region1, region2], id="A8")`,
-`create_flow_map([(0, 123), (129, length)], id="A8")`, and the singleton
-`create_flow_map(region1, id="X")`. After construction `get_flow_map(id)`
-returns the same object, and the timeline's `unfold_coordinate`/`fold`
-convenience methods delegate with the exact values above
-(`tl.unfold_coordinate(150, "A8") == [144.0]`,
-`tl.unfold_coordinate(125, "A8") == []`, `tl.fold(144, "A8") == 150.0`).
+`Timeline.create_flow_maps_from_flow_control()` plays the timeline's flow
+control with the engine and writes the result: the atomic sections as
+Regions and the computed flows as FlowMaps over them. `Timeline.get_flow()`
+computes one flow and writes nothing. The engine is proven in
+`test_flow_engine.py`; what is proven here is that its result is written as
+the format says, so the expected values are the ones the design states for
+the first movement of Beethoven's Op. 106, each checkable by hand.
 
-#### `Timeline.apply_flow` — the unfolded timeline
+**The Op. 106/i shape.** A quarters timeline of length 1644 (fraction axis)
+with four elements: a Jump at 953/2 with the destinations `{by: 0, passes:
+[1]}` and `{to: jump_target_b, passes: [2]}` (the two brackets), a Jump at
+500 `{repeat_count: 1}` (the repeat sign), a Break at 500 between the
+brackets and the JumpTarget `jump_target_b` at 500.
 
-`unfold_coordinate` maps a single folded coordinate to a list of unfolded
-coordinates; `apply_flow(id)` instead yields the whole unfolded **timeline**.
-It slices the source at each section of the attached FlowMap via
-`Timeline.get_slice` (which rebases each slice by `-start`) and **appends** the
-slices, in target order, as children of a new timeline of the source's **same
-concrete type**, whose child offsets accumulate as `0` then `123`. Each section
-also becomes a matching named Region in unfolded (target) coordinates. Section
-events live in the appended children; the flattened coordinates remain reachable
-via `get_events(include_children=True)`. The result carries a reverse FlowMap
-(id `"source"`) and the forward FlowMap (id `f"forward_{id}"`). Each child and
-Region takes the section's name (a repeat is suffixed `-rend2`, `-rend3`, …).
+| Quantity | Expected | Why |
+|---|---|---|
+| atomic sections | A [0, 953/2), B [953/2, 500), C [500, 1644) | the boundaries are 0, 953/2, 500 and 1644 |
+| each section | a Region named by its letter, `statements == {"type": ["tts:AtomicSection"]}`, `provenance == [{"property": "rdf:type", "value": {"id": "tts:AtomicSection"}, "method": "inferred"}]`, the prefix `tts` declared as the format's namespace, `is_atomic_section` true | the form of the format's fixture `flow/sonata_exposition` |
+| `default` | A B A C | first pass through the first bracket, back, second pass into the second |
+| `single` | A C | once through, on the pass after the repeat |
+| `printed` | A B C | the axis as it stands |
+| each FlowMap | its `convention`, provenance `[{method: inferred}]`, not canonical, unnamed | |
+| length of `default` | 953/2 + 47/2 + 953/2 + 1144 = 4241/2 | |
+| length of `single` | 953/2 + 1144 = 3241/2 | |
+| `default`, `unfold(393/2)` | [393/2, 1393/2] | A is played at 0 and at 500 |
+| `default`, `unfold(961/2)` | [961/2] | B is played once, where it stands |
+| `default`, `unfold(504)` | [1961/2] | C begins at 1953/2 |
+| `default`, `fold(1393/2)` | 393/2 | |
 
-The fixture is a length-252 source with played spans `A8_1` `[0, 123)` and
-`A8_2` `[129, 252)`, instants `e10` at absolute 10 (span 1) and `e140` at
-absolute 140 (span 2), and a nested child at offset 40 (span `[40, 60)`, inside
-span 1) carrying instant `c5` at local 5. `r = source.apply_flow("A8")` gives
-the exact values:
+`Region.is_atomic_section` reads the type however the Region spells it
+(the absolute IRI, or any prefix declared for the format's namespace) and
+is false for a Region without it or with another type.
 
-| Query | Exact result | Derivation |
-|-------|--------------|------------|
-| `type(r) is ContinuousLogicalTimeline` | `True` | same concrete type as source |
-| `r.length.value` | `Fraction(246)` | `123 + (252 - 129)` |
-| `r.n_children` | `2` | one appended child per played span |
-| `r.list_children()` | `["A8_1", "A8_2"]` | children named after the spans |
-| child `A8_1` / `A8_2` offset | `Fraction(0)` / `Fraction(123)` | cumulative span lengths |
-| child `A8_1` / `A8_2` length | `Fraction(123)` / `Fraction(123)` | span lengths |
-| `e10` in child `A8_1` | `Fraction(10)` | slice `[0, 123)`: `10 - 0` |
-| `e140` in child `A8_2` | `Fraction(11)` | slice `[129, 252)`: `140 - 129` |
-| `A8_1` sub-child offset | `Fraction(40)` | `40 - 0`; `A8_2` has no sub-children |
-| sub-child `c5` local coord | `Fraction(5)` | slice `[0, 20)`: `5 - 0` |
-| `r.list_regions()` | `["A8_1", "A8_2"]` | one Region per section |
-| region `A8_1` / `A8_2` | `[0, 123)` / `[123, 246)` | contiguous target coords |
-| `r.get_flow_map("source")` labels | `["A8_1", "A8_2"]` | reverse FlowMap carries labels |
-| `r.has_flow_map("forward_A8")` | `True` | forward FlowMap attached |
-| `get_events(include_children=True)` | `e10@10`, `c5@45`, `e140@134` (each once) | flattened parent-space coords |
-| `["A8_1", "A8_1"]` flow → children/regions | `["A8_1", "A8_1-rend2"]` | repeat gets a `-rend2` suffix |
-| `source.apply_flow("nope")` | raises `ValueError` | no FlowMap attached with that id |
+The virtual timeline of `default` states the length 4241/2, quarters and
+`fraction`; its minted ID is of the timeline's kind (`clt_1`, the root
+having a given ID); its `unfold` and `fold` answer as the FlowMap's do; a
+position given as an IdCoordinate of another timeline is refused, and so
+is a virtual timeline stating another length than its FlowMap gives.
+`get_flow` returns the same lengths and positions for the three
+conventions and leaves the timeline without Regions and FlowMaps.
+
+**`single` and `printed` are written only where they differ from
+`default`.** A timeline whose only element is a section break has two
+atomic sections and one flow: one FlowMap, `default`.
+
+**Nothing is written without flow control**: the call returns None and the
+timeline holds no Region and no FlowMap. On a child timeline the call is
+refused (a FlowMap names a root), on a timeline of unknown length it raises
+`UnknownLengthError`.
+
+**Written again.** With unchanged flow control the second call writes the
+same sections and FlowMaps under the same IDs (the Regions are minted anew,
+which gives the same IDs where the timeline holds no other minted Region).
+After a Break is added at
+10 to the timeline `|: 8 :| 12` (flow [0, 8) [0, 10), ending at the Break),
+the three old sections' Regions are gone, the new sections are A [0, 8),
+B [8, 10), C [10, 12), every FlowMap keeps the ID its convention had
+(`default` A A B, `single` A B, `printed` A B C), and the virtual timeline
+applying `default` states the new length 18 instead of 20.
+
+**Never over a FlowMap of another origin.** Where a FlowMap that was not
+computed from flow control names an atomic section, the call raises and
+changes nothing (Regions, FlowMaps and the manifest written are compared
+before and after). Three cases: a FlowMap written by hand (no `convention`)
+over a computed section; the fixture `flow/sonata_exposition`, whose
+FlowMaps name a convention but state no provenance; and a FlowMap stating
+`inferred` under a convention word of its own. A FlowMap written by hand
+over other Regions does not stand in the way. One refusal more keeps flow
+control whole: a section that a jump names as the place it lands at (`to`)
+is not replaced, since the jump would name nothing afterwards.
+
+### FlowMaps and virtual timelines in a manifest (`test_manifest_flow_maps.py`)
+
+`flow_maps` and `virtual_timelines` are lists at the top level of a
+manifest. In memory each FlowMap is held by the root timeline it names and
+each virtual timeline by the root of the tree it comes from, so they travel
+with the timeline into a group or a bundle and are written wherever it is
+written.
+
+- **The format's fixtures are read and written byte for byte**:
+  `flow/sonata_exposition` and `flow/flow_map_by_hand`, each in the
+  complete and the minimal form, through `Timeline` and through
+  `AlignmentBundle`. That alone would also hold for keys kept unread, so
+  the objects read are compared with literals as well: the three FlowMaps
+  of the exposition with their conventions and chunks, its virtual timeline
+  (length 36: A 12 + B 4 + A 12 + C 8), and the by-hand FlowMap with its
+  gap of `Fraction(4)`, its name and its provenance entry.
+- **Built in memory, written, read, equal.** A bundle of two root
+  timelines (a score with computed flows and a virtual timeline, a set list
+  with a FlowMap over children and a gap) is written with `to_dict`, read
+  with `from_dict`, and holds equal FlowMaps and virtual timelines; written
+  again it gives the same manifest. In the manifest written, `flow_maps`
+  and `virtual_timelines` are sorted by ID across both roots, every ID is
+  spelled `#id`, and a manifest of timelines without FlowMaps holds neither
+  key.
+- **Kept as read.** A virtual timeline that applies a conversion map, or
+  states `through`, is no FlowMap applied to its root: it is read, written
+  back unchanged and refuses to convert positions.
 
 ---
 
@@ -4702,40 +4765,16 @@ are the exact in-bounds coordinates: the out-of-bounds probe coordinate becomes
 
 ---
 
-### `test_unfolding.py` - Unfolding via Slicing
+### `test_get_slice.py` - Slicing a Timeline
 
-**Purpose:** Validates unfolding by structural slicing in quarters, and the default flow
-that a score's flow control plays against ms3's own unfolded measure tables.
-
-**Test classes** validating the pipeline:
+**Purpose:** Validates `Timeline.get_slice()`, the primitive that cuts a
+half-open stretch out of a timeline, and the assembly of slices into a
+`SegmentLine`.
 
 | Class | Purpose |
 |-------|---------|
-| `TestGetSlice` | Unit tests for `Timeline.get_slice()` primitive |
+| `TestGetSlice` | Unit tests for `Timeline.get_slice()` |
 | `TestSegmentLineAssembly` | Integration: slice + concatenate into a SegmentLine (this module's own manual helper) |
-| `TestUnfoldedTimelineIdentity` | Explicit uid on the same-type unfolded timeline |
-| `TestUnfoldingGoldStandard` | The played default flow against 7 ms3 gold standard specimens |
-| `TestGroupUnfolding` | Cross-domain unfolding through the group's `TimeStamp`s, which convert linearly between members |
-
-**Testing Pyramid:**
-
-```
-    ┌─────────────────────────────────┐
-    │  Group Unfolding Tests          │  ← 3 timelines × 1 FlowMap,
-    │  (TestGroupUnfolding)           │     cross-domain (Logical+Graphical)
-    ├─────────────────────────────────┤
-    │  Gold Standard Tests            │  ← 7 specimens, EXACT match
-    │  (TestUnfoldingGoldStandard)    │     against ms3 TSV files
-    ├─────────────────────────────────┤
-    │  Integration Tests              │  ← SegmentLine assembly from
-    │  (TestSegmentLineAssembly)      │     slices, contiguity, length
-    ├─────────────────────────────────┤
-    │  Unit Tests                     │  ← get_slice() primitive
-    │  (TestGetSlice)                 │
-    └─────────────────────────────────┘
-```
-
-**Test Categories:**
 
 1. **get_slice() Unit Tests** (16 tests)
    - Basic slicing with coordinate shifting (`[start, end)` semantics)
@@ -4755,24 +4794,26 @@ that a score's flow control plays against ms3's own unfolded measure tables.
    - The assembled line is an instance of both SegmentLine and the source class
    - Repeated section assembly (same range played twice)
 
-3. **Standalone Unfolded Timeline Identity Test**
-   - Explicit `uid` is retained by `unfold_via_flowmap`
+**Coordinate Handling:** EventData stores instant events under `start` (struct dict),
+not `instant`. Use `struct_to_coordinate()` for reading; never cast to `float`
+unnecessarily (loses Fraction precision).
 
-4. **Gold Standard End-to-End Tests** (49 tests, parametrized × 7 specimens)
-   - Each specimen's measures table is loaded, the flow control on its timeline is
-     played by the engine (`default`), and the runs are stated in measure counts
-   - EXACT row count, MC sequence, mc_playthrough, mn_playthrough with suffixes
-   - EXACT quarterbeats as Fraction (not float), total unfolded length: the lengths of
-     the runs sum up to it
-   - `flow_only` is played with the three elements its target flow needs (two repeat
-     starts, a jump past the third bracket); as its source stands the flow ends at the
-     second of three brackets (`tests/loader/score/README.md`, "Gold flows")
+---
 
-5. **Group Unfolding Tests** (10 tests)
-   - Uses Beethoven Op.18 No.4 iv multimodal score group (CLT1 + DGT1 + OpenScore)
-   - Validates that one FlowMap unfolds ALL timelines regardless of domain
-   - Resolves section boundaries through the group's `TimeStamp`s (members convert linearly between their common start and end)
-   - Tests: segment counts (11), contiguity, type preservation, length consistency
+### `test_unfolding.py` - The played flow against ms3's unfolded tables
+
+**Purpose:** Validates the default flow that a score's flow control plays
+against ms3's own unfolded measure tables (`TestUnfoldingGoldStandard`,
+49 tests: 7 tests × 7 specimens).
+
+- Each specimen's measures table is loaded, the flow control on its timeline is
+  played by the engine (`default`), and the runs are stated in measure counts
+- EXACT row count, MC sequence, mc_playthrough, mn_playthrough with suffixes
+- EXACT quarterbeats as Fraction (not float), total unfolded length: the lengths of
+  the runs sum up to it
+- `flow_only` is played with the repair its target flow needs (two repeat
+  starts, a jump past the third bracket); as its source stands the flow ends at the
+  second of three brackets (`tests/loader/score/README.md`, "Gold flows")
 
 **Gold Standard Exact Values:**
 
@@ -4784,21 +4825,13 @@ that a score's flow control plays against ms3's own unfolded measure tables.
 | rondeau | 60 | 138 | 195 | Rondeau form (D.S.) |
 | op18_no4_mov4 | 226 | 291 | 1116 | Repeats + volta brackets |
 | woo71 | 397 | 505 | 1078 | Complex split bars |
-| flow_only | 15 | 30 | 75 | D.S./D.C. + voltas |
+| flow_only | 15 | 31 | 81 | D.S./D.C. + voltas |
 
 **Known Edge Cases:**
 - **Anacrusis** (Musete): Incomplete first measure (1.5 QB instead of 3.0). Repeated instance preserves short duration.
 - **Split bars** (WoO71): Single notated measure divided into two MCs. Preserved exactly through unfolding.
 - **Volta brackets** (Op.18): Different MCs played on different passes. Correct volta selected per pass.
 - **Rondeau form** (c11n08): ABACADA return pattern via D.S.-like mechanism.
-
-**Bug Fixes Applied:**
-- `Ms3Loader._resolve_quarterbeats()`: Prefers `quarterbeats_all_endings` over `quarterbeats` (fixes 10.5q error for volta first-endings).
-- `SegmentLine.get_slice()`: Override creates with `length=0` and sets final length after children, fixing contiguity validation.
-
-**Coordinate Handling:** EventData stores instant events under `start` (struct dict),
-not `instant`. Use `struct_to_coordinate()` for reading; never cast to `float`
-unnecessarily (loses Fraction precision).
 
 ---
 

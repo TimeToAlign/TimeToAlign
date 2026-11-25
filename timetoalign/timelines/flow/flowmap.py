@@ -1,713 +1,1015 @@
-"""Map coordinates between folded and unfolded flows."""
+"""FlowMaps: one order in which stretches of a root timeline are played.
+
+A :class:`FlowMap` is written as an ordered list of **chunks**: each the ID
+of something giving an interval inside the tree of one root timeline (a
+Region of the root or of a descendant, a child timeline at any depth, a
+virtual timeline of that tree), or a :class:`~timetoalign.core.Gap`, a
+stretch nothing of the timeline fills. It needs timelines and nothing else:
+no flow control, no measures, no events. A reading, an order of movements
+and a set list are FlowMaps written by hand; the flows computed from flow
+control are FlowMaps whose chunks are the atomic sections
+(:meth:`Timeline.create_flow_maps_from_flow_control
+<timetoalign.timelines.Timeline.create_flow_maps_from_flow_control>`).
+
+Resolved against its root (:meth:`FlowMap.resolve`), a FlowMap is a
+:class:`ResolvedFlowMap`: the chunks as intervals of the ROOT's axis, by
+exact offset arithmetic from parent to child, each placed where the one
+before it ends on the **virtual axis**. That axis starts at 0 with the first
+chunk, has the root's unit and number type, and is as long as the chunks and
+gaps together. A root position is played wherever a chunk covers it
+(:meth:`ResolvedFlowMap.unfold`, any number of positions); a virtual position
+is the root position played there (:meth:`ResolvedFlowMap.fold`), or none
+inside a gap.
+
+A :class:`VirtualTimeline` is the statement that a map was applied to a
+timeline, giving a timeline with an ID of its own of which nothing else is
+written: no events, no children, no flow control.
+
+Examples:
+    >>> from timetoalign.core import Gap
+    >>> from timetoalign.timelines import ContinuousLogicalTimeline
+    >>> concert = ContinuousLogicalTimeline(length=20, uid="set")
+    >>> _ = concert.create_child(8, 0, uid="first")
+    >>> _ = concert.create_child(12, 8, uid="second")
+    >>> encore = concert.create_flow_map(["second", Gap(4), "first"], name="Encore order")
+    >>> played = encore.resolve(concert)
+    >>> played.length
+    Coordinate(Fraction(24, 1), quarters)
+    >>> played.unfold(2), played.fold(2), played.fold(13)
+    ([Coordinate(Fraction(18, 1), quarters)], Coordinate(Fraction(10, 1), quarters), None)
+    >>> encore.to_dict()
+    {'id': 'flow_map_1', 'timeline': 'set', 'chunks': ['second', {'gap': [4, 1]}, 'first'], \
+'name': 'Encore order'}
+"""
 
 from __future__ import annotations
 
-import bisect
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
-from .sections import Gap, _coerce_flow_entries, _coerce_intervals
+from timetoalign.core import Coordinate, Duration, Gap, IdCoordinate, Interval
+from timetoalign.core.enums import FlowConvention, NumberType, TimeUnit
+from timetoalign.core.ids import (
+    _IdentifiedElement,
+    mint_id,
+    quote_id,
+    timeline_id_prefix,
+    validate_id,
+)
+from timetoalign.core.provenance import Provenance
+from timetoalign.core.time import express_scalar_as, number_from_json, number_to_json
 
+from ..manifest import (
+    axis_value_from_json,
+    axis_value_to_json,
+    read_id,
+    read_name,
+    require_object,
+)
 
-@dataclass
-class FlowMapSection:
-    """A section mapping in a FlowMap.
+if TYPE_CHECKING:
+    from ..base import Timeline
+    from ..regions import Region
 
-    Represents one contiguous section that maps from a source coordinate range
-    to a target coordinate range. Used internally by FlowMap for coordinate
-    transformation.
-
-    In the context of flow control:
-    - Source coordinates: The "folded" timeline (with repeats/jumps compressed)
-    - Target coordinates: The "unfolded" timeline (linear playthrough order)
-
-    Both ranges are carried explicitly, which is what lets a FlowMap place its
-    sections rather than only concatenate them. A section is one of two kinds:
-
-    - **Played** — both ranges have the same non-zero extent. Source material
-      is carried to the target axis, at ``target_start`` rather than
-      necessarily at the end of the preceding section.
-    - **Gap** — one range is empty. An *insertion* (empty source range) is a
-      stretch of target time no material fills; an *elision* (empty target
-      range) is source material the flow drops. Inverting a FlowMap swaps the
-      two ranges, so an insertion inverts to an elision and back.
-
-    Attributes:
-        source_start: Start coordinate in source timeline (inclusive).
-        source_end: End coordinate in source timeline (exclusive).
-        target_start: Start coordinate in target timeline.
-        label: Identity of the section — the source region/section name it was
-            built from, or ``None`` when the section names nothing (e.g. built
-            from a bare coordinate pair). Unfolding uses this to name the
-            child timeline and Region it produces for the section.
-        target_end: End coordinate in target timeline. Defaults to ``None``,
-            which derives it from ``target_start`` plus the source extent —
-            the concatenating behaviour of an ordinary played section.
-    """
-
-    source_start: Fraction
-    source_end: Fraction
-    target_start: Fraction
-    label: str | None = None
-    target_end: Fraction | None = None
-
-    def __post_init__(self) -> None:
-        if self.target_end is None:
-            self.target_end = self.target_start + self.duration
-
-    @property
-    def duration(self) -> Fraction:
-        """Extent of this section on the source axis."""
-        return self.source_end - self.source_start
-
-    @property
-    def target_duration(self) -> Fraction:
-        """Extent of this section on the target axis."""
-        return self.target_end - self.target_start
-
-    @property
-    def is_gap(self) -> bool:
-        """Whether this section carries no material across the two axes."""
-        return self.duration == 0 or self.target_duration == 0
-
-    @property
-    def is_insertion(self) -> bool:
-        """Whether this is target time that no source material fills."""
-        return self.duration == 0 and self.target_duration > 0
-
-    @property
-    def is_elision(self) -> bool:
-        """Whether this is source material the flow drops."""
-        return self.target_duration == 0 and self.duration > 0
+_Number = int | float | Fraction
+CoordinateInput = _Number | Coordinate
+"""A position given to a FlowMap: a bare value on the axis, a
+:class:`~timetoalign.core.Coordinate` or an
+:class:`~timetoalign.core.IdCoordinate`."""
 
 
-class FlowMap:
-    """Coordinate transformation map for flow control.
+# region The FlowMap as written
 
-    A FlowMap enables bidirectional coordinate conversion between a source
-    timeline (with flow control) and a target (linearized) timeline:
 
-    - Source -> Target conversion (1:N, since repeats duplicate coordinates)
-    - Target -> Source lookup (N:1, always unique)
+@dataclass(frozen=True)
+class FlowMap(_IdentifiedElement):
+    """One order in which stretches of one root timeline are played.
 
-    The single positional argument, *source*, is polymorphic:
-
-    - ``None`` — an empty map (no sections). Used by internal construction
-      such as :meth:`inverse`, which fills the section tables afterwards.
-    - a single interval-like descriptor **or** an iterable of them — sections
-      are built directly from the resulting ``(start, end)`` ranges with a
-      cumulative target position, so the played spans concatenate in the
-      target axis and any gaps between them map to nothing. *id* defaults to
-      ``"default"``. Accepted descriptors are region ids (resolved through
-      *resolve*), ``Region`` objects, ``(start, end)`` coordinate pairs,
-      ``Timeline`` objects, and interval events — see
-      :func:`~timetoalign.timelines.flow.sections._coerce_intervals`.
-
-    Concatenation is only the default. Three interchangeable mechanisms
-    **place** the played spans on the target axis instead, so the assembled
-    timeline can hold holes — which is what an inverted cut needs:
-
-    - :class:`~timetoalign.timelines.flow.sections.Gap` entries mixed into
-      *source*, each pushing everything after it later by its own duration.
-    - The *at* argument, giving the target coordinate of each played span
-      outright.
-    - A ``{target coordinate -> span}`` mapping as *source*, which pairs the
-      two directly; see :meth:`from_dict`.
-
-    All three agree on the result, and no two may be combined in one call. See
-    :meth:`_build_from_entries` for the placement rules.
-
-    FlowMap stores sections for efficient lookup:
-
-    - ``_sections``: List of FlowMapSection objects
-    - ``_target_boundaries``: Sorted list of target section starts for
-      binary search
+    The FlowMap as it is written: it names its chunks and holds no
+    interval. :meth:`resolve` reads it against its root timeline.
 
     Attributes:
-        id: Identifier for this FlowMap.
-        source_length: Total extent of the source axis, when known. Recorded so
-            that :meth:`inverse` can restore a target axis whose final stretch
-            is a gap — material the flow drops off the end leaves no section to
-            infer the length from.
-        target_length: Total extent of the target axis, when known.
+        timeline: The ID of the ONE root timeline whose stretches are played.
+        chunks: The chunks in the order played. Each is the ID of a Region
+            of the root or of a descendant, of a child timeline at any
+            depth, or of a virtual timeline of that tree, or a
+            :class:`~timetoalign.core.Gap`. A chunk may occur any number of
+            times; the root itself is no chunk.
+        convention: Which flow of the timeline's flow control the FlowMap
+            states: ``default``, ``single`` or ``printed``
+            (:class:`~timetoalign.core.enums.FlowConvention`); any other
+            word is kept as given. None on a FlowMap that follows none, such
+            as one written by hand.
+        canonical: Whether this is the canonical FlowMap of its timeline.
+        name: Optional display name.
+        provenance: How the FlowMap was made and who believes it: any
+            number of :class:`~timetoalign.core.provenance.Provenance`
+            entries, as the manifest lists them.
+        id: The FlowMap's ID; minted as ``flow_map_{N}`` when not given.
+
+    Raises:
+        ValueError: If the timeline or a chunk is no valid ID, a chunk names
+            the timeline itself or is neither an ID nor a gap, or a
+            provenance entry is invalid.
+
+    Examples:
+        >>> from timetoalign.core import Gap
+        >>> reading = FlowMap("score", ["region_2", Gap(4), "region_1"])
+        >>> reading.id, reading.convention, reading.canonical
+        ('flow_map_1', None, False)
+        >>> FlowMap.from_dict(reading.to_dict()) == reading
+        True
     """
 
-    def __init__(
-        self,
-        source: object | None = None,
-        *,
-        id: str = "",
-        resolve: Callable[[str], object] | None = None,
-        at: Sequence[Fraction | float | int] | None = None,
-        source_length: Fraction | float | int | None = None,
-        target_length: Fraction | float | int | None = None,
-    ) -> None:
-        """Build a FlowMap from interval-like descriptors, or from nothing.
+    _id_prefix: ClassVar[str] = "flow_map"
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "timeline",
+        "chunks",
+        "convention",
+        "canonical",
+        "name",
+        "provenance",
+    )
+    _manifest_path: ClassVar[tuple[str, ...]] = ("flow_maps",)
 
-        Args:
-            source: What the sections are built from, one of three kinds:
-
-                - ``None``: an empty map without sections (what
-                  :meth:`inverse` starts from before filling them in).
-                - a mapping ``{target coordinate: span}``: each span (or
-                  collection of spans) placed at its key, as
-                  :meth:`from_dict` does; cannot be combined with *at*.
-                - one interval-like descriptor, or an iterable of them: a
-                  region id (resolved through *resolve*), a ``Region``, a
-                  ``(start, end)`` pair, a ``Timeline`` or an interval
-                  event, one section each, in the descriptors' own
-                  coordinates; the spans follow each other on the target
-                  axis unless :class:`~timetoalign.timelines.flow.sections.Gap`
-                  entries mixed in or *at* place them.
-            id: Identifier for this FlowMap. Defaults to ``"default"`` for a
-                map with sections.
-            resolve: Callable mapping a region id to an interval-like object
-                (e.g. a timeline's ``get_region``), used only when *source*
-                carries region ids.
-            at: Target coordinate for each played span, in the order the spans
-                are given. One entry per span; use ``None`` for a span that
-                should follow its predecessor. Cannot be combined with ``Gap``
-                entries in *source*.
-            source_length: Total extent of the source axis. Defaults to the
-                end of the last section.
-            target_length: Total extent of the target axis. Defaults to the
-                end of the last section.
-
-        Raises:
-            ValueError: If *at* is combined with ``Gap`` entries, if it does
-                not hold one entry per played span, or if the placements
-                overlap or run backwards.
-        """
-        self.id: str = id
-        self._sections: list[FlowMapSection] = []
-        self._target_boundaries: list[Fraction] = []
-        self.source_length: Fraction | None = (
-            None if source_length is None else Fraction(source_length)
-        )
-        self.target_length: Fraction | None = (
-            None if target_length is None else Fraction(target_length)
-        )
-
-        if source is None:
-            return
-
-        if not self.id:
-            self.id = "default"
-
-        if isinstance(source, Mapping):
-            # A {target coordinate -> span} mapping states the placement as
-            # data; see `from_dict`, which this shares its rules with.
-            if at is not None:
-                raise ValueError(
-                    "Cannot combine `at` with a mapping source: a mapping "
-                    "already gives each span its target coordinate"
-                )
-            entries, at = self._entries_from_mapping(source, resolve=resolve)
-            self._build_from_entries(entries, at=at)
-            return
-
-        # Interval-like singleton or collection: build sections directly in
-        # the source coordinate space of the descriptors (e.g. quarterbeats).
-        entries = _coerce_flow_entries(source, resolve=resolve)
-        self._build_from_entries(entries, at=at)
+    timeline: str
+    chunks: tuple[str | Gap, ...]
+    convention: FlowConvention | str | None = field(default=None, kw_only=True)
+    canonical: bool = field(default=False, kw_only=True)
+    name: str | None = field(default=None, kw_only=True)
+    provenance: tuple[Provenance, ...] = field(default=(), kw_only=True)
 
     @classmethod
-    def from_dict(
-        cls,
-        placements: "Mapping[Fraction | float | int, object]",
-        *,
-        id: str = "default",
-        resolve: Callable[[str], object] | None = None,
-        source_length: Fraction | float | int | None = None,
-        target_length: Fraction | float | int | None = None,
-    ) -> "FlowMap":
-        """Build a FlowMap from a ``{target coordinate -> span}`` mapping.
+    def from_dict(cls, data: dict[str, Any]) -> FlowMap:
+        """Restore a FlowMap from its object in a manifest's ``flow_maps``.
 
-        The third way to state a placement, and the most direct: each key is
-        the target coordinate at which its span begins. Where ``Gap`` entries
-        describe the holes and ``at`` parallels the span list, a mapping puts
-        coordinate and span side by side, which reads well when the placement
-        comes from a table, a file, or an analysis::
-
-            FlowMap.from_dict({0: "A8_1", 129: "A8_2"}, resolve=tl.get_region)
-
-        Keys are sorted, so the mapping need not be written in target order.
-        A value may also be a *collection* of spans, which are laid end to end
-        from that coordinate on.
+        IDs are bare, as every object of the library holds them. A chunk is
+        an ID or the object ``{gap: length}``, the length read as its JSON
+        form says (an integer, a float, a Fraction pair). ``convention``,
+        ``canonical``, ``name`` and ``provenance`` may be left out. Keys the
+        library does not know are kept, a gap's too, and written back.
 
         Args:
-            placements: Mapping from target coordinate to one interval-like
-                descriptor — or a collection of them — in the same shapes the
-                constructor accepts (region ids, ``Region`` objects,
-                ``(start, end)`` pairs, ``Timeline`` objects, interval events).
-            id: Identifier for this FlowMap.
-            resolve: Callable mapping a region id to an interval-like object,
-                needed only when the values carry region-name strings.
-            source_length: Total extent of the source axis, when known.
-            target_length: Total extent of the target axis, when known.
-
-        Returns:
-            The constructed FlowMap, its spans placed at the given coordinates
-            and the space between them recorded as gaps.
+            data: The FlowMap object.
 
         Raises:
-            ValueError: If two spans would overlap on the target axis.
-
-        Examples:
-            >>> FlowMap.from_dict({0: (0, 123), 129: (123, 228)}, id="restored")
-            FlowMap(restored: 2 sections, 1 gap)
+            ValueError: If the object is malformed.
         """
-        fm = cls(id=id, source_length=source_length, target_length=target_length)
-        entries, at = cls._entries_from_mapping(placements, resolve=resolve)
-        fm._build_from_entries(entries, at=at)
-        return fm
-
-    @staticmethod
-    def _entries_from_mapping(
-        placements: "Mapping[Fraction | float | int, object]",
-        *,
-        resolve: Callable[[str], object] | None = None,
-    ) -> tuple[list[tuple[Fraction, Fraction, str | None]], list[Fraction | None]]:
-        """Flatten a ``{coordinate -> span(s)}`` mapping into entries and placements.
-
-        Args:
-            placements: The mapping to flatten.
-            resolve: Callable mapping a region id to an interval-like object.
-
-        Returns:
-            The played spans in target order, and the matching ``at`` list:
-            the coordinate for each group's first span and ``None`` for the
-            spans that follow it there.
-        """
-        entries: list[tuple[Fraction, Fraction, str | None]] = []
-        at: list[Fraction | None] = []
-
-        for coordinate in sorted(placements, key=Fraction):
-            spans = _coerce_intervals(placements[coordinate], resolve=resolve)
-            for offset, span in enumerate(spans):
-                entries.append(span)
-                at.append(Fraction(coordinate) if offset == 0 else None)
-
-        return entries, at
-
-    def _build_from_intervals(
-        self, intervals: list[tuple[Fraction, Fraction, str | None]]
-    ) -> None:
-        """Build section tables from ``(start, end, label)`` source ranges.
-
-        Each interval becomes one FlowMapSection whose target position is the
-        cumulative sum of preceding interval durations, so the played spans
-        concatenate contiguously in the target (unfolded) axis. The interval's
-        label is carried onto the section so unfolding can name the child
-        timeline and Region it derives from the span.
-
-        Args:
-            intervals: The ``(start, end, label)`` source ranges, in target
-                order.
-        """
-        self._build_from_entries(list(intervals))
-
-    def _build_from_entries(
-        self,
-        entries: Sequence[tuple[Fraction, Fraction, str | None] | Gap],
-        *,
-        at: Sequence[Fraction | float | int | None] | None = None,
-    ) -> None:
-        """Build section tables from played spans and gaps, in target order.
-
-        Walks the entries with a target cursor. A played span normally starts
-        where the cursor stands, so consecutive spans concatenate. Two things
-        move the cursor on instead:
-
-        - A :class:`~timetoalign.timelines.flow.sections.Gap` advances it by
-          the gap's duration, recorded as an *insertion* section (empty source
-          range, non-empty target range). An auto-sized gap takes the distance
-          between the source end of the span before it and the source start of
-          the span after it.
-        - An *at* entry sets it outright for the span it belongs to, which is
-          the same placement stated as absolute coordinates rather than as
-          relative holes. The implied hole is recorded as an insertion too, so
-          both routes produce the same sections.
-
-        Args:
-            entries: Played ``(start, end, label)`` spans and ``Gap`` objects,
-                in target order.
-            at: Target coordinate per played span, or ``None`` per span to
-                leave it following its predecessor.
-
-        Raises:
-            ValueError: If *at* is combined with gaps, if its length does not
-                match the number of played spans, if a placement runs backwards
-                or overlaps its predecessor, or if an auto-sized gap has no
-                played span on both sides.
-        """
-        gaps = [entry for entry in entries if isinstance(entry, Gap)]
-        played = [entry for entry in entries if not isinstance(entry, Gap)]
-
-        if at is not None:
-            if gaps:
-                raise ValueError(
-                    "Cannot combine `at` placements with Gap entries: state the "
-                    "placement either as absolute coordinates or as gaps, not both"
-                )
-            if len(at) != len(played):
-                raise ValueError(
-                    f"`at` must hold one target coordinate per played span: got "
-                    f"{len(at)} for {len(played)} span(s)"
-                )
-
-        target_position = Fraction(0)
-        placements = list(at) if at is not None else []
-        span_index = 0
-
-        for i, entry in enumerate(entries):
-            if isinstance(entry, Gap):
-                duration = self._gap_duration(entry, entries, i)
-                anchor = self._gap_source_anchor(entries, i)
-                self._append_section(
-                    FlowMapSection(
-                        source_start=anchor,
-                        source_end=anchor,
-                        target_start=target_position,
-                        label=entry.label,
-                        target_end=target_position + duration,
-                    )
-                )
-                target_position += duration
-                continue
-
-            source_start, source_end, label = entry
-            placement = placements[span_index] if placements else None
-            span_index += 1
-
-            if placement is not None:
-                placement = Fraction(placement)
-                if placement < target_position:
-                    raise ValueError(
-                        f"Placement {placement} for span {label or i} overlaps the "
-                        f"preceding span, which ends at {target_position}"
-                    )
-                if placement > target_position:
-                    # The hole the placement leaves behind is itself a section,
-                    # so `at` and Gap specs produce identical section tables.
-                    anchor = self._gap_source_anchor(entries, i)
-                    self._append_section(
-                        FlowMapSection(
-                            source_start=anchor,
-                            source_end=anchor,
-                            target_start=target_position,
-                            label=None,
-                            target_end=placement,
-                        )
-                    )
-                target_position = placement
-
-            self._append_section(
-                FlowMapSection(
-                    source_start=source_start,
-                    source_end=source_end,
-                    target_start=target_position,
-                    label=label,
-                )
-            )
-            target_position += source_end - source_start
-
-    def _append_section(self, section: FlowMapSection) -> None:
-        """Append a section and its target boundary to the lookup tables."""
-        self._sections.append(section)
-        self._target_boundaries.append(section.target_start)
-
-    @staticmethod
-    def _gap_duration(
-        gap: Gap,
-        entries: Sequence[tuple[Fraction, Fraction, str | None] | Gap],
-        index: int,
-    ) -> Fraction:
-        """Resolve a gap's target duration, auto-sizing it when unstated.
-
-        An auto-sized gap measures the hole its neighbours leave on the
-        **source** axis: the distance from the source end of the nearest
-        preceding played span to the source start of the nearest following one.
-
-        Args:
-            gap: The gap to size.
-            entries: The full entry sequence the gap belongs to.
-            index: Position of *gap* within *entries*.
-
-        Returns:
-            The gap's extent on the target axis.
-
-        Raises:
-            ValueError: If an auto-sized gap lacks a played span on either
-                side, or if its neighbours run backwards on the source axis.
-        """
-        if gap.duration is not None:
-            return Fraction(gap.duration)
-
-        tail = index + 1
-        before = next(
-            (e for e in reversed(entries[:index]) if not isinstance(e, Gap)), None
+        require_object(data, "a FlowMap", ("id", "timeline", "chunks"))
+        flow_map_id = read_id(data["id"], "a FlowMap")
+        what = f"FlowMap {quote_id(flow_map_id)}"
+        if not isinstance(data["chunks"], list):
+            raise ValueError(f"the chunks of {what} must be an array")
+        entries = data.get("provenance", [])
+        if not isinstance(entries, list):
+            raise ValueError(f"the provenance of {what} must be an array")
+        try:
+            provenance = tuple(Provenance.from_dict(dict(entry)) for entry in entries)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"the provenance of {what}: {error}") from error
+        flow_map = cls(
+            read_id(data["timeline"], f"the timeline of {what}"),
+            tuple(_read_chunk(chunk, what) for chunk in data["chunks"]),
+            convention=data.get("convention"),
+            canonical=data.get("canonical", False),
+            name=read_name(data, what),
+            provenance=provenance,
+            id=flow_map_id,
         )
-        after = next((e for e in entries[tail:] if not isinstance(e, Gap)), None)
-        if before is None or after is None:
-            side = "start" if before is None else "end"
-            raise ValueError(
-                f"An auto-sized Gap needs a played span on both sides to measure "
-                f"the hole between them; this one is at the {side} of the flow. "
-                f"Give it an explicit duration, e.g. Gap(6)."
-            )
+        flow_map._keep_unknown_keys(data)
+        return flow_map
 
-        duration = after[0] - before[1]
-        if duration < 0:
-            raise ValueError(
-                f"An auto-sized Gap cannot measure a negative hole: the span "
-                f"before it ends at source {before[1]} but the span after it "
-                f"starts earlier, at source {after[0]}"
-            )
-        return duration
-
-    @staticmethod
-    def _gap_source_anchor(
-        entries: Sequence[tuple[Fraction, Fraction, str | None] | Gap],
-        index: int,
-    ) -> Fraction:
-        """Locate the empty source range of the gap at *index*.
-
-        A gap carries no material, so its source range is a single point: the
-        seam between the spans it separates. That is the source end of the
-        nearest preceding played span, or — with nothing before it — the source
-        start of the nearest following one.
-
-        Args:
-            entries: The full entry sequence the gap belongs to.
-            index: Position of the gap within *entries*.
-
-        Returns:
-            The source coordinate at which the gap sits.
-        """
-        before = next(
-            (e for e in reversed(entries[:index]) if not isinstance(e, Gap)), None
-        )
-        if before is not None:
-            return before[1]
-        tail = index + 1
-        after = next((e for e in entries[tail:] if not isinstance(e, Gap)), None)
-        return after[0] if after is not None else Fraction(0)
-
-    def unfold_coordinate(self, coord: Fraction | float | int) -> list[Fraction]:
-        """Map source coordinate to target coordinates.
-
-        Since a source coordinate may be visited multiple times (due to repeats),
-        this returns a list of all corresponding target coordinates.
-
-        Args:
-            coord: Coordinate in source timeline.
-
-        Returns:
-            List of coordinates in target timeline. Empty list if coord
-            is not within any section.
-
-        Examples:
-            >>> # Source coord 3 appears twice due to repeat
-            >>> flow_map.unfold_coordinate(3)
-            [Fraction(2), Fraction(6)]
-        """
-        coord = Fraction(coord)
-        results: list[Fraction] = []
-
-        for sec in self._sections:
-            # An elision covers source material the flow drops: it has no
-            # target extent, so coordinates inside it are played nowhere.
-            if sec.is_gap:
+    def __post_init__(self) -> None:
+        """Mint or validate the ID, then validate and settle the members."""
+        super().__post_init__()
+        what = f"FlowMap {quote_id(self.id)}"
+        validate_id(self.timeline)
+        chunks = tuple(self.chunks)
+        for chunk in chunks:
+            if isinstance(chunk, Gap):
                 continue
-            # Check if coord falls within this section [start, end)
-            if sec.source_start <= coord < sec.source_end:
-                offset = coord - sec.source_start
-                results.append(sec.target_start + offset)
+            if not isinstance(chunk, str):
+                raise ValueError(
+                    f"a chunk of {what} is an ID or a Gap, got {chunk!r}: name a "
+                    "region, a child timeline or a virtual timeline by its ID"
+                )
+            validate_id(chunk)
+            if chunk == self.timeline:
+                raise ValueError(
+                    f"{what} names its own timeline {quote_id(chunk)} as a chunk: "
+                    "a chunk is a region, a child timeline or a virtual timeline "
+                    "inside its tree"
+                )
+        if not isinstance(self.canonical, bool):
+            raise ValueError(f"canonical of {what} is true or false")
+        if self.convention is not None and not isinstance(self.convention, str):
+            raise ValueError(f"the convention of {what} is a word")
+        convention = self.convention
+        if convention in FlowConvention.__members__:
+            convention = FlowConvention[str(convention)]
+        entries = self.provenance
+        if isinstance(entries, Provenance | Mapping):
+            entries = (entries,)
+        object.__setattr__(self, "chunks", chunks)
+        object.__setattr__(self, "convention", convention)
+        object.__setattr__(
+            self,
+            "provenance",
+            tuple(
+                (
+                    entry
+                    if isinstance(entry, Provenance)
+                    else Provenance.from_dict(dict(entry))
+                )
+                for entry in entries
+            ),
+        )
 
-        return results
+    @property
+    def is_computed(self) -> bool:
+        """Whether the FlowMap states a flow computed from flow control.
 
-    def fold(self, coord: Fraction | float | int) -> Fraction:
-        """Map target coordinate back to source coordinate.
+        It names one of the three conventions
+        (:class:`~timetoalign.core.enums.FlowConvention`) and an entry of its
+        provenance gives the method ``inferred``. A FlowMap written by hand,
+        stated by a source or following a convention of another name is
+        none.
+        """
+        return isinstance(self.convention, FlowConvention) and any(
+            entry.method == "inferred" for entry in self.provenance
+        )
 
-        The target timeline has unique coordinates, so this always returns
-        a single value.
+    def resolve(self, root: Timeline) -> ResolvedFlowMap:
+        """Read the FlowMap against its root timeline.
+
+        Each chunk becomes its interval on the ROOT's axis: a Region its
+        extent, a child timeline its whole length, each carried up to the
+        root by the offsets of the timelines between (exact offset
+        arithmetic); a virtual timeline of the tree the stretches of the
+        FlowMap it applies, in their order. A gap keeps its length. The
+        stretches are placed one after the other on the virtual axis.
 
         Args:
-            coord: Coordinate in target timeline.
+            root: The timeline the FlowMap names.
 
         Returns:
-            Coordinate in source timeline.
+            The FlowMap as placed stretches.
 
         Raises:
-            ValueError: If coordinate is outside the flow range.
-
-        Examples:
-            >>> # Target coord 6 maps back to source coord 3
-            >>> flow_map.fold(6)
-            Fraction(3)
+            ValueError: If *root* is a child timeline or not the timeline
+                named; a chunk names nothing in the root's tree; a chunk is
+                a virtual timeline whose unit is not the root's (every
+                region and child of a tree is in the root's unit), or one
+                that cannot be read (it applies no FlowMap of the root,
+                another timeline than the root's, or goes ``through``
+                something); a gap's length is no value of the root's number
+                type; or the chunks name one another in a circle.
+            UnknownLengthError: If a child timeline named has no known
+                length.
         """
-        coord = Fraction(coord)
+        return _resolve(self, root, ())
 
-        if not self._sections:
-            raise ValueError(f"FlowMap has no sections, cannot fold coordinate {coord}")
+    def _on_axis(self, root: Timeline) -> FlowMap:
+        """Return the FlowMap with every gap in the number type of *root*.
 
-        # Binary search to find the section containing this target coordinate
-        idx = bisect.bisect_right(self._target_boundaries, coord) - 1
+        Raises:
+            ValueError: If a gap's length is no value of that number type.
+        """
+        lengths = {
+            index: _gap_length(chunk, root, self).value
+            for index, chunk in enumerate(self.chunks)
+            if isinstance(chunk, Gap)
+        }
+        if all(
+            type(length) is type(self.chunks[index].length)
+            for index, length in lengths.items()
+        ):
+            return self
+        return replace(
+            self,
+            chunks=tuple(
+                replace(chunk, length=lengths[index]) if index in lengths else chunk
+                for index, chunk in enumerate(self.chunks)
+            ),
+        )
 
-        if idx < 0:
-            raise ValueError(
-                f"Coordinate {coord} is before the start of the flow "
-                f"(starts at {self._target_boundaries[0]})"
-            )
+    def _with_references_renamed(self, renamed: Mapping[str, str]) -> FlowMap:
+        """Return the FlowMap naming its timeline and chunks by their new IDs."""
+        timeline = renamed.get(self.timeline, self.timeline)
+        chunks = tuple(
+            renamed.get(chunk, chunk) if isinstance(chunk, str) else chunk
+            for chunk in self.chunks
+        )
+        if timeline == self.timeline and chunks == self.chunks:
+            return self
+        return replace(self, timeline=timeline, chunks=chunks)
 
-        if idx >= len(self._sections):
-            raise ValueError(f"Coordinate {coord} is beyond the end of the flow")
-
-        sec = self._sections[idx]
-
-        # Beyond the section the search landed on, the coordinate is either in
-        # a hole before the next section or past the whole flow. An insertion
-        # is a hole recorded outright; the space between two placed sections is
-        # the same hole left implicit.
-        if sec.is_insertion or coord >= sec.target_end:
-            hole_start = sec.target_start if sec.is_insertion else sec.target_end
-            rest = idx + 1
-            hole_end = next(
-                (s.target_start for s in self._sections[rest:] if not s.is_elision),
-                self.total_target_length,
-            )
-            if coord < hole_end:
-                raise ValueError(
-                    f"Coordinate {coord} falls in a gap of the flow "
-                    f"([{hole_start}, {hole_end})), which no source material fills"
+    def _dict_fields(self) -> dict[str, Any]:
+        """Return the FlowMap's keys; ``convention`` and ``provenance`` are
+        written only when stated."""
+        fields: dict[str, Any] = {
+            "id": self.id,
+            "timeline": self.timeline,
+            "chunks": [
+                (
+                    chunk
+                    if isinstance(chunk, str)
+                    else chunk._dict_form(
+                        {"gap": number_to_json(chunk.length)}, minimal=False
+                    )
                 )
-            raise ValueError(
-                f"Coordinate {coord} is beyond the end of the flow "
-                f"(ends at {self.total_target_length})"
-            )
-
-        offset = coord - sec.target_start
-        return sec.source_start + offset
-
-    def inverse(self) -> "FlowMap":
-        """Create the inverse FlowMap (target -> source becomes source -> target).
-
-        The inverse FlowMap swaps the source and target coordinate systems.
-        This is useful for attaching to a target timeline to enable
-        tracing back to the original source.
-
-        Because each section carries both ranges outright, inverting is a plain
-        swap of the two. That is what makes an inverse **placing** rather than
-        concatenating: a flow that drops material leaves its spans at their
-        original source coordinates, so the inverse puts them back where they
-        came from and the dropped stretch reappears as a gap. Applying the
-        inverse with :meth:`~timetoalign.timelines.Timeline.apply_flow`
-        therefore rebuilds a timeline laid out like the original.
-
-        Note:
-            The inverse FlowMap's unfold_coordinate() returns coordinates in
-            the original source space, which may yield multiple results if the
-            source coord is visited multiple times.
-
-        Returns:
-            A new FlowMap with inverted sections.
-        """
-        inverse_sections = [
-            FlowMapSection(
-                source_start=sec.target_start,
-                source_end=sec.target_end,
-                target_start=sec.source_start,
-                label=sec.label,
-                target_end=sec.source_end,
-            )
-            for sec in self._sections
-        ]
-
-        inverse = FlowMap(id=f"{self.id}_inverse")
-        inverse._sections = inverse_sections
-        inverse._target_boundaries = [sec.target_start for sec in inverse_sections]
-        inverse.source_length = self.target_length
-        inverse.target_length = self.source_length
-
-        return inverse
-
-    @property
-    def total_target_length(self) -> Fraction:
-        """Total length of the target timeline.
-
-        The recorded ``target_length`` when there is one — a flow whose final
-        stretch is a gap ends past its last section — otherwise the end of the
-        last section.
-        """
-        if self.target_length is not None:
-            return self.target_length
-        if not self._sections:
-            return Fraction(0)
-        return max(sec.target_end for sec in self._sections)
-
-    @property
-    def n_sections(self) -> int:
-        """Number of played sections in this FlowMap.
-
-        Gaps carry no material, so they are not counted here; see
-        :meth:`iter_gaps` for the holes between the played sections.
-        """
-        return sum(1 for sec in self._sections if not sec.is_gap)
-
-    @property
-    def n_gaps(self) -> int:
-        """Number of holes on the target axis."""
-        return len(self.iter_gaps())
-
-    def iter_gaps(self) -> list[tuple[Fraction, Fraction, str | None]]:
-        """Report every stretch of target time that no source material fills.
-
-        A hole reaches the map two ways, and both are reported here:
-
-        - **Recorded** — an insertion section, built from a
-          :class:`~timetoalign.timelines.flow.sections.Gap` entry or from an
-          ``at`` placement, which may carry a label.
-        - **Implied** — the space left between two placed sections, or between
-          the last section and a longer recorded ``target_length``. Inverting a
-          FlowMap produces holes this way, since the inverse simply puts each
-          span back at its source coordinates.
-
-        Returns:
-            The ``(start, end, label)`` of each hole, in target order.
-            Adjacent holes are merged, and *label* is the recorded gap's label
-            or ``None``.
-        """
-        raw: list[tuple[Fraction, Fraction, str | None]] = []
-        cursor = Fraction(0)
-
-        for sec in self._sections:
-            if sec.is_elision:
-                # Dropped source material occupies no target time at all.
-                continue
-            if sec.is_insertion:
-                raw.append((sec.target_start, sec.target_end, sec.label))
-            elif sec.target_start > cursor:
-                raw.append((cursor, sec.target_start, None))
-            cursor = max(cursor, sec.target_end)
-
-        end = self.total_target_length
-        if end > cursor:
-            raw.append((cursor, end, None))
-
-        # Merge holes that run into each other, keeping the first label given.
-        merged: list[tuple[Fraction, Fraction, str | None]] = []
-        for start, stop, label in raw:
-            if merged and merged[-1][1] == start:
-                prev_start, _, prev_label = merged[-1]
-                merged[-1] = (prev_start, stop, prev_label or label)
-            else:
-                merged.append((start, stop, label))
-
-        return merged
+                for chunk in self.chunks
+            ],
+        }
+        if self.convention is not None:
+            fields["convention"] = str(self.convention)
+        fields.update(canonical=self.canonical, name=self.name)
+        if self.provenance:
+            fields["provenance"] = [entry.to_dict() for entry in self.provenance]
+        return fields
 
     def __repr__(self) -> str:
-        n_gaps = self.n_gaps
-        gaps = f", {n_gaps} gap{'s' if n_gaps != 1 else ''}" if n_gaps else ""
-        return f"FlowMap({self.id}: {self.n_sections} sections{gaps})"
+        details = "".join(
+            f", {key}={value!r}"
+            for key, value in (
+                ("convention", self.convention and str(self.convention)),
+                ("name", self.name),
+            )
+            if value is not None
+        )
+        return (
+            f"FlowMap({self.id!r}, timeline={self.timeline!r}, "
+            f"{len(self.chunks)} chunks{details})"
+        )
+
+
+def _read_chunk(data: Any, what: str) -> str | Gap:
+    """Read one entry of ``chunks``: an ID, or the object ``{gap: length}``.
+
+    Raises:
+        ValueError: If the entry is neither.
+    """
+    if isinstance(data, str):
+        return read_id(data, f"a chunk of {what}")
+    if not isinstance(data, dict) or "gap" not in data:
+        raise ValueError(f"a chunk of {what} is an ID or {{gap: length}}, got {data!r}")
+    try:
+        gap = Gap(number_from_json(data["gap"]))
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"a gap of {what}: {error}") from error
+    gap._keep_unknown_keys(data)
+    return gap
+
+
+# endregion
+
+
+# region The FlowMap as resolved
+
+
+@dataclass(frozen=True)
+class PlacedChunk:
+    """A stretch of the root timeline, placed on the virtual axis.
+
+    Attributes:
+        source: The stretch played, a half-open interval of the root's axis.
+        start: Where it begins on the virtual axis.
+    """
+
+    source: Interval
+    start: Coordinate
+
+    @property
+    def length(self) -> Duration:
+        """How long the stretch is, on either axis."""
+        return self.source.duration
+
+    @property
+    def end(self) -> Coordinate:
+        """Where it ends on the virtual axis, exclusive."""
+        return self.start + self.length
+
+
+@dataclass(frozen=True)
+class PlacedGap:
+    """A stretch of the virtual axis that nothing of the root fills.
+
+    Attributes:
+        length: How long the gap is.
+        start: Where it begins on the virtual axis.
+    """
+
+    length: Duration
+    start: Coordinate
+
+    @property
+    def end(self) -> Coordinate:
+        """Where it ends on the virtual axis, exclusive."""
+        return self.start + self.length
+
+
+@dataclass(frozen=True)
+class ResolvedFlowMap:
+    """A played order as stretches of a root timeline's axis, placed in order.
+
+    What :meth:`FlowMap.resolve` returns, and what
+    :meth:`Timeline.get_flow <timetoalign.timelines.Timeline.get_flow>`
+    computes from flow control without writing anything. The virtual axis
+    starts at 0 with the first stretch and has the root's unit and number
+    type; every position in and out is a
+    :class:`~timetoalign.core.Coordinate` in that number type.
+
+    Attributes:
+        timeline: The ID of the timeline whose stretches are played.
+        unit: The unit of both axes.
+        number_type: The number type of both axes.
+        chunks: The stretches in the order played, each placed where the one
+            before it ends.
+    """
+
+    timeline: str
+    unit: TimeUnit
+    number_type: NumberType
+    chunks: tuple[PlacedChunk | PlacedGap, ...]
+
+    @classmethod
+    def from_stretches(
+        cls,
+        timeline: str,
+        stretches: Iterable[Interval | Duration],
+        *,
+        unit: TimeUnit,
+        number_type: NumberType,
+    ) -> ResolvedFlowMap:
+        """Place stretches one after the other on a virtual axis.
+
+        Args:
+            timeline: The ID of the timeline the intervals lie on.
+            stretches: In the order played, an
+                :class:`~timetoalign.core.Interval` of the timeline's axis
+                for a stretch played and a
+                :class:`~timetoalign.core.Duration` for a gap.
+            unit: The timeline's unit.
+            number_type: The timeline's number type.
+        """
+        position = Coordinate(0, unit, number_type=number_type)
+        placed: list[PlacedChunk | PlacedGap] = []
+        for stretch in stretches:
+            chunk = (
+                PlacedChunk(stretch, position)
+                if isinstance(stretch, Interval)
+                else PlacedGap(stretch, position)
+            )
+            placed.append(chunk)
+            position = chunk.end
+        return cls(timeline, unit, number_type, tuple(placed))
+
+    @property
+    def length(self) -> Coordinate:
+        """The length of the virtual axis: the chunks and gaps together."""
+        if not self.chunks:
+            return Coordinate(0, self.unit, number_type=self.number_type)
+        return self.chunks[-1].end
+
+    def unfold(self, coordinate: CoordinateInput) -> list[Coordinate]:
+        """Return every position of the virtual axis a root position is played at.
+
+        Args:
+            coordinate: A position on the root's axis: a bare value, a
+                Coordinate in the root's unit, or an IdCoordinate naming the
+                root.
+
+        Returns:
+            The virtual positions in the order played: one per stretch
+            covering the position (a stretch is half-open, its end excluded),
+            none where it is never played.
+
+        Raises:
+            ValueError: If a Coordinate is in another unit, or an
+                IdCoordinate names another timeline.
+        """
+        if (
+            isinstance(coordinate, IdCoordinate)
+            and coordinate.timeline_id != self.timeline
+        ):
+            raise ValueError(
+                f"{coordinate!r} is no position of timeline {quote_id(self.timeline)}"
+            )
+        value = self._value(coordinate)
+        return [
+            self._coordinate(chunk.start.value + (value - chunk.source.start.value))
+            for chunk in self.chunks
+            if isinstance(chunk, PlacedChunk)
+            and chunk.source.start.value <= value < chunk.source.end.value
+        ]
+
+    def fold(self, coordinate: CoordinateInput) -> Coordinate | None:
+        """Return the root position played at a position of the virtual axis.
+
+        Args:
+            coordinate: A position on the virtual axis: a bare value or a
+                Coordinate in its unit.
+
+        Returns:
+            The position on the root's axis, or None inside a gap.
+
+        Raises:
+            ValueError: If the position lies outside the virtual axis, which
+                is half-open (``[0, length)``), a Coordinate is in another
+                unit, or an IdCoordinate names the root timeline, whose
+                positions are not virtual positions.
+        """
+        if (
+            isinstance(coordinate, IdCoordinate)
+            and coordinate.timeline_id == self.timeline
+        ):
+            raise ValueError(
+                f"{coordinate!r} is a position of timeline {quote_id(self.timeline)}, "
+                "not of the virtual axis: unfold it"
+            )
+        value = self._value(coordinate)
+        for chunk in self.chunks:
+            if chunk.start.value <= value < chunk.end.value:
+                if isinstance(chunk, PlacedGap):
+                    return None
+                return self._coordinate(
+                    chunk.source.start.value + (value - chunk.start.value)
+                )
+        raise ValueError(
+            f"{self._coordinate(value)} lies outside the virtual axis, which runs "
+            f"from 0 to {self.length}, its end excluded"
+        )
+
+    def _coordinate(self, value: _Number) -> Coordinate:
+        """A coordinate of either axis."""
+        return Coordinate(value, self.unit, number_type=self.number_type)
+
+    def _value(self, coordinate: CoordinateInput) -> _Number:
+        """Read a position as a bare value in the axes' number type.
+
+        Raises:
+            ValueError: If a Coordinate is in another unit.
+        """
+        if not isinstance(coordinate, Coordinate):
+            return self._coordinate(coordinate).value
+        if coordinate.unit != self.unit:
+            raise ValueError(
+                f"{coordinate!r} is in {coordinate.unit}; the axis of timeline "
+                f"{quote_id(self.timeline)} is in {self.unit}"
+            )
+        return express_scalar_as(coordinate, self.number_type).value
+
+    def __repr__(self) -> str:
+        return (
+            f"ResolvedFlowMap(timeline={self.timeline!r}, {len(self.chunks)} chunks, "
+            f"length={self.length})"
+        )
+
+
+def _resolve(
+    flow_map: FlowMap, root: Timeline, visiting: tuple[str, ...]
+) -> ResolvedFlowMap:
+    """Resolve *flow_map* against *root*; *visiting* holds the FlowMaps being
+    resolved around it, so that a circle of chunks is refused."""
+    what = f"FlowMap {quote_id(flow_map.id)}"
+    if root._parent is not None:
+        raise ValueError(
+            f"{what} cannot be read on timeline {quote_id(root.id)}, a child of "
+            f"{quote_id(root._parent.id)}: a FlowMap names a root timeline"
+        )
+    if root.id != flow_map.timeline:
+        raise ValueError(
+            f"{what} is a FlowMap of timeline {quote_id(flow_map.timeline)}, not of "
+            f"{quote_id(root.id)}"
+        )
+    if flow_map.id in visiting:
+        raise ValueError(
+            f"{what} names itself as a chunk, through the virtual timelines its "
+            "chunks name"
+        )
+    visiting = (*visiting, flow_map.id)
+    stretches: list[Interval | Duration] = []
+    for chunk in flow_map.chunks:
+        if isinstance(chunk, Gap):
+            stretches.append(_gap_length(chunk, root, flow_map))
+            continue
+        interval = _interval_in_tree(root, chunk)
+        if interval is not None:
+            stretches.append(interval)
+            continue
+        virtual = root._virtual_timelines.get(chunk)
+        if virtual is None:
+            raise ValueError(
+                f"chunk {quote_id(chunk)} of {what} names no region, child "
+                f"timeline or virtual timeline in the tree of {quote_id(root.id)}"
+            )
+        if virtual.unit != root.unit:
+            raise ValueError(
+                f"chunk {quote_id(chunk)} of {what} is a virtual timeline in "
+                f"{virtual.unit}; the axis of its root {quote_id(root.id)} is in "
+                f"{root.unit}"
+            )
+        stretches.extend(
+            placed.source if isinstance(placed, PlacedChunk) else placed.length
+            for placed in virtual._resolved(root, visiting).chunks
+        )
+    return ResolvedFlowMap.from_stretches(
+        root.id, stretches, unit=root.unit, number_type=root.number_type
+    )
+
+
+def _gap_length(gap: Gap, root: Timeline, flow_map: FlowMap) -> Duration:
+    """The length of *gap* on the axis of *root*, in its number type.
+
+    Raises:
+        ValueError: If the length is no value of that number type.
+    """
+    length = Duration(gap.length, root.unit, number_type=root.number_type)
+    if length.value != gap.length:
+        raise ValueError(
+            f"the gap of {gap.length} in FlowMap {quote_id(flow_map.id)} is no "
+            f"{root.number_type} value, the number type of timeline "
+            f"{quote_id(root.id)}"
+        )
+    return length
+
+
+def _tree_origins(root: Timeline) -> Iterator[tuple[Timeline, _Number]]:
+    """Yield every timeline of a tree with where its origin lies on the root's axis.
+
+    The offsets from the root down are added up in the root's number type;
+    every timeline of a tree is in the root's unit.
+    """
+    pending: list[tuple[Timeline, _Number]] = [
+        (root, Coordinate(0, root.unit, number_type=root.number_type).value)
+    ]
+    while pending:
+        timeline, origin = pending.pop()
+        yield timeline, origin
+        pending.extend(
+            (
+                child,
+                origin
+                + express_scalar_as(
+                    timeline._child_offsets[child_id], root.number_type
+                ).value,
+            )
+            for child_id, child in timeline._children.items()
+        )
+
+
+def _interval_in_tree(root: Timeline, chunk: str) -> Interval | None:
+    """The interval on the axis of *root* of the region or child named *chunk*.
+
+    Returns:
+        The interval, or None when the tree holds no such region or child.
+
+    Raises:
+        UnknownLengthError: If it is a child timeline of unknown length.
+    """
+    for timeline, origin in _tree_origins(root):
+        if timeline is not root and timeline.id == chunk:
+            end = timeline._require_length("read it as a chunk of a FlowMap")
+            start = timeline.origin
+        elif chunk in timeline._regions:
+            start, end = timeline._regions[chunk].start, timeline._regions[chunk].end
+        else:
+            continue
+        on_root = (
+            Coordinate(
+                origin + express_scalar_as(bound, root.number_type).value,
+                root.unit,
+                number_type=root.number_type,
+            )
+            for bound in (start, end)
+        )
+        return Interval(start=next(on_root), end=next(on_root))
+    return None
+
+
+# endregion
+
+
+# region Atomic sections and computed flows
+
+
+class ComputedFlows(NamedTuple):
+    """What computing a timeline's flows from its flow control wrote.
+
+    Attributes:
+        sections: The atomic sections, Regions of the timeline in the order
+            of its axis.
+        flow_maps: The FlowMaps written: ``default``, then ``single`` and
+            ``printed`` where their chunks differ from ``default``'s.
+    """
+
+    sections: tuple[Region, ...]
+    flow_maps: tuple[FlowMap, ...]
+
+
+# endregion
+
+
+# region Virtual timelines
+
+
+@dataclass(frozen=True)
+class VirtualTimeline(_IdentifiedElement):
+    """The statement that a map was applied to a timeline, giving a timeline.
+
+    A virtual timeline exists only by applying the map: it has an ID, a
+    unit, a number type and a length of its own, and nothing else of it is
+    written. It holds no events, no children and no flow control. Its
+    positions and those of the timeline it comes from convert through the
+    map, in both directions (:meth:`unfold`, :meth:`fold`).
+
+    Attributes:
+        map: The ID of the map applied: a FlowMap, or a conversion map.
+        timeline: The ID of the timeline the map is applied to, or of
+            another virtual timeline.
+        length: The end of the virtual timeline on its own axis, which
+            states its unit and number type too.
+        through: The ID of the group or conversion map that carries the map
+            to ``timeline``; kept as read and never evaluated.
+        name: Optional display name.
+        id: The virtual timeline's ID; minted in the ID kind of its unit
+            (``clt_{N}`` on quarters), as a timeline's is.
+
+    Examples:
+        >>> from timetoalign.timelines import ContinuousLogicalTimeline
+        >>> score = ContinuousLogicalTimeline(length=24, uid="score")
+        >>> a = score.create_region(0, 16, id="a")
+        >>> b = score.create_region(16, 24, id="b")
+        >>> played = score.create_virtual_timeline(score.create_flow_map([a, a, b]))
+        >>> played.id, played.length
+        ('clt_1', Coordinate(Fraction(40, 1), quarters))
+        >>> played.unfold(4, score)
+        [Coordinate(Fraction(4, 1), quarters), Coordinate(Fraction(20, 1), quarters)]
+        >>> played.fold(20, score)
+        Coordinate(Fraction(4, 1), quarters)
+    """
+
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "map",
+        "timeline",
+        "unit",
+        "number_type",
+        "length",
+        "through",
+        "name",
+    )
+    _manifest_path: ClassVar[tuple[str, ...]] = ("virtual_timelines",)
+
+    map: str
+    timeline: str
+    length: Coordinate
+    through: str | None = field(default=None, kw_only=True)
+    name: str | None = field(default=None, kw_only=True)
+
+    @classmethod
+    def from_flow_map(
+        cls,
+        flow_map: FlowMap,
+        root: Timeline,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> VirtualTimeline:
+        """State that *flow_map* was applied to its root timeline.
+
+        The length is the FlowMap's virtual length, the unit and number type
+        are the root's.
+
+        Args:
+            flow_map: The FlowMap applied.
+            root: The root timeline it names.
+            id: The virtual timeline's ID; minted when None.
+            name: Optional display name.
+
+        Raises:
+            ValueError: If the FlowMap cannot be read against *root*
+                (:meth:`FlowMap.resolve`).
+        """
+        return cls(
+            flow_map.id, root.id, flow_map.resolve(root).length, id=id, name=name
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VirtualTimeline:
+        """Restore a virtual timeline from its object in ``virtual_timelines``.
+
+        IDs are bare. ``length`` is a bare value read as ``number_type``
+        decides; ``through`` and ``name`` may be left out. Keys the library
+        does not know are kept and written back.
+
+        Args:
+            data: The virtual timeline object.
+
+        Raises:
+            ValueError: If the object is malformed or its length is
+                represented otherwise than its number type selects.
+        """
+        required = ("id", "map", "timeline", "unit", "number_type", "length")
+        require_object(data, "a virtual timeline", required)
+        virtual_id = read_id(data["id"], "a virtual timeline")
+        what = f"virtual timeline {quote_id(virtual_id)}"
+        through = data.get("through")
+        virtual = cls(
+            read_id(data["map"], f"the map of {what}"),
+            read_id(data["timeline"], f"the timeline of {what}"),
+            axis_value_from_json(
+                data["length"],
+                key="length",
+                owner=virtual_id,
+                unit=TimeUnit(data["unit"]),
+                number_type=NumberType[data["number_type"]],
+            ),
+            through=None if through is None else read_id(through, f"through of {what}"),
+            name=read_name(data, what),
+            id=virtual_id,
+        )
+        virtual._keep_unknown_keys(data)
+        return virtual
+
+    def __post_init__(self) -> None:
+        """Mint the ID in the ID kind of the unit, or validate the one given."""
+        if not isinstance(self.length, Coordinate) or self.length.value < 0:
+            raise ValueError(
+                f"the length of a virtual timeline is a coordinate from 0 on, got "
+                f"{self.length!r}"
+            )
+        if self.id is None:
+            object.__setattr__(self, "id", mint_id(self._id_prefix, ()))
+            object.__setattr__(self, "_minted", True)
+        super().__post_init__()
+        for reference in (self.map, self.timeline, self.through):
+            if reference is not None:
+                validate_id(reference)
+
+    @property
+    def _id_prefix(self) -> str:
+        """The ID kind a timeline of this unit is minted in."""
+        return timeline_id_prefix(self.unit)
+
+    @property
+    def unit(self) -> TimeUnit:
+        """The unit of the virtual timeline's axis."""
+        return self.length.unit
+
+    @property
+    def number_type(self) -> NumberType:
+        """The number type of the virtual timeline's axis."""
+        return self.length.number_type
+
+    def resolve(self, root: Timeline) -> ResolvedFlowMap:
+        """Return the played order this virtual timeline is the axis of.
+
+        Args:
+            root: The root timeline holding the virtual timeline.
+
+        Raises:
+            ValueError: If the virtual timeline is not the FlowMap of
+                *root* applied to *root*: it applies another map (a
+                conversion map), is applied to another timeline, or goes
+                ``through`` a group or conversion map. Such a statement is
+                kept and written back, but its positions are not converted.
+        """
+        return self._resolved(root, ())
+
+    def unfold(self, coordinate: CoordinateInput, root: Timeline) -> list[Coordinate]:
+        """Return every position of this virtual timeline a root position is played at.
+
+        See :meth:`ResolvedFlowMap.unfold`.
+
+        Args:
+            coordinate: A position on the root's axis.
+            root: The root timeline holding the virtual timeline.
+
+        Raises:
+            ValueError: As :meth:`resolve` and :meth:`ResolvedFlowMap.unfold`.
+        """
+        return self.resolve(root).unfold(coordinate)
+
+    def fold(self, coordinate: CoordinateInput, root: Timeline) -> Coordinate | None:
+        """Return the root position played at a position of this virtual timeline.
+
+        See :meth:`ResolvedFlowMap.fold`.
+
+        Args:
+            coordinate: A position on this virtual timeline's axis: a bare
+                value, a Coordinate, or an IdCoordinate naming this virtual
+                timeline.
+            root: The root timeline holding the virtual timeline.
+
+        Returns:
+            The position on the root's axis, or None inside a gap.
+
+        Raises:
+            ValueError: As :meth:`resolve` and :meth:`ResolvedFlowMap.fold`,
+                or if an IdCoordinate names another timeline.
+        """
+        if isinstance(coordinate, IdCoordinate) and coordinate.timeline_id != self.id:
+            raise ValueError(
+                f"{coordinate!r} is no position of virtual timeline {quote_id(self.id)}"
+            )
+        return self.resolve(root).fold(coordinate)
+
+    def _resolved(self, root: Timeline, visiting: tuple[str, ...]) -> ResolvedFlowMap:
+        """:meth:`resolve`, inside the FlowMaps *visiting* being resolved."""
+        what = f"virtual timeline {quote_id(self.id)}"
+        flow_map = root._flow_maps.get(self.map)
+        if flow_map is None:
+            raise ValueError(
+                f"{what} applies {quote_id(self.map)}, which is no FlowMap of "
+                f"timeline {quote_id(root.id)}: its positions are not converted. "
+                f"FlowMaps of the timeline: {list(root._flow_maps)}"
+            )
+        if self.through is not None or self.timeline != flow_map.timeline:
+            raise ValueError(
+                f"{what} applies FlowMap {quote_id(flow_map.id)} to "
+                f"{quote_id(self.timeline)}"
+                + (
+                    f" through {quote_id(self.through)}"
+                    if self.through is not None
+                    else ""
+                )
+                + f", not to the FlowMap's own timeline {quote_id(flow_map.timeline)}: "
+                "carrying a FlowMap to another axis is not supported yet"
+            )
+        return _resolve(flow_map, root, visiting)
+
+    def _with_references_renamed(self, renamed: Mapping[str, str]) -> VirtualTimeline:
+        """Return the virtual timeline naming map, timeline and route by their new IDs."""
+        changed = {
+            key: renamed[value]
+            for key in ("map", "timeline", "through")
+            if (value := getattr(self, key)) in renamed
+        }
+        return replace(self, **changed) if changed else self
+
+    def _dict_fields(self) -> dict[str, Any]:
+        """Return the virtual timeline's keys; ``through`` is written only
+        when stated."""
+        fields: dict[str, Any] = {
+            "id": self.id,
+            "map": self.map,
+            "timeline": self.timeline,
+            "unit": str(self.unit),
+            "number_type": str(self.number_type),
+            "length": axis_value_to_json(self.length),
+        }
+        if self.through is not None:
+            fields["through"] = self.through
+        fields["name"] = self.name
+        return fields
+
+    def __repr__(self) -> str:
+        name = "" if self.name is None else f", name={self.name!r}"
+        return (
+            f"VirtualTimeline({self.id!r}, map={self.map!r}, "
+            f"timeline={self.timeline!r}, length={self.length}{name})"
+        )
+
+
+def place_on_roots(
+    flow_maps: Sequence[FlowMap],
+    virtual_timelines: Sequence[VirtualTimeline],
+    timelines: Mapping[str, Timeline],
+) -> None:
+    """Hand the FlowMaps and virtual timelines a manifest lists to their roots.
+
+    A FlowMap joins the root timeline it names. A virtual timeline joins the
+    root of the tree it comes from: the one holding its ``timeline``, found
+    virtual timeline by virtual timeline where that names another one.
+
+    Args:
+        flow_maps: The manifest's FlowMaps.
+        virtual_timelines: The manifest's virtual timelines.
+        timelines: Every timeline of the manifest, by ID.
+
+    Raises:
+        ValueError: If virtual timelines name one another in a circle, so
+            that they come from no timeline.
+    """
+    for flow_map in flow_maps:
+        timelines[flow_map.timeline]._tree_root()._flow_maps[flow_map.id] = flow_map
+    comes_from = {virtual.id: virtual.timeline for virtual in virtual_timelines}
+    for virtual in virtual_timelines:
+        source, passed = virtual.timeline, {virtual.id}
+        while source in comes_from:
+            if source in passed:
+                raise ValueError(
+                    f"virtual timeline {quote_id(virtual.id)} comes from no "
+                    f"timeline: the virtual timelines {sorted(passed)} name one "
+                    "another in a circle"
+                )
+            passed.add(source)
+            source = comes_from[source]
+        timelines[source]._tree_root()._virtual_timelines[virtual.id] = virtual
+
+
+# endregion

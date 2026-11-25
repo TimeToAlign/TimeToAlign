@@ -26,8 +26,8 @@ from __future__ import annotations
 import math
 import re
 from abc import abstractmethod
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from enum import IntEnum
 from fractions import Fraction
 from types import UnionType
@@ -70,7 +70,7 @@ from .fields import (
     drop_from_schema,
     register_value_projector,
 )
-from .ids import quote_id, validate_id
+from .ids import _OpenObject, quote_id, validate_id
 from .protocols import TwelveTETPitchMixin
 from .time import (
     Coordinate,
@@ -3767,47 +3767,51 @@ class CadenzaMeasureField(SemanticField[CadenzaMeasure]):
     """Columnar wrapper for :class:`CadenzaMeasure`."""
 
 
-@dataclass(frozen=True, init=False)
-class Gap:
-    """A stretch of target time that carries no source material.
+@dataclass(frozen=True)
+class Gap(_OpenObject):
+    """A stretch of a played order that nothing of the timeline fills.
 
-    A string passed positionally is a descriptive label. Numeric values are
-    exact durations; omitting both makes the gap auto-sized by flow machinery.
+    A gap is an entry among the chunks of a FlowMap: the virtual axis goes
+    on for *length* while no position of the timeline is played. The length
+    is a bare number on the timeline's axis and strictly positive; it is
+    kept as given and read in the timeline's number type when the FlowMap
+    joins its timeline. In a manifest it is the object ``{gap: length}``,
+    whose unknown keys are kept and written back.
 
-    When a FlowMap assembles interval descriptors, a duration-less gap is
-    auto-sized from the distance between its neighbouring spans.
+    Attributes:
+        length: The length of the gap.
+
+    Raises:
+        ValueError: If the length is no finite number, or is not positive.
+
+    Examples:
+        >>> Gap(4)
+        Gap(4)
+        >>> Gap(0)
+        Traceback (most recent call last):
+        ...
+        ValueError: the length of a gap is positive, got 0
     """
 
-    duration: Fraction | None
-    label: str | None
+    _dict_keys: ClassVar[tuple[str, ...]] = ("gap",)
 
-    def __init__(
-        self,
-        duration: Fraction | int | float | str | None = None,
-        label: str | None = None,
-    ) -> None:
-        if isinstance(duration, str):
-            if label is not None:
-                raise ValueError(
-                    "A positional Gap label cannot be combined with label="
-                )
-            label = duration
-            duration = None
-        exact = None if duration is None else Fraction(duration)
-        if exact is not None and exact < 0:
-            raise ValueError(f"A Gap duration cannot be negative, got {exact}")
-        object.__setattr__(self, "duration", exact)
-        object.__setattr__(self, "label", label)
+    length: int | float | Fraction
+    # A field, so that a copy made with ``dataclasses.replace`` keeps it.
+    _unknown_keys: Mapping[str, Any] = field(
+        default_factory=dict[str, Any], kw_only=True, repr=False, compare=False
+    )
 
-    @property
-    def is_auto(self) -> bool:
-        """Whether neighbouring source spans determine this gap's duration."""
-        return self.duration is None
+    def __post_init__(self) -> None:
+        length = self.length
+        if isinstance(length, bool) or not isinstance(length, int | float | Fraction):
+            raise ValueError(f"the length of a gap is a number, got {length!r}")
+        if isinstance(length, float) and not math.isfinite(length):
+            raise ValueError(f"the length of a gap is finite, got {length!r}")
+        if length <= 0:
+            raise ValueError(f"the length of a gap is positive, got {length}")
 
     def __repr__(self) -> str:
-        size = "auto" if self.is_auto else str(self.duration)
-        label = f", label={self.label!r}" if self.label else ""
-        return f"Gap({size}{label})"
+        return f"Gap({self.length})"
 
 
 class BeatPolicy(BaseModel):

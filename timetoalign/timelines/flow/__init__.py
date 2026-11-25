@@ -1,8 +1,15 @@
-"""Play flow control, state flows in measures, map and unfold them."""
+"""Play flow control, state flows in measures and map positions along them."""
 
 from __future__ import annotations
 
-from .flowmap import FlowMap, FlowMapSection
+from .flowmap import (
+    ComputedFlows,
+    FlowMap,
+    PlacedChunk,
+    PlacedGap,
+    ResolvedFlowMap,
+    VirtualTimeline,
+)
 from .measures import (
     MeasureFinding,
     MeasureRange,
@@ -12,19 +19,19 @@ from .measures import (
     read_flow_csv,
     repeat_end_findings,
 )
-from .sections import Gap
-from .unfolding import unfold_via_flowmap
 
 __all__ = [
+    "ComputedFlows",
     "FlowMap",
-    "FlowMapSection",
-    "Gap",
     "MeasureFinding",
     "MeasureRange",
+    "PlacedChunk",
+    "PlacedGap",
+    "ResolvedFlowMap",
+    "VirtualTimeline",
     "flow_control_from_measures",
     "measure_keys_from_flow_control",
     "measure_ranges",
     "read_flow_csv",
     "repeat_end_findings",
-    "unfold_via_flowmap",
 ]

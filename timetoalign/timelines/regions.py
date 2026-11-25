@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any, ClassVar
 
-from timetoshare import Catalogue
+from timetoshare import ATOMIC_SECTION, Catalogue, expand_iri
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _IdentifiedElement, quote_id
@@ -184,6 +184,22 @@ end=Coordinate(Fraction(32, 1), quarters))
     def as_interval(self) -> Interval:
         """The region's extent as a typed :class:`Interval`."""
         return Interval(start=self.start, end=self.end)
+
+    @property
+    def is_atomic_section(self) -> bool:
+        """Whether the region states the type of an atomic section.
+
+        An atomic section is a stretch that the timeline's flow control
+        never divides. The type is the format's class ``AtomicSection``
+        (``timetoshare.ATOMIC_SECTION``), however the region spells it: as
+        the absolute IRI or under a prefix it declares
+        (``tts:AtomicSection``).
+        """
+        context = self._statement_context()
+        return any(
+            isinstance(value, str) and expand_iri(context, value) == ATOMIC_SECTION
+            for value in self.statements.get("type", ())
+        )
 
     def contains(
         self, coord: int | float | Fraction | Coordinate | IdCoordinate

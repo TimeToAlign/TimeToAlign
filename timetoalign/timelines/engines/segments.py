@@ -2,24 +2,34 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import replace
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
-from timetoalign.core import CoordinateSpec
+import timetoshare
+from timetoshare import DEFAULT_BELIEFS, BeliefState
+
+from timetoalign.core import CoordinateSpec, Gap
+from timetoalign.core.enums import FlowConvention
+from timetoalign.core.ids import quote_id
+from timetoalign.core.provenance import Provenance
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
+from ..regions import Region
+
 if TYPE_CHECKING:
-    from ..base import Timeline
-    from ..flow import FlowMap
+    from ..flow.flowmap import ComputedFlows, FlowMap, ResolvedFlowMap, VirtualTimeline
     from ..types import SegmentLine
 
 
 class SegmentsMixin:
-    """Provide segment line and flow map operations for timeline instances."""
+    """Provide segment line, FlowMap and virtual timeline operations for
+    timeline instances."""
 
     _flow_maps: dict[str, "FlowMap"]
+    _virtual_timelines: dict[str, "VirtualTimeline"]
 
     def create_segment_line(
         self,
@@ -377,263 +387,475 @@ class SegmentsMixin:
 
         return sl
 
+    # region FlowMaps and virtual timelines
+
+    def add_flow_map(self, flow_map: "FlowMap") -> "FlowMap":
+        """Attach a FlowMap to this root timeline.
+
+        The FlowMap is read against the timeline first
+        (:meth:`FlowMap.resolve <timetoalign.timelines.flow.FlowMap.resolve>`),
+        so one that names nothing of the tree never joins. Its gaps are kept
+        in the timeline's number type. Its ID must be unique in the
+        timeline's manifest: a minted ID already held there is minted again,
+        a given one raises.
+
+        Args:
+            flow_map: The FlowMap to attach, naming this timeline.
+
+        Returns:
+            The stored FlowMap: *flow_map* itself, or a copy with its gaps in
+            the timeline's number type or under the newly minted ID.
+
+        Raises:
+            ValueError: If this timeline is a child, the FlowMap names
+                another timeline or cannot be read against this one, the
+                timeline already holds a canonical FlowMap and this is a
+                second one, or its given ID is already held in the manifest.
+        """
+        stored = flow_map._on_axis(self)
+        stored.resolve(self)
+        first = next(
+            (held for held in self._flow_maps.values() if held.canonical), None
+        )
+        if stored.canonical and first is not None:
+            raise ValueError(
+                f"FlowMap {quote_id(stored.id)} is a second canonical FlowMap of "
+                f"timeline {quote_id(self._id)}, after {quote_id(first.id)}"
+            )
+        flow_map_id = self._admit_element_id(
+            stored.id,
+            minted=stored._minted,
+            prefix=stored._id_prefix,
+            element=f"FlowMap {quote_id(stored.id)}",
+        )
+        if flow_map_id != stored.id:
+            stored = replace(stored, id=flow_map_id, _minted=True)
+        self._flow_maps[stored.id] = stored
+        self._logger.debug(f"Added FlowMap '{stored.id}'")
+        return stored
+
     def create_flow_map(
         self,
-        intervals: Any,
+        chunks: Iterable[Any],
         *,
-        id: str = "default",
-        at: "Sequence[Any] | None" = None,
-        target_length: CoordinateSpec | None = None,
+        id: str | None = None,
+        convention: str | None = None,
+        canonical: bool = False,
+        name: str | None = None,
+        provenance: Sequence[Any] = (),
     ) -> "FlowMap":
-        """Construct a FlowMap from interval-like descriptors, attach it, return it.
-
-        Mirrors the ``create_*`` verb×noun convention (as in
-        :meth:`create_region` and :meth:`create_regions_from_boundaries`):
-        it constructs the FlowMap, attaches it to this timeline under *id*,
-        and returns it.
-
-        By default the played spans described by *intervals* concatenate
-        contiguously in the unfolded (target) axis; coordinates falling in a
-        gap between spans map to nothing (an empty ``unfold_coordinate``
-        result).
-
-        To lay the spans out with holes between them instead — which is what
-        restoring a cut needs — state the placement in any of three ways: mix
-        :class:`~timetoalign.timelines.flow.Gap` entries into *intervals*,
-        give each span its target coordinate in *at*, or pass *intervals* as a
-        ``{target coordinate -> span}`` mapping.
+        """Create a FlowMap of this root timeline and attach it.
 
         Args:
-            intervals: One interval-like descriptor, a collection of them, or
-                a ``{target coordinate -> span}`` mapping. Accepted descriptor
-                forms are region ids (``str``, resolved via
-                :meth:`get_region`), ``Region`` objects, ``(start, end)``
-                coordinate pairs, ``Timeline`` objects, and interval events.
-                ``Gap`` entries may be mixed into a collection to space the
-                spans apart.
-            id: Identifier for the FlowMap. Defaults to ``"default"``.
-            at: Target coordinate for each played span, in the order given.
-                One entry per span, or ``None`` for a span that should follow
-                its predecessor. Cannot be combined with ``Gap`` entries.
-            target_length: Total extent of the unfolded axis. Needed only when
-                the flow ends in a gap, which no section would imply.
+            chunks: What is played, in order: each a Region of this timeline
+                or of a descendant, a child timeline at any depth or a
+                virtual timeline of this tree, given as the object or by its
+                ID, or a :class:`~timetoalign.core.Gap`.
+            id: The FlowMap's ID, kept verbatim. When None, ``flow_map_{N}``
+                is minted, unique in this timeline's manifest.
+            convention: Which flow of the flow control the FlowMap states;
+                None for one written by hand.
+            canonical: Whether this is the timeline's canonical FlowMap.
+            name: Optional display name.
+            provenance: How the FlowMap was made: provenance entries.
 
         Returns:
-            The constructed FlowMap (also attached to this timeline).
+            The created FlowMap.
+
+        Raises:
+            ValueError: As :meth:`add_flow_map`.
 
         Examples:
-            >>> child.create_flow_map(["A8_1", "A8_2"], id="A8")
-            FlowMap(A8: 2 sections)
-            >>> child.create_flow_map([(0, 123), (129, child.length)], id="A8")
-            FlowMap(A8: 2 sections)
-            >>> # Restore the two skipped measures as a 6-quarter hole:
-            >>> child.create_flow_map(["A8_1", Gap(6), "A8_2"], id="restored")
-            FlowMap(restored: 2 sections, 1 gap)
-            >>> # The same placement, stated as coordinates:
-            >>> child.create_flow_map(["A8_1", "A8_2"], at=[0, 129], id="restored")
-            FlowMap(restored: 2 sections, 1 gap)
-            >>> # ... or as a mapping pairing each coordinate with its span:
-            >>> child.create_flow_map({0: "A8_1", 129: "A8_2"}, id="restored")
-            FlowMap(restored: 2 sections, 1 gap)
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> score = ContinuousLogicalTimeline(length=24, uid="score")
+            >>> a = score.create_region(0, 16, id="a")
+            >>> b = score.create_region(16, 24, id="b")
+            >>> score.create_flow_map([a, a, "b"], name="with the repeat")
+            FlowMap('flow_map_1', timeline='score', 3 chunks, name='with the repeat')
+            >>> score.get_flow_map("flow_map_1").resolve(score).length
+            Coordinate(Fraction(40, 1), quarters)
         """
-        from ..flow import FlowMap
+        from ..flow.flowmap import FlowMap
 
-        fm = FlowMap(
-            intervals,
-            id=id,
-            resolve=self.get_region,
-            at=at,
-            source_length=None if self.length is None else self.length.value,
-            target_length=(
-                None
-                if target_length is None
-                else self.get_coordinate_at(target_length, format="coordinate").value
-            ),
+        return self.add_flow_map(
+            FlowMap(
+                self._id,
+                tuple(
+                    chunk if isinstance(chunk, str | Gap) else chunk.id
+                    for chunk in chunks
+                ),
+                id=id,
+                convention=convention,
+                canonical=canonical,
+                name=name,
+                provenance=tuple(provenance),
+            )
         )
-        self.add_flow_map(fm, id=id)
-        return fm
 
-    def add_flow_map(self, flow_map: "FlowMap", id: str | None = None) -> None:
-        """Add a FlowMap to this timeline.
+    def get_flow_map(self, flow_map_id: str) -> "FlowMap":
+        """Return the FlowMap of this timeline with the given ID.
 
-        A FlowMap states the played spans of a timeline with flow control
-        (repeats, jumps, D.S., D.C., etc.) and converts coordinates between
-        the timeline and its unfolding.
-
-        Args:
-            flow_map: The FlowMap to add.
-            id: Identifier for this FlowMap. If None, uses flow_map.id.
+        Raises:
+            KeyError: If the timeline holds no such FlowMap.
         """
-        if id is None:
-            id = flow_map.id
-        self._flow_maps[id] = flow_map
-        self._logger.debug(f"Added FlowMap '{id}'")
-
-    def get_flow_map(self, id: str = "default") -> "FlowMap | None":
-        """Get an attached FlowMap by id.
-
-        Args:
-            id: Identifier of the FlowMap. Default is "default".
-
-        Returns:
-            The FlowMap if found, None otherwise.
-        """
-        return self._flow_maps.get(id)
-
-    def has_flow_map(self, id: str = "default") -> bool:
-        """Check if a FlowMap with the given id is attached.
-
-        Args:
-            id: Identifier to check.
-
-        Returns:
-            True if a FlowMap with that id exists.
-        """
-        return id in self._flow_maps
+        if flow_map_id not in self._flow_maps:
+            raise KeyError(
+                f"Timeline {quote_id(self._id)} holds no FlowMap "
+                f"{quote_id(flow_map_id)}. Available FlowMaps: {list(self._flow_maps)}"
+            )
+        return self._flow_maps[flow_map_id]
 
     def list_flow_maps(self) -> list[str]:
-        """List all attached FlowMap ids.
+        """List the IDs of the FlowMaps this timeline holds."""
+        return list(self._flow_maps)
 
-        Returns:
-            List of id strings.
-        """
-        return list(self._flow_maps.keys())
-
-    @property
-    def n_flow_maps(self) -> int:
-        """Number of attached FlowMaps."""
-        return len(self._flow_maps)
-
-    def apply_flow(
+    def get_flow(
         self,
-        id: str = "default",
+        convention: FlowConvention | str = FlowConvention.default,
         *,
-        include_children: bool = True,
-        uid: str | None = None,
-        name: str | None = None,
-        fill_gaps: bool = False,
-    ) -> "Timeline":
-        """Yield the unfolded timeline for an attached FlowMap.
-
-        Slices this timeline at each of the attached FlowMap's sections and
-        places the slices, in target (unfolded) order, as children of a new
-        timeline of this timeline's **same concrete type**. Each section also
-        becomes a matching named Region on the result, in unfolded
-        coordinates.
-
-        Each slice sits at its section's target coordinate. Ordinary
-        concatenating FlowMaps stack the slices end to end; a FlowMap that
-        places its spans apart — a restored cut, or any FlowMap's
-        :meth:`~timetoalign.timelines.flow.FlowMap.inverse` — leaves the
-        result empty between them.
-
-        Each appended child takes the source section's label as its id and
-        name — the id of the region a played span was built from — and the
-        Region marking it in the result takes that label as its name (its id
-        is minted). A span visited more than once (a repeat) is suffixed
-        ``-rend2``, ``-rend3`` … so every child has a unique id. Section events live in the appended children;
-        the flattened coordinates remain reachable via
-        ``get_events(include_children=True)``.
-
-        The returned timeline carries a reverse FlowMap (id ``"source"``) for
-        tracing coordinates back to the folded source, plus the forward
-        FlowMap (id ``f"forward_{flow_map.id}"``).
+        believer: str | None = None,
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+    ) -> "ResolvedFlowMap":
+        """Play this timeline's flow control and return the flow, writing nothing.
 
         Args:
-            id: Which attached FlowMap to unfold along. Passed positionally,
-                so ``timeline.apply_flow("A8")`` selects the FlowMap stored
-                under ``"A8"``.
-            include_children: If True (default), child timelines are
-                recursively sliced and included in each section.
-            uid: Optional identifier for the returned timeline.
-            name: Optional name for the returned timeline. Defaults to
-                ``f"{self.name}_unfolded"``.
-            fill_gaps: If True, each hole between the placed spans becomes an
-                empty child (plus a matching Region), so the result tiles its
-                axis contiguously. Required when this timeline is a
-                ``SegmentLine``, which admits no gaps between its segments.
+            convention: ``default`` (every Jump and Break acts), ``single``
+                (once through) or ``printed`` (the axis as it stands).
+            believer: The actor whose beliefs decide which flow-control
+                elements are read; None reads every element.
+            beliefs: The belief states read.
 
         Returns:
-            The unfolded timeline (same concrete type as ``self``), with one
-            child and matching Region per played section, each placed at its
-            target coordinate.
+            The runs of the flow (:func:`~timetoalign.timelines.flow.engine.play`)
+            placed one after the other: positions of this timeline's axis
+            and of the flow convert through it. A timeline without flow
+            control is played from its start to its end.
 
         Raises:
-            ValueError: If no FlowMap with the given id is attached.
+            UnknownLengthError: If the length is unknown.
+            ValueError: If the convention is unknown, or the flow control
+                cannot be played.
 
         Examples:
-            >>> child.create_flow_map(["A8_1", "A8_2"], id="A8")
-            FlowMap(A8: 2 sections)
-            >>> unfolded = child.apply_flow("A8")
-            >>> unfolded.n_children
-            2
-            >>> unfolded.list_children()
-            ['A8_1', 'A8_2']
-            >>> # Applying the inverse puts the spans back where they came
-            >>> # from, restoring the hole the cut left:
-            >>> restored = unfolded.apply_flow("source")
-            >>> float(restored.get_child_offset("A8_2").value)
-            129.0
+            >>> from timetoalign.core import Coordinate
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> from timetoalign.timelines.flowcontrol import Jump, JumpDestination
+            >>> score = ContinuousLogicalTimeline(length=12, uid="score")
+            >>> _ = score.flow_control.add(
+            ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+            >>> score.get_flow().length, score.get_flow("single").length
+            (Coordinate(Fraction(20, 1), quarters), Coordinate(Fraction(12, 1), quarters))
+            >>> score.get_flow().unfold(2)
+            [Coordinate(Fraction(2, 1), quarters), Coordinate(Fraction(10, 1), quarters)]
         """
-        flow_map = self._flow_maps.get(id)
-        if flow_map is None:
-            raise ValueError(f"No FlowMap attached with id '{id}'")
+        from ..flow.engine import play
+        from ..flow.flowmap import ResolvedFlowMap
 
-        from ..flow.unfolding import unfold_via_flowmap
-
-        return unfold_via_flowmap(
-            self,
-            flow_map,
-            uid=uid,
-            include_children=include_children,
-            name=name,
-            fill_gaps=fill_gaps,
+        played = play(
+            self._flow_control,
+            self._require_length("play its flow control"),
+            convention=convention,
+            believer=believer,
+            beliefs=beliefs,
+        )
+        return ResolvedFlowMap.from_stretches(
+            self._id, played.runs, unit=self._unit, number_type=self._number_type
         )
 
-    def unfold_coordinate(
-        self, coord: CoordinateSpec, id: str = "default"
-    ) -> list[float]:
-        """Convert a folded coordinate to unfolded coordinates.
+    def create_flow_maps_from_flow_control(
+        self,
+        *,
+        believer: str | None = None,
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+    ) -> "ComputedFlows | None":
+        """Write this root timeline's atomic sections and its computed FlowMaps.
 
-        Convenience method that delegates to the attached FlowMap.
-        Since repeats can cause a folded coordinate to appear multiple times
-        in the unfolded timeline, this returns a list.
+        The flow control is played with the three conventions
+        (:func:`~timetoalign.timelines.flow.engine.play`). The atomic
+        sections (:func:`~timetoalign.timelines.flow.engine.atomic_sections`)
+        become Regions of the timeline, each named by its letter and stating
+        the type ``tts:AtomicSection`` with the provenance method
+        ``inferred``. The ``default`` flow becomes a FlowMap listing those
+        Regions in the order played; ``single`` and ``printed`` become
+        FlowMaps only where their chunks differ from ``default``'s. Each
+        FlowMap names its ``convention`` and the provenance method
+        ``inferred``.
+
+        Atomic sections the timeline already holds are replaced, with the
+        computed FlowMaps naming them; a FlowMap of a convention written
+        before keeps its ID, and a virtual timeline applying it takes its new
+        length. They are never replaced under a FlowMap of another origin.
 
         Args:
-            coord: Coordinate in the folded timeline.
-            id: Which FlowMap to use.
+            believer: The actor whose beliefs decide which flow-control
+                elements are read; None reads every element.
+            beliefs: The belief states read.
 
         Returns:
-            List of coordinates in the unfolded timeline.
+            The Regions and FlowMaps written, or None for a timeline without
+            flow control, which writes nothing.
 
         Raises:
-            ValueError: If no FlowMap with the given id is attached.
+            ValueError: If this timeline is a child; the flow control cannot
+                be played; or the timeline holds atomic sections that a
+                FlowMap names which was not computed from flow control (it
+                states none of the three conventions, or its provenance does
+                not say ``inferred``), or that a jump of the flow control
+                names as the place it lands at. Nothing has changed then.
+            UnknownLengthError: If the length is unknown.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> from timetoalign.timelines.flowcontrol import Jump, JumpDestination
+            >>> score = ContinuousLogicalTimeline(length=12, uid="score")
+            >>> _ = score.flow_control.add(
+            ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+            >>> written = score.create_flow_maps_from_flow_control()
+            >>> [(section.id, section.name, str(section.as_interval))
+            ...  for section in written.sections]
+            [('region_1', 'A', '[0, 8) quarters'), ('region_2', 'B', '[8, 12) quarters')]
+            >>> for flow_map in written.flow_maps:
+            ...     print(flow_map.convention, flow_map.chunks)
+            default ('region_1', 'region_1', 'region_2')
+            single ('region_1', 'region_2')
+            printed ('region_1', 'region_2')
         """
-        flow_map = self._flow_maps.get(id)
-        if flow_map is None:
-            raise ValueError(f"No FlowMap attached with id '{id}'")
-        return [
-            float(c)
-            for c in flow_map.unfold_coordinate(self._resolve_axis_value(coord))
+        from ..flow.engine import atomic_sections, play
+        from ..flow.flowmap import ComputedFlows, FlowMap
+
+        if self._parent is not None:
+            raise ValueError(
+                f"timeline {quote_id(self._id)} is a child of "
+                f"{quote_id(self._parent.id)}: a FlowMap names a root timeline, and "
+                "the flows of a child's flow control are not written yet"
+            )
+        if not self._flow_control.elements:
+            return None
+        length = self._require_length("play its flow control")
+        filtered = {"believer": believer, "beliefs": beliefs}
+        sections = atomic_sections(self._flow_control, length, **filtered)
+        orders: dict[FlowConvention, tuple[int, ...]] = {}
+        for convention in FlowConvention:
+            played = play(self._flow_control, length, convention=convention, **filtered)
+            orders[convention] = tuple(
+                index
+                for run in played.runs
+                for index, section in enumerate(sections)
+                if run.start <= section.start and section.end <= run.end
+            )
+            for finding in played.findings:
+                self._logger.warning(
+                    f"Timeline '{self._id}', {convention} flow: {finding.message}"
+                )
+        replaced = [
+            region for region in self._regions.values() if region.is_atomic_section
         ]
+        gone = {region.id for region in replaced}
+        naming = [
+            flow_map
+            for flow_map in self._flow_maps.values()
+            if gone.intersection(c for c in flow_map.chunks if isinstance(c, str))
+        ]
+        foreign = [flow_map.id for flow_map in naming if not flow_map.is_computed]
+        if foreign:
+            raise ValueError(
+                f"timeline {quote_id(self._id)} holds atomic sections that the "
+                f"FlowMap(s) {foreign} name, which were not computed from its flow "
+                "control: the sections are not replaced"
+            )
+        landed_on = sorted(
+            gone.intersection(
+                destination.to
+                for jump in self._flow_control.jumps
+                for destination in jump.targets
+                if destination.to is not None
+            )
+        )
+        if landed_on:
+            raise ValueError(
+                f"timeline {quote_id(self._id)} holds the atomic section(s) "
+                f"{landed_on} that a jump of its flow control names as a place: "
+                "the sections are not replaced"
+            )
 
-    def fold(self, coord: CoordinateSpec, id: str = "default") -> float:
-        """Convert an unfolded coordinate to a folded coordinate.
+        kept = {flow_map.convention: flow_map for flow_map in naming}
+        for flow_map in naming:
+            del self._flow_maps[flow_map.id]
+        for region_id in gone:
+            del self._regions[region_id]
+        self._drop_references(gone)
+        inferred = Provenance(method="inferred")
+        regions = tuple(
+            self.add_region(
+                Region(section.start, section.end, name=section.name)
+                .with_prefix(_FORMAT_PREFIX, timetoshare.NAMESPACE)
+                .with_statement("type", _ATOMIC_SECTION_TYPE, provenance=inferred)
+            )
+            for section in sections
+        )
+        written: list[FlowMap] = []
+        for convention, order in orders.items():
+            if (
+                convention is not FlowConvention.default
+                and order == orders[FlowConvention.default]
+            ):
+                continue
+            before = kept.get(convention)
+            written.append(
+                self.add_flow_map(
+                    FlowMap(
+                        self._id,
+                        tuple(regions[index].id for index in order),
+                        convention=convention,
+                        provenance=(inferred,),
+                        id=None if before is None else before.id,
+                        _minted=before is not None and before._minted,
+                        canonical=before is not None and before.canonical,
+                        name=None if before is None else before.name,
+                    )
+                )
+            )
+        rewritten = {flow_map.id: flow_map for flow_map in written}
+        for virtual_id, virtual in list(self._virtual_timelines.items()):
+            if (
+                virtual.map in rewritten
+                and virtual.timeline == self._id
+                and virtual.through is None
+            ):
+                self._virtual_timelines[virtual_id] = replace(
+                    virtual,
+                    length=rewritten[virtual.map].resolve(self).length,
+                )
+        return ComputedFlows(regions, tuple(written))
 
-        Convenience method that delegates to the attached FlowMap.
+    def add_virtual_timeline(self, virtual: "VirtualTimeline") -> "VirtualTimeline":
+        """Attach a virtual timeline to this root timeline.
+
+        The statement must be true of this timeline: it applies a FlowMap
+        the timeline holds to the timeline itself, and states the length,
+        unit and number type the FlowMap gives. Its ID must be unique in the
+        timeline's manifest: a minted ID already held there is minted again,
+        a given one raises.
 
         Args:
-            coord: Coordinate in the unfolded timeline.
-            id: Which FlowMap to use.
+            virtual: The virtual timeline to attach.
 
         Returns:
-            Coordinate in the folded timeline.
+            The stored virtual timeline: *virtual* itself, or a copy under
+            the newly minted ID.
 
         Raises:
-            ValueError: If no FlowMap with the given id is attached,
-                        or if the coordinate is outside the flow range.
+            ValueError: If this timeline is a child, the statement cannot be
+                read against it (:meth:`VirtualTimeline.resolve
+                <timetoalign.timelines.flow.VirtualTimeline.resolve>`) or
+                states another length than its FlowMap gives, or its given
+                ID is already held in the manifest.
         """
-        flow_map = self._flow_maps.get(id)
-        if flow_map is None:
-            raise ValueError(f"No FlowMap attached with id '{id}'")
-        return float(flow_map.fold(self._resolve_axis_value(coord)))
+        length = virtual.resolve(self).length
+        if virtual.length != length or virtual.number_type is not length.number_type:
+            raise ValueError(
+                f"virtual timeline {quote_id(virtual.id)} states the length "
+                f"{virtual.length!r}; FlowMap {quote_id(virtual.map)} gives {length!r}"
+            )
+        virtual_id = self._admit_element_id(
+            virtual.id,
+            minted=virtual._minted,
+            prefix=virtual._id_prefix,
+            element=f"virtual timeline {quote_id(virtual.id)}",
+        )
+        if virtual_id != virtual.id:
+            virtual = replace(virtual, id=virtual_id, _minted=True)
+        self._virtual_timelines[virtual.id] = virtual
+        self._logger.debug(f"Added virtual timeline '{virtual.id}'")
+        return virtual
+
+    def create_virtual_timeline(
+        self,
+        flow_map: "FlowMap | str",
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> "VirtualTimeline":
+        """State that a FlowMap of this root timeline was applied to it.
+
+        Nothing but the statement is created: the virtual timeline has an
+        ID, this timeline's unit and number type and the FlowMap's virtual
+        length, and holds no events.
+
+        Args:
+            flow_map: A FlowMap this timeline holds, or its ID.
+            id: The virtual timeline's ID, kept verbatim. When None, an ID
+                of this timeline's kind is minted (``clt_{N}`` on quarters),
+                unique in the manifest.
+            name: Optional display name.
+
+        Returns:
+            The created virtual timeline.
+
+        Raises:
+            KeyError: If the timeline holds no such FlowMap.
+            ValueError: As :meth:`add_virtual_timeline`.
+        """
+        from ..flow.flowmap import VirtualTimeline
+
+        held = self.get_flow_map(flow_map if isinstance(flow_map, str) else flow_map.id)
+        return self.add_virtual_timeline(
+            VirtualTimeline.from_flow_map(held, self, id=id, name=name)
+        )
+
+    def get_virtual_timeline(self, virtual_id: str) -> "VirtualTimeline":
+        """Return the virtual timeline of this timeline with the given ID.
+
+        Raises:
+            KeyError: If the timeline holds no such virtual timeline.
+        """
+        if virtual_id not in self._virtual_timelines:
+            raise KeyError(
+                f"Timeline {quote_id(self._id)} holds no virtual timeline "
+                f"{quote_id(virtual_id)}. Available virtual timelines: "
+                f"{list(self._virtual_timelines)}"
+            )
+        return self._virtual_timelines[virtual_id]
+
+    def list_virtual_timelines(self) -> list[str]:
+        """List the IDs of the virtual timelines this timeline holds."""
+        return list(self._virtual_timelines)
+
+    def _reassign_flow_id(self, old_id: str, new_id: str) -> bool:
+        """Store the FlowMap or virtual timeline *old_id* under the minted *new_id*.
+
+        Returns:
+            Whether this timeline holds such an element.
+        """
+        for held in (self._flow_maps, self._virtual_timelines):
+            if old_id in held:
+                element = replace(held.pop(old_id), id=new_id, _minted=True)
+                held[new_id] = element
+                return True
+        return False
+
+    def _rename_flow_references(self, renamed: Mapping[str, str | None]) -> None:
+        """Make this timeline's FlowMaps and virtual timelines name the
+        elements of *renamed* by their new IDs; one that left is still named."""
+        names = {old: new for old, new in renamed.items() if new is not None}
+        if not names or not (self._flow_maps or self._virtual_timelines):
+            return
+        self._flow_maps = {
+            flow_map_id: flow_map._with_references_renamed(names)
+            for flow_map_id, flow_map in self._flow_maps.items()
+        }
+        self._virtual_timelines = {
+            virtual_id: virtual._with_references_renamed(names)
+            for virtual_id, virtual in self._virtual_timelines.items()
+        }
+
+    # endregion
+
+
+_FORMAT_PREFIX = "tts"
+_ATOMIC_SECTION_TYPE = (
+    f"{_FORMAT_PREFIX}:{timetoshare.ATOMIC_SECTION.removeprefix(timetoshare.NAMESPACE)}"
+)
+"""The type of an atomic section as its Region states it: ``tts:AtomicSection``,
+under the prefix the Region declares for the format's namespace."""

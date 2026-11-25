@@ -39,9 +39,12 @@ Structural components:
 - MetricHierarchy: Packed metrical forest with independent tempo maps
 
 Flow:
-- FlowMap, FlowMapSection: The played spans of a timeline, mapping its
-  coordinates to those of its unfolding and back
-- Gap: A hole between two played spans
+- FlowMap: One order in which stretches of a root timeline are played
+- ResolvedFlowMap: A FlowMap as placed stretches; converts positions both ways
+- PlacedChunk, PlacedGap: One stretch or one gap of a resolved FlowMap
+- VirtualTimeline: The statement that a map was applied to a timeline
+- ComputedFlows: The atomic sections and FlowMaps written from flow control
+- Gap: A stretch of a FlowMap in which nothing of the timeline is played
 
 Flow control (the elements, their registry, the engine that plays them and
 their reading from measures) lives in ``timetoalign.timelines.flowcontrol``
@@ -61,10 +64,19 @@ Public API:
 
 from __future__ import annotations
 
+from timetoalign.core import Gap
+
 from .base import Timeline, UnknownLengthError
 from .beatgrid import BeatGrid, BeatGridSegment, GridBeat
 from .factory import create_timeline
-from .flow import FlowMap, FlowMapSection, Gap
+from .flow import (
+    ComputedFlows,
+    FlowMap,
+    PlacedChunk,
+    PlacedGap,
+    ResolvedFlowMap,
+    VirtualTimeline,
+)
 from .groups import TimelineGroup
 from .manifest import Integrity, Resource
 from .regions import Region
@@ -135,6 +147,10 @@ __all__ = [
     "MetricHierarchy",
     # Flow
     "FlowMap",
-    "FlowMapSection",
+    "ResolvedFlowMap",
+    "PlacedChunk",
+    "PlacedGap",
+    "ComputedFlows",
+    "VirtualTimeline",
     "Gap",
 ]

@@ -992,8 +992,7 @@ class TestSegmentLineCasting:
             uid="milliseconds",
         )
         parent.add_conversion_map(cmap)
-        flow_marker = object()
-        parent._flow_maps["flow"] = flow_marker
+        flow_map = parent.create_flow_map(["whole"], id="flow")
         first = ContinuousPhysicalTimeline(length=1.5, uid="first")
         second = ContinuousPhysicalTimeline(length=2.5, uid="second")
         parent.add_child(first, offset=0.0)
@@ -1015,7 +1014,7 @@ class TestSegmentLineCasting:
         assert len(cast.get_events(include_children=False)) == 1
         assert cast.get_conversion_map(TimeUnit.milliseconds) is cmap
         assert cast.get_region("whole").end.value == 4.0
-        assert cast._flow_maps["flow"] is flow_marker
+        assert cast.get_flow_map("flow") is flow_map
         assert cast.as_segment_line() is cast
 
     def test_boundary_children_cast_with_exact_names_offsets_and_type(self) -> None:

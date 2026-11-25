@@ -389,11 +389,11 @@ class Timeline(
             FlowControlRegistry(unit=self._unit, number_type=self._number_type)
         )
 
-        # FlowMap storage (coordinate transformations for flow control)
-        # Timelines store FlowMaps (not FlowControllers).
-        # FlowMaps enable unfold/fold coordinate conversion for timelines
-        # that have flow control (repeats, jumps, etc.).
+        # The FlowMaps naming this timeline as their root, and the virtual
+        # timelines that come from its tree, by ID; a manifest lists both
+        # at its top level.
         self._flow_maps = {}
+        self._virtual_timelines = {}
 
         # What the timeline stands for: its statements and provenance as the
         # file writes them, and the prefixes they need beyond the catalogue's.
@@ -917,7 +917,7 @@ class Timeline(
         """Return ``(id, minted, prefix, description)`` for this timeline and
         every element it holds itself (its children excluded), in the order
         timeline, conversion maps (each followed by the maps nested in it),
-        regions, flow-control elements."""
+        regions, flow-control elements, FlowMaps, virtual timelines."""
         owner = f"of timeline {quote_id(self._id)}"
         return [
             (
@@ -942,6 +942,19 @@ class Timeline(
                     *self._regions.values(),
                     *self._flow_control.elements,
                 )
+            ),
+            *(
+                (
+                    element.id,
+                    element._minted,
+                    element._id_prefix,
+                    f"{kind} {quote_id(element.id)} {owner}",
+                )
+                for kind, held in (
+                    ("FlowMap", self._flow_maps),
+                    ("virtual timeline", self._virtual_timelines),
+                )
+                for element in held.values()
             ),
         ]
 
@@ -969,7 +982,7 @@ class Timeline(
                 self._rename_conversion_map(old_id, new_id)
             elif held_map is not None:
                 held_map._id = new_id
-            else:
+            elif not self._reassign_flow_id(old_id, new_id):
                 self._flow_control._reassign_id(old_id, new_id)
             self._rename_references(old_id, new_id)
 
@@ -1175,9 +1188,11 @@ class Timeline(
         return f"timeline {quote_id(self._id)}"
 
     def _rename_statement_references(self, renamed: Mapping[str, str | None]) -> None:
-        """Rename the elements this timeline's statements and its regions' name."""
+        """Rename the elements this timeline's statements and its regions' name,
+        and those its flow control, FlowMaps and virtual timelines name."""
         super()._rename_statement_references(renamed)
         self._flow_control._rename_references(renamed)
+        self._rename_flow_references(renamed)
         self._regions = {
             region_id: region._with_references_renamed(renamed)
             for region_id, region in self._regions.items()
@@ -1642,7 +1657,10 @@ class Timeline(
         written bare, represented as the axis's number type selects (``8``,
         ``8.0``, ``[8, 1]``); a ``length`` of None is written ``null``.
         ``"events"`` and ``"external_references"`` are written only on
-        request.
+        request. The FlowMaps naming the timeline and the virtual timelines
+        that come from its tree are written at the manifest's top level
+        (``flow_maps``, ``virtual_timelines``), each list sorted by id and
+        left out when empty.
 
         By default every key at its default value is left out, except
         ``length`` (the minimal form); with ``minimal=False`` every optional
@@ -2141,7 +2159,7 @@ class Timeline(
         when working with generic ``Timeline`` instances that should carry
         domain-specific type information.
 
-        Events, external references, conversion maps, regions, flow maps,
+        Events, external references, conversion maps, regions, FlowMaps, virtual timelines,
         metadata, the root offset and the keys the timeline was read
         with are preserved. Children are recursively re-typed copies, so a change to
         the result never reaches the source tree.
@@ -2201,7 +2219,7 @@ class Timeline(
         """Copy this timeline as a *target_class*, embedding *children* instead of its own.
 
         Everything the timeline holds is carried over: events, external
-        references, conversion maps, regions, flow maps, measure map, metric
+        references, conversion maps, regions, FlowMaps, virtual timelines, measure map, metric
         hierarchy, a copy of its flow control, its length and lock, its root
         offset, the keys it was read with, a copy of its statements and
         prefixes and a copy of the manifest it was read from.
@@ -2249,6 +2267,7 @@ class Timeline(
             copied.add_conversion_map(cmap)
         copied._regions.update(self._regions)
         copied._flow_maps.update(self._flow_maps)
+        copied._virtual_timelines.update(self._virtual_timelines)
         copied._measure_record_map = self._measure_record_map
         copied._metric_hierarchy = self._metric_hierarchy
         copied._adopt_flow_control(self._flow_control.copy())

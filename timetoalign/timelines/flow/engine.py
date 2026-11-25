@@ -115,7 +115,8 @@ class FlowResult:
             half-open :class:`~timetoalign.core.Interval`; stretches played
             one after the other without a jump between them are one run.
         findings: What was found on the way, in the order found, the
-            stretches never played last.
+            stretches never played last. Only the ``default`` flow has
+            findings.
     """
 
     runs: tuple[Interval, ...]
@@ -471,9 +472,8 @@ def play(
             ``"false"`` by default.
 
     Returns:
-        The runs in the order played and the findings. ``single`` reports
-        no stretch as never played, as it leaves stretches out by design;
-        ``printed`` reports nothing.
+        The runs in the order played and the findings. Findings are a
+        result of ``default`` alone: ``single`` and ``printed`` return none.
 
     Raises:
         ValueError: If the length is negative or not on the registry's
@@ -549,10 +549,9 @@ def play(
             continue
         position = nxt
     played = _merged(walk, runs)
-    findings = list(walk.findings)
-    if not single:
-        findings.extend(_never_played(walk, played))
-    return FlowResult(played, tuple(findings))
+    if single:
+        return FlowResult(played)
+    return FlowResult(played, (*walk.findings, *_never_played(walk, played)))
 
 
 def atomic_sections(

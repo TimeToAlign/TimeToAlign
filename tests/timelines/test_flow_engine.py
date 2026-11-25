@@ -330,20 +330,20 @@ def test_by_zero_divides_no_atomic_section_and_a_place_does() -> None:
 # region Conventions
 
 SINGLE = {
-    "brackets 1, 2": ([(0, 4), (8, 12)], []),
-    "three brackets": ([(0, 4), (12, 16)], []),
-    "brackets (1, 3), (2)": ([(0, 8)], [(K.flow_ends_at_break, 8, None)]),
-    "brackets (1, 3), (2) ending with a Fine": ([(0, 4), (8, 12)], []),
+    "brackets 1, 2": [(0, 4), (8, 12)],
+    "three brackets": [(0, 4), (12, 16)],
+    # Ends at the Break at 8; a finding is a result of ``default`` alone.
+    "brackets (1, 3), (2)": [(0, 8)],
+    "brackets (1, 3), (2) ending with a Fine": [(0, 4), (8, 12)],
 }
 
 
 @pytest.mark.parametrize("case", SINGLE)
 def test_single_goes_through_once(case: str) -> None:
     elements, length, _, _ = CASES[case]
-    runs, findings = SINGLE[case]
     result = play(_registry(*elements), length, convention=FlowConvention.single)
-    assert _runs(result) == runs
-    assert _findings(result) == findings
+    assert _runs(result) == SINGLE[case]
+    assert result.findings == ()
 
 
 @pytest.mark.parametrize("case", SINGLE)

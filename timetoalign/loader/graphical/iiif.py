@@ -666,6 +666,12 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
                     "from each canvas to its path, or select one canvas with "
                     "canvases=."
                 )
+            if not info.canvases[selected[0]].is_spatial:
+                raise KeyError(
+                    f"paths gives a time path to {selected[0]} (time-based: no "
+                    f"width and height). Selected canvases: "
+                    f"{_listed(info.canvases, selected)}"
+                )
             path_of = {selected[0]: paths}
         elif isinstance(paths, Mapping):
             path_of = {}

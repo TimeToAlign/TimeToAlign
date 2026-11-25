@@ -510,7 +510,11 @@ nothing was built: the next successful call still mints `dgt_1`.
 - A path for a canvas that is unknown (position 9, id `nope`), time-based
   (BnF position 0) or not selected (Gallica position 0 beside
   `canvases=[1]`): `KeyError` naming each with its reason and listing the
-  selected canvases as `position: 'id'`.
+  selected canvases as `position: 'id'`. One path given with `canvases=`
+  selecting a time-based canvas alone (BnF position 0, by position and by
+  id) is refused with the same `KeyError` as the mapping form, `paths gives
+  a time path to 0 (time-based: no width and height). Selected canvases: 0:
+  '<id>'`, before any bound is compared with the absent width.
 - One path for several selected canvases; one canvas given two paths (by
   position and by id); `paths` that is neither a path nor a mapping
   (`TypeError`).

@@ -1031,6 +1031,17 @@ class TestRefusals:
             refusal + f"Selected canvases: 0: {BNF_SOUNDS[0][0]!r}, 4: {images[0]!r}"
         )
 
+    def test_one_path_for_a_time_based_canvas(self, bnf_path: Path) -> None:
+        loader = IIIFManifestLoader().load(bnf_path)
+        sound = BNF_SOUNDS[0][0]
+        for key in (0, sound):
+            with pytest.raises(KeyError) as error:
+                loader.create_timelines(_line(), canvases=[key])
+            assert error.value.args[0] == (
+                "paths gives a time path to 0 (time-based: no width and height). "
+                f"Selected canvases: 0: {sound!r}"
+            )
+
     def test_one_path_for_several_canvases(self, gallica_path: Path) -> None:
         loader = _gallica(gallica_path)
         with pytest.raises(ValueError) as error:

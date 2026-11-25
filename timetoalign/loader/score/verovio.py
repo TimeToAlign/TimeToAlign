@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, TypeVar, cast
 
 import pyarrow as pa
 import verovio
@@ -42,6 +42,8 @@ if TYPE_CHECKING:
     )
 
 module_logger = logging.getLogger(__name__)
+
+_EventDataT = TypeVar("_EventDataT", bound="EventData")
 
 # ``useFractions`` (exact ``qfrac`` onsets in the timemap) exists from 4.4 on.
 _MIN_VERSION = (4, 4)
@@ -218,7 +220,7 @@ class _Rendering:
 
     anchors: list[tuple[Fraction, Fraction]]
     rows: list[dict[str, Any]]
-    movement: dict[str, int]
+    movement: dict[str, int | None]
     movements: list[_Movement]
     spans: dict[int, tuple[Fraction, Fraction]]
     measures: list[_RenderedMeasure]
@@ -258,7 +260,7 @@ def _check_unique_ids(root: ET.Element, score: _Score) -> None:
     MuseScore repeat ids of ``<harm>`` and ``<dynam>``) is listed in
     ``duplicate_ids``.
     """
-    counts = Counter(el.get(XML_ID) for el in root.iter() if el.get(XML_ID))
+    counts = Counter(xml_id for el in root.iter() if (xml_id := el.get(XML_ID)))
     score.ids = set(counts)
     duplicates = sorted(xml_id for xml_id, count in counts.items() if count > 1)
     read = {
@@ -900,7 +902,8 @@ class VerovioLoader(ScoreLoader):
         cmap = self.create_quarters_to_seconds_map()
         timeline = self._build_timeline(
             ContinuousPhysicalTimeline,
-            lambda position: cmap(position),
+            # The map writes Fraction seconds: its output number type is fraction.
+            lambda position: cast(Fraction, cmap(position)),
             uid=uid,
             name=name,
             role="rendered",
@@ -1257,7 +1260,7 @@ def _rendered_measures(
     timemap: list[dict[str, Any]], notated: dict[str, str]
 ) -> list[_RenderedMeasure]:
     """Return the timemap's measures in rendered order with their spans."""
-    starts = [
+    starts: list[tuple[str, Fraction]] = [
         (entry["measureOn"], _qfrac(entry)) for entry in timemap if "measureOn" in entry
     ]
     ends = [start for _, start in starts[1:]] + [_qfrac(timemap[-1])]
@@ -1791,13 +1794,13 @@ def _navigation(measures: list[_Measure]) -> list[dict[str, str | None]]:
 
 
 def _event_data(
-    cls: type[EventData],
+    cls: type[_EventDataT],
     rows: list[dict[str, Any]],
     extra: dict[str, pa.DataType],
     unit: TimeUnit = TimeUnit.quarters,
     convert: Callable[[Fraction], Fraction] | None = None,
     origin: Fraction = Fraction(0),
-) -> EventData:
+) -> _EventDataT:
     """Build *cls* from rows that all share one set of keys.
 
     Positions (``start``, ``end``) pass through *convert* and are taken
@@ -1809,9 +1812,11 @@ def _event_data(
     for name in rows[0]:
         if name in _MEASURE_OFFSETS and unit is not TimeUnit.quarters:
             continue
-        values = [row.get(name) for row in rows]
         if name in _POSITION_COLUMNS and convert is not None:
-            values = [convert(value) - origin for value in values]
+            # Every row holds every key, so each row's position is read.
+            values = [convert(row[name]) - origin for row in rows]
+        else:
+            values = [row.get(name) for row in rows]
         if name in _STRUCT_COLUMNS:
             columns[name] = build_number_struct_array(
                 values, number_type=NumberType.fraction

@@ -31,8 +31,10 @@ import datetime
 import json
 import re
 import urllib.parse
+import zipfile
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import timetoshare
@@ -40,7 +42,13 @@ from timetoshare import load_catalogue
 
 from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.core import TimeUnit
-from timetoalign.loader.base import Loader, Source, materialize
+from timetoalign.loader._sources import (
+    Source,
+    describe_source,
+    find_sources,
+    member_uri,
+)
+from timetoalign.loader.base import Loader
 from timetoalign.loader.metadata._statements import (
     Plan,
     Target,
@@ -78,6 +86,77 @@ _INTEGER = re.compile("[+-]?[0-9]+")
 _BOOLEANS = {"true": True, "1": True, "false": False, "0": False}
 
 _RDFLIB_MISSING = 'MelodyLoader needs rdflib: pip install "timetoalign[rdf]"'
+
+
+def _relative_to(path: Source, directory: Source) -> str:
+    """The POSIX path of *path* below *directory*, both of one kind.
+
+    Args:
+        path: A file found below *directory*.
+        directory: A filesystem directory or a directory member of a ZIP
+            archive.
+
+    Returns:
+        The relative path, ``/``-separated.
+
+    Raises:
+        ValueError: If one is a filesystem path and the other a member.
+    """
+    if isinstance(path, Path) and isinstance(directory, Path):
+        return path.relative_to(directory).as_posix()
+    if isinstance(path, zipfile.Path) and isinstance(directory, zipfile.Path):
+        return path.at.removeprefix(directory.at)
+    raise ValueError(
+        f"{describe_source(path)} is not below {describe_source(directory)}."
+    )
+
+
+#: A hierarchical stand-in for a member's ``jar:`` URI while rdflib parses
+#: it (see `_parse_member`); no IRI in a graph keeps it.
+_MEMBER_BASE = "x-timetoalign-zip-member:/"
+
+
+def _parse_member(graph: Any, member: zipfile.Path) -> None:
+    """Parse the Turtle member *member* into the empty rdflib *graph*, in place.
+
+    The member's base IRI is its URI, ``jar:<archive file URI>!/<member>``
+    (:func:`~timetoalign.loader._sources.member_uri`): a relative IRI
+    resolves inside the archive as a relative path resolves beside a file on
+    disk (``<other.ttl>`` in ``works/1.ttl`` names ``jar:file:///…/x.zip!/
+    works/other.ttl``). rdflib resolves relative IRIs only against a base
+    with a ``/`` after its scheme, which a ``jar:`` URI has not, so the
+    member is parsed against ``x-timetoalign-zip-member:/<member>`` and every
+    IRI and namespace under that stand-in is rewritten to the member's URI
+    afterwards.
+
+    Args:
+        graph: An empty ``rdflib.Graph``.
+        member: A Turtle file member of a ZIP archive.
+
+    Raises:
+        ValueError: If *member*'s archive was opened from a file object.
+        Exception: Whatever rdflib raises for a member that is no Turtle.
+    """
+    import rdflib
+
+    archive, inner = member_uri(member).split("!/", 1)
+    root = f"{archive}!/"
+    with member.open("rb") as handle:
+        graph.parse(source=handle, format="turtle", publicID=_MEMBER_BASE + inner)
+
+    def located(node: Any) -> Any:
+        if isinstance(node, rdflib.URIRef) and node.startswith(_MEMBER_BASE):
+            return rdflib.URIRef(root + node.removeprefix(_MEMBER_BASE))
+        return node
+
+    for triple in list(graph):
+        moved = tuple(located(node) for node in triple)
+        if moved != triple:
+            graph.remove(triple)
+            graph.add(moved)
+    for prefix, namespace in list(graph.namespaces()):
+        if str(namespace).startswith(_MEMBER_BASE):
+            graph.bind(prefix, located(rdflib.URIRef(namespace)), replace=True)
 
 
 def _rdflib() -> Any:
@@ -147,32 +226,38 @@ class MelodyLoader(Loader[MelodyRecord]):
     def _load_source(self, source: Source) -> MelodyRecord:
         """Parse a Turtle file, or every entity file of a repository directory.
 
-        rdflib resolves relative IRIs against the file's location, so a
-        member of a ZIP archive (a file or a directory) is read from its copy
-        (:func:`~timetoalign.loader.base.materialize`).
+        rdflib resolves relative IRIs against the file's location: a file on
+        disk is parsed from its path, as always; a member of a ZIP archive (a
+        file, or each file of a directory member) is parsed in place, its
+        location being the member's URI ``jar:<archive file URI>!/<member>``
+        (:func:`_parse_member`), so the graph does not depend on where a copy
+        would lie.
 
         Raises:
-            ValueError: If a file is no Turtle (``<path>: <rdflib's error>``).
+            ValueError: If a file is no Turtle (``<file>: <rdflib's error>``).
             ImportError: If rdflib is not installed.
         """
         rdflib = _rdflib()
-        local = materialize(source)
-        if local.is_dir():
+        if source.is_dir():
             paths = sorted(
-                (path.relative_to(local).as_posix(), path)
-                for path in local.rglob("*.ttl")
+                (relative, path)
+                for path in find_sources(source, "*.ttl", recursive=True)
                 if path.is_file()
-                and path.relative_to(local).parts[0] not in _NOT_ENTITIES
+                and (relative := _relative_to(path, source)).split("/")[0]
+                not in _NOT_ENTITIES
             )
         else:
-            paths = [(local.name, local)]
+            paths = [(source.name, source)]
         files = []
         for relative, path in paths:
             graph = rdflib.Graph()
             try:
-                graph.parse(path, format="turtle")
+                if isinstance(path, Path):
+                    graph.parse(path, format="turtle")
+                else:
+                    _parse_member(graph, path)
             except Exception as error:  # rdflib raises several error classes
-                raise ValueError(f"{path}: {error}") from error
+                raise ValueError(f"{describe_source(path)}: {error}") from error
             files.append((relative, graph))
         return MelodyRecord(source=source, files=tuple(files))
 

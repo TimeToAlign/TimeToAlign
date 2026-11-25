@@ -18,7 +18,12 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 from timetoalign.loader._optional import missing_dependency
-from timetoalign.loader.base import Source, SourceLike, as_source
+from timetoalign.loader._sources import (
+    Source,
+    SourceLike,
+    as_source,
+    describe_source,
+)
 
 module_logger = logging.getLogger(__name__)
 
@@ -173,7 +178,7 @@ class ImageSource:
 
         Args:
             path: Path to the image file, or its member in a ZIP archive
-                (decoded from its bytes, in place).
+                (decoded in place, from its bytes).
 
         Returns:
             ImageSource wrapping the loaded image.
@@ -186,15 +191,19 @@ class ImageSource:
         source = as_source(path)
 
         if not source.exists():
-            raise FileNotFoundError(f"Image file not found: {source}")
+            raise FileNotFoundError(f"Image file not found: {describe_source(source)}")
 
         try:
+            # PyMuPDF opens a file object by its ``name``, which for a member
+            # names no file: a member is decoded from its bytes.
             if isinstance(source, Path):
                 pix = pymupdf.Pixmap(str(source))
             else:
                 pix = pymupdf.Pixmap(source.read_bytes())
         except Exception as e:
-            raise ValueError(f"Failed to load image from {source}: {e}") from e
+            raise ValueError(
+                f"Failed to load image from {describe_source(source)}: {e}"
+            ) from e
 
         metadata = ImageMetadata(
             width=pix.width,

@@ -40,7 +40,7 @@ import logging
 from typing import Any
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import Source
+from timetoalign.loader._sources import Source, describe_source, source_record
 from timetoalign.timelines.structure import MeasureMap
 
 from .base import ScoreLoader
@@ -125,7 +125,9 @@ class MeasureMapLoader(ScoreLoader):
             ValueError: If MeasureMap structure is invalid.
         """
         if not source.exists():
-            raise FileNotFoundError(f"MeasureMap file not found: {source}")
+            raise FileNotFoundError(
+                f"MeasureMap file not found: {describe_source(source)}"
+            )
 
         with source.open(encoding="utf-8") as f:
             raw_data = json.load(f)
@@ -169,7 +171,7 @@ class MeasureMapLoader(ScoreLoader):
         )
         if incomplete is not None:
             raise ValueError(
-                f"MeasureMap file {source} has no symbolic measure lengths at "
+                f"MeasureMap file {describe_source(source)} has no symbolic measure lengths at "
                 f"row {incomplete['count']}"
             )
         self._expanded_data = expanded
@@ -194,7 +196,7 @@ class MeasureMapLoader(ScoreLoader):
             metadata={
                 "format": "measuremap_json",
                 "parser": "MeasureMapLoader",
-                "source": str(source),
+                **source_record(source, "source"),
                 "n_measures": len(expanded),
                 "flow_control": measures_data.get_flow_control_summary(),
             },

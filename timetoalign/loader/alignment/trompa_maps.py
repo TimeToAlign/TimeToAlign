@@ -44,7 +44,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.time import Coordinate
-from timetoalign.loader.base import AlignmentLoader, Source
+from timetoalign.loader._sources import Source, describe_source
+from timetoalign.loader.base import AlignmentLoader
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -343,17 +344,19 @@ def _ids(row: dict[str, Any]) -> list[str]:
 def _validate_rows(rows: Any, source: Source) -> None:
     """Raise unless *rows* are MAPS rows this loader reads as stated."""
     if not isinstance(rows, list):
-        raise ValueError(f"A MAPS file holds a JSON list of rows; {source} does not.")
+        raise ValueError(
+            f"A MAPS file holds a JSON list of rows; {describe_source(source)} does not."
+        )
     for position, row in enumerate(rows, start=1):
         if not isinstance(row, dict) or any(key not in row for key in _KEYS):
             raise ValueError(
-                f"MAPS row {position} of {source} must be an object with the keys "
+                f"MAPS row {position} of {describe_source(source)} must be an object with the keys "
                 f"{', '.join(_KEYS)}; got {row!r}."
             )
         obs_num = row["obs_num"]
         if isinstance(obs_num, bool) or obs_num != position:
             raise ValueError(
-                f"MAPS rows of {source} must be numbered 1, 2, … in order; row "
+                f"MAPS rows of {describe_source(source)} must be numbered 1, 2, … in order; row "
                 f"{position} has obs_num {obs_num!r}."
             )
         onset = row["obs_mean_onset"]
@@ -363,7 +366,7 @@ def _validate_rows(rows: Any, source: Source) -> None:
             or not math.isfinite(onset)
         ):
             raise ValueError(
-                f"MAPS row {position} of {source}: obs_mean_onset must be a number; "
+                f"MAPS row {position} of {describe_source(source)}: obs_mean_onset must be a number; "
                 f"got {onset!r}."
             )
         ids = row["xml_id"]
@@ -373,7 +376,7 @@ def _validate_rows(rows: Any, source: Source) -> None:
             or not all(isinstance(xml_id, str) and xml_id for xml_id in _ids(row))
         ):
             raise ValueError(
-                f"MAPS row {position} of {source}: xml_id must be a non-empty string "
+                f"MAPS row {position} of {describe_source(source)}: xml_id must be a non-empty string "
                 f"or a non-empty list of them; got {ids!r}."
             )
         inserted = [
@@ -381,7 +384,7 @@ def _validate_rows(rows: Any, source: Source) -> None:
         ]
         if onset < 0 and inserted:
             raise ValueError(
-                f"MAPS row {position} of {source} states the inserted note(s) "
+                f"MAPS row {position} of {describe_source(source)} states the inserted note(s) "
                 f"{', '.join(inserted)} at the negative onset {onset}: a note on "
                 "neither the score nor the recording."
             )

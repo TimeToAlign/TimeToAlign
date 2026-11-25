@@ -65,7 +65,8 @@ from timetoshare import load_catalogue, to_file_id
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import TimeUnit
-from timetoalign.loader.base import Loader, Source, readable
+from timetoalign.loader._sources import Source, describe_source, readable
+from timetoalign.loader.base import Loader
 from timetoalign.loader.metadata._statements import (
     Plan,
     Target,
@@ -309,7 +310,7 @@ class MeiHeadLoader(Loader[MeiHead]):
         else:
             head = None
         if head is None:
-            raise ValueError(f"{source} holds no meiHead")
+            raise ValueError(f"{describe_source(source)} holds no meiHead")
         return MeiHead(head, source)
 
     def _accept_source(

@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import LoadSourceResult, Source
+from timetoalign.loader._sources import Source
+from timetoalign.loader.base import LoadSourceResult
 
 from .base import MidiLoader
 

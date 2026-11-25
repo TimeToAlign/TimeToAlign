@@ -53,7 +53,7 @@ from timetoalign.core import (
     StringField,
     TimeUnit,
 )
-from timetoalign.loader.base import readable
+from timetoalign.loader._sources import readable
 
 from .csv import CsvLoader
 from .field_parsers import CompositeFieldParser

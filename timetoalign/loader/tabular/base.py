@@ -56,7 +56,8 @@ from timetoalign.core.time import (
     build_number_struct_array,
     combine_number_columns,
 )
-from timetoalign.loader.base import EventLoader, LoadSourceResult, Source, readable
+from timetoalign.loader._sources import Source, describe_source, readable
+from timetoalign.loader.base import EventLoader, LoadSourceResult
 from timetoalign.storage.schema import (
     ComputedField,
     Field,
@@ -572,7 +573,7 @@ class TabularLoader(EventLoader):
             ValueError: If required columns are missing.
         """
         if not source.exists():
-            raise FileNotFoundError(f"Source file not found: {source}")
+            raise FileNotFoundError(f"Source file not found: {describe_source(source)}")
 
         # Step 1: Single file read (vectorized I/O)
         df = self._read_dataframe(source)
@@ -649,14 +650,14 @@ class TabularLoader(EventLoader):
         if isinstance(start_col, Field):
             if start_col.column not in df.columns:
                 raise ValueError(
-                    f"Column '{start_col.column}' for Field not found in {source}. "
+                    f"Column '{start_col.column}' for Field not found in {describe_source(source)}. "
                     f"Available columns: {list(df.columns)}"
                 )
         elif isinstance(start_col, tuple):
             # Tuple is shorthand for Field
             if start_col[0] not in df.columns:
                 raise ValueError(
-                    f"Column '{start_col[0]}' for tuple field not found in {source}. "
+                    f"Column '{start_col[0]}' for tuple field not found in {describe_source(source)}. "
                     f"Available columns: {list(df.columns)}"
                 )
         elif isinstance(start_col, ComputedField):
@@ -672,7 +673,7 @@ class TabularLoader(EventLoader):
                 and self._fallback_start_column in df.columns
             ):
                 raise ValueError(
-                    f"Required column '{start_col}' not found in {source}. "
+                    f"Required column '{start_col}' not found in {describe_source(source)}. "
                     f"Available columns: {list(df.columns)}"
                 )
 

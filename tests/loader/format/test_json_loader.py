@@ -329,3 +329,12 @@ class TestJsonLoaderEdgeCases:
 
 
 # endregion
+
+
+def test_source_recorded_in_metadata() -> None:
+    """A filesystem source is recorded as its path in ``metadata["sources"]``."""
+    loader = JsonLoader.from_file(DJ_STUDIO_PATH)
+    (entry,) = loader.metadata["sources"]
+    assert sorted(entry) == ["loaded_at", "path"]
+    assert entry["path"] == str(DJ_STUDIO_PATH)
+    assert loader.metadata["source_count"] == 1

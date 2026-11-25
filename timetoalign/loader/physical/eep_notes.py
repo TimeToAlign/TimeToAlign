@@ -38,7 +38,7 @@ import pandas as pd
 
 from timetoalign.core import TimeUnit
 from timetoalign.core.events import canonical_pitch_names
-from timetoalign.loader.base import Source, readable
+from timetoalign.loader._sources import Source, readable
 from timetoalign.loader.tabular.csv import CsvLoader
 
 module_logger = logging.getLogger(__name__)

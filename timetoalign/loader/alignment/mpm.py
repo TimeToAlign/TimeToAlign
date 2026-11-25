@@ -81,7 +81,7 @@ from __future__ import annotations
 
 import logging
 from fractions import Fraction
-from pathlib import Path
+from pathlib import PurePath
 from typing import TYPE_CHECKING, Any
 
 from lxml import etree
@@ -90,16 +90,18 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.display.html import code
-from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import (
-    AlignmentLoader,
+from timetoalign.loader._sources import (
     Source,
     SourceLike,
     as_source,
+    describe_source,
     find_sources,
-    join_source,
+    readable,
+    sibling_source,
     source_parent,
 )
+from timetoalign.loader._xml import XML_ID
+from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds, TicksToQuarters
 from timetoalign.maps.linear import ScalarMap
@@ -296,7 +298,7 @@ class MpmLoader(AlignmentLoader):
         """
         mpr = as_source(mpr_path)
         if not mpr.is_file():
-            raise FileNotFoundError(f"Not a file: {mpr}")
+            raise FileNotFoundError(f"Not a file: {describe_source(mpr)}")
 
         mpr_root = self._parse_xml(mpr)
         msm_path, mpm_path = self._resolve_siblings(mpr, mpr_root)
@@ -336,10 +338,8 @@ class MpmLoader(AlignmentLoader):
         is on for robustness against minor markup quirks.
         """
         parser = etree.XMLParser(recover=True, collect_ids=False)
-        if isinstance(path, Path):
-            return etree.parse(str(path), parser).getroot()
-        with path.open("rb") as handle:
-            return etree.parse(handle, parser).getroot()
+        with readable(path) as document:
+            return etree.parse(document, parser).getroot()
 
     @staticmethod
     def _resolve_siblings(mpr: Source, mpr_root: Any) -> tuple[Source, Source]:
@@ -361,12 +361,16 @@ class MpmLoader(AlignmentLoader):
             raise FileNotFoundError(
                 f"Project {mpr.name} does not name both an .msm and an .mpm."
             )
-        msm_path = join_source(source_parent(mpr), Path(msm_name).name)
-        mpm_path = join_source(source_parent(mpr), Path(mpm_name).name)
+        msm_path = sibling_source(mpr, PurePath(msm_name).name)
+        mpm_path = sibling_source(mpr, PurePath(mpm_name).name)
         if not msm_path.is_file():
-            raise FileNotFoundError(f"Sibling MSM not found: {msm_path}")
+            raise FileNotFoundError(
+                f"Sibling MSM not found: {describe_source(msm_path)}"
+            )
         if not mpm_path.is_file():
-            raise FileNotFoundError(f"Sibling MPM not found: {mpm_path}")
+            raise FileNotFoundError(
+                f"Sibling MPM not found: {describe_source(mpm_path)}"
+            )
         return msm_path, mpm_path
 
     @staticmethod
@@ -767,7 +771,7 @@ class MpmLoader(AlignmentLoader):
         if hop_size_text is None or file_attr is None:
             return None
 
-        png_path = join_source(source_parent(mpr), file_attr)
+        png_path = sibling_source(mpr, file_attr)
         if not png_path.is_file():
             return None
 

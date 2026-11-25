@@ -19,9 +19,10 @@ with suppressed_backend_warnings():
     from partitura.score import Part, PartGroup, Score
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import LoadSourceResult, Source
+from timetoalign.loader._sources import Source, describe_source
+from timetoalign.loader.base import LoadSourceResult
 
-from .base import MidiLoader, read_midi_file
+from .base import MidiLoader, _read_midi_file
 from .constants import MidiEventType
 from .events import MidiEventData, ScoreMidiEventData
 
@@ -212,7 +213,8 @@ class ScoreMidiLoader(MidiLoader):
         if first_unjoined is not None:
             note_id, (onset, pitch, duration) = first_unjoined
             warnings.warn(
-                f"{velocities.count(None)} of {len(velocities)} notes of '{source}' "
+                f"{velocities.count(None)} of {len(velocities)} notes of "
+                f"'{describe_source(source)}' "
                 f"are left without a velocity: Partitura's note {note_id!r} (onset "
                 f"{onset}, pitch {pitch}, duration {duration}) is the first that is "
                 f"not the file's note of that number. parser='mido' reads every "
@@ -243,7 +245,7 @@ class ScoreMidiLoader(MidiLoader):
         # Load score using partitura, from the file parsed once: the same
         # messages give the velocities partitura's score parse leaves out.
         # Note: partitura can return Score, Part, PartGroup, or list
-        mid = read_midi_file(source)
+        mid = _read_midi_file(source)
         with suppressed_backend_warnings():
             score_data = pt.load_score_midi(
                 mid,

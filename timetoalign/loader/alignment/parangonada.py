@@ -90,13 +90,14 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.display.html import code
-from timetoalign.loader.base import (
-    AlignmentLoader,
+from timetoalign.loader._sources import (
     Source,
     SourceLike,
     as_source,
+    describe_source,
     find_sources,
 )
+from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds
 from timetoalign.maps.linear import LinearMap
@@ -212,12 +213,13 @@ class ParangonadaLoader(AlignmentLoader):
         """
         directory = as_source(dataset_dir)
         if not directory.is_dir():
-            raise FileNotFoundError(f"Not a directory: {directory}")
+            raise FileNotFoundError(f"Not a directory: {describe_source(directory)}")
 
         match_dir = directory / "match" / "match_transkun"
         if not match_dir.is_dir():
             raise FileNotFoundError(
-                f"No 'match/match_transkun/' subdirectory in dataset: {directory}"
+                "No 'match/match_transkun/' subdirectory in dataset: "
+                f"{describe_source(directory)}"
             )
         audio_dir = directory / "audio"
         features_dir = directory / _FEATURES_DIR
@@ -275,7 +277,7 @@ class ParangonadaLoader(AlignmentLoader):
         if not performers:
             raise FileNotFoundError(
                 f"No performer subdirectory with {list(_REQUIRED_FILES)} "
-                f"found under {match_dir}"
+                f"found under {describe_source(match_dir)}"
             )
 
         performers.sort(key=lambda pair: pair[0])
@@ -558,7 +560,7 @@ class ParangonadaLoader(AlignmentLoader):
         if len(matches) != 1:
             raise FileNotFoundError(
                 f"Expected exactly one '{performer_key}_measure*.{suffix}' file "
-                f"under {features_dir}, found {len(matches)}: "
+                f"under {describe_source(features_dir)}, found {len(matches)}: "
                 + ", ".join(m.name for m in matches)
             )
         return matches[0]

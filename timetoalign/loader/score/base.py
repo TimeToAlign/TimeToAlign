@@ -14,7 +14,8 @@ from typing_extensions import Self
 
 from timetoalign.core import TimeUnit
 from timetoalign.core.enums import FlowManifestation
-from timetoalign.loader.base import EventLoader, Source
+from timetoalign.loader._sources import Source
+from timetoalign.loader.base import EventLoader
 from timetoalign.storage import EventData
 
 from .store import ScoreStore

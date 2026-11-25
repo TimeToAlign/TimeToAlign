@@ -50,7 +50,8 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from timetoalign.core import Quadrilateral, TimeUnit
-from timetoalign.loader.base import Loader, Source
+from timetoalign.loader._sources import Source, describe_source
+from timetoalign.loader.base import Loader
 from timetoalign.loader.graphical._located import located
 from timetoalign.loader.graphical._pages import (
     Ids,
@@ -212,8 +213,8 @@ def _read_document(source: Source) -> _DmosDocument:
     """
     document = json.loads(source.read_text(encoding="utf-8"))
     pages = []
-    for page in _member(document, "pages", f"The DMOS file {source}"):
-        number = _member(page, "no_page", f"A page of {source}")
+    for page in _member(document, "pages", f"The DMOS file {describe_source(source)}"):
+        number = _member(page, "no_page", f"A page of {describe_source(source)}")
         where = f"DMOS page {number}"
         systems = []
         for k, system in enumerate(_member(page, "systems", where), start=1):
@@ -350,7 +351,7 @@ class DmosLoader(Loader[_DmosDocument]):
         """Keep the document of the one source."""
         super()._accept_source(path, source_meta, payload)
         self._document = payload
-        self._logger.debug(f"Loaded {path}: {self!r}")
+        self._logger.debug(f"Loaded {describe_source(path)}: {self!r}")
         left_out = [
             f"page {page.number}, system {system.position}"
             for page in payload.pages
@@ -359,7 +360,7 @@ class DmosLoader(Loader[_DmosDocument]):
         ]
         if left_out:
             self._logger.warning(
-                f"{path}: {len(left_out)} system(s) without x extent and without "
+                f"{describe_source(path)}: {len(left_out)} system(s) without x extent and without "
                 "measures are no part of the time path and are left out: "
                 f"{'; '.join(left_out)}."
             )

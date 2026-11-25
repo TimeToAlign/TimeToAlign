@@ -133,7 +133,8 @@ from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import NumberType, Provenance, TimeScalarValue, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
-from timetoalign.loader.base import LoadSourceResult, Source
+from timetoalign.loader._sources import Source
+from timetoalign.loader.base import LoadSourceResult
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap

@@ -10,7 +10,7 @@ import logging
 from typing import ClassVar
 
 from timetoalign.core import TimeUnit
-from timetoalign.loader.base import readable
+from timetoalign.loader._sources import readable
 
 from .base import TabularLoader
 

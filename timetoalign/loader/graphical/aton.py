@@ -22,7 +22,8 @@ from typing import TYPE_CHECKING, Any
 
 from timetoalign.core import TimeUnit
 from timetoalign.core.events import BoundingBox
-from timetoalign.loader.base import Loader, Source
+from timetoalign.loader._sources import Source, describe_source
+from timetoalign.loader.base import Loader
 from timetoalign.timelines import DiscreteGraphicalTimeline
 
 if TYPE_CHECKING:
@@ -145,12 +146,12 @@ class ATONLoader(Loader[list[ATONHole]]):
             ValueError: If the file format is invalid.
         """
         if not source.exists():
-            raise FileNotFoundError(f"ATON file not found: {source}")
+            raise FileNotFoundError(f"ATON file not found: {describe_source(source)}")
 
         self._parse_content(source.read_text(encoding="utf-8"))
 
         self._logger.debug(
-            f"Loaded ATON file from {source}: "
+            f"Loaded ATON file from {describe_source(source)}: "
             f"rollinfo keys={len(self._rollinfo)}, holes={len(self._holes)}"
         )
         return self._holes

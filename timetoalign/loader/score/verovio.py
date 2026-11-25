@@ -18,8 +18,13 @@ import verovio
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.enums import ExtrapolationPolicy, FlowManifestation
 from timetoalign.core.time import build_number_struct_array, rational_to_struct
+from timetoalign.loader._sources import (
+    Source,
+    describe_source,
+    on_disk,
+    source_record,
+)
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import Source, materialize
 
 from .base import ScoreLoader
 from .events import ScoreEventType
@@ -649,7 +654,7 @@ class VerovioLoader(ScoreLoader):
                 "%d xml:id(s) in %s name more than one element the loader does not "
                 "read: %s",
                 len(score.duplicate_ids),
-                source,
+                describe_source(source),
                 score.duplicate_ids[:5],
             )
         timemap = _timemap(toolkit, source)
@@ -686,7 +691,7 @@ class VerovioLoader(ScoreLoader):
             module_logger.warning(
                 "Tie %r in %s names no end element; its start keeps tie='i'",
                 tie_id,
-                source,
+                describe_source(source),
             )
 
         passes = _Passes(rendered, score)
@@ -762,7 +767,7 @@ class VerovioLoader(ScoreLoader):
             metadata={
                 "format": "score",
                 "parser": "verovio",
-                "source": str(source),
+                **source_record(source, "source"),
                 "verovio_version": version,
                 "verovio_options": options,
                 "title": score.title,
@@ -1124,16 +1129,21 @@ def _load_file(
 
     Given *data*, an MEI text made from *source*, the toolkit reads it as MEI
     instead of the file. Verovio reads files on disk only: a member of a ZIP
-    archive is read from its copy (:func:`~timetoalign.loader.base.materialize`).
+    archive is read from its copy (:func:`~timetoalign.loader.materialize`);
+    the error then names the archive and the member.
     """
     if data is None:
         toolkit.setOptions(options)
-        loaded = toolkit.loadFile(str(materialize(source)))
+        with on_disk(source) as path:
+            loaded = toolkit.loadFile(str(path))
     else:
         toolkit.setOptions({**options, "inputFrom": "mei"})
         loaded = toolkit.loadData(data)
     if not loaded:
-        raise ValueError(f"Verovio could not load {source}: {_verovio_reason(toolkit)}")
+        raise ValueError(
+            f"Verovio could not load {describe_source(source)}: "
+            f"{_verovio_reason(toolkit)}"
+        )
 
 
 def _verovio_reason(toolkit: Any) -> str:
@@ -1192,7 +1202,7 @@ def _refuse_without_music(source: Source) -> None:
         detail = f"its <{_MUSIC_PATH[reached - 1]}> holds no <{_MUSIC_PATH[reached]}>"
     holds = "an MEI header and no music" if head else "no music"
     raise ValueError(
-        f"{source} holds {holds}: {detail}. An encoding without measures or staves "
+        f"{describe_source(source)} holds {holds}: {detail}. An encoding without measures or staves "
         "describes a work but can give no timeline; load an MEI file that encodes "
         "the music itself."
     )
@@ -1203,7 +1213,7 @@ def _timemap(toolkit: Any, source: Source) -> list[dict[str, Any]]:
     timemap = toolkit.renderToTimemap({**_TIMEMAP_OPTIONS, "useFractions": True})
     if not timemap:
         raise ValueError(
-            f"Verovio's timemap of {source} is empty: {_verovio_reason(toolkit)}"
+            f"Verovio's timemap of {describe_source(source)} is empty: {_verovio_reason(toolkit)}"
         )
     _check_against_qstamps(timemap, toolkit.renderToTimemap(_TIMEMAP_OPTIONS))
     return timemap
@@ -1413,7 +1423,7 @@ def _unexpanded_lengths(
     module_logger.warning(
         "Verovio's expansion of %s leaves out %d printed measure(s) %s; their "
         "lengths come from a rendering with expandNever",
-        source,
+        describe_source(source),
         len(omitted),
         omitted[:5],
     )

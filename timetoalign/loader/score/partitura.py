@@ -14,7 +14,7 @@ with suppressed_backend_warnings():
     import partitura.score as pts
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import Source, materialize
+from timetoalign.loader._sources import Source, on_disk, source_record
 
 from .base import ScoreLoader, _coordinate_struct
 from .store import ScoreStore
@@ -111,12 +111,11 @@ class PartituraLoader(ScoreLoader):
         """Core loading logic for a single source file.
 
         Partitura reads files on disk only: a member of a ZIP archive is read
-        from its copy (:func:`~timetoalign.loader.base.materialize`).
+        from its copy (:func:`~timetoalign.loader.materialize`), and an error
+        Partitura raises then names the archive and the member.
         """
-        with suppressed_backend_warnings():
-            score = pt.load_score(
-                str(materialize(source)), force_note_ids=self._force_note_ids
-            )
+        with suppressed_backend_warnings(), on_disk(source) as path:
+            score = pt.load_score(str(path), force_note_ids=self._force_note_ids)
 
         # Flatten parts
         parts = []
@@ -743,7 +742,7 @@ class PartituraLoader(ScoreLoader):
             metadata={
                 "format": "score",
                 "parser": "partitura",
-                "source": str(source),
+                **source_record(source, "source"),
                 "has_rests": has_rests,
                 "anacrusis_offset": offset,
             },

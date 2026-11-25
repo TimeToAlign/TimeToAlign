@@ -1345,3 +1345,13 @@ class TestLargeSpecimens:
 
 
 # endregion
+
+
+def test_source_recorded_in_metadata(ieee1599_path) -> None:
+    """A filesystem source is recorded as its path in ``metadata["sources"]``."""
+    path = ieee1599_path("bach")
+    loader = Ieee1599Loader.from_file(path)
+    (entry,) = loader.metadata["sources"]
+    assert sorted(entry) == ["loaded_at", "path"]
+    assert entry["path"] == str(path)
+    assert loader.metadata["source_count"] == 1

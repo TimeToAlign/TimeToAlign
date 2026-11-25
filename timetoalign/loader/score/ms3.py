@@ -19,13 +19,14 @@ from timetoalign.core.time import (
     rational_to_struct,
 )
 from timetoalign.loader._optional import missing_dependency
-from timetoalign.loader.base import (
+from timetoalign.loader._sources import (
     Source,
     SourceLike,
     as_source,
+    describe_source,
     readable,
-    source_metadata,
     source_parent,
+    source_record,
 )
 
 from .base import ScoreLoader
@@ -53,7 +54,7 @@ if TYPE_CHECKING:
 def _holds_no_table(source: Source) -> ValueError:
     """The refusal of an ms3 TSV file that holds no table, naming it."""
     return ValueError(
-        f"Ms3Loader cannot read '{source}': the file holds no table (an ms3 TSV "
+        f"Ms3Loader cannot read '{describe_source(source)}': the file holds no table (an ms3 TSV "
         "file states its columns in its first line)."
     )
 
@@ -68,7 +69,7 @@ def _source_key(source: Source) -> Path | tuple[str, str]:
     """What tells two sources apart: a resolved path, or archive and member."""
     if isinstance(source, Path):
         return source.resolve()
-    provenance = source_metadata(source)
+    provenance = source_record(source)
     return provenance["path"], provenance["member"]
 
 
@@ -273,10 +274,15 @@ class Ms3Loader(ScoreLoader):
                 if companion_key not in seen:
                     seen.add(companion_key)
                     if not _states_a_table(companion):
-                        logger.debug("Companion holds no table, skipped: %s", companion)
+                        logger.debug(
+                            "Companion holds no table, skipped: %s",
+                            describe_source(companion),
+                        )
                         continue
                     expanded.append(companion)
-                    logger.debug("Auto-discovered companion: %s", companion)
+                    logger.debug(
+                        "Auto-discovered companion: %s", describe_source(companion)
+                    )
 
         return super().load(*expanded)
 
@@ -290,10 +296,12 @@ class Ms3Loader(ScoreLoader):
                 f"with a facet among {list(Ms3Loader._FACETS)})"
             )
         else:
-            looked_at = [str(path) for paths in candidates.values() for path in paths]
+            looked_at = [
+                describe_source(path) for paths in candidates.values() for path in paths
+            ]
             detail = f"none of these files exists: {looked_at}"
         warnings.warn(
-            f"auto_discover found no companion facet file for '{source}': {detail}. "
+            f"auto_discover found no companion facet file for '{describe_source(source)}': {detail}. "
             "It is loaded alone.",
             UserWarning,
             stacklevel=3,
@@ -501,10 +509,14 @@ class Ms3Loader(ScoreLoader):
                 with readable(companion) as table:
                     measures = ms3.load_tsv(table)
             except Exception:
-                logger.debug("Could not read measures companion: %s", companion)
+                logger.debug(
+                    "Could not read measures companion: %s", describe_source(companion)
+                )
                 return None
             if measures is None:
-                logger.debug("Measures companion holds no table: %s", companion)
+                logger.debug(
+                    "Measures companion holds no table: %s", describe_source(companion)
+                )
                 return None
 
             end: Fraction | None = None
@@ -739,7 +751,7 @@ class Ms3Loader(ScoreLoader):
             metadata={
                 "format": "tsv",
                 "parser": "ms3",
-                "source": str(source),
+                **source_record(source, "source"),
                 "has_rests": has_rests,
             },
         )
@@ -1039,7 +1051,7 @@ class Ms3Loader(ScoreLoader):
             metadata={
                 "format": "tsv",
                 "parser": "ms3",
-                "source": str(source),
+                **source_record(source, "source"),
                 "n_measures": len(measure_rows),
                 "flow_control": measures_data.get_flow_control_summary(),
             },
@@ -1155,7 +1167,7 @@ class Ms3Loader(ScoreLoader):
             metadata={
                 "format": "tsv",
                 "parser": "ms3",
-                "source": str(source),
+                **source_record(source, "source"),
                 "annotation_type": subtype,
                 "n_annotations": len(annotation_rows),
             },
@@ -1266,7 +1278,7 @@ class Ms3Loader(ScoreLoader):
             metadata={
                 "format": "tsv",
                 "parser": "ms3",
-                "source": str(source),
+                **source_record(source, "source"),
                 "control_type": subtype,
                 "n_controls": len(control_rows),
             },

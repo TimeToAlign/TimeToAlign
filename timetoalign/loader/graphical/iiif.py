@@ -22,7 +22,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from timetoalign.loader.base import Loader, Source
+from timetoalign.loader._sources import Source, describe_source
+from timetoalign.loader.base import Loader
 from timetoalign.loader.graphical._pages import Page, build_pages, build_volume
 from timetoalign.loader.graphical.paths import (
     HorizontalLinePath,
@@ -154,7 +155,9 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
             json.JSONDecodeError: If the file is not valid JSON.
         """
         if not source.exists():
-            raise FileNotFoundError(f"Manifest file not found: {source}")
+            raise FileNotFoundError(
+                f"Manifest file not found: {describe_source(source)}"
+            )
 
         with source.open(encoding="utf-8") as f:
             manifest_data = json.load(f)
@@ -171,7 +174,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         self._manifest_info = payload
         self._source_path = path
         self._logger.debug(
-            f"Loaded manifest from {path}: "
+            f"Loaded manifest from {describe_source(path)}: "
             f"{len(self._manifest_info.canvases)} canvas(es)"
         )
 
@@ -219,7 +222,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         else:
             lists = "neither 'items' (Presentation 3) nor 'sequences' (Presentation 2)"
         raise ValueError(
-            f"Cannot tell the IIIF Presentation version of {source}: its @context "
+            f"Cannot tell the IIIF Presentation version of {describe_source(source)}: its @context "
             f"names none, and it lists {lists}"
         )
 

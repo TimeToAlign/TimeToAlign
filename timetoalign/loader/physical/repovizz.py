@@ -43,17 +43,18 @@ from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit, resolve_id
 from timetoalign.display.html import code
-from timetoalign.loader.base import (
-    ManifestData,
-    ManifestLoader,
+from timetoalign.loader._sources import (
     Source,
     SourceLike,
     as_source,
+    describe_source,
     join_source,
     readable,
     sort_sources,
     source_parent,
+    source_record,
 )
+from timetoalign.loader.base import ManifestData, ManifestLoader
 from timetoalign.storage.events import EventData
 
 from .repovizz_catalogue import CatalogueEntry, _XmlCatalogueParser
@@ -228,16 +229,18 @@ class RepoVizzLoader(ManifestLoader):
             ValueError: If the file format is invalid or ``framerate`` is missing.
         """
         if not source.exists():
-            raise FileNotFoundError(f"RepoVizz CSV file not found: {source}")
+            raise FileNotFoundError(
+                f"RepoVizz CSV file not found: {describe_source(source)}"
+            )
 
         with source.open("r", encoding="utf-8") as f:
             metadata_line = f.readline().strip()
             data_line = f.readline().strip()
 
         if not metadata_line:
-            raise ValueError(f"Empty metadata line in {source}")
+            raise ValueError(f"Empty metadata line in {describe_source(source)}")
         if not data_line:
-            raise ValueError(f"Empty data line in {source}")
+            raise ValueError(f"Empty data line in {describe_source(source)}")
 
         # Parse metadata: comma-separated key=value pairs
         metadata: dict[str, str] = {}
@@ -250,7 +253,7 @@ class RepoVizzLoader(ManifestLoader):
         frame_rate_str = metadata.get("framerate")
         if frame_rate_str is None:
             raise ValueError(
-                f"No 'framerate' found in metadata header of {source}. "
+                f"No 'framerate' found in metadata header of {describe_source(source)}. "
                 f"Available keys: {list(metadata.keys())}"
             )
         frame_rate = int(frame_rate_str)
@@ -294,7 +297,9 @@ class RepoVizzLoader(ManifestLoader):
             ET.ParseError: If the XML is malformed.
         """
         if not source.exists():
-            raise FileNotFoundError(f"RepoVizz XML manifest not found: {source}")
+            raise FileNotFoundError(
+                f"RepoVizz XML manifest not found: {describe_source(source)}"
+            )
 
         with readable(source) as document:
             tree = ET.parse(document)
@@ -306,7 +311,7 @@ class RepoVizzLoader(ManifestLoader):
 
         self._xml_metadata = {
             "root_id": root.get("ID", ""),
-            "source_path": str(source),
+            **source_record(source, "source_path"),
         }
         parser = _XmlCatalogueParser(
             source_parent(source), self._xml_metadata, self._logger
@@ -525,7 +530,7 @@ class RepoVizzLoader(ManifestLoader):
 
         csv_path = join_source(self._xml_root_path, entry.filename)
         if not csv_path.exists():
-            self._logger.warning("CSV file not found: %s", csv_path)
+            self._logger.warning("CSV file not found: %s", describe_source(csv_path))
             return 0
 
         try:
@@ -536,7 +541,9 @@ class RepoVizzLoader(ManifestLoader):
                 return 0
             return sum(1 for v in data_line.split(",") if v.strip())
         except Exception:
-            self._logger.warning("Failed to read CSV: %s", csv_path, exc_info=True)
+            self._logger.warning(
+                "Failed to read CSV: %s", describe_source(csv_path), exc_info=True
+            )
             return 0
 
     def _create_timeline_xml(
@@ -1000,7 +1007,7 @@ class RepoVizzLoader(ManifestLoader):
 
             filename_lower = entry.filename.lower()
 
-            # Match pattern: {prefix}_{source}.wav.{type}.{name}.wav
+            # Match pattern: {prefix}_{describe_source(source)}.wav.{type}.{name}.wav
             if (
                 source_lower in filename_lower
                 and f".{type_lower}." in filename_lower

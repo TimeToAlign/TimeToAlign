@@ -47,8 +47,9 @@ from fractions import Fraction
 from typing import Any, ClassVar
 
 from timetoalign.core import Shape, TimeUnit
+from timetoalign.loader._sources import Source, describe_source, readable
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import Loader, Source, readable
+from timetoalign.loader.base import Loader
 from timetoalign.loader.graphical._located import located
 from timetoalign.loader.graphical._pages import (
     Ids,
@@ -210,7 +211,7 @@ def _read_facsimile(source: Source) -> _MeiFacsimile:
         root = ET.parse(document).getroot()
     if not root.tag.startswith(_MEI):
         raise ValueError(
-            f"{source} is no MEI document: its root <{root.tag}> is not in the MEI "
+            f"{describe_source(source)} is no MEI document: its root <{root.tag}> is not in the MEI "
             f"namespace {MEI_NAMESPACE}."
         )
     missing: list[str] = []
@@ -339,7 +340,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
         """Keep the facsimile of the one source."""
         super()._accept_source(path, source_meta, payload)
         self._facsimile = payload
-        self._logger.debug(f"Loaded {path}: {self!r}")
+        self._logger.debug(f"Loaded {describe_source(path)}: {self!r}")
 
     def clear(self) -> None:
         """Forget the loaded file."""

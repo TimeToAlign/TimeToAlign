@@ -606,3 +606,12 @@ class TestHoleEventIds:
 
 
 # endregion
+
+
+def test_source_recorded_in_metadata() -> None:
+    """A filesystem source is recorded as its path in ``metadata["sources"]``."""
+    loader = ATONLoader.from_file(ATON_FILE)
+    (entry,) = loader.metadata["sources"]
+    assert sorted(entry) == ["loaded_at", "path"]
+    assert entry["path"] == str(ATON_FILE)
+    assert loader.metadata["source_count"] == 1

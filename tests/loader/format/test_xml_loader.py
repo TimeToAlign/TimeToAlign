@@ -487,3 +487,12 @@ class TestLoadElement:
 
 
 # endregion
+
+
+def test_source_recorded_in_metadata() -> None:
+    """A filesystem source is recorded as its path in ``metadata["sources"]``."""
+    loader = XmlLoader.from_file(XML_PATH)
+    (entry,) = loader.metadata["sources"]
+    assert sorted(entry) == ["loaded_at", "path"]
+    assert entry["path"] == str(XML_PATH)
+    assert loader.metadata["source_count"] == 1

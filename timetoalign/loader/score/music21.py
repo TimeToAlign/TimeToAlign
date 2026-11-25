@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import xml.etree.ElementTree as ET
 from fractions import Fraction
-from pathlib import Path
 from typing import Any
 
 import music21 as m21
@@ -15,7 +14,13 @@ from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.time import (
     rational_to_struct,
 )
-from timetoalign.loader.base import Source, materialize
+from timetoalign.loader._sources import (
+    Source,
+    describe_source,
+    on_disk,
+    readable,
+    source_record,
+)
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -74,10 +79,11 @@ class Music21Loader(ScoreLoader):
         """Load score and return ScoreStore.
 
         music21 reads files on disk only: a member of a ZIP archive is read
-        from its copy (:func:`~timetoalign.loader.base.materialize`).
+        from its copy (:func:`~timetoalign.loader.materialize`), and an error
+        music21 raises then names the archive and the member.
         """
-        path = materialize(source)
-        score = m21.converter.parse(str(path), forceSource=True)
+        with on_disk(source) as path:
+            score = m21.converter.parse(str(path), forceSource=True)
 
         note_rows = []
         measure_rows = []
@@ -96,7 +102,7 @@ class Music21Loader(ScoreLoader):
         #    are not translated to RepeatBracket spanners by music21.
         is_mei = source.suffix.lower() == ".mei"
         mei_measure_info: dict[int, dict[str, Any]] = (
-            self._parse_mei_measure_info(path) if is_mei else {}
+            self._parse_mei_measure_info(source) if is_mei else {}
         )  # mc -> {number, volta, start_repeat, end_repeat}
 
         for part_idx, part in enumerate(parts):
@@ -395,7 +401,7 @@ class Music21Loader(ScoreLoader):
             metadata={
                 "format": "score",
                 "parser": "music21",
-                "source": str(source),
+                **source_record(source, "source"),
                 "has_rests": has_rests,
                 "anacrusis_offset": m21_offset,
             },
@@ -509,7 +515,7 @@ class Music21Loader(ScoreLoader):
             )
 
     @staticmethod
-    def _parse_mei_measure_info(source: Path) -> dict[int, dict[str, Any]]:
+    def _parse_mei_measure_info(source: Source) -> dict[int, dict[str, Any]]:
         """Parse an MEI file directly to extract measure repeat facts.
 
         music21's MEI parser does not translate ``<ending>`` elements into
@@ -523,15 +529,19 @@ class Music21Loader(ScoreLoader):
         - ``end_repeat``: True when the measure has ``right="rptend"``.
 
         Args:
-            source: Path to the ``.mei`` file.
+            source: The ``.mei`` file: a path or a ZIP archive member, read
+                in place.
 
         Returns:
             Mapping from source measure position (from 1) to its facts.
         """
         try:
-            tree = ET.parse(str(source))
+            with readable(source) as document:
+                tree = ET.parse(document)
         except ET.ParseError:
-            module_logger.warning("Failed to parse MEI XML for %s", source)
+            module_logger.warning(
+                "Failed to parse MEI XML for %s", describe_source(source)
+            )
             return {}
 
         root = tree.getroot()

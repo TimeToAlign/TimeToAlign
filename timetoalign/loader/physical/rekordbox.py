@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlparse
 
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.loader.base import Loader, Source, readable
+from timetoalign.loader._sources import Source, describe_source, readable
+from timetoalign.loader.base import Loader
 
 if TYPE_CHECKING:
     from timetoalign.timelines import BeatGrid, BeatGridSegment, MeasureMap
@@ -73,7 +74,9 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
             root = ET.parse(document).getroot()
         collection = root if root.tag == "COLLECTION" else root.find("COLLECTION")
         if collection is None:
-            raise ValueError(f"Rekordbox XML {source} has no COLLECTION element")
+            raise ValueError(
+                f"Rekordbox XML {describe_source(source)} has no COLLECTION element"
+            )
         return [self._parse_track(element) for element in collection.findall("TRACK")]
 
     def _accept_source(

@@ -67,15 +67,16 @@ from typing_extensions import Self
 
 from timetoalign.alignment.claims import ClaimSide
 from timetoalign.core import Provenance, TimeUnit
-from timetoalign.loader.base import (
-    AlignmentLoader,
+from timetoalign.loader._sources import (
     Source,
     SourceLike,
     as_source,
+    describe_source,
     find_sources,
-    materialize,
-    source_parent,
+    on_disk,
+    sibling_source,
 )
+from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
 from timetoalign.timelines.types import (
@@ -217,21 +218,24 @@ class PerformancePrecisionLoader(AlignmentLoader):
         """
         directory = as_source(specimen_dir)
         if not directory.is_dir():
-            raise FileNotFoundError(f"Not a directory: {directory}")
+            raise FileNotFoundError(f"Not a directory: {describe_source(directory)}")
 
         solo_path = self._resolve_single(directory, "*.solo")
         timemap_path = self._resolve_single(directory, "*.json")
         alignments_dir = directory / "Alignments"
         if not alignments_dir.is_dir():
             raise FileNotFoundError(
-                f"No 'Alignments/' subdirectory in specimen: {directory}"
+                f"No 'Alignments/' subdirectory in specimen: "
+                f"{describe_source(directory)}"
             )
 
         self._sources = [solo_path, timemap_path, alignments_dir]
         self._name = solo_path.stem
 
         # Measure structure first — needed to resolve every label.
-        self._metric_map = MetricMap.from_verovio_timemap(materialize(timemap_path))
+        # The timemap reader takes a file on disk: a member is read from its copy.
+        with on_disk(timemap_path) as timemap_file:
+            self._metric_map = MetricMap.from_verovio_timemap(timemap_file)
         self._metrical_position_map = MetricalPositionMap(self._metric_map)
         first_meter_quarters = self._first_meter_quarters(timemap_path)
         starts, m0_downbeat = self._build_measure_lookup(
@@ -251,11 +255,12 @@ class PerformancePrecisionLoader(AlignmentLoader):
         matches = find_sources(directory, pattern)
         if not matches:
             raise FileNotFoundError(
-                f"No file matching '{pattern}' in specimen: {directory}"
+                f"No file matching '{pattern}' in specimen: "
+                f"{describe_source(directory)}"
             )
         if len(matches) > 1:
             raise ValueError(
-                f"Expected exactly one '{pattern}' in {directory}, "
+                f"Expected exactly one '{pattern}' in {describe_source(directory)}, "
                 f"found {len(matches)}: {[m.name for m in matches]}"
             )
         return matches[0]
@@ -277,7 +282,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
                 timesig = str(entry["meterSig"]).split()[1]
                 numerator, denominator = timesig.split("/")
                 return Fraction(int(numerator), int(denominator)) * 4
-        raise ValueError(f"No measure boundaries in timemap: {timemap_path}")
+        raise ValueError(
+            f"No measure boundaries in timemap: {describe_source(timemap_path)}"
+        )
 
     @staticmethod
     def _build_measure_lookup(
@@ -439,7 +446,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         # Read all three granularity files up front.
         granularity_rows: dict[str, list[tuple[int, Fraction, str]]] = {}
         for gran, suffix in _GRANULARITIES.items():
-            path = source_parent(note_file) / f"{stem}{suffix}.csv"
+            path = sibling_source(note_file, f"{stem}{suffix}.csv")
             granularity_rows[gran] = self._read_alignment_csv(path)
 
         # Physical timeline length = max aligned TIME of the note level.

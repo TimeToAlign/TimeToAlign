@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import warnings
 from abc import abstractmethod
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import numpy as np
@@ -14,7 +13,8 @@ import pyarrow.compute as pc
 from timetoalign.core import TimeUnit
 from timetoalign.loader import EventLoader
 from timetoalign.loader._optional import missing_dependency
-from timetoalign.loader.base import LoadSourceResult, Source
+from timetoalign.loader._sources import Source, describe_source
+from timetoalign.loader.base import LoadSourceResult
 
 from .constants import MidiEventType
 from .events import MidiEventData
@@ -25,21 +25,28 @@ if TYPE_CHECKING:
     from timetoalign.loader.midi.store import MidiStore
 
 
-def read_midi_file(source: Source) -> mido.MidiFile:
-    """Parse the MIDI file *source* with mido.
+def _read_midi_file(source: Source) -> mido.MidiFile:
+    """Parse the MIDI file *source* with mido, from its open file object.
 
-    A filesystem path is parsed as mido parses it. A member of a ZIP archive
-    is parsed from its open file object, in place.
+    A path and a member of a ZIP archive are both opened in binary mode and
+    parsed in place (mido parses a file it opens itself the same way). The
+    ``filename`` mido records, which Partitura takes as the score's id, is
+    the source as messages name it.
+
+    Args:
+        source: The MIDI file: a path or a ZIP archive member.
+
+    Returns:
+        The parsed file.
 
     Raises:
         ImportError: If mido is not installed (the caller names the extra).
+        OSError, EOFError, ValueError: If mido cannot read the file.
     """
     import mido
 
-    if isinstance(source, Path):
-        return mido.MidiFile(source)
     with source.open("rb") as handle:
-        return mido.MidiFile(file=handle)
+        return mido.MidiFile(filename=describe_source(source), file=handle)
 
 
 class MidiLoader(EventLoader):
@@ -76,7 +83,7 @@ class MidiLoader(EventLoader):
         """Parse a MIDI file's event stream with mido.
 
         Args:
-            source: Path to the MIDI file.
+            source: The MIDI file: a path or a ZIP archive member.
             parse_durations: Whether to pair note-on and note-off messages.
             include_controls: Whether to emit control-change messages.
             include_program_changes: Whether to emit program-change messages.
@@ -97,10 +104,10 @@ class MidiLoader(EventLoader):
                 missing_dependency(type(self).__name__, error.name, "midi")
             ) from error
         try:
-            mid = read_midi_file(source)
+            mid = _read_midi_file(source)
         except (OSError, EOFError, ValueError) as e:
             # mido raises diverse exceptions for invalid files
-            raise ValueError(f"Invalid MIDI file {source}: {e}") from e
+            raise ValueError(f"Invalid MIDI file {describe_source(source)}: {e}") from e
 
         self._ticks_per_beat = mid.ticks_per_beat
 

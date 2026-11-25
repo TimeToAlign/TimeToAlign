@@ -25,7 +25,8 @@ from fractions import Fraction
 from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, TimeUnit
-from timetoalign.loader.base import Loader, Source, readable
+from timetoalign.loader._sources import Source, describe_source, readable
+from timetoalign.loader.base import Loader
 from timetoalign.timelines import ContinuousGraphicalTimeline
 
 module_logger = logging.getLogger(__name__)
@@ -116,7 +117,9 @@ def _read_axis(source: Source) -> _ScoreWarpAxis:
     with readable(source) as document:
         root = ET.parse(document).getroot()
     if _local_name(root) != "svg":
-        raise ValueError(f"{source} is no SVG: its root is <{_local_name(root)}>.")
+        raise ValueError(
+            f"{describe_source(source)} is no SVG: its root is <{_local_name(root)}>."
+        )
     width, viewport_width = _css_pixels(root, "width")
     height, _ = _css_pixels(root, "height")
 
@@ -127,7 +130,7 @@ def _read_axis(source: Source) -> _ScoreWarpAxis:
     ]
     if len(axes) != 1:
         raise ValueError(
-            f'{source} holds {len(axes)} <g class="timeAxis"> elements, not one.'
+            f'{describe_source(source)} holds {len(axes)} <g class="timeAxis"> elements, not one.'
         )
     axis = axes[0]
     parents = {child: parent for parent in root.iter() for child in parent}
@@ -285,7 +288,7 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
         super()._accept_source(path, source_meta, payload)
         self._axis = payload
         self._logger.debug(
-            f"Loaded the time axis of {path}: {len(payload.ticks)} ticks, "
+            f"Loaded the time axis of {describe_source(path)}: {len(payload.ticks)} ticks, "
             f"{len(payload.calibration)} labelled"
         )
 

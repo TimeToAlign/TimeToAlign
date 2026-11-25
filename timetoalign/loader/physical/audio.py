@@ -30,13 +30,13 @@ import os
 import struct
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from fractions import Fraction
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Literal, TypeVar
 
 from timetoalign.loader._optional import optional_module
-from timetoalign.loader.base import Loader, Source, materialize
+from timetoalign.loader._sources import Source, describe_source, readable
+from timetoalign.loader.base import Loader
 
 if TYPE_CHECKING:
     from timetoalign.core import NumberType, TimeUnit
@@ -154,7 +154,7 @@ def _mp4_find(
     return start, end
 
 
-def _mp4_moov(path: Path) -> bytes | None:
+def _mp4_moov(path: Source) -> bytes | None:
     """Return the body of the file's ``moov`` box, reading no other box's body."""
     with path.open("rb") as handle:
         file_end = handle.seek(0, os.SEEK_END)
@@ -214,7 +214,7 @@ def _itunsmpb_count(value: bytes | str | None, media_end: int) -> int | None:
 
 
 def _mp4_sample_count(
-    path: Path, sample_rate: int, itunsmpb: bytes | str | None
+    path: Source, sample_rate: int, itunsmpb: bytes | str | None
 ) -> tuple[int, str] | None:
     """Return the sample count an MP4 file states for its audio as played.
 
@@ -227,7 +227,7 @@ def _mp4_sample_count(
     media's own count stands; nothing is subtracted by rule.
 
     Args:
-        path: The MP4 file.
+        path: The MP4 file: a path or a ZIP archive member, read in place.
         sample_rate: The sample rate of the track, as mutagen states it.
         itunsmpb: The value of the file's ``iTunSMPB`` tag, if any.
 
@@ -441,9 +441,12 @@ class AudioLoader(Loader[AudioInfo]):
         it on to the next; any other exception is a defect and propagates.
         When no backend reads the file, the error names every backend's reason.
 
-        The backends read files on disk: a member of a ZIP archive is read from
-        its copy (:func:`~timetoalign.loader.base.materialize`), and the info
-        names the member as its ``source_path``.
+        Every backend reads a member of a ZIP archive in place, from its open
+        file object, and only its header where the format allows: soundfile,
+        mutagen, the wave module and the RIFF and MP4 box readers all take a
+        file object, so no backend needs the member copied to disk. A
+        filesystem path reaches them as before. The info names the source,
+        path or member, as its ``source_path``.
 
         Args:
             source: The audio file: a path or a ZIP archive member.
@@ -456,8 +459,7 @@ class AudioLoader(Loader[AudioInfo]):
             ValueError: If the file format is not supported or cannot be read.
         """
         if not source.exists():
-            raise FileNotFoundError(f"Audio file not found: {source}")
-        path = materialize(source)
+            raise FileNotFoundError(f"Audio file not found: {describe_source(source)}")
 
         readers = [("soundfile", self._load_with_soundfile)]
         if source.suffix.lower() in _WAV_SUFFIXES:
@@ -471,21 +473,24 @@ class AudioLoader(Loader[AudioInfo]):
         missing_package = False
         for backend, read in readers:
             try:
-                info = read(path)
+                info = read(source)
             except _CannotRead as e:
-                self._logger.debug(f"{backend} cannot read {source}: {e}")
+                self._logger.debug(
+                    f"{backend} cannot read {describe_source(source)}: {e}"
+                )
                 reasons.append(f"  {backend}: {e}")
                 missing_package = missing_package or isinstance(e, _NotInstalled)
                 continue
             self._logger.debug(
-                f"Read audio metadata from {source} using {info.backend}: "
+                f"Read audio metadata from {describe_source(source)} using "
+                f"{info.backend}: "
                 f"{info.n_samples} samples @ {info.sample_rate} Hz"
             )
-            return (
-                info if isinstance(source, Path) else replace(info, source_path=source)
-            )
+            return info
 
-        message = f"Cannot read audio file '{source}':\n" + "\n".join(reasons)
+        message = f"Cannot read audio file '{describe_source(source)}':\n" + "\n".join(
+            reasons
+        )
         if missing_package:
             message += (
                 '\nInstall the missing packages with pip install "timetoalign[audio]".'
@@ -503,7 +508,7 @@ class AudioLoader(Loader[AudioInfo]):
         self._audio_info = payload
         self._source_path = path
 
-    def _load_with_soundfile(self, path: Path) -> AudioInfo:
+    def _load_with_soundfile(self, path: Source) -> AudioInfo:
         """Load metadata using soundfile (libsndfile backend).
 
         ``frames`` is the count libsndfile's decoder produces, so the sample
@@ -514,6 +519,10 @@ class AudioLoader(Loader[AudioInfo]):
         its extension claims, and such a file is handed on to the next backend
         rather than being an error the user must see.
 
+        Args:
+            path: The audio file: a path, or a ZIP archive member read from
+                its open file object.
+
         Raises:
             _CannotRead: If soundfile is not installed or cannot read the file.
         """
@@ -521,8 +530,8 @@ class AudioLoader(Loader[AudioInfo]):
         if sf is None:
             raise _NotInstalled("not installed")
         try:
-            with _muted_native_stderr():
-                info = sf.info(str(path))
+            with _muted_native_stderr(), readable(path) as file:
+                info = sf.info(file)
         except sf.SoundFileError as e:
             raise _CannotRead(e) from e
         _require_rate_and_channels(info.samplerate, info.channels)
@@ -540,7 +549,7 @@ class AudioLoader(Loader[AudioInfo]):
             backend="soundfile",
         )
 
-    def _load_with_mutagen(self, path: Path) -> AudioInfo:
+    def _load_with_mutagen(self, path: Source) -> AudioInfo:
         """Load metadata using mutagen (for MP3, M4A, etc.).
 
         mutagen states a duration, not a frame count, so the sample count is the
@@ -552,6 +561,10 @@ class AudioLoader(Loader[AudioInfo]):
         of samples in its boxes (``_mp4_sample_count``): that count is taken,
         and ``duration_seconds`` is ``n_samples / sample_rate``.
 
+        Args:
+            path: The audio file: a path, or a ZIP archive member read from
+                its open file object.
+
         Raises:
             _CannotRead: If mutagen is not installed, cannot parse the file,
                 states no sample rate or duration for it, or states a sample
@@ -561,7 +574,8 @@ class AudioLoader(Loader[AudioInfo]):
         if mutagen is None:
             raise _NotInstalled("not installed")
         try:
-            audio = mutagen.File(str(path))
+            with readable(path) as file:
+                audio = mutagen.File(file)
         except mutagen.MutagenError as e:
             raise _CannotRead(e) from e
         if audio is None:
@@ -634,8 +648,12 @@ class AudioLoader(Loader[AudioInfo]):
             backend="mutagen",
         )
 
-    def _load_with_wave(self, path: Path) -> AudioInfo:
+    def _load_with_wave(self, path: Source) -> AudioInfo:
         """Load metadata using Python's built-in wave module (PCM WAV only).
+
+        Args:
+            path: The WAV file: a path or a ZIP archive member, read from its
+                open file object.
 
         Raises:
             _CannotRead: If the wave module cannot read the file, or the header
@@ -644,7 +662,7 @@ class AudioLoader(Loader[AudioInfo]):
         wave = _get_wave()
 
         try:
-            with wave.open(str(path), "rb") as wf:
+            with path.open("rb") as file, wave.open(file, "rb") as wf:
                 n_samples = wf.getnframes()
                 sample_rate = wf.getframerate()
                 channels = wf.getnchannels()
@@ -665,7 +683,7 @@ class AudioLoader(Loader[AudioInfo]):
             backend="wave",
         )
 
-    def _load_with_riff_parser(self, path: Path) -> AudioInfo:
+    def _load_with_riff_parser(self, path: Source) -> AudioInfo:
         """Load metadata by manually parsing the RIFF/WAV header.
 
         This handles WAV formats that Python's built-in wave module cannot read,
@@ -675,7 +693,8 @@ class AudioLoader(Loader[AudioInfo]):
         Only reads the header chunks (fmt, fact, data) — no sample data is loaded.
 
         Args:
-            path: Path to the WAV file.
+            path: The WAV file: a path or a ZIP archive member, read from its
+                open file object.
 
         Returns:
             AudioInfo with metadata extracted from the RIFF header.
@@ -694,7 +713,7 @@ class AudioLoader(Loader[AudioInfo]):
         }
 
         try:
-            with open(path, "rb") as f:
+            with path.open("rb") as f:
                 # RIFF header
                 riff_id = f.read(4)
                 if riff_id != b"RIFF":

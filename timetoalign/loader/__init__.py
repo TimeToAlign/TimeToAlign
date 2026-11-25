@@ -76,6 +76,7 @@ from timetoalign.storage.schema import (
 )
 
 from ._optional import import_optional, resolve_optional
+from ._sources import SourceLike, materialize
 from .alignment import MapsLoader, TiliaDictStore, TiliaJsonLoader
 from .base import (
     AlignmentLoader,
@@ -83,8 +84,6 @@ from .base import (
     Loader,
     ManifestData,
     ManifestLoader,
-    SourceLike,
-    materialize,
 )
 from .metadata import MeiHeadLoader, MelodyLoader
 from .physical import (

@@ -27,8 +27,6 @@ from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from typing_extensions import Self
-
 from timetoalign.core.backends import suppressed_backend_warnings
 
 with suppressed_backend_warnings():
@@ -36,13 +34,8 @@ with suppressed_backend_warnings():
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit, resolve_id
-from timetoalign.loader.base import (
-    AlignmentLoader,
-    Source,
-    SourceLike,
-    as_source,
-    materialize,
-)
+from timetoalign.loader._sources import Source, describe_source, on_disk
+from timetoalign.loader.base import AlignmentLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -216,45 +209,6 @@ class MatchfileLoader(AlignmentLoader):
 
     # region Loading
 
-    def load(self, *sources: SourceLike) -> Self:
-        """Load one or more .match files.
-
-        Parses each file via partitura, builds a shared score timeline
-        from the first compatible file, and verifies subsequent files
-        against it. Incompatible files are logged with a warning and
-        tracked internally.
-
-        This method can be called multiple times to add more files
-        incrementally.
-
-        Args:
-            *sources: Paths to ``.match`` files, or members of ZIP archives.
-
-        Returns:
-            Self, for method chaining.
-
-        Raises:
-            FileNotFoundError: If any source path does not exist.
-            ValueError: If any source is not a ``.match`` file.
-
-        Examples:
-            >>> loader = MatchfileLoader()
-            >>> loader.load("Chopin_op10_no3_p01.match")
-            >>> # or load all at once
-            >>> loader.load(*sorted(data_dir.glob("*.match")))
-        """
-        for source in sources:
-            path = as_source(source)
-
-            if not path.exists():
-                raise FileNotFoundError(f"File not found: {path}")
-            if path.suffix.lower() != ".match":
-                raise ValueError(f"Not a .match file: {path}")
-
-            super().load(path)
-
-        return self
-
     @staticmethod
     def _to_tta_coord(raw: float, offset: float) -> float:
         """Convert a raw partitura coordinate to a TTA coordinate.
@@ -304,7 +258,10 @@ class MatchfileLoader(AlignmentLoader):
                     continue
                 match = pattern.match(line.strip())
                 if match is None:
-                    raise ValueError(f"Could not parse score coordinates in {path}")
+                    raise ValueError(
+                        "Could not parse score coordinates in "
+                        f"{describe_source(path)}"
+                    )
                 score_id = match.group("id")
                 coordinates[score_id] = (
                     Fraction(match.group("onset")),
@@ -373,17 +330,29 @@ class MatchfileLoader(AlignmentLoader):
         against the shared timeline and rejects the file on first
         incompatibility.
 
+        ``load(*sources)`` (the shared template) calls this once per file, in
+        order, so it can be called again to add files incrementally; it
+        refuses a missing file or one that is no ``.match`` before parsing.
+
         Args:
             path: The .match file: a path or a ZIP archive member (Partitura
-                reads its copy, :func:`~timetoalign.loader.base.materialize`).
+                reads its copy, :func:`~timetoalign.loader.materialize`; an
+                error Partitura raises then names the archive and the member).
+
+        Raises:
+            FileNotFoundError: If *path* does not exist.
+            ValueError: If *path* is not a ``.match`` file, or Partitura's
+                score ids and the file's differ.
         """
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {describe_source(path)}")
+        if path.suffix.lower() != ".match":
+            raise ValueError(f"Not a .match file: {describe_source(path)}")
         self._logger.debug(f"Loading {path.name}")
 
         # Parse with partitura
-        with suppressed_backend_warnings():
-            perf, alignment, score = pt.load_match(
-                str(materialize(path)), create_score=True
-            )
+        with suppressed_backend_warnings(), on_disk(path) as local:
+            perf, alignment, score = pt.load_match(str(local), create_score=True)
 
         # Extract header info from file
         header = self._parse_header(path)
@@ -408,7 +377,8 @@ class MatchfileLoader(AlignmentLoader):
         exact_score_coords = self._read_exact_score_coordinates(path)
         if set(score_by_id) != set(exact_score_coords):
             raise ValueError(
-                f"Score IDs from partitura and source differ in {path}: "
+                "Score IDs from partitura and source differ in "
+                f"{describe_source(path)}: "
                 f"{set(score_by_id) ^ set(exact_score_coords)}"
             )
 

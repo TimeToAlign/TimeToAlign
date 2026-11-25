@@ -15,7 +15,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from timetoalign.loader.base import Loader, Source, SourceLike
+from timetoalign.loader._sources import Source, SourceLike, describe_source
+from timetoalign.loader.base import Loader
 
 from .paths import HorizontalLinePath, TimeAxisPath, VerticalLinePath
 from .segment import GraphicalSegment
@@ -89,7 +90,7 @@ class GraphicalLoader(Loader[GraphicalStore]):
         source = ImageSource.from_image_file(path)
         idx = len(self._sources)
         self._sources.append(source)
-        self._logger.debug(f"Added image source {idx}: {path}")
+        self._logger.debug(f"Added image source {idx}: {describe_source(path)}")
         return idx
 
     def add_pdf_page(

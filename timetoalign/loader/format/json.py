@@ -52,7 +52,8 @@ import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import LoadSourceResult, Source
+from timetoalign.loader._sources import Source
+from timetoalign.loader.base import LoadSourceResult
 from timetoalign.storage.store import DictStore
 
 from ._tables import NormalisedTablesLoader

@@ -71,14 +71,14 @@ from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
-from timetoalign.loader.base import (
-    AlignmentLoader,
+from timetoalign.loader._sources import (
     Source,
     SourceLike,
     as_source,
-    join_source,
-    source_parent,
+    describe_source,
+    sibling_source,
 )
+from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps import SamplesToSeconds
 from timetoalign.storage.events import mint_event_ids
@@ -205,13 +205,13 @@ class ListenHereLoader(AlignmentLoader):
         if len(keys) < 2:
             raise ValueError(
                 f"A Listen Here! alignment needs at least 2 recordings; "
-                f"found {len(keys)} in {path}."
+                f"found {len(keys)} in {describe_source(path)}."
             )
 
         ref = header.get("ref")
         if ref not in audio:
             raise ValueError(
-                f"header.ref {ref!r} is not one of the body.audio keys {keys} in {path}."
+                f"header.ref {ref!r} is not one of the body.audio keys {keys} in {describe_source(path)}."
             )
 
         # Normalise each entry to (times, duration) and validate equal lengths.
@@ -229,7 +229,7 @@ class ListenHereLoader(AlignmentLoader):
         if len(set(lengths.values())) != 1:
             raise ValueError(
                 "All recordings' 'times' arrays must have the same length "
-                f"(they index a shared reference grid); got {lengths} in {path}."
+                f"(they index a shared reference grid); got {lengths} in {describe_source(path)}."
             )
 
         self._keys = keys
@@ -277,9 +277,7 @@ class ListenHereLoader(AlignmentLoader):
         """
         key_path = Path(key)
         candidate: Source = (
-            key_path
-            if key_path.is_absolute()
-            else join_source(source_parent(source), key)
+            key_path if key_path.is_absolute() else sibling_source(source, key)
         )
         if candidate.is_file():
             try:
@@ -287,7 +285,7 @@ class ListenHereLoader(AlignmentLoader):
             except (OSError, ValueError):
                 module_logger.debug(
                     "Could not read audio metadata from %s; assuming %d Hz.",
-                    candidate,
+                    describe_source(candidate),
                     _DEFAULT_SAMPLE_RATE,
                 )
         return _DEFAULT_SAMPLE_RATE, "assumed"

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import pandas as pd
 
@@ -88,8 +88,8 @@ class EepNotesLoader(CsvLoader):
     header_row: ClassVar[int] = -1  # Sentinel for "no header"
 
     # Column mapping: onset -> start, offset -> end, pitch -> extra
-    start_column: ClassVar[str] = "start"
-    end_column: ClassVar[str | None] = "end"
+    start_column = "start"
+    end_column = "end"
     id_column: ClassVar[str | None] = None  # Auto-generate
     name_column: ClassVar[str | None] = "pitch"
     event_type_column: ClassVar[str | None] = None
@@ -102,7 +102,7 @@ class EepNotesLoader(CsvLoader):
     # is preserved as a string column (chord/rest tokens like
     # "G3,D4,B4,F5"), and staff is the integer derived from the
     # filename suffix in _read_dataframe.
-    column_specs: ClassVar[dict[str, Any]] = {"pitch": str, "staff": int}
+    column_specs = {"pitch": str, "staff": int}
 
     def _read_dataframe(self, source: Path) -> pd.DataFrame:
         """Read a headerless .notes file with staff inference from filename.

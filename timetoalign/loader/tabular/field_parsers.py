@@ -45,7 +45,7 @@ from __future__ import annotations
 import inspect
 import re
 from fractions import Fraction
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, TypeGuard
 
 import pyarrow as pa
 
@@ -360,6 +360,15 @@ class CallableFieldParser(FieldParser):
         return self._fn(source)
 
 
+def _is_field_function(value: object) -> TypeGuard[Callable[..., DataField]]:
+    """Whether a ``column_specs`` entry is taken as a function making a field.
+
+    Any callable is: what it returns is the function's contract with its
+    caller (see :class:`CallableFieldParser`), not checked here.
+    """
+    return callable(value)
+
+
 def _accepts_name(fn: Callable[..., Any]) -> bool:
     """Whether *fn* can be called with a ``name=`` keyword argument.
 
@@ -464,7 +473,7 @@ def resolve_field_parser(
             "a DataField blueprint or FieldParser instance directly"
         )
 
-    if callable(value):
+    if _is_field_function(value):
         return CallableFieldParser(value)
 
     raise TypeError(

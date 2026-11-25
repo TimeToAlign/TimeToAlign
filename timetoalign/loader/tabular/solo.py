@@ -41,7 +41,7 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from timetoalign.core import (
     DenominateNumberField,
@@ -93,8 +93,8 @@ class SoloLoader(CsvLoader):
     # leave measure resolution to downstream consumers.
     id_column: ClassVar[str | None] = None  # auto-generated
     name_column: ClassVar[str | None] = None
-    start_column: ClassVar[str] = "mn_onset"
-    end_column: ClassVar[str | None] = None
+    start_column = "mn_onset"
+    end_column = None
     duration_column: ClassVar[str | None] = "duration"
     event_type_column: ClassVar[str | None] = None
     default_event_type: ClassVar[str] = "Note"
@@ -102,7 +102,7 @@ class SoloLoader(CsvLoader):
     # Quarter notes as fractions.
     _default_unit: ClassVar[TimeUnit] = TimeUnit.quarters
 
-    column_specs: ClassVar[list[Any]] = [
+    column_specs = [
         # col 0: measure_number + fractional onset within the measure.
         CompositeFieldParser(
             separator="+",
@@ -121,7 +121,7 @@ class SoloLoader(CsvLoader):
         StringField(name="note_id"),
     ]
 
-    field_specs: ClassVar[list[Any]] = [
+    field_specs = [
         # Promote raw pitch int → MIDI-style EnharmonicPitchField.
         EnharmonicPitchField(source_fields="pitch"),
         # Promote raw note_id string → paired IdField.

@@ -57,7 +57,7 @@ from timetoalign.core.time import (
     build_number_struct_array,
     combine_number_columns,
 )
-from timetoalign.loader.base import EventLoader
+from timetoalign.loader.base import EventLoader, LoadSourceResult
 from timetoalign.storage.schema import (
     ComputedField,
     Field,
@@ -98,7 +98,9 @@ def _merge_field_type_metadata(pa_field: pa.Field, field_type: str) -> pa.Field:
     overwritten on top.  Metadata entries under any other key are passed
     through unchanged.
     """
-    existing = dict(pa_field.metadata or {})
+    existing: dict[bytes | str, bytes | str] = {
+        key: value for key, value in (pa_field.metadata or {}).items()
+    }
     payload: dict[str, Any] = {}
     blob = existing.pop(TIMETOALIGN_METADATA_KEY, None)
     if blob is not None:
@@ -270,7 +272,7 @@ class TabularLoader(EventLoader):
         """
         try:
             return pa.Table.from_pandas(df, preserve_index=False)
-        except (pa.lib.ArrowTypeError, pa.lib.ArrowInvalid):
+        except (pa.ArrowTypeError, pa.ArrowInvalid):
             # Fallback: convert problematic object columns to strings
             df_safe = df.copy()
             for name in df_safe.columns:
@@ -494,7 +496,7 @@ class TabularLoader(EventLoader):
         data_arr: Any,
         blueprint_cls: type[SemanticField[Any]],
         source_name: str,
-    ) -> pa.Array | None:
+    ) -> pa.Array | pa.ChunkedArray | None:
         """Pack an atomic source array into a target struct shape.
 
         The packing rule belongs to the target field class — it is the
@@ -538,9 +540,7 @@ class TabularLoader(EventLoader):
 
     # region Vectorized Loading
 
-    def _load_source(
-        self, source: Path
-    ) -> tuple[dict[str, Any], dict[str, np.ndarray | pa.Array]]:
+    def _load_source(self, source: Path) -> LoadSourceResult:
         """Load a single source file (VECTORIZED).
 
         Reads the tabular file using vectorized pandas operations and
@@ -709,7 +709,7 @@ class TabularLoader(EventLoader):
 
     def _extract_column_arrays(
         self, df: pd.DataFrame
-    ) -> dict[str, np.ndarray | pa.Array]:
+    ) -> dict[str, np.ndarray | pa.Array | pa.ChunkedArray]:
         """Extract canonical column arrays + run Step 1 (VECTORIZED).
 
         NO ROW ITERATION.  All operations use vectorized
@@ -1057,10 +1057,11 @@ class TabularLoader(EventLoader):
 
         # Case 4: Duration column (compute end = start + duration).
         # Also accept a synthesised duration column from column_specs.
-        if self.duration_column and (
-            self.duration_column in df.columns or self.duration_column in columns
+        duration_column = self.duration_column
+        if duration_column and (
+            duration_column in df.columns or duration_column in columns
         ):
-            return self._compute_end_from_duration(df, columns, n)
+            return self._compute_end_from_duration(df, columns, n, duration_column)
 
         # Case 5: end_column specified but not found, and no duration
         if end_col_ref is not None:
@@ -1074,6 +1075,7 @@ class TabularLoader(EventLoader):
         df: pd.DataFrame,
         columns: dict[str, Any],
         n: int,
+        duration_column: str,
     ) -> pa.Array:
         """Compute end column from start + duration (FULLY VECTORIZED).
 
@@ -1085,20 +1087,21 @@ class TabularLoader(EventLoader):
             df: Source DataFrame.
             columns: Already extracted columns (includes "start").
             n: Number of rows.
+            duration_column: The duration source's name.
 
         Returns:
             PyArrow array for the end column.
         """
         # Resolve the duration source: DataFrame column or synthesised
         # column from column_specs.
-        if self.duration_column in df.columns:
-            dur_series = df[self.duration_column]
+        if duration_column in df.columns:
+            dur_series = df[duration_column]
             has_dur_values = dur_series.notna()
             if not bool(has_dur_values.any()):
                 return pa.nulls(n, type=columns["start"].type)
             dur_values = dur_series.to_numpy()
         else:
-            synth = columns[self.duration_column]
+            synth = columns[duration_column]
             if isinstance(synth, pa.StructArray) and {f.name for f in synth.type} >= {
                 "value",
                 "numerator",
@@ -1124,7 +1127,7 @@ class TabularLoader(EventLoader):
         # doubles and mirrors each sum once, an exact axis adds its ratios
         # exactly and refuses only a sum whose lowest terms int64 cannot hold.
         if not isinstance(dur_values, pa.Array) and dur_values.dtype == object:
-            dur_values = np.where(pd.isna(dur_values), None, dur_values)
+            dur_values = np.where(pd.isna(dur_values), np.asarray(None), dur_values)
         duration = build_number_struct_array(dur_values, number_type=self._number_type)
         columns["duration"] = duration
         try:
@@ -1133,7 +1136,7 @@ class TabularLoader(EventLoader):
             )
         except ValueError as error:
             raise ValueError(
-                f"Completing the events' end as start + {self.duration_column!r} "
+                f"Completing the events' end as start + {duration_column!r} "
                 f"on a {self._number_type} axis in {self._unit}: {error}"
             ) from error
 

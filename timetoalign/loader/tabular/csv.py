@@ -51,8 +51,8 @@ class CsvLoader(TabularLoader):
     # Default column names for generic CSV
     id_column: ClassVar[str | None] = "id"
     name_column: ClassVar[str | None] = "name"
-    start_column: ClassVar[str] = "start"
-    end_column: ClassVar[str | None] = "end"
+    start_column = "start"
+    end_column = "end"
     event_type_column: ClassVar[str | None] = "event_type"
     default_event_type: ClassVar[str] = "Event"
 
@@ -94,8 +94,8 @@ class TsvLoader(TabularLoader):
     # Default column names (same as CSV)
     id_column: ClassVar[str | None] = "id"
     name_column: ClassVar[str | None] = "name"
-    start_column: ClassVar[str] = "start"
-    end_column: ClassVar[str | None] = "end"
+    start_column = "start"
+    end_column = "end"
     event_type_column: ClassVar[str | None] = "event_type"
     default_event_type: ClassVar[str] = "Event"
 
@@ -131,8 +131,8 @@ class LabLoader(TabularLoader):
     # Lab files have fixed columns: start, end, label
     id_column: ClassVar[str | None] = None  # Auto-generate
     name_column: ClassVar[str | None] = None
-    start_column: ClassVar[str] = "0"  # Field index as string when no header
-    end_column: ClassVar[str | None] = "1"
+    start_column = "0"  # Field index as string when no header
+    end_column = "1"
     event_type_column: ClassVar[str | None] = None
     default_event_type: ClassVar[str] = "Region"
 
@@ -152,8 +152,8 @@ class LabLoader(TabularLoader):
         return df
 
     # Override field names to match the names we assigned
-    start_column: ClassVar[str] = "start"
-    end_column: ClassVar[str | None] = "end"
+    start_column = "start"
+    end_column = "end"
 
 
 # endregion

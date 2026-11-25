@@ -6,6 +6,7 @@ All expected values are EXACT per the ZERO TOLERANCE validation policy.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
@@ -433,6 +434,50 @@ class TestMinimalATONTimeline:
         timeline = loaded_minimal_loader.create_timeline(uid="dgt_1")
 
         assert timeline.id == "dgt_1"
+
+
+# endregion
+
+
+# region Test: Unreadable hole values
+
+
+class TestUnreadableHoleValues:
+    """Infinite values (see README "ATONLoader unreadable values")."""
+
+    def test_infinite_integer_values_fall_back_to_their_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        """inf, -inf and 1e999 in integer fields give the defaults; floats keep inf."""
+        path = tmp_path / "infinite.txt"
+        path.write_text(
+            "@@BEGIN: HOLES\n\n"
+            "@@BEGIN: HOLE\n"
+            "@ID:\t\tK0_N1\n"
+            "@ORIGIN_ROW:\t15343px\n"
+            "@ORIGIN_COL:\t445px\n"
+            "@WIDTH_ROW:\t-infpx\n"
+            "@WIDTH_COL:\t1e999px\n"
+            "@AREA:\t\tinfpx\n"
+            "@PERIMETER:\tinfpx\n"
+            "@TRACKER_HOLE:\t12\n"
+            "@MIDI_KEY:\tinf\n"
+            "@NOTE_ATTACK:\tinfpx\n"
+            "@@END: HOLE\n\n"
+            "@@END: HOLES\n",
+            encoding="utf-8",
+        )
+        holes = ATONLoader.from_file(path).holes
+
+        assert len(holes) == 1
+        hole = holes[0]
+        assert hole.area == 0
+        assert hole.width_row == 0
+        assert hole.width_col == 0
+        assert hole.midi_key == -1
+        assert hole.note_attack is None
+        assert hole.perimeter == math.inf
+        assert (hole.origin_row, hole.origin_col, hole.tracker_hole) == (15343, 445, 12)
 
 
 # endregion

@@ -1209,6 +1209,25 @@ What proves it (`test_aton_loader.py`, class `TestHoleEventIds`):
   on timeline 'dgt_1'`). The loader does not decide that a repeated block
   is one hole.
 
+## `ATONLoader` unreadable values — validation logic
+
+A hole block's integer fields (`ORIGIN_ROW`, `AREA`, `TRACKER_HOLE`,
+`MIDI_KEY`, … and the optional `NOTE_ATTACK` and `OFF_TIME`) are read as
+numbers and truncated to integers; a value that gives no integer falls back
+to the field's default (`0`, `-1` for `MIDI_KEY`, `None` for the optional
+two), and the file still loads. An infinite value (`inf`, `-inf`, or a
+number too large for a float such as `1e999`) gives no integer either, so it
+falls back like any other unreadable value instead of stopping the load.
+Float fields (`PERIMETER`, `CIRCULARITY`, …) keep an infinite value as read.
+
+What proves it (`test_aton_loader.py`, class `TestUnreadableHoleValues`): a
+file written to `tmp_path` holds one hole block whose `AREA` is `inf`,
+`WIDTH_ROW` `-inf`, `WIDTH_COL` `1e999`, `MIDI_KEY` `inf`, `NOTE_ATTACK`
+`inf` and `PERIMETER` `inf`. It loads one hole with `area == 0`,
+`width_row == 0`, `width_col == 0`, `midi_key == -1`, `note_attack is None`
+and `perimeter == math.inf`; the fields stated normally (`ORIGIN_ROW 15343`,
+`ORIGIN_COL 445`, `TRACKER_HOLE 12`) are read exactly.
+
 ## Loaded timelines are locked where the source states their length
 
 A loader that reads a recording whose source states its length returns a

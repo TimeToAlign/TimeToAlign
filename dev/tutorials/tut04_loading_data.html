@@ -338,12 +338,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h1>Loading Real Data</h1>
 <section id="what-you-will-build" class="level2">
 <h2 class="anchored" data-anchor-id="what-you-will-build">What you will build</h2>
-<p>You will load Chopin’s Étude Op. 10 No.&nbsp;3 from MusicXML and a note table exported by ms3, a Python toolkit for working with score corpora. The TSV has one note per tab-separated row; the <a href="../howto/how01_loading_data.html">loading-data guide</a> compares its <code>Ms3Loader</code> with the MusicXML loaders. You will finish with the same kind of <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> you previously built by hand, including <button class="glossary" title="A timeline nested within a parent, sharing its measuring unit but defining its own origin. Coordinate transfer between parent and child uses exact offset arithmetic, applied recursively. add_child() locks a child by default; an unlocked child may grow, contained by its parent like any content. A child holds its parent’s positions from its start up to its end, and its end only where no sibling starts there; a nested timeline is reached only through parents that all hold the position. A child created with measures=True holds the slice of its parent’s measure map over its span; by default it holds none.">Child</button> timelines and an exact <button class="glossary" title="A position on a timeline, expressed as the distance from the origin in the timeline’s measuring unit. Combines a numeric value with a TimeUnit. The unit alone decides the number policy: quarters and beats are exact Fractions, discrete units (ticks, samples, frames, pixels) are locked to int, and the remaining continuous units (seconds, points, centimeters, …) are float. That declared number type is preserved at every boundary — authored, converted, interpolated, queried or retrieved — so a fraction-canonical axis always yields Fractions and a float-canonical axis always yields floats. An explicit number_type= overrides the default, and exact input is never degraded.">Coordinate</button> conversion derived from the file.</p>
+<p>You will load Chopin’s Étude Op. 10 No.&nbsp;3 from MusicXML and a note table exported by ms3, a Python toolkit for working with score corpora. The TSV has one note per tab-separated row; the <a href="../howto/how01_loading_data.html">loading-data guide</a> compares its <code>Ms3Loader</code> with the MusicXML loaders. You will finish with the same kind of <button class="glossary" title="">Timeline</button> you previously built by hand, including <button class="glossary" title="">Child</button> timelines and a <button class="glossary" title="A position on a timeline, expressed as the distance from the origin in the timeline’s measuring unit. Combines a numeric value with a TimeUnit. The unit alone decides the number policy: quarters and beats are exact Fractions, discrete units (ticks, samples, frames, pixels) are locked to int, and the remaining continuous units (seconds, points, centimeters, …) are float. That declared number type is preserved at every boundary — authored, converted, interpolated, queried or retrieved — so a fraction-canonical axis always yields Fractions and a float-canonical axis always yields floats. An explicit number_type= overrides the default, and exact input is never degraded.">Coordinate</button> conversion derived from the file.</p>
 </section>
 <section id="before-you-start" class="level2">
 <h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
 <p>Complete the tutorial on <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button>s, <a href="../tutorials/tut03_events.html">Events on a Timeline</a>, first.</p>
-<div id="8a49a919" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:11.227412Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:11.227152Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.077616Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.076833Z&quot;}}" data-execution_count="1">
+<div id="5ad0aea1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:07.070887Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:07.070709Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:10.641798Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:10.640599Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
@@ -370,7 +370,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="from-hand-built-to-real" class="level2">
 <h2 class="anchored" data-anchor-id="from-hand-built-to-real">From hand-built to real</h2>
 <p>The first three tutorials taught the model by constructing timelines by hand; here, files replace those construction steps. Nothing new appears in the result—only in how it is produced.</p>
-<div id="73368591" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.079933Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.079574Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.085192Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.084544Z&quot;}}" data-execution_count="2">
+<div id="c3325bc2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:10.644721Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:10.644198Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:10.655151Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:10.653362Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>musicxml_path <span class="op">=</span> VIENNA_DATA <span class="op">/</span> <span class="st">"Chopin_op10_no3.musicxml"</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>ms3_path <span class="op">=</span> VIENNA_DATA <span class="op">/</span> <span class="st">"ms3"</span> <span class="op">/</span> <span class="st">"chopin_op10_no3.notes.tsv"</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>score_midi_path <span class="op">=</span> MIDI_DATA <span class="op">/</span> <span class="st">"score"</span> <span class="op">/</span> <span class="st">"rachmaninoff_piano.mid"</span></span>
@@ -394,7 +394,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-two-phase-contract" class="level2">
 <h2 class="anchored" data-anchor-id="the-two-phase-contract">The two-phase contract</h2>
 <p><code>loader.load(*sources)</code> ingests files and returns the loader; only <code>loader.create_timeline()</code> builds objects in the musical <button class="glossary" title="One of three temporal categories: Graphical (visual/spatial), Logical (symbolic/musical), or Physical (audio/sound). Each domain has both discrete and continuous timeline variants.">Domain</button>, and it never takes a file path. <code>from_file()</code> is the shorthand for creating a loader and performing the first phase.</p>
-<div id="ff7f059c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.086869Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.086674Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.323461Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.322706Z&quot;}}" data-execution_count="3">
+<div id="aa539b41" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:10.658487Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:10.658246Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:11.140352Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:11.139176Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>two_phase_loader <span class="op">=</span> PartituraLoader()</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>two_phase_loader.load(musicxml_path)</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>preview_timeline <span class="op">=</span> two_phase_loader.create_timeline()</span>
@@ -409,7 +409,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>phase_objects</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
 <pre><code>{'loaded, before timeline creation': PartituraLoader(sources=1, events=547, unit=quarters),
- 'phase-two result': ContinuousLogicalTimeline(id='clt_1', length=83/2, unit=quarters, events=0, children=4, cmaps=3),
+ 'phase-two result': ContinuousLogicalTimeline(id='clt_1', length=83/2, unit=quarters, events=0, children=4, cmaps=2),
  'from_file result': PartituraLoader(sources=1, events=547, unit=quarters),
  'follows Loader contract': True}</code></pre>
 </div>
@@ -419,7 +419,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-eventstore" class="level2">
 <h2 class="anchored" data-anchor-id="the-eventstore">The EventStore</h2>
 <p><code>loader.store</code> holds the parser’s separate note, measure, control, and annotation tables before any timeline exists. This inventory uses <code>store.summary()</code> for counts and reads each table’s exact coordinate range.</p>
-<div id="02af4244" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.325107Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.324961Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.383488Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.382704Z&quot;}}" data-execution_count="4">
+<div id="2edf9610" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:11.144914Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:11.144646Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:11.249895Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:11.248877Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>score_store <span class="op">=</span> partitura_loader.store</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>store_contract <span class="op">=</span> <span class="bu">isinstance</span>(score_store, EventStore)</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>store_summary <span class="op">=</span> score_store.summary()</span>
@@ -450,55 +450,55 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <style type="text/css">
 </style>
 
-<div id="T_faf23" class="quarto-float quarto-figure quarto-figure-center anchored" data-quarto-postprocess="true">
+<div id="T_5d04d" class="quarto-float quarto-figure quarto-figure-center anchored" data-quarto-postprocess="true">
 <figure class="quarto-float quarto-float-tbl figure">
-<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="T_faf23-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="T_5d04d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Table&nbsp;1: Parsed table inventory — EventStore contract: True
 </figcaption>
-<div aria-describedby="T_faf23-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<table id="T_faf23" class="caption-top table table-sm table-striped small">
+<div aria-describedby="T_5d04d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table id="T_5d04d" class="caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
 <th class="blank level0" data-quarto-table-cell-role="th">&nbsp;</th>
-<th id="T_faf23_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">category</th>
-<th id="T_faf23_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">count</th>
-<th id="T_faf23_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">unit</th>
-<th id="T_faf23_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">first position</th>
-<th id="T_faf23_level0_col4" class="col_heading level0 col4" data-quarto-table-cell-role="th">last position</th>
+<th id="T_5d04d_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">category</th>
+<th id="T_5d04d_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">count</th>
+<th id="T_5d04d_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">unit</th>
+<th id="T_5d04d_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">first position</th>
+<th id="T_5d04d_level0_col4" class="col_heading level0 col4" data-quarto-table-cell-role="th">last position</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<th id="T_faf23_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
-<td id="T_faf23_row0_col0" class="data row0 col0">notes</td>
-<td id="T_faf23_row0_col1" class="data row0 col1">498</td>
-<td id="T_faf23_row0_col2" class="data row0 col2">quarters</td>
-<td id="T_faf23_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
-<td id="T_faf23_row0_col4" class="data row0 col4">Coordinate(Fraction(83, 2), quarters)</td>
+<th id="T_5d04d_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
+<td id="T_5d04d_row0_col0" class="data row0 col0">notes</td>
+<td id="T_5d04d_row0_col1" class="data row0 col1">498</td>
+<td id="T_5d04d_row0_col2" class="data row0 col2">quarters</td>
+<td id="T_5d04d_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<td id="T_5d04d_row0_col4" class="data row0 col4">Coordinate(Fraction(83, 2), quarters)</td>
 </tr>
 <tr class="even">
-<th id="T_faf23_level0_row1" class="row_heading level0 row1" data-quarto-table-cell-role="th">1</th>
-<td id="T_faf23_row1_col0" class="data row1 col0">measures</td>
-<td id="T_faf23_row1_col1" class="data row1 col1">22</td>
-<td id="T_faf23_row1_col2" class="data row1 col2">quarters</td>
-<td id="T_faf23_row1_col3" class="data row1 col3">Coordinate(Fraction(0, 1), quarters)</td>
-<td id="T_faf23_row1_col4" class="data row1 col4">Coordinate(Fraction(83, 2), quarters)</td>
+<th id="T_5d04d_level0_row1" class="row_heading level0 row1" data-quarto-table-cell-role="th">1</th>
+<td id="T_5d04d_row1_col0" class="data row1 col0">measures</td>
+<td id="T_5d04d_row1_col1" class="data row1 col1">22</td>
+<td id="T_5d04d_row1_col2" class="data row1 col2">quarters</td>
+<td id="T_5d04d_row1_col3" class="data row1 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<td id="T_5d04d_row1_col4" class="data row1 col4">Coordinate(Fraction(83, 2), quarters)</td>
 </tr>
 <tr class="odd">
-<th id="T_faf23_level0_row2" class="row_heading level0 row2" data-quarto-table-cell-role="th">2</th>
-<td id="T_faf23_row2_col0" class="data row2 col0">controls</td>
-<td id="T_faf23_row2_col1" class="data row2 col1">22</td>
-<td id="T_faf23_row2_col2" class="data row2 col2">quarters</td>
-<td id="T_faf23_row2_col3" class="data row2 col3">Coordinate(Fraction(0, 1), quarters)</td>
-<td id="T_faf23_row2_col4" class="data row2 col4">Coordinate(Fraction(40, 1), quarters)</td>
+<th id="T_5d04d_level0_row2" class="row_heading level0 row2" data-quarto-table-cell-role="th">2</th>
+<td id="T_5d04d_row2_col0" class="data row2 col0">controls</td>
+<td id="T_5d04d_row2_col1" class="data row2 col1">22</td>
+<td id="T_5d04d_row2_col2" class="data row2 col2">quarters</td>
+<td id="T_5d04d_row2_col3" class="data row2 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<td id="T_5d04d_row2_col4" class="data row2 col4">Coordinate(Fraction(40, 1), quarters)</td>
 </tr>
 <tr class="even">
-<th id="T_faf23_level0_row3" class="row_heading level0 row3" data-quarto-table-cell-role="th">3</th>
-<td id="T_faf23_row3_col0" class="data row3 col0">annotations</td>
-<td id="T_faf23_row3_col1" class="data row3 col1">5</td>
-<td id="T_faf23_row3_col2" class="data row3 col2">quarters</td>
-<td id="T_faf23_row3_col3" class="data row3 col3">Coordinate(Fraction(0, 1), quarters)</td>
-<td id="T_faf23_row3_col4" class="data row3 col4">Coordinate(Fraction(65, 2), quarters)</td>
+<th id="T_5d04d_level0_row3" class="row_heading level0 row3" data-quarto-table-cell-role="th">3</th>
+<td id="T_5d04d_row3_col0" class="data row3 col0">annotations</td>
+<td id="T_5d04d_row3_col1" class="data row3 col1">5</td>
+<td id="T_5d04d_row3_col2" class="data row3 col2">quarters</td>
+<td id="T_5d04d_row3_col3" class="data row3 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<td id="T_5d04d_row3_col4" class="data row3 col4">Coordinate(Fraction(65, 2), quarters)</td>
 </tr>
 </tbody>
 </table>
@@ -512,7 +512,7 @@ Table&nbsp;1: Parsed table inventory — EventStore contract: True
 <section id="one-parsed-record" class="level2">
 <h2 class="anchored" data-anchor-id="one-parsed-record">One parsed record</h2>
 <p>A store table contains parser records rather than timeline children. Select one note now so that its transformation during timeline creation is concrete.</p>
-<div id="e726de48" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.385155Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.385002Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.402699Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.402017Z&quot;}}" data-execution_count="5">
+<div id="2c1ef4b3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:11.252398Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:11.251971Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:11.287194Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:11.285748Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>stored_note_data <span class="op">=</span> score_store.notes</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>stored_note_frame <span class="op">=</span> stored_note_data.to_dataframe()</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>stored_note_example <span class="op">=</span> stored_note_frame.loc[</span>
@@ -532,25 +532,25 @@ Table&nbsp;1: Parsed table inventory — EventStore contract: True
 <style type="text/css">
 </style>
 
-<table id="T_b35fa" class="caption-top table table-sm table-striped small">
+<table id="T_c5d40" class="caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
 <th class="blank level0" data-quarto-table-cell-role="th">&nbsp;</th>
-<th id="T_b35fa_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">id</th>
-<th id="T_b35fa_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">name</th>
-<th id="T_b35fa_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">event_type</th>
-<th id="T_b35fa_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">start</th>
-<th id="T_b35fa_level0_col4" class="col_heading level0 col4" data-quarto-table-cell-role="th">end</th>
+<th id="T_c5d40_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">id</th>
+<th id="T_c5d40_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">name</th>
+<th id="T_c5d40_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">event_type</th>
+<th id="T_c5d40_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">start</th>
+<th id="T_c5d40_level0_col4" class="col_heading level0 col4" data-quarto-table-cell-role="th">end</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<th id="T_b35fa_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
-<td id="T_b35fa_row0_col0" class="data row0 col0">note:000001</td>
-<td id="T_b35fa_row0_col1" class="data row0 col1">B3</td>
-<td id="T_b35fa_row0_col2" class="data row0 col2">Note</td>
-<td id="T_b35fa_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
-<td id="T_b35fa_row0_col4" class="data row0 col4">Coordinate(Fraction(1, 2), quarters)</td>
+<th id="T_c5d40_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
+<td id="T_c5d40_row0_col0" class="data row0 col0">note:000001</td>
+<td id="T_c5d40_row0_col1" class="data row0 col1">B3</td>
+<td id="T_c5d40_row0_col2" class="data row0 col2">Note</td>
+<td id="T_c5d40_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<td id="T_c5d40_row0_col4" class="data row0 col4">Coordinate(Fraction(1, 2), quarters)</td>
 </tr>
 </tbody>
 </table>
@@ -561,7 +561,7 @@ Table&nbsp;1: Parsed table inventory — EventStore contract: True
 <section id="making-the-timeline" class="level2">
 <h2 class="anchored" data-anchor-id="making-the-timeline">Making the timeline</h2>
 <p><code>create_timeline(uid=...)</code> turns the loaded store into the domain object. The optional <code>uid</code> supplies identity; a separate name can remain readable to a human.</p>
-<div id="485a8715" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.404316Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.404167Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.430288Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.429508Z&quot;}}" data-execution_count="6">
+<div id="ff8c244c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:11.290964Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:11.290613Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:11.341144Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:11.339946Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>score_timeline <span class="op">=</span> partitura_loader.create_timeline(uid<span class="op">=</span><span class="st">"score:clt_1"</span>)</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>score_timeline.name <span class="op">=</span> <span class="st">"Chopin, Étude Op. 10 No. 3"</span></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>timeline_identity <span class="op">=</span> {</span>
@@ -580,42 +580,44 @@ Table&nbsp;1: Parsed table inventory — EventStore contract: True
 </section>
 <section id="what-you-got-for-free" class="level2">
 <h2 class="anchored" data-anchor-id="what-you-got-for-free">What you got for free</h2>
-<p>The loader has already separated each event category into a child timeline and attached a quarters-to-ticks <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>.</p>
-<div id="3a0a2865" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.431902Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.431753Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.436515Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.435862Z&quot;}}" data-execution_count="7">
+<p>The loader has already separated each event category into a child timeline and attached the <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s its source states: a reading in floating measures from the measure table and, where the score carries tempo markings, one in seconds.</p>
+<div id="620893ed" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:11.344253Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:11.343950Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:11.351043Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:11.350131Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>child_names <span class="op">=</span> {</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    child_id: score_timeline.get_child(child_id).name</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> child_id <span class="kw">in</span> score_timeline.list_children()</span>
 <span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>stored_categories <span class="op">=</span> <span class="bu">tuple</span>(store_inventory[<span class="st">"category"</span>])</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>quarters_to_ticks <span class="op">=</span> score_timeline.get_conversion_map(TimeUnit.ticks)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>quarters_to_measures <span class="op">=</span> score_timeline.get_conversion_map(TimeUnit.floating_measures)</span>
 <span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>quarter_position <span class="op">=</span> score_timeline.make_coordinate(Fraction(<span class="dv">13</span>, <span class="dv">2</span>))</span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>tick_position <span class="op">=</span> score_timeline.convert_to(quarter_position, TimeUnit.ticks)</span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>loader_payoff <span class="op">=</span> {</span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"children"</span>: child_names,</span>
-<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"stored categories"</span>: stored_categories,</span>
-<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarters-to-ticks map"</span>: quarters_to_ticks,</span>
-<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarter position"</span>: quarter_position,</span>
-<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"tick position"</span>: tick_position,</span>
-<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>loader_payoff</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>measure_position <span class="op">=</span> score_timeline.convert_to(</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    quarter_position, TimeUnit.floating_measures</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>loader_payoff <span class="op">=</span> {</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"children"</span>: child_names,</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"stored categories"</span>: stored_categories,</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarters-to-measures map"</span>: quarters_to_measures,</span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarter position"</span>: quarter_position,</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"floating-measure position"</span>: measure_position,</span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>loader_payoff</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
 <pre><code>{'children': {'clt_1': 'notes',
   'clt_2': 'measures',
   'clt_3': 'controls',
   'clt_4': 'annotations'},
  'stored categories': ('notes', 'measures', 'controls', 'annotations'),
- 'quarters-to-ticks map': ScalarMap(scalar=480, source_unit=quarters, target_unit=ticks),
+ 'quarters-to-measures map': FloatingMeasureMap(n_measures=22),
  'quarter position': Coordinate(Fraction(13, 2), quarters),
- 'tick position': Coordinate(3120, ticks)}</code></pre>
+ 'floating-measure position': Coordinate(5.0, floating_measures)}</code></pre>
 </div>
 </div>
-<p>Each child is named after one of the four stored categories; its id is minted like any other timeline’s (<code>clt_2</code>, …), because a category is a label, not an identity. The map converts the library’s <code>Coordinate(Fraction(13, 2), quarters)</code> directly to <code>Coordinate(3120, ticks)</code>; no rational value is reconstructed for display. Measures are available as the child named <code>measures</code>, but this score loader does not also materialize them as <button class="glossary" title="A part of a timeline defined by a TimeInterval, identified by its element id and displayed by its name (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button> objects.</p>
+<p>Each child is named after one of the four stored categories; its id is minted like any other timeline’s (<code>clt_2</code>, …), because a category is a label, not an identity. The map reads <code>Coordinate(Fraction(13, 2), quarters)</code> as <code>Coordinate(5.0, floating_measures)</code>, the first beat of the fifth measure the file records. The loader reads no metronome value from this file, so no seconds map is attached. Nor is a ticks map: a score counts in quarters and states no tick resolution, so ticks are a reading you ask for by passing <code>ppq</code> to <code>create_timeline()</code>. Measures are available as the child named <code>measures</code>, but this score loader does not also materialize them as <button class="glossary" title="">Region</button> objects.</p>
 </section>
 <section id="querying-every-child" class="level2">
 <h2 class="anchored" data-anchor-id="querying-every-child">Querying every child</h2>
 <p>A loaded timeline uses the same <code>get_events()</code> query introduced previously. Ask the parent for every event, then select one representative row from each child for inspection.</p>
-<div id="f5b11cdd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.438117Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.437950Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.502665Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.501793Z&quot;}}" data-execution_count="8">
+<div id="4e5fe4e6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:11.354204Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:11.353578Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:11.484067Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:11.483164Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>loaded_events <span class="op">=</span> score_timeline.get_events()</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>loaded_event_frame <span class="op">=</span> loaded_events.to_dataframe()</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>event_examples <span class="op">=</span> loaded_event_frame.drop_duplicates(subset<span class="op">=</span><span class="st">"source_timeline"</span>)</span>
@@ -636,50 +638,50 @@ Table&nbsp;1: Parsed table inventory — EventStore contract: True
 <style type="text/css">
 </style>
 
-<div id="T_9fc0b" class="quarto-float quarto-figure quarto-figure-center anchored" data-quarto-postprocess="true">
+<div id="T_ccc26" class="quarto-float quarto-figure quarto-figure-center anchored" data-quarto-postprocess="true">
 <figure class="quarto-float quarto-float-tbl figure">
-<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="T_9fc0b-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="T_ccc26-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Table&nbsp;2: One row from each child among 547 loaded events
 </figcaption>
-<div aria-describedby="T_9fc0b-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<table id="T_9fc0b" class="caption-top table table-sm table-striped small">
+<div aria-describedby="T_ccc26-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table id="T_ccc26" class="caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
 <th class="blank level0" data-quarto-table-cell-role="th">&nbsp;</th>
-<th id="T_9fc0b_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">source_timeline</th>
-<th id="T_9fc0b_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">event_type</th>
-<th id="T_9fc0b_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">name</th>
-<th id="T_9fc0b_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">start</th>
+<th id="T_ccc26_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">source_timeline</th>
+<th id="T_ccc26_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">event_type</th>
+<th id="T_ccc26_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">name</th>
+<th id="T_ccc26_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">start</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<th id="T_9fc0b_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
-<td id="T_9fc0b_row0_col0" class="data row0 col0">clt_1</td>
-<td id="T_9fc0b_row0_col1" class="data row0 col1">Note</td>
-<td id="T_9fc0b_row0_col2" class="data row0 col2">B3</td>
-<td id="T_9fc0b_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<th id="T_ccc26_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
+<td id="T_ccc26_row0_col0" class="data row0 col0">clt_1</td>
+<td id="T_ccc26_row0_col1" class="data row0 col1">Note</td>
+<td id="T_ccc26_row0_col2" class="data row0 col2">B3</td>
+<td id="T_ccc26_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
 </tr>
 <tr class="even">
-<th id="T_9fc0b_level0_row1" class="row_heading level0 row1" data-quarto-table-cell-role="th">1</th>
-<td id="T_9fc0b_row1_col0" class="data row1 col0">clt_2</td>
-<td id="T_9fc0b_row1_col1" class="data row1 col1">Measure</td>
-<td id="T_9fc0b_row1_col2" class="data row1 col2">1</td>
-<td id="T_9fc0b_row1_col3" class="data row1 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<th id="T_ccc26_level0_row1" class="row_heading level0 row1" data-quarto-table-cell-role="th">1</th>
+<td id="T_ccc26_row1_col0" class="data row1 col0">clt_2</td>
+<td id="T_ccc26_row1_col1" class="data row1 col1">Measure</td>
+<td id="T_ccc26_row1_col2" class="data row1 col2">1</td>
+<td id="T_ccc26_row1_col3" class="data row1 col3">Coordinate(Fraction(0, 1), quarters)</td>
 </tr>
 <tr class="odd">
-<th id="T_9fc0b_level0_row2" class="row_heading level0 row2" data-quarto-table-cell-role="th">2</th>
-<td id="T_9fc0b_row2_col0" class="data row2 col0">clt_3</td>
-<td id="T_9fc0b_row2_col1" class="data row2 col1">TimeSignature</td>
-<td id="T_9fc0b_row2_col2" class="data row2 col2">TimeSignature</td>
-<td id="T_9fc0b_row2_col3" class="data row2 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<th id="T_ccc26_level0_row2" class="row_heading level0 row2" data-quarto-table-cell-role="th">2</th>
+<td id="T_ccc26_row2_col0" class="data row2 col0">clt_3</td>
+<td id="T_ccc26_row2_col1" class="data row2 col1">TimeSignature</td>
+<td id="T_ccc26_row2_col2" class="data row2 col2">TimeSignature</td>
+<td id="T_ccc26_row2_col3" class="data row2 col3">Coordinate(Fraction(0, 1), quarters)</td>
 </tr>
 <tr class="even">
-<th id="T_9fc0b_level0_row3" class="row_heading level0 row3" data-quarto-table-cell-role="th">3</th>
-<td id="T_9fc0b_row3_col0" class="data row3 col0">clt_4</td>
-<td id="T_9fc0b_row3_col1" class="data row3 col1">Text</td>
-<td id="T_9fc0b_row3_col2" class="data row3 col2">Lento, ma non troppo</td>
-<td id="T_9fc0b_row3_col3" class="data row3 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<th id="T_ccc26_level0_row3" class="row_heading level0 row3" data-quarto-table-cell-role="th">3</th>
+<td id="T_ccc26_row3_col0" class="data row3 col0">clt_4</td>
+<td id="T_ccc26_row3_col1" class="data row3 col1">Text</td>
+<td id="T_ccc26_row3_col2" class="data row3 col2">Lento, ma non troppo</td>
+<td id="T_ccc26_row3_col3" class="data row3 col3">Coordinate(Fraction(0, 1), quarters)</td>
 </tr>
 </tbody>
 </table>
@@ -693,7 +695,7 @@ Table&nbsp;2: One row from each child among 547 loaded events
 <section id="narrowing-by-event-type" class="level2">
 <h2 class="anchored" data-anchor-id="narrowing-by-event-type">Narrowing by event type</h2>
 <p>The same query can keep only notes. Convert a few selected fields to a table so that both note content and exact positions remain visible.</p>
-<div id="1f02d421" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.504844Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.504601Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:13.570158Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:13.569563Z&quot;}}" data-execution_count="9">
+<div id="426db2ba" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:11.499828Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:11.498761Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:11.745100Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:11.734708Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>loaded_notes <span class="op">=</span> score_timeline.get_events(event_type<span class="op">=</span><span class="st">"Note"</span>)</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>loaded_note_frame <span class="op">=</span> loaded_notes.to_dataframe()</span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>note_examples <span class="op">=</span> loaded_note_frame.loc[</span>
@@ -717,60 +719,60 @@ Table&nbsp;2: One row from each child among 547 loaded events
 <style type="text/css">
 </style>
 
-<div id="T_c8eb8" class="quarto-float quarto-figure quarto-figure-center anchored" data-quarto-postprocess="true">
+<div id="T_ebb99" class="quarto-float quarto-figure quarto-figure-center anchored" data-quarto-postprocess="true">
 <figure class="quarto-float quarto-float-tbl figure">
-<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="T_c8eb8-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="T_ebb99-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Table&nbsp;3: First four of 498 Note events
 </figcaption>
-<div aria-describedby="T_c8eb8-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<table id="T_c8eb8" class="caption-top table table-sm table-striped small">
+<div aria-describedby="T_ebb99-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<table id="T_ebb99" class="caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
 <th class="blank level0" data-quarto-table-cell-role="th">&nbsp;</th>
-<th id="T_c8eb8_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">id</th>
-<th id="T_c8eb8_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">name</th>
-<th id="T_c8eb8_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">event_type</th>
-<th id="T_c8eb8_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">start</th>
-<th id="T_c8eb8_level0_col4" class="col_heading level0 col4" data-quarto-table-cell-role="th">end</th>
-<th id="T_c8eb8_level0_col5" class="col_heading level0 col5" data-quarto-table-cell-role="th">staff</th>
+<th id="T_ebb99_level0_col0" class="col_heading level0 col0" data-quarto-table-cell-role="th">id</th>
+<th id="T_ebb99_level0_col1" class="col_heading level0 col1" data-quarto-table-cell-role="th">name</th>
+<th id="T_ebb99_level0_col2" class="col_heading level0 col2" data-quarto-table-cell-role="th">event_type</th>
+<th id="T_ebb99_level0_col3" class="col_heading level0 col3" data-quarto-table-cell-role="th">start</th>
+<th id="T_ebb99_level0_col4" class="col_heading level0 col4" data-quarto-table-cell-role="th">end</th>
+<th id="T_ebb99_level0_col5" class="col_heading level0 col5" data-quarto-table-cell-role="th">staff</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<th id="T_c8eb8_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
-<td id="T_c8eb8_row0_col0" class="data row0 col0">notes:note:000001</td>
-<td id="T_c8eb8_row0_col1" class="data row0 col1">B3</td>
-<td id="T_c8eb8_row0_col2" class="data row0 col2">Note</td>
-<td id="T_c8eb8_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
-<td id="T_c8eb8_row0_col4" class="data row0 col4">Coordinate(Fraction(1, 2), quarters)</td>
-<td id="T_c8eb8_row0_col5" class="data row0 col5">1</td>
+<th id="T_ebb99_level0_row0" class="row_heading level0 row0" data-quarto-table-cell-role="th">0</th>
+<td id="T_ebb99_row0_col0" class="data row0 col0">notes:note:000001</td>
+<td id="T_ebb99_row0_col1" class="data row0 col1">B3</td>
+<td id="T_ebb99_row0_col2" class="data row0 col2">Note</td>
+<td id="T_ebb99_row0_col3" class="data row0 col3">Coordinate(Fraction(0, 1), quarters)</td>
+<td id="T_ebb99_row0_col4" class="data row0 col4">Coordinate(Fraction(1, 2), quarters)</td>
+<td id="T_ebb99_row0_col5" class="data row0 col5">1</td>
 </tr>
 <tr class="even">
-<th id="T_c8eb8_level0_row1" class="row_heading level0 row1" data-quarto-table-cell-role="th">1</th>
-<td id="T_c8eb8_row1_col0" class="data row1 col0">notes:note:000002</td>
-<td id="T_c8eb8_row1_col1" class="data row1 col1">E4</td>
-<td id="T_c8eb8_row1_col2" class="data row1 col2">Note</td>
-<td id="T_c8eb8_row1_col3" class="data row1 col3">Coordinate(Fraction(1, 2), quarters)</td>
-<td id="T_c8eb8_row1_col4" class="data row1 col4">Coordinate(Fraction(1, 1), quarters)</td>
-<td id="T_c8eb8_row1_col5" class="data row1 col5">1</td>
+<th id="T_ebb99_level0_row1" class="row_heading level0 row1" data-quarto-table-cell-role="th">1</th>
+<td id="T_ebb99_row1_col0" class="data row1 col0">notes:note:000002</td>
+<td id="T_ebb99_row1_col1" class="data row1 col1">E4</td>
+<td id="T_ebb99_row1_col2" class="data row1 col2">Note</td>
+<td id="T_ebb99_row1_col3" class="data row1 col3">Coordinate(Fraction(1, 2), quarters)</td>
+<td id="T_ebb99_row1_col4" class="data row1 col4">Coordinate(Fraction(1, 1), quarters)</td>
+<td id="T_ebb99_row1_col5" class="data row1 col5">1</td>
 </tr>
 <tr class="odd">
-<th id="T_c8eb8_level0_row2" class="row_heading level0 row2" data-quarto-table-cell-role="th">2</th>
-<td id="T_c8eb8_row2_col0" class="data row2 col0">notes:note:000003</td>
-<td id="T_c8eb8_row2_col1" class="data row2 col1">G♯3</td>
-<td id="T_c8eb8_row2_col2" class="data row2 col2">Note</td>
-<td id="T_c8eb8_row2_col3" class="data row2 col3">Coordinate(Fraction(1, 2), quarters)</td>
-<td id="T_c8eb8_row2_col4" class="data row2 col4">Coordinate(Fraction(3, 4), quarters)</td>
-<td id="T_c8eb8_row2_col5" class="data row2 col5">1</td>
+<th id="T_ebb99_level0_row2" class="row_heading level0 row2" data-quarto-table-cell-role="th">2</th>
+<td id="T_ebb99_row2_col0" class="data row2 col0">notes:note:000003</td>
+<td id="T_ebb99_row2_col1" class="data row2 col1">G♯3</td>
+<td id="T_ebb99_row2_col2" class="data row2 col2">Note</td>
+<td id="T_ebb99_row2_col3" class="data row2 col3">Coordinate(Fraction(1, 2), quarters)</td>
+<td id="T_ebb99_row2_col4" class="data row2 col4">Coordinate(Fraction(3, 4), quarters)</td>
+<td id="T_ebb99_row2_col5" class="data row2 col5">1</td>
 </tr>
 <tr class="even">
-<th id="T_c8eb8_level0_row3" class="row_heading level0 row3" data-quarto-table-cell-role="th">3</th>
-<td id="T_c8eb8_row3_col0" class="data row3 col0">notes:note:000004</td>
-<td id="T_c8eb8_row3_col1" class="data row3 col1">E2</td>
-<td id="T_c8eb8_row3_col2" class="data row3 col2">Note</td>
-<td id="T_c8eb8_row3_col3" class="data row3 col3">Coordinate(Fraction(1, 2), quarters)</td>
-<td id="T_c8eb8_row3_col4" class="data row3 col4">Coordinate(Fraction(3, 4), quarters)</td>
-<td id="T_c8eb8_row3_col5" class="data row3 col5">2</td>
+<th id="T_ebb99_level0_row3" class="row_heading level0 row3" data-quarto-table-cell-role="th">3</th>
+<td id="T_ebb99_row3_col0" class="data row3 col0">notes:note:000004</td>
+<td id="T_ebb99_row3_col1" class="data row3 col1">E2</td>
+<td id="T_ebb99_row3_col2" class="data row3 col2">Note</td>
+<td id="T_ebb99_row3_col3" class="data row3 col3">Coordinate(Fraction(1, 2), quarters)</td>
+<td id="T_ebb99_row3_col4" class="data row3 col4">Coordinate(Fraction(3, 4), quarters)</td>
+<td id="T_ebb99_row3_col5" class="data row3 col5">2</td>
 </tr>
 </tbody>
 </table>
@@ -784,7 +786,7 @@ Table&nbsp;3: First four of 498 Note events
 <section id="the-same-music-a-second-way" class="level2">
 <h2 class="anchored" data-anchor-id="the-same-music-a-second-way">The same music, a second way</h2>
 <p><code>PartituraLoader.from_file()</code> read the MusicXML above; now <code>Ms3Loader.from_file()</code> reads the neighboring note TSV. Comparing note counts tests whether the two provenances describe the same musical content.</p>
-<div id="50c16bb8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:13.572330Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:13.572169Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:15.087264Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:15.086511Z&quot;}}" data-execution_count="10">
+<div id="c5ac5e8e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:11.748401Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:11.748080Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:13.731591Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:13.730640Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>ms3_loader <span class="op">=</span> Ms3Loader.from_file(ms3_path)</span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>ms3_timeline <span class="op">=</span> ms3_loader.create_timeline(uid<span class="op">=</span><span class="st">"ms3:clt_1"</span>)</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>ms3_events <span class="op">=</span> ms3_timeline.get_events()</span>
@@ -864,7 +866,7 @@ Table&nbsp;3: First four of 498 Note events
 </tbody>
 </table>
 <p>Each family has a how-to guide of its own: <a href="../howto/how01_loading_data.html">loading data</a> · <a href="../howto/how01_tabular_loaders.html">tabular loaders</a> · <a href="../howto/how01_graphical_timelines.html">graphical timelines</a> · <a href="../howto/how03_loading_vienna_corpus.html">the Vienna corpus</a> · <a href="../howto/how04_load_anything.html">load anything</a></p>
-<div id="d6c3a0cb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:15.088811Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:15.088656Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:15.092957Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:15.092297Z&quot;}}" data-execution_count="11">
+<div id="730a6687" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:13.733988Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:13.733714Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:13.741535Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:13.740389Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>loader_families <span class="op">=</span> {</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score"</span>: {</span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">"loaders"</span>: (Ms3Loader, Music21Loader, PartituraLoader),</span>
@@ -898,8 +900,8 @@ Table&nbsp;3: First four of 498 Note events
 </section>
 <section id="beyond-one-timeline" class="level2">
 <h2 class="anchored" data-anchor-id="beyond-one-timeline">Beyond one timeline</h2>
-<p><code>create_timelines()</code> opens the door to loaders that yield several timelines; this leads to the next tutorial on <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button>s, <a href="../tutorials/tut05_timeline_groups.html">Timeline Groups</a>. Alignment-capable loaders also provide <code>create_bundle()</code>, which produces an <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> in <a href="../tutorials/tut06_alignment_bundles.html">Alignment Bundles and MatchClaims</a>.</p>
-<div id="1f82e829" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:07:15.094445Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:07:15.094303Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:07:15.105147Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:07:15.104462Z&quot;}}" data-execution_count="12">
+<p><code>create_timelines()</code> opens the door to loaders that yield several timelines; this leads to the next tutorial on <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button>s, <a href="../tutorials/tut05_timeline_groups.html">Timeline Groups</a>. Alignment-capable loaders also provide <code>create_bundle()</code>, which produces an <button class="glossary" title="">AlignmentBundle</button> in <a href="../tutorials/tut06_alignment_bundles.html">Alignment Bundles and MatchClaims</a>.</p>
+<div id="a5af0952" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:53:13.743830Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:53:13.743567Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:53:13.753804Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:53:13.752141Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>timeline_list <span class="op">=</span> ms3_loader.create_timelines()</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>future_doors <span class="op">=</span> {</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timelines returned"</span>: timeline_list,</span>
@@ -907,7 +909,7 @@ Table&nbsp;3: First four of 498 Note events
 <span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>future_doors</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="12">
-<pre><code>{'timelines returned': [ContinuousLogicalTimeline(id='clt_1', length=83/2, unit=quarters, events=498, children=0, cmaps=1)],
+<pre><code>{'timelines returned': [ContinuousLogicalTimeline(id='clt_1', length=83/2, unit=quarters, events=498, children=0)],
  'loader families sampled above': 3}</code></pre>
 </div>
 </div>

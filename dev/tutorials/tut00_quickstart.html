@@ -335,7 +335,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="quickstart" class="level1">
 <h1>Quickstart</h1>
-<p>One piece of music can exist at once as a recording, as notation, and as images on a page. A <button class="glossary" title="">Domain</button> says which kind of representation an axis measures: physical, logical, or graphical. A continuous axis permits positions between its marks; a <button class="glossary" title="">Discrete</button> axis uses numbered steps such as samples, ticks, or pixels.</p>
+<p>One piece of music can exist at once as a recording, as notation, and as images on a page. A <button class="glossary" title="One of three temporal categories: Graphical (visual/spatial), Logical (symbolic/musical), or Physical (audio/sound). Each domain has both discrete and continuous timeline variants.">Domain</button> says which kind of representation an axis measures: physical, logical, or graphical. A continuous axis permits positions between its marks; a <button class="glossary" title="A timeline is discrete when coordinates exist only at discrete points (e.g., pixels, samples, ticks). Contrast with Continuous timelines where coordinates can take any real value (e.g., seconds, quarters).">Discrete</button> axis uses numbered steps such as samples, ticks, or pixels.</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -422,7 +422,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="events-on-a-timeline" class="level2">
 <h2 class="anchored" data-anchor-id="events-on-a-timeline">Events on a Timeline</h2>
-<p>An <button class="glossary" title="">Event</button> records something that happens at an instant or over an interval. Here three labelled cues become part of the audio timeline.</p>
+<p>An <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> records something that happens at an instant or over an interval. Here three labelled cues become part of the audio timeline.</p>
 <div id="d977bbc4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:28.509525Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:28.509195Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:28.546824Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:28.545542Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>audio.add_events(</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    [</span>

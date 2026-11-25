@@ -405,7 +405,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="naming-the-played-spans" class="level2">
 <h2 class="anchored" data-anchor-id="naming-the-played-spans">Naming the played spans</h2>
-<p>A <button class="glossary" title="">Region</button> gives a stable id to a span of the written score. We reuse <code>create_region</code> from the nesting tutorial, giving each span its letter as its id.</p>
+<p>A <button class="glossary" title="A part of a timeline defined by a TimeInterval, identified by its element id and displayed by its name (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button> gives a stable id to a span of the written score. We reuse <code>create_region</code> from the nesting tutorial, giving each span its letter as its id.</p>
 <div id="6482ec3d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.898457Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.898170Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.905238Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.904295Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>created_regions <span class="op">=</span> [</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    written_score.create_region(start, end, <span class="bu">id</span><span class="op">=</span>span_id)</span>

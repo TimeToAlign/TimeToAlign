@@ -552,7 +552,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="cf4d54bc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:49.999777Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:49.999623Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:52.300713Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:52.299862Z&quot;}}" data-execution_count="1">
+<div id="fa72b903" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:39.215811Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:39.215365Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:42.946342Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:42.944961Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> Coordinate, IdCoordinate, Ms3Loader, TimelineGroup, TimeUnit</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.graphical.aton <span class="im">import</span> ATONLoader</span>
@@ -581,7 +581,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="part-a-create-the-image-timeline-dgt1-from-aton-loader">Part A: Create the Image Timeline (DGT1) from ATON Loader</h2>
 <p>The ATON (Artistic Text-based Object Notation) file contains hole punch data from the Stanford SUPRA project’s piano roll analysis. The loader creates a timeline with <strong>all hole events already populated</strong> at their absolute pixel coordinates.</p>
 <p><strong>Note:</strong> We use the <code>from_file()</code> constructor for one-line instantiation.</p>
-<div id="7072b3fb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:52.302699Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:52.302307Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:53.566073Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:53.565190Z&quot;}}" data-execution_count="2">
+<div id="aeb90a75" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:42.950046Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:42.949615Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:44.849431Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:44.840307Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>aton_loader <span class="op">=</span> ATONLoader.from_file(ATON_FILE)</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aton_loader.musical_holes <span class="op">==</span> <span class="dv">30092</span></span>
@@ -609,7 +609,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The loader’s <code>create_timeline()</code> method creates a timeline spanning the full image with holes at absolute coordinates.</p>
-<div id="dd0fc331" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:53.568821Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:53.568625Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:53.891935Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:53.890843Z&quot;}}" data-execution_count="3">
+<div id="ae1e0338" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:44.852823Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:44.852361Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:45.746114Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:45.736327Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>dgt1 <span class="op">=</span> aton_loader.create_timeline(uid<span class="op">=</span><span class="st">"dgt_1"</span>, name<span class="op">=</span><span class="st">"Piano Roll Image (WM 990)"</span>)</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>dgt1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
@@ -624,7 +624,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>The piano roll was scanned at 300.25 DPI (dots per inch). We attach ConversionMaps to convert pixel coordinates to physical units.</p>
 <p><strong>Important:</strong> We specify <code>name=</code> for human-readable column headers in timestamp tables. Without it, columns would show as “map:ScalarMap_1”.</p>
 <p><strong>Calculation:</strong> 299,400 pixels / 300.25 DPI = 997.17 inches = 25.33 meters</p>
-<div id="62fd4ca1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:53.899729Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:53.899207Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:53.911453Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:53.910629Z&quot;}}" data-execution_count="4">
+<div id="a5464b47" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:45.749391Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:45.748930Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:45.762151Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:45.760937Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>LENGTH_DPI <span class="op">=</span> <span class="fl">300.25</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: name= provides readable column headers (defaults to "source_to_target")</span></span>
@@ -647,7 +647,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>The <code>convert_to</code> method returns proper Coordinate objects with units.</p>
-<div id="8f6e8e02" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:53.919044Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:53.918756Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:53.931661Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:53.930684Z&quot;}}" data-execution_count="5">
+<div id="5c4fbe1a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:45.788360Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:45.788139Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:45.820463Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:45.812839Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>image_length_inches <span class="op">=</span> dgt1.convert_to(dgt1.length, <span class="st">"inches"</span>)</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>image_length_cm <span class="op">=</span> dgt1.convert_to(dgt1.length, <span class="st">"cm"</span>)</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -670,7 +670,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="part-c-create-child-timeline-for-relative-coordinates">Part C: Create Child Timeline for Relative Coordinates</h2>
 <p>The musical content doesn’t span the entire image - holes start at pixel 15,343. We create a <strong>child timeline</strong> to provide a relative coordinate view where the first hole = 0 pixels.</p>
 <p><strong>Key insight:</strong> The child has no events of its own. It’s purely a coordinate transformation. When we get timestamps, we see event coordinates in BOTH the parent (absolute) and child (relative) coordinate systems - for free!</p>
-<div id="04ac2fb1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:53.934866Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:53.934632Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:53.953350Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:53.952425Z&quot;}}" data-execution_count="6">
+<div id="9aa787d5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:45.824470Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:45.824204Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:45.892426Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:45.890936Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>dgt_holes <span class="op">=</span> dgt1.create_child(</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span>aton_loader.musical_length,</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    offset<span class="op">=</span>aton_loader.first_hole,</span>
@@ -690,7 +690,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="part-d-demonstrate-timestamps">Part D: Demonstrate Timestamps</h2>
 <p>With the parent-child hierarchy established, we can generate <strong>timestamps</strong> that show coordinates in both the parent (full image) and child (holes region) coordinate systems simultaneously.</p>
 <p><strong>Note:</strong> <code>get_timestamp_table(format="dataframe")</code> gives column names with units appended (e.g., “pixels_to_inches (inches)”) and one scalar per cell in each axis’s declared number type. This is the recommended way to get timestamp data for display.</p>
-<div id="b0f92408" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:53.966310Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:53.966106Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:55.654581Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:55.643062Z&quot;}}" data-execution_count="7">
+<div id="11b64565" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:45.897539Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:45.897045Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:47.695009Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:47.693906Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>timestamps_df <span class="op">=</span> dgt1.get_timestamp_table(<span class="bu">format</span><span class="op">=</span><span class="st">"dataframe"</span>)</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Total timestamps"</span>: <span class="bu">len</span>(timestamps_df), <span class="st">"Columns"</span>: <span class="bu">list</span>(timestamps_df.columns)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -706,7 +706,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>The timestamp table has one row per <strong>unique</strong> event coordinate in the hierarchy: - Parent timeline (dgt_1) contains 30,092 hole events at absolute pixel coordinates - But many holes share the same pixel row (multiple notes at one time position) - After de-duplication: ~20,676 unique coordinates plus 4 boundary coordinates</p>
 <p>Each row shows the coordinate in <strong>all</strong> coordinate systems simultaneously, and every column is named for the timeline or C-Map it belongs to: - <code>dgt_1 (pixels)</code>: The root (parent) coordinate in pixels - <code>dgt_holes (pixels)</code>: <strong>Relative</strong> coordinate in child timeline (first hole = 0, NaN if outside) - C-Map columns: Physical units with names like “pixels_to_inches (inches)”</p>
 <p>There is no separate <code>axis</code> column. The coordinate the query was made on is already the <code>dgt_1</code> column, so a second column repeating it under a generic name carried no information the row did not already hold.</p>
-<div id="d4c21c3a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:55.665726Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:55.665302Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:55.685366Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:55.684022Z&quot;}}" data-execution_count="8">
+<div id="b9ca48fb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:47.697539Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:47.697301Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:47.709964Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:47.708503Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>timestamps_df.head(<span class="dv">10</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <div>
@@ -807,7 +807,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Query a specific coordinate: at pixel 100,000 in the image, what’s the local coordinate in the holes region?</p>
-<div id="5aa115eb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:55.707126Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:55.706934Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:55.728313Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:55.727472Z&quot;}}" data-execution_count="9">
+<div id="6492cc7f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:47.713719Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:47.713390Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:47.720497Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:47.719478Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>ts <span class="op">=</span> dgt1.get_timestamp(<span class="fl">100000.0</span>)</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>{</span>
@@ -822,7 +822,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The boundary rows show where child timelines start and end (with C-Maps). They come from the same table builder, asked for boundaries instead of events, so <code>format="dataframe"</code> names the columns with their units here too.</p>
-<div id="e6153478" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:55.730477Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:55.730234Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:55.746442Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:55.745566Z&quot;}}" data-execution_count="10">
+<div id="20aee1ba" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:47.722925Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:47.722638Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:47.744844Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:47.743102Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>boundary_df <span class="op">=</span> dgt1.get_timestamp_table(</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    include_events<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    include_boundaries<span class="op">=</span><span class="va">True</span>,</span>
@@ -887,7 +887,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p><strong>All loaders use the <code>from_file()</code> constructor for clean one-line loading.</strong></p>
 <section id="e.1-dlt1---raw-midi-one-event-per-hole" class="level3">
 <h3 class="anchored" data-anchor-id="e.1-dlt1---raw-midi-one-event-per-hole">E.1: DLT1 - Raw MIDI (one event per hole)</h3>
-<div id="a57ff7ad" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:55.748770Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:55.748514Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:57.047667Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:57.046925Z&quot;}}" data-execution_count="11">
+<div id="0e94c156" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:47.747754Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:47.747491Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:49.816296Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:49.815272Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># One-line loading with from_file()</span></span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>midi_raw_loader <span class="op">=</span> PerformanceMidiLoader.from_file(MIDI_RAW_PATH)</span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -903,7 +903,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   └─ controls          0 ,                                0 (4 events)</pre>
 </div>
 </div>
-<div id="a36f052c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:57.049506Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:57.049333Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:57.053133Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:57.052422Z&quot;}}" data-execution_count="12">
+<div id="d989d734" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:49.818318Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:49.818028Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:49.823066Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:49.822188Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"DLT1 (MIDI Raw)"</span>: dlt1_raw.<span class="bu">id</span>,</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Length"</span>: <span class="ss">f"</span><span class="sc">{</span>dlt1_raw<span class="sc">.</span>length<span class="sc">.</span>value<span class="sc">:,}</span><span class="ss"> ticks"</span>,</span>
@@ -918,7 +918,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="e.2-dlt2---expressive-midi-merged-notes-dynamics" class="level3">
 <h3 class="anchored" data-anchor-id="e.2-dlt2---expressive-midi-merged-notes-dynamics">E.2: DLT2 - Expressive MIDI (merged notes + dynamics)</h3>
-<div id="b1c9c34c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:57.055025Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:57.054768Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:57.294838Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:57.294061Z&quot;}}" data-execution_count="13">
+<div id="d9ddf23f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:49.826613Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:49.826292Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:50.161255Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:50.160141Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>midi_exp_loader <span class="op">=</span> PerformanceMidiLoader.from_file(MIDI_EXP_PATH)</span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>dlt2_exp <span class="op">=</span> midi_exp_loader.create_timeline(uid<span class="op">=</span><span class="st">"dlt2_exp"</span>)</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>exp_note_count <span class="op">=</span> <span class="bu">len</span>(midi_exp_loader.store.notes)</span>
@@ -931,7 +931,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   └─ controls          0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 274318 (1496 events)</pre>
 </div>
 </div>
-<div id="09e5d0cc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:57.296716Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:57.296535Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:57.300372Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:57.299792Z&quot;}}" data-execution_count="14">
+<div id="22c36987" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:50.163224Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:50.163002Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:50.167160Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:50.166293Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"DLT2 (MIDI Expressive)"</span>: dlt2_exp.<span class="bu">id</span>,</span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Length"</span>: <span class="ss">f"</span><span class="sc">{</span>dlt2_exp<span class="sc">.</span>length<span class="sc">.</span>value<span class="sc">:,}</span><span class="ss"> ticks"</span>,</span>
@@ -947,7 +947,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="e.3-dpt1---audio-mp3" class="level3">
 <h3 class="anchored" data-anchor-id="e.3-dpt1---audio-mp3">E.3: DPT1 - Audio (MP3)</h3>
 <p><strong>Note:</strong> MP3 loading requires the audio extra (<code>pip install "timetoalign[audio]"</code>). The timeline is in samples, the file’s own axis, with a <code>SamplesToSeconds</code> C-Map attached.</p>
-<div id="7fee88f9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:57.302483Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:57.302315Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:57.326702Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:57.325954Z&quot;}}" data-execution_count="15">
+<div id="84abb848" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:50.169309Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:50.169080Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:50.180702Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:50.180008Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>audio_loader <span class="op">=</span> AudioLoader.from_file(MP3_PATH)</span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>dpt1_audio <span class="op">=</span> audio_loader.create_timeline(uid<span class="op">=</span><span class="st">"dpt1_audio"</span>)</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>audio_info <span class="op">=</span> {</span>
@@ -963,7 +963,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
                          0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 19715328 samples</pre>
 </div>
 </div>
-<div id="462f40c5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:57.329229Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:57.329009Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:57.332985Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:57.332252Z&quot;}}" data-execution_count="16">
+<div id="b18fb608" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:50.183126Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:50.182853Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:50.186923Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:50.186241Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>audio_info</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>{'DPT1 (Audio)': 'dpt1_audio',
@@ -977,7 +977,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="e.4-clt1---score-annotations-dcml-tsv-files">E.4: CLT1 - Score Annotations (DCML TSV files)</h3>
 <p>The DCML corpus provides score data in TSV format. We load <strong>all four files</strong> (notes, measures, harmonies, chords) at once using <code>from_file()</code> with glob.</p>
 <p><strong>Important:</strong> TimeToAlign! properly loads: - <code>.harmonies.tsv</code> as <strong>annotations</strong> (Roman numeral analysis) - <code>.chords.tsv</code> as <strong>control events</strong> (chord symbols)</p>
-<div id="3eb7d554" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:57.334912Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:57.334697Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:25:57.339501Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:25:57.338570Z&quot;}}" data-execution_count="17">
+<div id="f85fa2bc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:50.189509Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:50.189190Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:50.196311Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:50.195449Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>SCORE_BASE <span class="op">=</span> <span class="st">"WWV096-Meistersinger_01_Vorspiel-Prelude_SchottKleinmichel"</span></span>
 <span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>score_tsv_files <span class="op">=</span> <span class="bu">sorted</span>(DCML_DIR.glob(<span class="ss">f"</span><span class="sc">{</span>SCORE_BASE<span class="sc">}</span><span class="ss">.*.tsv"</span>))</span>
 <span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -990,7 +990,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Load all TSV files at once using <code>from_file()</code> with <code>*</code> unpacking - one line.</p>
-<div id="0eda082b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:25:57.341124Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:25:57.340950Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:01.378615Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:01.377656Z&quot;}}" data-execution_count="18">
+<div id="77eceb8a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:50.198807Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:50.198564Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:54.530978Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:54.530239Z&quot;}}" data-execution_count="18">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>score_loader <span class="op">=</span> Ms3Loader.from_file(<span class="op">*</span>score_tsv_files)</span>
 <span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>score_loader.store.summary()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
@@ -1020,7 +1020,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Verify against gold standard (ZERO TOLERANCE).</p>
-<div id="661abdb6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:01.380630Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:01.380365Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:01.385973Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:01.385209Z&quot;}}" data-execution_count="19">
+<div id="bc774338" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:54.532800Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:54.532623Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:54.537393Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:54.536761Z&quot;}}" data-execution_count="19">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>notes_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.notes)</span>
 <span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>measures_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.measures)</span>
 <span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>annotations_count <span class="op">=</span> <span class="bu">len</span>(score_loader.store.annotations)  <span class="co"># Harmonies</span></span>
@@ -1045,11 +1045,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Create the score timeline using <code>create_timeline()</code> directly from the loader.</p>
-<div id="92b31d73" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:01.387838Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:01.387562Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:01.677679Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:01.676866Z&quot;}}" data-execution_count="20">
+<div id="ce68e888" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:54.540952Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:54.540749Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:54.766735Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:54.765997Z&quot;}}" data-execution_count="20">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>clt1_score <span class="op">=</span> score_loader.create_timeline(uid<span class="op">=</span><span class="st">"clt1_score"</span>)</span>
 <span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>clt1_score</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="20">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[clt1_score] (11029 events, 3 children, 2 cmaps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[clt1_score] (11029 events, 3 children, 1 cmaps)
                       0 _________________________________ 888 quarters
   ├─ notes            0 ________________________________  886 (5577 events)
   ├─ controls         0 ________________________________  886 (4378 events)
@@ -1064,7 +1064,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><strong>Chords</strong> are loaded as <strong>control events</strong> (chord symbols)</li>
 </ul>
 <p>Let’s examine the harmonies - we’ll use a specific label for coordinate transfer!</p>
-<div id="b536aca9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:01.679676Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:01.679509Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:01.772940Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:01.772102Z&quot;}}" data-execution_count="21">
+<div id="29bbc8c9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:54.768764Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:54.768541Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:54.802195Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:54.801265Z&quot;}}" data-execution_count="21">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get harmony annotations (from .harmonies.tsv)</span></span>
 <span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>harmonies <span class="op">=</span> score_loader.store.annotations.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Harmony"</span>)</span>
 <span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>harmonies_df <span class="op">=</span> harmonies.to_dataframe()[[<span class="st">"name"</span>, <span class="st">"text"</span>, <span class="st">"start"</span>, <span class="st">"mc"</span>, <span class="st">"mn"</span>]].head(<span class="dv">20</span>)</span>
@@ -1251,7 +1251,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="e60718bd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:01.775949Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:01.775662Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:01.961955Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:01.961022Z&quot;}}" data-execution_count="22">
+<div id="3fd96200" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:54.803716Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:54.803553Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:54.964011Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:54.963336Z&quot;}}" data-execution_count="22">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get chord control events (from .chords.tsv)</span></span>
 <span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>chords <span class="op">=</span> score_loader.store.controls.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Chord"</span>)</span>
 <span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span>(chords) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
@@ -1277,7 +1277,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     +-- dpt1_audio (samples)
     |
     +-- clt1_score (quarterbeats)</code></pre>
-<div id="4460b500" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:01.964443Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:01.964177Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.026351Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.025238Z&quot;}}" data-execution_count="23">
+<div id="2c810fbf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:54.966342Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:54.966162Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:54.984486Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:54.983602Z&quot;}}" data-execution_count="23">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>group <span class="op">=</span> TimelineGroup(</span>
 <span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"supra_alignment"</span>,</span>
 <span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"SUPRA Piano Roll Alignment"</span>,</span>
@@ -1304,7 +1304,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 │ DiscretePhysicalTimeline[dpt1_audio] (1 cmaps)                              │
 │                          0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 19715328 samples          │
 │                                                                             │
-│ ContinuousLogicalTimeline[clt1_score] (11029 events, 3 children, 2 cmaps)   │
+│ ContinuousLogicalTimeline[clt1_score] (11029 events, 3 children, 1 cmaps)   │
 │                       0 _____________________________ 888 quarters          │
 │   ├─ notes            0 ____________________________  886 (5577 events)     │
 │   ├─ controls         0 ____________________________  886 (4378 events)     │
@@ -1312,7 +1312,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 └─────────────────────────────────────────────────────────────────────────────┘</pre>
 </div>
 </div>
-<div id="6a617757" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.028203Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.028028Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.032689Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.031809Z&quot;}}" data-execution_count="24">
+<div id="a750e582" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:54.985904Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:54.985726Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:54.991013Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:54.989444Z&quot;}}" data-execution_count="24">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>{<span class="st">"Group"</span>: group.name, <span class="st">"Timelines"</span>: group.timeline_ids, <span class="st">"Count"</span>: group.n_timelines}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="24">
 <pre><code>{'Group': 'SUPRA Piano Roll Alignment',
@@ -1329,7 +1329,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="part-g-group-timestamps---the-heart-of-alignment" class="level2">
 <h2 class="anchored" data-anchor-id="part-g-group-timestamps---the-heart-of-alignment">Part G: Group Timestamps - The Heart of Alignment</h2>
 <p><strong>This is the key feature!</strong> Every member of a TimelineGroup spans the whole group: the group stores two synchronized points across ALL timelines, the shared start and the shared end. Coordinate transfer converts linearly between them.</p>
-<div id="e1e51ecb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.034539Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.034314Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.047460Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.046676Z&quot;}}" data-execution_count="25">
+<div id="08ac9833" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:54.993611Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:54.993368Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.008220Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.006699Z&quot;}}" data-execution_count="25">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get the full timestamp table</span></span>
 <span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>group_timestamps <span class="op">=</span> group.get_timestamp_table(<span class="bu">format</span><span class="op">=</span><span class="st">"dataframe"</span>)</span>
 <span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>group_timestamps</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1347,7 +1347,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">dpt1_audio (samples)</th>
 <th data-quarto-table-cell-role="th">clt1_score (quarters)</th>
 <th data-quarto-table-cell-role="th">samples_to_seconds (seconds)</th>
-<th data-quarto-table-cell-role="th">quarters_to_ticks (ticks)</th>
 <th data-quarto-table-cell-role="th">quarters_to_measures (floating_measures)</th>
 </tr>
 </thead>
@@ -1360,7 +1359,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>0</td>
 <td>0</td>
 <td>0.000000</td>
-<td>0</td>
 <td>1.0</td>
 </tr>
 <tr class="even">
@@ -1371,7 +1369,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>19715328</td>
 <td>888</td>
 <td>447.059592</td>
-<td>426240</td>
 <td>223.0</td>
 </tr>
 </tbody>
@@ -1389,7 +1386,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="h.1-transfer-a-specific-harmony-label-across-all-timelines" class="level3">
 <h3 class="anchored" data-anchor-id="h.1-transfer-a-specific-harmony-label-across-all-timelines">H.1: Transfer a Specific Harmony Label Across All Timelines</h3>
 <p>Let’s take the first occurrence of a I chord (C major) and find its position in every timeline.</p>
-<div id="4d7725cc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.050135Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.049771Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.061258Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.060261Z&quot;}}" data-execution_count="26">
+<div id="75a81258" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.011344Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.011134Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.024829Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.023251Z&quot;}}" data-execution_count="26">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Find the first I chord (tonic) harmony</span></span>
 <span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>i_chords <span class="op">=</span> score_loader.store.annotations.<span class="bu">filter</span>(text<span class="op">=</span><span class="st">"I"</span>)</span>
 <span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span>(i_chords) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
@@ -1414,7 +1411,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Now get the timestamp at this position - one call gives us ALL coordinates!</p>
-<div id="b4c2b14c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.063654Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.063239Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.071882Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.071032Z&quot;}}" data-execution_count="27">
+<div id="78092389" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.027554Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.027365Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.032991Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.032120Z&quot;}}" data-execution_count="27">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get timestamp at the harmony position in the score timeline</span></span>
 <span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>harmony_ts <span class="op">=</span> group.get_timestamp_at(i_chord_qb, <span class="st">"clt1_score"</span>)</span>
 <span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>harmony_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1485,16 +1482,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">5760 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="odd">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">4 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td style="color: #666">seconds</td>
 <td style="text-align: right;">6.041337868480726 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -1508,7 +1500,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="h.2-full-image-coordinates-physical-units-via-idcoordinate" class="level3">
 <h3 class="anchored" data-anchor-id="h.2-full-image-coordinates-physical-units-via-idcoordinate">H.2: Full Image Coordinates + Physical Units via IdCoordinate</h3>
 <p>The group timestamp gives us <code>dgt_holes</code> (relative pixels). To get the absolute image position AND physical units (C-Maps), we use <strong>IdCoordinate</strong> - it carries the child’s timeline_id, so the parent automatically applies the offset!</p>
-<div id="9e9fb774" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.074145Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.073816Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.085026Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.084110Z&quot;}}" data-execution_count="28">
+<div id="e6df3e25" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.035052Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.034786Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.045801Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.045072Z&quot;}}" data-execution_count="28">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="st">"dgt_holes"</span> <span class="kw">in</span> harmony_ts.present_timelines:</span>
 <span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># The getter already returns an IdCoordinate carrying the child's timeline_id</span></span>
 <span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    child_coord <span class="op">=</span> harmony_ts.get_coordinate_for(<span class="st">"dgt_holes"</span>)</span>
@@ -1521,7 +1513,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="h.3-multiple-harmony-labels---batch-transfer" class="level3">
 <h3 class="anchored" data-anchor-id="h.3-multiple-harmony-labels---batch-transfer">H.3: Multiple Harmony Labels - Batch Transfer</h3>
 <p>For batch transfers, ask <code>group.get_timestamp_table()</code> the same question with a list of coordinates: one row per query coordinate, every member timeline in its own column, units in the column names.</p>
-<div id="dfe72f4b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.087209Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.086965Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.214268Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.213377Z&quot;}}" data-execution_count="29">
+<div id="6ddddf23" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.047710Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.047519Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.099066Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.098274Z&quot;}}" data-execution_count="29">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get first 10 harmonies</span></span>
 <span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>first_10_harmonies <span class="op">=</span> (</span>
 <span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    score_loader.store.annotations.<span class="bu">filter</span>(subtype<span class="op">=</span><span class="st">"Harmony"</span>).to_dataframe().head(<span class="dv">10</span>)</span>
@@ -1552,7 +1544,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">clt_2 (quarters)</th>
 <th data-quarto-table-cell-role="th">clt_3 (quarters)</th>
 <th data-quarto-table-cell-role="th">samples_to_seconds (seconds)</th>
-<th data-quarto-table-cell-role="th">quarters_to_ticks (ticks)</th>
 <th data-quarto-table-cell-role="th">quarters_to_measures (floating_measures)</th>
 </tr>
 </thead>
@@ -1572,7 +1563,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>0</td>
 <td>0</td>
 <td>0.000000</td>
-<td>0</td>
 <td>1.00</td>
 </tr>
 <tr class="even">
@@ -1590,7 +1580,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>2</td>
 <td>2</td>
 <td>1.006893</td>
-<td>960</td>
 <td>1.50</td>
 </tr>
 <tr class="odd">
@@ -1608,7 +1597,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>5</td>
 <td>5</td>
 <td>2.517234</td>
-<td>2400</td>
 <td>2.25</td>
 </tr>
 <tr class="even">
@@ -1626,7 +1614,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>7</td>
 <td>7</td>
 <td>3.524127</td>
-<td>3360</td>
 <td>2.75</td>
 </tr>
 <tr class="odd">
@@ -1644,7 +1631,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>8</td>
 <td>8</td>
 <td>4.027574</td>
-<td>3840</td>
 <td>3.00</td>
 </tr>
 <tr class="even">
@@ -1662,7 +1648,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>9</td>
 <td>9</td>
 <td>4.531020</td>
-<td>4320</td>
 <td>3.25</td>
 </tr>
 <tr class="odd">
@@ -1680,7 +1665,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>10</td>
 <td>10</td>
 <td>5.034444</td>
-<td>4800</td>
 <td>3.50</td>
 </tr>
 <tr class="even">
@@ -1698,7 +1682,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>11</td>
 <td>11</td>
 <td>5.537891</td>
-<td>5280</td>
 <td>3.75</td>
 </tr>
 <tr class="odd">
@@ -1716,7 +1699,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>12</td>
 <td>12</td>
 <td>6.041338</td>
-<td>5760</td>
 <td>4.00</td>
 </tr>
 <tr class="even">
@@ -1734,7 +1716,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>13</td>
 <td>13</td>
 <td>6.544785</td>
-<td>6240</td>
 <td>4.25</td>
 </tr>
 </tbody>
@@ -1744,7 +1725,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>To also get the parent’s C-Maps (inches, cm), pass IdCoordinates to the parent:</p>
-<div id="70f79174" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.216185Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.215955Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.230485Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.229572Z&quot;}}" data-execution_count="30">
+<div id="0cbcd4ee" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.100751Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.100592Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.115230Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.114458Z&quot;}}" data-execution_count="30">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Get dgt_holes coordinates from group timestamps as IdCoordinates</span></span>
 <span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>dgt_holes_col <span class="op">=</span> (</span>
 <span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"dgt_holes (pixels)"</span> <span class="cf">if</span> <span class="st">"dgt_holes (pixels)"</span> <span class="kw">in</span> group_df.columns <span class="cf">else</span> <span class="st">"dgt_holes"</span></span>
@@ -1857,7 +1838,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="i.1-query-from-different-timelines" class="level3">
 <h3 class="anchored" data-anchor-id="i.1-query-from-different-timelines">I.1: Query from Different Timelines</h3>
 <p>We can query the group from ANY member timeline. Just display the timestamp!</p>
-<div id="778e390a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.232649Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.232469Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.238329Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.237408Z&quot;}}" data-execution_count="31">
+<div id="9ee23de9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.116896Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.116734Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.123109Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.121855Z&quot;}}" data-execution_count="31">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Query at 100 seconds in the audio - its C-Map goes from samples to seconds,</span></span>
 <span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a><span class="co"># and the query takes its inverse onto the samples axis; the timestamp shows ALL</span></span>
 <span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a><span class="co"># peer timelines</span></span>
@@ -1935,11 +1916,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">95343 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="even">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">50.657 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -1949,7 +1925,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code>, <code>ts.get_conversion_for(&lt;key&gt;)</code></div></div>
 </div>
 </div>
-<div id="1bb39d5b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.240182Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.240016Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.245971Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.245083Z&quot;}}" data-execution_count="32">
+<div id="741ce41a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.125562Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.125376Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.130899Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.130017Z&quot;}}" data-execution_count="32">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Query at 50,000 pixels in the holes region</span></span>
 <span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>holes_50k <span class="op">=</span> group.get_timestamp_at(<span class="dv">50000</span>, <span class="st">"dgt_holes"</span>)</span>
 <span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>holes_50k</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -2025,11 +2001,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">76724 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="even">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">40.96 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -2043,7 +2014,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="i.2-boundary-points" class="level3">
 <h3 class="anchored" data-anchor-id="i.2-boundary-points">I.2: Boundary Points</h3>
 <p>Check the alignment at the start and end of the musical content. Display timestamps directly to see all coordinate values:</p>
-<div id="1a517d50" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.247856Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.247668Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.253086Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.252155Z&quot;}}" data-execution_count="33">
+<div id="e6dd3a31" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.132616Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.132446Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.137742Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.136998Z&quot;}}" data-execution_count="33">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start of music (coordinate 0 in dgt_holes)</span></span>
 <span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>start_ts <span class="op">=</span> group.get_timestamp_at(<span class="dv">0</span>, <span class="st">"dgt_holes"</span>)</span>
 <span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>start_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -2124,11 +2095,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">0 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="odd">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">1 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -2138,7 +2104,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code>, <code>ts.get_conversion_for(&lt;key&gt;)</code></div></div>
 </div>
 </div>
-<div id="de02ba29" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.255114Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.254929Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.260875Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.259863Z&quot;}}" data-execution_count="34">
+<div id="a07d8318" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.140739Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.140179Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.146667Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.145812Z&quot;}}" data-execution_count="34">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="co"># End of music</span></span>
 <span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>end_ts <span class="op">=</span> group.get_timestamp_at(<span class="bu">int</span>(aton_loader.musical_length.value), <span class="st">"dgt_holes"</span>)</span>
 <span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>end_ts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -2199,11 +2165,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">426240 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="odd">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">223 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -2218,7 +2179,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="i.3-round-trip-verification" class="level3">
 <h3 class="anchored" data-anchor-id="i.3-round-trip-verification">I.3: Round-Trip Verification</h3>
 <p>Verify that coordinate transfer is reversible. We show the full timestamps at each step so you can see all coordinates involved.</p>
-<div id="286bb386" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.263166Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.262881Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.270271Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.269324Z&quot;}}" data-execution_count="35">
+<div id="fc25b409" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.148323Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.148126Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.153661Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.152793Z&quot;}}" data-execution_count="35">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>test_coord <span class="op">=</span> <span class="dv">100000</span>  <span class="co"># pixels in holes region</span></span>
 <span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 1: Get timestamp at our test coordinate</span></span>
@@ -2296,11 +2257,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">153447 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="even">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">80.92 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -2310,7 +2266,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code>, <code>ts.get_conversion_for(&lt;key&gt;)</code></div></div>
 </div>
 </div>
-<div id="05509f27" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.272145Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.271945Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.278760Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.277719Z&quot;}}" data-execution_count="36">
+<div id="33b82ddc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.155989Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.155692Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.161890Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.161181Z&quot;}}" data-execution_count="36">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 2: Transfer to audio, then back to holes</span></span>
 <span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>ts2 <span class="op">=</span> group.get_timestamp_at(ts1.get_coordinate_for(<span class="st">"dpt1_audio"</span>), <span class="st">"dpt1_audio"</span>)</span>
 <span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>ts2</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -2386,11 +2342,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td style="color: #666"><em>cmap</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">153447 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="even">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">80.92 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -2400,7 +2351,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code>, <code>ts.get_conversion_for(&lt;key&gt;)</code></div></div>
 </div>
 </div>
-<div id="d798fa69" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.280714Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.280485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.286294Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.285374Z&quot;}}" data-execution_count="37">
+<div id="72c3e542" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.163538Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.163334Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.168397Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.167801Z&quot;}}" data-execution_count="37">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 3: Transfer to score, then back to holes</span></span>
 <span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>ts3 <span class="op">=</span> group.get_timestamp_at(ts1.get_coordinate_for(<span class="st">"clt1_score"</span>), <span class="st">"clt1_score"</span>)</span>
 <span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>ts3</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -2471,16 +2422,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><em>child</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">ticks</td>
-<td style="text-align: right;">153447 ticks</td>
-<td style="color: #666"><em>cmap</em></td>
-</tr>
-<tr class="odd">
 <td style="color: #666">floating_measures</td>
 <td style="text-align: right;">80.92 floating_measures</td>
 <td style="color: #666"><em>cmap</em></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td style="color: #666">seconds</td>
 <td style="text-align: right;">160.94249433106575 seconds</td>
 <td style="color: #666"><em>cmap</em></td>
@@ -2490,7 +2436,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code>, <code>ts.get_conversion_for(&lt;key&gt;)</code></div></div>
 </div>
 </div>
-<div id="a034eacc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-22T07:26:02.288132Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-22T07:26:02.287945Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-22T07:26:02.292960Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-22T07:26:02.292108Z&quot;}}" data-execution_count="38">
+<div id="a932e51f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T22:55:55.170261Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T22:55:55.170035Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T22:55:55.175871Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T22:55:55.175067Z&quot;}}" data-execution_count="38">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify round-trip precision by examining coordinates from each timestamp</span></span>
 <span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>via_audio <span class="op">=</span> ts2.get_coordinate_for(<span class="st">"dgt_holes"</span>, <span class="bu">format</span><span class="op">=</span><span class="st">"int"</span>)</span>
 <span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>via_score <span class="op">=</span> ts3.get_coordinate_for(<span class="st">"dgt_holes"</span>, <span class="bu">format</span><span class="op">=</span><span class="st">"int"</span>)</span>

@@ -576,7 +576,10 @@ class ChildrenMixin:
                 already a child of this timeline, ``locked=True`` asks to lock
                 a plain segment, ``locked=False`` asks to leave a segment line
                 unlocked, an id given in the child's subtree is already
-                held in this manifest, or this timeline is locked and the child
+                held in this manifest, a Jump of the child's subtree that is
+                not rejected lies at a position of the root's axis where one
+                of this timeline's tree lies (one Jump lies at a position of
+                a root's axis), or this timeline is locked and the child
                 would end beyond its length without ``allow_expansion``. An
                 unlocked timeline expands to fit the child instead, provided
                 its own parent contains its new end. A child of unknown
@@ -634,6 +637,11 @@ class ChildrenMixin:
         entries, rename = child._subtree_entries()
         avoid = child._manifest_ids()
         self._admit_entries(entries, avoid=avoid, check_only=True)
+        # One Jump per position of the root's axis, over the root's tree.
+        _, start = self._root_start()
+        self._refuse_repeated_jumps(
+            child._jump_positions(start + Fraction(offset_coord.value))
+        )
 
         # Ensure capacity
         self._ensure_capacity(

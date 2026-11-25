@@ -17,7 +17,7 @@ from __future__ import annotations
 import copy
 import logging
 import weakref
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import replace
 from fractions import Fraction
 from types import MappingProxyType
@@ -74,7 +74,12 @@ from .engines import (
     empty_external_reference_table,
 )
 from .engines.events import _named
-from .flowcontrol import FlowControlElement, FlowControlRegistry, FlowControlView
+from .flowcontrol import (
+    FlowControlElement,
+    FlowControlRegistry,
+    FlowControlView,
+    Jump,
+)
 from .manifest import (
     Manifest,
     ManifestFileMixin,
@@ -875,12 +880,28 @@ class Timeline(
 
         A destination's ``to`` names a jump target or a place of any
         timeline of the tree (the start of a Region, of a timeline), read on
-        this axis; a destination without place goes on at the nearest
-        section break before its Jump from the start of the timeline
-        stating the Jump on, else at that start. A descendant in another
-        unit would be left out, since its positions do not lie on this
-        axis; there is none, as a child in another unit than its parent's is
-        refused (:meth:`add_child`), so the view gathers the whole subtree.
+        this axis. A destination without place goes on at the nearest
+        SectionBreak not rejected that lies before its Jump on this axis,
+        stated by any timeline of the tree, but never before the start of
+        the timeline stating the Jump, which counts as a section boundary
+        for it: a child at offset 4 stating a repeat sign without place at
+        8 goes back to 4 when the root is played, as it goes back to its own
+        0 when played alone, unless a section break lies from 4 up to 12.
+        A descendant in another unit would be left out, since its positions
+        do not lie on this axis; there is none, as a child in another unit
+        than its parent's is refused (:meth:`add_child`), so the view
+        gathers the whole subtree.
+
+        Positions are summed exactly: each offset and coordinate is read as
+        the number it is (a float as its exact binary value), and the sum
+        is expressed in this axis's number type once, so that on a float
+        axis two elements lie at one position exactly when their exact sums
+        round to one double. One Jump per position of the root's axis holds
+        when an element or a child is added (:meth:`add_child`,
+        :meth:`FlowControlRegistry.add_all
+        <timetoalign.timelines.flowcontrol.FlowControlRegistry.add_all>`);
+        two Jumps whose exact positions differ but round to one double of a
+        float axis are held, and are refused here.
 
         Raises:
             ValueError: If the elements gathered cannot be played together,
@@ -908,20 +929,16 @@ class Timeline(
         elements: list[FlowControlElement] = []
         places: dict[str, Coordinate] = {}
         origins: dict[str, Coordinate] = {}
-        pending: list[tuple[Timeline, Any]] = [
-            (self, Coordinate(0, self._unit, number_type=number_type).value)
-        ]
-        while pending:
-            timeline, origin = pending.pop()
+        for timeline, origin in self._subtree_starts(Fraction(0)):
 
-            def here(coordinate: Coordinate, origin: Any = origin) -> Coordinate:
+            def here(coordinate: Coordinate, origin: Fraction = origin) -> Coordinate:
                 return Coordinate(
-                    origin + express_scalar_as(coordinate, number_type).value,
+                    origin + Fraction(coordinate.value),
                     self._unit,
                     number_type=number_type,
                 )
 
-            start = here(Coordinate(0, self._unit, number_type=number_type))
+            start = Coordinate(origin, self._unit, number_type=number_type)
             for element in timeline._flow_control.elements:
                 moved = here(element.coordinate)
                 elements.append(
@@ -934,16 +951,110 @@ class Timeline(
                 (place_id, here(place))
                 for place_id, place in timeline._flow_places().items()
             )
-            pending.extend(
-                (child, here(timeline._child_offsets[child_id]).value)
-                for child_id, child in timeline._children.items()
-            )
         return FlowControlView._gathered(
             elements,
             unit=self._unit,
             number_type=number_type,
             places=places,
             origins=origins,
+        )
+
+    def _subtree_starts(self, start: Fraction) -> Iterator[tuple[Timeline, Fraction]]:
+        """Yield this timeline and each descendant with its start on one axis.
+
+        *start* is this timeline's start on that axis; a descendant's is its
+        parent's plus its offset, summed exactly (a float offset as its
+        exact binary value), as the format reads a child's position.
+        """
+        pending: list[tuple[Timeline, Fraction]] = [(self, start)]
+        while pending:
+            timeline, origin = pending.pop()
+            yield timeline, origin
+            pending.extend(
+                (child, origin + Fraction(timeline._child_offsets[child_id].value))
+                for child_id, child in timeline._children.items()
+            )
+
+    def _root_start(self) -> tuple[Timeline, Fraction]:
+        """Return this timeline's root and this timeline's exact start on it."""
+        root, start = self, Fraction(0)
+        while root._parent is not None:
+            start += Fraction(root._parent._child_offsets[root._id].value)
+            root = root._parent
+        return root, start
+
+    def _jump_positions(self, start: Fraction) -> Iterator[tuple[Fraction, Jump, str]]:
+        """Yield every Jump not rejected of this subtree at its exact position.
+
+        Each comes with the ID of the timeline stating it; *start* is this
+        timeline's start on the axis read (:meth:`_subtree_starts`).
+        """
+        for timeline, origin in self._subtree_starts(start):
+            for jump in timeline._flow_control.jumps:
+                if not jump.is_rejected:
+                    yield origin + Fraction(jump.coordinate.value), jump, timeline._id
+
+    def _refuse_repeated_jumps(
+        self,
+        arriving: Iterable[tuple[Fraction, Jump, str]],
+        *,
+        replaced: Collection[str] = (),
+    ) -> None:
+        """Refuse a Jump arriving at a position of the root's axis that is taken.
+
+        One Jump lies at a position of the root's axis over the root's whole
+        tree, as the format requires: the Jumps not rejected of this
+        timeline's tree, but those *replaced* (by ID), and the arriving
+        ones (each at its exact position on the root's axis, with the ID of
+        the timeline stating it) must lie at distinct positions.
+
+        Raises:
+            ValueError: Naming the arriving Jump and the one lying there,
+                each with its timeline, as the format's validator does.
+        """
+        coming = list(arriving)
+        if not coming:
+            return
+        root, _ = self._root_start()
+        taken = {
+            position: (jump, holder)
+            for position, jump, holder in root._jump_positions(Fraction(0))
+            if jump.id not in replaced
+        }
+        for position, jump, holder in coming:
+            if position in taken:
+                other, other_holder = taken[position]
+                raise ValueError(
+                    f"jump {quote_id(jump.id)} is a second jump at "
+                    f"{jump.coordinate} of timeline {quote_id(holder)}, after jump "
+                    f"{quote_id(other.id)} of timeline {quote_id(other_holder)} at "
+                    "the same position on their root's axis: several signs at one "
+                    "place are destinations of one jump"
+                )
+            taken[position] = (jump, holder)
+
+    def _refuse_flow_jumps(
+        self, standing: Sequence[FlowControlElement], *, replaced: bool
+    ) -> None:
+        """Refuse the elements *standing* joining this timeline's flow control
+        where one of their Jumps takes a position of the root's axis.
+
+        *replaced* says whether they replace elements held under their IDs
+        (a belief recorded) rather than join (an element added).
+
+        Raises:
+            ValueError: As :meth:`_refuse_repeated_jumps`.
+        """
+        jumps = [element for element in standing if isinstance(element, Jump)]
+        if not jumps:
+            return
+        _, start = self._root_start()
+        self._refuse_repeated_jumps(
+            [
+                (start + Fraction(jump.coordinate.value), jump, self._id)
+                for jump in jumps
+            ],
+            replaced={jump.id for jump in jumps} if replaced else (),
         )
 
     # endregion
@@ -958,6 +1069,7 @@ class Timeline(
         registry._admit = self._admit_flow_control
         registry._places = self._flow_places
         registry._length = self._flow_length
+        registry._refuse_jumps = self._refuse_flow_jumps
 
     def _admit_flow_control(
         self, entries: Sequence[tuple[str, bool, str, str]], *, check_only: bool

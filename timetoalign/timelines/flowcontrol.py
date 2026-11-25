@@ -1843,9 +1843,13 @@ class FlowControlView:
         timeline gives (the start of a Region or of a child timeline, or the
         timeline's own start; in a view of a tree, of any timeline of the
         tree). A destination without place goes on at the nearest section
-        break before the Jump, or at the start of the timeline stating the
-        Jump: 0 in a registry, the timeline's place on the axis in a view of
-        a tree, where only section breaks from that start on are read.
+        break among *elements* that lies before the Jump, in a view of a
+        tree stated by any timeline of it, but never before the start of
+        the timeline stating the Jump, which counts as a section boundary
+        for it; that start where no section break lies from it up to the
+        Jump. The start is 0 in a registry and the timeline's place on the
+        axis in a view of a tree: a child at offset 4 stating a repeat sign
+        without place at 8 goes back to 4 when its root is played.
 
         Args:
             destination: The destination.
@@ -1978,7 +1982,10 @@ class FlowControlRegistry(FlowControlView):
     ``flow_control`` array.
 
     The registry refuses what cannot be played: a second Jump at a
-    coordinate, a ``to`` naming neither a :class:`JumpTarget` of the
+    coordinate, or, once the registry belongs to a timeline, at a position
+    of the root's axis that a Jump of the root's tree holds (the
+    coordinate plus the offsets of the timeline and its ancestors, summed
+    exactly), a ``to`` naming neither a :class:`JumpTarget` of the
     registry nor a place of its timeline, an ``after`` that does not name
     exactly one destination of another Jump of the registry, and an element
     or a destination's place lying outside the axis, which runs from 0 to
@@ -2080,10 +2087,12 @@ class FlowControlRegistry(FlowControlView):
         number_type: NumberType | str | None = None,
     ) -> None:
         super().__init__(unit=unit, number_type=number_type)
-        # Set by the owning timeline: admits IDs into its whole manifest and
-        # gives the timeline's length (its places are the view's).
+        # Set by the owning timeline: admits IDs into its whole manifest,
+        # gives the timeline's length (its places are the view's) and refuses
+        # Jumps taking a position of its root's axis over the root's tree.
         self._admit: Callable[..., list[str]] | None = None
         self._length: Callable[[], Coordinate | None] | None = None
+        self._refuse_jumps: Callable[..., None] | None = None
         self.add_all(elements)
 
     def _known_length(self) -> Coordinate | None:
@@ -2132,8 +2141,12 @@ class FlowControlRegistry(FlowControlView):
             ValueError: If an element's given ID is already taken, its unit
                 is not the registry's, or an element that is not rejected
                 cannot be played among those not rejected: a coordinate
-                holds a second Jump, a ``to`` names neither a JumpTarget of
-                the registry nor a place of its timeline, an ``after`` does
+                holds a second Jump, or a Jump lies at a position of the
+                root's axis where a Jump of another timeline of the root's
+                tree lies (:attr:`Timeline.tree_flow_control
+                <timetoalign.timelines.Timeline.tree_flow_control>`), a
+                ``to`` names neither a JumpTarget of the registry nor a
+                place of its timeline, an ``after`` does
                 not name exactly one destination of another Jump of the
                 registry, or the element's coordinate or the place of one
                 of its destinations lies before 0 or beyond the known
@@ -2170,6 +2183,8 @@ class FlowControlRegistry(FlowControlView):
         read = [element for element in joined if not element.is_rejected]
         self._check(standing, read, joined)
         self._check_on_axis(standing, read, self._known_length())
+        if self._refuse_jumps is not None:
+            self._refuse_jumps(standing, replaced=False)
         self._admitted_ids(entries, check_only=False)
         self._elements = _canonical(joined)
         return stored
@@ -2346,6 +2361,8 @@ Reject the elements naming it in the same step (with_beliefs), then add their re
         standing = [element for element in changed if not element.is_rejected]
         self._check(standing, read, elements)
         self._check_on_axis(standing, read, self._known_length())
+        if self._refuse_jumps is not None:
+            self._refuse_jumps(standing, replaced=True)
         self._elements = tuple(elements)
         return [elements[index_of[element_id]] for element_id in wanted]
 
@@ -2415,12 +2432,12 @@ Reject the elements naming it in the same step (with_beliefs), then add their re
 
         The copy belongs to no timeline until one adopts it.
         """
-        owner = (self._admit, self._places, self._length)
-        self._admit = self._places = self._length = None
+        owner = (self._admit, self._places, self._length, self._refuse_jumps)
+        self._admit = self._places = self._length = self._refuse_jumps = None
         try:
             return deepcopy(self)
         finally:
-            self._admit, self._places, self._length = owner
+            self._admit, self._places, self._length, self._refuse_jumps = owner
 
 
 # endregion

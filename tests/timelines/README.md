@@ -4919,7 +4919,9 @@ position on the played timeline's axis by offset arithmetic
 (`Timeline.tree_flow_control`). What would prove it is that where an
 element is stated makes no difference to the flow, only where it lies on
 the played axis; that a child is played with its subtree alone; and that
-the rule "one jump at a coordinate" is read on the played axis. The
+the rule "one jump at a coordinate" holds on the root's axis over the
+whole tree, refused where a Jump or a child is added, as the format's
+validator refuses such a manifest. The
 values below follow from the walk of the engine (`test_flow_engine.py`)
 applied to the positions on the played axis, nothing else.
 
@@ -4942,15 +4944,31 @@ start is a place).
 | the same four elements stated on the root at 4, 12, 16, 32 | the same runs and lengths in all three conventions | only positions on the played axis count |
 | `allegro`'s `default` | runs [0, 8) [0, 12), length 20 | equal to a timeline of length 12 holding `start` at 0 and `repeat` at 8 |
 
-A destination without place goes on at the start of the timeline stating
-its Jump (or the nearest section break before the Jump from that start
-on), so a child's repeat sign goes back to the child's start wherever the
-child is played. Without `dc`, and with `repeat` stated without place:
-the root's flow is [0, 12) [4, 40) (length 48); the same Jump stated on
-the root at 12 goes back to 0: [0, 12) [0, 40) (length 52). A section
-break the root states at 2, before the child's start, does not change
-the child's repeat ([4, 40)); one at 6, inside the child's stretch, does
-([0, 12) [6, 40)).
+**A destination without place.** It goes on at the nearest section
+break before its Jump on the played axis, stated by any timeline of the
+tree, but never before the start of the timeline stating the Jump, which
+counts as a section boundary for it; at that start where no section break
+lies from it up to the Jump. What proves the rule is a child's repeat
+sign played within the root and alone, with section breaks stated before
+the child, inside its stretch by the root, and inside it by the child
+itself; each value follows from the sentence alone. The root `work`
+(length 40) holds `allegro` (length 12 at offset 4), which states the
+Jump `repeat` at 8 (12 on the root) without place, `repeat_count: 1`:
+
+| Section breaks | Root's flow | Why |
+|---|---|---|
+| none | [0, 12) [4, 40), length 48 | back to `allegro`'s start, 4, not to the root's 0 |
+| the root at 2 | [0, 12) [4, 40) | 2 lies before `allegro`'s start |
+| the root at 6 | [0, 12) [6, 40) | 6 lies inside, from 4 up to 12 |
+| `allegro` at 3 (7 on the root) | [0, 12) [7, 40) | stated by the child, read on the root's axis |
+| the root at 6, `allegro` at 3 | [0, 12) [7, 40) | the nearest before 12 |
+| the root at 12 | [0, 12) [4, 40) | a section break at the Jump lies not before it |
+
+`allegro` played alone gives [0, 8) [0, 12) without a section break of
+its own and [0, 8) [3, 12) with its break at 3: a root's section break
+does not count when the child is played alone, since ancestors are not
+part of its tree. The same Jump stated on the root at 12 goes back to
+the root's 0: [0, 12) [0, 40) (length 52).
 
 **Where the sections are written.** A root whose flow control lies only
 in descendants gets its atomic sections as Regions of the root: without
@@ -4960,14 +4978,37 @@ in descendants gets its atomic sections as Regions of the root: without
 (1, 2, 3), `flow_map_3` `printed` (1, 2, 3), unnamed, on `work`; the
 manifest written passes the format's validator.
 
-**One jump at a position of the played axis.** The root states the Jump
-`skip` at 12 `{by: 4}` beside `allegro`'s `repeat` at 8 (12 on the
-root): `work.get_flow()` and `work.create_flow_maps_from_flow_control()`
-raise the registry's `ValueError` ("jump 'skip' lies at 12 quarters,
-where jump 'repeat' lies already: one jump lies at a coordinate, and
-several signs there are its destinations"), the second changing nothing;
-`allegro.get_flow()` still plays, since `skip` lies outside its subtree;
-with `skip` rejected the root plays as before.
+**One jump at a position of the root's axis.** A tree that the library
+holds must be one it can write: the format's validator refuses two Jumps
+not rejected at one position of a root's axis (`jump_repeated`), so the
+library refuses the step that would bring them together, whichever it
+is, and nothing changes then. The tree is the one above without `dc`.
+
+| Step | Result |
+|---|---|
+| the root adds `skip` at 12 `{by: 4}` beside `allegro`'s `repeat` at 8 (12 on the root) | `ValueError`: "jump 'skip' is a second jump at 12 quarters of timeline 'work', after jump 'repeat' of timeline 'allegro' at the same position on their root's axis: several signs at one place are destinations of one jump"; the manifest is unchanged |
+| the same through `add_all` beside a Barline | the same refusal; neither element is added |
+| `codetta` (offset 8 in `allegro`) adds a Jump `on` at 2 `{by: 2}` (14 on the root) | stored: no Jump lies at 14 |
+| `codetta` adds a Jump at 0 (12 on the root) | refused, naming `codetta` and `allegro`'s `repeat` |
+| the root adds `skip` at 12 rejected (`provenance` with the belief `false`) | stored: a rejected Jump is out of the rule; the root plays [0, 12) [4, 14) [16, 40), `skip` read as absent and `on` taken |
+| a root of length 40 holding `skip` at 12 adds a child of length 12 at 4 that states a Jump at 8 | `add_child` refuses, naming the child's Jump second; the root holds no child, the child no parent |
+| the same child added at 5 | the child is added (its Jump lies at 13) |
+| the manifest written after each accepted step | passes the format's validator |
+
+Playing still reads the rule on the played axis, for what a float axis
+cannot separate (below).
+
+**Positions are summed exactly.** The validator reads a child's
+position as the exact sum of the offsets down to it and of the
+coordinate, a float as the exact binary value it is; the library sums
+the same way and expresses the sum in the axis's number type once.
+Floating-point addition gives other answers, so the cases are chosen
+where it does, on a float axis (`seconds`):
+
+| Tree | Exact reading | Library |
+|---|---|---|
+| root (length 2.0) → `ch` at 0.2 → `g` at 0.5 states a Jump at 0.2; the root adds a Jump at 0.9 | 0.2 + 0.5 + 0.2 is exactly the double 0.9: one position, `jump_repeated` | refused at `add`, as the validator does; the gathered Jump of `g` lies at 0.9 (summed in floating point from the root down, 0.2 + 0.5 + 0.2 gives 0.8999999999999999) |
+| root (length 1.0) → `ch` at 0.1 states a Jump at 0.2; the root adds a Jump at 0.30000000000000004 | 0.1 + 0.2 is exactly 0.3000000000000000166533453693773481063544750213623046875, not the double 0.30000000000000004: valid | stored, and written and validated; playing the root refuses, since both Jumps lie at the double 0.30000000000000004 of the played float axis, which cannot separate them ("jump … lies at 0.30000000000000004 seconds, where jump … lies already") |
 
 **The Op. 106 manifest.** The timelines and flow control of the sonata as
 its manifest states them (`beethoven_piano_sonatas`,

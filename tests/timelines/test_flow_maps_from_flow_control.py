@@ -24,10 +24,11 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
-from timetoalign.core.provenance import Provenance
+from timetoalign.core.provenance import Belief, Provenance
 from timetoalign.timelines import (
     ComputedFlows,
     ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
     PlayedFlow,
     Region,
     ResolvedFlowMap,
@@ -1124,22 +1125,42 @@ class TestTree:
             flow.length,
         )
 
-    def test_a_repeat_without_place_goes_back_to_the_start_of_its_timeline(
+    def test_a_destination_without_place_goes_back_to_the_nearest_section_boundary(
         self,
     ) -> None:
-        def tree(*section_breaks: int) -> Timeline:
+        def tree(
+            root_breaks: tuple[int, ...] = (), child_breaks: tuple[int, ...] = ()
+        ) -> tuple[Timeline, Timeline]:
             work = ContinuousLogicalTimeline(length=40, uid="work")
             allegro = work.create_child(12, 4, uid="allegro")
-            allegro.flow_control.add(
-                Jump(q(8), [JumpDestination(repeat_count=1)], id="repeat")
+            allegro.flow_control.add_all(
+                [
+                    Jump(q(8), [JumpDestination(repeat_count=1)], id="repeat"),
+                    *(SectionBreak(q(at)) for at in child_breaks),
+                ]
             )
-            work.flow_control.add_all(SectionBreak(q(at)) for at in section_breaks)
-            return work
+            work.flow_control.add_all(SectionBreak(q(at)) for at in root_breaks)
+            return work, allegro
 
-        flow = tree().get_flow()
+        work, allegro = tree()
+        flow = work.get_flow()
         assert (_runs(flow), flow.length) == ([(F(0), F(12)), (F(4), F(40))], q(48))
-        assert _runs(tree(2).get_flow()) == [(F(0), F(12)), (F(4), F(40))]
-        assert _runs(tree(6).get_flow()) == [(F(0), F(12)), (F(6), F(40))]
+        assert _runs(allegro.get_flow()) == [(F(0), F(8)), (F(0), F(12))]
+        back_to = {
+            ((2,), ()): 4,
+            ((6,), ()): 6,
+            ((), (3,)): 7,
+            ((6,), (3,)): 7,
+            ((12,), ()): 4,
+        }
+        for (root_breaks, child_breaks), back in back_to.items():
+            work, _ = tree(root_breaks, child_breaks)
+            assert _runs(work.get_flow()) == [(F(0), F(12)), (F(back), F(40))], (
+                root_breaks,
+                child_breaks,
+            )
+        assert _runs(tree((), (3,))[1].get_flow()) == [(F(0), F(8)), (F(3), F(12))]
+        assert _runs(tree((6,), ())[1].get_flow()) == [(F(0), F(8)), (F(0), F(12))]
         flat = ContinuousLogicalTimeline(length=40, uid="work")
         flat.flow_control.add(Jump(q(12), [JumpDestination(repeat_count=1)]))
         flow = flat.get_flow()
@@ -1180,23 +1201,102 @@ class TestTree:
         ]
         timetoshare.validate(work.to_dict())
 
-    def test_two_jumps_at_one_position_of_the_played_axis_are_refused(self) -> None:
+    def test_one_jump_lies_at_a_position_of_the_roots_axis(self) -> None:
         work, allegro, _ = _work(dc=False)
-        work.flow_control.add(Jump(q(12), [JumpDestination(by=4)], id="skip"))
-        refusal = re.escape(
-            "jump 'skip' lies at 12 quarters, where jump 'repeat' lies already: "
-            "one jump lies at a coordinate, and several signs there are its "
-            "destinations"
-        )
-        with pytest.raises(ValueError, match=f"^{refusal}$"):
-            work.get_flow()
+        codetta = allegro.get_child("codetta")
         before = _state(work)
-        with pytest.raises(ValueError, match=f"^{refusal}$"):
-            work.create_flow_maps_from_flow_control()
+        refusal = _second("skip", "12 quarters", "work", "repeat", "allegro")
+        with pytest.raises(ValueError, match=f"^{re.escape(refusal)}$"):
+            work.flow_control.add(Jump(q(12), [JumpDestination(by=4)], id="skip"))
         assert _state(work) == before
-        assert _runs(allegro.get_flow()) == [(F(0), F(8)), (F(0), F(12))]
-        work.flow_control.with_belief("skip", EDITOR, "false", date="2026-11-25")
-        assert _runs(work.get_flow()) == [(F(0), F(12)), (F(4), F(40))]
+        with pytest.raises(ValueError, match=f"^{re.escape(refusal)}$"):
+            work.flow_control.add_all(
+                [
+                    Barline(q(2), id="bar"),
+                    Jump(q(12), [JumpDestination(by=4)], id="skip"),
+                ]
+            )
+        assert _state(work) == before
+        codetta.flow_control.add(Jump(q(2), [JumpDestination(by=2)], id="on"))
+        timetoshare.validate(work.to_dict())
+        refusal = _second("again", "0 quarters", "codetta", "repeat", "allegro")
+        with pytest.raises(ValueError, match=f"^{re.escape(refusal)}$"):
+            codetta.flow_control.add(Jump(q(0), [JumpDestination(by=2)], id="again"))
+        rejected = Jump(q(12), [JumpDestination(by=4)], id="skip").with_belief(
+            Belief(actor=EDITOR, belief="false", date="2026-11-25")
+        )
+        assert work.flow_control.add(rejected).is_rejected
+        timetoshare.validate(work.to_dict())
+        assert _runs(work.get_flow()) == [(F(0), F(12)), (F(4), F(14)), (F(16), F(40))]
+
+    def test_a_child_bringing_a_jump_to_a_taken_position_is_refused(self) -> None:
+        root = ContinuousLogicalTimeline(length=40, uid="root")
+        root.flow_control.add(Jump(q(12), [JumpDestination(by=4)], id="skip"))
+        child = ContinuousLogicalTimeline(length=12, uid="movement")
+        child.flow_control.add(
+            Jump(q(8), [JumpDestination(repeat_count=1)], id="repeat")
+        )
+        before = (root.to_dict(), child.to_dict())
+        refusal = _second("repeat", "8 quarters", "movement", "skip", "root")
+        with pytest.raises(ValueError, match=f"^{re.escape(refusal)}$"):
+            root.add_child(child, 4)
+        assert (root.n_children, (root.to_dict(), child.to_dict())) == (0, before)
+        root.add_child(child, 5)
+        assert _placed(root.tree_flow_control.jumps) == [
+            ("skip", F(12)),
+            ("repeat", F(13)),
+        ]
+        timetoshare.validate(root.to_dict())
+
+    def test_positions_on_a_float_axis_are_summed_exactly(self) -> None:
+        root = ContinuousPhysicalTimeline(length=2.0, uid="root")
+        inner = root.create_child(1.0, 0.2, uid="ch").create_child(0.5, 0.5, uid="g")
+        inner.flow_control.add(Jump(s(0.2), [JumpDestination(by=0.1)], id="inner"))
+        assert (0.2 + 0.5) + 0.2 == 0.8999999999999999
+        assert _placed(root.tree_flow_control.jumps) == [("inner", 0.9)]
+        written = root.to_dict()
+        outer = {"coordinate": 0.9, "id": "#outer", "role": "jump"}
+        outer["targets"] = [{"by": 0.1}]
+        written["timelines"][0]["flow_control"] = [outer]
+        with pytest.raises(timetoshare.SchemaValidationError) as raised:
+            timetoshare.validate(written)
+        assert raised.value.code == "jump_repeated"
+        refusal = _second("outer", "0.9 seconds", "root", "inner", "g")
+        with pytest.raises(ValueError, match=f"^{re.escape(refusal)}$"):
+            root.flow_control.add(Jump(s(0.9), [JumpDestination(by=0.1)], id="outer"))
+
+    def test_a_float_axis_that_cannot_separate_two_jumps_refuses_playing(
+        self,
+    ) -> None:
+        root = ContinuousPhysicalTimeline(length=1.0, uid="root")
+        child = root.create_child(0.5, 0.1, uid="ch")
+        child.flow_control.add(Jump(s(0.2), [JumpDestination(by=0.1)], id="inner"))
+        root.flow_control.add(
+            Jump(s(0.30000000000000004), [JumpDestination(by=0.1)], id="outer")
+        )
+        assert Fraction(0.1) + Fraction(0.2) != Fraction(0.30000000000000004)
+        assert float(Fraction(0.1) + Fraction(0.2)) == 0.30000000000000004
+        timetoshare.validate(root.to_dict())
+        refusal = (
+            "jump 'outer' lies at 0.30000000000000004 seconds, where jump 'inner' "
+            "lies already: one jump lies at a coordinate, and several signs there "
+            "are its destinations"
+        )
+        with pytest.raises(ValueError, match=f"^{re.escape(refusal)}$"):
+            root.get_flow()
+
+
+def _second(jump: str, at: str, holder: str, other: str, other_holder: str) -> str:
+    """The refusal of a second Jump at a position of the root's axis."""
+    return (
+        f"jump '{jump}' is a second jump at {at} of timeline '{holder}', after jump "
+        f"'{other}' of timeline '{other_holder}' at the same position on their "
+        "root's axis: several signs at one place are destinations of one jump"
+    )
+
+
+def s(value: float) -> Coordinate:
+    return Coordinate(value, TimeUnit.seconds)
 
 
 def _op106_manifest() -> dict[str, Any]:

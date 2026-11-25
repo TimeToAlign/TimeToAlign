@@ -70,7 +70,7 @@ class LogicalTimeline(Timeline):
     Allowed units: beats, quarters, measures, ticks, number.
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = LOGICAL_UNITS
+    _allowed_units = LOGICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.quarters
 
 
@@ -84,7 +84,7 @@ class PhysicalTimeline(Timeline):
     Allowed units: seconds, milliseconds, minutes, samples, frames.
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = PHYSICAL_UNITS
+    _allowed_units = PHYSICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.seconds
 
 
@@ -99,7 +99,7 @@ class GraphicalTimeline(Timeline):
     css_pixels, user_units.
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = GRAPHICAL_UNITS
+    _allowed_units = GRAPHICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.pixels
 
 
@@ -120,7 +120,7 @@ class ContinuousLogicalTimeline(LogicalTimeline):
     Allowed units: beats, quarters, measures, number (NOT ticks).
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = CONTINUOUS_LOGICAL_UNITS
+    _allowed_units = CONTINUOUS_LOGICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.quarters
 
 
@@ -135,7 +135,7 @@ class ContinuousPhysicalTimeline(PhysicalTimeline):
     Allowed units: seconds, milliseconds, minutes (NOT samples/frames).
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = CONTINUOUS_PHYSICAL_UNITS
+    _allowed_units = CONTINUOUS_PHYSICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.seconds
 
 
@@ -151,7 +151,7 @@ class ContinuousGraphicalTimeline(GraphicalTimeline):
     css_pixels, user_units.
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = CONTINUOUS_GRAPHICAL_UNITS
+    _allowed_units = CONTINUOUS_GRAPHICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.centimeters
 
 
@@ -172,7 +172,7 @@ class DiscreteLogicalTimeline(LogicalTimeline):
     Allowed units: ticks only.
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = DISCRETE_LOGICAL_UNITS
+    _allowed_units = DISCRETE_LOGICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.ticks
 
 
@@ -187,7 +187,7 @@ class DiscretePhysicalTimeline(PhysicalTimeline):
     Allowed units: samples, frames.
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = DISCRETE_PHYSICAL_UNITS
+    _allowed_units = DISCRETE_PHYSICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.samples
 
 
@@ -202,7 +202,7 @@ class DiscreteGraphicalTimeline(GraphicalTimeline):
     Allowed units: pixels only.
     """
 
-    _allowed_units: ClassVar[frozenset[TimeUnit]] = DISCRETE_GRAPHICAL_UNITS
+    _allowed_units = DISCRETE_GRAPHICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.pixels
 
 
@@ -215,7 +215,7 @@ class DiscreteGraphicalTimeline(GraphicalTimeline):
 class SegmentLineMixin:
     """Enforce and expose contiguous, homogeneously typed child segments."""
 
-    _segment_type: ClassVar[type[Timeline] | None] = None
+    _segment_type: type[Timeline] | None = None
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize segment ordering before accepting children."""

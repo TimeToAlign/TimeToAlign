@@ -897,7 +897,7 @@ class FlowControlElement(_IdentifiedElement):
                 name=read_name(data, what),
                 label=_read_label(data, what),
                 meta=read_meta(data, what),
-                provenance=_read_provenance(data, what),
+                provenance=_provenance_entries(_read_provenance(data, what), what),
                 **element_class._read_own(data, what, unit, number_type),
             )
         except ValueError as error:

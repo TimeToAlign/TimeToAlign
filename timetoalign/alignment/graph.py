@@ -33,7 +33,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, overload
 
 import networkx as nx
 import pandas as pd
@@ -314,6 +314,33 @@ class MatchStamp(Stamp["AlignmentBundle"]):
             f"claim {index} {claim.timeline_a_id}<->{claim.timeline_b_id}: "
             f"{timeline_id}={value}"
         )
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["id_coordinate"] = ...,
+        rounding: Rounding = ...,
+    ) -> IdCoordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["coordinate"],
+        rounding: Rounding = ...,
+    ) -> Coordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: CoordinateFormat,
+        rounding: Rounding = ...,
+    ) -> CoordinateResult | pd.Series: ...
 
     def get_coordinate_for(
         self,

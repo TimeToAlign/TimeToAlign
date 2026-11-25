@@ -31,7 +31,7 @@ import logging
 import re
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from timetoshare import BELIEF_STATES, DEFAULT_BELIEFS, BeliefState, check_belief_filter
 
@@ -44,6 +44,15 @@ if TYPE_CHECKING:
     from timetoalign.timelines import Timeline
 
 module_logger = logging.getLogger(__name__)
+
+
+class _HasUnit(Protocol):
+    """A timeline as the domain and unit filters read it: by its unit."""
+
+    @property
+    def unit(self) -> TimeUnit:
+        """The timeline's unit, whose domain the domain filter reads."""
+        ...
 
 
 def meet(first: set | None, second: set | None) -> set | None:
@@ -269,7 +278,7 @@ class ClaimFilter:
         self,
         timeline_id: str,
         *,
-        timelines: dict[str, Timeline] | None = None,
+        timelines: Mapping[str, _HasUnit] | None = None,
     ) -> bool:
         """Test whether a single timeline ID passes the filter criteria.
 

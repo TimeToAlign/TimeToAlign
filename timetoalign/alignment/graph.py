@@ -29,18 +29,24 @@ Design:
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple
 
 import networkx as nx
 import pandas as pd
 from timetoshare import DEFAULT_BELIEFS, BeliefState
 
 from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
-from timetoalign.alignment.filters import ClaimFilter, belief_context, believed, meet
+from timetoalign.alignment.filters import (
+    ClaimFilter,
+    _HasUnit,
+    belief_context,
+    believed,
+    meet,
+)
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
 from timetoalign.core.retrieval import (
     CoordinateCollection,
@@ -73,7 +79,6 @@ from timetoalign.timelines.groups import _groups_by_timeline
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.maps.base import ConversionMap
-    from timetoalign.timelines import Timeline
     from timetoalign.timelines.groups import TimelineGroup
 
 module_logger = logging.getLogger(__name__)
@@ -81,6 +86,12 @@ module_logger = logging.getLogger(__name__)
 
 # Private NetworkX key: (timeline_id, canonical coordinate value).
 _GraphNode = tuple[str, CoordinateValue]
+
+
+class _TimelineUnit(NamedTuple):
+    """A stand-in for a timeline the graph knows only the unit of."""
+
+    unit: TimeUnit
 
 
 def _anchor_nodes(anchor: AlignmentAnchor) -> tuple[_GraphNode, _GraphNode]:
@@ -95,7 +106,7 @@ def _anchor_nodes(anchor: AlignmentAnchor) -> tuple[_GraphNode, _GraphNode]:
 
 
 @dataclass(frozen=True)
-class MatchStamp(Stamp):
+class MatchStamp(Stamp["AlignmentBundle"]):
     """A synchronized timestamp across multiple timelines.
 
     A MatchStamp represents a single coordinate (or instant) that has been
@@ -377,6 +388,8 @@ class MatchStamp(Stamp):
         self, timeline_id: str, unit: TimeUnit
     ) -> "list[ConversionMap[Any]]":
         """The bundle timeline's maps into *unit*."""
+        if self.source is None:
+            return []
         return self.source.get_timeline(timeline_id)._get_unit_maps(unit)
 
     def filter_by_timelines(
@@ -1571,7 +1584,7 @@ class MatchGraph:
         self,
         timeline_id: str,
         *,
-        timelines: dict[str, "Timeline"] | None = None,
+        timelines: Mapping[str, _HasUnit] | None = None,
         within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
@@ -1592,7 +1605,7 @@ class MatchGraph:
         """
         if timelines is None:
             timelines = {
-                tl_id: SimpleNamespace(unit=unit)
+                tl_id: _TimelineUnit(unit)
                 for tl_id, unit in self._timeline_units.items()
             }
         return ClaimFilter.from_kwargs(
@@ -1805,7 +1818,8 @@ class MatchGraph:
 
         source_id = (
             self._source_id
-            if any(node[0] == self._source_id for node in component)
+            if self._source_id is not None
+            and any(node[0] == self._source_id for node in component)
             else start_node[0]
         )
         ordered_nodes = sorted(

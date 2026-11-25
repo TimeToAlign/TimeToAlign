@@ -1,0 +1,2039 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="IEEE 1599 multi-layer XML: spine/VTU hub relating score, page pixels, and audio as one multimodal AlignmentBundle">
+
+<title>How to Load an IEEE 1599 Document – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html">
+<span class="menu-text">Home</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html">
+<span class="menu-text">Tutorials</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="../howto.html" aria-current="page">
+<span class="menu-text">How-To Guides</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html">
+<span class="menu-text">Explanation</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html">
+<span class="menu-text">API Reference</span></a>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_ieee1599.html">How to Load an IEEE 1599 Document</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container">
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How-To Guides</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Timelines, Events &amp; Maps</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_coordinate_math.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Do Coordinate Math</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_advanced_cmaps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Use Advanced Conversion Maps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_advanced_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Query Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_manual_timeline_construction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Construct Timelines Manually</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_tabular_loaders.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Tabular Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_graphical_timelines.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Work with Graphical Timelines</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_thoresen_annotation_transfer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Transfer Annotations Between Graphical Analyses</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how01_beat_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Build Beat Grids</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">TimelineGroups</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how02_supra_piano_roll.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align a Piano Roll (SUPRA)</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">AlignmentBundles</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_create_note_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Create a Note Alignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_beethoven_multimodal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align Multimodal Data (Beethoven)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_loading_vienna_corpus.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">In-depth Topics</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+
+  <ul>
+  <li><a href="#how-to-load-an-ieee-1599-document" id="toc-how-to-load-an-ieee-1599-document" class="nav-link active" data-scroll-target="#how-to-load-an-ieee-1599-document">How to Load an IEEE 1599 Document</a>
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#load-the-document-in-one-call" id="toc-load-the-document-in-one-call" class="nav-link" data-scroll-target="#load-the-document-in-one-call">1. Load the document in one call</a></li>
+  <li><a href="#the-spine-and-the-los-layer" id="toc-the-spine-and-the-los-layer" class="nav-link" data-scroll-target="#the-spine-and-the-los-layer">2. The spine and the LOS layer</a>
+  <ul class="collapse">
+  <li><a href="#the-spine-a-cumulative-virtual-time-axis" id="toc-the-spine-a-cumulative-virtual-time-axis" class="nav-link" data-scroll-target="#the-spine-a-cumulative-virtual-time-axis">The spine: a cumulative virtual-time axis</a></li>
+  <li><a href="#the-los-layer-notes-and-rests-at-spine-coordinates" id="toc-the-los-layer-notes-and-rests-at-spine-coordinates" class="nav-link" data-scroll-target="#the-los-layer-notes-and-rests-at-spine-coordinates">The LOS layer: notes and rests at spine coordinates</a></li>
+  </ul></li>
+  <li><a href="#editions-in-pixels-tracks-in-seconds" id="toc-editions-in-pixels-tracks-in-seconds" class="nav-link" data-scroll-target="#editions-in-pixels-tracks-in-seconds">3. Editions in pixels, tracks in seconds</a>
+  <ul class="collapse">
+  <li><a href="#per-edition-graphical-segmentlines" id="toc-per-edition-graphical-segmentlines" class="nav-link" data-scroll-target="#per-edition-graphical-segmentlines">Per-edition graphical SegmentLines</a></li>
+  <li><a href="#per-track-audio-timelines" id="toc-per-track-audio-timelines" class="nav-link" data-scroll-target="#per-track-audio-timelines">Per-track audio timelines</a></li>
+  </ul></li>
+  <li><a href="#the-projections-as-one-columnar-claim-field" id="toc-the-projections-as-one-columnar-claim-field" class="nav-link" data-scroll-target="#the-projections-as-one-columnar-claim-field">4. The projections, as one columnar claim field</a>
+  <ul class="collapse">
+  <li><a href="#the-cross-section-over-spine-coordinates" id="toc-the-cross-section-over-spine-coordinates" class="nav-link" data-scroll-target="#the-cross-section-over-spine-coordinates">The cross-section over spine coordinates</a></li>
+  </ul></li>
+  <li><a href="#the-structural-layer-an-analysis-resolved-to-a-petri-net" id="toc-the-structural-layer-an-analysis-resolved-to-a-petri-net" class="nav-link" data-scroll-target="#the-structural-layer-an-analysis-resolved-to-a-petri-net">5. The structural layer: an analysis resolved to a Petri net</a></li>
+  <li><a href="#recap" id="toc-recap" class="nav-link" data-scroll-target="#recap">Recap</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_ieee1599.html">How to Load an IEEE 1599 Document</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">How to Load an IEEE 1599 Document</h1>
+</div>
+
+<div>
+  <div class="description">
+    IEEE 1599 multi-layer XML: spine/VTU hub relating score, page pixels, and audio as one multimodal AlignmentBundle
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+
+
+
+  </div>
+
+
+
+</header>
+
+
+<section id="how-to-load-an-ieee-1599-document" class="level1">
+<h1>How to Load an IEEE 1599 Document</h1>
+<p><strong>IEEE 1599</strong> is a multi-layer XML standard for encoding a single musical work once and relating every representation of it — the score, engraved page images, audio recordings, analytical annotations — back to a common axis. That axis is the <code>&lt;spine&gt;</code>: a flat, ordered list of abstract events in <em>virtual time units</em> (VTU), unit-less by design. Every other layer states where in <strong>its own</strong> coordinate space one of those spine events falls, via an <code>event_ref</code>. The spine is the hub; the layers are projections onto it; <code>event_ref</code> is the correspondence — exactly the shape of an alignment.</p>
+<p><code>Ieee1599Loader</code> reads one such document into a single multimodal <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button>: the spine as one <button class="glossary" title="">Timeline</button> in ticks, the logically-organised-symbols (LOS) layer of notes, rests and lyrics on another, one graphical timeline per engraved edition, one physical timeline per audio track, and the whole set of projections as one columnar <button class="glossary" title="A columnar, PyArrow-backed store holding a whole set of synchronous-instant pairwise MatchClaims as Arrow columns (the two timeline ids dictionary-encoded, the two coordinates as float64) rather than as one frozen MatchClaim object per claim. Individual MatchClaims are materialised on demand when a row is indexed or iterated. Built vectorized via from_columns(), it is the scalable backing for dense alignment matrices, where the complete pairwise topology of a whole work runs to roughly a million claims. Shared provenance is held once at field level, never per row.">MatchClaimField</button>. The document’s own analytical layer — a segmentation of the spine resolving to places of a Petri net — is carried too, not as timing but as an external reference.</p>
+<p>We <strong>load an existing document</strong>; nothing here runs an aligner. The correspondences are the document’s own <code>event_ref</code> cross-references; the loader’s job is to read them faithfully.</p>
+<p>The work is Erik Satie’s <em>Gymnopédie No.&nbsp;1</em>.</p>
+<p>The arc:</p>
+<ol type="1">
+<li>Load the document in one call and read its title.</li>
+<li>The spine, in ticks — a cumulative virtual-time axis — and the LOS layer of notes and rests sitting at spine coordinates.</li>
+<li>The graphical editions as accolade <code>SegmentLine</code>s, in pixels, and the audio tracks, in seconds.</li>
+<li>The projections, reached through the uniform <button class="glossary" title="A columnar, PyArrow-backed store holding a whole set of synchronous-instant pairwise MatchClaims as Arrow columns (the two timeline ids dictionary-encoded, the two coordinates as float64) rather than as one frozen MatchClaim object per claim. Individual MatchClaims are materialised on demand when a row is indexed or iterated. Built vectorized via from_columns(), it is the scalable backing for dense alignment matrices, where the complete pairwise topology of a whole work runs to roughly a million claims. Shared provenance is held once at field level, never per row.">MatchClaimField</button> API, and the cross-section they describe over spine coordinates.</li>
+<li>The structural layer: a Petri-net analysis carried as external references on the spine.</li>
+</ol>
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<div id="eb8dad65" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:46.078672Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:46.078099Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.337014Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.336197Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pyarrow.compute <span class="im">as</span> pc</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> IntervalToConstantMap</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.alignment.claims <span class="im">import</span> MatchClaim</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.alignment.ieee1599 <span class="im">import</span> Ieee1599Loader</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>base <span class="op">=</span> ensure_data(<span class="st">"ieee1599"</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>document_path <span class="op">=</span> base <span class="op">/</span> <span class="st">"SatiePetriNets"</span> <span class="op">/</span> <span class="st">"ieee1599"</span> <span class="op">/</span> <span class="st">"gymnopedie_01.xml"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/home/laser/miniconda3/envs/timetoalign/lib/python3.11/site-packages/partitura/__init__.py:9: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools&lt;81.
+  import pkg_resources</code></pre>
+</div>
+</div>
+</section>
+<section id="load-the-document-in-one-call" class="level2">
+<h2 class="anchored" data-anchor-id="load-the-document-in-one-call">1. Load the document in one call</h2>
+<p><code>Ieee1599Loader</code> parses the whole document — spine, LOS, every graphical edition, every audio track, and the structural analysis — into curated tables, then assembles them into timelines and a claim field. <code>from_file()</code> is the one-line form of the standard two-phase loader pattern: parse, then build.</p>
+<div id="3a1932dd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.338801Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.338515Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.381759Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.380903Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> Ieee1599Loader.from_file(document_path)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>loader</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<h4 class="anchored">Ieee1599Loader</h4>
+
+<table class="caption-top table table-sm table-striped small">
+<tbody>
+<tr class="odd">
+<td><strong>Sources</strong></td>
+<td>1 file(s): <code>gymnopedie_01.xml</code></td>
+</tr>
+<tr class="even">
+<td><strong>Claims</strong></td>
+<td>2085</td>
+</tr>
+<tr class="odd">
+<td><strong>Unit</strong></td>
+<td>ticks</td>
+</tr>
+<tr class="even">
+<td><strong>File</strong></td>
+<td><code>gymnopedie_01</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Title</strong></td>
+<td>Gymnopédie No. 1</td>
+</tr>
+<tr class="even">
+<td><strong>Spine events</strong></td>
+<td>382</td>
+</tr>
+<tr class="odd">
+<td><strong>LOS events</strong></td>
+<td>557</td>
+</tr>
+<tr class="even">
+<td><strong>Editions</strong></td>
+<td>2</td>
+</tr>
+<tr class="odd">
+<td><strong>Tracks</strong></td>
+<td>2</td>
+</tr>
+<tr class="even">
+<td><strong>Claims</strong></td>
+<td>2085</td>
+</tr>
+<tr class="odd">
+<td><strong>Try</strong></td>
+<td><code>create_timeline()</code>, <code>create_bundle()</code>, <code>get_events(...)</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>The document states its own bibliographic metadata, read straight off <code>&lt;general&gt;&lt;description&gt;</code>:</p>
+<div id="77b0a726" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.383316Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.383170Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.386913Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.386258Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"title"</span>: loader.file_metadata.get(<span class="st">"title"</span>),</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"work_title"</span>: loader.file_metadata.get(<span class="st">"work_title"</span>),</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"authors"</span>: loader.file_metadata.get(<span class="st">"authors"</span>),</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>{'title': 'Gymnopédie No. 1',
+ 'work_title': '3 Gymnopédies',
+ 'authors': [{'name': 'Erik Satie', 'type': 'composer'}]}</code></pre>
+</div>
+</div>
+<p><code>create_bundle()</code> builds the <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button>: six standalone timelines — the spine, the LOS layer, two engraved editions and two audio tracks — tied together by the MatchClaims. Each timeline lives in its own <button class="glossary" title="A container for timelines claimed to be commensurable; placing timelines in a group asserts commensurability regardless of underlying units. Coordinates transfer via interpolation.">TimelineGroup</button>; MatchClaims carry the connections between those groups.</p>
+<div id="5b20cd46" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.388488Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.388290Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.478649Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.477851Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> loader.create_bundle()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(bundle.diagram())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>AlignmentBundle[bundle:AlignmentBundle_1]
+
+  TimelineGroup[spine:dlt1] (1 timelines, 2 timestamps)
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ DiscreteLogicalTimeline[spine:dlt1] (382 events)                           │
+  │                        0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 236544 ticks │
+  └────────────────────────────────────────────────────────────────────────────┘
+  Timestamps: 2
+
+  TimelineGroup[los:dlt2] (1 timelines, 2 timestamps)
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ DiscreteLogicalTimeline[los:dlt2] (557 events)                             │
+  │                        0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 236544 ticks │
+  └────────────────────────────────────────────────────────────────────────────┘
+  Timestamps: 2
+
+  TimelineGroup[eng_montreal_les_editions_outremontaises_2006:dgt1] (1 timelines, 2 timestamps)
+  ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ SegmentLine[DiscreteGraphicalTimeline][eng_montreal_les_editions_outremontaises_2006:dgt1] (382 events, 18 children, 1 cmaps) │
+  │                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 7686 pixels                                                    │
+  │   ├─ accolade_1       0 ∶∶                                     426 (22 events)                                                │
+  │   ├─ accolade_2     426   ∶∶                                   846 (22 events)                                                │
+  │   ├─ accolade_3     846     ∶∶                                 1262 (16 events)                                               │
+  │   │  ... (12 more children)                                                                                                   │
+  │   ├─ accolade_16   6372                                ∶∶      6813 (23 events)                                               │
+  │   ├─ accolade_17   6813                                  ∶∶    7260 (23 events)                                               │
+  │   └─ accolade_18   7260                                    ∶∶∶ 7686 (24 events)                                               │
+  └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  Timestamps: 2
+
+  TimelineGroup[eng_transcription_2012:dgt2] (1 timelines, 2 timestamps)
+  ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ SegmentLine[DiscreteGraphicalTimeline][eng_transcription_2012:dgt2] (382 events, 18 children, 1 cmaps) │
+  │                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 7356 pixels                             │
+  │   ├─ accolade_1       0 ∶∶                                     408 (22 events)                         │
+  │   ├─ accolade_2     408   ∶∶                                   812 (22 events)                         │
+  │   ├─ accolade_3     812     ∶∶                                 1211 (16 events)                        │
+  │   │  ... (12 more children)                                                                            │
+  │   ├─ accolade_16   6105                                ∶∶      6528 (23 events)                        │
+  │   ├─ accolade_17   6528                                  ∶∶    6954 (23 events)                        │
+  │   └─ accolade_18   6954                                    ∶∶∶ 7356 (24 events)                        │
+  └────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  Timestamps: 2
+
+  TimelineGroup[satie_gymnopedie1_coleman:cpt1] (1 timelines, 2 timestamps)
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ ContinuousPhysicalTimeline[satie_gymnopedie1_coleman:cpt1] (382 events)    │
+  │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 188.8 seconds │
+  └────────────────────────────────────────────────────────────────────────────┘
+  Timestamps: 2
+
+  TimelineGroup[satie_gymnopedie1_pfaul:cpt2] (1 timelines, 2 timestamps)
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ ContinuousPhysicalTimeline[satie_gymnopedie1_pfaul:cpt2] (382 events)      │
+  │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 192.2 seconds │
+  └────────────────────────────────────────────────────────────────────────────┘
+  Timestamps: 2
+
+  MatchClaims: 2085</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="the-spine-and-the-los-layer" class="level2">
+<h2 class="anchored" data-anchor-id="the-spine-and-the-los-layer">2. The spine and the LOS layer</h2>
+<section id="the-spine-a-cumulative-virtual-time-axis" class="level3">
+<h3 class="anchored" data-anchor-id="the-spine-a-cumulative-virtual-time-axis">The spine: a cumulative virtual-time axis</h3>
+<p>The spine’s <code>timing</code> attribute is a <em>relative</em> integer delta against the previous <code>&lt;event&gt;</code>; the loader accumulates it into an absolute coordinate, so the stored value is the running sum — the cumulative VTU. Events notated as simultaneous carry <code>timing="0"</code> and land on the same coordinate. The spine is a <code>DiscreteLogicalTimeline</code> in <code>ticks</code>:</p>
+<div id="9d124156" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.480256Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.480102Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.484233Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.483477Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>spine <span class="op">=</span> bundle.get_timeline(loader.spine_uid)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>spine</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteLogicalTimeline[spine:dlt1] (382 events)
+                       0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 236544 ticks</pre>
+</div>
+</div>
+<div id="bee81bf6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.485861Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.485701Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.495496Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.494829Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>spine.get_events().head(<span class="dv">5</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">name</th>
+<th data-quarto-table-cell-role="th">temporal_type</th>
+<th data-quarto-table-cell-role="th">event_type</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">end</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">hpos</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>Clef_part_1_1</td>
+<td>None</td>
+<td>instant</td>
+<td>SpineEvent</td>
+<td>0</td>
+<td>None</td>
+<td>None</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>Clef_part_2_1</td>
+<td>None</td>
+<td>instant</td>
+<td>SpineEvent</td>
+<td>0</td>
+<td>None</td>
+<td>None</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>KeySignature_part_1_1</td>
+<td>None</td>
+<td>instant</td>
+<td>SpineEvent</td>
+<td>0</td>
+<td>None</td>
+<td>None</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>KeySignature_part_2_1</td>
+<td>None</td>
+<td>instant</td>
+<td>SpineEvent</td>
+<td>0</td>
+<td>None</td>
+<td>None</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>TimeSignature_part_1_1</td>
+<td>None</td>
+<td>instant</td>
+<td>SpineEvent</td>
+<td>0</td>
+<td>None</td>
+<td>None</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</section>
+<section id="the-los-layer-notes-and-rests-at-spine-coordinates" class="level3">
+<h3 class="anchored" data-anchor-id="the-los-layer-notes-and-rests-at-spine-coordinates">The LOS layer: notes and rests at spine coordinates</h3>
+<p>Every LOS event — a <code>Note</code>, a <code>Rest</code>, or a lyric <code>Syllable</code> — sits at the VTU coordinate of the spine event its <code>event_ref</code> names; that reference <em>is</em> its temporal position; the LOS layer carries no timing of its own. It is a second <code>DiscreteLogicalTimeline</code>, sharing the spine’s unit and length but its own event set — 557 LOS events against 382 spine events, since a chord’s several noteheads and a measure’s clefs and key signatures do not correspond one-to-one.</p>
+<div id="78dd5bfa" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.497235Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.496946Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.501464Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.500754Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>los <span class="op">=</span> bundle.get_timeline(loader.los_uid)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>los</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteLogicalTimeline[los:dlt2] (557 events)
+                       0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 236544 ticks</pre>
+</div>
+</div>
+<p>Notated durations are kept as the verbatim <code>num</code>/<code>den</code> pair rather than a reduced fraction, so a duration notated <code>1/4</code> never silently becomes something else; the exact value is <code>Fraction(duration_num, duration_den)</code>. The opening melodic notes — each a quarter note (<code>duration_num=1</code>, <code>duration_den=4</code>) — carry their pitch as a step, octave and accidental, e.g.&nbsp;the first is F♯6:</p>
+<div id="bd8eacf2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.502886Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.502739Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.517260Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.516622Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>notes <span class="op">=</span> los.get_events(event_type<span class="op">=</span><span class="st">"Note"</span>).to_dataframe()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>notes.head(<span class="dv">5</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">name</th>
+<th data-quarto-table-cell-role="th">temporal_type</th>
+<th data-quarto-table-cell-role="th">event_type</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">end</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">actual_accidental</th>
+<th data-quarto-table-cell-role="th">augmentation_dots</th>
+<th data-quarto-table-cell-role="th">duration_den</th>
+<th data-quarto-table-cell-role="th">...</th>
+<th data-quarto-table-cell-role="th">event_ref</th>
+<th data-quarto-table-cell-role="th">measure</th>
+<th data-quarto-table-cell-role="th">notehead_index</th>
+<th data-quarto-table-cell-role="th">octave</th>
+<th data-quarto-table-cell-role="th">part</th>
+<th data-quarto-table-cell-role="th">printed_accidental</th>
+<th data-quarto-table-cell-role="th">staff</th>
+<th data-quarto-table-cell-role="th">step</th>
+<th data-quarto-table-cell-role="th">tie</th>
+<th data-quarto-table-cell-role="th">voice</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>note:000001</td>
+<td>None</td>
+<td>instant</td>
+<td>Note</td>
+<td>13312</td>
+<td>None</td>
+<td>None</td>
+<td>sharp</td>
+<td>NaN</td>
+<td>4</td>
+<td>...</td>
+<td>part_1_voice0_measure5_ev1</td>
+<td>5</td>
+<td>0</td>
+<td>6</td>
+<td>part_1</td>
+<td>None</td>
+<td>part_1_staff</td>
+<td>F</td>
+<td>False</td>
+<td>part_1_0_voice</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>note:000002</td>
+<td>None</td>
+<td>instant</td>
+<td>Note</td>
+<td>14336</td>
+<td>None</td>
+<td>None</td>
+<td>natural</td>
+<td>NaN</td>
+<td>4</td>
+<td>...</td>
+<td>part_1_voice0_measure5_ev2</td>
+<td>5</td>
+<td>0</td>
+<td>6</td>
+<td>part_1</td>
+<td>None</td>
+<td>part_1_staff</td>
+<td>A</td>
+<td>False</td>
+<td>part_1_0_voice</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>note:000003</td>
+<td>None</td>
+<td>instant</td>
+<td>Note</td>
+<td>15360</td>
+<td>None</td>
+<td>None</td>
+<td>natural</td>
+<td>NaN</td>
+<td>4</td>
+<td>...</td>
+<td>part_1_voice0_measure6_ev0</td>
+<td>6</td>
+<td>0</td>
+<td>6</td>
+<td>part_1</td>
+<td>None</td>
+<td>part_1_staff</td>
+<td>G</td>
+<td>False</td>
+<td>part_1_0_voice</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>note:000004</td>
+<td>None</td>
+<td>instant</td>
+<td>Note</td>
+<td>16384</td>
+<td>None</td>
+<td>None</td>
+<td>sharp</td>
+<td>NaN</td>
+<td>4</td>
+<td>...</td>
+<td>part_1_voice0_measure6_ev1</td>
+<td>6</td>
+<td>0</td>
+<td>6</td>
+<td>part_1</td>
+<td>None</td>
+<td>part_1_staff</td>
+<td>F</td>
+<td>False</td>
+<td>part_1_0_voice</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>note:000005</td>
+<td>None</td>
+<td>instant</td>
+<td>Note</td>
+<td>17408</td>
+<td>None</td>
+<td>None</td>
+<td>sharp</td>
+<td>NaN</td>
+<td>4</td>
+<td>...</td>
+<td>part_1_voice0_measure6_ev2</td>
+<td>6</td>
+<td>0</td>
+<td>6</td>
+<td>part_1</td>
+<td>None</td>
+<td>part_1_staff</td>
+<td>C</td>
+<td>False</td>
+<td>part_1_0_voice</td>
+</tr>
+</tbody>
+</table>
+
+<p>5 rows × 21 columns</p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="editions-in-pixels-tracks-in-seconds" class="level2">
+<h2 class="anchored" data-anchor-id="editions-in-pixels-tracks-in-seconds">3. Editions in pixels, tracks in seconds</h2>
+<section id="per-edition-graphical-segmentlines" class="level3">
+<h3 class="anchored" data-anchor-id="per-edition-graphical-segmentlines">Per-edition graphical SegmentLines</h3>
+<p>Each <code>&lt;graphic_instance_group&gt;</code> — one engraved edition of the score — is its own <code>SegmentLine[DiscreteGraphicalTimeline]</code>, in unit <code>pixels</code>. Its x coordinates zig-zag along the spine: when a new system begins beyond half of the preceding page’s x-span, the reset starts a new accolade. Each accolade is one contiguous segment on the edition’s <code>SegmentLine</code>; the two editions each have 18 segments, distributed 4 + 5 + 5 + 4 across their four pages.</p>
+<div id="c553cb8a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.518722Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.518576Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.521275Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.520674Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> uid <span class="kw">in</span> loader.edition_uids:</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    edition <span class="op">=</span> bundle.get_timeline(uid)</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>edition<span class="sc">.</span><span class="bu">id</span><span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>edition<span class="sc">.</span>name<span class="sc">!r}</span><span class="ss">, </span><span class="sc">{</span>edition<span class="sc">.</span>length<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>eng_montreal_les_editions_outremontaises_2006:dgt1: 'eng:Montréal: Les Éditions Outremontaises (2006)', 7686 pixels
+eng_transcription_2012:dgt2: 'eng:Transcription (2012)', 7356 pixels</code></pre>
+</div>
+</div>
+<div id="0a50899d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.523075Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.522920Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.560250Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.559605Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>edition <span class="op">=</span> bundle.get_timeline(loader.edition_uids[<span class="dv">0</span>])</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>graphical_events <span class="op">=</span> edition.get_events().to_dataframe()</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>graphical_events.head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">name</th>
+<th data-quarto-table-cell-role="th">temporal_type</th>
+<th data-quarto-table-cell-role="th">event_type</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">end</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">bbox</th>
+<th data-quarto-table-cell-role="th">event_ref</th>
+<th data-quarto-table-cell-role="th">file_name</th>
+<th data-quarto-table-cell-role="th">position_in_group</th>
+<th data-quarto-table-cell-role="th">source_timeline</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>graphicevent:000001</td>
+<td>None</td>
+<td>interval</td>
+<td>GraphicEvent</td>
+<td>50</td>
+<td>64</td>
+<td>14</td>
+<td>{'lr': {'x': 64, 'y': 164}, 'ul': {'x': 50, 'y...</td>
+<td>Clef_part_1_1</td>
+<td>score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png</td>
+<td>1</td>
+<td>eng_montreal_les_editions_outremontaises_2006:...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>graphicevent:000002</td>
+<td>None</td>
+<td>interval</td>
+<td>GraphicEvent</td>
+<td>49</td>
+<td>64</td>
+<td>15</td>
+<td>{'lr': {'x': 64, 'y': 208}, 'ul': {'x': 49, 'y...</td>
+<td>Clef_part_2_1</td>
+<td>score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png</td>
+<td>1</td>
+<td>eng_montreal_les_editions_outremontaises_2006:...</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>graphicevent:000003</td>
+<td>None</td>
+<td>interval</td>
+<td>GraphicEvent</td>
+<td>66</td>
+<td>79</td>
+<td>13</td>
+<td>{'lr': {'x': 79, 'y': 153}, 'ul': {'x': 66, 'y...</td>
+<td>KeySignature_part_1_1</td>
+<td>score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png</td>
+<td>1</td>
+<td>eng_montreal_les_editions_outremontaises_2006:...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>graphicevent:000004</td>
+<td>None</td>
+<td>interval</td>
+<td>GraphicEvent</td>
+<td>66</td>
+<td>79</td>
+<td>13</td>
+<td>{'lr': {'x': 79, 'y': 211}, 'ul': {'x': 66, 'y...</td>
+<td>KeySignature_part_2_1</td>
+<td>score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png</td>
+<td>1</td>
+<td>eng_montreal_les_editions_outremontaises_2006:...</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>graphicevent:000005</td>
+<td>None</td>
+<td>interval</td>
+<td>GraphicEvent</td>
+<td>84</td>
+<td>94</td>
+<td>10</td>
+<td>{'lr': {'x': 94, 'y': 158}, 'ul': {'x': 84, 'y...</td>
+<td>TimeSignature_part_1_1</td>
+<td>score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png</td>
+<td>1</td>
+<td>eng_montreal_les_editions_outremontaises_2006:...</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>The edition’s segments are the individual accolades. <code>list_segments()</code> preserves their spine order, while <code>get_segment_by_index()</code> exposes each segment’s global offset and its page-local graphical timeline:</p>
+<div id="342ab24c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.561653Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.561510Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.564609Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.563973Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>edition<span class="sc">.</span>class_name<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>edition<span class="sc">.</span>n_segments<span class="sc">}</span><span class="ss"> accolade segments"</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> index, segment_id <span class="kw">in</span> <span class="bu">enumerate</span>(edition.list_segments()):</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    offset, accolade <span class="op">=</span> edition.get_segment_by_index(index)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>index <span class="op">+</span> <span class="dv">1</span><span class="sc">:&gt;2}</span><span class="ss">: </span><span class="sc">{</span>segment_id<span class="sc">}</span><span class="ss"> at x=</span><span class="sc">{</span>offset<span class="sc">.</span>value<span class="sc">}</span><span class="ss">, length=</span><span class="sc">{</span>accolade<span class="sc">.</span>length<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>SegmentLine[DiscreteGraphicalTimeline]: 18 accolade segments
+ 1: eng_montreal_les_editions_outremontaises_2006:dgt1_segment1 at x=0, length=426 pixels
+ 2: eng_montreal_les_editions_outremontaises_2006:dgt1_segment2 at x=426, length=420 pixels
+ 3: eng_montreal_les_editions_outremontaises_2006:dgt1_segment3 at x=846, length=416 pixels
+ 4: eng_montreal_les_editions_outremontaises_2006:dgt1_segment4 at x=1262, length=432 pixels
+ 5: eng_montreal_les_editions_outremontaises_2006:dgt1_segment5 at x=1694, length=417 pixels
+ 6: eng_montreal_les_editions_outremontaises_2006:dgt1_segment6 at x=2111, length=422 pixels
+ 7: eng_montreal_les_editions_outremontaises_2006:dgt1_segment7 at x=2533, length=443 pixels
+ 8: eng_montreal_les_editions_outremontaises_2006:dgt1_segment8 at x=2976, length=447 pixels
+ 9: eng_montreal_les_editions_outremontaises_2006:dgt1_segment9 at x=3423, length=423 pixels
+10: eng_montreal_les_editions_outremontaises_2006:dgt1_segment10 at x=3846, length=420 pixels
+11: eng_montreal_les_editions_outremontaises_2006:dgt1_segment11 at x=4266, length=421 pixels
+12: eng_montreal_les_editions_outremontaises_2006:dgt1_segment12 at x=4687, length=415 pixels
+13: eng_montreal_les_editions_outremontaises_2006:dgt1_segment13 at x=5102, length=421 pixels
+14: eng_montreal_les_editions_outremontaises_2006:dgt1_segment14 at x=5523, length=428 pixels
+15: eng_montreal_les_editions_outremontaises_2006:dgt1_segment15 at x=5951, length=421 pixels
+16: eng_montreal_les_editions_outremontaises_2006:dgt1_segment16 at x=6372, length=441 pixels
+17: eng_montreal_les_editions_outremontaises_2006:dgt1_segment17 at x=6813, length=447 pixels
+18: eng_montreal_les_editions_outremontaises_2006:dgt1_segment18 at x=7260, length=426 pixels</code></pre>
+</div>
+</div>
+<p>An <code>IntervalToConstantMap</code> on the edition resolves any of these unfolded x coordinates to the page-image <code>file_name</code> that contains it. The first graphical event provides one such coordinate:</p>
+<div id="63183070" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.565977Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.565839Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.569471Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.568858Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>page_image_map <span class="op">=</span> <span class="bu">next</span>(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    cmap</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> cmap <span class="kw">in</span> edition._conversion_maps.values()</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">isinstance</span>(cmap, IntervalToConstantMap)</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>first_graphical_event <span class="op">=</span> graphical_events.iloc[<span class="dv">0</span>]</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>page_image_map(first_graphical_event[<span class="st">"start"</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>'score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png'</code></pre>
+</div>
+</div>
+<p>Graphical geometry is kept as one nested <code>bbox</code> struct rather than split coordinate columns. Its <code>ul</code> and <code>lr</code> members preserve the upper-left and lower-right pixel coordinates of the graphical event:</p>
+<div id="9db3fca0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.570961Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.570809Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.574240Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.573717Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>bbox <span class="op">=</span> first_graphical_event[<span class="st">"bbox"</span>]</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bbox"</span>: bbox,</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"ul"</span>: bbox[<span class="st">"ul"</span>],</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"lr"</span>: bbox[<span class="st">"lr"</span>],</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>{'bbox': {'lr': {'x': 64, 'y': 164}, 'ul': {'x': 50, 'y': 132}},
+ 'ul': {'x': 50, 'y': 132},
+ 'lr': {'x': 64, 'y': 164}}</code></pre>
+</div>
+</div>
+</section>
+<section id="per-track-audio-timelines" class="level3">
+<h3 class="anchored" data-anchor-id="per-track-audio-timelines">Per-track audio timelines</h3>
+<p>Each <code>&lt;track&gt;</code> — one recording — is its own <code>ContinuousPhysicalTimeline</code> in <code>seconds</code>. The performers and the media file name the document states ride along in <code>meta</code>; the media file itself is never opened:</p>
+<div id="0dd8f2c6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.575723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.575584Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.578309Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.577633Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> uid <span class="kw">in</span> loader.track_uids:</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    track <span class="op">=</span> bundle.get_timeline(uid)</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>track<span class="sc">.</span><span class="bu">id</span><span class="sc">}</span><span class="ss">: </span><span class="sc">{</span>track<span class="sc">.</span>meta[<span class="st">'performers'</span>]<span class="sc">}</span><span class="ss">, </span><span class="sc">{</span>track<span class="sc">.</span>length<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>satie_gymnopedie1_coleman:cpt1: [{'name': 'Chase Coleman', 'type': 'piano'}], 188.77 seconds
+satie_gymnopedie1_pfaul:cpt2: [{'name': 'Andreas Pfaul', 'type': 'piano'}], 192.22 seconds</code></pre>
+</div>
+</div>
+<div id="662fb0bb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.579691Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.579552Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.587412Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.586853Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>track <span class="op">=</span> bundle.get_timeline(loader.track_uids[<span class="dv">0</span>])</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>track.get_events().head(<span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">name</th>
+<th data-quarto-table-cell-role="th">temporal_type</th>
+<th data-quarto-table-cell-role="th">event_type</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">end</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">event_ref</th>
+<th data-quarto-table-cell-role="th">file_name</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>trackevent:000001</td>
+<td>None</td>
+<td>instant</td>
+<td>TrackEvent</td>
+<td>2.46</td>
+<td>None</td>
+<td>None</td>
+<td>Clef_part_1_1</td>
+<td>audio/ChaseColeman/satie-gymnopedie1-coleman.mp3</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>trackevent:000002</td>
+<td>None</td>
+<td>instant</td>
+<td>TrackEvent</td>
+<td>2.46</td>
+<td>None</td>
+<td>None</td>
+<td>Clef_part_2_1</td>
+<td>audio/ChaseColeman/satie-gymnopedie1-coleman.mp3</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>trackevent:000003</td>
+<td>None</td>
+<td>instant</td>
+<td>TrackEvent</td>
+<td>2.46</td>
+<td>None</td>
+<td>None</td>
+<td>KeySignature_part_1_1</td>
+<td>audio/ChaseColeman/satie-gymnopedie1-coleman.mp3</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="the-projections-as-one-columnar-claim-field" class="level2">
+<h2 class="anchored" data-anchor-id="the-projections-as-one-columnar-claim-field">4. The projections, as one columnar claim field</h2>
+<p>Every LOS, graphical and audio event contributes one synchronous <button class="glossary" title="A claim of equivalence between events on different timelines, with provenance metadata (the authoring agent and a certainty). May be synchronous (producing AlignmentAnchors) or conceptual (structural equivalence without temporal commitment). Always knows which pair of timelines it connects. Four cases: (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group extension). Held individually, or columnar at scale in a MatchClaimField.">MatchClaim</button> tying its own coordinate to the spine event it references. All three layers go into <strong>one</strong> field — the alignment they express is one alignment, hub-and-spoke around the spine — reached through the uniform field API:</p>
+<div id="c87fb763" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.588854Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.588715Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.592451Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.591809Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>field <span class="op">=</span> loader.get_field(MatchClaim)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"field type"</span>: <span class="bu">type</span>(field).<span class="va">__name__</span>,</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"claims"</span>: <span class="bu">len</span>(field),</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>{'field type': 'MatchClaimField', 'claims': 2085}</code></pre>
+</div>
+</div>
+<p>The <code>MatchClaimField</code> remains columnar; its table has one struct column. Showing its head makes that stored representation visible before any individual <code>MatchClaim</code> is materialised:</p>
+<div id="d1d99496" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.594125Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.593975Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.610867Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.610229Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>field.table.to_pandas().head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">match_claim</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>{'timeline_a_id': 'los:dlt2', 'timeline_b_id':...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>{'timeline_a_id': 'los:dlt2', 'timeline_b_id':...</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>{'timeline_a_id': 'los:dlt2', 'timeline_b_id':...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>{'timeline_a_id': 'los:dlt2', 'timeline_b_id':...</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>{'timeline_a_id': 'los:dlt2', 'timeline_b_id':...</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>Indexing the field materialises one <code>MatchClaim</code> on demand. This mid-document row is more illustrative than the first row because it shows an ordinary in-document correspondence rather than the special opening coordinate:</p>
+<div id="59f50c12" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.612387Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.612239Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.615790Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.615291Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>field[<span class="bu">len</span>(field) <span class="op">//</span> <span class="dv">2</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<div style="font-family: monospace;"><strong>MatchClaim</strong> <span style="background: #e8f5e9; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">synchronous, instant</span>
+<table class="caption-top table table-sm table-striped small">
+<tbody>
+<tr class="odd">
+<td>Timeline A</td>
+<td><strong>eng_transcription_2012:dgt2</strong></td>
+<td>@2102</td>
+</tr>
+<tr class="even">
+<td>Timeline B</td>
+<td><strong>spine:dlt1</strong></td>
+<td>@64512</td>
+</tr>
+<tr class="odd" style="color: #666;">
+<td>Metadata</td>
+<td colspan="2">agent=Finale Plugin</td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>claim.get_matchstamp()</code></div></div>
+</div>
+</div>
+<section id="the-cross-section-over-spine-coordinates" class="level3">
+<h3 class="anchored" data-anchor-id="the-cross-section-over-spine-coordinates">The cross-section over spine coordinates</h3>
+<p><code>get_matchstamp_table(from_graph=True)</code> collapses the claims into one row per connected component of the alignment graph — one row per spine coordinate that at least one layer reaches, every participating layer filled in the same row. It is the cross-section of all six timelines over the spine:</p>
+<div id="d3b11b67" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.617259Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.617122Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.628306Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.627670Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>cross_section <span class="op">=</span> bundle.get_matchstamp_table(from_graph<span class="op">=</span><span class="va">True</span>).to_pandas()</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>{<span class="st">"rows"</span>: <span class="bu">len</span>(cross_section), <span class="st">"columns"</span>: <span class="bu">list</span>(cross_section.columns)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>{'rows': 188,
+ 'columns': ['eng_montreal_les_editions_outremontaises_2006:dgt1',
+  'eng_transcription_2012:dgt2',
+  'los:dlt2',
+  'satie_gymnopedie1_coleman:cpt1',
+  'satie_gymnopedie1_pfaul:cpt2',
+  'spine:dlt1']}</code></pre>
+</div>
+</div>
+<div id="6d62419d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.629747Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.629609Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.636580Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.635952Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>cross_section.head(<span class="dv">5</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">eng_montreal_les_editions_outremontaises_2006:dgt1</th>
+<th data-quarto-table-cell-role="th">eng_transcription_2012:dgt2</th>
+<th data-quarto-table-cell-role="th">los:dlt2</th>
+<th data-quarto-table-cell-role="th">satie_gymnopedie1_coleman:cpt1</th>
+<th data-quarto-table-cell-role="th">satie_gymnopedie1_pfaul:cpt2</th>
+<th data-quarto-table-cell-role="th">spine:dlt1</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>49.0</td>
+<td>75.0</td>
+<td>0.0</td>
+<td>2.46</td>
+<td>0.50</td>
+<td>0.0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>133.0</td>
+<td>148.0</td>
+<td>1024.0</td>
+<td>3.48</td>
+<td>1.30</td>
+<td>1024.0</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>192.0</td>
+<td>201.0</td>
+<td>3072.0</td>
+<td>5.47</td>
+<td>3.14</td>
+<td>3072.0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>224.0</td>
+<td>231.0</td>
+<td>4096.0</td>
+<td>6.41</td>
+<td>4.00</td>
+<td>4096.0</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>286.0</td>
+<td>284.0</td>
+<td>6144.0</td>
+<td>8.24</td>
+<td>5.80</td>
+<td>6144.0</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="the-structural-layer-an-analysis-resolved-to-a-petri-net" class="level2">
+<h2 class="anchored" data-anchor-id="the-structural-layer-an-analysis-resolved-to-a-petri-net">5. The structural layer: an analysis resolved to a Petri net</h2>
+<p>An <code>&lt;analysis&gt;</code> partitions the spine into <code>&lt;segment&gt;</code> elements, each listing the spine events it covers; a sibling <code>&lt;petri_nets&gt;</code> block names <code>.pnml</code> files and binds one place of one net to one segment. That is a reference <em>into</em> an external resource, not a timing statement, so it is carried as <code>spine.external_references</code> — one row per <code>(segment_event, place)</code> pair — rather than as events or claims:</p>
+<div id="2010f347" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.638314Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.638102Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.641780Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.641064Z&quot;}}" data-execution_count="21">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>refs <span class="op">=</span> spine.external_references</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>refs.num_rows</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<pre><code>1795</code></pre>
+</div>
+</div>
+<p>Filtering to one segment shows the resolution end to end: every spine event of segment <code>Analisi_1_L1_A</code> resolves to place <code>p2</code> of the Petri net stored in <code>Analisi_1/L1.pnml</code> — read straight off the document, with the <code>.pnml</code> file itself never opened:</p>
+<div id="82c5ae36" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.643458Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.643239Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.667319Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.666579Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>segment_a <span class="op">=</span> refs.<span class="bu">filter</span>(pc.equal(refs[<span class="st">"comment"</span>], <span class="st">"Analisi_1_L1_A"</span>))</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>segment_a.to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">event_id</th>
+<th data-quarto-table-cell-role="th">external_id</th>
+<th data-quarto-table-cell-role="th">access_points</th>
+<th data-quarto-table-cell-role="th">comment</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>part_1_voice0_measure1_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>part_2_voice0_measure1_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>part_2_voice1_measure1_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>part_2_voice1_measure1_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>part_1_voice0_measure2_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">5</th>
+<td>part_2_voice0_measure2_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">6</th>
+<td>part_2_voice1_measure2_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">7</th>
+<td>part_2_voice1_measure2_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">8</th>
+<td>part_1_voice0_measure3_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">9</th>
+<td>part_2_voice0_measure3_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">10</th>
+<td>part_2_voice1_measure3_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">11</th>
+<td>part_2_voice1_measure3_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">12</th>
+<td>part_1_voice0_measure4_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">13</th>
+<td>part_2_voice0_measure4_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">14</th>
+<td>part_2_voice1_measure4_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">15</th>
+<td>part_2_voice1_measure4_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">16</th>
+<td>part_1_voice0_measure40_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">17</th>
+<td>part_2_voice0_measure40_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">18</th>
+<td>part_2_voice1_measure40_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">19</th>
+<td>part_2_voice1_measure40_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">20</th>
+<td>part_1_voice0_measure41_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">21</th>
+<td>part_2_voice0_measure41_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">22</th>
+<td>part_2_voice1_measure41_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">23</th>
+<td>part_2_voice1_measure41_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">24</th>
+<td>part_1_voice0_measure42_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">25</th>
+<td>part_2_voice0_measure42_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">26</th>
+<td>part_2_voice1_measure42_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">27</th>
+<td>part_2_voice1_measure42_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">28</th>
+<td>part_1_voice0_measure43_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">29</th>
+<td>part_2_voice0_measure43_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">30</th>
+<td>part_2_voice1_measure43_ev0</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">31</th>
+<td>part_2_voice1_measure43_ev1</td>
+<td>p2</td>
+<td>[{'uri': 'Analisi_1/L1.pnml', 'kind': 'relativ...</td>
+<td>Analisi_1_L1_A</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>A segment no <code>&lt;place&gt;</code> names keeps its row rather than being dropped: <code>external_id</code> falls back to the segment id, <code>access_points</code> is empty, and the comment records why. Exactly one segment of this analysis is unmapped:</p>
+<div id="7e9c0e4d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-07-23T09:23:48.668992Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-07-23T09:23:48.668803Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-07-23T09:23:48.677399Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-07-23T09:23:48.676487Z&quot;}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>unmapped <span class="op">=</span> refs.<span class="bu">filter</span>(pc.equal(pc.list_value_length(refs[<span class="st">"access_points"</span>]), <span class="dv">0</span>))</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>unmapped.to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">event_id</th>
+<th data-quarto-table-cell-role="th">external_id</th>
+<th data-quarto-table-cell-role="th">access_points</th>
+<th data-quarto-table-cell-role="th">comment</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>part_1_voice0_measure72_ev0</td>
+<td>Analisi_1_L3_RS_I_23</td>
+<td>[]</td>
+<td>segment without petri-net node</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</section>
+<section id="recap" class="level2">
+<h2 class="anchored" data-anchor-id="recap">Recap</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>What the bundle expresses</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>The spine, a cumulative VTU axis</td>
+<td><code>spine:dlt1</code>, <code>DiscreteLogicalTimeline</code>, <code>ticks</code></td>
+</tr>
+<tr class="even">
+<td>Notes, rests, lyrics at spine coordinates</td>
+<td><code>los:dlt2</code>, verbatim <code>duration_num</code>/<code>duration_den</code></td>
+</tr>
+<tr class="odd">
+<td>Engraved editions, page-image boxes</td>
+<td>one <code>SegmentLine[DiscreteGraphicalTimeline]</code></td>
+</tr>
+<tr class="even">
+<td>per edition: 18 accolade segments, an <code>IntervalToConstantMap</code> to page images, <code>pixels</code></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>Audio recordings</td>
+<td>one <code>ContinuousPhysicalTimeline</code> per track, <code>seconds</code></td>
+</tr>
+<tr class="even">
+<td>Every projection onto the spine</td>
+<td>one columnar <button class="glossary" title="A columnar, PyArrow-backed store holding a whole set of synchronous-instant pairwise MatchClaims as Arrow columns (the two timeline ids dictionary-encoded, the two coordinates as float64) rather than as one frozen MatchClaim object per claim. Individual MatchClaims are materialised on demand when a row is indexed or iterated. Built vectorized via from_columns(), it is the scalable backing for dense alignment matrices, where the complete pairwise topology of a whole work runs to roughly a million claims. Shared provenance is held once at field level, never per row.">MatchClaimField</button> via <code>loader.get_field(MatchClaim)</code></td>
+</tr>
+<tr class="odd">
+<td>The cross-section over spine coordinates</td>
+<td><code>bundle.get_matchstamp_table(from_graph=True)</code></td>
+</tr>
+<tr class="even">
+<td>The Petri-net analysis</td>
+<td><code>spine.external_references</code> — segment → place, resolved without opening any <code>.pnml</code></td>
+</tr>
+</tbody>
+</table>
+<p>One IEEE 1599 document — one spine, several projections, one analytical annotation layer — loaded into a single <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> in which every representation of the work stays reachable from the axis the document itself defines.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button,
+          { trigger: "manual",
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined;
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              }
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            }
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

@@ -19,6 +19,7 @@ from timetoalign.core import (
     Shape,
     TimeUnit,
 )
+from timetoalign.core.fields import _filled_mask
 from timetoalign.core.ids import mint_id, quote_id, timeline_id_prefix
 from timetoalign.core.time import (
     compare_number_column,
@@ -275,7 +276,7 @@ class ChildrenMixin:
                     below, compare_number_column(positions, end, "equal", number_type)
                 )
             within = pc.and_(within, below)
-        return pc.fill_null(within, False)
+        return _filled_mask(within, pa.scalar(False))
 
     def _set_length(self, length: Coordinate | None) -> None:
         """Set this timeline's length, which its parent must contain.
@@ -345,8 +346,8 @@ class ChildrenMixin:
         table = events.table
         is_row = pc.fill_null(
             pc.and_kleene(
-                pc.equal(table.column("event_type"), SEGMENT_EVENT_TYPE),
-                pc.equal(table.column("id"), child_id),
+                pc.equal(table.column("event_type"), pa.scalar(SEGMENT_EVENT_TYPE)),
+                pc.equal(table.column("id"), pa.scalar(child_id)),
             ),
             False,
         )
@@ -1214,16 +1215,17 @@ class ChildrenMixin:
         end = start + Fraction(length)
         to_quarters: LinearMap | None = None
         if isinstance(record, ChainMap):
-            to_quarters = record.maps[0]
-            if not isinstance(to_quarters, LinearMap):
+            first = record.maps[0]
+            if not isinstance(first, LinearMap):
                 raise TypeError(
                     f"Timeline {self._id!r} reads its measure map through a "
-                    f"{type(to_quarters).__name__}, not a LinearMap to quarters"
+                    f"{type(first).__name__}, not a LinearMap to quarters"
                 )
+            to_quarters = first
             scalar, shift = Fraction(to_quarters.scalar), Fraction(to_quarters.offset)
             start, end = start * scalar + shift, end * scalar + shift
         sliced = measure_map.get_slice(start, end)
-        views = [
+        views: list[ConversionMap[Any]] = [
             type(view)(sliced)
             for view in self._conversion_maps.values()
             if isinstance(view, _MEASURE_VIEWS) and view.measure_map == measure_map
@@ -1374,7 +1376,9 @@ class ChildrenMixin:
         table = self._events.table
         if (
             "event_type" in table.column_names
-            and pc.any(pc.equal(table.column("event_type"), BOX_EVENT_TYPE)).as_py()
+            and pc.any(
+                pc.equal(table.column("event_type"), pa.scalar(BOX_EVENT_TYPE))
+            ).as_py()
         ):
             return True
         return any(child._holds_boxes() for child in self._children.values())
@@ -1519,7 +1523,7 @@ class ChildrenMixin:
                     start != 0 or row.get("source_timeline") is not None
                 ):
                     raise ValueError(
-                        f"Box {quote_id(row.get('id'))} cannot move onto a timeline "
+                        f"Box {quote_id(row['id'])} cannot move onto a timeline "
                         f"cut at {_format_coordinate_value(start)} from timeline "
                         f"{quote_id(self._id)}: the timeline states no area "
                         f'(meta["box"]), so the cut\'s area cannot be stated.'
@@ -1794,7 +1798,7 @@ class ChildrenMixin:
         """
         boundary = start if box_start < start else end
         raise ValueError(
-            f"Box {quote_id(row.get('id'))} runs from "
+            f"Box {quote_id(row['id'])} runs from "
             f"{_format_coordinate_value(box_start)} to "
             f"{_format_coordinate_value(box_end)} on timeline {quote_id(self._id)} "
             f"and crosses the slice's boundary at "

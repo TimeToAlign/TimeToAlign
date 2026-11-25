@@ -10,6 +10,7 @@ import math
 from fractions import Fraction
 from typing import Any
 
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -1931,3 +1932,24 @@ class TestPrefixIds:
         column = data.prefix_ids("p").table.column("id")
         assert column.type == pa.string()
         assert column.to_pylist() == []
+
+
+class TestFromDataFrameLabels:
+    """``from_dataframe`` names the column labels that are not strings."""
+
+    def test_non_string_labels_are_named(self) -> None:
+        frame = pd.DataFrame({"start": [0.0], 1: [2], 2.5: [3]})
+        with pytest.raises(TypeError) as caught:
+            EventData.from_dataframe(frame, TimeUnit.seconds)
+        assert str(caught.value) == "Column labels must be strings: [1, 2.5]"
+
+    def test_string_labels_build(self) -> None:
+        data = EventData.from_dataframe(
+            pd.DataFrame({"start": [0.0], "x": [2]}), TimeUnit.seconds
+        )
+        assert data.count == 1
+        assert data.table.column("x").to_pylist() == [2]
+
+    def test_empty_frame_with_an_integer_label(self) -> None:
+        data = EventData.from_dataframe(pd.DataFrame({1: []}), TimeUnit.seconds)
+        assert data.count == 0

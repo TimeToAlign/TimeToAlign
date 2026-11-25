@@ -19,11 +19,11 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeGuard
 
 import numpy as np
 import pandas as pd
@@ -353,6 +353,13 @@ def box_rows_on_the_axis(
 def _box_named(box_id: Any) -> str:
     """How a message names a Box row: ``Box 'a'``, ``A Box`` without an ID."""
     return "A Box" if box_id is None else f"Box {quote_id(str(box_id))}"
+
+
+def _keyed_by_strings(
+    records: list[dict[Hashable, Any]], labels: Iterable[Hashable]
+) -> TypeGuard[list[dict[str, Any]]]:
+    """Whether every one of a frame's column *labels*, the keys of its *records*, is a string."""
+    return all(isinstance(label, str) for label in labels)
 
 
 def _is_cell_of(value: Any, kind: pa.DataType) -> bool:
@@ -2064,7 +2071,11 @@ class EventData(SemanticFieldAccessMixin):
         if df.empty:
             return cls.empty(unit, number_type)
 
-        return cls.from_dicts(df.to_dict("records"), unit, number_type)
+        records = df.to_dict("records")
+        if not _keyed_by_strings(records, df.columns):
+            labels = [label for label in df.columns if not isinstance(label, str)]
+            raise TypeError(f"Column labels must be strings: {labels!r}")
+        return cls.from_dicts(records, unit, number_type)
 
     @classmethod
     def from_parquet(cls, path: Path | str) -> Self:

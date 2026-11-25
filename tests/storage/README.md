@@ -264,6 +264,24 @@ constructor from rows whose ids are `[None, "a", "p:b", "pa"]`:
   does not depend on how the table is laid out in memory.
 - A table without rows gives an empty `string` column.
 
+### `test_events.py` - `EventData.from_dataframe()` refuses a non-string column label
+
+**Purpose:** a table's column names are strings, so a DataFrame whose column
+labels are not all strings cannot become an `EventData`. It was refused deep
+in PyArrow with `TypeError: expected bytes, int found`, a message that names
+neither the cause nor the label; it is now refused before any row is read,
+with a `TypeError` (the same exception type) naming the offending labels.
+
+**Contract and what proves it** (`TestFromDataFrameLabels`):
+
+- `{"start": [0.0], 1: [2], 2.5: [3]}` raises `TypeError` with exactly
+  `Column labels must be strings: [1, 2.5]` (every non-string label, in
+  column order; `start` is not named).
+- `{"start": [0.0], "x": [2]}` still builds: one row, the column `x` reads
+  `[2]` (the check refuses only non-string labels).
+- An empty DataFrame with an integer label still gives an empty `EventData`
+  (no row to read, so nothing is refused; this answer is unchanged).
+
 ### `test_events.py` - Boxes as rows and the declared shape columns
 
 **Purpose:** A `Box` stands for its event row as a Projection does, and its

@@ -3201,6 +3201,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
         Raises:
             ValueError: If *field* is omitted and no single candidate column
                 is found, or the unit cannot be determined.
+            KeyError: If *field* names no column of *table*.
         """
         if field is None:
             schema_fields: list[pa.Field[pa.DataType]] = list(table.schema)
@@ -3990,8 +3991,9 @@ class IdCoordinateField(CoordinateField):
             A new IdCoordinateField.
 
         Raises:
-            ValueError: If no timeline id is passed or found in the metadata,
-                or the unit (or number type) cannot be determined.
+            ValueError: If no timeline id is passed or found in the metadata, the
+                passed one is not a non-empty string, or the unit (or number
+                type) cannot be determined.
         """
         cls._warn_ignored_keywords(kw)
         if name is None:
@@ -4176,8 +4178,9 @@ class IdDurationField(DurationField):
             A new IdDurationField.
 
         Raises:
-            ValueError: If no timeline id is passed or found in the metadata,
-                or the unit (or number type) cannot be determined.
+            ValueError: If no timeline id is passed or found in the metadata, the
+                passed one is not a non-empty string, or the unit (or number
+                type) cannot be determined.
         """
         cls._warn_ignored_keywords(kw)
         if name is None:

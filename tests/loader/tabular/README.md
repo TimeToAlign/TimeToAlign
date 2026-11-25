@@ -11,7 +11,7 @@ This directory contains comprehensive tests for the `timetoalign.loader.tabular`
 | `test_lab_loader.py` | 30 | `LabLoader` (.lab audio-region files) — see §LabLoader below |
 | `test_correctness.py` | 11 | ZERO TOLERANCE validation with real specimens |
 | `test_error_handling.py` | 15 | Graceful degradation and error message clarity |
-| `test_struct_columns.py` | 16 | `Field`, `ComputedField`, `ConvertedField` unit tests and JSON-to-struct parsing helper |
+| `test_struct_columns.py` | 20 | `Field`, `ComputedField`, `ConvertedField` unit tests and JSON-to-struct parsing helper |
 | `test_solo_loader.py` | `SoloLoader` round-trip against the Chopin Nocturne ``.solo`` specimen — see §SoloLoader below |
 | `profile_vectorized.py` | - | Performance profiling script (not a test file) |
 
@@ -100,6 +100,37 @@ and must still be exact. A sixth row `1129/12 + 0.1`, whose exact end has a
 numerator past `2⁶³ − 1` in lowest terms, makes `load` raise a `ValueError`
 whose whole message is asserted: it names the duration column, the axis
 (`fraction`, `quarters`), the row (`row 5`), the operands and the result.
+
+### Computed-field formulas read numeric literals as numbers
+
+A `ComputedField` formula is a left-to-right chain of operands joined by
+`+ - * /`, an operand being a column reference (`n`, `rect.x`) or a number.
+`TestComputedFieldNumbers` checks that a number in a formula is that number
+and never a column name, on the table `n = [3, 4]` (int64), `x = [1.0, 2.0]`
+(double) and a struct column `rect = [{x: 10}, {x: 20}]`:
+
+- `n * 2` gives `[6, 8]` as an int64 array: an integer literal is an
+  integer, so it does not turn an integer column into doubles (the number
+  type of the column survives the formula).
+- `n / 2.5` gives `[1.2, 1.6]` and `n * 1.5` `[4.5, 6.0]`, double arrays: a
+  decimal literal is a double.
+- `2 * n` gives `[6, 8]`: a number may come first.
+- `/` is PyArrow's `divide`, which divides integers as integers: `n / 2`
+  gives `[1, 2]`, exactly as the column formula `n / m` over `m = [2, 2]`
+  already did; a decimal literal (`n / 2.0`) divides in doubles.
+- `rect.x - 1` gives `[9, 19]`: a struct path followed by a literal.
+- The column references are read as before: `n * n` gives `[9, 16]`,
+  `n + x` `[4.0, 6.0]`, and a column whose name starts with a digit
+  (`2nd = [5, 6]`) is still a column: `2nd + n` gives `[8, 10]`.
+- A formula without any column reference (`2`, `2 * 3`) names nothing to
+  compute over and is refused with a `ValueError` naming the formula; it
+  raised a `KeyError` (`Column '2' not found`) before, so no formula that
+  worked changes its answer.
+
+Before the fix the token pattern matched every digit run as a column name,
+so `n * 2` raised `KeyError: "Column '2' not found ..."` and `n * 1.5`
+`"Column '1' ..."`; the exact values above are what the arithmetic gives
+and only a formula reading the literal as a number reaches them.
 
 ### How We Know the Parser is Correct
 

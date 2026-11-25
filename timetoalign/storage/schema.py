@@ -515,37 +515,40 @@ class ComputedField:
         formula = self.formula
         assert formula is not None
 
-        # Tokenize the formula
-        # Matches: column.field.subfield, column_name, numbers, operators
-        token_pattern = r"(\w+(?:\.\w+)*)|([+\-*/])|(\d+(?:\.\d+)?)"
+        # Tokenize the formula. A number comes first and must not run on into
+        # a name, so "2" and "1.5" are numbers while "2nd" and "a.x" stay
+        # column references.
+        token_pattern = r"(\d+(?:\.\d+)?)(?![\w.])|(\w+(?:\.\w+)*)|([+\-*/])"
         tokens = re.findall(token_pattern, formula)
 
         # Parse into operands and operators
-        operands: list[pa.Array | float] = []
+        operands: list[pa.Array | pa.Scalar] = []
         operators: list[str] = []
+        names_a_column = False
 
-        for ref, op, num in tokens:
-            if ref:
+        for num, ref, op in tokens:
+            if num:
+                # An integer literal stays an integer, so it keeps an integer
+                # column integral; a decimal literal is a double.
+                operands.append(pa.scalar(float(num) if "." in num else int(num)))
+            elif ref:
                 # Column or struct field reference
                 operands.append(self._resolve_reference(table, ref))
+                names_a_column = True
             elif op:
                 operators.append(op)
-            elif num:
-                operands.append(float(num))
 
         if not operands:
             raise ValueError(f"Invalid formula: {formula}")
+        if not names_a_column:
+            raise ValueError(f"A formula names at least one column: {formula!r}")
 
         # Evaluate left-to-right (no precedence for simplicity)
         # For proper math precedence, would need a full expression parser
         result = operands[0]
-        if isinstance(result, (int, float)):
-            result = pa.scalar(result)
 
         for i, op in enumerate(operators):
             right = operands[i + 1]
-            if isinstance(right, (int, float)):
-                right = pa.scalar(right)
 
             if op == "+":
                 result = pc.add(result, right)
@@ -558,6 +561,9 @@ class ComputedField:
             else:
                 raise ValueError(f"Unknown operator: {op}")
 
+        # The formula names a column (checked above), and arithmetic with an
+        # array operand gives an array.
+        assert isinstance(result, pa.Array)
         return result
 
     def _resolve_reference(self, table: pa.Table, ref: str) -> pa.Array:

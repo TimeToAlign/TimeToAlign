@@ -175,6 +175,48 @@ class TestComputedField:
         assert "expr=..." in repr(cf2)
 
 
+def _number_table() -> pa.Table:
+    return pa.table(
+        {
+            "n": pa.array([3, 4], pa.int64()),
+            "x": pa.array([1.0, 2.0], pa.float64()),
+            "rect": pa.array([{"x": 10}, {"x": 20}], pa.struct([("x", pa.int64())])),
+            "2nd": pa.array([5, 6], pa.int64()),
+        }
+    )
+
+
+class TestComputedFieldNumbers:
+    """A numeric literal in a formula is a number, never a column name."""
+
+    @pytest.mark.parametrize(
+        ("formula", "values", "arrow_type"),
+        [
+            ("n * 2", [6, 8], pa.int64()),
+            ("n / 2.5", [1.2, 1.6], pa.float64()),
+            ("n / 2", [1, 2], pa.int64()),
+            ("n / 2.0", [1.5, 2.0], pa.float64()),
+            ("n * 1.5", [4.5, 6.0], pa.float64()),
+            ("2 * n", [6, 8], pa.int64()),
+            ("rect.x - 1", [9, 19], pa.int64()),
+            ("n * n", [9, 16], pa.int64()),
+            ("n + x", [4.0, 6.0], pa.float64()),
+            ("2nd + n", [8, 10], pa.int64()),
+        ],
+    )
+    def test_formula_values(self, formula, values, arrow_type):
+        result = ComputedField("c", formula=formula).compute(_number_table())
+        assert isinstance(result, pa.Array)
+        assert result.type == arrow_type
+        assert result.to_pylist() == values
+
+    @pytest.mark.parametrize("formula", ["2", "2 * 3"])
+    def test_formula_without_a_column_is_refused(self, formula):
+        with pytest.raises(ValueError) as caught:
+            ComputedField("c", formula=formula).compute(_number_table())
+        assert str(caught.value) == f"A formula names at least one column: {formula!r}"
+
+
 # endregion
 
 

@@ -194,6 +194,10 @@ class _IdScope:
 
     _scope_kind: ClassVar[str]
     """The kind a message names and a minted id carries: ``group``, ``bundle``."""
+    id: str
+    """The scope's id, given or minted (a field of the subclass)."""
+    _id_minted: bool
+    """Whether the id was minted (a field of the subclass)."""
     _writes_minted_id: ClassVar[bool]
     """Whether a minted id of the kind is written, and so gives way."""
 
@@ -559,13 +563,14 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                     names=[(group.id, group.name)],
                 )
                 return group._keep_manifest(manifest)
+            old_id = group.id
             if group_id is not None:
                 if group_id in content.ids:
                     raise ValueError(
                         f"group id {quote_id(group_id)} is already held by "
                         f"{content.ids[group_id]}"
                     )
-                old_id, group.id = group.id, validate_id(group_id)
+                group.id = validate_id(group_id)
                 group._id_minted = False
             if name is not None:
                 group.name = name
@@ -1422,12 +1427,16 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                     # domain): it gets no column. Any other error is a
                     # defect and propagates.
                     continue
+                number_type = cmap.output_number_type
+                if number_type is None:
+                    # Never taken: a map naming a target unit declares one.
+                    continue
                 columns.append(
                     TimestampColumn(
                         name=cmap.name,
                         values=pa.array(converted),
                         unit=target_unit,
-                        number_type=cmap.output_number_type,
+                        number_type=number_type,
                         metadata={"cmap_id": cmap.id, "source_timeline": timeline_id},
                     )
                 )

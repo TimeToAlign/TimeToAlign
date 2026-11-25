@@ -241,6 +241,21 @@ class TestScoreMidiVelocities:
         }
         assert _notes_loaded(loader) == _notes_in_the_file(path, quantum=10)
 
+    def test_a_fractional_unit_compares_partituras_times_unaltered(
+        self, chopin_perf_path: Path
+    ) -> None:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            loader = ScoreMidiLoader(quantization_unit=2.5).load(chopin_perf_path)
+
+        velocities = loader.events.table.column("velocity").to_pylist()
+        assert (velocities.count(None), len(velocities)) == (288, 451)
+        messages = [str(w.message) for w in caught if w.category is UserWarning]
+        assert len(messages) == 1
+        assert messages[0].startswith(
+            f"288 of 451 notes of '{chopin_perf_path}' are left without a velocity: "
+        )
+
     def test_a_note_that_cannot_be_joined_keeps_an_empty_velocity(
         self, score_midi_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

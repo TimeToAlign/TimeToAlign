@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import mido
+import numpy as np
 import pyarrow as pa
 
 from timetoalign.core.backends import suppressed_backend_warnings
@@ -30,9 +31,31 @@ from .events import MidiEventData, ScoreMidiEventData
 _PARTITURA_NOTE_ID = re.compile(r"(?:P\d+_)?n(\d+)")
 
 
+def _quantized(time: int, unit: int | float) -> int | float:
+    """Quantize a tick time as Partitura's MIDI import does.
+
+    Partitura's ``quantize`` returns an ``int`` for an integer unit and a
+    float otherwise; for a scalar time it never returns an array.
+
+    Args:
+        time: The absolute tick time of a message.
+        unit: The quantization unit.
+
+    Returns:
+        The quantized time, exactly as Partitura computes it.
+
+    Raises:
+        TypeError: If Partitura returns an array for the scalar time.
+    """
+    at = quantize(time, unit)
+    if isinstance(at, np.ndarray):
+        raise TypeError(f"Partitura quantized the tick time {time} to an array")
+    return at
+
+
 def _partitura_note_velocities(
-    mid: mido.MidiFile, quantization_unit: int | None
-) -> list[tuple[int, int, int, int]]:
+    mid: mido.MidiFile, quantization_unit: int | float | None
+) -> list[tuple[int | float, int, int | float, int]]:
     """Read every note of a MIDI file in Partitura's score numbering.
 
     ``partitura.load_score_midi`` pairs note-ons with note-offs but keeps no
@@ -50,16 +73,15 @@ def _partitura_note_velocities(
         ``(onset, pitch, duration, velocity)`` per note, at index ``i`` for
         Partitura's note ``n{i}``.
     """
-    notes: dict[tuple[int, int], list[tuple[int, int, int, int]]] = {}
+    notes: dict[tuple[int, int], list[tuple[int | float, int, int | float, int]]] = {}
     for track_number, track in enumerate(mid.tracks):
         time = 0
-        sounding: dict[tuple[int, int], tuple[int, int]] = {}
+        sounding: dict[tuple[int, int], tuple[int | float, int]] = {}
         for message in track:
             time += message.time
             if message.type not in ("note_on", "note_off"):
                 continue
-            # With an integer unit, Partitura's quantize returns an int.
-            at = int(quantize(time, quantization_unit)) if quantization_unit else time
+            at = _quantized(time, quantization_unit) if quantization_unit else time
             key = (message.channel, message.note)
             if message.type == "note_on" and message.velocity > 0:
                 sounding[key] = (at, message.velocity)
@@ -152,7 +174,7 @@ class ScoreMidiLoader(MidiLoader):
     def _stated_velocities(
         self,
         note_array: Any,
-        stated: list[tuple[int, int, int, int]],
+        stated: list[tuple[int | float, int, int | float, int]],
         source: Path,
     ) -> list[int | None]:
         """Return the velocity the file states for each of Partitura's notes.

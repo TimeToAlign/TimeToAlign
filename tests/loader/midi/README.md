@@ -97,6 +97,16 @@ test itself (`10 * round(tick / 10)` on each message time, Python's `round` ties
 Partitura's does): the loaded `(onset, pitch, duration, velocity)` multiset must equal that one
 exactly, velocities 112 on 98 notes and 127 on 13 as unquantized.
 
+**A fractional unit is quantized as Partitura quantizes it.** Partitura accepts a unit that is not
+an integer and then returns float times (`2.5 * round(tick / 2.5)`, e.g. 12.5), which its note
+array stores as integer divisions. The join compares the file's notes at the times `quantize`
+returns, unaltered: the loader does not make them integral itself, so a note whose quantized onset
+or duration is fractional does not equal Partitura's integer row and keeps an empty velocity, with
+the one warning. Truncating the times to integers in the loader would instead join such notes by a
+rule Partitura does not state. The test loads `vienna_1x22/Chopin_op10_no3_p01.mid` with
+`quantization_unit=2.5` and pins the result: 288 of the 451 velocities are null and exactly one
+`UserWarning` names `288 of 451 notes` (truncation gives 99 of 451).
+
 **A note that cannot be joined is read without a velocity.** The file is valid MIDI and Partitura
 reads it; the join only reproduces Partitura's numbering, which a Partitura release could change.
 Such a change must not make the file unreadable, nor give a note another note's velocity: every

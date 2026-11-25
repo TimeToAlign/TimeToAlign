@@ -617,7 +617,12 @@ class TestDictionaryForm:
                 "a gap of FlowMap 'f': the length of a gap is positive",
             ),
             (
-                {"id": "f", "timeline": "set", "chunks": [], "provenance": [{"x": 1}]},
+                {
+                    "id": "f",
+                    "timeline": "set",
+                    "chunks": [],
+                    "provenance": [{"method": "guessed"}],
+                },
                 "the provenance of FlowMap 'f'",
             ),
         ],

@@ -61,6 +61,7 @@ from timetoalign.core.ids import (
 from timetoalign.core.provenance import Provenance
 from timetoalign.core.time import express_scalar_as, number_from_json, number_to_json
 
+from ..flowcontrol import _read_provenance_entry
 from ..manifest import (
     axis_value_from_json,
     axis_value_to_json,
@@ -167,7 +168,7 @@ class FlowMap(_IdentifiedElement):
         if not isinstance(entries, list):
             raise ValueError(f"the provenance of {what} must be an array")
         try:
-            provenance = tuple(Provenance.from_dict(dict(entry)) for entry in entries)
+            provenance = tuple(_read_provenance_entry(entry) for entry in entries)
         except (TypeError, ValueError) as error:
             raise ValueError(f"the provenance of {what}: {error}") from error
         flow_map = cls(
@@ -222,7 +223,7 @@ class FlowMap(_IdentifiedElement):
                 (
                     entry
                     if isinstance(entry, Provenance)
-                    else Provenance.from_dict(dict(entry))
+                    else _read_provenance_entry(entry)
                 )
                 for entry in entries
             ),

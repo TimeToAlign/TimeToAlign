@@ -1022,6 +1022,23 @@ literals of the format and never from what the writer happens to produce.
   (the repair is not finished); taking the rejection of a Jump back
   (`true` after `false`) while its replacement lies at the coordinate is
   refused, and the registry holds what it held.
+- **Provenance entries as the format admits them.** The format's entry is
+  an open object whose keys are all optional. Three entries that
+  `timetoshare.validate` accepts and that a reader built for the known
+  keys alone would refuse lie on one jump target of a whole manifest: an
+  entry stating nothing (`{}`), an entry with keys the library does not
+  know (one of them null), and a belief with a key it does not know. The
+  manifest is read by `Timeline.from_dict`; the element holds three
+  entries, its known keys read as on any entry (the method, the actor's
+  belief `unlikely`, which does not reject it); written back, the
+  `flow_control` array equals the one read, and the manifest written
+  validates. A belief the editor records afterwards replaces the editor's
+  own in the third entry (the belief replaced goes with its keys) and the
+  other two entries stand as read. What the library knows stays checked:
+  an entry with an unknown key and an invalid method is refused naming the
+  method. The entries of a MatchClaim are untouched by this: the same
+  three entries are refused by `Provenance.from_dict`, which the test
+  asserts beside it.
 - **Score loaders.** The elements a loader writes from the ms3 measures of
   Couperin's `c05n05_musete` (class, ID, coordinate and name of each of the
   nine) are written as the `flow_control` array and read back to an equal
@@ -4742,6 +4759,11 @@ written.
 - **Kept as read.** A virtual timeline that applies a conversion map, or
   states `through`, is no FlowMap applied to its root: it is read, written
   back unchanged and refuses to convert positions.
+- **Provenance entries as the format admits them.** A FlowMap of a whole
+  manifest carrying an empty entry, an entry with keys the library does
+  not know and a belief with such a key is read, holds three entries and
+  is written back with `flow_maps` equal to what was read (the reasoning
+  is in "Flow control" above).
 
 ---
 

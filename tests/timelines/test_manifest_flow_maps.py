@@ -373,3 +373,48 @@ class TestKeptAsRead:
             ValueError, match="not to the FlowMap's own timeline 'score'"
         ):
             score.get_virtual_timeline("second_view").fold(3, score)
+
+
+def test_provenance_entries_the_format_admits_are_kept() -> None:
+    entries = [
+        {},
+        {"method": "manual", "x-tool": "abc", "x-run": None},
+        {
+            "beliefs": [
+                {
+                    "actor": EDITOR,
+                    "belief": "true",
+                    "date": "2026-11-25",
+                    "x-reason": "heard",
+                }
+            ]
+        },
+    ]
+    manifest = {
+        "timetoshare": "0.2.0",
+        "timelines": [
+            {
+                "id": "#score",
+                "unit": "quarters",
+                "length": [12, 1],
+                "regions": [{"id": "#a", "start": [0, 1], "end": [8, 1]}],
+            }
+        ],
+        "flow_maps": [
+            {
+                "id": "#twice",
+                "timeline": "#score",
+                "chunks": ["#a", "#a"],
+                "provenance": entries,
+            }
+        ],
+    }
+    timetoshare.validate(manifest)
+    score = Timeline.from_dict(manifest)
+    nothing, tool, believed = score.get_flow_map("twice").provenance
+    assert (nothing.method, tool.method) == (None, "manual")
+    assert believed.get_belief(EDITOR).belief == "true"
+    written = score.to_dict()
+    timetoshare.validate(written)
+    assert written["flow_maps"] == manifest["flow_maps"]
+    assert Timeline.from_dict(written).to_dict() == written

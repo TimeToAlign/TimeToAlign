@@ -16,10 +16,12 @@ from typing import Any
 import pytest
 import timetoshare
 
+from tests.helpers import filed
 from timetoalign import Ms3Loader
 from timetoalign.core import Coordinate, Duration, FlowManifestation, TimeUnit
 from timetoalign.core.provenance import Belief, Provenance
 from timetoalign.testdata import ensure_data
+from timetoalign.timelines import Timeline
 from timetoalign.timelines.flowcontrol import (
     Barline,
     Break,
@@ -670,6 +672,78 @@ def test_the_array_must_be_an_array() -> None:
         ValueError, match=re.escape("the flow_control must be an array")
     ):
         FlowControlRegistry.from_dict({}, unit="quarters")  # type: ignore[arg-type]
+
+
+OPEN_ENTRIES = [
+    {},
+    {"method": "imported", "x-tool": "abc", "x-run": None},
+    {
+        "beliefs": [
+            {
+                "actor": EDITOR,
+                "belief": "unlikely",
+                "date": "2026-11-25",
+                "x-reason": "a guess",
+            }
+        ]
+    },
+]
+
+
+def test_provenance_entries_the_format_admits_are_kept() -> None:
+    element = {
+        "id": "segno",
+        "role": "jump_target",
+        "coordinate": [8, 1],
+        "provenance": OPEN_ENTRIES,
+    }
+    manifest = filed(_manifest([element]))
+    timetoshare.validate(manifest)
+    for entry in OPEN_ENTRIES:
+        with pytest.raises(ValueError):
+            Provenance.from_dict(copy.deepcopy(entry))
+
+    timeline = Timeline.from_dict(manifest)
+    (target,) = timeline.flow_control.jump_targets
+    nothing, tool, believed = target.provenance
+    assert (nothing.method, nothing.beliefs) == (None, ())
+    assert (tool.method, tool.beliefs) == ("imported", ())
+    assert believed.get_belief(EDITOR).belief == "unlikely"
+    assert not target.is_rejected
+
+    written = timeline.to_dict()
+    timetoshare.validate(written)
+    assert _flow_control_of(written) == _flow_control_of(manifest)
+    assert Timeline.from_dict(written).to_dict() == written
+
+    rejected = timeline.flow_control.with_belief(
+        "segno", EDITOR, "false", date="2026-11-26"
+    )
+    assert rejected.is_rejected
+    assert rejected.to_dict()["provenance"] == [
+        OPEN_ENTRIES[0],
+        OPEN_ENTRIES[1],
+        {"beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-26"}]},
+    ]
+
+
+def test_a_known_key_of_an_open_entry_is_still_checked() -> None:
+    with pytest.raises(ValueError) as refused:
+        _read(
+            [
+                {
+                    "id": "segno",
+                    "role": "jump_target",
+                    "coordinate": [8, 1],
+                    "provenance": [{"method": "guessed", "x-tool": "abc"}],
+                }
+            ]
+        )
+    assert str(refused.value).startswith(
+        "the provenance of jump_target 'segno': 1 validation error for Provenance\n"
+        "method\n  Value error, A method is one of "
+        "['manual', 'reconciled', 'imported', 'inferred'] or an IRI, not 'guessed'"
+    )
 
 
 # endregion

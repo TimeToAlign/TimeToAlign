@@ -51,6 +51,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any, ClassVar, Self
 
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 
 from timetoalign.core import Coordinate, Duration, IdCoordinate, NumberType, TimeUnit
@@ -661,6 +662,85 @@ def _read_provenance(data: Mapping[str, Any], what: str) -> list[Any] | None:
     return entries
 
 
+class _OpenBelief(Belief):
+    """A belief as a manifest states it, with the keys the library does not know."""
+
+    model_config = ConfigDict(frozen=True, extra="allow", title="Belief")
+
+    def to_dict(self) -> dict[str, Any]:
+        """The belief as it was read: an unknown key keeps its value, null too."""
+        return {**super().to_dict(), **_null_extras(self)}
+
+
+class _OpenProvenance(Provenance):
+    """A provenance entry as the format admits it on an element.
+
+    The format's entry is an open object whose keys are all optional: an
+    entry may state nothing (``{}``) and may hold keys the library does not
+    know, as may each of its beliefs. Such an entry is held as read and
+    written back unchanged; the keys the library knows are checked as on
+    every entry. The entries of flow-control elements and FlowMaps are read
+    this way (:func:`_read_provenance_entry`).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow", title="Provenance")
+
+    @field_validator("beliefs", mode="before")
+    @classmethod
+    def _read_null_beliefs(cls, value: Any) -> Any:
+        if value is None:
+            return ()
+        if isinstance(value, str) or not isinstance(value, Iterable):
+            return value
+        return tuple(
+            (
+                _OpenBelief.model_validate(dict(belief))
+                if isinstance(belief, Mapping)
+                else belief
+            )
+            for belief in value
+        )
+
+    @model_validator(mode="after")
+    def _check_stated(self) -> Provenance:
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        """The entry as it was read: an unknown key keeps its value, null too."""
+        data = super().to_dict()
+        beliefs = data.pop("beliefs", None)
+        data.update(_null_extras(self))
+        if beliefs is not None:
+            data["beliefs"] = beliefs
+        return data
+
+
+def _null_extras(model: BaseModel) -> dict[str, None]:
+    """The unknown keys of *model* that hold null, which ``to_dict`` leaves out."""
+    return {
+        key: None for key, value in (model.model_extra or {}).items() if value is None
+    }
+
+
+def _read_provenance_entry(entry: Mapping[str, Any]) -> Provenance:
+    """Read one provenance entry of a flow-control element or a FlowMap.
+
+    An entry holding only keys the library knows, and at least one, is the
+    plain :class:`~timetoalign.core.provenance.Provenance`. An entry that
+    states nothing, or holds a key the library does not know (its own or a
+    belief's), is valid in the format: it is held with those keys and
+    written back unchanged.
+
+    Raises:
+        ValueError: If a key the library knows holds an invalid value.
+    """
+    data = dict(entry)
+    try:
+        return Provenance.from_dict(data)
+    except ValueError:
+        return _OpenProvenance.model_validate(data)
+
+
 def _provenance_entries(value: object, what: str) -> tuple[Provenance, ...] | None:
     """Return the provenance of an element as it holds it: its entries, or None.
 
@@ -683,7 +763,7 @@ def _provenance_entries(value: object, what: str) -> tuple[Provenance, ...] | No
     for entry in value:
         if isinstance(entry, Mapping):
             try:
-                entry = Provenance.from_dict(dict(entry))
+                entry = _read_provenance_entry(entry)
             except ValueError as error:
                 raise ValueError(f"the provenance of {what}: {error}") from error
         if not isinstance(entry, Provenance):

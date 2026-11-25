@@ -261,7 +261,7 @@ class Provenance(BaseModel):
         return () if value is None else value
 
     @model_validator(mode="after")
-    def _check_entry(self) -> Provenance:
+    def _check_actors(self) -> Provenance:
         actors = [actor_iri(belief.actor) for belief in self.beliefs]
         repeated = sorted({actor for actor in actors if actors.count(actor) > 1})
         if repeated:
@@ -269,6 +269,10 @@ class Provenance(BaseModel):
                 f"An actor holds at most one belief; {repeated[0]!r} holds "
                 f"{actors.count(repeated[0])}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_stated(self) -> Provenance:
         if not self.beliefs and all(
             getattr(self, name) is None
             for name in type(self).model_fields

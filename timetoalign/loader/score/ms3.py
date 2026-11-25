@@ -778,14 +778,9 @@ class Ms3Loader(ScoreLoader):
     ) -> Timeline:
         """Create a score timeline carrying the parsed measure structure.
 
-        Known limitation: a score whose measures are **split** — two
-        records sharing one notated downbeat, as when a bar is divided
-        across a repeat sign — has no floating-measure lattice, because
-        the two halves cannot both anchor the same ordinal. The timeline
-        then carries no ``floating_measures`` conversion; every other
-        conversion, and the measure structure itself, is unaffected. No
-        approximate lattice is built in its place, since an fm reading
-        those measures do not support is worse than no fm reading.
+        The timeline carries the C-Maps the tables state (floating measures
+        from the measure table, seconds from tempo markings); no ticks map,
+        since a DCML table states no tick resolution.
         """
         from timetoalign.timelines import ContinuousLogicalTimeline
 

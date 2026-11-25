@@ -10,7 +10,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 | `conftest.py` | Seven specimen definitions, source lookup, size guards, `.flow.csv` parsing, a timeline's flow in the form of that file, and the stress score's repair. |
 | `test_score_parsing_matrix.py` | CSV modes, folded counts, loader/format combinations, exact flow-control profiles, each loader's played default flow against the target, cross-loader counts, and pinned parser differences. |
 | `test_flow_gold.py` | The gold flows played from the ms3 measures tables (see "Gold flows"), and the signs a loader writes as flow control (see "Signs written as flow control"). |
-| `test_loaders.py` | MS3 coordinate and duration semantics, pitch schema, Partitura measure/MIDI regressions, shared `mc_onset`, anacrusis offsets, and parquet round trips. |
+| `test_loaders.py` | MS3 coordinate and duration semantics, pitch schema, Partitura measure/MIDI regressions, shared `mc_onset`, anacrusis offsets, ticks only at a named resolution (see "Ticks only at a stated resolution" below), and parquet round trips. |
 | `test_cross_validation.py` | Exact Chopin note-count, MIDI-pitch and pitch-name agreement across MS3, Partitura, and Music21; measure onsets only where the source states them (see "Cross-loader parity" below). |
 | `test_measuremap_loader.py` | MeasureMap expansion, validation, schema, and comparison with MS3. |
 | `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, and live Partitura boundaries. |
@@ -276,6 +276,27 @@ write is a defect of one of them.
 The 498-note Chopin gold value is asserted once per loader in
 `TestNoteCountConsistency.test_note_counts_exact_match`. The same module requires exact MIDI
 pitch equality and checks both `EnharmonicPitch` and `MidiPitch` views for all 498 events.
+
+## Ticks only at a stated resolution
+
+A score counts in quarters and states no tick resolution: a DCML measures table, a MusicXML
+file (whose `divisions` may change inside the file) and a measure map name none. A ticks
+C-Map on a score timeline would therefore be a number the loader made up, and a reader could
+not tell it from one the source stated. `TestTicksResolution` in `test_loaders.py` proves
+both sides:
+
+- **No ticks unless asked.** `Ms3Loader.from_file(WoO71.measures.tsv).create_timeline()` (the
+  measures-only branch) and `PartituraLoader` on the Chopin MusicXML through
+  `store.create_timeline()` (the store's branch) both answer `None` to
+  `get_conversion_map(TimeUnit.ticks)`, the unit registry every attached map with a target
+  unit is entered in, so no map of any class targeting ticks is attached. An empty
+  `ScoreStore`'s `get_cmaps()` is exactly `{}`: no map is derived from nothing.
+- **A named resolution is honoured exactly.** `store.create_timeline(ppq=960)` attaches one
+  map targeting ticks, of class `ScalarMap`, `scalar == 960`, source unit `quarters`, target
+  unit `ticks`; it sends `2` quarters to `1920` and `1/3` quarter to `320`, both of type `int`
+  (an exact third of a quarter at 960 PPQ is a whole tick, so a float or a Fraction here
+  would show the map is not the exact scalar). `ScoreStore.empty().get_cmaps(ppq=960)` holds
+  exactly the key `"ticks"`.
 
 ## MS3 facet discovery
 

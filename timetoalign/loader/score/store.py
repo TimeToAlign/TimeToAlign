@@ -51,7 +51,8 @@ class ScoreStore(EventStore):
         measures: MeasureData with measure boundaries.
         controls: ControlEventData with dynamics, tempo, etc.
         annotations: AnnotationEventData with text annotations.
-        metadata: Source metadata (format, parser, has_rests, divs_per_quarter).
+        metadata: Source metadata (format, parser, source, has_rests,
+            anacrusis_offset).
     """
 
     notes: NoteEventData
@@ -218,13 +219,14 @@ class ScoreStore(EventStore):
         include_stores: list[str] | None = None,
         exclude_stores: list[str] | None = None,
         flatten: bool = False,
-        ppq: int = 480,
+        ppq: int | None = None,
         attach_cmaps: bool = True,
     ) -> "Timeline":
         """Create a Timeline from this ScoreStore.
 
-        Overrides base class to automatically attach conversion maps (C-Maps)
-        and anacrusis ShiftMap when applicable.
+        Overrides base class to automatically attach the conversion maps
+        (C-Maps) of :meth:`get_cmaps` and the anacrusis ShiftMap when
+        applicable.
 
         Args:
             uid: Unique ID for the parent timeline. Auto-generated if None.
@@ -233,9 +235,13 @@ class ScoreStore(EventStore):
             include_stores: Only include these data (default: all non-empty).
             exclude_stores: Exclude these data from the timeline.
             flatten: If True, merge all events into a single parent timeline.
-            ppq: Pulses per quarter note for the ticks C-Map. Defaults to 480.
-            attach_cmaps: If True (default), attach C-Maps for ticks and
-                seconds conversions, plus a ShiftMap for anacrusis offset.
+            ppq: Pulses per quarter note. Given, a quarters → ticks C-Map at
+                this resolution is attached; ``None`` (default) attaches none,
+                because a score states no tick resolution.
+            attach_cmaps: If True (default), attach the C-Maps of
+                :meth:`get_cmaps` (seconds from tempo markings, floating
+                measures from the measure table, ticks when ``ppq`` is
+                given), plus a ShiftMap for the anacrusis offset.
 
         Returns:
             A Timeline with attached C-Maps.
@@ -252,7 +258,6 @@ class ScoreStore(EventStore):
         )
 
         if attach_cmaps:
-            # Attach standard C-Maps (quarters -> ticks, quarters -> seconds)
             cmaps = self.get_cmaps(ppq=ppq)
             for cmap in cmaps.values():
                 timeline.add_conversion_map(cmap)
@@ -273,33 +278,37 @@ class ScoreStore(EventStore):
 
         return timeline
 
-    def get_cmaps(self, ppq: int = 480) -> dict[str, ConversionMap]:
-        """Get ConversionMaps derivable from score bundle metadata.
+    def get_cmaps(self, ppq: int | None = None) -> dict[str, ConversionMap]:
+        """Get the ConversionMaps the score's data states.
 
-        Returns C-Maps based on available metadata:
-        - "ticks": quarters -> ticks (using provided PPQ)
+        Returns C-Maps based on what the source states:
         - "seconds": quarters -> seconds (if tempo markings available)
-        - "measures": quarters -> measures (if measure data available)
+        - "measures": quarters -> floating measures (if measure data available)
+        - "ticks": quarters -> ticks, only when ``ppq`` is passed
 
-        Known limitation: a score whose measures are **split** — two
-        records sharing one notated downbeat, as when a bar is divided
-        across a repeat sign — has no floating-measure lattice, because
-        the two halves cannot both anchor the same ordinal. The
-        ``"measures"`` entry is then simply absent; no approximate
-        lattice is built in its place, since an fm reading those measures
-        do not support is worse than no fm reading.
+        A score states no tick resolution: a DCML measures table, a
+        MusicXML, MEI or kern file and a measure map count in quarters, and
+        MusicXML's ``divisions`` may change inside one file. No ticks map is
+        therefore derived from the score; a caller who wants ticks names the
+        resolution.
 
         Args:
-            ppq: Pulses per quarter note for ticks conversion. Defaults to 480.
+            ppq: Pulses per quarter note. Given, the result holds a
+                quarters -> ticks ``ScalarMap`` at this resolution; ``None``
+                (default) adds none.
 
         Returns:
             Dict mapping target unit name to ConversionMap.
 
         Examples:
             >>> bundle = score_loader.load("score.musicxml")
-            >>> cmaps = bundle.get_cmaps(ppq=480)
-            >>> ticks_map = cmaps["ticks"]
-            >>> ticks = ticks_map(2.0)  # 960 ticks at 480 PPQ
+            >>> cmaps = bundle.get_cmaps()
+            >>> "ticks" in cmaps
+            False
+            >>> ticks_map = bundle.get_cmaps(ppq=960)["ticks"]
+            >>> ticks_map(2)  # two quarters at 960 PPQ
+            1920
+
             >>> # Get measure position
             >>> measure_map = cmaps["measures"]
             >>> measure_map(4.0)  # e.g., 2.0 (start of measure 2)
@@ -310,12 +319,13 @@ class ScoreStore(EventStore):
 
         cmaps: dict[str, ConversionMap] = {}
 
-        # Always available: quarters -> ticks
-        cmaps["ticks"] = ScalarMap(
-            scalar=ppq,
-            source_unit="quarters",
-            target_unit="ticks",
-        )
+        # Ticks only at a resolution the caller names: a score states none.
+        if ppq is not None:
+            cmaps["ticks"] = ScalarMap(
+                scalar=ppq,
+                source_unit="quarters",
+                target_unit="ticks",
+            )
 
         # Check for tempo markings to build quarters -> seconds map
         tempo_events = self._extract_tempo_markings()

@@ -9,10 +9,12 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
+from timetoalign.core import TimeUnit
 from timetoalign.loader.score.ms3 import Ms3Loader
 from timetoalign.loader.score.music21 import Music21Loader
 from timetoalign.loader.score.partitura import PartituraLoader
 from timetoalign.loader.score.store import ScoreStore
+from timetoalign.maps import ScalarMap
 from timetoalign.testdata import ensure_data
 
 DATA_DIR = ensure_data("vienna_1x22")
@@ -567,6 +569,41 @@ class TestAnacrusisOffset:
 
 
 # region Parquet Serialization Tests
+
+
+class TestTicksResolution:
+    """A score states no tick resolution; a ticks C-Map comes only from ``ppq``."""
+
+    def test_ms3_measures_table_has_no_ticks_map(self):
+        """A DCML measures table counts in quarters and names no PPQ."""
+        timeline = Ms3Loader.from_file(WOO71_MEASURES).create_timeline()
+        assert timeline.get_conversion_map(TimeUnit.ticks) is None
+
+    def test_partitura_musicxml_has_no_ticks_map(self, chopin_xml):
+        """A MusicXML file's divisions are no ticks axis: the store adds none."""
+        loader = PartituraLoader()
+        loader.load(chopin_xml)
+        timeline = loader.store.create_timeline()
+        assert timeline.get_conversion_map(TimeUnit.ticks) is None
+
+    def test_empty_store_derives_no_map(self):
+        """Nothing is derived from an empty store, ticks included."""
+        assert ScoreStore.empty().get_cmaps() == {}
+        assert list(ScoreStore.empty().get_cmaps(ppq=960)) == ["ticks"]
+
+    def test_named_resolution_is_exact(self):
+        """``ppq=960`` attaches exactly the quarters -> ticks scalar 960."""
+        store = Ms3Loader.from_file(WOO71_MEASURES).store
+        ticks = store.create_timeline(ppq=960).get_conversion_map(TimeUnit.ticks)
+        assert type(ticks) is ScalarMap
+        assert (ticks.scalar, ticks.source_unit, ticks.target_unit) == (
+            960,
+            TimeUnit.quarters,
+            TimeUnit.ticks,
+        )
+        two_quarters, a_third = ticks(2), ticks(Fraction(1, 3))
+        assert (two_quarters, a_third) == (1920, 320)
+        assert type(two_quarters) is int and type(a_third) is int
 
 
 class TestScoreStoreParquet:

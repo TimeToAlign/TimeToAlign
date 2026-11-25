@@ -341,7 +341,7 @@ class MetricMap(ConversionMap[int]):
         )
 
     def _measure_map_id(
-        self, entries: MeasureMapIds, writer: ConversionMap[Any]
+        self, entries: MeasureMapIds, writer: ConversionMap[Any, Any]
     ) -> str:
         """Return the id of the measure map whose measures this map describes.
 

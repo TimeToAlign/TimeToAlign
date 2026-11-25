@@ -26,7 +26,7 @@ from numpy.typing import NDArray
 
 from ..core.enums import TimeUnit
 from ..core.time import CoordinateValue
-from .base import ConversionMap, MeasureMapIds
+from .base import A, ConversionMap, MeasureMapIds
 from .interval import QuartersToFloatingMeasures
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ def _named_measure_map(
     return measure_maps[measure_map_id]
 
 
-class _MeasureView(ConversionMap[Any]):
+class _MeasureView(ConversionMap[Any, A]):
     """A map reading the measure of a measure map that holds a position.
 
     Subclasses answer something of that measure; none is invertible.
@@ -255,7 +255,7 @@ class MeasureNumberMap(_MeasureView):
 # region MeasureBeatMap
 
 
-class MeasureBeatMap(_MeasureView):
+class MeasureBeatMap(_MeasureView[dict[str, NDArray[Any]]]):
     """Map quarters to ``{"number": <measure number>, "beat": <beat>}``.
 
     The beat counts quarters from the measure's ``qstamp``, the first beat

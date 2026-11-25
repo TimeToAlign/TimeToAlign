@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
 
-class CombinationMap(ConversionMap[dict[str, Any]]):
+class CombinationMap(ConversionMap[dict[str, Any], dict[str, NDArray[Any]]]):
     """Map that combines multiple C-Maps to yield dict outputs.
 
     A CombinationMap applies multiple C-Maps to the same input coordinate

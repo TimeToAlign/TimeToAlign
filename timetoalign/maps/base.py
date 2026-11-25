@@ -18,7 +18,6 @@ from typing import (
     Generic,
     NamedTuple,
     Protocol,
-    TypeVar,
     Union,
     overload,
 )
@@ -26,6 +25,7 @@ from typing import (
 import numpy as np
 import timetoshare
 from numpy.typing import NDArray
+from typing_extensions import TypeVar
 
 from ..core.enums import NumberType, TimeUnit
 from ..core.ids import _OpenObject, _plan_admissions, mint_id, quote_id, validate_id
@@ -38,6 +38,10 @@ module_logger = logging.getLogger(__name__)
 
 # Type variable for the output type of a map
 T = TypeVar("T")
+
+# Type variable for the output of the array lane: an array, unless a map
+# answers several outputs at once (a dict of arrays, one per output name)
+A = TypeVar("A", default=NDArray[Any])
 
 # Input types that maps can accept
 MapInput = Union[CoordinateValue, Coordinate, NDArray[np.floating[Any]]]
@@ -176,7 +180,7 @@ class OutputNumberTypeError(ValueError):
 # region ConversionMap
 
 
-class ConversionMap(_OpenObject, ABC, Generic[T]):
+class ConversionMap(_OpenObject, ABC, Generic[T, A]):
     """Abstract base class for coordinate conversion maps.
 
     A ConversionMap transforms coordinates from one representation to another.
@@ -229,7 +233,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     _manifest_type: ClassVar[str | None] = None
 
     # The classes reading each manifest type, filled as they are defined.
-    _registry: ClassVar[dict[str, type["ConversionMap[Any]"]]] = {}
+    _registry: ClassVar[dict[str, type["ConversionMap[Any, Any]"]]] = {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Register a class that declares its own manifest type."""
@@ -563,7 +567,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # region Conversion methods
 
     @overload
-    def __call__(self, value: NDArray[Any], **kwargs: Any) -> NDArray[Any]: ...
+    def __call__(self, value: NDArray[Any], **kwargs: Any) -> A: ...
 
     @overload
     def __call__(self, value: CoordinateValue | Coordinate, **kwargs: Any) -> T: ...
@@ -572,7 +576,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         self,
         value: MapInput,
         **kwargs: Any,
-    ) -> T | NDArray[Any]:
+    ) -> T | A:
         """Convert a value or array of values.
 
         This is the primary interface for using a map.
@@ -683,7 +687,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         """
         ...
 
-    def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
+    def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> A:
         """Convert an array of values.
 
         Default implementation uses vectorized scalar conversion.
@@ -700,7 +704,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         vec_convert = np.vectorize(lambda x: self._convert_scalar(x, **kwargs))
         return vec_convert(values)
 
-    def convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
+    def convert_array(self, values: NDArray[Any], **kwargs: Any) -> A:
         """Convert an array of values.
 
         This is the public API for array conversion, used by the timestamp
@@ -775,7 +779,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
     # region Composition
 
-    def then(self, other: ConversionMap[Any]) -> ConversionMap[Any]:
+    def then(self: ConversionMap[Any], other: ConversionMap[Any]) -> ConversionMap[Any]:
         """Compose this map with another (this first, then other).
 
         Args:
@@ -789,15 +793,17 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
         return ChainMap([self, other])
 
-    def __rshift__(self, other: ConversionMap[Any]) -> ConversionMap[Any]:
+    def __rshift__(
+        self: ConversionMap[Any], other: ConversionMap[Any]
+    ) -> ConversionMap[Any]:
         """Compose maps using >> operator (self >> other)."""
         return self.then(other)
 
-    def _nested_maps(self) -> Sequence[ConversionMap[Any]]:
+    def _nested_maps(self) -> Sequence[ConversionMap[Any, Any]]:
         """The maps this map's TimeToShare form nests, in the order written."""
         return ()
 
-    def _map_tree(self) -> Iterator[ConversionMap[Any]]:
+    def _map_tree(self) -> Iterator[ConversionMap[Any, Any]]:
         """Yield this map, then every map nested in it at any depth, as written."""
         yield self
         for nested in self._nested_maps():
@@ -832,7 +838,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             for cmap in self._map_tree()
         ]
 
-    def _unique_map_tree(self, owner: str = "") -> list[ConversionMap[Any]]:
+    def _unique_map_tree(self, owner: str = "") -> list[ConversionMap[Any, Any]]:
         """Return :meth:`_map_tree` as a list, refusing a map held twice in it.
 
         Args:
@@ -956,7 +962,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         data: dict[str, Any],
         *,
         measure_maps: Mapping[str, Any] | None = None,
-    ) -> ConversionMap[Any]:
+    ) -> ConversionMap[Any, Any]:
         """Read a map from its TimeToShare form.
 
         Dispatches on ``data["type"]``, one of the format's ten map types,
@@ -1024,7 +1030,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     @classmethod
     def _from_manifest(
         cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
-    ) -> ConversionMap[Any]:
+    ) -> ConversionMap[Any, Any]:
         """Build this manifest type's map from its form."""
         raise NotImplementedError(f"{cls.__name__} is read as no manifest type")
 
@@ -1133,7 +1139,7 @@ _STATELESS = frozenset({"_logger", "_inverse", "_id_minted"})
 """Attributes that take no part in a map's equality."""
 
 
-def _state(cmap: ConversionMap[Any]) -> dict[str, Any]:
+def _state(cmap: ConversionMap[Any, Any]) -> dict[str, Any]:
     """The attributes of *cmap* its equality compares, unknown keys included."""
     state = {key: value for key, value in vars(cmap).items() if key not in _STATELESS}
     state["_unknown_keys"] = dict(cmap._unknown_keys)

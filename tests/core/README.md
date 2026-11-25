@@ -2834,6 +2834,13 @@ helper's annotation is false and its test fails.
   error on which the caller keeps the numbers as objects instead. This
   proves the stated array for each mix a caller passes, and that the
   refusal the caller relies on is unchanged.
+- **Struct rows.** `to_pylist` on a struct array, as the MatchClaim table
+  writes its rows to a dict: three rows, the second null and the third
+  with a null member, give a Python `list` of a `dict`, `None` and a
+  `dict` holding `None` for that member; the same array sliced from its
+  second row gives the last two; a struct array without rows gives an
+  empty `list`. This proves one `dict` per valid row and `None` per null
+  row, with the slice offset applied.
 - **Dictionary chunked array.** Two dictionary chunks and zero chunks: a
   `pa.ChunkedArray` of the given dictionary type, its chunk count and values
   as given.

@@ -790,6 +790,22 @@ def _inferred_array(values: Sequence[object]) -> pa.Array[Any]:
     return cast("Callable[[Sequence[object]], pa.Array[Any]]", pa.array)(values)
 
 
+def _struct_rows(array: pa.StructArray) -> list[dict[str, Any] | None]:
+    """``array.to_pylist()``.
+
+    Made as ``pa.Array.to_pylist(array)``, the method ``pa.StructArray``
+    inherits. pyarrow-stubs 20.0 declares ``Array.to_pylist`` with a self
+    type that admits arrays of basic types only, so it cannot be called on
+    a ``pa.StructArray``; PyArrow returns a list with one ``dict`` per valid
+    row and ``None`` per null row. Remove once pyarrow-stubs declares
+    ``StructArray.to_pylist``; call ``array.to_pylist()`` directly then.
+    """
+    return cast(
+        "Callable[[pa.StructArray], list[dict[str, Any] | None]]",
+        pa.Array.to_pylist,
+    )(array)
+
+
 def _joined_strings(
     left: pa.Array[Any], right: pa.Array[Any], separator: str
 ) -> pa.StringArray:

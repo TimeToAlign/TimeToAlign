@@ -28,6 +28,7 @@ from timetoalign.core.fields import (
     _struct_child,
     _struct_member,
     _struct_members,
+    _struct_rows,
     _valid_struct_cell,
 )
 from timetoalign.core.time import RATIONAL_STRUCT_TYPE
@@ -166,6 +167,18 @@ def test_inferred_array_of_numbers_is_typed_by_inference() -> None:
 def test_inferred_array_refuses_a_fraction() -> None:
     with pytest.raises(pa.ArrowInvalid):
         _inferred_array([Fraction(1, 2), 1])
+
+
+def test_struct_rows_are_dicts_and_none() -> None:
+    array = pa.array([{"a": 1, "b": "x"}, None, {"a": None, "b": "z"}], type=PAIR)
+    result = _struct_rows(array)
+    assert type(result) is list
+    assert result == [{"a": 1, "b": "x"}, None, {"a": None, "b": "z"}]
+    assert [type(row) for row in result] == [dict, type(None), dict]
+    assert _struct_rows(array[1:]) == [None, {"a": None, "b": "z"}]
+    empty = _struct_rows(pa.array([], type=PAIR))
+    assert type(empty) is list
+    assert empty == []
 
 
 def test_dictionary_chunked_array_is_a_chunked_array_of_the_type() -> None:

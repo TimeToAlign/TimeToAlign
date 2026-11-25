@@ -4469,9 +4469,10 @@ def _recorded_names(
             names.take(rows).to_pylist(),
             strict=True,
         ):
-            # The mask keeps the rows naming a wanted event with a name, and
-            # every row of a MatchClaim table names its two timelines.
-            assert timeline_id is not None and event_id is not None and name is not None
+            # The mask keeps the rows naming a wanted event with a name; a row
+            # without a timeline ID names no wanted key.
+            if timeline_id is None or event_id is None or name is None:
+                continue
             found.append((row, side, (timeline_id, event_id), name))
     recorded: dict[tuple[str, str], str] = {}
     for _, _, key, name in sorted(found):

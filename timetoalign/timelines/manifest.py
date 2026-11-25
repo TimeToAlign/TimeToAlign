@@ -76,7 +76,7 @@ from timetoshare.serialization import Serialization
 from timetoshare.tables import TableError, projection_problems
 
 from timetoalign.core import Coordinate, Event, NumberType, Projection, TimeUnit
-from timetoalign.core.fields import derive_arrow_schema
+from timetoalign.core.fields import _null_column, derive_arrow_schema
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
@@ -684,7 +684,7 @@ def _packaged(
     if isinstance(array, pa.ChunkedArray):
         array = array.combine_chunks()
     if array is None or pa.types.is_null(array.type):
-        return pa.nulls(len(types), type_)
+        return _null_column(len(types), type_)
     if type_ == PACKAGE_NUMBER_TYPE:
         stored = build_number_struct_array(array, number_type=number_type)
         return package_numbers(stored, pc.if_else(stored.is_valid(), types, None))

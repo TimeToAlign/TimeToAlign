@@ -347,12 +347,12 @@ class ChildrenMixin(_Host):
         """Rewrite a child's ``Segment`` row in place from its current length."""
         events = self._events
         table = events.table
-        is_row = pc.fill_null(
+        is_row = _filled(
             pc.and_kleene(
                 pc.equal(table.column("event_type"), pa.scalar(SEGMENT_EVENT_TYPE)),
                 pc.equal(table.column("id"), pa.scalar(child_id)),
             ),
-            False,
+            pa.scalar(False),
         )
         position = pc.indices_nonzero(is_row)[0].as_py()
         row = type(events).from_dicts(

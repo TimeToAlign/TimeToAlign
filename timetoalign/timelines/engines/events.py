@@ -28,6 +28,7 @@ from timetoalign.core import (
 from timetoalign.core.fields import (
     _filled,
     _if_else,
+    _null_column,
     _struct_array,
     _struct_members,
     _valid_struct_cell,
@@ -185,11 +186,14 @@ def _projection_keys(table: pa.Table) -> pa.Table:
                 )
                 return [
                     pc.is_valid(data),
-                    *(flat.get(key, pa.nulls(n, kind)) for key, kind in fields.items()),
+                    *(
+                        flat.get(key, _null_column(n, kind))
+                        for key, kind in fields.items()
+                    ),
                 ]
         return [
             pa.array([False] * n, pa.bool_()),
-            *(pa.nulls(n, kind) for kind in fields.values()),
+            *(_null_column(n, kind) for kind in fields.values()),
         ]
 
     number = {"value": pa.float64(), "numerator": pa.int64(), "denominator": pa.int64()}
@@ -207,7 +211,9 @@ def _projection_keys(table: pa.Table) -> pa.Table:
     present, *parts = struct("projection_of", reference)
     columns["projection_of_present"] = present
     for key, part in zip(reference, parts, strict=True):
-        columns[f"projection_of_{key}"] = pc.fill_null(pc.cast(part, pa.string()), "")
+        columns[f"projection_of_{key}"] = _filled(
+            pc.cast(part, pa.string()), pa.scalar("")
+        )
     return pa.table(columns)
 
 

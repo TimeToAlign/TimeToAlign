@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import music21 as m21
+from music21.meter.base import TimeSignature
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.time import (
@@ -57,10 +58,10 @@ class Music21Loader(ScoreLoader):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._anacrusis_offset = Fraction(0)
+        self._anacrusis_offset: Fraction | float = Fraction(0)
 
     @property
-    def anacrusis_offset(self) -> Fraction:
+    def anacrusis_offset(self) -> Fraction | float:
         """Quarter-beat shift applied to normalise anacrusis coordinates.
 
         Equal to ``-min(raw_onset)`` across all notes in the most recently
@@ -280,7 +281,7 @@ class Music21Loader(ScoreLoader):
                         m21.dynamics.Dynamic,
                         m21.tempo.TempoIndication,
                         m21.key.KeySignature,
-                        m21.meter.TimeSignature,
+                        TimeSignature,
                     ),
                 ):
                     control_rows.append(

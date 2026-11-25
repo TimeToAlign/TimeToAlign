@@ -227,6 +227,13 @@ class MatchFileContext:
             score_beat_column: Column in *score_df* with beat number.
             score_offset_column: Column in *score_df* with beat offset.
 
+        Known limitation: the note ids come from the frames' index labels.
+        A string label is the id itself; an integer label ``i`` gives
+        ``n{i + 1}`` for a score note and ``n{i}`` for a performance note.
+        Other labels are not checked: a float label gives an id such as
+        ``n1.5``, and a tuple label (a ``MultiIndex``) of *score_df* raises
+        ``TypeError``.
+
         Returns:
             A populated :class:`MatchFileContext`.
         """

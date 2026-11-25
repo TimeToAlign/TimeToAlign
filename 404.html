@@ -10,7 +10,7 @@
   if (path.indexOf(base) !== 0) { return; }
   var rest = path.slice(base.length);
   var former = "page/_site/";
-  if (rest.indexOf(former) === 0) {
+  if (former && rest.indexOf(former) === 0) {
     rest = rest.slice(former.length);
   } else if (/^(dev|stable|\d+\.\d+\.\d+)(\/|$)/.test(rest)) {
     return;

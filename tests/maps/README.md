@@ -707,10 +707,11 @@ decimals. Two properties decide every gold value here:
 
 1. **The fractional part is anchored on the NOMINAL bar.** An incomplete bar's
    content sits where it is *notated*, not flush against its sounding start.
-   The lattice therefore puts one knot per measure record at that bar's
-   **virtual nominal downbeat** — sounding start minus the offset at which its
-   content sits — and interpolates linearly between knots, so the slope inside
-   a bar is exactly `1 / nominal_length`.
+   The lattice therefore puts one knot per floating measure at its first
+   record's **virtual nominal downbeat** — sounding start minus the offset at
+   which its content sits — and interpolates linearly between knots, so the
+   slope inside a bar that fills its nominal length is exactly
+   `1 / nominal_length`.
 2. **Emission truncates, never rounds.**
 
 **The specimen that separates truncation from rounding.** The Wagner Ring
@@ -729,14 +730,117 @@ the rule is `floor(value x 1000) / 1000`, and the same rule seen from the right
 is what produces the `.999` an interval end shows. A rounding implementation
 fails this one assertion and nothing else, which is exactly why it is pinned.
 
-**The ordinal rule.** Ordinals count measure *records*, never printed labels.
-The first record is `0` when it is an anacrusis (its content is offset and it is
-shorter than its nominal bar) and `1` otherwise; every following record adds
-one. Counting runs monotonically through voltas — Beethoven's WoO 71 has three
-consecutive bars all printed `237` (mc 260, 261, 262: first ending, second
-ending, and the bar after) and they get three consecutive ordinals — and never
-resets. Deriving the ordinal from the label instead would give all three the
-same fm, collapsing four quarters of music onto one point.
+**One measure number, one floating measure.** A floating measure is a
+**compound measure**: a maximal run of consecutive measure records that share
+one `number`, each continuing into the next — its `next` names the record that
+follows it. A record on its own is a compound of one. This is what floating
+measures are for: a source that represents one notated bar in several records
+(a bar divided by a repeat sign, a metre change or a cadenza inside it) still
+reads as that one bar. The compound places ONE knot, at its first record's
+nominal downbeat; its continuation records place none, so inside a compound
+the reading spreads linearly over the compound's whole extent, from its knot to
+the next compound's. Records left by a jump never join, so alternative endings
+stay apart; a record without a number joins none. A `next` that is not stated
+is the Measure Map standard's default, the following record, so a pair under
+volta brackets states the jump back, as a source of voltas does.
+
+**The ordinal rule.** Ordinals count compound measures, never printed labels.
+The first is `0` when it is an anacrusis (its first record's content is offset
+and its records together are shorter than its nominal bar) and `1` otherwise;
+every following compound adds one. Counting runs monotonically through voltas
+and never resets. Deriving the ordinal from the label instead would give a
+first and a second ending the same fm, collapsing their music onto one point.
+
+**The refusal that remains.** Knots must increase. After joining, two knots can
+still coincide or go backwards only where records of *different* numbers share
+a nominal downbeat, or records of one number do not continue into each other;
+such a measure map has no lattice and the map raises, naming the two floating
+measures. No approximate lattice is built in its place.
+
+**The specimens of the compound rule** are hand-derived below; every one of them
+raised before records joined, because a continuation record's nominal downbeat
+equals (or precedes) its first record's.
+
+*A split bar after an anacrusis* — the opening of the second movement of
+Beethoven's Op. 106 up to bar 47, written as the movement's own compressed
+rows: count 1 is the anacrusis (`number 0`, 3/4, `qstamp 0`, `actual 1`,
+`offset 2`); counts 2–46 are default successors, numbers 1–45, three quarters
+each, so count 47 starts at `1 + 45 x 3 = 136`; counts 47 and 48 are both
+`number 46` (`actual 2`, then `actual 1` at offset 2, `qstamp 138`), and 47's
+`next` names 48; count 49 is bar 47 (`qstamp 139`, three quarters).
+Ordinals, counted from the start: count 1 is an anacrusis (offset 2 > 0,
+actual 1 < nominal 3), ordinal `0`; counts 2–46 are one compound each,
+ordinals 1–45; counts 47 + 48 are one compound, ordinal `46`, knot at
+`136 - 0 = 136` (count 48 would have put a second knot at `138 - 2 = 136`);
+count 49 is ordinal `47`, knot `139`; the closing knot `142` carries `48`.
+The slope inside bar 46 is `1/3`, as in any regular 3/4 bar:
+
+| quarter | derivation | fm |
+|---|---|---|
+| `0` | `0 + (0 + 2)/3` | `0.666` |
+| `136` | knot | `46.0` |
+| `137` | `46 + 1/3` | `46.333` |
+| `138` | `46 + 2/3` (count 48's sounding start) | `46.666` |
+| `139` | knot | `47.0` |
+
+*A three-part compound longer than its nominal bar* — the opening of the
+fourth movement of Op. 106, rows 1–6, 4/4 throughout: bar 1 is counts 1
+(`actual 23/4`) and 2 (`actual 3`, at `23/4`, offset 0), so it spans
+`35/4` quarters; bar 2 is counts 3 (`actual 17/8`, at `35/4`), 4 (`actual 15/8`,
+offset `17/8`, at `87/8`, nominal downbeat `87/8 - 17/8 = 35/4`) and 5
+(`actual 6`, at `51/4`), ten quarters in all; count 6 is bar 3 at `75/4`, and
+the closing knot lies at `91/4`. Count 1 starts at offset 0, so ordinal `1`;
+knots `0 → 1`, `35/4 → 2`, `75/4 → 3`, `91/4 → 4`:
+
+| quarter | derivation | fm |
+|---|---|---|
+| `0` | knot | `1.0` |
+| `23/4` | `1 + (23/4)/(35/4) = 1 + 23/35 = 1.6571…` | `1.657` |
+| `35/4` | knot | `2.0` |
+| `87/8` | `2 + (17/8)/10 = 2 + 17/80 = 2.2125` | `2.212` |
+| `51/4` | `2 + 4/10` | `2.4` |
+| `75/4` | knot | `3.0` |
+
+The inverse runs over the same knots: `2.0 → 35/4 = 8.75`,
+`2.5 → 35/4 + 10/2 = 13.75`, `3.0 → 75/4 = 18.75`. Both call shapes read the
+split bar of the second movement alike (`136, 137, 138, 139 → 46.0, 46.333,
+46.666, 47.0`).
+
+*A volta pair* — fourteen 4/4 bars, then `15a` (`number 15`, volta 1, end
+repeat, `next` back to bar 1) and `15b` (`number 15`, volta 2). `15a`'s `next`
+does not name `15b`, so they are two floating measures, `15.0` at quarter 56 and
+`16.0` at quarter 60. The same two records with the default `next` (one played
+after the other) are one compound: quarter 60 then reads
+`15 + 4/8 = 15.5`, and the closing knot at 64 carries `16`.
+
+*Refusals* — `5` (`actual 1/2` of a 2/4 bar) followed by `6` at offset `1/2`:
+both nominal downbeats are `0`, the numbers differ, so the knots coincide and
+the map raises. The same pair numbered `5` and `5` but with the first's `next`
+naming another record raises too; so does a pair without numbers.
+
+**A real score: WoO 71.** Beethoven's WoO 71 (`WoO71.measures.tsv`) divides
+bars at repeat signs throughout. Its rows, in DCML columns (`act_dur` and
+`mc_offset` in whole notes, so times four in quarters):
+
+- mc 1 is the anacrusis (`mn 0`, 2/4, `act_dur 1/4`, `mc_offset 1/4`):
+  ordinal `0`. mc 2–10 are `mn 1`–`9`, two quarters each, ordinals 1–9;
+  so mc 11 starts at `1 + 9 x 2 = 19`.
+- mc 11 and 12 are both `mn 10` (`act_dur 1/4` each, mc 12 at `mc_offset 1/4`,
+  i.e. at `20` with offset 1): one compound, ordinal `10`, knot `19`; bar 11
+  (mc 13) at `21`. **`fm(20) = 10 + 1/2 = 10.5`.**
+- mc 42 (`mn 38`, `act_dur 1/4`, at `75`, `next 33, 43`: the end of a
+  repeat) and mc 43 (`mn 38`, `act_dur 1/8`, `mc_offset 3/8`, at `76`): mc 43's
+  nominal downbeat `76 - 3/2 = 149/2` lies *before* mc 42's, which raised
+  before; joined, the compound has ordinal `38` (mn 0–37 are one compound
+  each) and its knot at `75`; mc 44 starts at `75 + 1 + 1/2 = 153/2`.
+  **`fm(76) = 38 + 1/(3/2) = 38 + 2/3 → 38.666`.**
+- mc 260 (`mn 237`, volta 1, `next 252`) and mc 261 (`mn 237`, volta 2) do not
+  join, and are ordinals `237` and `238` at the loaded map's qstamps `945/2`
+  and `949/2`; mc 262 (`mn 237` again, the 6/8 rest of the second ending,
+  `next` of 261 names it) joins mc 261.
+
+The score's 397 measure records form 373 floating measures, ordinals 0–372, and
+the closing knot carries `373`.
 
 **The eroica pickup** is the second anacrusis shape: a 1/8 pickup in 2/4
 (`nominal_length = 2`, `actual_length = 1/2`, `nominal_offset = 3/2`). Its
@@ -772,25 +876,13 @@ structure its measure rows describe — the measure map those rows build — nev
 from the printed labels in them. The Wagner *Walküre* file loaded through
 `create_timeline()` therefore reads `fm(0) == 0.888`, the published value
 derived above, and not the `1.0` that reading the label `"1"` off the pickup row
-would produce. Where a score's structure cannot be expressed as an fm lattice —
-WoO 71's split bars, below — the timeline is loaded with **no** floating-measure
-conversion at all. Its absence is honest; numbers derived from a rule the
-source does not support are not, and a silent fallback to label-derived
-ordinals is the worst of the three, because nothing downstream can tell the two
-kinds of fm apart.
-
-**Split bars are a documented known issue, not a runtime warning.** Two measure
-records sharing one notated downbeat — a bar divided across a repeat sign —
-cannot both anchor the same ordinal, and no reachable input makes them
-expressible, so the limitation belongs in the loader's and store's docstrings
-(`Ms3Loader.create_timeline`, `ScoreStore.get_cmaps`) and here, where a reader
-meets it before loading rather than after. Emitting a `UserWarning` on every
-load of such a score told a caller nothing they could act on and landed in the
-output of every notebook that loads one. **The validation logic is therefore
-that the load succeeds with no warning at all**: the score loads, its measure
-map holds all ``397`` measure rows of the TSV, every other conversion is intact, `TimeUnit.floating_measures`
-is simply not among its units, and a test asserts the silence explicitly rather
-than leaving it unobserved.
+would produce. WoO 71, whose bars are split, loads with its floating-measure
+conversion like any other score, with no warning: `fm(20) == 10.5` on the
+loaded timeline, and its measure map holds all `397` measure rows of the TSV.
+Where a score's structure still has no lattice (the refusal above), the
+timeline carries no floating-measure conversion; its absence is honest, and a
+silent fallback to label-derived ordinals would be the worst choice, because
+nothing downstream could tell the two kinds of fm apart.
 
 **The inverse** interpolates linearly over the same knots and performs no
 truncation-reconstruction: a value that was truncated on the way out carries at

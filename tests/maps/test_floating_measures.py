@@ -89,6 +89,165 @@ def _uniform_measure_map(n_measures: int, quarters_per_measure: Fraction) -> Mea
     )
 
 
+def _op106_ii_opening() -> MeasureMap:
+    """Op. 106/II up to bar 47: an anacrusis, then bar 46 split in two records."""
+    return MeasureMap.from_rows(
+        [
+            {
+                "count": 1,
+                "number": 0,
+                "qstamp": 0,
+                "time_signature": "3/4",
+                "nominal_length": 3,
+                "actual_length": 1,
+                "offset_within_measure": 2,
+                "next": ["2"],
+            },
+            {
+                "count": 47,
+                "number": 46,
+                "qstamp": 136,
+                "nominal_length": 3,
+                "actual_length": 2,
+                "next": ["48"],
+            },
+            {
+                "count": 48,
+                "number": 46,
+                "qstamp": 138,
+                "nominal_length": 3,
+                "actual_length": 1,
+                "offset_within_measure": 2,
+                "next": ["49"],
+            },
+            {
+                "count": 49,
+                "number": 47,
+                "qstamp": 139,
+                "nominal_length": 3,
+                "actual_length": 3,
+            },
+        ]
+    )
+
+
+def _op106_iv_opening() -> MeasureMap:
+    """Op. 106/IV rows 1-6: bar 1 in two records, bar 2 in three, ten quarters."""
+    return MeasureMap.from_rows(
+        [
+            {
+                "count": 1,
+                "number": 1,
+                "qstamp": 0,
+                "time_signature": "4/4",
+                "nominal_length": 4,
+                "actual_length": [23, 4],
+                "next": ["2"],
+            },
+            {
+                "count": 2,
+                "number": 1,
+                "qstamp": [23, 4],
+                "actual_length": 3,
+                "next": ["3"],
+            },
+            {
+                "count": 3,
+                "number": 2,
+                "qstamp": [35, 4],
+                "actual_length": [17, 8],
+                "next": ["4"],
+            },
+            {
+                "count": 4,
+                "number": 2,
+                "qstamp": [87, 8],
+                "actual_length": [15, 8],
+                "offset_within_measure": [17, 8],
+                "next": ["5"],
+            },
+            {
+                "count": 5,
+                "number": 2,
+                "qstamp": [51, 4],
+                "actual_length": 6,
+                "next": ["6"],
+            },
+            {"count": 6, "number": 3, "qstamp": [75, 4], "actual_length": 4},
+        ]
+    )
+
+
+def _volta_pair(*, jump_back: bool) -> MeasureMap:
+    """Fourteen 4/4 bars, then 15a and 15b, both numbered 15.
+
+    With *jump_back*, ``15a`` ends a repeat and its ``next`` names bar 1, as a
+    first ending does; without, ``next`` is the default, the following record.
+    """
+    records = [
+        Measure(
+            id=f"m{count}",
+            number=count,
+            time_signature="4/4",
+            nominal_length=Fraction(4),
+            actual_length=Fraction(4),
+        )
+        for count in range(1, 15)
+    ]
+    records += [
+        Measure(
+            id="15a",
+            number=15,
+            name="15a",
+            volta=1,
+            time_signature="4/4",
+            nominal_length=Fraction(4),
+            actual_length=Fraction(4),
+            end_repeat=jump_back,
+            next=("m1",) if jump_back else None,
+        ),
+        Measure(
+            id="15b",
+            number=15,
+            name="15b",
+            volta=2,
+            time_signature="4/4",
+            nominal_length=Fraction(4),
+            actual_length=Fraction(4),
+        ),
+    ]
+    return MeasureMap(records)
+
+
+def _two_records_at_one_downbeat(
+    first_number: int | None,
+    second_number: int | None,
+    *,
+    first_next: str | None = None,
+) -> MeasureMap:
+    """``a`` (1/2 of a 2/4 bar) and ``b`` at offset 1/2: both downbeats are 0."""
+    return MeasureMap(
+        (
+            Measure(
+                id="a",
+                number=first_number,
+                time_signature="2/4",
+                nominal_length=Fraction(2),
+                actual_length=Fraction(1, 2),
+                next=None if first_next is None else (first_next,),
+            ),
+            MeasureConstituent(
+                id="b",
+                number=second_number,
+                time_signature="2/4",
+                nominal_length=Fraction(2),
+                actual_length=Fraction(3, 2),
+                offset_within_measure=Fraction(1, 2),
+            ),
+        ),
+    )
+
+
 class TestAnacrusisIsAnchoredOnTheNominalBar:
     """A pickup's content sits where it is notated, not at 0.000."""
 
@@ -138,47 +297,112 @@ class TestAnacrusisIsAnchoredOnTheNominalBar:
         assert cmap(4) == 2.0
 
 
-class TestOrdinalsCountRecords:
-    """Voltas get consecutive ordinals; labels never drive the count."""
+class TestOrdinalsCountCompoundMeasures:
+    """One ordinal per measure number run; voltas stay apart; labels never count."""
 
-    def test_hand_built_volta_pair_is_consecutive(self) -> None:
-        """15a and 15b are two bars, so 15.0 and 16.0."""
-        records = [
-            Measure(
-                id=f"m{count}",
-                number=count,
-                time_signature="4/4",
-                nominal_length=Fraction(4),
-                actual_length=Fraction(4),
-            )
-            for count in range(1, 15)
-        ]
-        records += [
-            Measure(
-                id="15a",
-                number=15,
-                name="15a",
-                volta=1,
-                time_signature="4/4",
-                nominal_length=Fraction(4),
-                actual_length=Fraction(4),
-            ),
-            Measure(
-                id="15b",
-                number=15,
-                name="15b",
-                volta=2,
-                time_signature="4/4",
-                nominal_length=Fraction(4),
-                actual_length=Fraction(4),
-            ),
-        ]
-        measure_map = MeasureMap(records)
-
-        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+    def test_a_volta_pair_left_by_a_jump_is_two_measures(self) -> None:
+        """15a's next names bar 1, not 15b: 15.0 and 16.0."""
+        cmap = QuartersToFloatingMeasures.from_measure_map(_volta_pair(jump_back=True))
 
         assert cmap(Fraction(56)) == 15.0
         assert cmap(Fraction(60)) == 16.0
+        assert cmap(Fraction(64)) == 17.0
+
+    def test_one_number_continuing_into_itself_is_one_measure(self) -> None:
+        """With the default next, 15a continues into 15b: one bar of eight quarters."""
+        cmap = QuartersToFloatingMeasures.from_measure_map(_volta_pair(jump_back=False))
+
+        assert cmap(Fraction(56)) == 15.0
+        assert cmap(Fraction(60)) == 15.5
+        assert cmap(Fraction(64)) == 16.0
+
+
+class TestCompoundMeasures:
+    """A split bar reads as the one bar it is notated as."""
+
+    def test_a_split_bar_after_an_anacrusis(self) -> None:
+        """Op. 106/II: bar 46 is counts 47 and 48, ordinal 46, slope 1/3."""
+        measure_map = _op106_ii_opening()
+        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        assert len(measure_map) == 49
+        assert measure_map.measures[47].qstamp == Fraction(138)
+        assert [cmap(q) for q in (0, 136, 137, 138, 139)] == [
+            0.666,
+            46.0,
+            46.333,
+            46.666,
+            47.0,
+        ]
+        assert cmap(142) == 48.0
+
+    def test_the_knots_of_a_split_bar(self) -> None:
+        """One knot per compound: count 48 places none, the end closes at 142."""
+        cmap = QuartersToFloatingMeasures.from_measure_map(_op106_ii_opening())
+
+        assert cmap.x_values.tolist()[-4:] == [133.0, 136.0, 139.0, 142.0]
+        assert cmap.y_values.tolist()[-4:] == [45.0, 46.0, 47.0, 48.0]
+        assert len(cmap.x_values) == 49
+
+    def test_a_three_part_compound_longer_than_its_bar(self) -> None:
+        """Op. 106/IV: bar 2 is three records, ten quarters, one ordinal."""
+        cmap = QuartersToFloatingMeasures.from_measure_map(_op106_iv_opening())
+
+        quarters = [
+            0,
+            Fraction(23, 4),
+            Fraction(35, 4),
+            Fraction(87, 8),
+            Fraction(51, 4),
+        ]
+        assert [cmap(q) for q in quarters] == [1.0, 1.657, 2.0, 2.212, 2.4]
+        assert cmap(Fraction(75, 4)) == 3.0
+        assert cmap.x_values.tolist() == [0.0, 8.75, 18.75, 22.75]
+
+    def test_the_inverse_follows_the_compound_knots(self) -> None:
+        """fm 2.0 is bar 2's downbeat, 3.0 bar 3's."""
+        inverse = QuartersToFloatingMeasures.from_measure_map(
+            _op106_iv_opening()
+        ).inverse()
+
+        assert inverse(2.0) == 8.75
+        assert inverse(2.5) == 13.75
+        assert inverse(3.0) == 18.75
+
+    def test_the_two_lanes_agree_inside_a_compound(self) -> None:
+        cmap = QuartersToFloatingMeasures.from_measure_map(_op106_ii_opening())
+
+        values = cmap.convert_array(np.array([136.0, 137.0, 138.0, 139.0]))
+
+        assert values.tolist() == [46.0, 46.333, 46.666, 47.0]
+
+    def test_woo71_split_bars_read_as_one_bar(self) -> None:
+        """WoO 71 splits bars at repeat signs; each pair reads as its one bar."""
+        loader = Ms3Loader.from_file(WOO71_MEASURES)
+        measure_map = MeasureMap.from_measure_data(loader.store["measures"])
+        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        assert cmap(0) == 0.5
+        assert cmap(19) == 10.0
+        assert cmap(20) == 10.5
+        assert cmap(21) == 11.0
+        assert cmap(75) == 38.0
+        assert cmap(76) == 38.666
+        assert cmap(Fraction(153, 2)) == 39.0
+
+    def test_woo71_alternative_endings_stay_apart(self) -> None:
+        """mc 260 jumps back, so mc 261 starts the next ordinal; mc 262 joins 261."""
+        loader = Ms3Loader.from_file(WOO71_MEASURES)
+        measure_map = MeasureMap.from_measure_data(loader.store["measures"])
+        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        first, second, rest = measure_map.measures[259:262]
+        assert (first.number, second.number, rest.number) == (237, 237, 237)
+        assert (first.qstamp, second.qstamp) == (Fraction(945, 2), Fraction(949, 2))
+        assert cmap(first.qstamp) == 237.0
+        assert cmap(second.qstamp) == 238.0
+        assert len(measure_map) == 397
+        assert (len(cmap.x_values), cmap.y_values.tolist()[-1]) == (374, 373.0)
 
 
 class TestInterpolationInsideABar:
@@ -288,7 +512,7 @@ class TestAxisAndOutputType:
 
 
 class TestRefusals:
-    """The lattice needs measures, and one knot per bar."""
+    """The lattice needs measures, and knots that increase."""
 
     def test_a_measure_map_without_measures_raises(self) -> None:
         measure_map = MeasureMap([])
@@ -296,46 +520,33 @@ class TestRefusals:
         with pytest.raises(ValueError, match="at least one measure"):
             QuartersToFloatingMeasures.from_measure_map(measure_map)
 
-    def test_a_real_score_with_split_bars_is_refused(self) -> None:
-        """WoO 71 splits bars, so its fm lattice is not yet expressible.
+    def test_different_numbers_at_one_downbeat_raise(self) -> None:
+        """Only one measure number joins records; 5 and 6 at one downbeat do not."""
+        with pytest.raises(ValueError, match="do not increase"):
+            QuartersToFloatingMeasures.from_measure_map(
+                _two_records_at_one_downbeat(5, 6)
+            )
 
-        A split bar's two halves are one NOTATED bar and share a nominal
-        downbeat, so a lattice that gives every record its own ordinal has
-        two knots at one position. The map says so instead of collapsing
-        them onto a single point or inventing an order between them.
-        """
-        loader = Ms3Loader.from_file(WOO71_MEASURES)
-        measure_map = MeasureMap.from_measure_data(loader.store["measures"])
+    def test_one_number_not_continuing_raises(self) -> None:
+        """5 and 5, but a's next names a itself (a repeat), not b."""
+        measure_map = _two_records_at_one_downbeat(5, 5, first_next="a")
 
-        with pytest.raises(ValueError, match="same nominal downbeat"):
+        with pytest.raises(ValueError, match="do not increase"):
             QuartersToFloatingMeasures.from_measure_map(measure_map)
 
-    def test_a_split_bar_cannot_anchor_two_ordinals(self) -> None:
-        """Two halves of one notated bar share a nominal downbeat."""
-        measure_map = MeasureMap(
-            (
-                Measure(
-                    id="m5a",
-                    number=5,
-                    name="5a",
-                    time_signature="2/4",
-                    nominal_length=Fraction(2),
-                    actual_length=Fraction(1, 2),
-                ),
-                MeasureConstituent(
-                    id="m5b",
-                    number=5,
-                    name="5b",
-                    time_signature="2/4",
-                    nominal_length=Fraction(2),
-                    actual_length=Fraction(3, 2),
-                    offset_within_measure=Fraction(1, 2),
-                ),
-            ),
+    def test_records_without_numbers_never_join(self) -> None:
+        with pytest.raises(ValueError, match="do not increase"):
+            QuartersToFloatingMeasures.from_measure_map(
+                _two_records_at_one_downbeat(None, None)
+            )
+
+    def test_the_same_pair_numbered_alike_has_a_lattice(self) -> None:
+        """The control: 5 and 5 with the default next are one 2/4 bar."""
+        cmap = QuartersToFloatingMeasures.from_measure_map(
+            _two_records_at_one_downbeat(5, 5)
         )
 
-        with pytest.raises(ValueError, match="same nominal downbeat"):
-            QuartersToFloatingMeasures.from_measure_map(measure_map)
+        assert [cmap(0), cmap(1), cmap(2)] == [1.0, 1.5, 2.0]
 
 
 class TestScoreFloatingMeasures:
@@ -356,23 +567,13 @@ class TestScoreFloatingMeasures:
         assert reading.value == 0.888
         assert reading.unit is TimeUnit.floating_measures
 
-    def test_a_split_bar_score_gets_no_conversion_and_no_warning(self) -> None:
-        """An absent conversion never supplies wrong numbers or a silent fallback.
-
-        WoO 71 splits bars, so its fm lattice is not expressible (see
-        ``TestRefusals``). The score still loads and every other conversion is
-        intact; the fm axis is simply not among its units. The limitation is
-        documented on the loader rather than warned about at load time —
-        nothing a caller could act on, and one warning per load of any such
-        score — so the absence of a warning is asserted here rather than left
-        unobserved.
-        """
+    def test_a_split_bar_score_reads_its_compound_measures(self) -> None:
+        """WoO 71 splits bars, and loads with its fm conversion and no warning."""
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             timeline = Ms3Loader.from_file(WOO71_MEASURES).create_timeline()
 
-        assert TimeUnit.floating_measures not in timeline._get_available_units()
-        assert timeline.get_conversion_map(TimeUnit.floating_measures) is None
-        assert TimeUnit.ticks in timeline._get_available_units()
-        # The structure itself is intact: only the derived lattice is absent.
+        assert TimeUnit.floating_measures in timeline._get_available_units()
+        reading = timeline.convert_to(Fraction(20), TimeUnit.floating_measures)
+        assert (reading.value, reading.unit) == (10.5, TimeUnit.floating_measures)
         assert len(timeline.measure_map) == 397

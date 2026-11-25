@@ -29,6 +29,7 @@ from timetoalign.maps.table import TableMap, _table_form
 if TYPE_CHECKING:
     from typing_extensions import Self
 
+    from timetoalign.core.events import Measure
     from timetoalign.loader.score.stores.measures import MeasureData
     from timetoalign.maps.measures import FloatingMeasureMap
     from timetoalign.maps.meter import MetricMap
@@ -615,19 +616,31 @@ class QuartersToFloatingMeasures(TableMap):
     def from_measure_map(cls, measure_map: MeasureMap) -> FloatingMeasureMap:
         """Build the floating-measure lattice of a measure map.
 
-        One knot per measure record, placed at that bar's **virtual
-        nominal downbeat** — its sounding start minus the offset at which
-        its content sits inside the notated bar — carrying that bar's
-        ordinal.  A final knot closes the lattice at the end of the last
-        bar.  Between two knots the map is linear, so the slope inside a
-        bar is exactly ``1 / nominal_length``.
+        A floating measure is a **compound measure**: a maximal run of
+        consecutive measure records that share one ``number``, each
+        continuing into the next — its ``next`` names the record that
+        follows it.  A record on its own is a compound of one.  The
+        records of a split bar, whose parts the source represents
+        separately, thus read as the one bar they are notated as.
+        Records left by a jump (a volta bracket, a repeat) never join,
+        and a record without a number joins none.
 
-        Ordinals count the measure records, never the printed labels:
-        the first record is ``0`` when it is an anacrusis (offset
-        content, shorter than its nominal bar) and ``1`` otherwise, and
-        every following record adds one.  Counting runs monotonically
-        through voltas — ``15a`` and ``15b`` are two bars and get two
-        consecutive ordinals — and never resets.
+        One knot per compound measure, placed at its first record's
+        **virtual nominal downbeat** — its sounding start minus the
+        offset at which its content sits inside the notated bar — and
+        carrying the compound's ordinal.  A final knot closes the lattice
+        at the end of the last record.  Between two knots the map is
+        linear, so the slope inside a bar is ``1 / nominal_length`` when
+        the bar fills its nominal length, and inside a compound the
+        reading spreads over the compound's whole extent.
+
+        Ordinals count compound measures, never the printed labels: the
+        first is ``0`` when it is an anacrusis (its first record's content
+        is offset and its records are shorter together than its nominal
+        bar) and ``1`` otherwise, and every following compound adds one.
+        Counting runs monotonically through voltas — a first ending
+        ``15a`` that jumps back and the second ending ``15b`` are two bars
+        and get two consecutive ordinals — and never resets.
 
         Args:
             measure_map: Measures whose exact starts and lengths define the lattice.
@@ -637,13 +650,35 @@ class QuartersToFloatingMeasures(TableMap):
             which remembers the measure map it reads.
 
         Raises:
-            ValueError: If the measure map has no measures, or if two
-                records share a virtual nominal downbeat (a split bar,
-                whose two halves cannot both anchor the same fm ordinal).
+            ValueError: If the measure map has no measures, a record lacks
+                its qstamp or actual length, or the knots do not increase:
+                two compound measures share a virtual nominal downbeat, or a
+                later one starts before an earlier one.
         """
         from timetoalign.maps.measures import FloatingMeasureMap
 
         return FloatingMeasureMap(measure_map)
+
+    @staticmethod
+    def _compound_measures(measure_map: MeasureMap) -> list[list[Measure]]:
+        """Group a measure map's records into compound measures, in order.
+
+        A record joins the compound of the record before it when both
+        carry the same ``number`` and the earlier one's ``next`` names it.
+        """
+        compounds: list[list[Measure]] = []
+        for record in measure_map.measures:
+            if compounds:
+                previous = compounds[-1][-1]
+                if (
+                    previous.number is not None
+                    and previous.number == record.number
+                    and record.id in (previous.next or ())
+                ):
+                    compounds[-1].append(record)
+                    continue
+            compounds.append([record])
+        return compounds
 
     @staticmethod
     def _lattice(measure_map: MeasureMap) -> tuple[list[Fraction], list[float]]:
@@ -655,39 +690,44 @@ class QuartersToFloatingMeasures(TableMap):
         records = measure_map.measures
         if not records:
             raise ValueError("A floating-measure lattice requires at least one measure")
-
-        first = records[0]
-        first_offset = getattr(first, "offset_within_measure", Fraction(0))
-        is_anacrusis = (
-            first_offset > 0
-            and first.actual_length is not None
-            and first.nominal_length is not None
-            and first.actual_length < first.nominal_length
-        )
-        ordinal = 0 if is_anacrusis else 1
-
-        x_values: list[Fraction] = []
-        y_values: list[float] = []
         for record in records:
             if record.qstamp is None or record.actual_length is None:
                 raise ValueError(
                     "A floating-measure lattice requires exact qstamp and actual_length values"
                 )
-            offset = getattr(record, "offset_within_measure", Fraction(0))
-            x_values.append(record.qstamp - offset)
-            y_values.append(float(ordinal))
-            ordinal += 1
+
+        def downbeat(record: Measure) -> Fraction:
+            """The record's virtual nominal downbeat."""
+            assert record.qstamp is not None
+            return record.qstamp - getattr(record, "offset_within_measure", Fraction(0))
+
+        compounds = QuartersToFloatingMeasures._compound_measures(measure_map)
+        head = compounds[0][0]
+        extent = sum(
+            (record.actual_length or Fraction(0) for record in compounds[0]),
+            Fraction(0),
+        )
+        is_anacrusis = (
+            getattr(head, "offset_within_measure", Fraction(0)) > 0
+            and head.nominal_length is not None
+            and extent < head.nominal_length
+        )
+        first_ordinal = 0 if is_anacrusis else 1
 
         last = records[-1]
         assert last.qstamp is not None and last.actual_length is not None
+        x_values = [downbeat(compound[0]) for compound in compounds]
         x_values.append(last.qstamp + last.actual_length)
-        y_values.append(float(ordinal))
+        y_values = [float(first_ordinal + index) for index in range(len(x_values))]
 
-        for previous, current in zip(x_values, x_values[1:]):
+        labels = [repr(compound[0].id) for compound in compounds] + ["the end"]
+        for index, (previous, current) in enumerate(zip(x_values, x_values[1:])):
             if current <= previous:
                 raise ValueError(
-                    f"Two measures have the same nominal downbeat {previous}; a split measure "
-                    "cannot anchor two floating-measure ordinals"
+                    f"The floating measures starting with measures {labels[index]} and "
+                    f"{labels[index + 1]} have nominal downbeats {previous} and {current}, "
+                    "which do not increase; consecutive measures form one floating measure "
+                    "only when they share a number and the first continues into the second"
                 )
 
         return x_values, y_values

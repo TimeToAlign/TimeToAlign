@@ -3412,6 +3412,12 @@ class Coordinate(TimeScalar):
         value, tl_id = self._combine(other, "add", "add")
         return _make_coordinate(value, self.unit, tl_id)
 
+    @overload
+    def __sub__(self, other: Coordinate) -> Duration: ...
+
+    @overload
+    def __sub__(self, other: Duration | int | float | Fraction) -> Coordinate: ...
+
     @data_shaped
     def __sub__(self, other: object) -> TimeScalar:
         value, tl_id = self._combine(other, "subtract", "subtract")

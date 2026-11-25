@@ -82,7 +82,11 @@ def paired_semantic_fields() -> tuple[type["SemanticField[Any]"], ...]:
     return tuple(_PAIRED_SEMANTIC_FIELDS.values())
 
 
-def data_shaped(fn: Any) -> Any:
+_DataShapedT = TypeVar("_DataShapedT", bound=Callable[..., Any])
+"""A function :func:`data_shaped` marks and hands back unchanged."""
+
+
+def data_shaped(fn: _DataShapedT) -> _DataShapedT:
     """Mark a scalar method as needing a vectorized field mirror.
 
     A scalar method (regular function, ``@property``, or
@@ -117,7 +121,7 @@ def data_shaped(fn: Any) -> Any:
           @data_shaped
           def fifths(self) -> int: ...
     """
-    fn.__data_shaped__ = True
+    fn.__dict__["__data_shaped__"] = True
     return fn
 
 

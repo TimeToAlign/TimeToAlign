@@ -128,9 +128,11 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
     }
     payload = timeline.to_dict(minimal=False)
     assert payload["measure_maps"] == []
+    # Maps are written in id order: the grid's TableMap is added first (cmap_1),
+    # the seconds-to-samples LinearMap second (cmap_2).
     assert [cmap["type"] for cmap in payload["timelines"][0]["conversion_maps"]] == [
-        "LinearMap",
         "TableMap",
+        "LinearMap",
     ]
     restored = Timeline.from_dict(json.loads(json.dumps(payload)))
     assert restored.to_dict(minimal=False) == payload

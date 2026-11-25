@@ -38,32 +38,14 @@ Structural components:
 - TempoMap: An independent sequence of tempo facts
 - MetricHierarchy: Packed metrical forest with independent tempo maps
 
-Flow API (MeasureUnit architecture):
-- MeasureUnit: Fundamental building block (one per MeasureData row)
-- Typed MeasureUnit subclasses (Typing step):
-  - IncompleteMeasure: Measure shorter than expected (anacrusis, final, split)
-  - CompleteMeasure: Measure matching expected duration
-  - OverlengthMeasure: Measure exceeding expected duration (fermata, cadenza)
-  - TypedMeasure: Type alias for any typed measure
-- MeasureGroup hierarchy (Grouping step):
-  - MeasureGroup: Base class for groupings of typed measures
-  - SplitMeasure: IncompleteMeasures that together form a complete unit
-  - IncompleteGroup: Isolated IncompleteMeasures (will merge in playthrough)
-  - VoltaGroup: Measures under same volta bracket
-  - CompleteMeasureGroup: Adjacent CompleteMeasures
-  - OverlengthGroup: OverlengthMeasures
-- AtomicSection: Smallest indivisible traversal unit (with typed_measures)
-- FlowDiagnostic: A structural-invariant violation found in an atomic flow graph
-- PlaythroughSection: Contiguous group of atomic sections (with typed_measures)
-- Flow: A computed flow (sequence of measure visitations)
-- FlowMap: Attached to timelines for coordinate transformation
-- ScoreFlowController: Compute Flow paths from MeasureData
-- load_valid_flows: Load all valid flows from a .flow.csv file
+Flow:
+- FlowMap, FlowMapSection: The played spans of a timeline, mapping its
+  coordinates to those of its unfolding and back
+- Gap: A hole between two played spans
 
-Note:
-    MC ranges in AtomicSection and PlaythroughSection use the right-open
-    interval convention [mc_start, mc_end), consistent with partitura and
-    TimeToAlign's TimeInterval model.
+Flow control (the elements, their registry, the engine that plays them and
+their reading from measures) lives in ``timetoalign.timelines.flowcontrol``
+and ``timetoalign.timelines.flow``.
 
 Public API:
 - Timeline: Base class
@@ -82,31 +64,7 @@ from __future__ import annotations
 from .base import Timeline, UnknownLengthError
 from .beatgrid import BeatGrid, BeatGridSegment, GridBeat
 from .factory import create_timeline
-from .flow import (
-    AtomicSection,
-    CompleteMeasure,
-    CompleteMeasureGroup,
-    Flow,
-    FlowControllerBase,
-    FlowDiagnostic,
-    FlowMap,
-    FlowMapSection,
-    Gap,
-    IncompleteGroup,
-    IncompleteMeasure,
-    MeasureGroup,
-    MeasureUnit,
-    OverlengthGroup,
-    OverlengthMeasure,
-    PlaythroughSection,
-    ScoreFlowController,
-    SegmentNameGenerator,
-    SplitMeasure,
-    TypedMeasure,
-    VoltaGroup,
-    create_unfolded_timeline,
-    load_valid_flows,
-)
+from .flow import FlowMap, FlowMapSection, Gap
 from .groups import TimelineGroup
 from .manifest import Integrity, Resource
 from .regions import Region
@@ -175,31 +133,8 @@ __all__ = [
     "TempoEntry",
     "TempoMap",
     "MetricHierarchy",
-    # Flow API
-    "MeasureUnit",
-    # Typed MeasureUnit subclasses (Typing step)
-    "IncompleteMeasure",
-    "CompleteMeasure",
-    "OverlengthMeasure",
-    "TypedMeasure",
-    # MeasureGroup hierarchy (Grouping step)
-    "MeasureGroup",
-    "SplitMeasure",
-    "IncompleteGroup",
-    "VoltaGroup",
-    "CompleteMeasureGroup",
-    "OverlengthGroup",
-    # Sections and Flow
-    "Flow",
+    # Flow
     "FlowMap",
     "FlowMapSection",
     "Gap",
-    "FlowControllerBase",  # Abstract base class
-    "ScoreFlowController",  # Concrete implementation for score data
-    "SegmentNameGenerator",  # Customizable atomic-section labelling
-    "AtomicSection",
-    "FlowDiagnostic",
-    "PlaythroughSection",
-    "load_valid_flows",
-    "create_unfolded_timeline",  # Create unfolded timeline from flow
 ]

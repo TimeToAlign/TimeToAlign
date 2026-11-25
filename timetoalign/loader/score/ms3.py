@@ -525,8 +525,7 @@ class Ms3Loader(ScoreLoader):
 
         Using ``quarterbeats_all_endings`` as the primary source ensures
         that the resulting `timetoalign.Timeline` has a coordinate range
-        that spans the full folded score, matching the cumulative
-        MeasureUnit durations used by `compute_qb_sections`.
+        that spans the full folded score, as the measures' lengths sum up.
 
         Args:
             row: A pandas Series representing one row of the TSV.
@@ -775,7 +774,7 @@ class Ms3Loader(ScoreLoader):
         - dont_count: Skip in MN counting
         - barline: Barline type
         - breaks: Section boundary marker
-        - repeats: "start", "end", "firstMeasure"
+        - repeats: "start", "end", "startend", "firstMeasure", "lastMeasure"
         - next: Comma-separated list of possible next MCs
 
         Args:
@@ -783,7 +782,7 @@ class Ms3Loader(ScoreLoader):
             source: Path to source file.
 
         Returns:
-            ScoreStore retaining the source facts needed by legacy flow readers.
+            ScoreStore holding the measure table with the source's columns.
 
         Raises:
             ValueError: If a row states no ``mc``, or neither ``act_dur`` nor
@@ -873,13 +872,14 @@ class Ms3Loader(ScoreLoader):
                     keysig = str(keysig)
 
             # ===== Flow Control =====
-            # repeats column: "start", "end", "firstMeasure"
+            # repeats column: "start", "end", "startend" (both signs on one
+            # measure), "firstMeasure", "lastMeasure"
             repeats_val = (
                 str(row.get("repeats", "")) if pd.notna(row.get("repeats")) else None
             )
 
-            start_repeat = repeats_val in ("start",) if repeats_val else False
-            end_repeat = repeats_val in ("end",) if repeats_val else False
+            start_repeat = repeats_val in ("start", "startend")
+            end_repeat = repeats_val in ("end", "startend")
 
             # volta (ending number)
             volta = int(row["volta"]) if pd.notna(row.get("volta")) else None

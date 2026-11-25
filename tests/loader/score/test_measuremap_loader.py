@@ -4,7 +4,6 @@ This module tests the MeasureMapLoader implementation, including:
 1. JSON parsing and expansion
 2. Validation rules (MC unique, qstamp monotonic, next valid)
 3. Cross-validation against Ms3Loader (measures.tsv gold standard)
-4. Traversal computation
 
 ZERO TOLERANCE VALIDATION POLICY:
 - EXACT counts required (no tolerances)
@@ -192,52 +191,6 @@ class TestMeasureMapValidation:
 
         with pytest.raises(ValueError, match="invalid next MC"):
             measuremap_loader._validate_measuremap(expanded)
-
-
-class TestMeasureMapTraversal:
-    """Tests for traversal computation from MeasureMap."""
-
-    def test_simple_traversal(self, measuremap_loader):
-        """Compute traversal for simple linear score."""
-        compressed = [
-            {"time_signature": "4/4"},
-            {},
-            {},
-        ]
-        measuremap_loader._expanded_data = MeasureMap.expand_rows(compressed)
-
-        traversal = measuremap_loader.compute_default_traversal()
-        assert traversal == [1, 2, 3]
-
-    def test_repeat_traversal(self, measuremap_loader):
-        """Compute traversal with repeat."""
-        # Bars 1-2-3-4, repeat 2-3-4, then end
-        compressed = [
-            {"time_signature": "4/4"},  # MC 1
-            {"start_repeat": True},  # MC 2: ||:
-            {},  # MC 3
-            {"end_repeat": True, "next": [2, 5]},  # MC 4: :|| go to 2 or 5
-            {},  # MC 5: after repeat
-        ]
-        measuremap_loader._expanded_data = MeasureMap.expand_rows(compressed)
-
-        traversal = measuremap_loader.compute_default_traversal()
-        # Expected: 1, 2, 3, 4, 2, 3, 4, 5
-        assert traversal == [1, 2, 3, 4, 2, 3, 4, 5]
-
-    @pytest.mark.skipif(not specimens_available(), reason="Specimen files not found")
-    def test_beethoven_unfolded_count(self, measuremap_loader):
-        """Beethoven WoO71 unfolded traversal has 505 measures.
-
-        Gold standard: WoO71_unfolded.measures.tsv has 505 rows.
-        """
-        measuremap_loader.load(BEETHOVEN_MM_JSON)
-        traversal = measuremap_loader.compute_default_traversal()
-
-        assert len(traversal) == BEETHOVEN_UNFOLDED_MEASURES, (
-            f"Unfolded traversal count mismatch: got {len(traversal)}, "
-            f"expected {BEETHOVEN_UNFOLDED_MEASURES}"
-        )
 
 
 @pytest.mark.skipif(not specimens_available(), reason="Specimen files not found")

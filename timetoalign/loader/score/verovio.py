@@ -7,6 +7,7 @@ import logging
 import re
 import xml.etree.ElementTree as ET
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from pathlib import Path
@@ -16,7 +17,7 @@ import pyarrow as pa
 import verovio
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.core.enums import ExtrapolationPolicy
+from timetoalign.core.enums import ExtrapolationPolicy, FlowManifestation
 from timetoalign.core.time import build_number_struct_array, rational_to_struct
 from timetoalign.loader._xml import XML_ID
 
@@ -481,10 +482,10 @@ class VerovioLoader(ScoreLoader):
     for ids the notated tree does not hold. The store's measure table is the
     printed one (one row per ``<measure>`` in document order, lengths as
     rendered, positions on the folded axis), carrying the repeat barlines,
-    endings and ``<repeatMark>``s (segno, coda, Fine, D.S., D.C.), from which
-    :meth:`create_flow_controller` derives the repeat structure. Without an
-    expansion the timeline carries that table as its ``MeasureMap`` and its
-    flow control. With an expansion the
+    endings and ``<repeatMark>``s (segno, coda, Fine, D.S., D.C.) and the
+    barline ``@right`` states. Without an expansion the timeline carries
+    that table as its ``MeasureMap`` and what it states as its flow control
+    (a ``dbl`` and an ``end`` barline as barlines). With an expansion the
     timeline is already unfolded: its ``MeasureMap`` lists the rendered
     measures (row id = rendered id, name = ``@n``) without flow control, and
     two FlowMaps state the playback order of the printed measures:
@@ -577,6 +578,11 @@ class VerovioLoader(ScoreLoader):
 
     #: One loader reads one score: its timemap and C-Map are the score's.
     _single_source: ClassVar[bool] = True
+    #: MEI's ``@right`` values that are written as barlines.
+    _barline_manifestations: ClassVar[Mapping[str, FlowManifestation]] = {
+        "dbl": FlowManifestation.double_barline,
+        "end": FlowManifestation.final_barline,
+    }
 
     def __init__(self, *, options: dict[str, Any] | None = None, **kwargs: Any) -> None:
         """Initialize the loader.

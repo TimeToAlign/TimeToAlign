@@ -8,11 +8,10 @@ Unique tests in this module:
 - RIGHT-OPEN mc_end contiguity checks across all specimens
 - Exact atomic segment boundary validation
 - Partitura live segment boundary verification against CSV
-- Flow CSV round-trip serialization (Flow.from_csv → to_csv_rows → from_records)
 
 Tests that overlap with test_score_parsing_matrix.py have been removed.
-See that file for: CSV existence/mode checks, folded/unfolded counts,
-loader measure counts, and TSV→ScoreFlowController flow reproduction.
+See that file for: CSV existence/mode checks, folded counts and loader
+measure counts; and test_flow_gold.py for the flows the sources play.
 
 ZERO TOLERANCE VALIDATION POLICY:
 - EXACT counts required (no tolerances)
@@ -238,36 +237,3 @@ class TestPartituraSegmentValidation:
             f"  CSV segments: {csv_segments}\n"
             f"  Partitura segments: {actual_segments}"
         )
-
-
-# ============================================================================
-# Test: Flow Equivalence using is_equivalent()
-# ============================================================================
-
-
-class TestFlowSerialization:
-    """Test Flow CSV serialization round-trip."""
-
-    def test_flow_from_csv_round_trip(self) -> None:
-        """Flow can be loaded from CSV and exported back."""
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.timelines.flow import Flow
-
-        csv_path = TARGET_FLOWS_DIR / "c05n05_musete.flow.csv"
-        if not csv_path.exists():
-            pytest.skip(f"Flow CSV not found: {csv_path}")
-
-        # Load
-        flow = Flow.from_csv(csv_path, FlowMode.atomic)
-
-        # Export
-        rows = flow.to_csv_rows("test.musicxml", "test v1.0")
-
-        # Verify structure
-        assert len(rows) == len(flow.sections)
-        assert all(r["flow_mode"] == "atomic" for r in rows)
-        assert all("mc_start" in r and "mc_end" in r for r in rows)
-
-        # Reconstruct and compare
-        reconstructed = Flow.from_records(rows, FlowMode.atomic)
-        assert flow.is_equivalent(reconstructed)

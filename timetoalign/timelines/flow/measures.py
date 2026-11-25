@@ -1,434 +1,714 @@
-"""Represent measures and related measure groups."""
+"""Measures and flow control: one translation both ways, and flows in measure counts.
+
+A measure map states three things about how a score is played through: a
+row's ``start_repeat``, its ``end_repeat`` and its ``volta``, the pass
+numbers of the bracket of alternative endings it lies under.
+:func:`flow_control_from_measures` turns them into the elements of
+:mod:`timetoalign.timelines.flowcontrol`, on the axis of the measures'
+``qstamp`` values (quarters, exact); :func:`measure_keys_from_flow_control`
+reads the same three keys back from elements.
+
+- ``start_repeat``: a ``JumpTarget`` (``repeat_start``) at the row's start.
+- ``end_repeat``: a destination (``repeat_end``, ``repeat_count: 1``) of the
+  Jump at the row's end.
+- ``volta``, for each run of adjacent brackets: one Jump at the start of the
+  first bracket with a destination per bracket, and a ``JumpTarget``
+  (``volta``) and a ``Break`` (``volta``) at the start of every further
+  bracket.
+
+Signs falling on one coordinate are destinations of one Jump. Every other
+sign of a score (a D.C., a segno, a Fine, a section break) is no key of a
+measure map row and comes from the score's own source.
+
+A flow is played on the axis (:func:`timetoalign.timelines.flow.engine.play`);
+:func:`measure_ranges` states its runs, or the atomic sections, as right-open
+ranges of measure counts, the form of a ``.flow.csv`` file, which
+:func:`read_flow_csv` reads.
+"""
 
 from __future__ import annotations
 
+import csv
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from timetoalign.core.enums import IncompletePosition
+from timetoalign.core import Coordinate, Duration, TimeUnit
+from timetoalign.core.enums import FlowManifestation, MeasureFindingKind
+
+from ..flowcontrol import (
+    Barline,
+    Break,
+    FlowControlElement,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+    SectionBreak,
+)
+
+if TYPE_CHECKING:
+    from ..structure import MeasureMap
+
+_Placed = TypeVar("_Placed", JumpTarget, Break, SectionBreak, Barline)
+
+# region Rows
 
 
 @dataclass(frozen=True)
-class MeasureUnit:
-    """Single measure from the folded score (one MeasureData row).
+class _Row:
+    """What the translation reads of one measure."""
 
-    This is the fundamental building block from which AtomicSections
-    are constructed. MeasureUnit represents the "folded" skeleton of
-    the score before any unfolding takes place.
+    count: int
+    start: Fraction
+    end: Fraction
+    start_repeat: bool
+    end_repeat: bool
+    passes: tuple[int, ...] | None
 
-    Attributes:
-        mc: Measure Count (monotonic, 1-indexed).
-        mn: Measure Number label (may have suffix like "19a").
-        duration_qb: Duration in quarter beats.
-        next: Tuple of possible next MCs. (-1 = end of piece)
-        volta: Ending number (1, 2, ...) or None.
-        timesig: Time signature string ("4/4", "3/4") or None.
-        timesig_duration_qb: Expected duration from time signature (computed).
-        start_repeat: True if has repeat start marker (||:).
-        end_repeat: True if has repeat end marker (:||).
-        jump_from: True if this MC is a jump origin (D.C., D.S., to_coda).
-        jump_to: True if this MC is a jump target (segno, coda destination).
-        segno: Segno marker name if present (e.g., "segno", "segno2").
-        coda: Coda marker name if present (e.g., "coda", "codab").
-        fine: True if Fine marker present.
-        section_break: True if section break at this MC.
-        flow_control_types: Tuple of FlowManifestation.value strings for serialization.
-        jump_bwd: Name of backward-jump target (e.g., "segno", "start") or None.
-        jump_fwd: Name of forward-jump target (e.g., "coda", "codab", "fine") or None.
-        play_until: Name of play-until target on after-DC/DS pass
-            (e.g., "coda", "fine") or None.
 
-    Examples:
-        >>> unit = MeasureUnit(
-        ...     mc=1,
-        ...     mn="1",
-        ...     duration_qb=Fraction(4),
-        ...     next=(2,),
-        ... )
-        >>> unit.mc
-        1
-        >>> unit.next
-        (2,)
+def _passes(volta: Any, count: int) -> tuple[int, ...] | None:
+    """Return a row's ``volta`` as pass numbers: an integer or a list of them.
+
+    Raises:
+        ValueError: If the value is neither.
     """
+    if volta is None:
+        return None
+    numbers = [volta] if isinstance(volta, int) else volta
+    if (
+        isinstance(numbers, (str, bytes))
+        or not isinstance(numbers, Sequence)
+        or not numbers
+        or any(isinstance(n, bool) or not isinstance(n, int) for n in numbers)
+    ):
+        raise ValueError(
+            f"the volta {volta!r} of measure count {count} is neither a pass "
+            "number nor a list of pass numbers"
+        )
+    return tuple(numbers)
 
-    mc: int
-    mn: str
-    duration_qb: Fraction
-    next: tuple[int, ...]
-    volta: int | None = None
-    timesig: str | None = None
-    timesig_duration_qb: Fraction | None = None
-    start_repeat: bool = False
-    end_repeat: bool = False
-    jump_from: bool = False
-    jump_to: bool = False
-    segno: str | None = None
-    coda: str | None = None
-    fine: bool = False
-    section_break: bool = False
-    flow_control_types: tuple[str, ...] = ()
-    # Raw ms3 jump-instruction fields (target NAMES, may be None)
-    jump_bwd: str | None = None
-    jump_fwd: str | None = None
-    play_until: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for DataFrame serialization.
+def _rows(measures: MeasureMap | Iterable[Any]) -> list[_Row]:
+    """Read the measures of a map, or full rows, in printed order.
 
-        Returns:
-            Dict with all MeasureUnit fields, suitable for DataFrame conversion.
-            The flow_control_types tuple is joined with semicolons for CSV storage.
-        """
-        return {
-            "mc": self.mc,
-            "mn": self.mn,
-            "duration_qb": float(self.duration_qb),
-            "next": list(self.next),
-            "volta": self.volta,
-            "timesig": self.timesig,
-            "timesig_duration_qb": (
-                float(self.timesig_duration_qb) if self.timesig_duration_qb else None
-            ),
-            "start_repeat": self.start_repeat,
-            "end_repeat": self.end_repeat,
-            "jump_from": self.jump_from,
-            "jump_to": self.jump_to,
-            "segno": self.segno,
-            "coda": self.coda,
-            "fine": self.fine,
-            "section_break": self.section_break,
-            "flow_control_types": ";".join(self.flow_control_types),
-            "jump_bwd": self.jump_bwd,
-            "jump_fwd": self.jump_fwd,
-            "play_until": self.play_until,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "MeasureUnit":
-        """Create MeasureUnit from dictionary (e.g., DataFrame row).
-
-        Args:
-            d: Dictionary with MeasureUnit field values.
-
-        Returns:
-            New MeasureUnit instance.
-        """
-        # Parse flow_control_types from semicolon-separated string
-        fct = d.get("flow_control_types", "")
-        if isinstance(fct, str):
-            flow_control_types = tuple(fct.split(";")) if fct else ()
+    Raises:
+        ValueError: If a measure states no ``qstamp`` or no ``actual_length``.
+    """
+    rows: list[_Row] = []
+    for position, measure in enumerate(measures, start=1):
+        if isinstance(measure, Mapping):
+            read = measure.get
         else:
-            flow_control_types = tuple(fct) if fct else ()
 
-        # Parse next field
-        next_val = d.get("next", [-1])
-        if isinstance(next_val, str):
-            # Handle string representation like "[1, 2]" or "1, 2"
-            cleaned = next_val.strip().strip("[]()").replace(" ", "")
-            next_tuple = (
-                tuple(int(x) for x in cleaned.split(",") if x) if cleaned else (-1,)
+            def read(key: str, measure: Any = measure) -> Any:
+                return getattr(measure, key, None)
+
+        count = read("count") or position
+        qstamp, length = read("qstamp"), read("actual_length")
+        if qstamp is None or length is None:
+            raise ValueError(
+                f"measure count {count} states no "
+                f"{'qstamp' if qstamp is None else 'actual_length'}: flow control "
+                "lies at positions, which an abstract measure map has none of"
             )
-        elif isinstance(next_val, (list, tuple)):
-            next_tuple = tuple(next_val)
-        else:
-            next_tuple = (int(next_val),) if next_val is not None else (-1,)
-
-        # Parse duration
-        duration = d.get("duration_qb", 4)
-        if isinstance(duration, Fraction):
-            duration_qb = duration
-        else:
-            duration_qb = Fraction(duration) if duration else Fraction(4)
-
-        # Parse timesig_duration_qb
-        ts_dur = d.get("timesig_duration_qb")
-        timesig_duration_qb = Fraction(ts_dur) if ts_dur is not None else None
-
-        return cls(
-            mc=int(d["mc"]),
-            mn=str(d.get("mn", d["mc"])),
-            duration_qb=duration_qb,
-            next=next_tuple,
-            volta=d.get("volta"),
-            timesig=d.get("timesig"),
-            timesig_duration_qb=timesig_duration_qb,
-            start_repeat=bool(d.get("start_repeat")),
-            end_repeat=bool(d.get("end_repeat")),
-            jump_from=bool(d.get("jump_from")),
-            jump_to=bool(d.get("jump_to")),
-            segno=d.get("segno"),
-            coda=d.get("coda"),
-            fine=bool(d.get("fine")),
-            section_break=bool(d.get("section_break")),
-            flow_control_types=flow_control_types,
-            jump_bwd=d.get("jump_bwd"),
-            jump_fwd=d.get("jump_fwd"),
-            play_until=d.get("play_until"),
+        start = Fraction(qstamp)
+        rows.append(
+            _Row(
+                count=int(count),
+                start=start,
+                end=start + Fraction(length),
+                start_repeat=bool(read("start_repeat")),
+                end_repeat=bool(read("end_repeat")),
+                passes=_passes(read("volta"), count),
+            )
         )
+    return rows
 
-    def __repr__(self) -> str:
-        volta_str = f", volta={self.volta}" if self.volta else ""
-        return f"MeasureUnit(MC {self.mc}: {self.mn}, next={self.next}{volta_str})"
+
+@dataclass
+class _Bracket:
+    """One bracket of alternative endings: its passes and its rows."""
+
+    passes: tuple[int, ...]
+    first: int
+    last: int
+
+
+def _bracket_runs(rows: Sequence[_Row]) -> list[list[_Bracket]]:
+    """Group the rows that state ``volta`` into runs of adjacent brackets.
+
+    Adjacent rows stating the same passes are one bracket. Adjacent brackets
+    are one run for as long as each names passes no earlier bracket of the
+    run names: a bracket naming a pass again begins the next run.
+    """
+    runs: list[list[_Bracket]] = []
+    adjacent = False
+    for index, row in enumerate(rows):
+        if row.passes is None:
+            adjacent = False
+            continue
+        if adjacent and runs[-1][-1].passes == row.passes:
+            runs[-1][-1].last = index
+            continue
+        bracket = _Bracket(row.passes, index, index)
+        named = {number for held in runs[-1] for number in held.passes} if runs else ()
+        if adjacent and not set(row.passes) & set(named):
+            runs[-1].append(bracket)
+        else:
+            runs.append([bracket])
+        adjacent = True
+    return runs
 
 
 # endregion
 
-# region Typed MeasureUnit Subclasses
+# region Writing elements
 
 
-@dataclass(frozen=True)
-class IncompleteMeasure(MeasureUnit):
-    """A MeasureUnit that does not metrically complete on its own.
+def _quarters(value: Fraction) -> Coordinate:
+    return Coordinate(value, TimeUnit.quarters)
 
-    NOT a group — this is a typed copy of a MeasureUnit created during
-    the Typing step of the two-step typing/grouping algorithm.
 
-    IncompleteMeasure inherits all MeasureUnit properties including
-    FlowManifestations, enabling serialization round-trip.
+class _FlowControlDraft:
+    """Flow control being written from a score, before it joins a registry.
 
-    Examples:
-        - Anacrusis (pickup): First measure shorter than time signature
-        - Final incomplete: Last measure shorter than time signature
-        - Split part: One half of a split measure
-
-    Note:
-        An IncompleteMeasure can later form part of a SplitMeasure group
-        (e.g., anacrusis + final measure after repeat = SplitMeasure).
-
-    Attributes:
-        position: Classification of why this measure is incomplete.
+    The signs at one coordinate are collected as the destinations of the
+    one Jump there, and every element gets an ID of its own, minted in the
+    order written, so that the elements can name one another before a
+    registry admits them together.
     """
 
-    position: IncompletePosition = IncompletePosition.unknown
+    def __init__(self) -> None:
+        self._placed: list[FlowControlElement] = []
+        self._destinations: dict[Fraction, list[JumpDestination]] = {}
+        self._jump_ids: dict[Fraction, str] = {}
+        self._numbers: dict[str, int] = {}
 
+    def _mint(self, prefix: str) -> str:
+        self._numbers[prefix] = self._numbers.get(prefix, 0) + 1
+        return f"{prefix}_{self._numbers[prefix]}"
 
-@dataclass(frozen=True)
-class CompleteMeasure(MeasureUnit):
-    """A MeasureUnit that metrically completes on its own.
+    def add(self, element_class: type[_Placed], at: Fraction, **keys: Any) -> _Placed:
+        """Write a jump target, a break, a section break or a barline at *at*."""
+        element = element_class(
+            _quarters(at), id=self._mint(element_class.role), _minted=True, **keys
+        )
+        self._placed.append(element)
+        return element
 
-    NOT a group — this is a typed copy of a MeasureUnit created during
-    the Typing step of the two-step typing/grouping algorithm.
+    def jump_at(self, at: Fraction) -> str:
+        """Return the ID of the Jump at *at*, minted when first asked for."""
+        if at not in self._jump_ids:
+            self._jump_ids[at] = self._mint(Jump.role)
+        return self._jump_ids[at]
 
-    The simple, default case: duration_qb == timesig_duration_qb.
+    def destinations_at(self, at: Fraction) -> tuple[JumpDestination, ...]:
+        """Return the destinations written so far for the Jump at *at*."""
+        return tuple(self._destinations.get(at, ()))
 
-    CompleteMeasure inherits all MeasureUnit properties including
-    FlowManifestations, enabling serialization round-trip.
-    """
+    def add_destination(self, at: Fraction, destination: JumpDestination) -> str:
+        """Write *destination* on the Jump at *at*; return that Jump's ID."""
+        self._destinations.setdefault(at, []).append(destination)
+        return self.jump_at(at)
 
-    pass
+    def add_measures(self, measures: MeasureMap | Iterable[Any]) -> None:
+        """Write what the rows of *measures* state: repeats and brackets."""
+        rows = _rows(measures)
+        place: dict[int, tuple[int, int, _Bracket]] = {}
+        run_starts: dict[int, Fraction] = {}
+        for run, brackets in enumerate(_bracket_runs(rows)):
+            run_starts[run] = rows[brackets[0].first].start
+            for number, bracket in enumerate(brackets):
+                place[bracket.first] = place[bracket.last] = (run, number, bracket)
 
-
-@dataclass(frozen=True)
-class OverlengthMeasure(MeasureUnit):
-    """A MeasureUnit that exceeds the expected metrical length.
-
-    NOT a group — this is a typed copy of a MeasureUnit created during
-    the Typing step of the two-step typing/grouping algorithm.
-
-    OverlengthMeasure inherits all MeasureUnit properties including
-    FlowManifestations, enabling serialization round-trip.
-
-    Examples:
-        - Fermata: Written duration > time signature
-        - Cadenza: Extended passage notated in single measure
-        - Ad lib: Performer-determined length
-    """
-
-    pass
-
-
-# Type alias for any typed measure
-TypedMeasure = IncompleteMeasure | CompleteMeasure | OverlengthMeasure
-
-# endregion
-
-# region MeasureGroup
-
-
-@dataclass(frozen=True)
-class MeasureGroup:
-    """Base class for groupings of typed MeasureUnits.
-
-    Groups are constructed in the Grouping step, AFTER MeasureUnits have been
-    typed as IncompleteMeasure/CompleteMeasure/OverlengthMeasure in the
-    Typing step.
-
-    MeasureGroup is an abstract base - use SplitMeasure, IncompleteGroup,
-    Volta, or CompleteMeasureGroup for concrete groupings.
-
-    Attributes:
-        members: Tuple of typed MeasureUnits in this group.
-    """
-
-    members: tuple["TypedMeasure", ...]
-
-    def __post_init__(self) -> None:
-        """Validate group has at least one member."""
-        if not self.members:
-            raise ValueError("MeasureGroup must have at least one member")
-
-    @property
-    def mc_start(self) -> int:
-        """First MC in this group."""
-        return min(m.mc for m in self.members)
-
-    @property
-    def mc_end(self) -> int:
-        """First MC AFTER this group (right-open)."""
-        return max(m.mc for m in self.members) + 1
-
-    @property
-    def mc_range(self) -> tuple[int, int]:
-        """Return (mc_start, mc_end) tuple (right-open interval)."""
-        return (self.mc_start, self.mc_end)
-
-    @property
-    def total_duration_qb(self) -> Fraction:
-        """Total duration in quarterbeats."""
-        return sum((m.duration_qb for m in self.members), Fraction(0))
-
-    def __len__(self) -> int:
-        """Return number of measures in this group."""
-        return len(self.members)
-
-    def __repr__(self) -> str:
-        return f"MeasureGroup(MC [{self.mc_start},{self.mc_end}), {len(self.members)} measures)"
-
-
-@dataclass(frozen=True)
-class SplitMeasure(MeasureGroup):
-    """Multiple IncompleteMeasures that together form a complete metrical unit.
-
-    This is the complex case where IncompleteMeasures combine to form a
-    complete measure duration. Split measures share the same measure number (mn).
-
-    Examples:
-        - Anacrusis (1/4) + Final (3/4) after repeat = complete 4/4
-        - Split bar: MC 11 (1/4) + MC 12 (1/4) = complete 2/4 (same mn="10")
-
-    Note:
-        All members must be IncompleteMeasure instances. The detection
-        algorithm uses shared mn as a strong signal for split measure pairs.
-    """
-
-    def __post_init__(self) -> None:
-        """Validate all members are IncompleteMeasure."""
-        super().__post_init__()
-        for m in self.members:
-            if not isinstance(m, IncompleteMeasure):
-                raise TypeError(
-                    f"SplitMeasure members must be IncompleteMeasure, got {type(m).__name__}"
+        open_starts: list[str] = []
+        repeated_from: dict[int, str | None] = {}
+        for index, row in enumerate(rows):
+            if row.start_repeat:
+                start = self.add(
+                    JumpTarget, row.start, manifestation=FlowManifestation.repeat_start
                 )
+                open_starts.append(start.id)
+            run, number, bracket = place.get(index, (-1, -1, None))
+            if bracket is not None and bracket.first == index:
+                if number == 0:
+                    self.add_destination(
+                        row.start,
+                        JumpDestination(
+                            by=0,
+                            passes=bracket.passes,
+                            manifestation=FlowManifestation.volta,
+                        ),
+                    )
+                else:
+                    landing = self.add(
+                        JumpTarget, row.start, manifestation=FlowManifestation.volta
+                    )
+                    self.add(Break, row.start, manifestation=FlowManifestation.volta)
+                    self.add_destination(
+                        run_starts[run],
+                        JumpDestination(
+                            to=landing.id,
+                            passes=bracket.passes,
+                            manifestation=FlowManifestation.volta,
+                        ),
+                    )
+            if not row.end_repeat:
+                continue
+            closes_bracket = bracket is not None and bracket.last == index
+            if closes_bracket and run in repeated_from:
+                to = repeated_from[run]
+            else:
+                to = open_starts.pop() if open_starts else None
+                if closes_bracket:
+                    repeated_from[run] = to
+            self.add_destination(
+                row.end,
+                JumpDestination(
+                    to=to,
+                    repeat_count=1,
+                    reset=not (closes_bracket and number > 0),
+                    manifestation=FlowManifestation.repeat_end,
+                ),
+            )
 
-    def __repr__(self) -> str:
-        mcs = [m.mc for m in self.members]
-        return f"SplitMeasure(MC {mcs}, total={self.total_duration_qb})"
-
-
-@dataclass(frozen=True)
-class IncompleteGroup(MeasureGroup):
-    """Isolated IncompleteMeasure(s) that don't yet form a split.
-
-    Used for anacrusis or final measures that haven't been paired with their
-    complement. In AtomicSections, these may later merge into SplitMeasures
-    when the flow brings them together in PlaythroughSections.
-
-    Note:
-        All members must be IncompleteMeasure instances.
-    """
-
-    def __post_init__(self) -> None:
-        """Validate all members are IncompleteMeasure."""
-        super().__post_init__()
-        for m in self.members:
-            if not isinstance(m, IncompleteMeasure):
-                raise TypeError(
-                    f"IncompleteGroup members must be IncompleteMeasure, got {type(m).__name__}"
-                )
-
-    def __repr__(self) -> str:
-        # Safe to access position since __post_init__ validates all are IncompleteMeasure
-        positions = [
-            m.position.value for m in self.members if isinstance(m, IncompleteMeasure)
+    def elements(self) -> list[FlowControlElement]:
+        """Return everything written, by coordinate and then by ID."""
+        jumps = [
+            Jump(_quarters(at), destinations, id=self._jump_ids[at], _minted=True)
+            for at, destinations in self._destinations.items()
         ]
-        return f"IncompleteGroup(MC [{self.mc_start},{self.mc_end}), positions={positions})"
-
-
-@dataclass(frozen=True)
-class VoltaGroup(MeasureGroup):
-    """Typed MeasureUnits under the same volta bracket.
-
-    A VoltaGroup contains measures that share the same volta number (1, 2, 3...).
-    Each different volta number creates a separate VoltaGroup.
-
-    Note:
-        A VoltaGroup is contained within ONE AtomicSection. Multiple voltas
-        (e.g., volta 1 and volta 2) are separated by Breaks and thus cannot
-        be in the same section.
-
-    Attributes:
-        volta_number: The volta bracket number (1, 2, 3, ...).
-    """
-
-    volta_number: int = 1
-
-    def __post_init__(self) -> None:
-        """Validate volta_number is positive."""
-        super().__post_init__()
-        if self.volta_number < 1:
-            raise ValueError(f"volta_number must be >= 1, got {self.volta_number}")
-
-    def __repr__(self) -> str:
-        return (
-            f"VoltaGroup(volta={self.volta_number}, MC [{self.mc_start},{self.mc_end}), "
-            f"{len(self.members)} measures)"
+        return sorted(
+            [*self._placed, *jumps],
+            key=lambda element: (element.coordinate.value, element.id),
         )
 
 
+def flow_control_from_measures(
+    measures: MeasureMap | Iterable[Any],
+) -> list[FlowControlElement]:
+    """Return the flow control a measure map states.
+
+    Coordinates are the measures' ``qstamp`` values: quarters, exact.
+
+    - A row with ``start_repeat`` gives a :class:`JumpTarget`
+      (``repeat_start``) at its start.
+    - A row with ``end_repeat`` gives a destination (``repeat_end``,
+      ``repeat_count: 1``) of the Jump at its end, ``to`` the nearest repeat
+      start before it that no earlier repeat end has closed, and without
+      place where there is none: nothing is added that the rows do not
+      state, a repeat start least of all.
+    - Rows with ``volta`` are brackets of alternative endings; adjacent rows
+      stating the same passes are one bracket, and adjacent brackets naming
+      different passes are one run. A run gives ONE Jump at the start of its
+      first bracket with a destination per bracket (``volta``, ``passes``
+      the row's value): the first ``by: 0``, every other ``to`` a
+      :class:`JumpTarget` (``volta``) at that bracket's first row, where a
+      :class:`Break` (``volta``) lies as well.
+    - The repeat ends closing the brackets of one run go back to one place,
+      the one the first of them closes. One closing another bracket than
+      the first is written ``reset: false``: it must not start the Jump
+      before the brackets again, whose passes it counts.
+
+    Signs falling on one coordinate are destinations of one Jump. No row
+    key says where a bracket ends, so no element does.
+
+    Args:
+        measures: A :class:`~timetoalign.timelines.MeasureMap`, or full rows
+            as :meth:`MeasureMap.expand_rows
+            <timetoalign.timelines.MeasureMap.expand_rows>` returns them, in
+            which ``volta`` may be a list of pass numbers.
+
+    Returns:
+        The elements by coordinate and then by ID, each with an ID of its
+        own (``jump_1``, ``jump_target_1``, ...) that a registry mints again
+        where it is taken.
+
+    Raises:
+        ValueError: If a measure states no ``qstamp`` or no
+            ``actual_length``, or a ``volta`` that is neither a pass number
+            nor a list of them.
+
+    Examples:
+        >>> from timetoalign.timelines import MeasureMap
+        >>> bars = MeasureMap.from_rows(
+        ...     [
+        ...         {"count": 1, "time_signature": "4/4"},
+        ...         {"count": 2, "start_repeat": True},
+        ...         {"count": 3, "end_repeat": True},
+        ...         {"count": 4},
+        ...     ]
+        ... )
+        >>> start, repeat = flow_control_from_measures(bars)
+        >>> start
+        JumpTarget('jump_target_1', repeat_start @ 4 quarters)
+        >>> repeat
+        Jump('jump_1' @ 12 quarters, 1 destination)
+        >>> repeat.targets[0].to_dict()
+        {'to': 'jump_target_1', 'repeat_count': 1, 'manifestation': 'repeat_end'}
+    """
+    draft = _FlowControlDraft()
+    draft.add_measures(measures)
+    return draft.elements()
+
+
+# endregion
+
+# region Reading row keys
+
+
+def measure_keys_from_flow_control(
+    elements: Iterable[FlowControlElement], measures: MeasureMap | Iterable[Any]
+) -> list[dict[str, Any]]:
+    """Return the row keys that flow control states, one object per measure.
+
+    The reverse of :func:`flow_control_from_measures` for the three keys it
+    covers, read from what the elements look like (their manifestations):
+
+    - ``start_repeat``: a :class:`JumpTarget` (``repeat_start``) lies at the
+      measure's start;
+    - ``end_repeat``: the Jump at the measure's end has a ``repeat_end``
+      destination;
+    - ``volta``: the measure lies under a bracket, whose passes are the
+      value (one pass as an integer, several as a list). A bracket begins
+      where a ``volta`` destination goes on (``by: 0`` at its Jump, ``to``
+      at its jump target) and ends where the next bracket of that Jump
+      begins.
+
+    **Where the last bracket of a run ends is no fact of flow control.** It
+    stays with the rows: the last bracket is given its first measure, and
+    the measures following it for as long as *measures* state these very
+    passes as their ``volta``.
+
+    An element lying inside a measure, a bracket stating its passes as
+    ``{from: n}`` and a ``to`` naming no jump target among *elements* state
+    no row key.
+
+    Args:
+        elements: The flow control elements read.
+        measures: The measures whose positions (and ``volta`` values, for
+            the last bracket of a run) are read, as for
+            :func:`flow_control_from_measures`.
+
+    Returns:
+        ``{"count", "start_repeat", "end_repeat", "volta"}`` per measure, in
+        printed order; ``volta`` is None outside a bracket.
+
+    Raises:
+        ValueError: As :func:`flow_control_from_measures`.
+    """
+    rows = _rows(measures)
+    held = list(elements)
+    starts = {row.start: index for index, row in enumerate(rows)}
+    ends = {row.end: index for index, row in enumerate(rows)}
+    keys: list[dict[str, Any]] = [
+        {"count": row.count, "start_repeat": False, "end_repeat": False, "volta": None}
+        for row in rows
+    ]
+    landings = {
+        element.id: element.coordinate.value
+        for element in held
+        if isinstance(element, JumpTarget)
+    }
+    for element in held:
+        at = element.coordinate.value
+        if isinstance(element, JumpTarget):
+            if element.manifestation is FlowManifestation.repeat_start and at in starts:
+                keys[starts[at]]["start_repeat"] = True
+            continue
+        if not isinstance(element, Jump):
+            continue
+        brackets: list[tuple[Any, tuple[int, ...]]] = []
+        for destination in element.targets:
+            if destination.manifestation is FlowManifestation.repeat_end:
+                if at in ends:
+                    keys[ends[at]]["end_repeat"] = True
+            elif destination.manifestation is FlowManifestation.volta:
+                if not isinstance(destination.passes, tuple):
+                    continue
+                if destination.to in landings:
+                    begins = landings[destination.to]
+                elif isinstance(destination.by, Duration):
+                    begins = at + destination.by.value
+                else:
+                    continue
+                brackets.append((begins, destination.passes))
+        brackets.sort(key=lambda bracket: bracket[0])
+        for number, (begins, passes) in enumerate(brackets):
+            if begins not in starts:
+                continue
+            first = starts[begins]
+            if number + 1 < len(brackets):
+                stop = starts.get(brackets[number + 1][0], first + 1)
+            else:
+                stop = first + 1
+                while stop < len(rows) and rows[stop].passes == passes:
+                    stop += 1
+            value: int | list[int] = passes[0] if len(passes) == 1 else list(passes)
+            for index in range(first, stop):
+                keys[index]["volta"] = value
+    return keys
+
+
+# endregion
+
+# region Measure counts
+
+
 @dataclass(frozen=True)
-class CompleteMeasureGroup(MeasureGroup):
-    """Adjacent CompleteMeasures grouped together.
+class MeasureRange:
+    """A right-open range of measure counts, as a ``.flow.csv`` row states one.
 
-    Useful for identifying contiguous "normal" passages between special
-    structures (voltas, splits, incomplete measures, etc.).
+    Attributes:
+        start: The count of the first measure.
+        end: The count of the measure behind the last one.
+        sections: The names of the atomic sections the range covers, in the
+            order of the axis.
 
-    Note:
-        All members must be CompleteMeasure instances. OverlengthMeasures
-        are NOT included in CompleteMeasureGroup (they're a special case).
+    Examples:
+        >>> MeasureRange(1, 5, ("A",)).n_measures
+        4
     """
 
-    def __post_init__(self) -> None:
-        """Validate all members are CompleteMeasure."""
-        super().__post_init__()
-        for m in self.members:
-            if not isinstance(m, CompleteMeasure):
-                raise TypeError(
-                    f"CompleteMeasureGroup members must be CompleteMeasure, got {type(m).__name__}"
-                )
+    start: int
+    end: int
+    sections: tuple[str, ...] = ()
 
-    def __repr__(self) -> str:
-        return f"CompleteMeasureGroup(MC [{self.mc_start},{self.mc_end}), {len(self.members)} measures)"
+    @property
+    def n_measures(self) -> int:
+        """How many measures the range holds."""
+        return self.end - self.start
+
+
+def _value(position: Any) -> Any:
+    return position.value if isinstance(position, Coordinate) else position
+
+
+def measure_ranges(
+    intervals: Iterable[Any],
+    measures: MeasureMap | Iterable[Any],
+    *,
+    sections: Iterable[Any] = (),
+    divide_at: Iterable[Any] = (),
+) -> tuple[MeasureRange, ...]:
+    """State stretches of the axis as right-open ranges of measure counts.
+
+    The form of a ``.flow.csv`` file: a flow is the runs
+    :func:`~timetoalign.timelines.flow.engine.play` returns, one range per
+    run, and the atomic sections are one range each. The rows of such a
+    file never span a section break, where the flow goes on without a jump:
+    *divide_at* names the coordinates at which a run is divided.
+
+    Args:
+        intervals: The stretches in order, each with a ``start`` and an
+            ``end`` on the measures' axis (an :class:`~timetoalign.core.Interval`,
+            an atomic section).
+        measures: The measures counted, as for
+            :func:`flow_control_from_measures`.
+        sections: The atomic sections, each with ``name``, ``start`` and
+            ``end``; a range lists those lying inside it.
+        divide_at: Coordinates at which a stretch crossing them is divided,
+            the section breaks' for the form of a ``.flow.csv`` file.
+
+    Returns:
+        One range per stretch, or per part of a divided one.
+
+    Raises:
+        ValueError: If a stretch begins or ends inside a measure or outside
+            the measures: it has no measure counts then.
+
+    Examples:
+        >>> from timetoalign.core import Interval
+        >>> from timetoalign.timelines import MeasureMap
+        >>> bars = MeasureMap.from_rows(
+        ...     [{"count": 1, "time_signature": "3/4"}, {"count": 8}]
+        ... )
+        >>> run = Interval(start=Coordinate(3, "quarters"), end=Coordinate(12, "quarters"))
+        >>> measure_ranges([run], bars)
+        (MeasureRange(start=2, end=5, sections=()),)
+    """
+    rows = _rows(measures)
+    counts = {row.start: row.count for row in rows}
+    if rows:
+        counts[rows[-1].end] = rows[-1].count + 1
+
+    def count_at(position: Any) -> int:
+        if position in counts:
+            return counts[position]
+        inside = next(
+            (row.count for row in rows if row.start < position < row.end), None
+        )
+        where = (
+            "outside the measures"
+            if inside is None
+            else f"inside measure count {inside}"
+        )
+        raise ValueError(
+            f"{position} lies {where}: a stretch beginning or ending there has no "
+            "measure counts"
+        )
+
+    named = [
+        (_value(section.start), _value(section.end), section.name)
+        for section in sections
+    ]
+    cuts = sorted({_value(position) for position in divide_at})
+    ranges: list[MeasureRange] = []
+    for interval in intervals:
+        start, end = _value(interval.start), _value(interval.end)
+        bounds = [start, *(cut for cut in cuts if start < cut < end), end]
+        for first, last in zip(bounds, bounds[1:], strict=False):
+            ranges.append(
+                MeasureRange(
+                    count_at(first),
+                    count_at(last),
+                    tuple(
+                        name
+                        for section_start, section_end, name in named
+                        if first <= section_start and section_end <= last
+                    ),
+                )
+            )
+    return tuple(ranges)
+
+
+def read_flow_csv(path: Path | str) -> dict[str, tuple[MeasureRange, ...]]:
+    """Read a ``.flow.csv`` file: the measure-count ranges of each flow.
+
+    The file has the columns ``flow_mode``, ``source_file``,
+    ``software_version``, ``mc_start``, ``mc_end`` and ``atomic_segments``
+    (section names joined by ``;``), and any further ones. ``atomic`` rows
+    are the atomic sections; ``default`` and ``single`` rows are the flows
+    of those conventions; rows of another mode (``ms3``, ``music21``, ...)
+    state how another tool unfolds the score and are read like them. A row
+    whose ``mc_start`` is ``ERROR`` records that a tool failed and is left
+    out.
+
+    Args:
+        path: The file.
+
+    Returns:
+        The rows of each ``flow_mode`` in file order, by mode.
+
+    Raises:
+        ValueError: If the file lacks one of the columns.
+    """
+    required = ("flow_mode", "mc_start", "mc_end", "atomic_segments")
+    flows: dict[str, list[MeasureRange]] = {}
+    with Path(path).open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        missing = [name for name in required if name not in (reader.fieldnames or ())]
+        if missing:
+            raise ValueError(
+                f"{path} is no .flow.csv file: it lacks the columns {missing}. "
+                f"Available columns: {list(reader.fieldnames or ())}"
+            )
+        for row in reader:
+            if row["mc_start"] == "ERROR":
+                continue
+            flows.setdefault(row["flow_mode"], []).append(
+                MeasureRange(
+                    int(row["mc_start"]),
+                    int(row["mc_end"]),
+                    tuple(
+                        name.strip()
+                        for name in (row["atomic_segments"] or "").split(";")
+                        if name.strip()
+                    ),
+                )
+            )
+    return {mode: tuple(ranges) for mode, ranges in flows.items()}
+
+
+# endregion
+
+# region Findings
 
 
 @dataclass(frozen=True)
-class OverlengthGroup(MeasureGroup):
-    """One or more OverlengthMeasures grouped together.
+class MeasureFinding:
+    """Something a look at the measures found about their flow control.
 
-    For overlength measures like fermatas, cadenzas, or ad lib passages.
+    A finding is a value handed to whoever corrects the score; nothing is
+    changed because of it.
 
-    Note:
-        All members must be OverlengthMeasure instances.
+    Attributes:
+        kind: What was found.
+        count: The count of the measure it was found at.
     """
 
-    def __post_init__(self) -> None:
-        """Validate all members are OverlengthMeasure."""
-        super().__post_init__()
-        for m in self.members:
-            if not isinstance(m, OverlengthMeasure):
-                raise TypeError(
-                    f"OverlengthGroup members must be OverlengthMeasure, got {type(m).__name__}"
-                )
+    kind: MeasureFindingKind
+    count: int
 
-    def __repr__(self) -> str:
-        return f"OverlengthGroup(MC [{self.mc_start},{self.mc_end}), {len(self.members)} measures)"
+
+def repeat_end_findings(
+    measures: MeasureMap | Iterable[Any],
+) -> tuple[MeasureFinding, ...]:
+    """Find the repeat ends whose repeat would begin right behind a last bracket.
+
+    A repeat end without a printed start is played from the start of its
+    section. Where the last sign before it that closes anything (a repeat
+    end, or the last bracket of alternative endings) is a last bracket, the
+    passage it repeats begins, as a reader takes it, right behind that
+    bracket, and playing it from the start of the section goes back over the
+    brackets. Each such repeat end is returned with the count of its
+    measure; nothing is added to the measures or their flow control.
+
+    Args:
+        measures: The measures, as for :func:`flow_control_from_measures`.
+
+    Returns:
+        One finding of kind ``repeat_end_behind_brackets`` per such repeat
+        end, in printed order.
+
+    Raises:
+        ValueError: As :func:`flow_control_from_measures`.
+    """
+    rows = _rows(measures)
+    run_of: dict[int, int] = {}
+    closing: dict[int, int] = {}
+    last_of_run: set[int] = set()
+    for run, brackets in enumerate(_bracket_runs(rows)):
+        last_of_run.add(brackets[-1].last)
+        for bracket in brackets:
+            closing[bracket.last] = run
+            for index in range(bracket.first, bracket.last + 1):
+                run_of[index] = run
+
+    findings: list[MeasureFinding] = []
+    open_starts = 0
+    served: set[int] = set()
+    for index, row in enumerate(rows):
+        if row.start_repeat:
+            open_starts += 1
+        if not row.end_repeat:
+            continue
+        own = closing.get(index)
+        if own is not None and own in served:
+            # A later bracket's repeat end goes where the run's first went.
+            continue
+        if own is not None:
+            served.add(own)
+        if open_starts:
+            open_starts -= 1
+            continue
+        # The last sign before it that closes anything, its own run apart.
+        before = next(
+            (
+                earlier
+                for earlier in range(index - 1, -1, -1)
+                if (earlier not in run_of or run_of[earlier] != run_of.get(index))
+                and (rows[earlier].end_repeat or earlier in last_of_run)
+            ),
+            None,
+        )
+        if before is not None and before in last_of_run:
+            findings.append(
+                MeasureFinding(MeasureFindingKind.repeat_end_behind_brackets, row.count)
+            )
+    return tuple(findings)
+
+
+# endregion

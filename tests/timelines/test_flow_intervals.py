@@ -22,9 +22,8 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.core import Coordinate, TimeUnit, struct_to_rational
-from timetoalign.core.enums import FlowMode
 from timetoalign.core.events import Note
-from timetoalign.timelines.flow import Flow, FlowMap, PlaythroughSection
+from timetoalign.timelines.flow import FlowMap
 from timetoalign.timelines.flow.sections import (
     _as_interval,
     _coerce_intervals,
@@ -190,9 +189,6 @@ class TestFlowMapFromIntervals:
     def test_n_sections(self, two_span_map: FlowMap) -> None:
         assert two_span_map.n_sections == 2
 
-    def test_flow_is_none(self, two_span_map: FlowMap) -> None:
-        assert two_span_map.flow is None
-
     def test_total_target_length(self, two_span_map: FlowMap) -> None:
         # 123 + (252 - 129) = 246
         assert two_span_map.total_target_length == Fraction(246)
@@ -218,7 +214,6 @@ class TestFlowMapFromIntervals:
 
     def test_inverse_round_trips(self, two_span_map: FlowMap) -> None:
         inverse = two_span_map.inverse()
-        assert inverse.flow is None
         # The inverse puts each span back at its source coordinates, so the
         # 6 QB the cut removed reopen as a hole between them.
         assert repr(inverse) == "FlowMap(A8_inverse: 2 sections, 1 gap)"
@@ -237,71 +232,8 @@ class TestFlowMapFromIntervals:
 
     def test_empty_source_is_empty_map(self) -> None:
         fm = FlowMap()
-        assert fm.flow is None
         assert fm.n_sections == 0
         assert fm.unfold_coordinate(0) == []
-
-
-# endregion
-
-# region Regression: Flow and from_qb_sections paths
-
-
-class TestFlowMapFlowRegression:
-    """The MC-space Flow path and from_qb_sections stay exactly as before."""
-
-    @pytest.fixture
-    def repeated_flow(self) -> Flow:
-        # MC 3 is visited twice (two identical [1, 5) playthrough sections).
-        return Flow.from_sections(
-            [
-                PlaythroughSection(1, 5, ("A",)),
-                PlaythroughSection(1, 5, ("A",)),
-            ],
-            FlowMode.default,
-        )
-
-    def test_positional_flow_builds_mc_sections(self, repeated_flow: Flow) -> None:
-        fm = FlowMap(repeated_flow)
-        assert fm.flow is repeated_flow
-        assert fm.id == "default"
-        # Source MC 3 appears twice: target 2 (in first span) and 6 (in second).
-        assert fm.unfold_coordinate(3) == [Fraction(2), Fraction(6)]
-        assert fm.n_sections == 2
-
-    def test_source_keyword_works(self, repeated_flow: Flow) -> None:
-        # The polymorphic positional parameter is named `source`, so it may be
-        # passed by keyword as `source=`.
-        fm = FlowMap(source=repeated_flow, id="custom")
-        assert fm.id == "custom"
-        assert fm.unfold_coordinate(3) == [Fraction(2), Fraction(6)]
-
-    def test_legacy_flow_keyword_rejected(self, repeated_flow: Flow) -> None:
-        # The historical `flow=` keyword no longer exists; every construction
-        # site was migrated to the positional `source`. No compatibility alias
-        # is retained.
-        with pytest.raises(TypeError):
-            FlowMap(flow=repeated_flow)  # type: ignore[call-arg]
-
-    def test_from_qb_sections_unchanged(self, repeated_flow: Flow) -> None:
-        qb_sections = [
-            (Fraction(0), Fraction(4)),
-            (Fraction(4), Fraction(8)),
-        ]
-        fm = FlowMap.from_qb_sections(repeated_flow, qb_sections, id="qb")
-        assert fm.id == "qb"
-        assert fm.flow is repeated_flow
-        assert fm.n_sections == 2
-        assert fm.total_target_length == Fraction(8)
-        # Source QB 2 lies in the first span (target 2) and second span
-        # (target 4 + (2 - 4)?) — no: second span source range is [4, 8),
-        # so QB 2 only appears in the first span.
-        assert fm.unfold_coordinate(2) == [Fraction(2)]
-        assert fm.unfold_coordinate(5) == [Fraction(5)]
-
-    def test_from_qb_sections_length_mismatch_raises(self, repeated_flow: Flow) -> None:
-        with pytest.raises(ValueError):
-            FlowMap.from_qb_sections(repeated_flow, [(Fraction(0), Fraction(4))])
 
 
 # endregion

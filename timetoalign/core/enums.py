@@ -887,38 +887,6 @@ class PartitionMode(FancyStrEnum):
     """Same coordinate system, parent-child relationship."""
 
 
-class FlowMode(FancyStrEnum):
-    """Flow computation modes.
-
-    Different contexts require different unfoldings:
-
-    Deterministic modes (must be identical across all loaders):
-    - atomic: True atomic sections from ScoreFlowController (= mode=None)
-    - printed: All bars as printed (no unfolding)
-    - single: Single playthrough (last volta only)
-
-    Contingent modes (may have alternatives if divergent):
-    - default: Most complete flow (all repeats taken), equivalent to MS3
-    - music21: music21's expandRepeats() - only if diverges from default
-    - partitura_maximal: partitura's unfold_part_maximal() - only if diverges from default
-    - partitura_minimal: partitura's atomic segments - only if diverges from atomic
-
-    Other modes:
-    - ms3: From ms3's *_unfolded.measures.tsv (gold standard for default)
-    - custom: User-provided flow sequence
-    """
-
-    atomic = auto()
-    default = auto()
-    ms3 = auto()
-    partitura_minimal = auto()
-    partitura_maximal = auto()
-    music21 = auto()
-    printed = auto()
-    single = auto()
-    custom = auto()
-
-
 class FlowConvention(FancyStrEnum):
     """How flow control is played into a flow.
 
@@ -952,19 +920,10 @@ class FlowFindingKind(FancyStrEnum):
     """A destination nobody can check was passed and not taken."""
 
 
-class IncompletePosition(FancyStrEnum):
-    """Position of an incomplete measure within the score.
+class MeasureFindingKind(FancyStrEnum):
+    """What a look at a score's measures found about their flow control."""
 
-    Used by IncompleteMeasure to classify why a measure is incomplete:
-    - anacrusis: Pickup measure at the start of the piece
-    - final: Final incomplete measure (often pairs with anacrusis)
-    - split_first: First part of a split measure
-    - split_second: Second part of a split measure
-    - unknown: Position not yet determined
-    """
-
-    anacrusis = auto()
-    final = auto()
-    split_first = auto()
-    split_second = auto()
-    unknown = auto()
+    repeat_end_behind_brackets = auto()
+    """A repeat end without a printed start, where the last sign before it
+    that closes anything is a last bracket of alternative endings: the
+    passage it repeats begins right behind that bracket."""

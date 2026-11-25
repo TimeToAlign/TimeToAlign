@@ -245,7 +245,6 @@ _DEFERRED_EXPORTS = {
     "GraphicalTimeline": ("timetoalign.timelines", "GraphicalTimeline"),
     "LogicalTimeline": ("timetoalign.timelines", "LogicalTimeline"),
     "PhysicalTimeline": ("timetoalign.timelines", "PhysicalTimeline"),
-    "SegmentNameGenerator": ("timetoalign.timelines", "SegmentNameGenerator"),
     "Timeline": ("timetoalign.timelines", "Timeline"),
     "TimelineGroup": ("timetoalign.timelines", "TimelineGroup"),
     "UnknownLengthError": ("timetoalign.timelines", "UnknownLengthError"),
@@ -399,7 +398,6 @@ __all__ = [
     "BeatGrid",
     "BeatGridSegment",
     "GridBeat",
-    "SegmentNameGenerator",
     # Maps
     "ConstantMap",
     "ConversionMap",

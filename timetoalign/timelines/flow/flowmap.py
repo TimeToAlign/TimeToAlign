@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
-from .sections import Flow, Gap, _coerce_flow_entries, _coerce_intervals
+from .sections import Gap, _coerce_flow_entries, _coerce_intervals
 
 
 @dataclass
@@ -95,8 +95,6 @@ class FlowMap:
 
     - ``None`` — an empty map (no sections). Used by internal construction
       such as :meth:`inverse`, which fills the section tables afterwards.
-    - a :class:`Flow` — sections are derived from the flow's measure-count
-      ranges (integer MC space); *id* defaults to the flow's mode value.
     - a single interval-like descriptor **or** an iterable of them — sections
       are built directly from the resulting ``(start, end)`` ranges with a
       cumulative target position, so the played spans concatenate in the
@@ -127,7 +125,6 @@ class FlowMap:
       binary search
 
     Attributes:
-        flow: The computed Flow, or ``None`` for interval-built maps.
         id: Identifier for this FlowMap.
         source_length: Total extent of the source axis, when known. Recorded so
             that :meth:`inverse` can restore a target axis whose final stretch
@@ -138,7 +135,7 @@ class FlowMap:
 
     def __init__(
         self,
-        source: Flow | object | None = None,
+        source: object | None = None,
         *,
         id: str = "",
         resolve: Callable[[str], object] | None = None,
@@ -146,19 +143,13 @@ class FlowMap:
         source_length: Fraction | float | int | None = None,
         target_length: Fraction | float | int | None = None,
     ) -> None:
-        """Build a FlowMap from a Flow, interval-like descriptors, or nothing.
+        """Build a FlowMap from interval-like descriptors, or from nothing.
 
         Args:
-            source: What the sections are built from, one of four kinds:
+            source: What the sections are built from, one of three kinds:
 
                 - ``None``: an empty map without sections (what
                   :meth:`inverse` starts from before filling them in).
-                - a :class:`Flow`: one section per playthrough section of
-                  the flow, its source range the measure counts
-                  ``[mc_start, mc_end)`` (integer MC space, not quarters;
-                  :meth:`from_qb_sections` builds the quarter form), the
-                  sections laid end to end on the target axis. Sets
-                  :attr:`flow`.
                 - a mapping ``{target coordinate: span}``: each span (or
                   collection of spans) placed at its key, as
                   :meth:`from_dict` does; cannot be combined with *at*.
@@ -169,8 +160,8 @@ class FlowMap:
                   coordinates; the spans follow each other on the target
                   axis unless :class:`~timetoalign.timelines.flow.sections.Gap`
                   entries mixed in or *at* place them.
-            id: Identifier for this FlowMap. Defaults to the flow's mode value
-                for a Flow source, else ``"default"``.
+            id: Identifier for this FlowMap. Defaults to ``"default"`` for a
+                map with sections.
             resolve: Callable mapping a region id to an interval-like object
                 (e.g. a timeline's ``get_region``), used only when *source*
                 carries region ids.
@@ -188,7 +179,6 @@ class FlowMap:
                 not hold one entry per played span, or if the placements
                 overlap or run backwards.
         """
-        self.flow: Flow | None = None
         self.id: str = id
         self._sections: list[FlowMapSection] = []
         self._target_boundaries: list[Fraction] = []
@@ -200,13 +190,6 @@ class FlowMap:
         )
 
         if source is None:
-            return
-
-        if isinstance(source, Flow):
-            self.flow = source
-            if not self.id:
-                self.id = source.mode.value
-            self._build_section_tables()
             return
 
         if not self.id:
@@ -512,35 +495,6 @@ class FlowMap:
         after = next((e for e in entries[tail:] if not isinstance(e, Gap)), None)
         return after[0] if after is not None else Fraction(0)
 
-    def _build_section_tables(self) -> None:
-        """Build section tables from the Flow for coordinate lookup.
-
-        Each PlaythroughSection defines a source coordinate range (start, end)
-        and its position in the target sequence is determined cumulatively.
-        """
-        if self.flow is None or not self.flow.sections:
-            return
-
-        target_position = Fraction(0)
-
-        for sec in self.flow.sections:
-            source_start = Fraction(sec.mc_start)
-            source_end = Fraction(sec.mc_end)
-            section_duration = source_end - source_start
-            label = "+".join(sec.atomic_section_ids) or None
-
-            self._sections.append(
-                FlowMapSection(
-                    source_start=source_start,
-                    source_end=source_end,
-                    target_start=target_position,
-                    label=label,
-                )
-            )
-            self._target_boundaries.append(target_position)
-
-            target_position += section_duration
-
     def unfold_coordinate(self, coord: Fraction | float | int) -> list[Fraction]:
         """Map source coordinate to target coordinates.
 
@@ -672,7 +626,6 @@ class FlowMap:
         ]
 
         inverse = FlowMap(id=f"{self.id}_inverse")
-        inverse.flow = self.flow
         inverse._sections = inverse_sections
         inverse._target_boundaries = [sec.target_start for sec in inverse_sections]
         inverse.source_length = self.target_length
@@ -753,70 +706,6 @@ class FlowMap:
                 merged.append((start, stop, label))
 
         return merged
-
-    @classmethod
-    def from_qb_sections(
-        cls,
-        flow: Flow,
-        qb_sections: list[tuple[Fraction, Fraction]],
-        *,
-        id: str = "",
-    ) -> "FlowMap":
-        """Create a FlowMap with QB-space source coordinates.
-
-        Unlike the default constructor which derives source coordinates from
-        MC numbers (integers), this factory accepts pre-computed quarterbeat
-        boundaries.  This is the correct approach for scores with non-uniform
-        measure durations, where MC-number space != QB-coordinate space.
-
-        Args:
-            flow: The computed Flow (retained for metadata and inverse ops).
-            qb_sections: List of ``(qb_start, qb_end)`` tuples giving the
-                quarterbeat boundaries of each section in the **folded**
-                source timeline.  Must have the same length as ``flow.sections``.
-            id: Optional identifier.  Defaults to ``flow.mode.value``.
-
-        Returns:
-            FlowMap with sections in QB-space.
-
-        Raises:
-            ValueError: If ``len(qb_sections) != len(flow.sections)``.
-
-        See Also:
-            `compute_qb_sections`: Computes QB boundaries from a Flow and
-                ScoreFlowController.
-        """
-        if len(qb_sections) != len(flow.sections):
-            raise ValueError(
-                f"qb_sections has {len(qb_sections)} entries but flow has "
-                f"{len(flow.sections)} sections"
-            )
-
-        fm = cls.__new__(cls)
-        fm.flow = flow
-        fm.id = id or flow.mode.value
-        fm._sections = []
-        fm._target_boundaries = []
-        fm.source_length = None
-        fm.target_length = None
-
-        target_position = Fraction(0)
-
-        for (qb_start, qb_end), sec in zip(qb_sections, flow.sections):
-            section_duration = qb_end - qb_start
-            label = "+".join(sec.atomic_section_ids) or None
-            fm._sections.append(
-                FlowMapSection(
-                    source_start=qb_start,
-                    source_end=qb_end,
-                    target_start=target_position,
-                    label=label,
-                )
-            )
-            fm._target_boundaries.append(target_position)
-            target_position += section_duration
-
-        return fm
 
     def __repr__(self) -> str:
         n_gaps = self.n_gaps

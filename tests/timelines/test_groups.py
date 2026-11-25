@@ -1309,7 +1309,8 @@ class TestTimelineGroupUnfold:
     - CLT1: ContinuousLogicalTimeline (ABC v2.6, 878.5 quarters)
     - OpenScore: ContinuousLogicalTimeline (4th movement, 878.5 quarters)
 
-    The FlowMap has 11 PlaythroughSections producing 1116 unfolded QB.
+    The default flow has 11 runs producing 1116 unfolded QB; each run is
+    labelled with the atomic sections it covers.
     Gold standard values from the test_unfolding.py module.
     """
 
@@ -1321,9 +1322,11 @@ class TestTimelineGroupUnfold:
     @pytest.fixture(scope="class")
     def score_data(self):
         """Build score group + flow data for unfolding tests."""
-        from timetoalign.core.enums import FlowMode
+        from types import SimpleNamespace
+
         from timetoalign.loader.score import Ms3Loader
-        from timetoalign.timelines.flow import ScoreFlowController
+        from timetoalign.timelines.flow import FlowMap
+        from timetoalign.timelines.flow.engine import atomic_sections, play
 
         data_dir = SCORE_DIR / "beethoven_op18-4iv_multimodal"
         abc_dir = data_dir / "ABC"
@@ -1343,8 +1346,11 @@ class TestTimelineGroupUnfold:
             os_dir / "sq8913219.measures.tsv",
         )
         os_full = os_loader.create_timeline(uid="openscore_full")
-        os_controller = ScoreFlowController(os_loader.store.measures)
-        boundaries = os_controller.get_section_boundary_coordinates()
+        boundaries = [
+            element.coordinate.value
+            for element in os_full.flow_control.section_breaks
+            if element.coordinate.value < os_full.length.value
+        ]
         os_full.create_regions_from_boundaries(
             [0, *[float(b) for b in boundaries], float(os_full.length.value)],
             prefix="movement",
@@ -1358,25 +1364,37 @@ class TestTimelineGroupUnfold:
             timelines=[clt1, openscore],
         )
 
-        # Flow
-        controller = abc_loader.create_flow_controller()
-        flow = controller.compute_flow(FlowMode.default)
+        # The default flow of CLT1, each run named by its atomic sections
+        registry = clt1.flow_control
+        sections = atomic_sections(registry, clt1.length)
+        flow_map = FlowMap(
+            [
+                SimpleNamespace(
+                    start=run.start,
+                    end=run.end,
+                    name="+".join(
+                        section.name
+                        for section in sections
+                        if run.start.value <= section.start.value
+                        and section.end.value <= run.end.value
+                    ),
+                )
+                for run in play(registry, clt1.length).runs
+            ]
+        )
 
         return {
             "group": group,
             "clt_1": clt1,
             "openscore": openscore,
-            "controller": controller,
-            "flow": flow,
+            "flow_map": flow_map,
             "abc_loader": abc_loader,
         }
 
     @pytest.fixture(scope="class")
     def unfolded_group(self, score_data):
         """Unfold the score group once for flattened-result assertions."""
-        return score_data["group"].apply_flow(
-            score_data["flow"], score_data["controller"], "clt_1"
-        )
+        return score_data["group"].apply_flow(score_data["flow_map"], "clt_1")
 
     def test_unfold_returns_timeline_group(self, unfolded_group):
         """apply_flow() returns a TimelineGroup."""
@@ -1400,10 +1418,7 @@ class TestTimelineGroupUnfold:
         """Custom name is used when specified."""
         group = score_data["group"]
         result = group.apply_flow(
-            score_data["flow"],
-            score_data["controller"],
-            "clt_1",
-            name="My Unfolded Group",
+            score_data["flow_map"], "clt_1", name="My Unfolded Group"
         )
         assert result.name == "My Unfolded Group"
 
@@ -1431,8 +1446,8 @@ class TestTimelineGroupUnfold:
 
         from timetoalign.timelines.groups import _held_ids, _tree
 
-        labels = ["A", "A+B", "B+C", "C+D+D1", "D", "D2+E", "E+F+F1", "F"]
-        labels += ["F2+G+G1", "G", "G2"]
+        labels = ["A", "A+B", "B+C", "C+D+E", "D", "F+G", "G+H+I", "H"]
+        labels += ["J+K+L", "K", "M"]
         timelines = []
         for member in unfolded_group:
             names = [member.get_child(i).name for i in member.list_children()]
@@ -1472,95 +1487,25 @@ class TestTimelineGroupUnfold:
         """KeyError when reference_timeline_id is not in the group."""
         group = score_data["group"]
         with pytest.raises(KeyError, match="nonexistent"):
-            group.apply_flow(
-                score_data["flow"],
-                score_data["controller"],
-                "nonexistent",
-            )
+            group.apply_flow(score_data["flow_map"], "nonexistent")
 
     def test_unfold_consistency_with_single_timeline(self, score_data, unfolded_group):
-        """Group unfold produces same length as create_unfolded_timeline.
+        """Group unfold produces same length as unfolding the reference alone.
 
         Verifies that the group-based approach is consistent with the
         single-timeline function for the reference timeline: both yield a
         same-type timeline with one appended child per section.
         """
-        from timetoalign.timelines.flow import create_unfolded_timeline
-
-        controller = score_data["controller"]
-        flow = score_data["flow"]
-        clt1 = score_data["clt_1"]
+        from timetoalign.timelines.flow import unfold_via_flowmap
 
         group_clt1 = unfolded_group.get_timeline("clt_1")
-        single_clt1 = create_unfolded_timeline(clt1, flow, controller)
+        single_clt1 = unfold_via_flowmap(score_data["clt_1"], score_data["flow_map"])
 
         assert group_clt1.length.value == single_clt1.length.value
         assert group_clt1.n_children == single_clt1.n_children
 
 
 # endregion
-
-
-# region TestScoreLoaderCreateFlowController
-
-
-class TestScoreLoaderCreateFlowController:
-    """Tests for ScoreLoader.create_flow_controller()."""
-
-    @pytest.fixture(scope="class")
-    def abc_loader(self):
-        """Load the Beethoven ABC score."""
-        from timetoalign.loader.score import Ms3Loader
-
-        data_dir = SCORE_DIR / "beethoven_op18-4iv_multimodal" / "ABC"
-
-        return Ms3Loader.from_file(
-            data_dir / "n04op18-4_04.notes.tsv",
-            data_dir / "n04op18-4_04.measures.tsv",
-        )
-
-    def test_returns_score_flow_controller(self, abc_loader):
-        """create_flow_controller() returns a ScoreFlowController."""
-        from timetoalign.timelines.flow import ScoreFlowController
-
-        controller = abc_loader.create_flow_controller()
-        assert isinstance(controller, ScoreFlowController)
-
-    def test_controller_can_compute_flow(self, abc_loader):
-        """The returned controller can compute a flow."""
-        from timetoalign.core.enums import FlowMode
-
-        controller = abc_loader.create_flow_controller()
-        flow = controller.compute_flow(FlowMode.default)
-        assert len(flow.sections) == 11
-
-    def test_raises_without_measures(self):
-        """ValueError when no measure data has been loaded."""
-        from timetoalign.loader.score import Ms3Loader
-
-        loader = Ms3Loader()
-        with pytest.raises(ValueError, match="no measure data"):
-            loader.create_flow_controller()
-
-    def test_equivalent_to_manual_construction(self, abc_loader):
-        """Produces the same result as manual ScoreFlowController()."""
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.timelines.flow import ScoreFlowController
-
-        # API way
-        ctrl_api = abc_loader.create_flow_controller()
-        flow_api = ctrl_api.compute_flow(FlowMode.default)
-
-        # Manual way
-        ctrl_manual = ScoreFlowController(abc_loader.store.measures)
-        flow_manual = ctrl_manual.compute_flow(FlowMode.default)
-
-        assert len(flow_api.sections) == len(flow_manual.sections)
-
-
-# endregion
-
-
 # region C-Map columns of the group table
 
 

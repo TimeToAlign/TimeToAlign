@@ -7,16 +7,16 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 
 | File | Remaining coverage |
 |---|---|
-| `conftest.py` | Seven specimen definitions, source lookup, size guards, and `.flow.csv` parsing. |
-| `test_score_parsing_matrix.py` | CSV modes, folded and unfolded counts, loader/format combinations, exact flow-control profiles, target-flow reproduction, cross-loader counts, and pinned parser differences. |
+| `conftest.py` | Seven specimen definitions, source lookup, size guards, `.flow.csv` parsing, a timeline's flow in the form of that file, and the stress score's three repairs. |
+| `test_score_parsing_matrix.py` | CSV modes, folded counts, loader/format combinations, exact flow-control profiles, each loader's played default flow against the target, cross-loader counts, and pinned parser differences. |
+| `test_flow_gold.py` | The gold flows played from the ms3 measures tables (see "Gold flows"), and the signs a loader writes as flow control (see "Signs written as flow control"). |
 | `test_loaders.py` | MS3 coordinate and duration semantics, pitch schema, Partitura measure/MIDI regressions, shared `mc_onset`, anacrusis offsets, and parquet round trips. |
 | `test_cross_validation.py` | Exact Chopin note-count, MIDI-pitch and pitch-name agreement across MS3, Partitura, and Music21; measure onsets only where the source states them (see "Cross-loader parity" below). |
-| `test_measuremap_loader.py` | MeasureMap expansion, validation, traversal, schema, and comparison with MS3. |
-| `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, live Partitura boundaries, and CSV serialization. |
+| `test_measuremap_loader.py` | MeasureMap expansion, validation, schema, and comparison with MS3. |
+| `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, and live Partitura boundaries. |
 | `test_partitura_exactness.py` | Exact Partitura coordinate pairs, instant nulls, flattened timelines, and agreement with Partitura's float map. |
 | `test_ms3_facets.py` | `Ms3Loader`'s companion discovery in both corpus layouts and its reading of empty note cells, and its refusal of a measure without a count or a length (see "MS3 facet discovery", "MS3 empty note cells" and "MS3 measures without a count or a length" below). |
-| `test_successors.py` | The `next` column derived from the measure columns: endings of more than one measure, Music21/Partitura parity, agreement with the ms3 TSVs (see below). |
-| `test_verovio_loader.py` | `VerovioLoader` on MEI fixtures and specimens: exact onsets, kept ids, measures as structure, ties, grace notes, repeats, movements, the physical timeline, music21 parity, Verovio's expansion against the flow controller (see below). |
+| `test_verovio_loader.py` | `VerovioLoader` on MEI fixtures and specimens: exact onsets, kept ids, measures as structure, ties, grace notes, repeats, movements, the physical timeline, music21 parity, Verovio's expansion against the played flow control (see below). |
 | `test_verovio_ids.py` | `VerovioLoader`'s minted timeline ids when the root's id is given (see "Ids of a given root" below). |
 
 ## Parsing matrix
@@ -33,22 +33,53 @@ The matrix covers these specimens and exact folded/unfolded measure counts:
 | `flow_only` | 15 | 30 for MS3 | 13 |
 | `WoO71` | 397 | 505 | 26 |
 
-For every available source, the matrix checks TSV and MeasureMap folded counts, MeasureMap
-default traversal length, Music21 MusicXML and MEI folded counts, Partitura MusicXML and MEI
-folded counts, and same-loader MEI/MusicXML equivalence where both formats exist. Files larger
-than 500,000 bytes use the documented size skip because third-party parsing is too slow for
-this integration suite.
+For every available source, the matrix checks TSV and MeasureMap folded counts, Music21
+MusicXML and MEI folded counts, Partitura MusicXML and MEI folded counts, and same-loader
+MEI/MusicXML equivalence where both formats exist. Files larger than 500,000 bytes use the
+documented size skip because third-party parsing is too slow for this integration suite.
+
+**The flow of a loader is what its timeline's flow control plays.** A loader's timeline is
+created, the engine plays its flow control (`default`), and the runs are stated as the
+`.flow.csv` file states a flow: right-open ranges of measure counts, each listing the atomic
+sections it covers, divided at the section breaks (`conftest.played_ranges`). The comparison
+with the file's `default` rows is exact, letters included, and the walk must report no
+finding. This proves a loader end to end, source to signs to flow, against rows nobody
+computed with this library's rules; it cannot be satisfied by a loader and a test agreeing
+on a wrong reading, since the file is the third party.
+
+- **Music21 MusicXML**: `op18_no4_mov4_flow` plays the target flow. `polyrhythm_only`,
+  `c05n05_musete` and `c11n08_Rondeau` are strict `xfail`s (`ValueError`): a MusicXML score of
+  several parts gives the loader one measure row per part, which form no measure map, so no
+  timeline is created. `flow_only` is pinned below.
+- **Partitura MusicXML**: `c05n05_musete` (two D.S. al Fine), `c11n08_Rondeau` (two D.C. that
+  play until the segno) and `op18_no4_mov4_flow` play the target flow and have the target's
+  atomic sections. `polyrhythm_only` is the same strict `xfail`; `flow_only` is pinned below.
+- **Music21 MEI against MusicXML**: music21 reads repeat signs and endings and nothing else, so
+  the three columns the flow control is written from (`start_repeat`, `end_repeat`, `volta`)
+  are compared row by row between the two formats.
+- **MeasureMap**: a Measure Map row has no key for a D.S., a D.C., a segno or a Fine, and the
+  corpus files state no `volta`. For every specimen the repeat signs read back from the
+  timeline's flow control (`measure_keys_from_flow_control`) must equal those of the ms3
+  table, measure by measure. The two Couperin pieces pin what such a timeline plays: the
+  repeats and nothing else, `[(1, 17), (1, 32), (17, 59), (32, 59)]` and
+  `[(1, 10), (1, 19), (10, 28), (19, 61), (28, 61)]`, and its elements are exactly the
+  translation of its own measure map. What the file knows beyond the repeats is its `next`,
+  which stays with the measures (`MeasureMap` and the measure table) and is no flow control.
 
 `TestVerovioLoaderMEI` reads each matrix score's MEI with `VerovioLoader` (`expandNever`: the
 printed measure table is the same either way, and Verovio crashes on expanding the
 flow-control files) and requires the folded count and the target `default` flow from the
-printed table. `polyrhythm_only` and `flow_only` match exactly (`flow_only`: 31 visits, D.S. al
-Coda, a To-Coda jump, voltas 1–3 and D.C. al Fine, all from the MEI's own marks). Each residue is
-a strict `xfail` naming what the MEI states:
+timeline's flow control. `polyrhythm_only` matches exactly. `flow_only` has a test of its own:
+the MEI's marks give the signs the ms3 table gives (every jump target, break and section
+break at the same coordinate with the same manifestation; Verovio names the second coda
+`coda2`, the table `codab`), so the flow ends at the second of three brackets as the table's
+does, the atomic sections are the target's, and with the same three repairs the flow is the
+target's `default` flow (see "Gold flows"). Each residue is a strict `xfail` naming what the
+MEI states:
 
 - `c05n05_musete`: a `daCapo` at MC 31, where the target flow jumps to the segno.
 - `c11n08_Rondeau`: `daCapo`s at MCs 18 and 27 with neither a Fine nor an "al …" text, so
-  nothing states where they end; the traversal stops at the cycle.
+  nothing states where they end.
 - `WoO71` (slow): no section breaks, which cut the target's sections. The MC sequence itself is
   the target's, all 505 visits, asserted by `test_woo71_mc_sequence`.
 - `op18_no4_mov4_flow`: a skeleton whose measures have no content, hence no timemap entry; the
@@ -57,59 +88,7 @@ a strict `xfail` naming what the MEI states:
 Rachmaninoff is not in the Verovio matrix: Verovio 6.4.1 crashes the process on its MEI.
 
 Every `.flow.csv` must exist and contain `atomic` and `default` modes. Its number of atomic rows
-must equal the specimen value above. MS3 must reproduce one documented valid default flow and
-the exact atomic boundaries. TSV and MeasureMap must have identical folded counts.
-
-### Successors derived from the measure columns
-
-A source that lists each measure's successors (an ms3 TSV, a Measure Map) keeps them. For every
-other score loader `ScoreLoader.load()` derives the `next` column, per part, from the repeat,
-volta and navigation columns of the measure table (`ScoreLoader._successors`), so one rule
-serves Music21, Partitura and Verovio. An ending is a run of measures that all carry its volta
-number. A repeat end goes back to its repeat start and, outside an ending, on to the following
-measure. A D.S. or D.C. replaces the onward successors with its target and keeps a repeat end's
-way back; a Fine adds `-1`, the end of the piece.
-
-`test_successors.py` proves the rule against two references:
-
-- **An ending of two measures.** The test writes a MusicXML file of seven 4/4 measures: m1 opens
-  a repeat, the first ending is m4–m5 with the repeat end at m5, the second ending is m6, m7
-  closes. Each loader must write volta `1` on m4 *and* m5 and `2` on m6. Then `next` is `4, 6`
-  on m3 (the way into each ending), `1` on m5 (back to the repeat start; the way on is the next
-  ending), null (the following measure) everywhere else, and the default flow is
-  `1 2 3 4 5 1 2 3 6 7`. Music21Loader and PartituraLoader must both give exactly this, hence
-  identical `next` columns. Partitura used to write the volta on an ending's first measure only,
-  which cut the ending after m4 and lost the repeat (m3 `4, 5`, m5 `6, 7`). Music21's former
-  derivation sent every measure of a first ending without a repeat end to the exit (m4 `7`);
-  under the shared rule m4 follows on to m5.
-- **Agreement with ms3.** The ms3 TSV is the source format of `next` and lists every successor,
-  so it is the reference. On `c05n05_musete` and `c11n08_Rondeau`, the derived `next` of every MC,
-  read as a set (null meaning the following MC, `-1` after the last), must equal the TSV's. The
-  sources are the two that carry navigation marks: PartituraLoader on the MusicXML and
-  VerovioLoader on the MEI (Music21 reads none). This pins the jump rule: `c05n05_musete` MC 31
-  is `{17, 6}` and MC 58 `{32, 6}` (back to the repeat start, then the D.S. to the segno at MC 6,
-  never on to the following measure); `c11n08_Rondeau` MC 18 is `{10, 1}` and MC 27 `{19, 1}`
-  (the D.C.); and `c05n05_musete` MC 16, a repeat end with the Fine, holds `-1` beside `1, 17`.
-  Before, a D.S. or D.C. replaced the repeat's edges (MC 31 was `6`).
-
-Where a source cannot state what the TSV lists, the comparison of that MC is a strict `xfail`
-naming the reason, and the remaining MCs of the score still have to agree:
-
-- `c05n05_musete` MC 31 on the MEI: the MEI states a `daCapo` where the TSV has a D.S., so the
-  derived set is `{17, 1}`.
-- `c05n05_musete` MC 16 (both sources): the TSV continues after the D.S. al Fine at the next
-  section, MC 32; the derived set is `{1, 17, -1}`. Neither the MEI nor the rule states a
-  continuation after the Fine.
-- `c11n08_Rondeau` MC 9 (both sources): the TSV continues after each D.C. al segno at the next
-  section, MCs 19 and 28; the derived set is `{1, 10}`, for the same reason.
-
-The derived successors are an input of the flow controller, so each loader's default flow on
-every score of the matrix, and each pinned deviation below, must stay exactly what it is. The rule
-writes edges the two former loader-specific derivations did not (Music21 wrote none when a score
-had D.S., D.C., segno, coda or Fine marks; Partitura wrote no third volta and no exit after a
-non-final volta without a repeat end), and none of them changes a flow on these scores: the
-traversal routes voltas by pass, and a D.S. or D.C. is executed only where the measure table
-names its target.
+must equal the specimen value above. TSV and MeasureMap must have identical folded counts.
 
 ## Exact flow-control profiles
 
@@ -135,11 +114,14 @@ different on `flow_only`: it completes repeat regions by inferring boundaries.
 
 `TestDocumentedDeviations` requires intentional updates when third-party parser behavior changes:
 
-- Music21 produces 116 visits for `c05n05_musete`, with sections
-  `[(1, 17), (1, 32), (17, 59), (32, 59)]`.
-- Music21 produces 120 visits for `c11n08_Rondeau`, with sections
-  `[(1, 10), (1, 19), (10, 28), (19, 61), (28, 61)]`.
-- Music21's exact `flow_only` MC sequence and nine right-open sections are asserted directly.
+- Music21 reads no navigation mark (slow): on `c05n05_musete` and `c11n08_Rondeau` its measure
+  table states the repeat starts (MCs 17, 32; MCs 10, 19, 28) and repeat ends (MCs 16, 31, 58;
+  MCs 9, 18, 27, 60) and leaves `markers`, `jump_bwd`, `jump_fwd` and `play_until` empty in
+  every row, so no D.S. and no D.C. can be written.
+- Music21's `flow_only` timeline holds repeats and brackets alone (the manifestations of its
+  destinations are `repeat_end` and `volta`). Its flow is `[(1, 4), (1, 6), (4, 5), (6, 7)]`,
+  ending at the second of three brackets as the score's own source has it, and its eleven
+  atomic sections lack the boundaries the segno and the codas give at MCs 8 and 13.
 - Partitura's `flow_only` source rows have starts at MCs `[1, 4, 6, 9, 10, 11, 12]`, ends at
   `[3, 5, 8, 9, 10, 11, 14]`, and voltas
   `[(5, 1), (6, 2), (7, 3), (14, 1), (15, 2)]`.
@@ -417,43 +399,44 @@ floating-point `quarter_map` is not the oracle, since it cannot state `t/72` exa
 
 The Couperin Rondeau expectations are derived directly from
 ``c11n08_Rondeau.measures.tsv`` resolved through the score corpus. Its 60 rows
-carry repeat ends at MC ``9``, ``18``, ``27``, and ``60``. The explicit repeat
-starts and piece-start fallback therefore pair those ends with MC ``1``, ``10``,
-``19``, and ``28`` respectively. The timeline registry must contain those exact
-repeat jumps, with each source coordinate equal to that measure's exact
-``qstamp + actual_length`` and each destination equal to the target measure's
-exact ``qstamp``. This derives expected coordinates from independently parsed
-measure facts rather than copying controller output.
+carry repeat ends at MC ``9``, ``18``, ``27``, and ``60`` and repeat starts at
+MC ``10``, ``19`` and ``28``. Each repeat end is a destination (``repeat_end``)
+of the Jump at its measure's exact ``qstamp + actual_length``, and the place it
+goes on at (``FlowControlRegistry.place_of``) must be the exact ``qstamp`` of MC
+``1``, ``10``, ``19`` and ``28`` respectively. The last three name their repeat
+start. The first has no printed start: its destination states no place
+(``{repeat_count: 1, manifestation: repeat_end}`` and nothing else), and the
+place is the start of its section, the piece's. The expected coordinates are
+derived from independently parsed measure facts.
 
-The ``jump_bwd`` column adds two da capo jumps. It holds ``start`` on MC ``18``
-and MC ``27`` and is empty everywhere else. A backward target of ``start`` names
-the beginning of the piece, so each jump leaves the end of its measure and lands
-on the start of MC ``1``. Prefix sums of ``act_dur`` × 4 over the timeline's own
-measure map give the end of MC ``18`` as ``23 + 1 = 24`` quarters and the end of
-MC ``27`` as ``35 + 1 = 36`` quarters. MC ``1`` starts at ``0``, so the jumps are
-exactly ``24 → 0`` and ``36 → 0``, in quarters. The ``play_until`` cells
-(``segno``) do not appear in the ``coda`` or ``fine`` spellings that would make
-them da capo al coda or al fine jumps. The registry therefore holds exactly
-``6`` jumps: ``4`` repeat ends and ``2`` da capo jumps.
+The ``jump_bwd`` column adds two da capo destinations. It holds ``start`` on MC
+``18`` and MC ``27`` and is empty everywhere else. A backward target of ``start``
+names the beginning, so each is a destination without place on the Jump at its
+measure's end. Prefix sums of ``act_dur`` × 4 over the timeline's own measure map
+give the end of MC ``18`` as ``23 + 1 = 24`` quarters and the end of MC ``27`` as
+``35 + 1 = 36`` quarters, so the two go on from ``24`` and ``36`` at ``0``. Both
+lie on the Jumps of the repeat ends of those measures: a barline has one Jump,
+and the registry holds exactly ``4``. The ``play_until`` cells (``segno``) are
+neither ``fine`` nor a coda, so the manifestation is plain ``da_capo``.
 
-The TSV has no ``breaks`` cell containing ``section`` and no ``fine`` marker, so
-the exact break count is ``0``. Its sole flow target marker in the supported
-segno/coda/fine vocabulary is ``segno`` at MC ``9``; the exact marker coordinate
-is the start of that measure, ``Fraction(11)`` quarters. The other ``markers``
-cells (``1e``, ``2e``, and ``3e``) name ending boundaries, not segno/coda/fine
-targets, and therefore do not enter the registry. These values are pinned from
-the source columns and the documented mapping: section and fine breaks occur at
-measure ends, while target markers occur at measure starts.
+The TSV has no ``breaks`` cell containing ``section``, and what its two D.C. play
+until is followed by a jump (``jump_fwd`` ``2e`` and ``3e``), so the registry
+holds no break and no section break. The markers ``1e``, ``2e`` and ``3e`` are
+jump targets at the starts of MC ``10``, ``19`` and ``28`` (``12``, ``24`` and
+``36`` quarters) that keep their names and have no manifestation. The ``segno``
+of MC ``9`` is named by ``play_until`` alone: it is where the two D.C. stop and
+go on, the end of that measure, and no jump target.
 
 Both normal and flattened timeline creation must store one ``MeasureMap`` and the
 same flow-control facts: the timeline holds its map as one object, returned
 identically on every access, with exactly ``60`` measures (one per row of the
 TSV), and flattening merges events only, never dropping the map or a flow-control
-fact. The normal timeline is serialized through JSON
-and restored. The restored payload must equal the original payload, which is a
-fixpoint over every structural key. The restored registry must hold exactly
-``6`` jumps. The restored measure map must equal the original under type-aware
-measure equality.
+fact. The registry's ``flow_control`` array is serialized through JSON and read
+back to an equal array holding ``4`` jumps. The whole timeline is serialized
+through JSON and restored as well: the restored payload must equal the original
+payload, which is a fixpoint over every structural key, the restored registry
+must hold exactly ``4`` jumps, and the restored measure map must equal the
+original under type-aware measure equality.
 
 An unfolded measures table cannot be a measure map. The map lists measures in
 printed order, and each measure id is its Measure Map row ``ID``, which for a
@@ -478,26 +461,102 @@ numbered 0 and shorter than nominal stays an `IrregularMeasure`, because only
 the first row is an anacrusis by convention and a shared number never marks a
 split. The loader also reads the measure-table spelling `-1` in `next` (the end of the
 piece). The row form refuses it as a count naming no row, so the rows are read
-without it and the measure map leaves it out; the loader's own expanded data,
-measure table and default traversal keep it where the file states it, since an
-ending bar such as `c05n05_musete`'s with successors `1` and `-1` ends the piece
-on its second visit. Every folded corpus `.mm.json` file states `-1`, so loading
-`WoO71.measures.mm.json` at all pins the conversion, and the exact traversal
-counts (138 for both Couperin pieces, 505 for WoO71) pin that the end survives. Measures are
+without it and the measure map leaves it out; the loader's own expanded data
+and measure table keep it where the file states it. Every folded corpus
+`.mm.json` file states `-1`, so loading `WoO71.measures.mm.json` at all pins the
+conversion. Measures are
 built from the expanded rows themselves, never from the measure table the loader
 also fills. On the corpus, `WoO71.measures.mm.json` opens with a `MeasureConstituent`
 at offset 1, exactly the offset `WoO71.measures.tsv` states in its `mc_offset`
 column for MC 1.
 
-MeasureMap tests require unique MC values, monotonic `qstamp`, valid `next` references, exact
-linear/repeat traversals, 397 folded and 505 unfolded WoO71 measures, and matching MS3 MCs and
-repeat presence. Its schema must include flow-control and identity fields. The synthetic summary
+MeasureMap tests require unique MC values, monotonic `qstamp`, valid `next` references,
+397 folded WoO71 measures, and matching MS3 MCs and repeat presence. Its schema must include flow-control and identity fields. The synthetic summary
 contains three measures, one repeat start, and one repeat end.
 
 Flow CSV tests enforce right-open contiguous atomic ranges. Exact samples are
 `c05n05_musete`: `A=(1, 6)`, `B=(6, 17)`, `C=(17, 32)`, `D=(32, 59)`;
 `polyrhythm_only`: `A=(1, 15)`; and `rachmaninoff`: `A=(1, 375)`. Live Partitura segments are
-compared against the corresponding CSV rows, and `Flow.from_csv` must survive a records round trip.
+compared against the corresponding CSV rows.
+
+## Gold flows
+
+`test_flow_gold.py` plays the seven pieces of `target_flows/` from their ms3 measures tables.
+
+**What proves the flow right.** A `.flow.csv` file was written by hand as the flow a musician
+plays, and it is the only statement of that flow that does not come from this library. So the
+test takes nothing from the library but its public path: `Ms3Loader` creates the timeline, the
+engine plays the timeline's own flow control, `measure_ranges` states the runs in measure
+counts. The result must equal the file's rows exactly: the same number of rows, the same
+`[mc_start, mc_end)` of each, and the same letters of the atomic sections each covers, for
+`default` and for `single`; and the atomic sections must equal the `atomic` rows. A finding
+of the walk is a failure too, since a correct score plays through. Nothing is patched between
+the three steps, so a wrong sign, a wrong rule and a wrong conversion each show.
+
+- **`c05n05_musete`, `c11n08_Rondeau`, `op18_no4_mov4_flow`, `WoO71`**: `default`, `single`
+  and `atomic` equal the file; no finding; `repeat_end_findings` is empty.
+- **`rachmaninoff`, `polyrhythm_only`**: no jump, break or jump target. The file states one
+  atomic section and one `default` row, both the whole piece, and no `single` rows; `default`
+  and `single` are both played and both must be that one row.
+- **The rows of a file never span a section break.** WoO 71 has twelve; its `default` rows
+  are 25, its runs 13 (the first three `[1, 22)`, `[12, 43)`, `[33, 94)` against the file's
+  `[1, 22)`, `[12, 22)`, `[22, 43)`, `[33, 43)`, `[43, 73)`). The form of the file therefore
+  divides a run at every section break it crosses, which `measure_ranges(divide_at=…)` does;
+  the engine's runs are not divided. A test pins both numbers so that the division stays a
+  stated step.
+- **`flow_only`, the stress score, as its source stands.** The second of three brackets has
+  no sign at its end. The flow is the file's first four rows, `[1, 4)`, `[1, 6)`, `[4, 5)`,
+  `[6, 7)`, and ends at the break between the second and the third bracket (10 quarters): the
+  walk reports `flow_ends_at_break` there and `never_played` for `[10, 37)`. The atomic
+  sections are the file's thirteen all the same. `repeat_end_findings` returns the repeat end
+  of MC 8, whose repeat would begin right behind the last bracket.
+- **`flow_only` with three repairs.** `conftest.repaired_stress_score` adds exactly three
+  elements with provenance method `manual`: repeat starts at the starts of MC 8 and MC 13,
+  which the repeat ends of MC 8 and MC 14 name (an element is never changed in place, so
+  those two Jumps are written anew with their place), and a Jump at the end of MC 6 to the
+  start of MC 8. `default` and `single` then equal the file's rows, without a finding. The
+  file's `ms3` and `music21` rows are another tool's unfolding and are not computed.
+
+## Signs written as flow control
+
+A score loader writes repeat signs and brackets through the one translation of its measure map
+(`tests/timelines/README.md`, "Measures and flow control"). Every other sign comes from the
+columns of the measure table that each loader fills from its source: `markers`, `jump_bwd`,
+`jump_fwd`, `play_until`, `breaks`, `barline`. `test_flow_gold.py` proves that writing on two
+kinds of table.
+
+**On the corpus**, where the expected elements are read off the table by hand:
+
+- The Musette's whole `flow_control` array, nine elements, each commented with the cell it
+  comes from. It shows the three readings of a marker: `segno` (named by `jump_bwd`) and `2e`
+  (named by `jump_fwd`) are jump targets at their measures' starts, `1e` (named by no row) is
+  one too, and `fine` (named by `play_until` only) is none: at the END of its measure it is a
+  break ending the flow after the D.S. of MC 58, which states no `jump_fwd`, and a
+  destination `to` the `2e` target after the D.S. of MC 31, which states one.
+- The Rondeau: its `segno` is played until by both D.C. and is no jump target; the Jump at
+  its measure's end holds the repeat end and the two destinations to `2e` and `3e`, each
+  `after` its D.C., which is named without place keys.
+- WoO 71: the twelve section breaks lie at the ends of MCs 21, 42, 72, 93, 114, 135, 156,
+  177, 198, 219, 240, 261 and the five barlines (four `double`, one `end`) at the ends of
+  MCs 53, 72, 261, 329, 371.
+- `next`: the Musette's MC 16 states `1, 17, 32, -1`. The measure table keeps the cell and
+  the measure map the successors `("1", "17", "32")`; nothing of it is flow control.
+
+**On tables written by the test** (4/4 bars through `Ms3Loader`, so the real reading of
+the columns is part of what is tested), one sign combination each, the whole array and the
+runs it plays: a D.S. al Coda over a repeat (the To Coda destination shares the Jump of the
+repeat end and names the leap with its place), a D.C. al Fine, two leaps playing until one
+Fine (two breaks at one coordinate, each naming its leap), `repeats: startend`, `breaks`
+cells with and without `section`, and markers no row names.
+
+**What cannot be written is left out and logged.** Eight tables each state one sign the
+elements cannot express, and each must give exactly one warning with its text and exactly the
+remaining elements: a D.S. whose segno no measure carries; a Fine no D.C. or D.S. plays until
+(nothing says when it would end the flow); a `jump_fwd` on a row without `jump_bwd`; a D.C.
+on the barline of a repeat end without a printed start (both would go on at the section
+start, and one Jump has one destination per place); a `play_until` and a `jump_fwd` naming a
+marker no measure carries; a `jump_fwd` without `play_until`; and a To Coda in the measure of
+its own leap.
 
 ## VerovioLoader
 
@@ -585,7 +644,7 @@ them.
   sections `[0, 4) → 0` and `[0, 6) → 4` on the printed axis (folded position 1 unfolds to 1 and
   5); FlowMap `source` is its inverse (5 folds to 1).
 - The store's measure table is the printed one: three rows at 0, 2, 4, `m1` opening and `m2`
-  closing the repeat. Its `ScoreFlowController` default flow is MC 1 2 1 2 3, Verovio's order.
+  closing the repeat. The flow control written from it plays MC 1 2 1 2 3, Verovio's order.
 - With `options={"expandNever": True}` nothing is expanded: three events, the printed
   `MeasureMap` on the timeline, the repeat as one jump in its flow control, no FlowMap.
 
@@ -751,17 +810,14 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
   continues at the first coda mark after the jump; any other jump plays until the Fine where the
   score has one, which is what a Fine states. The file states a Fine in MC 7, a segno and a "To"
   coda in MC 9, `D.S. al Coda` in MC 12, a coda in MC 13 and `D.C. al Fine` in MC 15, so the
-  columns `(markers, jump_bwd, jump_fwd, play_until, next)` are exactly: MC 7 `fine`, next
-  `8, -1` (the Fine also ends the piece); MC 9
-  `segno & coda`; MC 12 `segno`, `coda2`, `coda`, next `9`; MC 13 `coda2`, next `14, 15` (the
-  measure before the endings); MC 15 `start`, `fine`, next `1`. Unfolded by the flow
-  controller, this table gives exactly the target default flow (parsing matrix).
+  columns `(markers, jump_bwd, jump_fwd, play_until)` are exactly: MC 7 `fine`; MC 9
+  `segno & coda`; MC 12 `segno`, `coda2`, `coda`; MC 13 `coda2`; MC 15 `start`, `fine`. The
+  MEI states no successors, so `next` is empty. The flow these signs play is the subject of
+  the parsing matrix.
 - **The Fine rule** (`couperin_concerts/c05n05_musete.mei`, `expandNever`). Segnos in MCs 6, 17
   and 32 (`segno`, `segno2`, `segno3`), a Fine in MC 16, a `daCapo` in MC 31 and a `dalSegno` in
   MC 58, both with the text "au renvoy" (no "al …"). Both jumps play until the Fine: MC 31
-  `start`, `fine`, next `17, 1`; MC 58 `segno`, `fine`, next `32, 6` (the first segno). Both
-  measures end a repeat, which keeps its way back; MC 16, the Fine and a repeat end, has next
-  `1, 17, -1`.
+  `start`, `fine`; MC 58 `segno`, `fine` (the first segno).
 - **Acceptance against music21** (`vienna_1x22/Chopin_op10_no3.musicxml`): `VerovioLoader` and
   `Music21Loader` must give the same multiset of `(onset, MIDI pitch)` over the non-grace notes,
   once Verovio's placement of principal notes is undone by its own rule: a non-grace note that
@@ -769,8 +825,9 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
   group its notated onset is the onset of the group's first grace note, after an unaccented one
   its own onset. Grace notes are excepted on both sides (music21 states them without duration).
   The file has 4 grace notes and no arpeggio.
-- **Hardening: Verovio's expansion against `ScoreFlowController`** (slow). For each specimen the
-  printed measure table (`store.measures`) is unfolded with `FlowMode.default`, and the resulting
+- **Hardening: Verovio's expansion against the played flow control** (slow). For each specimen
+  the flow control written from the printed measure table (`store.measures`) is played by the
+  engine (`default`), and the resulting
   MC sequence must equal Verovio's rendered measure order, read through the public surface: each
   rendered measure's start, folded through FlowMap `source`, is a printed measure start. On the
   `repeat.mei` fixture they are equal (above). Every provisioned score differs, each a strict
@@ -787,9 +844,8 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
   - `beethoven_op18-4iv_multimodal/recordings/Beethoven_Op018No4-04.mei`: **the source** opens a
     first `<ending>` at MC 44 that closes only at the end of the score, with the second ending
     nested in it (Verovio logs `Adding 'ending' to a 'ending'`). The measure table therefore
-    states volta 1 from MC 44 on; the flow controller repeats MCs 29–44 and skips the rest of the
-    "ending" (232 MCs), while Verovio plays MCs 44–223 once with no further repeats (250 MCs).
-    They first differ at the 72nd rendered measure.
+    states volta 1 from MC 44 on, one bracket to the end of the score, which the played flow
+    control and Verovio's rendering read differently.
   - Known issue, not loaded: Verovio 6.4.1 crashes the process (segmentation fault) in
     `renderToTimemap` when it expands `OpenScoreSQ/sq8913219.mei`; with `expandNever` it reads.
   - Not usable: the `*_flow.mei` skeletons have measures without content, which Verovio gives no

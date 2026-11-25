@@ -456,25 +456,13 @@ class SegmentsMixin:
     def add_flow_map(self, flow_map: "FlowMap", id: str | None = None) -> None:
         """Add a FlowMap to this timeline.
 
-        FlowMaps enable coordinate transformation for timelines with flow
-        control (repeats, jumps, D.S., D.C., etc.). They are created by
-        `timetoalign.ScoreFlowController` and added to the timeline for
-        later use.
-
-        Design Decision: Timelines store FlowMaps, NOT FlowControllers.
-        FlowControllers are factories that produce FlowMaps.
+        A FlowMap states the played spans of a timeline with flow control
+        (repeats, jumps, D.S., D.C., etc.) and converts coordinates between
+        the timeline and its unfolding.
 
         Args:
             flow_map: The FlowMap to add.
             id: Identifier for this FlowMap. If None, uses flow_map.id.
-                Common values: "default", "atomic", "single".
-
-        Examples:
-            >>> controller = ScoreFlowController(measure_data)
-            >>> flow_map = controller.create_flow_map()
-            >>> timeline.add_flow_map(flow_map)
-            >>> timeline.get_flow_map("default")  # Retrieve later
-            FlowMap(default: 5 sections)
         """
         if id is None:
             id = flow_map.id

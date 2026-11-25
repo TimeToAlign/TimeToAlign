@@ -2,10 +2,9 @@
 
 This test suite validates the slice-based unfolding pipeline:
 1. Timeline.get_slice() primitive (unit tests)
-2. compute_qb_sections() helper (unit tests with real data)
-3. SegmentLine assembly from slices (integration tests)
-4. End-to-end unfolding against reference unfoldings (7 specimens, ZERO TOLERANCE)
-5. Group unfolding: unfold an entire TimelineGroup via one FlowMap
+2. SegmentLine assembly from slices (integration tests)
+3. The played default flow against reference unfoldings (7 specimens, ZERO TOLERANCE)
+4. Group unfolding: unfold an entire TimelineGroup via one FlowMap
 
 See README_unfolding.md for full testing strategy documentation.
 
@@ -21,14 +20,13 @@ from __future__ import annotations
 
 from fractions import Fraction
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
 import pytest
 
+from tests.loader.score.conftest import repaired_stress_score
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.core.enums import FlowMode
 from timetoalign.loader.score import Ms3Loader
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
@@ -36,13 +34,8 @@ from timetoalign.timelines import (
     DiscreteGraphicalTimeline,
     DiscreteLogicalTimeline,
 )
-from timetoalign.timelines.flow import (
-    Flow,
-    PlaythroughSection,
-    ScoreFlowController,
-    compute_qb_sections,
-    create_unfolded_timeline,
-)
+from timetoalign.timelines.flow import FlowMap, measure_ranges, unfold_via_flowmap
+from timetoalign.timelines.flow.engine import play
 from timetoalign.timelines.types import SegmentLine
 
 from .conftest import SCORE_DIR
@@ -107,7 +100,10 @@ GOLD_STANDARD: dict[str, tuple[int, int, int, str, str, str, str]] = {
 
 # The published unfolded TSV for flow_only records ms3's distinct
 # interpretation. Its canonical path is encoded by the specimen's canonical
-# measures table and by the default entries in the target-flow file.
+# measures table and by the default entries in the target-flow file. The
+# score's own signs do not give it: the flow is played with the three
+# elements added that the target flow needs (two repeat starts and a jump
+# past the third bracket).
 EXPECTED_MC_SEQUENCES: dict[str, list[int]] = {
     "flow_only": [
         1,
@@ -243,16 +239,29 @@ def timeline_with_child() -> ContinuousLogicalTimeline:
     return parent
 
 
-def _load_controller(tsv_path: Path) -> ScoreFlowController:
-    """Load a ScoreFlowController from a measures TSV file.
+def _played(tsv_path: Path, specimen: str | None = None) -> tuple[Any, list[Any]]:
+    """Load a measures TSV and play its default flow.
 
-    Uses the standard two-phase loader pattern:
-    1. Ms3Loader.load(path) -- file ingestion
-    2. ScoreFlowController(loader.store.measures) -- domain object creation
+    Returns:
+        The timeline and the runs of its default flow. The flow of the
+        stress score ``flow_only`` is played with its three repairs.
     """
-    loader = Ms3Loader()
-    loader.load(tsv_path)
-    return ScoreFlowController(loader.store.measures)
+    timeline = Ms3Loader().load(tsv_path).create_timeline()
+    registry = (
+        repaired_stress_score(timeline)
+        if specimen == "flow_only"
+        else timeline.flow_control
+    )
+    return timeline, list(play(registry, timeline.length).runs)
+
+
+def _mc_sequence(timeline: Any, runs: list[Any]) -> list[int]:
+    """The measure counts the runs visit, in the order played."""
+    return [
+        mc
+        for row in measure_ranges(runs, timeline.measure_map)
+        for mc in range(row.start, row.end)
+    ]
 
 
 def _load_gold_standard(unfolded_tsv: Path) -> pd.DataFrame:
@@ -504,139 +513,6 @@ class TestGetSlice:
 # endregion
 
 
-# region TestComputeQBSections — Unit tests for QB-boundary helper
-
-
-class TestComputeQBSections:
-    """Test compute_qb_sections() helper.
-
-    Validates that MC-based PlaythroughSection ranges are correctly converted
-    to quarterbeat coordinate ranges using MeasureUnit duration_qb data.
-
-    Uses real specimen TSV files to ensure correctness against known data.
-    """
-
-    def test_sequential_score_single_section(self, data_dir: Path):
-        """Sequential score (Rachmaninoff): single section spanning full QB range."""
-        tsv_path = data_dir / SPECIMEN_PATHS["rachmaninoff"][0]
-
-        controller = _load_controller(tsv_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
-
-        # Rachmaninoff has no repeats -> should have same section structure as flow
-        assert len(qb_sections) == len(flow.sections)
-
-        # Total QB should match gold standard: 2997/2
-        total_qb = sum(end - start for start, end in qb_sections)
-        assert total_qb == Fraction(2997, 2)
-
-    def test_repeated_score_musete(self, data_dir: Path):
-        """D.S. al Fine (Musete): sections repeat QB ranges."""
-        tsv_path = data_dir / SPECIMEN_PATHS["musete"][0]
-
-        controller = _load_controller(tsv_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
-
-        # Total unfolded QB should be 384
-        total_qb = sum(end - start for start, end in qb_sections)
-        assert total_qb == Fraction(384)
-
-    def test_repeated_score_rondeau(self, data_dir: Path):
-        """Rondeau form: sections with D.S. produce correct QB ranges."""
-        tsv_path = data_dir / SPECIMEN_PATHS["rondeau"][0]
-
-        controller = _load_controller(tsv_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
-
-        # Total unfolded QB should be 195
-        total_qb = sum(end - start for start, end in qb_sections)
-        assert total_qb == Fraction(195)
-
-    def test_volta_score_op18(self, data_dir: Path):
-        """Repeats + Volta brackets (Op.18 No.4 iv)."""
-        tsv_path = data_dir / SPECIMEN_PATHS["op18_no4_mov4"][0]
-
-        controller = _load_controller(tsv_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
-
-        # Total unfolded QB should be 1116
-        total_qb = sum(end - start for start, end in qb_sections)
-        assert total_qb == Fraction(1116)
-
-    def test_complex_split_bars_woo71(self, data_dir: Path):
-        """Complex split bars (Beethoven WoO71)."""
-        tsv_path = data_dir / SPECIMEN_PATHS["woo71"][0]
-
-        controller = _load_controller(tsv_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
-
-        # Total unfolded QB should be 1078
-        total_qb = sum(end - start for start, end in qb_sections)
-        assert total_qb == Fraction(1078)
-
-    def test_flow_only_ds_dc(self, data_dir: Path):
-        """D.S./D.C. with Voltas (flow_only)."""
-        tsv_path = data_dir / SPECIMEN_PATHS["flow_only"][0]
-
-        controller = _load_controller(tsv_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
-
-        # Total unfolded QB should be 81
-        total_qb = sum(end - start for start, end in qb_sections)
-        assert total_qb == Fraction(81)
-
-    def test_qb_boundaries_match_folded_measures_tsv(self, data_dir: Path):
-        """QB start positions match 'quarterbeats' column in folded measures TSV.
-
-        For the Musete specimen, validates that each section's qb_start equals
-        the quarterbeats value of the corresponding mc_start in the folded TSV.
-        """
-        tsv_path = data_dir / SPECIMEN_PATHS["musete"][0]
-
-        # Load folded TSV for gold standard quarterbeats
-        df = pd.read_csv(tsv_path, sep="\t", dtype=str)
-        mc_to_qb = {}
-        for _, row in df.iterrows():
-            mc = int(row["mc"])
-            qb = Fraction(row["quarterbeats"])
-            mc_to_qb[mc] = qb
-
-        controller = _load_controller(tsv_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
-
-        # Each section's qb_start must match the folded TSV's quarterbeats for mc_start
-        for i, sec in enumerate(flow.sections):
-            qb_start, qb_end = qb_sections[i]
-            expected_start = mc_to_qb[sec.mc_start]
-            assert qb_start == expected_start, (
-                f"Section {i} (MC {sec.mc_start}-{sec.mc_end}): "
-                f"qb_start={qb_start} != expected {expected_start}"
-            )
-
-    def test_all_sections_positive_duration(self, data_dir: Path):
-        """Every QB section has strictly positive duration."""
-        for key, (folded_rel, _) in SPECIMEN_PATHS.items():
-            tsv_path = data_dir / folded_rel
-            controller = _load_controller(tsv_path)
-            flow = controller.compute_flow(FlowMode.default)
-            qb_sections = compute_qb_sections(flow, controller)
-
-            for i, (start, end) in enumerate(qb_sections):
-                assert end > start, (
-                    f"Specimen {key}, section {i}: " f"qb_end={end} <= qb_start={start}"
-                )
-
-
-# endregion
-
-
 # region TestSegmentLineAssembly — Integration tests for slice assembly
 
 
@@ -813,31 +689,20 @@ class TestSegmentLineAssembly:
 # endregion
 
 
-class TestCreateUnfoldedTimelineIdentity:
+class TestUnfoldedTimelineIdentity:
     """Tests explicit identifiers on standalone unfolded timelines."""
 
     def test_uid_is_passed_to_returned_timeline(self) -> None:
         """The requested uid identifies the same-type unfolded timeline."""
         source = ContinuousLogicalTimeline(length=Fraction(4), uid="source")
-        flow = Flow.from_sections(
-            [PlaythroughSection(1, 2, ("A",))],
-            FlowMode.default,
-            folded_length=1,
-        )
-        controller = SimpleNamespace(
-            iter_units=lambda: iter([SimpleNamespace(mc=1, duration_qb=Fraction(4))])
-        )
 
-        unfolded = create_unfolded_timeline(
-            source,
-            flow,
-            controller,
-            uid="unfolded",
-        )
+        unfolded = unfold_via_flowmap(source, FlowMap([(0, 4)]), uid="unfolded")
 
         assert unfolded.id == "unfolded"
         assert type(unfolded) is ContinuousLogicalTimeline
 
+
+# endregion
 
 # region TestUnfoldingGoldStandard — End-to-end validation against reference flows
 
@@ -859,21 +724,17 @@ class TestUnfoldingGoldStandard:
 
     def _load_specimen(
         self, specimen: str, data_dir: Path
-    ) -> tuple[ScoreFlowController, Any, pd.DataFrame]:
-        """Load controller, flow, and gold standard for a specimen.
+    ) -> tuple[Any, list[Any], pd.DataFrame]:
+        """Load the timeline, its default flow, and gold standard for a specimen.
 
         Returns:
-            (controller, flow, gold_df) tuple.
+            (timeline, runs, gold_df) tuple.
         """
         folded_rel, unfolded_rel = SPECIMEN_PATHS[specimen]
-        folded_path = data_dir / folded_rel
-        unfolded_path = data_dir / unfolded_rel
+        timeline, runs = _played(data_dir / folded_rel, specimen)
+        gold_df = _load_gold_standard(data_dir / unfolded_rel)
 
-        controller = _load_controller(folded_path)
-        flow = controller.compute_flow(FlowMode.default)
-        gold_df = _load_gold_standard(unfolded_path)
-
-        return controller, flow, gold_df
+        return timeline, runs, gold_df
 
     def test_unfolded_row_count(self, specimen: str, data_dir: Path):
         """Unfolded timeline has exact same number of measures as gold standard."""
@@ -888,10 +749,10 @@ class TestUnfoldingGoldStandard:
 
     def test_mc_sequence(self, specimen: str, data_dir: Path):
         """mc sequence matches gold standard exactly (may repeat for repeats)."""
-        controller, flow, gold_df = self._load_specimen(specimen, data_dir)
+        timeline, runs, gold_df = self._load_specimen(specimen, data_dir)
 
         # The mc sequence from the flow should match gold standard's mc column
-        computed_mc = flow.to_mc_sequence()
+        computed_mc = _mc_sequence(timeline, runs)
         gold_mc = EXPECTED_MC_SEQUENCES.get(specimen, gold_df["mc"].tolist())
 
         assert computed_mc == gold_mc, (
@@ -935,14 +796,14 @@ class TestUnfoldingGoldStandard:
         This is the critical test: quarterbeats must be computed from actual
         measure durations, not MC numbers.
         """
-        controller, _, gold_df = self._load_specimen(specimen, data_dir)
+        timeline, _, gold_df = self._load_specimen(specimen, data_dir)
 
         last_qb_str = GOLD_STANDARD[specimen][4]
         last_qb = Fraction(last_qb_str)
 
         if specimen in EXPECTED_MC_SEQUENCES:
             duration_by_mc = {
-                unit.mc: unit.duration_qb for unit in controller.iter_units()
+                measure.count: measure.actual_length for measure in timeline.measure_map
             }
             gold_last_qb = sum(
                 (duration_by_mc[mc] for mc in EXPECTED_MC_SEQUENCES[specimen][:-1]),
@@ -971,13 +832,13 @@ class TestUnfoldingGoldStandard:
 
     def test_total_unfolded_length(self, specimen: str, data_dir: Path):
         """Total length = final_quarterbeats + final_duration_qb."""
-        controller, _, gold_df = self._load_specimen(specimen, data_dir)
+        timeline, _, gold_df = self._load_specimen(specimen, data_dir)
 
         expected_total = Fraction(GOLD_STANDARD[specimen][6])
 
         if specimen in EXPECTED_MC_SEQUENCES:
             duration_by_mc = {
-                unit.mc: unit.duration_qb for unit in controller.iter_units()
+                measure.count: measure.actual_length for measure in timeline.measure_map
             }
             last_mc = EXPECTED_MC_SEQUENCES[specimen][-1]
             last_qb = sum(
@@ -996,20 +857,16 @@ class TestUnfoldingGoldStandard:
             f"(last_qb={last_qb} + last_dur={last_dur})"
         )
 
-    def test_compute_qb_sections_total(self, specimen: str, data_dir: Path):
-        """Sum of QB section durations matches gold standard total length."""
+    def test_played_length_is_the_unfolded_length(self, specimen: str, data_dir: Path):
+        """The lengths of the runs sum up to the gold standard total length."""
         folded_rel, _ = SPECIMEN_PATHS[specimen]
-        folded_path = data_dir / folded_rel
-
-        controller = _load_controller(folded_path)
-        flow = controller.compute_flow(FlowMode.default)
-        qb_sections = compute_qb_sections(flow, controller)
+        _, runs = _played(data_dir / folded_rel, specimen)
 
         expected_total = Fraction(GOLD_STANDARD[specimen][6])
-        computed_total = sum(end - start for start, end in qb_sections)
+        computed_total = sum(run.end.value - run.start.value for run in runs)
 
         assert computed_total == expected_total, (
-            f"Specimen {specimen}: QB sections total={computed_total}, "
+            f"Specimen {specimen}: played length={computed_total}, "
             f"expected {expected_total}"
         )
 
@@ -1131,8 +988,11 @@ def _build_openscore(data_dir: Path) -> ContinuousLogicalTimeline:
     )
     os_full = os_loader.create_timeline(uid="openscore_full")
 
-    os_flow = ScoreFlowController(os_loader.store.measures)
-    boundaries = os_flow.get_section_boundary_coordinates()
+    boundaries = [
+        element.coordinate.value
+        for element in os_full.flow_control.section_breaks
+        if element.coordinate.value < os_full.length.value
+    ]
     os_full.create_regions_from_boundaries(
         [0, *[float(b) for b in boundaries], float(os_full.length.value)],
         prefix="movement",
@@ -1149,9 +1009,8 @@ def beethoven_score_group() -> dict[str, Any]:
         - "clt_1": CLT1 timeline
         - "dgt_1": DGT1 timeline (SegmentLine)
         - "openscore": OpenScore timeline
-        - "controller": ScoreFlowController
-        - "flow": Flow (DEFAULT mode)
-        - "qb_sections": list of (Fraction, Fraction) pairs
+        - "qb_sections": the runs of CLT1's default flow, as (Fraction,
+          Fraction) pairs in quarters
         - "dgt1_id": auto-generated ID of DGT1
     """
     data_dir = SCORE_DATA_DIR
@@ -1180,18 +1039,17 @@ def beethoven_score_group() -> dict[str, Any]:
         timelines=[clt1, dgt1, openscore],
     )
 
-    # Flow from ABC measures
-    controller = ScoreFlowController(abc_loader.store.measures)
-    flow = controller.compute_flow(FlowMode.default)
-    qb_sections = compute_qb_sections(flow, controller)
+    # The default flow that CLT1's flow control plays
+    qb_sections = [
+        (run.start.value, run.end.value)
+        for run in play(clt1.flow_control, clt1.length).runs
+    ]
 
     return {
         "group": score_group,
         "clt_1": clt1,
         "dgt_1": dgt1,
         "openscore": openscore,
-        "controller": controller,
-        "flow": flow,
         "qb_sections": qb_sections,
         "dgt1_id": dgt1.id,
     }
@@ -1202,7 +1060,7 @@ def _unfold_group(
 ) -> dict[str, SegmentLine]:
     """Unfold all timelines in the score group via one FlowMap.
 
-    For each PlaythroughSection, retrieves the start/end TimeStamp
+    For each run of the default flow, retrieves the start/end TimeStamp
     from the score group (in CLT1's coordinate space) and uses each
     member's linearly converted coordinates to ``get_slice()`` and
     ``append_segment()``.
@@ -1233,7 +1091,7 @@ def _unfold_group(
             number_type=tl.number_type,
         )
 
-    # Iterate PlaythroughSection-wise
+    # Iterate run by run
     for i, (qb_start, qb_end) in enumerate(qb_sections):
         start_ts = group.get_timestamp_at(float(qb_start), "clt_1")
         end_ts = group.get_timestamp_at(float(qb_end), "clt_1")
@@ -1271,7 +1129,7 @@ class TestGroupUnfolding:
     - DGT1: SegmentLine[SegmentLine[DiscreteGraphicalTimeline]] (OMR, 106425 pixels)
     - OpenScore: ContinuousLogicalTimeline (4th movement, 878.5 quarters)
 
-    The FlowMap has 11 PlaythroughSections producing 1116 unfolded QB.
+    The default flow has 11 runs producing 1116 unfolded QB.
     """
 
     def test_prerequisite_folded_lengths(self, beethoven_score_group: dict[str, Any]):
@@ -1402,23 +1260,23 @@ class TestGroupUnfolding:
                 f"expected {expected_dur}"
             )
 
-    def test_create_unfolded_timeline_matches_group_unfolding(
+    def test_unfold_via_flowmap_matches_group_unfolding(
         self,
         beethoven_score_group: dict[str, Any],
         beethoven_unfolded_group: dict[str, SegmentLine],
     ):
-        """create_unfolded_timeline on CLT1 produces same length as group method.
+        """unfold_via_flowmap on CLT1 produces same length as group method.
 
         Verifies consistency between the single-timeline unfolding function
         (same-type result with one appended child per section) and the
         group-based SegmentLine assembly used by this test module's helper.
         """
         clt1 = beethoven_score_group["clt_1"]
-        flow = beethoven_score_group["flow"]
-        controller = beethoven_score_group["controller"]
 
         # Single-timeline unfolding: a same-type timeline with appended children.
-        clt1_single = create_unfolded_timeline(clt1, flow, controller)
+        clt1_single = unfold_via_flowmap(
+            clt1, FlowMap(beethoven_score_group["qb_sections"])
+        )
 
         # Group-based unfolding (the module helper's SegmentLine).
         clt1_group = beethoven_unfolded_group["clt_1"]

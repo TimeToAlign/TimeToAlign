@@ -8,10 +8,12 @@ from fractions import Fraction
 
 import pytest
 
-from timetoalign.core import Coordinate, FlowControlElement, TimeUnit
+from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core.enums import FlowManifestation
 from timetoalign.loader.score import Ms3Loader
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import MeasureMap, Timeline
+from timetoalign.timelines.flowcontrol import FlowControlRegistry
 
 COUPERIN = ensure_data("score") / "couperin_concerts"
 RONDEAU = COUPERIN / "c11n08_Rondeau.measures.tsv"
@@ -24,6 +26,17 @@ def _rondeau_timeline(*, flatten: bool = False) -> Timeline:
     return Ms3Loader.from_file(RONDEAU).create_timeline(flatten=flatten)
 
 
+def _places(timeline: Timeline, manifestation: FlowManifestation) -> dict:
+    """Where each destination that looks like *manifestation* goes on, by its Jump."""
+    registry = timeline.flow_control
+    return {
+        jump.coordinate: registry.place_of(destination, jump)
+        for jump in registry.jumps
+        for destination in jump.targets
+        if destination.manifestation is manifestation
+    }
+
+
 def test_rondeau_stores_one_measure_map() -> None:
     timeline = _rondeau_timeline()
     assert isinstance(timeline.measure_map, MeasureMap)
@@ -31,71 +44,57 @@ def test_rondeau_stores_one_measure_map() -> None:
     assert len(timeline.measure_map) == 60
 
 
-def test_repeat_end_jumps_follow_exact_measure_boundaries() -> None:
+def test_repeat_ends_follow_exact_measure_boundaries() -> None:
     timeline = _rondeau_timeline()
     assert timeline.measure_map is not None
     measures = {measure.count: measure for measure in timeline.measure_map}
-    all_repeat_jumps = [
-        jump
-        for jump in timeline.flow_control.jumps
-        if jump.control_type is FlowControlElement.repeat_end
-    ]
-    assert len(all_repeat_jumps) == 4
-    repeat_jumps = {
-        source_mc: next(
-            jump
-            for jump in timeline.flow_control.jumps
-            if jump.control_type is FlowControlElement.repeat_end
-            and jump.from_coordinate
-            == Coordinate(
-                measures[source_mc].qstamp + measures[source_mc].actual_length,
-                TimeUnit.quarters,
-            )
-        )
-        for source_mc in REPEAT_TARGETS
+    assert _places(timeline, FlowManifestation.repeat_end) == {
+        Coordinate(
+            measures[source].qstamp + measures[source].actual_length, TimeUnit.quarters
+        ): Coordinate(measures[target].qstamp, TimeUnit.quarters)
+        for source, target in REPEAT_TARGETS.items()
     }
-    assert set(repeat_jumps) == {9, 18, 27, 60}
-    for source_mc, target_mc in REPEAT_TARGETS.items():
-        source = measures[source_mc]
-        target = measures[target_mc]
-        jump = repeat_jumps[source_mc]
-        assert jump.from_coordinate == Coordinate(
-            source.qstamp + source.actual_length, TimeUnit.quarters
-        )
-        assert jump.to_coordinate == Coordinate(target.qstamp, TimeUnit.quarters)
+    # The first repeat end has no printed start: it states no place, and the
+    # place it goes on at is the start of its section.
+    first = timeline.flow_control.jump_at(12)
+    assert first is not None
+    assert first.targets[0].to_dict() == {
+        "repeat_count": 1,
+        "manifestation": "repeat_end",
+    }
 
 
-def test_da_capo_jumps_leave_measure_ends_for_the_piece_start() -> None:
+def test_da_capo_leaves_measure_ends_for_the_piece_start() -> None:
     timeline = _rondeau_timeline()
+    assert len(timeline.flow_control.jumps) == 4
+    start = Coordinate(Fraction(0), TimeUnit.quarters)
+    assert _places(timeline, FlowManifestation.da_capo) == {
+        Coordinate(Fraction(24), TimeUnit.quarters): start,
+        Coordinate(Fraction(36), TimeUnit.quarters): start,
+    }
     assert timeline.measure_map is not None
     measures = {measure.count: measure for measure in timeline.measure_map}
-    assert len(timeline.flow_control.jumps) == 6
-    da_capo_jumps = [
-        jump
-        for jump in timeline.flow_control.jumps
-        if jump.control_type is FlowControlElement.da_capo
-    ]
-    assert len(da_capo_jumps) == 2
-    start = Coordinate(measures[1].qstamp, TimeUnit.quarters)
-    for jump, source_mc in zip(da_capo_jumps, DA_CAPO_SOURCES):
-        source = measures[source_mc]
-        assert jump.from_coordinate == Coordinate(
-            source.qstamp + source.actual_length, TimeUnit.quarters
-        )
-        assert jump.to_coordinate == start
-    assert [(jump.from_position, jump.to_position) for jump in da_capo_jumps] == [
-        (Fraction(24), Fraction(0)),
-        (Fraction(36), Fraction(0)),
-    ]
+    assert [
+        measures[source].qstamp + measures[source].actual_length
+        for source in DA_CAPO_SOURCES
+    ] == [Fraction(24), Fraction(36)]
 
 
-def test_break_and_marker_facts_are_derived_from_the_tsv_columns() -> None:
+def test_break_and_marker_facts_are_read_from_the_tsv_columns() -> None:
     timeline = _rondeau_timeline()
     assert timeline.flow_control.breaks == []
+    assert timeline.flow_control.section_breaks == []
+    # The markers 1e, 2e and 3e are places; the segno of MC 9 is where both
+    # D.C. play until, and no place.
     assert [
-        (marker.id, marker.name, marker.coordinate)
-        for marker in timeline.flow_control.markers
-    ] == [("jump_to_1", "segno", Coordinate(Fraction(11), TimeUnit.quarters))]
+        (target.name, target.manifestation, target.coordinate)
+        for target in timeline.flow_control.jump_targets
+        if target.name is not None
+    ] == [
+        ("1e", None, Coordinate(Fraction(12), TimeUnit.quarters)),
+        ("2e", None, Coordinate(Fraction(24), TimeUnit.quarters)),
+        ("3e", None, Coordinate(Fraction(36), TimeUnit.quarters)),
+    ]
 
 
 def test_flatten_keeps_source_structure() -> None:
@@ -110,11 +109,21 @@ def test_rondeau_timeline_structure_round_trips_through_json() -> None:
     timeline = _rondeau_timeline()
     restored = Timeline.from_dict(json.loads(json.dumps(timeline.to_dict())))
     assert restored.to_dict() == timeline.to_dict()
-    assert len(restored.flow_control.jumps) == 6
+    assert len(restored.flow_control.jumps) == 4
     assert restored.flow_control.to_dict() == timeline.flow_control.to_dict()
     assert restored.measure_map is not None
     assert timeline.measure_map is not None
     assert restored.measure_map.to_dict() == timeline.measure_map.to_dict()
+
+
+def test_rondeau_flow_control_round_trips_through_json() -> None:
+    timeline = _rondeau_timeline()
+    written = timeline.flow_control.to_dict()
+    restored = FlowControlRegistry.from_dict(
+        json.loads(json.dumps(written)), unit=TimeUnit.quarters
+    )
+    assert restored.to_dict() == written
+    assert [element.role for element in restored.elements].count("jump") == 4
 
 
 def test_unfolded_measures_table_cannot_form_a_timeline_measure_map() -> None:

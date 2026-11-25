@@ -10,14 +10,11 @@ from __future__ import annotations
 
 from fractions import Fraction
 
-import pyarrow as pa
 import pytest
 
 import timetoalign
 from timetoalign.alignment import AlignmentAnchor, AlignmentBundle, MatchClaim, WarpMap
-from timetoalign.core import Coordinate, FlowControlElement, IdCoordinate, TimeUnit
-from timetoalign.core.enums import FlowMode
-from timetoalign.storage import EventData
+from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -31,21 +28,19 @@ from timetoalign.timelines import (
     TimelineGroup,
     UnknownLengthError,
 )
-from timetoalign.timelines.flow import ScoreFlowController
-from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.flow import FlowMap
+from timetoalign.timelines.flowcontrol import (
+    Break,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+)
 
 Q = TimeUnit.quarters
 
 
 def _q(length: int | Fraction | None = None, uid: str | None = None, **kwargs):
     return ContinuousLogicalTimeline(length=length, uid=uid, **kwargs)
-
-
-class _MeasureTable(EventData):
-    """A synthetic measure table, the input a flow controller reads."""
-
-    def __init__(self, table: pa.Table) -> None:
-        super().__init__(table, unit=Q)
 
 
 def _message(uid: str, operation: str) -> str:
@@ -59,16 +54,12 @@ def _nested_example() -> ContinuousLogicalTimeline:
     inner = _q(uid="U")
     inner.create_region(1, 3)
     innermost = _q(uid="V")
-    innermost.flow_control.add_marker(
-        Marker(coordinate=Coordinate(7, Q), control_type=FlowControlElement.segno)
-    )
+    innermost.flow_control.add(JumpTarget(Coordinate(7, Q), manifestation="segno"))
     inner.add_child(innermost, 5)
     root.add_child(inner, 10)
     root.create_region(0, 15)
-    root.flow_control.add_break(Break(coordinate=Coordinate(18, Q)))
-    root.flow_control.add_jump(
-        Jump(from_coordinate=Coordinate(20, Q), to_coordinate=Coordinate(4, Q))
-    )
+    root.flow_control.add(Break(Coordinate(18, Q)))
+    root.flow_control.add(Jump(Coordinate(20, Q), [JumpDestination(by=-16)]))
     return root
 
 
@@ -374,22 +365,8 @@ def test_a_group_position_needs_no_end_until_it_is_converted(
 def test_unfolding_a_group_with_an_unknown_member_raises_before_building(
     group: TimelineGroup,
 ) -> None:
-    controller = ScoreFlowController(
-        _MeasureTable(
-            pa.table(
-                {
-                    "mc": [1, 2, 3, 4],
-                    "mn": ["1", "2", "3", "4"],
-                    "duration": [{"value": 4.0}] * 4,
-                    "start": [{"value": float(4 * i)} for i in range(4)],
-                    "timesig": ["4/4"] * 4,
-                }
-            )
-        )
-    )
-    flow = controller.compute_flow(FlowMode.default)
     with pytest.raises(UnknownLengthError) as raised:
-        group.apply_flow(flow, controller, "a")
+        group.apply_flow(FlowMap([(0, 16)]), "a")
     assert str(raised.value) == _message("b", "convert a position from 'a' to 'b'")
     for member in group:
         assert (member.list_children(), member.list_flow_maps()) == ([], [])
@@ -631,9 +608,7 @@ def test_each_content_kind_reaches_on_its_own() -> None:
     assert measures.reach == Coordinate(15, Q)
 
     jump = _q(uid="jump")
-    jump.flow_control.add_jump(
-        Jump(from_coordinate=Coordinate(9, Q), to_coordinate=Coordinate(30, Q))
-    )
+    jump.flow_control.add(Jump(Coordinate(9, Q), [JumpDestination(by=21)]))
     assert jump.reach == Coordinate(30, Q)
 
 

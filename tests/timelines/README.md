@@ -964,13 +964,11 @@ literals of the format and never from what the writer happens to produce.
   kept for every other believer and without one; a rejected Jump and its
   replacement lie at one coordinate, `jump_at` answers the replacement,
   and reading both without a believer is refused.
-- **Score loaders.** The elements derived from the ms3 measures of
-  Couperin's `c05n05_musete` are asserted element for element (role,
-  coordinate, destinations, `ends`) against the measures table read by
-  hand: a segno, two printed repeat starts, three repeat ends (the first
-  without a start, the others naming theirs), two D.S. al Fine to the
-  segno on the barlines of the second and third repeat end, and the Fine
-  without a condition because either leap could be meant.
+- **Score loaders.** The elements a loader writes from the ms3 measures of
+  Couperin's `c05n05_musete` (class, ID, coordinate and name of each of the
+  nine) are written as the `flow_control` array and read back to an equal
+  registry. What each element states, and from which column of the table,
+  is the subject of `tests/loader/score/test_flow_gold.py`.
 
 Tests of whole manifests holding flow control (through `Timeline.from_dict`
 and `to_dict`, which run the format's validator) are added with the release
@@ -1066,6 +1064,76 @@ for the first two:
    sections equal its `atomic` rows, with no finding. The gold rows are
    read from the file and turned into quarters by the measure starts
    above; nothing is copied from the engine.
+
+### Measures and flow control (`test_flow_measures.py`)
+
+`timelines/flow/measures.py` holds the one translation between a measure
+map and flow control, the statement of a flow in measure counts, the reader
+of `.flow.csv` files and one check of the measures.
+
+**What would prove the translation right.** The translation is a set of
+rules, each of which says what one fact of a row becomes. A test that ran a
+real score through it would prove only that the rules agree with themselves
+on that score. So every rule gets a measure map made for it, small enough
+that the expected elements can be written down by hand from the rule and
+the bar positions alone: 4/4 bars, measure count *n* starting at `4 (n - 1)`
+quarters. The expected value is the whole `to_dict()` of every element, IDs
+included, so an element too many, a key too many or a default written out
+fails as surely as a wrong place. The cases:
+
+| Case | Proves |
+|---|---|
+| no sign | nothing is invented |
+| a repeat start | a `jump_target` (`repeat_start`) at the row's start |
+| start and end | the destination `to` the start, `repeat_count: 1`, at the row's END |
+| an end without a start | no place, and no repeat start added |
+| nested repeats | the nearest open start is closed first |
+| `start … end … end` | a start once closed serves no later repeat end |
+| start and end on one measure | the measure repeats itself |
+| brackets 1, 2 | ONE Jump at the first bracket's start (`by: 0`, then `to`), one landing, one break, the repeat end on its own Jump |
+| three brackets, ends on 1 and 2 | both ends name one start; the second is `reset: false`, the first is not |
+| a bracket of two measures | adjacent rows of equal `volta` are one bracket: one break, behind it |
+| `volta` as a list (rows of `MeasureMap.expand_rows`) | `passes` is the list; `[1, 3]` and `[2]` are one run |
+| brackets 1, 2, 1, 2 | a bracket naming a pass again begins the next run: two Jumps |
+| a repeat end where the brackets begin | signs on one coordinate are destinations of one Jump, in the order of the rows |
+| 3/8 bars | coordinates are the exact positions, `[3, 2]` and `[9, 2]` |
+| the elements in a registry, played | the IDs given serve as references; A B, A C comes out |
+| an abstract map; a `volta` that is no number | refused, with the count named |
+
+`Measure.volta` holds an integer today, so the list form is tested on full
+rows, the other input the function reads.
+
+**The reverse** (`measure_keys_from_flow_control`) is proved by going there
+and back: a map with a repeat, three brackets and a second repeat gives its
+own three keys again for every measure. Two tests show what cannot come
+back. Where the last bracket ends is no fact of flow control: with rows that
+state a two-measure second bracket the keys cover both measures, with the
+same positions and no `volta` they cover the first only. And the keys are
+read from manifestations: a jump target without one, a destination without
+one and a repeat start lying inside a measure state nothing, so a repaired
+or hand-written registry does not turn into notation it does not state.
+
+**Measure counts.** A played flow and its atomic sections become ranges
+with the letters of the sections they cover (`A B`, `A`, `C` for brackets
+1, 2); a run is divided at the coordinates asked for and nowhere else,
+which is what the rows of a `.flow.csv` file do at a section break; a
+stretch beginning or ending inside a measure, or outside the measures, has
+no counts and is refused with the measure named.
+
+**The file reader** is tested on a file written by the test (two modes this
+library plays, one of another tool, one `ERROR` row, a seventh column) and
+on the stress score's file, whose `ms3` and `music21` rows must stay
+readable though nothing here computes them. A file lacking a column is
+refused naming the columns it has.
+
+**The finding.** `repeat_end_findings` returns a repeat end without a
+printed start when the last sign before it that closes anything is a last
+bracket. One positive case (`|: A |1 B :|2 C | D :|`: count 4) and five
+that must stay silent or find only the first: a printed start, a repeat end
+before it, nothing before it, the repeat end of its own bracket, and a
+second repeat end behind the first found one. The positive case also
+asserts that the translation writes the repeat end without a place: a
+finding changes nothing.
 
 ### Manifest identity (`test_manifest_ids.py`)
 
@@ -4339,308 +4407,6 @@ creates a fresh `Ms3Loader` instance, ensuring no shared state between tests.
 
 ---
 
-### `test_flow.py` - Flow Control and Unfolding
-
-**Purpose:** Validates the Flow API that computes unfolded measure sequences from flow control data (repeats, voltas, D.S., D.C., etc.).
-
-**Architecture (Feb 2026 redesign):**
-
-The Flow API uses a **MeasureUnit-based architecture** with FlowControlElement integration:
-
-| Class | Purpose |
-|-------|---------|
-| `MeasureUnit` | Fundamental building block with FlowControlElement fields |
-| `AtomicSection` | Smallest traversal unit (future: `typed_measures`, `groups`) |
-| `PlaythroughSection` | Contiguous atomics in traversal (future: `typed_measures`, `groups`) |
-| `Flow` | Sequence of PlaythroughSections, delegates iteration to controller |
-
-**MeasureUnit FlowControlElement Fields:**
-- `timesig_duration_qb`: Expected duration from time signature
-- `jump_from`: True if MC is a jump origin (D.C., D.S., multiple next)
-- `jump_to`: True if MC is a jump target (segno, coda, non-adjacent next target)
-- `segno`, `coda`, `fine`, `section_break`: Marker fields
-- `flow_control_types`: Tuple of FlowControlElement.value strings for serialization
-- `to_dict()` / `from_dict()`: Round-trip serialization support
-
-**Naming Rationale**: Named "Section" (not "Segment") to avoid confusion with TimeToAlign's `Segment` concept (a child timeline contiguous with siblings). These are flow control concepts, not timeline children.
-
-**Interval Convention**: Uses **right-open** `[mc_start, mc_end)` intervals, aligning with:
-- TimeToAlign TimeInterval definition (left-inclusive, right-exclusive)
-- Python `range()` semantics
-- partitura convention
-
-| Old (Inclusive) | New (Right-open) | Meaning |
-|-----------------|------------------|---------|
-| `mc_start=1, mc_end=5` | `mc_start=1, mc_end=6` | MCs 1,2,3,4,5 (5 MCs) |
-| `mc_count = end - start + 1` | `mc_count = end - start` | Direct subtraction |
-
-**Current state (Feb 2026):**
-
-- `MeasureUnit` replaces `FlowStep` as the fundamental building block
-- `ScoreFlowController.iter_units()` iterates over MeasureUnits
-- `ScoreFlowController.iter_sections(mode=None)` defaults to AtomicSections
-- `Flow._controller_ref` links Flow to its controller for `iter_units()` access
-- `Flow.steps` removed entirely (section-based only)
-- FlowControlElement fields on `MeasureUnit` (jump_from, jump_to, segno, coda, fine, etc.)
-- `MeasureUnit.from_dict()` for DataFrame round-trip serialization
-- Old `get_atomic_sections()` deprecated with DeprecationWarning
-- `iter_mcs()` removed (derive from sections instead)
-- `_build_units()` uses helper methods for FlowControl detection
-- Typed subclasses (`IncompleteMeasure`, `CompleteMeasure`, `OverlengthMeasure`)
-  produced by the Typing step
-- MeasureGroup hierarchy (`MeasureGroup`, `SplitMeasure`, `VoltaGroup`,
-  `CompleteMeasureGroup`, `IncompleteGroup`, `OverlengthGroup`) produced by the
-  Grouping step
-
-**Test Categories:**
-
-1. **Dataclass Tests** (22 tests)
-   - `TestMeasureUnit`: Creation, immutability, `to_dict()`, `from_dict()`, round-trip, FlowControlElement fields
-   - `TestAtomicSection`: Creation, `mc_range`, `mc_count`, frozen, validation
-   - `TestPlaythroughSection`: Creation, `mc_range`, `mc_count`, frozen, `to_mc_sequence()`
-
-2. **Typed Measure Tests** (13 tests)
-   - `TestTypedMeasures`: Creation and inheritance of typed subclasses
-     - `IncompleteMeasure`: Creation with `position` field, is MeasureUnit subclass
-     - `CompleteMeasure`: Creation, is MeasureUnit subclass
-     - `OverlengthMeasure`: Creation, is MeasureUnit subclass
-     - FlowControlElement field preservation in typed measures
-     - `IncompletePosition` enum values
-   - `TestAtomicSectionTypedMeasures`: `typed_measures` field on AtomicSection
-   - `TestPlaythroughSectionTypedMeasures`: `typed_measures` field on PlaythroughSection
-
-3. **MeasureGroup Tests** (16 tests)
-   - `TestMeasureGroup`: MeasureGroup base class and subclasses (12 tests)
-     - `MeasureGroup`: Base frozen dataclass with `members`, `mc_start`, `mc_end`, `total_duration_qb`
-     - `SplitMeasure`: IncompleteMeasures that sum to time signature
-     - `IncompleteGroup`: Isolated IncompleteMeasures (anacrusis, final)
-     - `VoltaGroup`: Measures under same volta bracket with `volta_number`
-     - `CompleteMeasureGroup`: Adjacent CompleteMeasures
-     - `OverlengthGroup`: OverlengthMeasures grouped together
-   - `TestBuildGroups`: ScoreFlowController grouping algorithm (4 tests)
-      - `_build_groups()`: Grouping-step algorithm
-     - `_group_voltas()`, `_group_splits()`, `_group_incompletes()`
-     - `_group_overlengths()`, `_group_completes()`
-     - `groups` field on AtomicSection and PlaythroughSection
-
-4. **Flow Serialization Tests** (17 tests)
-   - `TestFlow`: Empty flow, simple flow, flow with repeats, `to_dataframe()`
-   - `TestFlowSectionBased`: section and record constructors, record/CSV exports, equivalence, measure-count and atomic sequences, flow diffs, and unfolded length
-   - `TestFlowCSVLoading`: `Flow.from_csv()`, invalid mode raises, `load_valid_flows()`
-
-5. **ScoreFlowController Tests** (6 tests)
-   - `iter_units()`: Iterate over MeasureUnits
-   - `iter_sections(mode=None)`: AtomicSections by default
-   - `get_sections()`: Unified API (replaces get_atomic_sections)
-   - `get_sections(mode)`: Returns PlaythroughSections for specified mode
-   - `from_atomic_sections()` class method
-   - `compute_flow()` populates sections with controller ref
-
-6. **Integration Tests** (10 tests)
-   - `TestExample1Rachmaninoff`: No flow control baseline (3 tests)
-   - `TestExample3CouperinMusete`: D.S. al Fine (4 tests, all pass)
-   - `TestFlowMap`: FlowMap creation
-   - `TestPrintedMode`: PRINTED mode returns folded count
-
-**Test Status: 84 passed** (Feb 2026)
-
-**New Methods (Feb 2026):**
-
-- `Flow.to_atomic_sequence()`: Returns flattened list of atomic section IDs from all sections
-- `Flow.diff_flows()`: Shows differences between flows using sequence alignment (difflib)
-
-**c05n05_musete Fix (Feb 2026):**
-
-The gold standard CSV was updated to include all 7 section occurrences in playthrough order:
-
-| # | MC Range | Atomic IDs | Notes |
-|---|----------|------------|-------|
-| 1 | (1-17) | A;B | First refrain |
-| 2 | (1-32) | A;B;C | Second refrain + 1e couplet |
-| 3 | (17-32) | C | Repeat of 1e couplet |
-| 4 | (6-17) | B | D.S. back to segno |
-| 5 | (32-59) | D | First 2e couplet |
-| 6 | (32-59) | D | Repeat of 2e couplet |
-| 7 | (6-17) | B | Final D.S. al Fine |
-
-**Validity Rationale:**
-
-Following the project's ZERO TOLERANCE validation policy, all tests use **exact value comparisons**:
-- EXACT section counts (no ranges or minimums)
-- EXACT MC ranges: `(mc_start, mc_end)` pairs must match exactly (right-open)
-- EXACT section order (positional comparison)
-
-#### Volta-follows-volta invariant (`TestFlowInvariants`)
-
-**Purpose.** Validate `ScoreFlowController.check_invariants()`, a
-detect-and-report structural-invariant check over the atomic flow graph. It
-never raises; it returns a list of `FlowDiagnostic` describing each violation
-and an empty list when the flow is well-formed.
-
-**The invariant.** In the atomic flow graph a volta section can never have a
-`to` edge to another volta section. A prima volta's only out-edge is the repeat
-back-edge (to the repeat-start, a non-volta section); a seconda volta is
-reached only from the repeat-start and continues into the music after the
-bracket (also non-volta). Two flow-adjacent voltas therefore indicate a
-malformed `next` array — most often a jump target that resolved to the wrong
-ending. This is the `to` (flow) edge relation, NOT score-order adjacency: volta
-sections ARE naturally adjacent in MC order, which is correct; they must merely
-never be connected by a `to` edge. A section "is a volta" iff its first
-measure's `volta is not None` — the same criterion the label generator's
-volta-flag and the ASCII diagram's `┌N` corner use.
-
-**Fixture — clean score → no diagnostics.** A repeat with a prima/seconda
-volta, then a non-volta section, with a section break two measures after the
-seconda volta. Eight MCs (4/4 throughout):
-
-| MC | mn | volta | next | section_break | role |
-|----|----|-------|------|---------------|------|
-| 1 | 1 | None | [2] | — | repeat-start body |
-| 2 | 2 | None | [3] | — | body |
-| 3 | 3 | None | [4, 5] | — | branch into the two endings |
-| 4 | 3 | 1 | [1] | — | prima volta (repeats back to MC 1) |
-| 5 | 4 | 2 | [6] | — | seconda volta (continues sequentially) |
-| 6 | 5 | None | [7] | — | continuation after the bracket |
-| 7 | 6 | None | [8] | yes | continuation, with section break |
-| 8 | 7 | None | [-1] | — | final section |
-
-This is a well-formed score. The atomic partition is `A [1,4)` (to A1, A2),
-`A1 [4,5)` prima (to A), `A2 [5,8)` seconda (to B), `B [8,9)` final. The seconda
-volta absorbs its continuation up to the next genuine boundary (the section
-break at MC 7 puts a boundary at MC 8) — the correct behaviour, matching how a
-seconda volta continues in real scores (see the design note below). The only
-volta sections are A1 (`to=(A,)` → A non-volta) and A2 (`to=(B,)` → B
-non-volta), so `controller.check_invariants() == []`.
-
-**Fixture — malformed score → exactly one diagnostic.** A seven-MC fixture that
-mis-resolves the prima volta's `next` so it points forward to the seconda volta
-(`MC 4`, volta 1, `next=[5]`) instead of back to the repeat-start (`next=[1]`).
-
-| MC | volta | next | resulting section | `to` |
-|----|-------|------|-------------------|------|
-| 1–3 | None / None / None | [2]/[3]/[4,5] | A `[1,4)` | (A1, A2) |
-| 4 | 1 | [5] | A1 `[4,5)` | (A2,) ← violation |
-| 5 | 2 | [6] | A2 `[5,8)` | () |
-| 6–7 | None / None | [7]/[-1] | (absorbed into A2) | — |
-
-The prima-volta section `A1` then carries `to=(A2,)` where `A2` is the
-seconda-volta section. `check_invariants()` returns exactly one
-`FlowDiagnostic(kind="volta_follows_volta", section_id="A1", mc=4)`; its message
-names both section ids `'A1'`/`'A2'` and hints that the source section's
-next/jump target is mis-resolved.
-
-Following the project's ZERO TOLERANCE policy, all assertions are exact:
-diagnostic count, the `to` edges, the volta values at each section start, and
-the diagnostic's `kind` / `section_id` / `mc` plus the substring identities in
-its message.
-
-**Design note — a closing volta does NOT force an atomic boundary.** The
-volta-boundary rule adds a boundary at the *onset* of a volta bracket (a
-`volta` value change *into* a non-None ending), NOT at the measure where a
-bracket closes (`volta n → None`). A seconda (or final) volta therefore
-continues into the music that follows it, absorbing it up to the next genuine
-boundary — a later jump target or `section_break`. This is intentional and
-matches every `.flow.csv` gold standard: e.g. Op.18 No.4 iv's seconda voltas
-are the atomic sections `(45, 78)` and `(103, 227)`, each spanning far beyond
-the single volta measure. Adding a boundary at the volta-close transition would
-split those sections (`(45, 46)` + `(46, 78)`, …), changing the atomic
-partition, the section labels (`A, B, C, D, D1, D2, E, F, F1, F2, G, G1, G2`
-would gain extra letters), and the unfolded flow — breaking the gold for Op.18
-and the segment-naming integration test. The detect-and-report invariant above
-is the right home for "this volta arrangement looks wrong": a malformed flow is
-surfaced as a `FlowDiagnostic`, not silently re-partitioned.
-
-#### Guarded default-flow traversal (`TestGuardedFlowTraversal`)
-
-**Purpose.** Pin the default-flow traversal as a *guarded transition system*.
-At each visited MC a fixed total order over edge kinds decides which eligible
-out-edge fires, the traversal reports rather than raises on a flow that cannot
-terminate, coda destinations are selected per pass, and repeat-ends resolve
-through a nearest-first candidate generator. All fixtures are built from
-synthetic measure tables through the public `ScoreFlowController` constructor
-(a PyArrow table wrapped in the shared `_MockMeasureData`), so they exercise the
-real column-to-`MeasureUnit` pipeline without any specimen file. Every
-assertion is exact.
-
-The traversal moves in score (MC) order; a `next` array that points elsewhere
-only marks a measure as a jump origin/target and shapes the atomic partition —
-it is never followed as the traversal path. The fixtures below are laid out
-with that in mind (e.g. a coda destination that must be revisited is placed
-*before* its jump origin in MC order).
-
-**Edge-kind total order — repeat back-edge outranks an un-armed coda jump.**
-The out-edges at an MC are ranked: (1) an armed Fine stop, (2) an unexhausted
-repeat back-edge, (3) an armed coda/segno play-until jump, (4) a D.S./D.C.
-jump, (5) the sequential successor. The Fine is a hard stop and outranks a
-still-owed repeat (an al-Fine pass ends at the Fine); below it, a section still
-owing a repeat plays it before an al-coda exit fires. Fixture (six MCs, 4/4): a
-segno block `MC 2` opening an inner
-repeat `[MC 2, MC 4]`, a D.S.-al-coda origin at `MC 5` (`jump_bwd=segno`,
-`play_until=coda`, `jump_fwd=codab`) that resets the block, and a `codab`
-tail at `MC 6`. `MC 4` is both the inner repeat-end and — via the section-end
-"to coda" convention, since the score carries no explicit `coda` marker — the
-armed trigger point.
-
-- Old behaviour fired the coda jump first, so on the post-jump pass the inner
-  repeat was skipped: `[1, 2, 3, 4, 2, 3, 4, 5, 2, 3, 4, 6]`.
-- New behaviour runs the owed repeat before the coda exit:
-  `[1, 2, 3, 4, 2, 3, 4, 5, 2, 3, 4, 2, 3, 4, 6]` (the post-jump pass now
-  contains the inner `2, 3, 4` a second time). This fails on the old code and
-  passes on the new.
-
-**Lasso cycle detection — report, never spin.** The old traversal bounded
-itself with `len(units) * 30` iterations and then *silently truncated*. It is
-replaced by a lasso check over the whole traversal state (position, per-block
-pass counts, and armed-jump configuration): revisiting a state means a
-guard-disabled edge closes a loop, so the traversal stops and appends a
-`FlowDiagnostic(kind="flow_cycle", …)` naming the looping section(s) and the
-edge that closes them. Fixture (two MCs): `MC 1 → MC 2`, and `MC 2` is a bare
-D.C. (`jump_bwd=start`, `next=[1]`) with no Fine or Coda to ever end it.
-
-- Old behaviour produced 60 rows (`2 * 30`) of `1, 2, 1, 2, …` and *no*
-  diagnostic.
-- New behaviour stops after `[1, 2]` and reports exactly one
-  `flow_cycle` diagnostic (`section_id="A"`, `mc=1`) whose message names the
-  `D.S./D.C. jump` edge at `MC 2` re-entering `MC 1`. The test asserts the old
-  code emits no such diagnostic and the row count is bounded.
-
-**Scalar coda targets and pass-indexed arming.** `jump_fwd` is one marker name,
-including when the name itself contains a comma. A six-MC fixture gives the
-destination marker the literal name `codab,varcoda` and asserts that the
-al-coda exit reaches it. A second fixture arms the same single-target `codab`
-exit twice; both arming passes resolve the same scalar destination, and the
-per-origin arming counter remains part of the guarded traversal state.
-
-**Candidate repeat-end resolution.** `_repeat_end_resolution()` maintains the
-open explicit repeat-start scopes. Segno and coda markers are jump targets for
-their own instructions and never repeat-end candidates; the conventional piece
-start is considered only when no explicit repeat start is open and the source
-encodes an edge back to the first MC. An end with no open explicit scope and no
-backward edge is dangling. Loader-specific one-bar and coda-volta execution
-inferences remain outside the registry and cannot become repeat candidates.
-
-- **exactly one explicit scope** → resolve without a diagnostic;
-- **several explicit scopes** → resolve to the nearest and record the other
-  open scopes in an `ambiguous_repeat_end` diagnostic;
-- **no explicit scope, edge to the first MC present** → use the implicit piece
-  start;
-- **no explicit scope or backward edge** → emit `dangling_repeat_end` and no
-  registry jump.
-
-The default traversal and `FlowControlRegistry` both consume this one resolved
-repeat-end map. `TestRegistryTraversalAgreement` pins the exact canonical maps
-for Musete (`16→1`, `31→17`, `58→32`), Rondeau (`9→1`, `18→10`,
-`27→19`, `60→28`), and op18 (`9→1`, `18→10`, `27→19`, `44→28`,
-`84→78`, `93→85`, `102→95`), then checks each first executable repeat
-edge against its registry target.
-
-`flow_diagnostics(mode)` computes the requested mode and stores traversal
-diagnostics separately for each mode. Repeat counters are saturated at their
-exhaustion bound before lasso-state comparison, so an exhausted repeat cannot
-hide a cycle while long finite chains of legal repeats remain complete.
-
----
-
 ### `test_flow_intervals.py` - Interval-Built FlowMaps
 
 **Purpose:** Validates constructing a `FlowMap` directly from anything that
@@ -4697,7 +4463,7 @@ All assertions are exact `Fraction` equality — no ranges, no `pytest.approx`.
 #### Interval-built `FlowMap`
 
 Sections are built directly from the coerced `(start, end, label)` ranges with
-a **cumulative target position** (identical math to `from_qb_sections`), each
+a **cumulative target position**, each
 section carrying its `label`, and `flow` is `None`. For the two motivating
 spans `[0, 123)` and `[129, 252)` (length 252):
 
@@ -4715,17 +4481,6 @@ spans `[0, 123)` and `[129, 252)` (length 252):
 not require a non-`None` `flow`. `__repr__` reads the `id`, so an interval map
 built with `id="A8"` reprs as `FlowMap(A8: 2 sections)` and its inverse as
 `FlowMap(A8_inverse: 2 sections)`.
-
-#### Regression — the `Flow` and `from_qb_sections` paths are unchanged
-
-`FlowMap(flow_obj)` still builds MC-space sections from `flow.sections`
-(`unfold_coordinate(3)` over two `[1, 5)` playthrough sections gives
-`[Fraction(2), Fraction(6)]`, since MC 3 is visited twice), `id` defaults to
-`flow.mode.value`, and `from_qb_sections` is untouched. The polymorphic
-positional parameter is named `source`, so `FlowMap(source=flow_obj)` works by
-keyword; the historical `FlowMap(flow=flow_obj)` keyword no longer exists (it
-raises `TypeError`) — every construction site was migrated to positional and no
-compatibility alias is retained.
 
 #### `Timeline.create_flow_map`
 
@@ -4784,64 +4539,6 @@ the exact values:
 
 ---
 
-### `test_segment_naming.py` - Customizable Atomic-Section Labelling
-
-**Purpose:** Validates `SegmentNameGenerator`, the strategy object that the
-`ScoreFlowController` uses to label atomic sections, and its integration into
-the controller's section-building pass.
-
-**What the generator does.** `generate(volta_flags)` turns a list of
-per-section booleans (`volta_flags[i]` is `True` when atomic section `i` opens
-a volta bracket) into one label per section. Two policies are configurable at
-construction:
-
-- **Alphabet** (`alphabet=`, default `_SECTION_ALPHABET`): base sections walk
-  the alphabet; once exhausted it repeats with a numeric suffix (`A2`, `B2`,
-  …). The generator never reaches into punctuation or control characters.
-- **Volta suffix** (`volta_suffix=`, default `True`): a section that opens a
-  volta bracket inherits the preceding base section's label plus a *positional*
-  numeric suffix (`1`, `2`, …) — section `B` followed by two endings reads `B,
-  B1, B2`, not `B, C, D`. The suffix is positional and independent of the
-  volta's own ending number. A non-volta section resets the counter, so two
-  independent volta groups read `B, B1, B2` then `C, C1, C2` (never `C3, C4`).
-  A leading volta with no preceding base falls back to a base letter (never
-  `None1`). With `volta_suffix=False` every section consumes the next base
-  label, the historical pure-sequential behaviour.
-
-**Generator unit tests (exact strings):**
-
-| Case | `volta_flags` | Generator config | Expected labels |
-|------|---------------|------------------|-----------------|
-| Default sequential | all `False` | default | `A, B, C` |
-| Alphabet overflow | one flag beyond alphabet length | tiny `alphabet=` | tail label carries the `2` suffix (`…, A2`) |
-| Volta suffix | `[False, True, True]` after a base | default | `A, A1, A2` |
-| Legacy sequential | `[False, True, True]` | `volta_suffix=False` | `A, B, C` |
-| Custom alphabet | all `False` | `alphabet=["X", "Y", "Z"]` | `X, Y, Z` |
-| First-section volta | `[True, False, True]` | default | `A, B, B1` (no `None1`) |
-| Two volta groups | `[False, True, True, False, True]` | default | `A, A1, A2, B, B1` (counter resets) |
-
-**Integration test (Op.18 No.4 iv specimen).** The folded measures TSV at
-`beethoven_op18-4iv_multimodal/op18_no4_mov4_flow/` carries three volta groups.
-Building a `ScoreFlowController` over it and reading the atomic sections must
-yield, in order:
-
-```
-A, B, C, D, D1, D2, E, F, F1, F2, G, G1, G2
-```
-
-(13 sections — count unchanged from the pre-volta-suffix labelling). The test
-asserts EXACT section ids AND that every `to[]` graph edge references those new
-labels (the edges are derived from the same label list, so e.g. `D` points to
-`('D1', 'D2')` and `D1` back to `('D',)`). It also confirms section count and
-MC ranges are untouched by the relabelling. Passing `volta_suffix=False` to the
-controller reproduces the legacy sequential ids `A, B, … M`.
-
-Following the project's ZERO TOLERANCE policy, all assertions are exact string
-and exact count comparisons; the data path is resolved relative to the test
-file (the pattern already used by `test_unfolding.py` for this specimen).
-
----
-
 ### `test_timestamps.py` - Cross-Section Timestamp Tables
 
 **Purpose:** Validates `get_timestamp_table()` (both `format="table"` and
@@ -4877,18 +4574,17 @@ are the exact in-bounds coordinates: the out-of-bounds probe coordinate becomes
 
 ### `test_unfolding.py` - Unfolding via Slicing
 
-**Purpose:** Validates the slice-based unfolding pipeline that replaces the buggy MC-space
-FlowMap approach with structural slicing in QB-space.
+**Purpose:** Validates unfolding by structural slicing in quarters, and the default flow
+that a score's flow control plays against ms3's own unfolded measure tables.
 
 **Test classes** validating the pipeline:
 
 | Class | Purpose |
 |-------|---------|
 | `TestGetSlice` | Unit tests for `Timeline.get_slice()` primitive |
-| `TestComputeQBSections` | QB boundary computation from Flow + ScoreFlowController |
 | `TestSegmentLineAssembly` | Integration: slice + concatenate into a SegmentLine (this module's own manual helper) |
-| `TestCreateUnfoldedTimelineIdentity` | Explicit uid on the same-type unfolded timeline |
-| `TestUnfoldingGoldStandard` | End-to-end validation against 7 ms3 gold standard specimens |
+| `TestUnfoldedTimelineIdentity` | Explicit uid on the same-type unfolded timeline |
+| `TestUnfoldingGoldStandard` | The played default flow against 7 ms3 gold standard specimens |
 | `TestGroupUnfolding` | Cross-domain unfolding through the group's `TimeStamp`s, which convert linearly between members |
 
 **Testing Pyramid:**
@@ -4905,8 +4601,7 @@ FlowMap approach with structural slicing in QB-space.
     │  (TestSegmentLineAssembly)      │     slices, contiguity, length
     ├─────────────────────────────────┤
     │  Unit Tests                     │  ← get_slice() primitive
-    │  (TestGetSlice +                │     compute_qb_sections() helper
-    │   TestComputeQBSections)        │
+    │  (TestGetSlice)                 │
     └─────────────────────────────────┘
 ```
 
@@ -4922,14 +4617,7 @@ FlowMap approach with structural slicing in QB-space.
    - Discrete and physical timeline support
    - Error cases (invalid range, out of bounds)
 
-2. **compute_qb_sections() Unit Tests** (8 tests)
-   - Sequential score (Rachmaninoff): single pass, total QB = 2997/2
-   - D.S. al Fine (Musete): repeated sections, total QB = 384
-   - Rondeau form, volta brackets, split bars, D.S./D.C.
-   - QB boundaries match folded TSV `quarterbeats` column exactly
-   - All sections have strictly positive duration
-
-3. **SegmentLine Assembly Integration Tests** (5 tests)
+2. **SegmentLine Assembly Integration Tests** (5 tests)
    - Contiguity enforcement (each segment starts where previous ended)
    - Total length = sum of slice lengths
    - Events preserved in assembled segments
@@ -4937,15 +4625,20 @@ FlowMap approach with structural slicing in QB-space.
    - The assembled line is an instance of both SegmentLine and the source class
    - Repeated section assembly (same range played twice)
 
-4. **Standalone Unfolded Timeline Identity Tests** (2 tests)
-   - Explicit `uid` is retained by flat timeline results
-   - Explicit `uid` is retained by SegmentLine results
+3. **Standalone Unfolded Timeline Identity Test**
+   - Explicit `uid` is retained by `unfold_via_flowmap`
 
-5. **Gold Standard End-to-End Tests** (49 tests, parametrized × 7 specimens)
+4. **Gold Standard End-to-End Tests** (49 tests, parametrized × 7 specimens)
+   - Each specimen's measures table is loaded, the flow control on its timeline is
+     played by the engine (`default`), and the runs are stated in measure counts
    - EXACT row count, MC sequence, mc_playthrough, mn_playthrough with suffixes
-   - EXACT quarterbeats as Fraction (not float), total unfolded length
+   - EXACT quarterbeats as Fraction (not float), total unfolded length: the lengths of
+     the runs sum up to it
+   - `flow_only` is played with the three elements its target flow needs (two repeat
+     starts, a jump past the third bracket); as its source stands the flow ends at the
+     second of three brackets (`tests/loader/score/README.md`, "Gold flows")
 
-6. **Group Unfolding Tests** (10 tests)
+5. **Group Unfolding Tests** (10 tests)
    - Uses Beethoven Op.18 No.4 iv multimodal score group (CLT1 + DGT1 + OpenScore)
    - Validates that one FlowMap unfolds ALL timelines regardless of domain
    - Resolves section boundaries through the group's `TimeStamp`s (members convert linearly between their common start and end)

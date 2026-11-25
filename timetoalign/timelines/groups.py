@@ -95,7 +95,7 @@ if TYPE_CHECKING:
     from timetoalign.display.ascii import Diagram
     from timetoalign.maps.base import ConversionMap
     from timetoalign.timelines import Timeline
-    from timetoalign.timelines.flow import Flow, FlowControllerBase
+    from timetoalign.timelines.flow import FlowMap
 
 module_logger = logging.getLogger(__name__)
 
@@ -2191,67 +2191,63 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
 
     def apply_flow(
         self,
-        flow: "Flow",
-        flow_controller: "FlowControllerBase",
+        flow_map: "FlowMap",
         reference_timeline_id: str,
         *,
         include_children: bool = True,
         name: str | None = None,
     ) -> "TimelineGroup":
-        """Unfold ALL timelines in this group via a single flow.
+        """Unfold ALL timelines in this group along one FlowMap.
 
-        Uses the flow controller's repeat structure to compute section
-        boundaries in the reference timeline's coordinate space, then
-        resolves those boundaries into every other timeline's coordinates
-        via the group's linear conversion. Each member is unfolded along its
-        own resolved played spans: a new timeline of the member's **same
-        concrete type** with one appended child (plus a matching named Region)
-        per section, in unfolded coordinates.
+        The played spans of *flow_map* lie on the reference timeline. Each
+        span's boundaries are resolved into every other timeline's
+        coordinates via the group's linear conversion, and each member is
+        unfolded along its own resolved spans: a new timeline of the
+        member's **same concrete type** with one appended child (plus a
+        matching named Region) per span, in unfolded coordinates.
 
-        This is the group-level equivalent of
-        `timetoalign.timelines.flow.create_unfolded_timeline`, but
+        This is the group-level equivalent of ``Timeline.apply_flow``,
         applied to every member at once. It shares the append-children
         assembly via `unfold_via_flowmap`, so each member's children and
-        Regions carry the same per-section names as the single-timeline path
+        Regions carry the same per-span names as the single-timeline path
         (repeats suffixed ``-rend2``, ``-rend3`` …).
 
         Args:
-            flow: The computed ``Flow`` (from ``controller.compute_flow()``).
-            flow_controller: The ``FlowControllerBase`` that produced the flow.
-                Required to convert flow sections to quarter-beat coordinates.
+            flow_map: The FlowMap whose played spans, in the coordinates of
+                the reference timeline, are unfolded; its sections' labels
+                name the children and Regions every member gets.
             reference_timeline_id: ID of the timeline whose coordinate space
-                the flow is defined in (typically the score CLT).  Section
+                the spans are stated in (typically the score CLT). Their
                 boundaries are resolved here first, then mapped to all other
                 timelines.
             include_children: Whether to recursively slice child timelines
-                within each section.
+                within each span.
             name: Name for the returned group.  Defaults to
                 ``f"{self.name} (unfolded)"``.
 
         Returns:
             A new ``TimelineGroup`` containing the unfolded timelines. Each
             member keeps its original timeline ID, is the same concrete type as
-            its source, and carries one appended child and Region per section.
-            A section child is named after its section; its id is minted
+            its source, and carries one appended child and Region per span.
+            A child is named after its span; its id is minted
             (``clt_2``, ...), so that timeline ids stay unique across the
-            group.
-            The reference timeline additionally carries a reverse FlowMap
-            (id ``"source"``) and a forward FlowMap (id ``f"forward_{flow.id}"``).
+            group. Every member carries a reverse FlowMap (id ``"source"``)
+            and a forward FlowMap (id ``f"forward_{flow_map.id}"``) in its
+            own coordinates.
 
         Raises:
             KeyError: If ``reference_timeline_id`` is not in the group.
-            ValueError: If the flow controller cannot compute QB sections.
+            ValueError: If a span's boundaries cannot be resolved into a
+                member's coordinates.
 
         Examples:
-            >>> loader = Ms3Loader.from_file("notes.tsv", "measures.tsv")
-            >>> controller = loader.create_flow_controller()
-            >>> flow = controller.compute_flow(FlowMode.default)
             >>> score_group = TimelineGroup(
             ...     id="score", timelines=[clt_1, dgt_1, openscore]
             ... )
-            >>> unfolded = score_group.apply_flow(flow, controller, "clt_1")
+            >>> played = clt_1.create_flow_map([(0, 16), (0, 32)], id="default")
+            >>> unfolded = score_group.apply_flow(played, "clt_1")
         """
-        from timetoalign.timelines.flow import FlowMap, compute_qb_sections
+        from timetoalign.timelines.flow import FlowMap
 
         from .flow.unfolding import unfold_via_flowmap
 
@@ -2261,11 +2257,11 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 f"Available timelines: {self.timeline_ids}"
             )
 
-        # 1. Section boundaries in QB space, plus the labelled reference map
-        #    (its section labels name the children/Regions every member gets).
-        qb_sections = compute_qb_sections(flow, flow_controller)
-        reference_map = FlowMap.from_qb_sections(flow, qb_sections, id=flow.id)
-        labels = [sec.label for sec in reference_map._sections]
+        # 1. The played spans on the reference timeline, with the labels
+        #    that name the children/Regions every member gets.
+        played = [section for section in flow_map._sections if not section.is_gap]
+        qb_sections = [(section.source_start, section.source_end) for section in played]
+        labels = [section.label for section in played]
 
         # 2. Resolve each section's boundaries into every member's coordinate
         #    space via the group's timestamps, collecting per-member played
@@ -2302,7 +2298,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         #    Regions), preserving each member's original timeline id.
         result_timelines = []
         for tl_id, tl in self._timelines.items():
-            member_map = FlowMap(id=flow.id)
+            member_map = FlowMap(id=flow_map.id)
             member_map._build_from_intervals(member_spans[tl_id])
             unfolded = unfold_via_flowmap(
                 tl, member_map, uid=tl_id, include_children=include_children

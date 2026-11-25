@@ -28,7 +28,6 @@ from timetoalign.alignment.warpmap import WarpMap
 from timetoalign.core import (
     Belief,
     Coordinate,
-    FlowControlElement,
     IdCoordinate,
     Measure,
     NumberType,
@@ -77,9 +76,12 @@ from timetoalign.timelines import (
     TempoMap,
     Timeline,
 )
-from timetoalign.timelines.flow.measures import MeasureUnit
-from timetoalign.timelines.flow.sections import AtomicSection, PlaythroughSection
-from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.flowcontrol import (
+    Jump,
+    JumpDestination,
+    JumpTarget,
+    SectionBreak,
+)
 
 # region Fixtures
 
@@ -141,25 +143,24 @@ def _structured_timeline() -> Timeline:
         )
     )
     timeline.create_region(Fraction(1, 3), Fraction(2, 3), id="middle", name="middle")
-    timeline.flow_control.add_break(
-        Break(
-            Coordinate(Fraction(2, 3), TimeUnit.quarters),
-            control_type=FlowControlElement.section_break,
-        )
-    )
-    timeline.flow_control.add_jump(
-        Jump(
-            Coordinate(Fraction(4), TimeUnit.quarters),
-            Coordinate(Fraction(1, 3), TimeUnit.quarters),
-            control_type=FlowControlElement.repeat_end,
-        )
-    )
-    timeline.flow_control.add_marker(
-        Marker(
-            Coordinate(Fraction(1, 3), TimeUnit.quarters),
-            name="segno",
-            control_type=FlowControlElement.segno,
-        )
+    timeline.flow_control.add_all(
+        [
+            SectionBreak(Coordinate(Fraction(2, 3), TimeUnit.quarters)),
+            JumpTarget(
+                Coordinate(Fraction(1, 3), TimeUnit.quarters),
+                id="segno",
+                name="segno",
+                manifestation="segno",
+            ),
+            Jump(
+                Coordinate(Fraction(4), TimeUnit.quarters),
+                [
+                    JumpDestination(
+                        to="segno", repeat_count=1, manifestation="repeat_end"
+                    )
+                ],
+            ),
+        ]
     )
     return timeline
 
@@ -231,17 +232,6 @@ def _claim() -> MatchClaim:
         Timeline(length=16, unit=TimeUnit.quarters, uid="score"),
         {"id": "e2", "name": "Note C4", "start": 45.5},
         Timeline(length=60.0, unit=TimeUnit.seconds, uid="audio"),
-    )
-
-
-def _measure_unit() -> MeasureUnit:
-    return MeasureUnit(
-        mc=1,
-        mn="1",
-        duration_qb=Fraction(4),
-        next=(2,),
-        timesig="4/4",
-        timesig_duration_qb=Fraction(4),
     )
 
 
@@ -538,17 +528,6 @@ def _json_safety_cases() -> list[tuple[str, dict[str, Any]]]:
                 ],
                 source_unit=TimeUnit.quarters,
                 target_unit=TimeUnit.seconds,
-            ).to_dict(),
-        ),
-        ("MeasureUnit", _measure_unit().to_dict()),
-        (
-            "AtomicSection",
-            AtomicSection(id="A", mc_start=1, mc_end=5, to=("A", "B")).to_dict(),
-        ),
-        (
-            "PlaythroughSection",
-            PlaythroughSection(
-                mc_start=1, mc_end=9, atomic_section_ids=("A", "B")
             ).to_dict(),
         ),
     ]

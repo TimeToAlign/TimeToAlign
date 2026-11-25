@@ -517,10 +517,13 @@ class PartituraLoader(ScoreLoader):
                         "volta": ending_mcs.get(mc),
                         "markers": marker_names.get(mc),
                         "jump_bwd": jump_rows.get(mc, (None, None))[0],
-                        "jump_fwd": jump_fwd.get(
-                            mc + 1
+                        # As the jump itself, where it goes on is stated on
+                        # the playable row before an implicit measure, and
+                        # not a second time on that measure's own row.
+                        "jump_fwd": (
+                            jump_fwd[mc + 1]
                             if mc + 1 in jump_fwd and mc + 1 in implicit_mcs
-                            else mc
+                            else None if mc in implicit_mcs else jump_fwd.get(mc)
                         ),
                         "play_until": jump_rows.get(mc, (None, None))[1],
                         "fine": mc in fine_mcs,

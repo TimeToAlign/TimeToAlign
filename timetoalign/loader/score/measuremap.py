@@ -65,8 +65,8 @@ class MeasureMapLoader(ScoreLoader):
       :meth:`_apply_anacrusis_convention`)
     - ``-1`` in ``next``, the measure-table spelling of the end of the piece:
       the rows are read without it (it names no row) and the measure map
-      leaves it out, while ``expanded_data``, the measure table and
-      :meth:`compute_default_traversal` keep it where the file states it
+      leaves it out, while ``expanded_data`` and the measure table keep it
+      where the file states it
 
     Known limitation: a ``.mm.json`` file states no offset for the parts of
     an inner split bar, so they load as ``IrregularMeasure``s, whereas an
@@ -137,7 +137,7 @@ class MeasureMapLoader(ScoreLoader):
 
         # Measure Map files written from measure tables spell the end of the
         # piece -1, which names no row: the rows are read without it, and the
-        # loader's own table and traversal keep it where the file states it.
+        # loader's own table keeps it where the file states it.
         rows = [
             (
                 {**row, "next": [entry for entry in row["next"] if entry != -1]}
@@ -202,7 +202,7 @@ class MeasureMapLoader(ScoreLoader):
     def _measure_map(self) -> MeasureMap:
         """Build the measure map from the expanded rows, not the measure table.
 
-        The end-of-piece ``-1`` the loader keeps for its traversal names no
+        The end-of-piece ``-1`` the loader keeps in its table names no
         measure, so the map's successors leave it out.
         """
         return MeasureMap.from_expanded_rows(
@@ -327,67 +327,3 @@ class MeasureMapLoader(ScoreLoader):
             rows.append(row)
 
         return rows
-
-    # ===== Traversal Computation =====
-
-    def compute_default_traversal(self) -> list[int]:
-        """Compute the default traversal sequence from the expanded data.
-
-        The walk starts at MC 1 and follows the 'next' field, using visit
-        counts to choose which branch to take at repeat points: the n-th
-        visit of a measure takes its n-th ``next`` entry, or its last one
-        once the entries are used up. It stops at ``-1`` (the end of the
-        piece), at a measure without ``next`` entries or not in the data,
-        and after ten times as many steps as there are measures.
-
-        Returns:
-            List of MC values in traversal order (empty without data).
-        """
-        from collections import defaultdict
-
-        if not self._expanded_data:
-            return []
-
-        # Build MC -> bar lookup
-        mc_to_bar: dict[int, dict[str, Any]] = {
-            bar["count"]: bar for bar in self._expanded_data
-        }
-
-        sequence: list[int] = []
-        visit_counts: dict[int, int] = defaultdict(int)
-        current_mc = 1  # Start at MC 1
-
-        # Safety limit to prevent infinite loops
-        max_iterations = len(self._expanded_data) * 10
-
-        for _ in range(max_iterations):
-            if current_mc == -1 or current_mc not in mc_to_bar:
-                break
-
-            bar = mc_to_bar[current_mc]
-            sequence.append(current_mc)
-
-            next_options = bar["next"]
-            if not next_options:
-                break
-            visit_counts[current_mc] += 1
-
-            # Choose next based on visit count
-            idx = min(visit_counts[current_mc] - 1, len(next_options) - 1)
-            current_mc = next_options[idx]
-
-        return sequence
-
-    def get_traversal_summary(self) -> dict[str, Any]:
-        """Get summary of the default traversal.
-
-        Returns:
-            Dict with traversal statistics.
-        """
-        traversal = self.compute_default_traversal()
-        return {
-            "folded_measures": len(self._expanded_data),
-            "unfolded_measures": len(traversal),
-            "traversal_sequence": traversal[:20],  # First 20 for preview
-            "has_repeats": len(traversal) > len(self._expanded_data),
-        }

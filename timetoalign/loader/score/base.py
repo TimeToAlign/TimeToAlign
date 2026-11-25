@@ -4,26 +4,26 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from fractions import Fraction
 from numbers import Integral
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
-import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import TimeUnit
+from timetoalign.core.enums import FlowManifestation
 from timetoalign.loader.base import EventLoader
 
 from .store import ScoreStore
-from .stores.measures import MeasureData
 from .stores.notes import NoteEventData
 
 if TYPE_CHECKING:
     from timetoalign.timelines import MeasureMap, Timeline
-    from timetoalign.timelines.flow import ScoreFlowController, SegmentNameGenerator
-    from timetoalign.timelines.flowcontrol import FlowControlRegistry
+    from timetoalign.timelines.flow.measures import _FlowControlDraft
+    from timetoalign.timelines.flowcontrol import FlowControlElement
 
 module_logger = logging.getLogger(__name__)
 
@@ -53,197 +53,33 @@ def _struct_coordinate_value(struct: dict[str, Any]) -> Fraction | float:
     return float(struct["value"])
 
 
-_LEAPS = (
-    "dal_segno_al_coda",
-    "dal_segno_al_fine",
-    "da_capo_al_coda",
-    "da_capo_al_fine",
-    "dal_segno",
-    "da_capo",
-)
-"""The manifestations of a D.S. or D.C., the most specific first."""
+_DA_CAPO = frozenset({"start", "firstMeasure"})
+"""The values of ``jump_bwd`` that name the beginning instead of a marker."""
 
 
-def _flow_control_of(controller: "ScoreFlowController") -> "FlowControlRegistry":
-    """Return the flow-control elements a score's measures state.
+def _names(cell: Any) -> list[str]:
+    """Return the names one cell of a measure table holds, joined by ``&``."""
+    if not cell:
+        return []
+    return [name.strip() for name in str(cell).split("&") if name.strip()]
 
-    A repeat start, a segno and a coda are jump targets at the start of
-    their measure; everything else lies at the end of its measure. The signs
-    at one measure's end are the destinations of one jump:
 
-    - a repeat end: ``repeat_count: 1``, ``to`` its repeat start where the
-      measures state one, without place where it goes back to the start;
-    - a D.C. or D.S.: ``repeat_count: 1`` and ``reset: false``, a D.S. ``to``
-      its segno;
-    - a To Coda: ``to`` its coda, ``after`` the score's D.C. or D.S. where
-      it has exactly one on another jump; otherwise ``determined: false``.
+def _leap_manifestation(da_capo: bool, until: str | None) -> FlowManifestation:
+    """Return what a D.C. or D.S. looks like, from where it plays until."""
+    kind = "da_capo" if da_capo else "dal_segno"
+    if until == "fine":
+        kind += "_al_fine"
+    elif until is not None and until.startswith("coda"):
+        kind += "_al_coda"
+    return FlowManifestation(kind)
 
-    A Fine is a break that ends the flow ``after`` the score's one D.C. or
-    D.S., and without condition where the score has none or several; a
-    section break is a section break. A repeat end that resolves to no
-    measure, and a D.S. or To Coda whose sign no measure carries, give no
-    destination. Nothing is added that the measures do not state.
-    """
-    from timetoalign.core import Coordinate
-    from timetoalign.core.enums import FlowManifestation
-    from timetoalign.timelines.flowcontrol import (
-        Break,
-        DestinationReference,
-        FlowCondition,
-        FlowControlRegistry,
-        Jump,
-        JumpDestination,
-        JumpTarget,
-        SectionBreak,
-    )
 
-    def start_of(mc: int) -> Coordinate:
-        return Coordinate(controller._qb_at_mc(mc), TimeUnit.quarters)
-
-    def end_of(mc: int) -> Coordinate:
-        return Coordinate(controller._qb_at_mc_end(mc), TimeUnit.quarters)
-
-    registry = FlowControlRegistry()
-    units = list(controller.iter_units())
-    repeat_starts: dict[int, str] = {}
-    signs: dict[str, str] = {}
-    for unit in units:
-        if unit.start_repeat:
-            repeat_starts[unit.mc] = registry.add(
-                JumpTarget(
-                    start_of(unit.mc), manifestation=FlowManifestation.repeat_start
-                )
-            ).id
-        for name, manifestation in (
-            (unit.segno, FlowManifestation.segno),
-            (unit.coda, FlowManifestation.coda),
-        ):
-            if name:
-                sign = registry.add(
-                    JumpTarget(
-                        start_of(unit.mc), name=name, manifestation=manifestation
-                    )
-                )
-                # The first sign of a name is the one a jump goes on at.
-                signs.setdefault(name, sign.id)
-        if unit.section_break:
-            registry.add(
-                SectionBreak(end_of(unit.mc), label=f"section break after MC {unit.mc}")
-            )
-
-    repeat_targets, _ = controller._repeat_end_resolution()
-    # The destinations of each measure's end, a To Coda flagged: its
-    # condition names a jump that has to be stored first.
-    drafts: dict[int, list[tuple[dict[str, Any], bool]]] = {}
-    leaps: list[tuple[int, dict[str, Any]]] = []
-    for unit in units:
-        found: list[tuple[dict[str, Any], bool]] = []
-        if unit.end_repeat and unit.mc in repeat_targets:
-            target_mc = repeat_targets[unit.mc]
-            found.append(
-                (
-                    {
-                        "to": repeat_starts.get(target_mc),
-                        "repeat_count": 1,
-                        "manifestation": FlowManifestation.repeat_end,
-                        "label": f"MC {unit.mc} → MC {target_mc}",
-                    },
-                    False,
-                )
-            )
-        types = unit.flow_control_types
-        leap = next((kind for kind in _LEAPS if kind in types), None)
-        if leap is not None:
-            sign_name = None if leap.startswith("da_capo") else unit.jump_bwd or "segno"
-            if sign_name is None or sign_name in signs:
-                destination = {
-                    "to": None if sign_name is None else signs[sign_name],
-                    "repeat_count": 1,
-                    "reset": False,
-                    "manifestation": FlowManifestation(leap),
-                    "label": f"MC {unit.mc} → {sign_name or 'start'}",
-                }
-                found.append((destination, False))
-                leaps.append((unit.mc, destination))
-        elif FlowManifestation.to_coda.value in types:
-            sign_name = unit.jump_fwd or "coda"
-            if sign_name in signs:
-                found.append(
-                    (
-                        {
-                            "to": signs[sign_name],
-                            "manifestation": FlowManifestation.to_coda,
-                            "label": f"MC {unit.mc} → {sign_name}",
-                        },
-                        True,
-                    )
-                )
-        kept: list[tuple[dict[str, Any], bool]] = []
-        for destination, is_to_coda in found:
-            if any(destination["to"] == other["to"] for other, _ in kept):
-                module_logger.warning(
-                    "The signs at the end of MC %s go on at one place; %s is left out.",
-                    unit.mc,
-                    destination["manifestation"].value,
-                )
-                leaps[:] = [entry for entry in leaps if entry[1] is not destination]
-                continue
-            kept.append((destination, is_to_coda))
-        if kept:
-            drafts[unit.mc] = kept
-
-    # A To Coda and a Fine act after the score's leap, which they can name
-    # only where the score has exactly one.
-    leap_mc = leaps[0][0] if len(leaps) == 1 else None
-    reference: DestinationReference | None = None
-
-    def add_jump(mc: int) -> Jump:
-        destinations: list[JumpDestination] = []
-        for destination, is_to_coda in drafts[mc]:
-            if not is_to_coda:
-                destinations.append(JumpDestination(**destination))
-            elif reference is not None and mc != leap_mc:
-                destinations.append(JumpDestination(**destination, after=reference))
-            else:
-                module_logger.warning(
-                    "The To Coda at the end of MC %s cannot name the D.C. or D.S. "
-                    "it follows (the score has %s); it is written as not "
-                    "determined.",
-                    mc,
-                    "it on the same barline" if mc == leap_mc else f"{len(leaps)}",
-                )
-                destinations.append(JumpDestination(**destination, determined=False))
-        return registry.add(Jump(end_of(mc), destinations))
-
-    if leap_mc is not None:
-        reference = DestinationReference(
-            jump=add_jump(leap_mc).id, to=leaps[0][1]["to"]
-        )
-    for mc in drafts:
-        if mc != leap_mc:
-            add_jump(mc)
-
-    for unit in units:
-        if not unit.fine:
-            continue
-        if reference is None:
-            module_logger.warning(
-                "The Fine at the end of MC %s cannot name the D.C. or D.S. it "
-                "follows (the score has %s); it is written as a break without "
-                "condition.",
-                unit.mc,
-                len(leaps),
-            )
-        registry.add(
-            Break(
-                end_of(unit.mc),
-                manifestation=FlowManifestation.fine,
-                name="fine",
-                label=f"fine at MC {unit.mc}",
-                ends=None if reference is None else FlowCondition(after=reference),
-            )
-        )
-    return registry
+def _sign_manifestation(name: str) -> FlowManifestation | None:
+    """Return what a named marker looks like, where its name says so."""
+    for kind in (FlowManifestation.segno, FlowManifestation.coda):
+        if name.startswith(kind.value):
+            return kind
+    return None
 
 
 class ScoreLoader(EventLoader):
@@ -256,150 +92,12 @@ class ScoreLoader(EventLoader):
 
     _default_unit = TimeUnit.quarters
     _event_data_class = NoteEventData
-
-    @classmethod
-    def _with_successors(cls, measures: MeasureData) -> MeasureData:
-        """Return *measures* with ``next`` derived where the source states none.
-
-        A measure table read from a format that lists successors (an ms3
-        TSV, a Measure Map) keeps them. Otherwise each part's successors are
-        derived from its repeat, volta and navigation columns by
-        :meth:`_successors`.
-        """
-        if len(measures) == 0 or any(
-            value is not None for value in measures.column_values("next")
-        ):
-            return measures
-        rows = list(measures)
-        parts: dict[Any, list[int]] = {}
-        for index, row in enumerate(rows):
-            parts.setdefault(row.get("part_id"), []).append(index)
-        successors: list[str | None] = [None] * len(rows)
-        for indices in parts.values():
-            for index, following in zip(
-                indices, cls._successors([rows[i] for i in indices])
-            ):
-                if following is not None:
-                    successors[index] = ", ".join(str(mc) for mc in following)
-        table = measures.table
-        position = table.schema.get_field_index("next")
-        table = table.set_column(
-            position, table.schema.field(position), pa.array(successors, pa.string())
-        )
-        return type(measures)(table, measures.unit, measures.number_type)
-
-    @staticmethod
-    def _successors(rows: list[dict[str, Any]]) -> list[list[int] | None]:
-        """Derive each measure's successor MCs from its flow-control columns.
-
-        Reads ``mc``, ``start_repeat``, ``end_repeat``, ``volta``, ``markers``
-        and ``jump_bwd`` of one part's rows in MC order; ``None`` means the
-        following measure. The rules, later ones taking precedence:
-
-        * A repeat end goes back to the nearest open repeat start; without
-          one, to the measure after the last ending or repeat end before it,
-          else to the first measure. Outside an ending it also continues to
-          the following measure (``-1`` after the last).
-        * An ending is a run of measures with a volta number (a lower number
-          than the previous one opens a new run). The measure before it
-          continues to the first measure of each volta; with one volta only,
-          also past the run. The last measure of every volta but the highest
-          continues past the run unless it ends a repeat, which goes back to
-          the run's repeat start.
-        * A D.S. or D.C. (``jump_bwd``) continues to the measure carrying the
-          named marker, ``start`` naming the first measure, in place of the
-          measure's onward successors; a repeat end keeps its way back.
-        * A Fine (a ``fine`` marker or flag, or ``jump_fwd`` naming ``fine``)
-          also ends the piece (``-1``).
-
-        Args:
-            rows: One part's measure rows in MC order.
-
-        Returns:
-            One successor list (or ``None``) per row.
-        """
-        count = len(rows)
-        mcs = [row["mc"] for row in rows]
-        voltas = [row.get("volta") for row in rows]
-        successors: list[list[int] | None] = [None] * count
-
-        def following(index: int) -> int:
-            return mcs[index + 1] if index + 1 < count else -1
-
-        endings: list[dict[int, list[int]]] = []
-        ending_of: dict[int, int] = {}
-        for index, volta in enumerate(voltas):
-            if volta is None:
-                continue
-            previous = voltas[index - 1] if index > 0 else None
-            if previous is None or volta < previous:
-                endings.append({})
-            endings[-1].setdefault(volta, []).append(index)
-            ending_of[index] = len(endings) - 1
-
-        open_starts: list[int] = []
-        ending_starts: dict[int, int] = {}
-        back: dict[int, int] = {}
-        boundary = 0
-        for index, row in enumerate(rows):
-            if row.get("start_repeat"):
-                open_starts.append(index)
-            ending = ending_of.get(index)
-            if row.get("end_repeat"):
-                if ending in ending_starts:
-                    start = ending_starts[ending]
-                else:
-                    start = open_starts.pop() if open_starts else boundary
-                if ending is None:
-                    successors[index] = [mcs[start], following(index)]
-                else:
-                    ending_starts[ending] = start
-                    successors[index] = [mcs[start]]
-                back[index] = mcs[start]
-                boundary = index + 1
-            elif ending is not None and ending_of.get(index + 1) != ending:
-                boundary = index + 1
-
-        for ending in endings:
-            numbers = sorted(ending)
-            first = ending[numbers[0]][0]
-            last = max(index for indices in ending.values() for index in indices)
-            exit_mc = following(last)
-            if first > 0:
-                fork = [mcs[ending[number][0]] for number in numbers]
-                successors[first - 1] = fork + [exit_mc] if len(numbers) == 1 else fork
-            for number in numbers[:-1]:
-                end = ending[number][-1]
-                if not rows[end].get("end_repeat"):
-                    successors[end] = [exit_mc]
-
-        names = [
-            {name.strip() for name in (row.get("markers") or "").split("&")} - {""}
-            for row in rows
-        ]
-        marked: dict[str, int] = {}
-        for row, row_names in zip(rows, names):
-            for name in row_names:
-                marked.setdefault(name, row["mc"])
-        for index, row in enumerate(rows):
-            target = row.get("jump_bwd")
-            if target in ("start", "firstMeasure"):
-                target_mc = mcs[0]
-            elif target in marked:
-                target_mc = marked[target]
-            else:
-                continue
-            successors[index] = [*([back[index]] if index in back else []), target_mc]
-        for index, row in enumerate(rows):
-            if (
-                row.get("fine")
-                or row.get("jump_fwd") == "fine"
-                or "fine" in names[index]
-            ):
-                edges = successors[index] or [following(index)]
-                if -1 not in edges:
-                    successors[index] = [*edges, -1]
-        return successors
+    _barline_manifestations: ClassVar[Mapping[str, FlowManifestation]] = {
+        "double": FlowManifestation.double_barline,
+        "end": FlowManifestation.final_barline,
+    }
+    """The values of the measure table's ``barline`` that are written as a
+    :class:`~timetoalign.timelines.flowcontrol.Barline`."""
 
     @staticmethod
     def _normalise_anacrusis(
@@ -495,7 +193,6 @@ class ScoreLoader(EventLoader):
 
             # Load store from source
             loaded_store = self._load_source(path)
-            loaded_store.measures = self._with_successors(loaded_store.measures)
 
             # Update metadata
             meta = loaded_store.metadata.copy()
@@ -552,7 +249,7 @@ class ScoreLoader(EventLoader):
         measure_map = self._measure_map()
         timeline.add_measure_map(measure_map)
 
-        timeline.flow_control._absorb(_flow_control_of(self.create_flow_controller()))
+        timeline.flow_control.add_all(self._flow_control_elements(measure_map))
 
         notated_length = measure_map.total_actual_length
         if notated_length is not None:
@@ -561,42 +258,221 @@ class ScoreLoader(EventLoader):
 
     # region Flow Control
 
-    def create_flow_controller(
-        self,
-        *,
-        name_generator: "SegmentNameGenerator | None" = None,
-    ) -> "ScoreFlowController":
-        """Create a `timetoalign.ScoreFlowController` from the loaded measure data.
+    def _flow_control_elements(
+        self, measure_map: MeasureMap
+    ) -> list[FlowControlElement]:
+        """Return the flow control the loaded score states, as elements.
 
-        The flow controller derives the repeat structure (repeats, voltas,
-        jumps, D.S., D.C.) from the measure data and computes the
-        traversal order.  Requires measures to have been loaded; raises
-        ``ValueError`` if no measure data is available.
-
-        Args:
-            name_generator: Strategy for labelling atomic sections, forwarded
-                to the ``ScoreFlowController``.  ``None`` uses the default
-                naming (standard alphabet with the volta-suffix rule).
-
-        Returns:
-            A configured ``ScoreFlowController`` ready to compute flows.
-
-        Raises:
-            ValueError: If no measure data has been loaded.
-
-        Examples:
-            >>> loader = Ms3Loader.from_file("notes.tsv", "measures.tsv")
-            >>> controller = loader.create_flow_controller()
-            >>> flow = controller.compute_flow(FlowMode.default)
+        Repeat signs and brackets of alternative endings are what the
+        measure map states, read by the one translation of measures into
+        flow control
+        (:func:`~timetoalign.timelines.flow.measures.flow_control_from_measures`).
+        Every other sign comes from the columns of the measure table that
+        the loader fills from its source (:meth:`_write_signs`). Signs
+        falling on one coordinate are the destinations of one Jump.
         """
-        from timetoalign.timelines.flow import ScoreFlowController
+        from timetoalign.timelines.flow.measures import _FlowControlDraft
 
-        if self._store.measures is None or len(self._store.measures) == 0:
-            raise ValueError(
-                "Cannot create a ScoreFlowController: no measure data has been "
-                "loaded.  Load a measures file first (e.g. *.measures.tsv)."
+        draft = _FlowControlDraft()
+        draft.add_measures(measure_map)
+        self._write_signs(draft, measure_map)
+        return draft.elements()
+
+    def _write_signs(self, draft: _FlowControlDraft, measure_map: MeasureMap) -> None:
+        """Write the signs the measure table states beside repeats and brackets.
+
+        Read from the table's columns, in the meaning every score loader
+        fills them with:
+
+        - ``markers``: the named signs of a measure, joined by ``&``. A
+          marker a ``jump_bwd`` or ``jump_fwd`` names, and one no row names,
+          is a jump target at its measure's start, its name kept in
+          ``name`` (``segno`` and ``coda`` by their manifestation too). A
+          marker named only by ``play_until`` is the place where that
+          instruction acts, its measure's end, and no jump target. A
+          ``fine`` no row plays until is not written: nothing says when it
+          ends the flow.
+        - ``jump_bwd`` (a D.S., or with ``start`` a D.C.): a destination
+          ``repeat_count: 1, reset: false`` of the Jump at the row's end,
+          ``to`` the marker's jump target, or without place for a D.C.
+        - ``play_until`` on that row: at the end of the measure carrying the
+          marker of that name, either a destination ``to`` the jump target
+          of the row's ``jump_fwd`` marker, ``after`` the D.S. or D.C., or,
+          without ``jump_fwd``, a break that ends the flow ``after`` it.
+          Several rows playing until one marker give one break each.
+        - ``breaks`` naming ``section``: a section break at the row's end.
+        - ``barline``: a barline at the row's end, for the values of
+          :attr:`_barline_manifestations`.
+
+        What cannot be written is left out with a logged warning: a D.S.
+        or a ``play_until`` whose marker no measure carries, a sign going on
+        at a place another sign of its Jump goes on at, a ``play_until``
+        marker in the measure of its own D.S. or D.C., and a ``jump_fwd`` on
+        a row without ``jump_bwd``.
+        """
+        from timetoalign.timelines.flowcontrol import (
+            Barline,
+            Break,
+            DestinationReference,
+            FlowCondition,
+            JumpDestination,
+            JumpTarget,
+            SectionBreak,
+        )
+
+        bounds: dict[int, tuple[Fraction, Fraction]] = {}
+        for measure in measure_map:
+            assert measure.count is not None and measure.qstamp is not None
+            assert measure.actual_length is not None
+            bounds[measure.count] = (
+                measure.qstamp,
+                measure.qstamp + measure.actual_length,
             )
-        return ScoreFlowController(self._store.measures, name_generator=name_generator)
+        rows = [row for row in self._store.measures if row.get("mc") in bounds]
+
+        marked: dict[str, int] = {}
+        for row in rows:
+            for name in _names(row.get("markers")):
+                marked.setdefault(name, row["mc"])
+        leaps = [row for row in rows if row.get("jump_bwd")]
+        gone_to = {row["jump_bwd"] for row in leaps} | {
+            row["jump_fwd"] for row in rows if row.get("jump_fwd")
+        }
+        played_until = {row["play_until"] for row in leaps if row.get("play_until")}
+
+        signs: dict[str, str] = {}
+        for row in rows:
+            for name in _names(row.get("markers")):
+                if name not in gone_to and name in played_until:
+                    continue
+                if name not in gone_to and name == FlowManifestation.fine.value:
+                    module_logger.warning(
+                        "The Fine of MC %s is named by no D.C. or D.S.; it is not "
+                        "written.",
+                        row["mc"],
+                    )
+                    continue
+                sign = draft.add(
+                    JumpTarget,
+                    bounds[row["mc"]][0],
+                    name=name,
+                    manifestation=_sign_manifestation(name),
+                )
+                signs.setdefault(name, sign.id)
+
+        written: list[tuple[dict[str, Any], Fraction, DestinationReference]] = []
+        for row in rows:
+            name = row.get("jump_bwd")
+            if not name:
+                if row.get("jump_fwd"):
+                    module_logger.warning(
+                        "MC %s goes on at %r without a D.C. or D.S. it follows; "
+                        "the jump is not written.",
+                        row["mc"],
+                        row["jump_fwd"],
+                    )
+                continue
+            da_capo = name in _DA_CAPO
+            if not da_capo and name not in signs:
+                module_logger.warning(
+                    "The D.S. of MC %s goes back to %r, which no measure carries; "
+                    "it is not written.",
+                    row["mc"],
+                    name,
+                )
+                continue
+            at = bounds[row["mc"]][1]
+            to = None if da_capo else signs[name]
+            leap = JumpDestination(
+                to=to,
+                repeat_count=1,
+                reset=False,
+                manifestation=_leap_manifestation(da_capo, row.get("play_until")),
+            )
+            if any(held.place == leap.place for held in draft.destinations_at(at)):
+                module_logger.warning(
+                    "The %s of MC %s goes on where another sign of that barline "
+                    "goes on; it is not written.",
+                    "D.C." if da_capo else "D.S.",
+                    row["mc"],
+                )
+                continue
+            reference = DestinationReference(
+                jump=draft.add_destination(at, leap), to=to
+            )
+            written.append((row, at, reference))
+
+        for row, leap_at, reference in written:
+            until, onward = row.get("play_until"), row.get("jump_fwd")
+            if not until:
+                if onward:
+                    module_logger.warning(
+                        "MC %s goes on at %r without saying from where; the jump "
+                        "is not written.",
+                        row["mc"],
+                        onward,
+                    )
+                continue
+            if until not in marked:
+                module_logger.warning(
+                    "MC %s plays until %r, which no measure carries; it is not "
+                    "written.",
+                    row["mc"],
+                    until,
+                )
+                continue
+            at = bounds[marked[until]][1]
+            if not onward:
+                draft.add(
+                    Break,
+                    at,
+                    name=until,
+                    manifestation=(
+                        FlowManifestation.fine
+                        if until == FlowManifestation.fine.value
+                        else None
+                    ),
+                    ends=FlowCondition(after=reference),
+                )
+                continue
+            if onward not in signs:
+                module_logger.warning(
+                    "MC %s goes on at %r, which no measure carries; the jump is "
+                    "not written.",
+                    row["mc"],
+                    onward,
+                )
+                continue
+            destination = JumpDestination(
+                to=signs[onward],
+                after=reference,
+                manifestation=(
+                    FlowManifestation.to_coda
+                    if _sign_manifestation(onward) is FlowManifestation.coda
+                    else None
+                ),
+                label=until,
+            )
+            if at == leap_at or any(
+                held.place == destination.place for held in draft.destinations_at(at)
+            ):
+                module_logger.warning(
+                    "The jump from %r to %r that MC %s states cannot be told from "
+                    "another sign of its barline; it is not written.",
+                    until,
+                    onward,
+                    row["mc"],
+                )
+                continue
+            draft.add_destination(at, destination)
+
+        for row in rows:
+            end = bounds[row["mc"]][1]
+            if "section" in _names(row.get("breaks")):
+                draft.add(SectionBreak, end)
+            manifestation = self._barline_manifestations.get(row.get("barline"))
+            if manifestation is not None:
+                draft.add(Barline, end, manifestation=manifestation)
 
     # endregion
 

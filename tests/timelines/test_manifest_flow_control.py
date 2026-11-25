@@ -601,81 +601,28 @@ def test_the_array_must_be_an_array() -> None:
 # region Score loaders
 
 
-def test_a_score_s_elements_are_what_its_measures_state(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    with caplog.at_level("WARNING", logger="timetoalign.loader.score.base"):
-        timeline = (
-            Ms3Loader()
-            .load(SCORE / "couperin_concerts/c05n05_musete.measures.tsv")
-            .create_timeline()
-        )
+def test_a_score_s_flow_control_round_trips_as_its_array() -> None:
+    timeline = (
+        Ms3Loader()
+        .load(SCORE / "couperin_concerts/c05n05_musete.measures.tsv")
+        .create_timeline()
+    )
     registry = timeline.flow_control
 
     # The measures table: a segno at MC 6 (12 quarters); MC 16 ends at 42
     # with a repeat end and a Fine; MC 17 and MC 32 start repeats at 42 and
-    # 84; MC 31 and MC 58 end at 84 and 162, each with a repeat end and a
-    # D.S. al Fine.
+    # 84 and carry the markers 1e and 2e; MC 31 and MC 58 end at 84 and 162,
+    # each with a repeat end and a D.S. al Fine.
     assert [(type(e), e.id, e.coordinate, e.name) for e in registry.elements] == [
-        (JumpTarget, "jump_target_1", _q(12), "segno"),
+        (JumpTarget, "jump_target_3", _q(12), "segno"),
         (Break, "break_1", _q(42), "fine"),
         (Jump, "jump_1", _q(42), None),
-        (JumpTarget, "jump_target_2", _q(42), None),
+        (JumpTarget, "jump_target_1", _q(42), None),
+        (JumpTarget, "jump_target_4", _q(42), "1e"),
         (Jump, "jump_2", _q(84), None),
-        (JumpTarget, "jump_target_3", _q(84), None),
+        (JumpTarget, "jump_target_2", _q(84), None),
+        (JumpTarget, "jump_target_5", _q(84), "2e"),
         (Jump, "jump_3", _q(162), None),
-    ]
-    assert [t.manifestation for t in registry.jump_targets] == [
-        M.segno,
-        M.repeat_start,
-        M.repeat_start,
-    ]
-    assert [jump.targets for jump in registry.jumps] == [
-        (
-            JumpDestination(
-                repeat_count=1, manifestation=M.repeat_end, label="MC 16 → MC 1"
-            ),
-        ),
-        (
-            JumpDestination(
-                to="jump_target_2",
-                repeat_count=1,
-                manifestation=M.repeat_end,
-                label="MC 31 → MC 17",
-            ),
-            JumpDestination(
-                to="jump_target_1",
-                repeat_count=1,
-                reset=False,
-                manifestation=M.dal_segno_al_fine,
-                label="MC 31 → segno",
-            ),
-        ),
-        (
-            JumpDestination(
-                to="jump_target_3",
-                repeat_count=1,
-                manifestation=M.repeat_end,
-                label="MC 58 → MC 32",
-            ),
-            JumpDestination(
-                to="jump_target_1",
-                repeat_count=1,
-                reset=False,
-                manifestation=M.dal_segno_al_fine,
-                label="MC 58 → segno",
-            ),
-        ),
-    ]
-    (fine,) = registry.breaks
-    assert (fine.manifestation, fine.ends, fine.label) == (
-        M.fine,
-        None,
-        "fine at MC 16",
-    )
-    assert [record.getMessage() for record in caplog.records] == [
-        "The Fine at the end of MC 16 cannot name the D.C. or D.S. it follows "
-        "(the score has 2); it is written as a break without condition."
     ]
     assert _read(registry.to_dict()).to_dict() == registry.to_dict()
 

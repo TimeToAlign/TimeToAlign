@@ -5,16 +5,27 @@ This module consolidates:
 - SpecimenConfig dataclass and SPECIMENS dict (test specimen configuration)
 - Common path constants (TARGET_FLOWS_DIR, SCORE_DATA_DIR), resolved via ensure_data
 - Shared helper functions (find_source_file, get_loader_for_source_file)
+- Flows in the form of a .flow.csv file (gold_flows, played_ranges,
+  atomic_ranges) and the stress score's three repairs (repaired_stress_score)
 """
 
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
+from timetoalign.core import Coordinate
 from timetoalign.testdata import ensure_data
+from timetoalign.timelines.flow import MeasureRange, measure_ranges, read_flow_csv
+from timetoalign.timelines.flow.engine import FlowResult, atomic_sections, play
+from timetoalign.timelines.flowcontrol import (
+    FlowControlRegistry,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+)
 
 ensure_data("score", "target_flows", "vienna_1x22", "midi", "supra")
 SCORE_DIR = ensure_data("score")
@@ -430,6 +441,96 @@ def get_loader_for_source_file(source_filename: str):
             return None
 
     return None
+
+
+# endregion
+
+
+# region Flows in the form of a .flow.csv file
+
+
+def gold_flows(specimen_name: str) -> dict[str, tuple[MeasureRange, ...]]:
+    """The rows of a specimen's ``.flow.csv`` file, by ``flow_mode``."""
+    return read_flow_csv(TARGET_FLOWS_DIR / SPECIMENS[specimen_name].flow_csv)
+
+
+def played_ranges(
+    timeline: Any,
+    convention: str = "default",
+    *,
+    registry: FlowControlRegistry | None = None,
+) -> tuple[tuple[MeasureRange, ...], FlowResult]:
+    """Play a timeline's flow control and state the flow as its gold file would.
+
+    The runs become ranges of measure counts, each listing the atomic
+    sections it covers and divided at the section breaks.
+    """
+    held = timeline.flow_control if registry is None else registry
+    result = play(held, timeline.length, convention=convention)
+    ranges = measure_ranges(
+        result.runs,
+        timeline.measure_map,
+        sections=atomic_sections(held, timeline.length),
+        divide_at=[element.coordinate for element in held.section_breaks],
+    )
+    return ranges, result
+
+
+def atomic_ranges(
+    timeline: Any, *, registry: FlowControlRegistry | None = None
+) -> tuple[MeasureRange, ...]:
+    """The atomic sections of a timeline's flow control in measure counts."""
+    held = timeline.flow_control if registry is None else registry
+    sections = atomic_sections(held, timeline.length)
+    return measure_ranges(sections, timeline.measure_map, sections=sections)
+
+
+def repaired_stress_score(timeline: Any) -> FlowControlRegistry:
+    """The stress score's flow control with three elements added by hand.
+
+    Two repeat starts, at the starts of measure counts 8 and 13, which the
+    repeat ends of counts 8 and 14 name; and a Jump at the end of count 6
+    (the second of three brackets) to the start of count 8. The three carry
+    the provenance method ``manual``. An element is never changed in place:
+    the Jumps of the two repeat ends are written anew with their place.
+    """
+    start = {measure.count: measure.qstamp for measure in timeline.measure_map}
+    end = {
+        measure.count: measure.qstamp + measure.actual_length
+        for measure in timeline.measure_map
+    }
+    manual = {"method": "manual"}
+
+    def at(value: Any) -> Coordinate:
+        return Coordinate(value, "quarters")
+
+    added = [
+        JumpTarget(
+            at(start[8]), id="start_8", manifestation="repeat_start", provenance=manual
+        ),
+        JumpTarget(
+            at(start[13]),
+            id="start_13",
+            manifestation="repeat_start",
+            provenance=manual,
+        ),
+        Jump(
+            at(end[6]), [JumpDestination(to="start_8")], id="on_to_8", provenance=manual
+        ),
+    ]
+    named = {end[8]: "start_8", end[14]: "start_13"}
+    kept = []
+    for element in timeline.flow_control.elements:
+        to = named.get(element.coordinate.value)
+        if isinstance(element, Jump) and to is not None:
+            assert [destination.to_dict() for destination in element.targets] == [
+                {"repeat_count": 1, "manifestation": "repeat_end"}
+            ]
+            element = replace(element, targets=(replace(element.targets[0], to=to),))
+        kept.append(element)
+    registry = FlowControlRegistry(unit="quarters")
+    registry.add_all([*kept, *added])
+    return registry
 
 
 # endregion

@@ -17,7 +17,6 @@ from .conftest import FLOW_CONTROL_DIR, PARANGONAR_DIR, SCORE_DIR, VIENNA_DIR
 
 verovio = pytest.importorskip("verovio")
 
-from timetoalign.core.enums import FlowMode  # noqa: E402
 from timetoalign.core.events import Note, ScoreNote  # noqa: E402
 from timetoalign.core.time import struct_to_rational  # noqa: E402
 from timetoalign.loader._xml import XML_ID  # noqa: E402
@@ -26,6 +25,9 @@ from timetoalign.timelines import (  # noqa: E402
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
 )
+from timetoalign.timelines.flow import measure_ranges  # noqa: E402
+from timetoalign.timelines.flow.engine import play  # noqa: E402
+from timetoalign.timelines.flowcontrol import FlowControlRegistry  # noqa: E402
 
 PINNED_VERSION = "6.4.1"
 on_pinned_version = pytest.mark.skipif(
@@ -508,7 +510,11 @@ class TestMeasuresAreStructure:
 
     def test_no_flow_control(self, timeline: ContinuousLogicalTimeline) -> None:
         registry = timeline.flow_control
-        assert (len(registry.breaks), len(registry.jumps), len(registry.markers)) == (
+        assert (
+            len(registry.breaks),
+            len(registry.jumps),
+            len(registry.jump_targets),
+        ) == (
             0,
             0,
             0,
@@ -970,7 +976,11 @@ class TestRepeats:
         assert {m.time_signature for m in measures} == {"2/4"}
         assert [m.qstamp for m in measures] == [Fraction(2 * i) for i in range(5)]
         registry = rendered.flow_control
-        assert (len(registry.breaks), len(registry.jumps), len(registry.markers)) == (
+        assert (
+            len(registry.breaks),
+            len(registry.jumps),
+            len(registry.jump_targets),
+        ) == (
             0,
             0,
             0,
@@ -1063,12 +1073,19 @@ class TestRepeats:
 
 
 def _flow(loader: VerovioLoader) -> list[int]:
-    """Return the MC sequence of the printed table's default flow."""
-    flow = loader.create_flow_controller().compute_flow(FlowMode.default)
+    """Return the MC sequence that the printed table's flow control plays.
+
+    A loader that rendered an expansion puts FlowMaps, not flow control, on
+    its timeline, so the elements are written from the printed table here.
+    """
+    measure_map = loader._measure_map()
+    registry = FlowControlRegistry(unit="quarters")
+    registry.add_all(loader._flow_control_elements(measure_map))
+    played = play(registry, measure_map.total_actual_length)
     return [
         mc
-        for section in flow.sections
-        for mc in range(section.mc_start, section.mc_end)
+        for row in measure_ranges(played.runs, measure_map)
+        for mc in range(row.start, row.end)
     ]
 
 
@@ -1304,7 +1321,7 @@ class TestIdCheck:
             VerovioLoader.from_file(mei["duplicate_note"])
 
 
-_NAVIGATION = ("markers", "jump_bwd", "jump_fwd", "play_until", "next")
+_NAVIGATION = ("markers", "jump_bwd", "jump_fwd", "play_until")
 
 
 def _navigation(loader: VerovioLoader) -> dict[int, tuple]:
@@ -1312,7 +1329,7 @@ def _navigation(loader: VerovioLoader) -> dict[int, tuple]:
     return {
         row["mc"]: tuple(row[column] for column in _NAVIGATION)
         for row in loader.store.measures
-        if any(row[column] for column in _NAVIGATION[:-1])
+        if any(row[column] for column in _NAVIGATION)
     }
 
 
@@ -1352,11 +1369,11 @@ class TestRepeatFacts:
 
     def test_flow_only_navigation(self, flow_only: VerovioLoader) -> None:
         assert _navigation(flow_only) == {
-            7: ("fine", None, None, None, "8, -1"),
-            9: ("segno & coda", None, None, None, None),
-            12: (None, "segno", "coda2", "coda", "9"),
-            13: ("coda2", None, None, None, "14, 15"),
-            15: (None, "start", None, "fine", "1"),
+            7: ("fine", None, None, None),
+            9: ("segno & coda", None, None, None),
+            12: (None, "segno", "coda2", "coda"),
+            13: ("coda2", None, None, None),
+            15: (None, "start", None, "fine"),
         }
 
     def test_jumps_play_until_the_fine(self) -> None:
@@ -1365,12 +1382,12 @@ class TestRepeatFacts:
             options={"expandNever": True},
         )
         assert _navigation(loader) == {
-            6: ("segno", None, None, None, None),
-            16: ("fine", None, None, None, "1, 17, -1"),
-            17: ("segno2", None, None, None, None),
-            31: (None, "start", None, "fine", "17, 1"),
-            32: ("segno3", None, None, None, None),
-            58: (None, "segno", None, "fine", "32, 6"),
+            6: ("segno", None, None, None),
+            16: ("fine", None, None, None),
+            17: ("segno2", None, None, None),
+            31: (None, "start", None, "fine"),
+            32: ("segno3", None, None, None),
+            58: (None, "segno", None, "fine"),
         }
 
 
@@ -1469,7 +1486,7 @@ HARDENING = [
 
 @pytest.mark.slow
 @pytest.mark.parametrize("relative", HARDENING)
-def test_expansion_matches_flow_controller(relative: str) -> None:
+def test_expansion_matches_flow_control(relative: str) -> None:
     loader = VerovioLoader.from_file(SCORE_DIR / relative)
     timeline = loader.create_timeline()
     printed = {_q(row["start"]): row["mc"] for row in loader.store.measures}

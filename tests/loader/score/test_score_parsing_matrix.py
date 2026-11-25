@@ -1,45 +1,11 @@
-"""Score Parsing Test Matrix: Comprehensive validation of all loader/format combinations.
+"""Score parsing matrix: every loader and format against the specimens.
 
-TOP-MOST GOAL: ScoreFlowController must reproduce ALL target flows from .flow.csv from ANY
-loader/format combination. Each success is a HUGE WIN, each failure must be documented.
-
-Test Matrix Coverage:
----------------------
-| Specimen               | TSV   | mm.json | MusicXML | MEI    |
-|------------------------|-------|---------|----------|--------|
-| Rachmaninoff           | gold  | test    | M21/PT   | M21/PT |
-| polyrhythm_only        | gold  | test    | M21/PT   | M21/PT |
-| c05n05_musete          | gold  | test    | M21/PT   | M21/PT |
-| c11n08_Rondeau         | gold  | test    | M21/PT   | M21/PT |
-| op18_no4_mov4_flow     | gold  | test    | M21/PT   | M21/PT |
-| flow_only              | gold  | test    | M21/PT   | M21/PT |
-| WoO71                  | gold  | test    | M21/PT   | M21/PT |
-
-Legend:
-- gold: Gold standard (TSV from ms3)
-- test: Test against gold
-- M21: Music21Loader
-- PT: PartituraLoader
-
-Parser Behavior Summary:
-------------------------
-| Parser     | D.S./D.C. | Repeats | Voltas | Notes |
-|------------|-----------|---------|--------|-------|
-| ms3 (TSV)  | Yes       | Yes     | Yes    | Gold standard, follows `next[]` arrays |
-| MeasureMap | Yes       | Yes     | Yes    | Follows `next[]` arrays, matches ms3 |
-| Music21    | No        | Yes     | Yes    | `expandRepeats()` ignores D.S./D.C./Fine |
-| Partitura  | Inferred  | Yes     | Yes    | Region model, infers missing start repeats |
-
-Known Deviations (Documented):
------------------------------
-1. **c05n05_musete**: music21 produces 116 MCs (ignores D.S. al Fine), ms3 produces 138
-2. **c11n08_Rondeau**: music21 ignores D.S., produces different flow
-3. **flow_only**: ms3 diverges from canonical due to ambiguous encoding, music21 fails
-
-ZERO TOLERANCE VALIDATION POLICY:
-- EXACT counts required (no tolerances)
-- Every mismatch must be investigated
-- Gold standard (TSV from ms3) is authoritative for DEFAULT flow
+Each loader reads each specimen in each format it has. The folded measure
+counts are exact; the flow control a loader writes on its timeline is
+played by the engine and compared, as ranges of measure counts, with the
+``default`` rows of the specimen's ``.flow.csv`` file. What a source or a
+parser does not state is a strict expected failure or a pinned difference,
+each naming the reason. See ``README.md``, "Parsing matrix".
 """
 
 from __future__ import annotations
@@ -49,15 +15,24 @@ from typing import Any
 
 import pytest
 
+from timetoalign.timelines.flow import (
+    flow_control_from_measures,
+    measure_keys_from_flow_control,
+)
+
 from .conftest import (
     MAX_MUSICXML_SIZE_BYTES,
     SPECIMENS,
     TARGET_FLOWS_DIR,
     SpecimenConfig,
+    atomic_ranges,
     get_flow_modes,
     get_specimen_path,
+    gold_flows,
     musicxml_too_large,
     parse_flow_csv,
+    played_ranges,
+    repaired_stress_score,
 )
 
 
@@ -386,28 +361,66 @@ class TestMeasureMapLoaderValidation:
         )
 
     @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
-    def test_measuremap_traversal_count(self, specimen_name: str) -> None:
-        """MeasureMapLoader unfolded traversal count matches gold standard."""
-        spec = SPECIMENS[specimen_name]
-        mm_path = get_specimen_path(spec, "mm_json")
-        if mm_path is None or not mm_path.exists():
-            pytest.skip(f"MeasureMap not found for {specimen_name}")
+    def test_measuremap_repeat_signs_match_tsv(self, specimen_name: str) -> None:
+        """A Measure Map states the repeat signs of the measures table.
 
+        Both timelines' flow control is read back as row keys; the
+        ``start_repeat`` and ``end_repeat`` of every measure must agree.
+        """
+        spec = SPECIMENS[specimen_name]
+        from timetoalign.loader.score import MeasureMapLoader, Ms3Loader
+
+        def repeat_signs(timeline: Any) -> list[tuple[int, bool, bool]]:
+            return [
+                (row["count"], row["start_repeat"], row["end_repeat"])
+                for row in measure_keys_from_flow_control(
+                    timeline.flow_control.elements, timeline.measure_map
+                )
+            ]
+
+        from_map = MeasureMapLoader().load(get_specimen_path(spec, "mm_json"))
+        from_table = Ms3Loader().load(get_specimen_path(spec, "tsv"))
+        signs = repeat_signs(from_map.create_timeline())
+        assert signs == repeat_signs(from_table.create_timeline())
+        assert len(signs) == spec.folded_measures
+
+    @pytest.mark.parametrize(
+        ("specimen_name", "expected"),
+        [
+            ("c05n05_musete", [(1, 17), (1, 32), (17, 59), (32, 59)]),
+            ("c11n08_Rondeau", [(1, 10), (1, 19), (10, 28), (19, 61), (28, 61)]),
+        ],
+    )
+    def test_measuremap_states_repeats_only(
+        self, specimen_name: str, expected: list[tuple[int, int]]
+    ) -> None:
+        """A Measure Map row has no key for a D.S., a D.C., a segno or a Fine.
+
+        The timeline of a ``.mm.json`` file therefore plays the repeats and
+        nothing else; what the file knows beyond them is its ``next``.
+        """
         from timetoalign.loader.score import MeasureMapLoader
 
-        loader = MeasureMapLoader()
-        loader.load(mm_path)
-        traversal = loader.compute_default_traversal()
-
-        actual = len(traversal)
-        expected = spec.unfolded_measures
-
-        assert actual == expected, (
-            f"{specimen_name}: MeasureMap traversal count mismatch.\n"
-            f"Expected: {expected}\n"
-            f"Actual: {actual}\n"
-            f"First 20: {traversal[:20]}"
+        loader = MeasureMapLoader().load(
+            get_specimen_path(SPECIMENS[specimen_name], "mm_json")
         )
+        timeline = loader.create_timeline()
+        ranges, result = played_ranges(timeline)
+        assert [(row.start, row.end) for row in ranges] == expected
+        assert result.findings == ()
+        assert timeline.flow_control.to_dict() == [
+            element.to_dict()
+            for element in flow_control_from_measures(timeline.measure_map)
+        ]
+
+
+# A MusicXML score of several parts gives Music21Loader and PartituraLoader one
+# measure row per part, which form no measure map: no timeline is created.
+_ONE_MEASURE_ROW_PER_PART = pytest.mark.xfail(
+    raises=ValueError,
+    strict=True,
+    reason="the measure table holds one row per part, which form no measure map",
+)
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -454,73 +467,37 @@ class TestMusic21LoaderMusicXML:
             f"Actual: {actual}"
         )
 
-    @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
-    def test_music21_musicxml_flow_valid(self, specimen_name: str) -> None:
-        """Music21Loader produces a valid flow (matches one in .flow.csv).
-
-        D.S./D.C. deviations are pinned in TestDocumentedDeviations.
-        """
-        if specimen_name in {"c05n05_musete", "c11n08_Rondeau", "flow_only"}:
-            pytest.skip(
-                "Documented Music21 flow deviation; exact output is asserted "
-                "in TestDocumentedDeviations"
+    @pytest.mark.parametrize(
+        "specimen_name",
+        [
+            (
+                pytest.param(name, marks=_ONE_MEASURE_ROW_PER_PART)
+                if name in {"polyrhythm_only", "c05n05_musete", "c11n08_Rondeau"}
+                else name
             )
+            for name in SPECIMENS
+            if name != "flow_only"
+        ],
+    )
+    def test_music21_musicxml_default_flow(self, specimen_name: str) -> None:
+        """Music21Loader's timeline plays the ``default`` flow of ``.flow.csv``.
+
+        ``flow_only`` is pinned in TestDocumentedDeviations: music21 reads no
+        D.S., D.C., segno, coda or Fine.
+        """
         spec = SPECIMENS[specimen_name]
         xml_path = get_specimen_path(spec, "musicxml")
-        csv_path = TARGET_FLOWS_DIR / spec.flow_csv
-
         if xml_path is None or not xml_path.exists():
             pytest.skip(f"MusicXML not found for {specimen_name}")
-        if not csv_path.exists():
-            pytest.skip(f"Flow CSV not found for {specimen_name}")
-
-        # Skip large files to avoid test timeouts
         if musicxml_too_large(xml_path):
-            file_size_mb = xml_path.stat().st_size / 1_000_000
-            pytest.skip(
-                f"MusicXML file too large ({file_size_mb:.1f}MB) for Music21 test. "
-                f"Max size: {MAX_MUSICXML_SIZE_BYTES / 1_000_000:.1f}MB"
-            )
+            pytest.skip(f"MusicXML file too large for Music21: {xml_path}")
 
-        try:
-            from timetoalign.loader.score import Music21Loader
-        except ImportError:
-            pytest.skip("Music21Loader not available")
+        from timetoalign.loader.score import Music21Loader
 
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.timelines import ScoreFlowController
-        from timetoalign.timelines.flow import load_valid_flows
-
-        # Load valid flows from ground truth
-        valid_flows = load_valid_flows(csv_path)
-
-        # Load and compute flow
-        loader = Music21Loader()
-        loader.load(xml_path)
-        controller = ScoreFlowController(loader.store.measures)
-        computed = controller.compute_flow(FlowMode.default)
-
-        # Check if computed matches any valid flow
-        matches = [
-            (mode, flow)
-            for mode, flow in valid_flows.items()
-            if computed.is_equivalent(flow)
-        ]
-
-        if not matches:
-            # Document the deviation
-            computed_ranges = [(s.mc_start, s.mc_end) for s in computed.sections[:5]]
-            valid_summary = {
-                m.value: [(s.mc_start, s.mc_end) for s in f.sections[:5]]
-                for m, f in valid_flows.items()
-            }
-            pytest.fail(
-                f"{specimen_name}: Music21 MusicXML flow doesn't match any valid unfolding.\n"
-                f"Computed (first 5): {computed_ranges}\n"
-                f"Valid modes: {list(valid_flows.keys())}\n"
-                f"Valid (first 5 each): {valid_summary}\n"
-                f"Note: {spec.notes}"
-            )
+        timeline = Music21Loader().load(xml_path).create_timeline()
+        ranges, result = played_ranges(timeline)
+        assert ranges == gold_flows(specimen_name)["default"]
+        assert result.findings == ()
 
 
 # music21's MEI reader keeps only the measures that state an ``@n``.
@@ -633,9 +610,6 @@ class TestMusic21LoaderMEI:
         except ImportError:
             pytest.skip("Music21Loader not available")
 
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.timelines import ScoreFlowController
-
         # Load both formats
         mei_loader = Music21Loader()
         xml_loader = Music21Loader()
@@ -653,19 +627,22 @@ class TestMusic21LoaderMEI:
 
         xml_loader.load(xml_path)
 
-        # Compute flows
-        mei_ctrl = ScoreFlowController(mei_loader.store.measures)
-        xml_ctrl = ScoreFlowController(xml_loader.store.measures)
+        # Music21 reads repeat signs and endings and no other sign, so the
+        # three columns the flow control is written from are the whole of it.
+        def signs(loader: Any) -> list[tuple[Any, ...]]:
+            table = loader.store.measures._table
+            return list(
+                zip(
+                    table.column("mc").to_pylist(),
+                    table.column("start_repeat").to_pylist(),
+                    table.column("end_repeat").to_pylist(),
+                    table.column("volta").to_pylist(),
+                    strict=True,
+                )
+            )
 
-        mei_flow = mei_ctrl.compute_flow(FlowMode.default)
-        xml_flow = xml_ctrl.compute_flow(FlowMode.default)
-
-        # Compare
-        assert mei_flow.is_equivalent(xml_flow), (
-            f"{specimen_name}: Music21 MEI flow differs from MusicXML.\n"
-            f"MEI sections: {len(mei_flow.sections)}\n"
-            f"XML sections: {len(xml_flow.sections)}"
-        )
+        assert signs(mei_loader) == signs(xml_loader)
+        assert len(signs(xml_loader)) >= spec.folded_measures
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -713,73 +690,41 @@ class TestPartituraLoaderMusicXML:
             f"Note: Multi-part scores may have different counts"
         )
 
-    @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
-    def test_partitura_musicxml_flow_valid(self, specimen_name: str) -> None:
-        """PartituraLoader produces a valid flow (matches one in .flow.csv).
+    @pytest.mark.parametrize(
+        "specimen_name",
+        [
+            (
+                pytest.param(name, marks=_ONE_MEASURE_ROW_PER_PART)
+                if name == "polyrhythm_only"
+                else name
+            )
+            for name in SPECIMENS
+            if name != "flow_only"
+        ],
+    )
+    def test_partitura_musicxml_default_flow(self, specimen_name: str) -> None:
+        """PartituraLoader's timeline plays the ``default`` flow of ``.flow.csv``.
 
-        Partitura's inferred-repeat deviation for flow_only is pinned in
+        The D.S. al Fine of ``c05n05_musete`` and the D.C. of
+        ``c11n08_Rondeau`` are read from the MusicXML directions. The
+        inferred repeat boundaries of ``flow_only`` are pinned in
         TestDocumentedDeviations.
         """
-        if specimen_name == "flow_only":
-            pytest.skip(
-                "Documented Partitura inferred-repeat deviation; exact output "
-                "is asserted in TestDocumentedDeviations"
-            )
         spec = SPECIMENS[specimen_name]
         xml_path = get_specimen_path(spec, "musicxml")
-        csv_path = TARGET_FLOWS_DIR / spec.flow_csv
-
         if xml_path is None or not xml_path.exists():
             pytest.skip(f"MusicXML not found for {specimen_name}")
-        if not csv_path.exists():
-            pytest.skip(f"Flow CSV not found for {specimen_name}")
-
-        # Skip large files to avoid test timeouts
         if musicxml_too_large(xml_path):
-            file_size_mb = xml_path.stat().st_size / 1_000_000
-            pytest.skip(
-                f"MusicXML file too large ({file_size_mb:.1f}MB) for Partitura test. "
-                f"Max size: {MAX_MUSICXML_SIZE_BYTES / 1_000_000:.1f}MB"
-            )
+            pytest.skip(f"MusicXML file too large for Partitura: {xml_path}")
 
-        try:
-            from timetoalign.loader.score import PartituraLoader
-        except ImportError:
-            pytest.skip("PartituraLoader not available")
+        from timetoalign.loader.score import PartituraLoader
 
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.timelines import ScoreFlowController
-        from timetoalign.timelines.flow import load_valid_flows
-
-        # Load valid flows from ground truth
-        valid_flows = load_valid_flows(csv_path)
-
-        # Load and compute flow
-        loader = PartituraLoader()
-        loader.load(xml_path)
-        controller = ScoreFlowController(loader.store.measures)
-        computed = controller.compute_flow(FlowMode.default)
-
-        # Check if computed matches any valid flow
-        matches = [
-            (mode, flow)
-            for mode, flow in valid_flows.items()
-            if computed.is_equivalent(flow)
-        ]
-
-        if not matches:
-            computed_ranges = [(s.mc_start, s.mc_end) for s in computed.sections[:5]]
-            valid_summary = {
-                m.value: [(s.mc_start, s.mc_end) for s in f.sections[:5]]
-                for m, f in valid_flows.items()
-            }
-            pytest.fail(
-                f"{specimen_name}: Partitura MusicXML flow doesn't match any valid unfolding.\n"
-                f"Computed (first 5): {computed_ranges}\n"
-                f"Valid modes: {list(valid_flows.keys())}\n"
-                f"Valid (first 5 each): {valid_summary}\n"
-                f"Note: {spec.notes}"
-            )
+        timeline = PartituraLoader().load(xml_path).create_timeline()
+        gold = gold_flows(specimen_name)
+        ranges, result = played_ranges(timeline)
+        assert ranges == gold["default"]
+        assert result.findings == ()
+        assert atomic_ranges(timeline) == gold["atomic"]
 
 
 def _strict_xfail(reason: str, raises: type[Exception] = AssertionError) -> Any:
@@ -854,30 +799,26 @@ class TestPartituraLoaderMEI:
         )
 
 
-def _verovio_flow(piece: str) -> tuple[Any, Any, Any]:
-    """Return the Verovio measure table's default flow and the target flows.
+def _verovio_timeline(piece: str) -> tuple[Any, Any]:
+    """Return the Verovio loader of a specimen's MEI and its timeline.
 
     The MEI is read with ``expandNever``: the measure table is the printed
     one either way, and Verovio 6.4.1 crashes the process when it expands
     the repeats of the flow-control scores.
     """
     pytest.importorskip("verovio")
-    from timetoalign.core.enums import FlowMode
     from timetoalign.loader.score import VerovioLoader
-    from timetoalign.timelines.flow import load_valid_flows
 
-    spec = SPECIMENS[piece]
     loader = VerovioLoader(options={"expandNever": True}).load(
-        get_specimen_path(spec, "mei")
+        get_specimen_path(SPECIMENS[piece], "mei")
     )
-    flow = loader.create_flow_controller().compute_flow(FlowMode.default)
-    return loader, flow, load_valid_flows(TARGET_FLOWS_DIR / spec.flow_csv)
+    return loader, loader.create_timeline()
 
 
 # Rachmaninoff is not loaded: Verovio 6.4.1 crashes the process on its MEI.
+# flow_only has a test of its own: its source ends the flow at a bracket.
 VEROVIO_MATRIX = [
     pytest.param("polyrhythm_only", id="polyrhythm_only"),
-    pytest.param("flow_only", id="flow_only"),
     pytest.param(
         "c05n05_musete",
         id="c05n05_musete",
@@ -915,131 +856,72 @@ VEROVIO_MATRIX = [
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestVerovioLoaderMEI:
-    """VerovioLoader's printed measure table unfolds to the target default flow."""
+    """The flow control of VerovioLoader's timeline plays the target default flow."""
 
     @pytest.mark.parametrize("piece", VEROVIO_MATRIX)
     def test_verovio_mei_default_flow(self, piece: str) -> None:
-        from timetoalign.core.enums import FlowMode
-
-        loader, flow, valid = _verovio_flow(piece)
+        loader, timeline = _verovio_timeline(piece)
         assert len(loader.store.measures) == SPECIMENS[piece].folded_measures
-        assert flow.is_equivalent(valid[FlowMode.default])
+        ranges, result = played_ranges(timeline)
+        assert ranges == gold_flows(piece)["default"]
+        assert result.findings == ()
+
+    def test_flow_only_plays_as_the_measures_table(self) -> None:
+        """The MEI's marks give the flow the ms3 table gives, sign for sign.
+
+        As the source stands the flow ends at the second of three brackets;
+        with the same three repairs it is the target's ``default`` flow.
+        """
+        from timetoalign.loader.score import Ms3Loader
+
+        loader, timeline = _verovio_timeline("flow_only")
+        assert len(loader.store.measures) == SPECIMENS["flow_only"].folded_measures
+        table = Ms3Loader().load(get_specimen_path(SPECIMENS["flow_only"], "tsv"))
+        from_table = table.create_timeline()
+        gold = gold_flows("flow_only")
+
+        ranges, result = played_ranges(timeline)
+        expected, expected_result = played_ranges(from_table)
+        assert ranges == expected == gold["default"][:4]
+        assert result.findings == expected_result.findings
+        assert atomic_ranges(timeline) == gold["atomic"]
+
+        def signs(held: Any) -> list[tuple[Any, ...]]:
+            return [
+                (element.role, element.coordinate.value, element.manifestation)
+                for element in held.flow_control.elements
+                if element.role in {"jump_target", "break", "section_break"}
+            ]
+
+        assert signs(timeline) == signs(from_table)
+        # Verovio counts a second coda; the measures table names MuseScore's.
+        assert [
+            (target.name, named.name)
+            for target, named in zip(
+                timeline.flow_control.jump_targets,
+                from_table.flow_control.jump_targets,
+                strict=True,
+            )
+            if target.name != named.name
+        ] == [("coda2", "codab")]
+        repaired, result = played_ranges(
+            timeline, registry=repaired_stress_score(timeline)
+        )
+        assert repaired == gold["default"]
+        assert result.findings == ()
 
     @pytest.mark.slow
     def test_woo71_mc_sequence(self) -> None:
-        """WoO71's sections differ only in their cuts: the MC sequence is the target's."""
-        from timetoalign.core.enums import FlowMode
+        """WoO71's flow differs only in its cuts: the MC sequence is the target's."""
+        _, timeline = _verovio_timeline("WoO71")
+        ranges, _ = played_ranges(timeline)
 
-        _, flow, valid = _verovio_flow("WoO71")
-        assert flow.to_mc_sequence() == valid[FlowMode.default].to_mc_sequence()
-        assert len(flow.to_mc_sequence()) == SPECIMENS["WoO71"].unfolded_measures
+        def sequence(rows: Any) -> list[int]:
+            return [mc for row in rows for mc in range(row.start, row.end)]
 
-
-class TestScoreFlowControllerReproducesTargetFlows:
-    """TOP-MOST GOAL: ScoreFlowController reproduces ALL target flows from .flow.csv.
-
-    This is the core test that validates the system works end-to-end.
-    """
-
-    @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
-    def test_tsv_reproduces_valid_flow(self, specimen_name: str) -> None:
-        """Ms3Loader -> ScoreFlowController reproduces a valid flow from .flow.csv.
-
-        Note: For flow_only specimen, TSV produces the 'ms3' flow (30 MCs) which
-        is documented as divergent from the canonical 'default' flow (31 MCs).
-        """
-        spec = SPECIMENS[specimen_name]
-        tsv_path = get_specimen_path(spec, "tsv")
-        csv_path = TARGET_FLOWS_DIR / spec.flow_csv
-
-        if tsv_path is None or not tsv_path.exists():
-            pytest.skip(f"TSV not found for {specimen_name}")
-        if not csv_path.exists():
-            pytest.skip(f"Flow CSV not found for {specimen_name}")
-
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.loader.score import Ms3Loader
-        from timetoalign.timelines import ScoreFlowController
-        from timetoalign.timelines.flow import load_valid_flows
-
-        # Load all valid flows
-        valid_flows = load_valid_flows(csv_path)
-        if not valid_flows:
-            pytest.skip(f"No valid flows in {csv_path}")
-
-        # Load and compute
-        loader = Ms3Loader()
-        loader.load(tsv_path)
-        controller = ScoreFlowController(loader.store.measures)
-        computed = controller.compute_flow(FlowMode.default)
-
-        # Check if computed matches ANY valid flow
-        matches = [
-            (mode, flow)
-            for mode, flow in valid_flows.items()
-            if computed.is_equivalent(flow)
-        ]
-
-        if not matches:
-            # Build diagnostic
-            computed_seq = computed.to_mc_sequence()[:20]
-            valid_seqs = {
-                m.value: f.to_mc_sequence()[:20] for m, f in valid_flows.items()
-            }
-            pytest.fail(
-                f"{specimen_name}: TSV flow doesn't match any valid unfolding.\n"
-                f"Computed sections: {len(computed.sections)}\n"
-                f"Computed MC seq (first 20): {computed_seq}\n"
-                f"Valid modes: {list(valid_flows.keys())}\n"
-                f"Valid MC seqs (first 20): {valid_seqs}\n"
-                f"Note: {spec.notes}"
-            )
-
-        # Document which flow mode matched
-        matched_mode = matches[0][0]
-        if matched_mode != FlowMode.default:
-            # Log that we matched a divergent mode
-            pass  # This is expected for flow_only (matches ms3)
-
-    @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
-    def test_tsv_reproduces_atomic_flow(self, specimen_name: str) -> None:
-        """Ms3Loader -> ScoreFlowController reproduces ATOMIC flow."""
-        spec = SPECIMENS[specimen_name]
-        tsv_path = get_specimen_path(spec, "tsv")
-        csv_path = TARGET_FLOWS_DIR / spec.flow_csv
-
-        if tsv_path is None or not tsv_path.exists():
-            pytest.skip(f"TSV not found for {specimen_name}")
-        if not csv_path.exists():
-            pytest.skip(f"Flow CSV not found for {specimen_name}")
-
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.loader.score import Ms3Loader
-        from timetoalign.timelines import ScoreFlowController
-        from timetoalign.timelines.flow import load_valid_flows
-
-        # Load gold standard
-        valid_flows = load_valid_flows(csv_path)
-        if FlowMode.atomic not in valid_flows:
-            pytest.skip(f"No ATOMIC flow in {csv_path}")
-
-        target = valid_flows[FlowMode.atomic]
-
-        # Load and compute
-        loader = Ms3Loader()
-        loader.load(tsv_path)
-        controller = ScoreFlowController(loader.store.measures)
-
-        # Get atomic sections
-        atomic_sections = controller.get_sections(mode=None)
-        computed_ranges = [(s.mc_start, s.mc_end) for s in atomic_sections]
-        target_ranges = [(s.mc_start, s.mc_end) for s in target.sections]
-
-        assert computed_ranges == target_ranges, (
-            f"{specimen_name}: TSV ATOMIC flow mismatch.\n"
-            f"Computed: {computed_ranges}\n"
-            f"Target: {target_ranges}"
-        )
+        played = sequence(ranges)
+        assert played == sequence(gold_flows("WoO71")["default"])
+        assert len(played) == SPECIMENS["WoO71"].unfolded_measures
 
 
 class TestCrossLoaderParity:
@@ -1087,98 +969,70 @@ class TestDocumentedDeviations:
     """
 
     @pytest.mark.slow
-    def test_c05n05_musete_music21_deviation(self) -> None:
-        """Document: music21 ignores D.S. al Fine in c05n05_musete.
+    @pytest.mark.parametrize(
+        ("specimen_name", "starts", "ends"),
+        [
+            ("c05n05_musete", [17, 32], [16, 31, 58]),
+            ("c11n08_Rondeau", [10, 19, 28], [9, 18, 27, 60]),
+        ],
+    )
+    def test_music21_reads_no_navigation_marks(
+        self, specimen_name: str, starts: list[int], ends: list[int]
+    ) -> None:
+        """Document: music21 reads repeat signs and no D.S., D.C., segno or Fine.
 
-        Music21's exact alternate unfolding is pinned so this remains a
-        documented parser difference rather than an unclassified failure.
+        The measure table states the repeats of the score and leaves the
+        four navigation columns empty, so no leap can be written.
         """
-        from timetoalign.core.enums import FlowMode
         from timetoalign.loader.score import Music21Loader
-        from timetoalign.timelines import ScoreFlowController
 
         loader = Music21Loader()
-        loader.load(get_specimen_path(SPECIMENS["c05n05_musete"], "musicxml"))
-        flow = ScoreFlowController(loader.store.measures).compute_flow(FlowMode.default)
+        loader.load(get_specimen_path(SPECIMENS[specimen_name], "musicxml"))
+        rows = loader.store.measures._table.to_pylist()
 
-        assert len(flow.to_mc_sequence()) == 116
-        assert [(s.mc_start, s.mc_end) for s in flow.sections] == [
-            (1, 17),
-            (1, 32),
-            (17, 59),
-            (32, 59),
-        ]
-
-    @pytest.mark.slow
-    def test_c11n08_rondeau_music21_deviation(self) -> None:
-        """Document: music21 does not reproduce c11n08_Rondeau's D.S. flow."""
-        from timetoalign.core.enums import FlowMode
-        from timetoalign.loader.score import Music21Loader
-        from timetoalign.timelines import ScoreFlowController
-
-        loader = Music21Loader()
-        loader.load(get_specimen_path(SPECIMENS["c11n08_Rondeau"], "musicxml"))
-        flow = ScoreFlowController(loader.store.measures).compute_flow(FlowMode.default)
-
-        assert len(flow.to_mc_sequence()) == 120
-        assert [(s.mc_start, s.mc_end) for s in flow.sections] == [
-            (1, 10),
-            (1, 19),
-            (10, 28),
-            (19, 61),
-            (28, 61),
-        ]
+        assert sorted({row["mc"] for row in rows if row["start_repeat"]}) == starts
+        assert sorted({row["mc"] for row in rows if row["end_repeat"]}) == ends
+        for column in ("markers", "jump_bwd", "jump_fwd", "play_until"):
+            assert {row[column] for row in rows} == {None}
 
     def test_flow_only_music21_deviation(self) -> None:
-        """Document: music21 cannot produce a target flow for flow_only.
+        """Document: music21 states no D.S., D.C., segno, coda or Fine of flow_only.
 
-        music21 drops the D.S. al Coda, coda voltas, and D.C. al Fine
-        markers, so the traversal honours every repeat (including the
-        implicit one-bar repeat at MC 8 and the nested one at MC 10) but
-        runs straight past MC 12 and stops at MC 13 with no jump tail.
+        Its timeline holds the repeats and brackets alone. The flow ends at
+        the second of three brackets, as the score's own source has it, and
+        the atomic sections lack the boundaries the segno and the two codas
+        give (MCs 8 and 13).
         """
-        from timetoalign.core.enums import FlowMode
         from timetoalign.loader.score import Music21Loader
-        from timetoalign.timelines import ScoreFlowController
 
         loader = Music21Loader()
         loader.load(get_specimen_path(SPECIMENS["flow_only"], "musicxml"))
-        flow = ScoreFlowController(loader.store.measures).compute_flow(FlowMode.default)
+        timeline = loader.create_timeline()
 
-        assert flow.to_mc_sequence() == [
-            1,
-            2,
-            3,
-            1,
-            2,
-            3,
-            4,
-            5,
-            4,
-            6,
-            8,
-            8,
-            9,
-            10,
-            10,
-            11,
-            9,
-            10,
-            10,
-            11,
-            12,
-            13,
-        ]
-        assert [(s.mc_start, s.mc_end) for s in flow.sections] == [
+        assert {
+            manifestation.value
+            for jump in timeline.flow_control.jumps
+            for manifestation in jump.manifestations
+        } == {"repeat_end", "volta"}
+        ranges, _ = played_ranges(timeline)
+        assert [(row.start, row.end) for row in ranges] == [
             (1, 4),
             (1, 6),
             (4, 5),
             (6, 7),
-            (8, 9),
-            (8, 11),
-            (10, 12),
-            (9, 11),
-            (10, 14),
+        ]
+        assert [(row.start, row.end) for row in atomic_ranges(timeline)] == [
+            (1, 4),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 9),
+            (9, 10),
+            (10, 11),
+            (11, 12),
+            (12, 14),
+            (14, 15),
+            (15, 16),
         ]
 
     def test_flow_only_partitura_deviation(self) -> None:

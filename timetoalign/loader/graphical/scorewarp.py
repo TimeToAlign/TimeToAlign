@@ -78,16 +78,20 @@ def _has_class(element: ET.Element, name: str) -> bool:
     return name in (element.get("class") or "").split()
 
 
-def _css_pixels(element: ET.Element, attribute: str) -> float:
-    """Read a root size attribute, refusing any unit but ``px``."""
+def _css_pixels(element: ET.Element, attribute: str) -> tuple[str, float]:
+    """Read a root size attribute, refusing any unit but ``px``.
+
+    Returns:
+        The attribute's text, verbatim, and the size it states in CSS pixels.
+    """
     text = element.get(attribute)
     match = None if text is None else _CSS_PIXEL_LENGTH.fullmatch(text)
-    if match is None:
+    if text is None or match is None:
         raise ValueError(
             f"The root <svg> {attribute} is {text!r}; only a number, unitless or "
             f"in px, places the drawing in CSS pixels."
         )
-    return float(match.group(1))
+    return text, float(match.group(1))
 
 
 def _coordinate(element: ET.Element, attribute: str) -> float:
@@ -113,8 +117,8 @@ def _read_axis(source: Path) -> _ScoreWarpAxis:
     root = ET.parse(source).getroot()
     if _local_name(root) != "svg":
         raise ValueError(f"{source} is no SVG: its root is <{_local_name(root)}>.")
-    viewport_width = _css_pixels(root, "width")
-    _css_pixels(root, "height")
+    width, viewport_width = _css_pixels(root, "width")
+    height, _ = _css_pixels(root, "height")
 
     axes = [
         element
@@ -208,8 +212,8 @@ def _read_axis(source: Path) -> _ScoreWarpAxis:
         calibration=tuple(calibration),
         unit=unit,
         title=title,
-        width=root.get("width"),
-        height=root.get("height"),
+        width=width,
+        height=height,
         extent=max(
             viewport_width,
             *(max(_coordinate(line, "x1"), _coordinate(line, "x2")) for line in lines),
@@ -369,16 +373,14 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
 
         axis = self._require_axis()
         uid, minted = _root_timeline_id(self, TimeUnit.css_pixels, uid)
-        timeline = _flag_minted(
-            ContinuousGraphicalTimeline(
-                length=axis.extent,
-                unit=TimeUnit.css_pixels,
-                uid=uid,
-                name=name or self._sources[0].stem,
-                meta={"svg_width": axis.width, "svg_height": axis.height},
-            ),
-            minted,
+        timeline = ContinuousGraphicalTimeline(
+            length=axis.extent,
+            unit=TimeUnit.css_pixels,
+            uid=uid,
+            name=name or self._sources[0].stem,
+            meta={"svg_width": axis.width, "svg_height": axis.height},
         )
+        _flag_minted(timeline, minted)
         child = timeline.create_calibrated_child(
             axis.end - axis.start,
             axis.start,

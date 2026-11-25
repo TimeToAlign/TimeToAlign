@@ -128,9 +128,16 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from string import Formatter
-from typing import Any
+from typing import Any, TypeVar
 
-from timetoalign.core import BoundingBox, Box, NumberType, Shape, TimeUnit
+from timetoalign.core import (
+    BoundingBox,
+    Box,
+    NumberType,
+    Shape,
+    TimeScalarValue,
+    TimeUnit,
+)
 from timetoalign.core.events import _held_exactly
 from timetoalign.core.ids import validate_id
 from timetoalign.loader.graphical._located import located
@@ -139,10 +146,11 @@ from timetoalign.loader.graphical.paths import (
     PiecewisePath,
     TimeAxisPath,
 )
-from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine
+from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine, Timeline
 
 #: The axis of every timeline built here.
 _UNIT = TimeUnit.pixels
+_TimelineT = TypeVar("_TimelineT", bound=Timeline)
 
 #: An ids argument: nothing, one id per element in document order, or a template.
 Ids = Sequence[str] | str | None
@@ -237,7 +245,7 @@ class _AccoladePlan:
     """
 
     name: str | None
-    length: int
+    length: TimeScalarValue
     area: Shape | None
     boxes: list[PageBox] = field(default_factory=list)
     order: list[int] = field(default_factory=list)
@@ -564,10 +572,10 @@ def _set_aside_given_ids(
 
 def _timeline(
     owner: object,
-    cls: type[DiscreteGraphicalTimeline],
+    cls: type[_TimelineT],
     uid: str | None,
     **arguments: Any,
-) -> DiscreteGraphicalTimeline:
+) -> _TimelineT:
     """Make one timeline, its id *uid* or minted from *owner*.
 
     A named timeline takes its number among *owner*'s minted ids all the
@@ -576,10 +584,9 @@ def _timeline(
     from timetoalign.timelines.factory import _flag_minted, _root_timeline_id
 
     timeline_id, minted = _root_timeline_id(owner, _UNIT, uid)
-    return _flag_minted(
-        cls(unit=_UNIT, number_type=NumberType.int, uid=timeline_id, **arguments),
-        minted,
-    )
+    timeline = cls(unit=_UNIT, number_type=NumberType.int, uid=timeline_id, **arguments)
+    _flag_minted(timeline, minted)
+    return timeline
 
 
 def _build_line(
@@ -610,9 +617,12 @@ def _build_line(
     return timeline
 
 
-def _build_page(owner: object, plan: _PagePlan) -> DiscreteGraphicalTimeline:
+def _build_page(
+    owner: object, plan: _PagePlan
+) -> DiscreteGraphicalTimeline | SegmentLine[DiscreteGraphicalTimeline]:
     """Build one page: a segment line of its accolades, or its one line."""
     image = plan.page.image
+    timeline: DiscreteGraphicalTimeline | SegmentLine[DiscreteGraphicalTimeline]
     if plan.accolades is None:
         assert plan.line is not None
         plan.line.name = plan.name
@@ -640,7 +650,7 @@ def build_pages(
     page_ids: Ids = None,
     accolade_ids: Ids = None,
     box_ids: Ids = None,
-) -> list[DiscreteGraphicalTimeline]:
+) -> list[DiscreteGraphicalTimeline | SegmentLine[DiscreteGraphicalTimeline]]:
     """Build one root timeline per page, in the order given.
 
     Args:

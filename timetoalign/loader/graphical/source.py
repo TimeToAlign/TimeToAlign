@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .paths import TimeAxisPath
 
 
-def _get_pymupdf() -> "pymupdf":
+def _get_pymupdf() -> ModuleType:
     """Lazy import of pymupdf, naming the extra that installs it."""
     try:
         import pymupdf
@@ -336,14 +336,14 @@ class ImageSource:
     def width(self) -> int:
         """Image width in pixels."""
         if self._pixmap is None:
-            return self._drawing.width
+            return self._pending_drawing().width
         return self._pixmap.width
 
     @property
     def height(self) -> int:
         """Image height in pixels."""
         if self._pixmap is None:
-            return self._drawing.height
+            return self._pending_drawing().height
         return self._pixmap.height
 
     @property
@@ -361,17 +361,26 @@ class ImageSource:
 
     # --- Conversion Methods ---
 
+    def _pending_drawing(self) -> "PIL.Image.Image":
+        """The drawing of a source whose pixmap is not built yet.
+
+        A source holds a pixmap, a drawing, or both: it is made from a pixmap
+        or from a drawing, and loses its drawing only once a pixmap is built.
+        """
+        assert self._drawing is not None
+        return self._drawing
+
     def _materialized(self) -> "pymupdf.Pixmap":
         """The pixmap, built once from a pending drawing."""
         if self._pixmap is None:
-            self._pixmap = _image_to_pixmap(self._drawing)
+            self._pixmap = _image_to_pixmap(self._pending_drawing())
         return self._pixmap
 
     def _drawable(self) -> "PIL.Image.Image":
         """A new RGB or RGBA Pillow image of this source, to draw on."""
         if self._drawing is not None:
             return self._drawing.copy()
-        return _pixmap_to_image(self._pixmap)
+        return _pixmap_to_image(self._materialized())
 
     def to_pil(self) -> "PIL.Image.Image":
         """Convert to PIL Image for advanced operations.
@@ -542,8 +551,8 @@ class _Canvas:
         self._image: PIL.Image.Image | None = None
         self._translucent = False
 
-    def _draw(self, color: tuple[int, ...]) -> Any:
-        """The drawing context for the next shape, drawn in ``color``."""
+    def _next_image(self, color: tuple[int, ...]) -> "PIL.Image.Image":
+        """The image the next shape, drawn in ``color``, is drawn on."""
         if self._image is None:
             self._image = self._source._drawable()
             self._translucent = _is_translucent(self._image)
@@ -551,7 +560,11 @@ class _Canvas:
             self._image = _pixmap_to_image(_image_to_pixmap(self._image))
         if len(color) > 3:
             self._translucent = True
-        return self._image_draw.Draw(self._image)
+        return self._image
+
+    def _draw(self, color: tuple[int, ...]) -> Any:
+        """The drawing context for the next shape, drawn in ``color``."""
+        return self._image_draw.Draw(self._next_image(color))
 
     def rectangle(
         self,
@@ -564,12 +577,13 @@ class _Canvas:
         fill: bool,
     ) -> None:
         """Draw a rectangle outline, filled at alpha 64 when ``fill``."""
-        draw = self._draw(color)
+        image = self._next_image(color)
+        draw = self._image_draw.Draw(image)
         x0, y0 = int(x), int(y)
         x1, y1 = int(x + width), int(y + height)
         if fill:
-            if self._image.mode != "RGBA":
-                self._image = self._image.convert("RGBA")
+            if image.mode != "RGBA":
+                self._image = image.convert("RGBA")
                 draw = self._image_draw.Draw(self._image)
             self._translucent = True
             draw.rectangle(

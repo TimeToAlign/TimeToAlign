@@ -9,13 +9,38 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, TypeGuard
 
 from timetoalign.core.events import BoundingBox
 
-from .paths import TimeAxisPath
+from .paths import Number, TimeAxisPath
 
 module_logger = logging.getLogger(__name__)
+
+
+class _XSpanPath(Protocol):
+    """A path along a horizontal span, as :class:`HorizontalLinePath` is."""
+
+    x0: Number
+    x1: Number
+    y: Number
+
+
+class _EndpointPath(Protocol):
+    """A path between two points, as :class:`DiagonalLinePath` is."""
+
+    start: tuple[float, float]
+    end: tuple[float, float]
+
+
+def _has_x_span(path: TimeAxisPath) -> TypeGuard[_XSpanPath]:
+    """Whether *path* is described by ``x0``, ``x1`` and ``y``."""
+    return hasattr(path, "x0")
+
+
+def _has_endpoints(path: TimeAxisPath) -> TypeGuard[_EndpointPath]:
+    """Whether *path* is described by its ``start`` and ``end``."""
+    return hasattr(path, "start")
 
 
 @dataclass
@@ -62,7 +87,7 @@ class GraphicalSegment:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
-    def length(self) -> float:
+    def length(self) -> Number:
         """Length of this segment in timeline units."""
         return self.path.length
 
@@ -89,7 +114,7 @@ class GraphicalSegment:
         """
         return self.timeline_offset <= coord < self.timeline_end
 
-    def to_image(self, coord: float) -> tuple[int, tuple[float, float]]:
+    def to_image(self, coord: float) -> tuple[int, tuple[Number, Number]]:
         """Convert timeline coordinate to (source_index, (x, y)).
 
         Args:
@@ -203,18 +228,19 @@ class GraphicalSegment:
         Note: Path serialization is basic - complex paths may need
         custom serialization.
         """
-        path_data = {
+        path_data: dict[str, Any] = {
             "type": type(self.path).__name__,
         }
 
         # Add path-specific attributes
-        if hasattr(self.path, "x0"):
-            path_data["x0"] = self.path.x0
-            path_data["x1"] = self.path.x1
-            path_data["y"] = self.path.y
-        elif hasattr(self.path, "start"):
-            path_data["start"] = self.path.start
-            path_data["end"] = self.path.end
+        path = self.path
+        if _has_x_span(path):
+            path_data["x0"] = path.x0
+            path_data["x1"] = path.x1
+            path_data["y"] = path.y
+        elif _has_endpoints(path):
+            path_data["start"] = path.start
+            path_data["end"] = path.end
 
         return {
             "source_index": self.source_index,

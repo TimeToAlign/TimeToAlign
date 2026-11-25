@@ -567,7 +567,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         canvases: Sequence[int | str] | None = None,
         page_ids: Sequence[str] | str | None = None,
         accolade_ids: Sequence[str] | str | None = None,
-    ) -> list[DiscreteGraphicalTimeline]:
+    ) -> list[DiscreteGraphicalTimeline | SegmentLine[DiscreteGraphicalTimeline]]:
         """Create one timeline in pixels per selected canvas, along its time path.
 
         A canvas whose path is a
@@ -656,7 +656,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
                     f"canvases names {_spelled(unknown)}, which the manifest does "
                     f"not hold. Available canvases: {listing}"
                 )
-            selected = sorted(set(resolved))
+            selected = sorted({at for at in resolved if at is not None})
 
         if isinstance(paths, TimeAxisPath):
             if len(selected) != 1:

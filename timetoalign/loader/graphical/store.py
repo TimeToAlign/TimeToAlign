@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from timetoalign.storage.store import EventStore
 
+from .paths import Number
 from .segment import GraphicalSegment
 from .source import ImageSource, _Canvas
 
@@ -154,7 +155,7 @@ class GraphicalStore(EventStore):
     def timeline_to_image(
         self,
         coord: float,
-    ) -> tuple[int, tuple[float, float]]:
+    ) -> tuple[int, tuple[Number, Number]]:
         """Convert timeline coordinate to (source_index, (x, y)).
 
         Args:

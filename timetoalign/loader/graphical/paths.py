@@ -635,7 +635,7 @@ class DiagonalLinePath(TimeAxisPath):
         """Euclidean length of the line."""
         return math.sqrt(self._dx**2 + self._dy**2)
 
-    def to_2d(self, coord: float) -> tuple[float, float]:
+    def to_2d(self, coord: Number) -> tuple[float, float]:
         """Map timeline coordinate (arc length) to (x, y)."""
         if self.length == 0:
             return self.start
@@ -645,7 +645,7 @@ class DiagonalLinePath(TimeAxisPath):
             self.start[1] + ratio * self._dy,
         )
 
-    def from_2d(self, x: float, y: float) -> float | None:
+    def from_2d(self, x: Number, y: Number) -> float | None:
         """Map (x, y) to timeline coordinate.
 
         Projects the point onto the line and returns the arc length
@@ -678,7 +678,7 @@ class DiagonalLinePath(TimeAxisPath):
         # Return arc length
         return t * self.length
 
-    def distance_to_path(self, x: float, y: float) -> float:
+    def distance_to_path(self, x: Number, y: Number) -> float:
         """Perpendicular distance to line segment."""
         px = x - self.start[0]
         py = y - self.start[1]
@@ -790,7 +790,7 @@ class ParametricPath(TimeAxisPath):
         """Total arc length of the path."""
         return self._total_length
 
-    def _arc_to_t(self, arc: float) -> float:
+    def _arc_to_t(self, arc: Number) -> float:
         """Convert arc length to parameter t using binary search."""
         if arc <= 0:
             return self.t_start
@@ -821,12 +821,12 @@ class ParametricPath(TimeAxisPath):
         ratio = (arc - arc_lo) / (arc_hi - arc_lo)
         return t_lo + ratio * (t_hi - t_lo)
 
-    def to_2d(self, coord: float) -> tuple[float, float]:
+    def to_2d(self, coord: Number) -> tuple[float, float]:
         """Map timeline coordinate (arc length) to (x, y)."""
         t = self._arc_to_t(coord)
         return (self.x_func(t), self.y_func(t))
 
-    def from_2d(self, x: float, y: float) -> float | None:
+    def from_2d(self, x: Number, y: Number) -> float | None:
         """Map (x, y) to timeline coordinate.
 
         Finds the closest point on the path and returns its arc length.

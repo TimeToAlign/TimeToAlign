@@ -174,9 +174,9 @@ def _surface(surface: ET.Element, missing: list[str]) -> _MeiSurface:
     for k, zone in enumerate(surface.findall(f"{_MEI}zone"), start=1):
         zone_id = zone.get(XML_ID)
         attributes = {
-            name: zone.get(name)
+            name: value
             for name in (*_CORNERS, "points")
-            if zone.get(name) is not None
+            if (value := zone.get(name)) is not None
         }
         if not attributes:
             if zone_id is not None:
@@ -220,11 +220,10 @@ def _read_facsimile(source: Path) -> _MeiFacsimile:
         for surface in facsimile.findall(f"{_MEI}surface")
     )
     facs = {
-        element.get(XML_ID): tuple(
-            reference.removeprefix("#") for reference in element.get("facs").split()
-        )
+        element_id: tuple(reference.removeprefix("#") for reference in links.split())
         for element in root.iter()
-        if element.get("facs") is not None and element.get(XML_ID) is not None
+        if (links := element.get("facs")) is not None
+        and (element_id := element.get(XML_ID)) is not None
     }
     return _MeiFacsimile(
         surfaces=surfaces, zones_without_coordinates=tuple(missing), facs=facs
@@ -540,7 +539,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
         page_ids: Ids = None,
         accolade_ids: Ids = None,
         box_ids: Ids = None,
-    ) -> list[DiscreteGraphicalTimeline]:
+    ) -> list[DiscreteGraphicalTimeline | SegmentLine[DiscreteGraphicalTimeline]]:
         """Create one root timeline per surface, in document order.
 
         A surface's page is a locked segment line of its accolades, in

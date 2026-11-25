@@ -493,7 +493,7 @@ class DmosLoader(Loader[_DmosDocument]):
         page_ids: Ids = None,
         accolade_ids: Ids = None,
         box_ids: Ids = None,
-    ) -> list[DiscreteGraphicalTimeline]:
+    ) -> list[DiscreteGraphicalTimeline | SegmentLine[DiscreteGraphicalTimeline]]:
         """Create one root timeline per page, in document order.
 
         A page is a locked segment line of its systems' accolades in

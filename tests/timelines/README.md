@@ -4912,6 +4912,75 @@ actor, `region_5` A [0, 4), `region_6` B [4, 8), `region_2` C [8, 12);
 FlowMaps are unchanged. Without an actor that call raises and changes
 nothing.
 
+**A timeline is played with its tree** (`TestTree`). Flow control stated
+on a root or on any descendant holds across descendants: a timeline is
+played with its own elements and those of every descendant, each at its
+position on the played timeline's axis by offset arithmetic
+(`Timeline.tree_flow_control`). What would prove it is that where an
+element is stated makes no difference to the flow, only where it lies on
+the played axis; that a child is played with its subtree alone; and that
+the rule "one jump at a coordinate" is read on the played axis. The
+values below follow from the walk of the engine (`test_flow_engine.py`)
+applied to the positions on the played axis, nothing else.
+
+The tree: the root `work` (length 40) holds `allegro` (length 12 at
+offset 4) and `finale` (length 12 at offset 20); `allegro` holds
+`codetta` (length 4 at its offset 8). `allegro` states the JumpTarget
+`start` at 0 and the Jump `repeat` at 8 `{to: start, repeat_count: 1}`;
+`codetta` the Barline `codetta_end` at 4; the root the Jump `dc` at 32
+`{to: work, repeat_count: 1, reset: false}` (a da capo: the root's own
+start is a place).
+
+| Quantity | Expected | Why |
+|---|---|---|
+| the root's view | `start` 4, `repeat` 12, `codetta_end` 16, `dc` 32, IDs unchanged | 0 + 4, 8 + 4, 4 + 8 + 4, 32 |
+| `allegro`'s view | `start` 0, `repeat` 8, `codetta_end` 12; no `dc` | its subtree on its axis |
+| `finale`'s view | empty | no element in its subtree |
+| storage | `work.flow_control` holds `dc` alone, `allegro`'s `start` and `repeat` | the view writes nothing |
+| root `default` | runs [0, 12) [4, 32) [0, 40), length 80, no finding | back to 4 at 12; on at 32 to 0; the repeat is not taken again (taken once, and the da capo restores nothing) |
+| root `single`, `printed` | [0, 40), length 40 | nothing before its Jump is taken once through |
+| the same four elements stated on the root at 4, 12, 16, 32 | the same runs and lengths in all three conventions | only positions on the played axis count |
+| `allegro`'s `default` | runs [0, 8) [0, 12), length 20 | equal to a timeline of length 12 holding `start` at 0 and `repeat` at 8 |
+
+A destination without place goes on at the start of the timeline stating
+its Jump (or the nearest section break before the Jump from that start
+on), so a child's repeat sign goes back to the child's start wherever the
+child is played. Without `dc`, and with `repeat` stated without place:
+the root's flow is [0, 12) [4, 40) (length 48); the same Jump stated on
+the root at 12 goes back to 0: [0, 12) [0, 40) (length 52). A section
+break the root states at 2, before the child's start, does not change
+the child's repeat ([4, 40)); one at 6, inside the child's stretch, does
+([0, 12) [6, 40)).
+
+**Where the sections are written.** A root whose flow control lies only
+in descendants gets its atomic sections as Regions of the root: without
+`dc`, `work.create_flow_maps_from_flow_control()` writes `region_1` A
+[0, 4), `region_2` B [4, 12), `region_3` C [12, 40) on `work`, none on
+`allegro`; `flow_map_1` `default` (1, 2, 2, 3), `flow_map_2` `single`
+(1, 2, 3), `flow_map_3` `printed` (1, 2, 3), unnamed, on `work`; the
+manifest written passes the format's validator.
+
+**One jump at a position of the played axis.** The root states the Jump
+`skip` at 12 `{by: 4}` beside `allegro`'s `repeat` at 8 (12 on the
+root): `work.get_flow()` and `work.create_flow_maps_from_flow_control()`
+raise the registry's `ValueError` ("jump 'skip' lies at 12 quarters,
+where jump 'repeat' lies already: one jump lies at a coordinate, and
+several signs there are its destinations"), the second changing nothing;
+`allegro.get_flow()` still plays, since `skip` lies outside its subtree;
+with `skip` rejected the root plays as before.
+
+**The Op. 106 manifest.** The timelines and flow control of the sonata as
+its manifest states them (`beethoven_piano_sonatas`,
+`sonata_29_op106/manifest.json`): the root `clt_1` (15833/4) holds the
+four movements `clt_2` (1644 at 0), `clt_3` (516 at 1644), `clt_4` (561
+at 2160) and `clt_5` (4949/4 at 2721); `clt_2` states the brackets (a
+Jump at 953/2, `{by: 0, passes: [1]}` and `{to: jump_target_1, passes:
+[2]}`), the repeat sign at 500, the Break and the JumpTarget at 500 and
+two barlines, the others barlines only. The root's `default` flow is the
+first movement unfolded (A B A C on its axis, 4241/2) followed by the
+other three whole: runs [0, 500) [0, 953/2) [500, 15833/4), length
+15833/4 − 1644 + 4241/2 = 17739/4, no finding.
+
 **Written again: nothing is taken away, and no ID comes to name another
 stretch.** Whatever names a Region (a FlowMap written by hand, a statement
 on another element, a Jump going on at it) must find the same stretch

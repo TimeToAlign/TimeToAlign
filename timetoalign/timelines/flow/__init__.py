@@ -1,6 +1,6 @@
 """Play flow control, state flows in measures and map positions along them.
 
-The elements of flow control and their registry live in
+The elements of flow control, their registry and their views live in
 :mod:`timetoalign.timelines.flowcontrol` and are exported from here and
 from :mod:`timetoalign.timelines` as well.
 """
@@ -14,6 +14,7 @@ from ..flowcontrol import (
     FlowCondition,
     FlowControlElement,
     FlowControlRegistry,
+    FlowControlView,
     Jump,
     JumpDestination,
     JumpTarget,
@@ -53,6 +54,7 @@ __all__ = [
     "FlowControlDraft",
     "FlowControlElement",
     "FlowControlRegistry",
+    "FlowControlView",
     "FlowFinding",
     "FlowMap",
     "FlowResult",

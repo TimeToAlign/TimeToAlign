@@ -49,6 +49,7 @@ Flow:
 
 Flow control:
 - FlowControlRegistry: The flow-control elements of one timeline
+- FlowControlView: Flow-control elements read on one axis, such as a tree's
 - FlowControlElement: What the five kinds of element share
 - Jump, JumpTarget, Break, SectionBreak, Barline: The five kinds of element
 - JumpDestination: One place a Jump may go on at, and when it does
@@ -89,6 +90,7 @@ from .flow import (
     FlowCondition,
     FlowControlElement,
     FlowControlRegistry,
+    FlowControlView,
     FlowFinding,
     FlowMap,
     FlowResult,
@@ -185,6 +187,7 @@ __all__ = [
     "Gap",
     # Flow control
     "FlowControlRegistry",
+    "FlowControlView",
     "FlowControlElement",
     "Jump",
     "JumpTarget",

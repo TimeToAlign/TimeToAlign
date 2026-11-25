@@ -1,7 +1,7 @@
 """Play a timeline's flow control into a flow.
 
 :func:`play` walks an axis from 0 to its length and follows the Jumps and
-Breaks of a :class:`~timetoalign.timelines.flowcontrol.FlowControlRegistry`.
+Breaks of a :class:`~timetoalign.timelines.flowcontrol.FlowControlView`.
 It needs the elements and the length and nothing else: no measures, no
 events, no timeline, and it never reads a manifestation. The result is the
 flow as runs of the axis in the order played, and what was found on the way.
@@ -51,8 +51,8 @@ Breaks ending the flow states a condition (``ends``): a Fine ends a piece
 regularly, also where it lies between two brackets beside their Break.
 
 **Which elements are read.** Those no actor rejects
-(:meth:`FlowControlRegistry.active_elements
-<timetoalign.timelines.flowcontrol.FlowControlRegistry.active_elements>`),
+(:meth:`FlowControlView.active_elements
+<timetoalign.timelines.flowcontrol.FlowControlView.active_elements>`),
 or, for a named believer, those that actor does not reject. A ``to`` or an
 ``after`` naming an element that is not read names nothing, and two Jumps
 read at one coordinate cannot both be played: either is refused with a
@@ -86,7 +86,7 @@ from ..flowcontrol import (
     Break,
     FlowCondition,
     FlowControlElement,
-    FlowControlRegistry,
+    FlowControlView,
     Jump,
     JumpDestination,
     JumpTarget,
@@ -191,7 +191,7 @@ def _passes_hold(condition: FlowCondition, arrival: int, top: int | None) -> boo
 class _Walk:
     """The elements read once, and the counts of one walk through them."""
 
-    registry: FlowControlRegistry
+    registry: FlowControlView
     length: Coordinate
     elements: list[FlowControlElement]
     jumps: dict[Any, Jump] = field(default_factory=dict[Any, Jump])
@@ -414,7 +414,7 @@ class _Walk:
 
 
 def _walk(
-    registry: FlowControlRegistry,
+    registry: FlowControlView,
     length: _Number | Coordinate,
     believer: str | None,
     beliefs: Collection[BeliefState],
@@ -468,7 +468,7 @@ def _gap(walk: _Walk, start: Any, end: Any) -> FlowFinding:
 
 
 def play(
-    registry: FlowControlRegistry,
+    registry: FlowControlView,
     length: _Number | Coordinate,
     *,
     convention: FlowConvention | str = FlowConvention.default,
@@ -484,8 +484,8 @@ def play(
         convention: ``default`` (every Jump and Break acts), ``single``
             (once through) or ``printed`` (the axis as it stands).
         believer: The actor whose beliefs alone decide which elements are
-            read (:meth:`FlowControlRegistry.active_elements
-            <timetoalign.timelines.flowcontrol.FlowControlRegistry.active_elements>`);
+            read (:meth:`FlowControlView.active_elements
+            <timetoalign.timelines.flowcontrol.FlowControlView.active_elements>`);
             None reads the elements no actor rejects.
         beliefs: With a believer, the belief states read; every state but
             ``"false"`` by default.
@@ -578,7 +578,7 @@ def play(
 
 
 def atomic_sections(
-    registry: FlowControlRegistry,
+    registry: FlowControlView,
     length: _Number | Coordinate,
     *,
     believer: str | None = None,

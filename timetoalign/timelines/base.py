@@ -74,7 +74,7 @@ from .engines import (
     empty_external_reference_table,
 )
 from .engines.events import _named
-from .flowcontrol import FlowControlRegistry
+from .flowcontrol import FlowControlElement, FlowControlRegistry, FlowControlView
 from .manifest import (
     Manifest,
     ManifestFileMixin,
@@ -859,6 +859,92 @@ class Timeline(
     def flow_control(self) -> FlowControlRegistry:
         """The timeline's flow-control elements, bound to its axis."""
         return self._flow_control
+
+    @property
+    def tree_flow_control(self) -> FlowControlView:
+        """The flow control of this timeline and of its descendants, on its axis.
+
+        Flow control holds across descendants: a timeline is played with
+        its own elements and those of every descendant of its unit, each
+        element at its position on this timeline's axis (the coordinate the
+        descendant states it at plus the descendant's offset from here).
+        The view is what :meth:`get_flow` and
+        :meth:`create_flow_maps_from_flow_control` play; the elements stay
+        stored on the timeline stating them (:attr:`flow_control`) and keep
+        their IDs.
+
+        A destination's ``to`` names a jump target or a place of any
+        timeline of the tree (the start of a Region, of a timeline), read on
+        this axis; a destination without place goes on at the nearest
+        section break before its Jump from the start of the timeline
+        stating the Jump on, else at that start. A descendant in another
+        unit would be left out, since its positions do not lie on this
+        axis; there is none, as a child in another unit than its parent's is
+        refused (:meth:`add_child`), so the view gathers the whole subtree.
+
+        Raises:
+            ValueError: If the elements gathered cannot be played together,
+                in the words a registry refuses an element with: two Jumps
+                not rejected lie at one position of this axis, or a ``to`` or
+                an ``after`` names nothing of the tree.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> from timetoalign.timelines.flowcontrol import Jump, JumpDestination
+            >>> work = ContinuousLogicalTimeline(length=20, uid="work")
+            >>> movement = work.create_child(12, 4, uid="movement")
+            >>> _ = movement.flow_control.add(
+            ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+            >>> work.flow_control.elements, work.tree_flow_control.jumps
+            ((), (Jump('jump_1' @ 12 quarters, 1 destination),))
+            >>> flow = work.get_flow()
+            >>> flow.length
+            Coordinate(Fraction(28, 1), quarters)
+            >>> flow.unfold(6)
+            [Coordinate(Fraction(6, 1), quarters), Coordinate(Fraction(14, 1), quarters)]
+        """
+        number_type = self._number_type
+        elements: list[FlowControlElement] = []
+        places: dict[str, Coordinate] = {}
+        origins: dict[str, Coordinate] = {}
+        pending: list[tuple[Timeline, Any]] = [
+            (self, Coordinate(0, self._unit, number_type=number_type).value)
+        ]
+        while pending:
+            timeline, origin = pending.pop()
+
+            def here(coordinate: Coordinate, origin: Any = origin) -> Coordinate:
+                return Coordinate(
+                    origin + express_scalar_as(coordinate, number_type).value,
+                    self._unit,
+                    number_type=number_type,
+                )
+
+            start = here(Coordinate(0, self._unit, number_type=number_type))
+            for element in timeline._flow_control.elements:
+                moved = here(element.coordinate)
+                elements.append(
+                    element
+                    if moved == element.coordinate
+                    else replace(element, coordinate=moved)
+                )
+                origins[element.id] = start
+            places.update(
+                (place_id, here(place))
+                for place_id, place in timeline._flow_places().items()
+            )
+            pending.extend(
+                (child, here(timeline._child_offsets[child_id]).value)
+                for child_id, child in timeline._children.items()
+            )
+        return FlowControlView._gathered(
+            elements,
+            unit=self._unit,
+            number_type=number_type,
+            places=places,
+            origins=origins,
+        )
 
     # endregion
 

@@ -250,6 +250,7 @@ _DEFERRED_EXPORTS = {
     "UnknownLengthError": ("timetoalign.timelines", "UnknownLengthError"),
     # Flow control
     "FlowControlRegistry": ("timetoalign.timelines", "FlowControlRegistry"),
+    "FlowControlView": ("timetoalign.timelines", "FlowControlView"),
     "FlowControlElement": ("timetoalign.timelines", "FlowControlElement"),
     "Jump": ("timetoalign.timelines", "Jump"),
     "JumpTarget": ("timetoalign.timelines", "JumpTarget"),
@@ -442,6 +443,7 @@ __all__ = [
     "Integrity",
     # Flow control
     "FlowControlRegistry",
+    "FlowControlView",
     "FlowControlElement",
     "Jump",
     "JumpTarget",

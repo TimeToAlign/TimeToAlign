@@ -8,6 +8,7 @@ Op. 106, each derived by hand in the README.
 from __future__ import annotations
 
 import os
+import re
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ from timetoalign.timelines import (
     VirtualTimeline,
 )
 from timetoalign.timelines.flowcontrol import (
+    Barline,
     Break,
     Jump,
     JumpDestination,
@@ -983,3 +985,348 @@ class TestChild:
             ("region_5", "region_6", "region_5", "region_6", "region_2"),
         )
         assert _maps(root)[3:] == FINALE_MAPS
+
+
+# region A timeline played with its tree
+
+
+def _work(*, dc: bool = True) -> tuple[Timeline, Timeline, Timeline]:
+    """The root ``work`` with ``allegro`` (holding ``codetta``) and ``finale``.
+
+    ``allegro`` states the repeat (``start`` at 0, ``repeat`` at 8),
+    ``codetta`` a barline at its end, the root the da capo ``dc`` at 32.
+    """
+    work = ContinuousLogicalTimeline(length=40, uid="work")
+    allegro = work.create_child(12, 4, uid="allegro", name="Allegro")
+    finale = work.create_child(12, 20, uid="finale", name="Finale")
+    codetta = allegro.create_child(4, 8, uid="codetta")
+    allegro.flow_control.add_all(
+        [
+            JumpTarget(q(0), manifestation="repeat_start", id="start"),
+            Jump(
+                q(8),
+                [
+                    JumpDestination(
+                        to="start", repeat_count=1, manifestation="repeat_end"
+                    )
+                ],
+                id="repeat",
+            ),
+        ]
+    )
+    codetta.flow_control.add(
+        Barline(q(4), manifestation="final_barline", id="codetta_end")
+    )
+    if dc:
+        work.flow_control.add(_dc())
+    return work, allegro, finale
+
+
+def _dc() -> Jump:
+    return Jump(
+        q(32),
+        [
+            JumpDestination(
+                to="work", repeat_count=1, reset=False, manifestation="da_capo"
+            )
+        ],
+        id="dc",
+    )
+
+
+def _runs(flow: PlayedFlow) -> list[tuple[Fraction, Fraction]]:
+    return [(chunk.source.start.value, chunk.source.end.value) for chunk in flow.chunks]
+
+
+def _placed(elements: Any) -> list[tuple[str, Fraction]]:
+    return [(element.id, element.coordinate.value) for element in elements]
+
+
+F = Fraction
+
+
+class TestTree:
+    """Flow control stated anywhere in a tree, played on one axis."""
+
+    def test_the_view_gathers_the_subtree_on_the_axis(self) -> None:
+        work, allegro, finale = _work()
+        assert _placed(work.tree_flow_control.elements) == [
+            ("start", F(4)),
+            ("repeat", F(12)),
+            ("codetta_end", F(16)),
+            ("dc", F(32)),
+        ]
+        assert _placed(allegro.tree_flow_control.elements) == [
+            ("start", F(0)),
+            ("repeat", F(8)),
+            ("codetta_end", F(12)),
+        ]
+        assert finale.tree_flow_control.elements == ()
+        assert _placed(work.flow_control.elements) == [("dc", F(32))]
+        assert _placed(allegro.flow_control.elements) == [
+            ("start", F(0)),
+            ("repeat", F(8)),
+        ]
+
+    def test_the_root_plays_its_tree(self) -> None:
+        work, _, _ = _work()
+        before = _state(work)
+        flow = work.get_flow()
+        assert _runs(flow) == [(F(0), F(12)), (F(4), F(32)), (F(0), F(40))]
+        assert flow.length == q(80)
+        assert flow.findings == ()
+        for convention in ("single", "printed"):
+            once = work.get_flow(convention)
+            assert (_runs(once), once.length) == ([(F(0), F(40))], q(40))
+        assert _state(work) == before
+
+    def test_the_same_elements_stated_on_the_root_play_the_same(self) -> None:
+        work, _, _ = _work()
+        flat = ContinuousLogicalTimeline(length=40, uid="work")
+        flat.flow_control.add_all(
+            [
+                JumpTarget(q(4), manifestation="repeat_start", id="start"),
+                Jump(
+                    q(12),
+                    [
+                        JumpDestination(
+                            to="start", repeat_count=1, manifestation="repeat_end"
+                        )
+                    ],
+                    id="repeat",
+                ),
+                Barline(q(16), manifestation="final_barline", id="codetta_end"),
+                _dc(),
+            ]
+        )
+        assert work.tree_flow_control.elements == flat.flow_control.elements
+        for convention in FlowConvention:
+            gathered, stated = work.get_flow(convention), flat.get_flow(convention)
+            assert (_runs(gathered), gathered.length) == (
+                _runs(stated),
+                stated.length,
+            )
+
+    def test_a_child_plays_its_subtree(self) -> None:
+        _, allegro, _ = _work()
+        flow = allegro.get_flow()
+        assert _runs(flow) == [(F(0), F(8)), (F(0), F(12))]
+        assert (flow.timeline, flow.length, flow.findings) == ("allegro", q(20), ())
+        alone = ContinuousLogicalTimeline(length=12, uid="alone")
+        alone.flow_control.add_all(
+            [
+                JumpTarget(q(0), id="start"),
+                Jump(q(8), [JumpDestination(to="start", repeat_count=1)], id="repeat"),
+            ]
+        )
+        assert (_runs(alone.get_flow()), alone.get_flow().length) == (
+            _runs(flow),
+            flow.length,
+        )
+
+    def test_a_repeat_without_place_goes_back_to_the_start_of_its_timeline(
+        self,
+    ) -> None:
+        def tree(*section_breaks: int) -> Timeline:
+            work = ContinuousLogicalTimeline(length=40, uid="work")
+            allegro = work.create_child(12, 4, uid="allegro")
+            allegro.flow_control.add(
+                Jump(q(8), [JumpDestination(repeat_count=1)], id="repeat")
+            )
+            work.flow_control.add_all(SectionBreak(q(at)) for at in section_breaks)
+            return work
+
+        flow = tree().get_flow()
+        assert (_runs(flow), flow.length) == ([(F(0), F(12)), (F(4), F(40))], q(48))
+        assert _runs(tree(2).get_flow()) == [(F(0), F(12)), (F(4), F(40))]
+        assert _runs(tree(6).get_flow()) == [(F(0), F(12)), (F(6), F(40))]
+        flat = ContinuousLogicalTimeline(length=40, uid="work")
+        flat.flow_control.add(Jump(q(12), [JumpDestination(repeat_count=1)]))
+        flow = flat.get_flow()
+        assert (_runs(flow), flow.length) == ([(F(0), F(12)), (F(0), F(40))], q(52))
+
+    def test_a_root_whose_flow_control_lies_in_descendants_gets_the_sections(
+        self,
+    ) -> None:
+        work, allegro, _ = _work(dc=False)
+        written = work.create_flow_maps_from_flow_control()
+        assert written is not None and written.findings == ()
+        assert [(r.id, r.name, str(r.as_interval)) for r in written.sections] == [
+            ("region_1", "A", "[0, 4) quarters"),
+            ("region_2", "B", "[4, 12) quarters"),
+            ("region_3", "C", "[12, 40) quarters"),
+        ]
+        assert work.list_regions() == ["region_1", "region_2", "region_3"]
+        assert allegro.list_regions() == []
+        assert _maps(work) == [
+            (
+                "flow_map_1",
+                FlowConvention.default,
+                None,
+                ("region_1", "region_2", "region_2", "region_3"),
+            ),
+            (
+                "flow_map_2",
+                FlowConvention.single,
+                None,
+                ("region_1", "region_2", "region_3"),
+            ),
+            (
+                "flow_map_3",
+                FlowConvention.printed,
+                None,
+                ("region_1", "region_2", "region_3"),
+            ),
+        ]
+        timetoshare.validate(work.to_dict())
+
+    def test_two_jumps_at_one_position_of_the_played_axis_are_refused(self) -> None:
+        work, allegro, _ = _work(dc=False)
+        work.flow_control.add(Jump(q(12), [JumpDestination(by=4)], id="skip"))
+        refusal = re.escape(
+            "jump 'skip' lies at 12 quarters, where jump 'repeat' lies already: "
+            "one jump lies at a coordinate, and several signs there are its "
+            "destinations"
+        )
+        with pytest.raises(ValueError, match=f"^{refusal}$"):
+            work.get_flow()
+        before = _state(work)
+        with pytest.raises(ValueError, match=f"^{refusal}$"):
+            work.create_flow_maps_from_flow_control()
+        assert _state(work) == before
+        assert _runs(allegro.get_flow()) == [(F(0), F(8)), (F(0), F(12))]
+        work.flow_control.with_belief("skip", EDITOR, "false", date="2026-11-25")
+        assert _runs(work.get_flow()) == [(F(0), F(12)), (F(4), F(40))]
+
+
+def _op106_manifest() -> dict[str, Any]:
+    """The timelines and flow control of Op. 106 as its manifest states them."""
+
+    def barline(identifier: str, at: list[int], manifestation: str) -> dict[str, Any]:
+        return {
+            "coordinate": at,
+            "id": identifier,
+            "manifestation": manifestation,
+            "role": "barline",
+        }
+
+    def movement(
+        identifier: str,
+        name: str,
+        length: list[int],
+        offset: list[int],
+        flow_control: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "flow_control": flow_control,
+            "id": identifier,
+            "length": length,
+            "locked": True,
+            "name": name,
+            "offset": offset,
+            "unit": "quarters",
+        }
+
+    return {
+        "timetoshare": "0.2.0",
+        "timelines": [
+            {
+                "children": [
+                    movement(
+                        "#clt_2",
+                        "Allegro",
+                        [1644, 1],
+                        [0, 1],
+                        [
+                            {
+                                "coordinate": [953, 2],
+                                "id": "#jump_1",
+                                "role": "jump",
+                                "targets": [
+                                    {
+                                        "by": [0, 1],
+                                        "manifestation": "volta",
+                                        "passes": [1],
+                                    },
+                                    {
+                                        "manifestation": "volta",
+                                        "passes": [2],
+                                        "to": "#jump_target_1",
+                                    },
+                                ],
+                            },
+                            {
+                                "coordinate": [500, 1],
+                                "id": "#break_1",
+                                "manifestation": "volta",
+                                "role": "break",
+                            },
+                            {
+                                "coordinate": [500, 1],
+                                "id": "#jump_2",
+                                "role": "jump",
+                                "targets": [
+                                    {"manifestation": "repeat_end", "repeat_count": 1}
+                                ],
+                            },
+                            {
+                                "coordinate": [500, 1],
+                                "id": "#jump_target_1",
+                                "manifestation": "volta",
+                                "role": "jump_target",
+                            },
+                            barline("#barline_1", [824, 1], "double_barline"),
+                            barline("#barline_2", [1644, 1], "final_barline"),
+                        ],
+                    ),
+                    movement(
+                        "#clt_3",
+                        "Scherzo. Assai vivace",
+                        [516, 1],
+                        [1644, 1],
+                        [
+                            barline("#barline_3", [138, 1], "double_barline"),
+                            barline("#barline_4", [516, 1], "final_barline"),
+                        ],
+                    ),
+                    movement(
+                        "#clt_4",
+                        "Adagio sostenuto",
+                        [561, 1],
+                        [2160, 1],
+                        [barline("#barline_5", [561, 1], "final_barline")],
+                    ),
+                    movement(
+                        "#clt_5",
+                        "Introduzione. Largo \u2013 Allegro risoluto",
+                        [4949, 4],
+                        [2721, 1],
+                        [
+                            barline("#barline_6", [75, 4], "double_barline"),
+                            barline("#barline_7", [269, 4], "double_barline"),
+                            barline("#barline_8", [4949, 4], "final_barline"),
+                        ],
+                    ),
+                ],
+                "id": "#clt_1",
+                "length": [15833, 4],
+                "name": "Op. 106",
+                "unit": "quarters",
+            }
+        ],
+    }
+
+
+def test_op106_the_root_plays_the_first_movement_unfolded_then_the_others() -> None:
+    manifest = _op106_manifest()
+    timetoshare.validate(manifest)
+    sonata = Timeline.from_dict(manifest)
+    flow = sonata.get_flow()
+    assert _runs(flow) == [(F(0), F(500)), (F(0), F(953, 2)), (F(500), F(15833, 4))]
+    assert flow.length == q(F(15833, 4) - 1644 + F(4241, 2)) == q(F(17739, 4))
+    assert flow.findings == ()
+    first = sonata.get_child("clt_2").get_flow()
+    assert (first.length, first.findings) == (q(F(4241, 2)), ())
+
+
+# endregion

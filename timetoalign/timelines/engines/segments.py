@@ -525,6 +525,11 @@ class SegmentsMixin:
     ) -> "PlayedFlow":
         """Play this timeline's flow control and return the flow, writing nothing.
 
+        What is played is the flow control of the timeline and of its
+        descendants of its unit, on its axis (:attr:`tree_flow_control
+        <timetoalign.timelines.Timeline.tree_flow_control>`): a root plays
+        its whole tree, a child its own subtree.
+
         Args:
             convention: ``default`` (every Jump and Break acts), ``single``
                 (once through) or ``printed`` (the axis as it stands).
@@ -538,13 +543,14 @@ class SegmentsMixin:
             and of the flow convert through it. Its ``findings`` are what
             playing found on the way (a flow that never ends, a flow ending
             at a Break, a stretch never played); only the ``default`` flow
-            has any. A timeline without flow control is played from its
+            has any. A timeline whose tree holds no flow control is played from its
             start to its end.
 
         Raises:
             UnknownLengthError: If the length is unknown.
             ValueError: If the convention is unknown, or the flow control
-                cannot be played.
+                cannot be played (two Jumps of the tree at one position of
+                this axis among them).
 
         Examples:
             >>> from timetoalign.core import Coordinate
@@ -564,7 +570,7 @@ class SegmentsMixin:
         from ..flow.flowmap import PlayedFlow
 
         played = play(
-            self._flow_control,
+            self.tree_flow_control,
             self._require_length("play its flow control"),
             convention=convention,
             believer=believer,
@@ -588,8 +594,12 @@ class SegmentsMixin:
     ) -> "ComputedFlows | None":
         """Write this timeline's atomic sections and its computed FlowMaps.
 
-        The flow control is played with the three conventions
-        (:func:`~timetoalign.timelines.flow.engine.play`). The atomic
+        The flow control of the timeline and of its descendants of its unit
+        (:attr:`tree_flow_control
+        <timetoalign.timelines.Timeline.tree_flow_control>`) is played on
+        the timeline's axis with the three conventions
+        (:func:`~timetoalign.timelines.flow.engine.play`): a root plays its
+        whole tree, a child its own subtree. The atomic
         sections (:func:`~timetoalign.timelines.flow.engine.atomic_sections`)
         become Regions of the timeline, each named by its letter and stating
         the type ``tts:AtomicSection`` with the provenance method
@@ -599,9 +609,10 @@ class SegmentsMixin:
         FlowMap names its ``convention`` and the provenance method
         ``inferred``.
 
-        A FlowMap names a root timeline. On a child, the Regions are the
-        child's and the FlowMaps are stored on the root of its tree, listing
-        the child's Regions; a FlowMap written there anew is named after the
+        A FlowMap names a root timeline. On a root, the Regions are the
+        root's, also where its flow control lies only in descendants. On a
+        child, the Regions are the child's and the FlowMaps are stored on
+        the root of its tree, listing the child's Regions; a FlowMap written there anew is named after the
         child and its convention (``"Allegro, default"``). The computed
         FlowMaps of a timeline are those of its root that list its Regions
         only, so the flows of several children of one root stand side by
@@ -644,7 +655,7 @@ class SegmentsMixin:
             The atomic sections as they stand now (Regions kept and
             written, in the order of the axis), the computed FlowMaps, and
             the findings of the ``default`` flow; or None for a timeline
-            without flow control, which writes nothing.
+            whose tree holds no flow control, which writes nothing.
 
         Raises:
             ValueError: If the flow control cannot be played; an atomic
@@ -696,15 +707,16 @@ class SegmentsMixin:
         owner = self
         while owner._parent is not None:
             owner = owner._parent
-        if not self._flow_control.elements:
+        flow_control = self.tree_flow_control
+        if not flow_control.elements:
             return None
         length = self._require_length("play its flow control")
         filtered = {"believer": believer, "beliefs": beliefs}
-        sections = atomic_sections(self._flow_control, length, **filtered)
+        sections = atomic_sections(flow_control, length, **filtered)
         orders: dict[FlowConvention, tuple[int, ...]] = {}
         findings: tuple[FlowFinding, ...] = ()
         for convention in FlowConvention:
-            played = play(self._flow_control, length, convention=convention, **filtered)
+            played = play(flow_control, length, convention=convention, **filtered)
             orders[convention] = tuple(
                 index
                 for run in played.runs

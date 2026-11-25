@@ -213,7 +213,10 @@ def extend_schema(base: pa.Schema, extra_fields: list[pa.Field]) -> pa.Schema:
     """
     fields = list(base)
     fields.extend(extra_fields)
-    return pa.schema(fields, metadata=base.metadata)
+    metadata: dict[bytes | str, bytes | str] | None = (
+        None if base.metadata is None else {**base.metadata}
+    )
+    return pa.schema(fields, metadata=metadata)
 
 
 def get_unit_from_schema(schema: pa.Schema) -> TimeUnit | None:

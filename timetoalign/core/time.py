@@ -2824,6 +2824,45 @@ class _AxisField(SemanticField[_AxisFieldScalarT]):
             raise self._unbound_error()
         return unit
 
+    @staticmethod
+    def _resolve_metadata(
+        pa_field: pa.Field[pa.DataType],
+        unit_override: TimeUnit | str | None,
+        nt_override: NumberType | str | None,
+    ) -> tuple[TimeUnit | None, NumberType]:
+        """Extract unit and number_type from a ``pa.Field``'s metadata."""
+        meta: dict[str, Any] = {}
+        raw_meta = pa_field.metadata
+        if raw_meta:
+            if TIMETOALIGN_METADATA_KEY in raw_meta:
+                meta = parse_metadata_blob(raw_meta[TIMETOALIGN_METADATA_KEY])
+            else:
+                meta = {
+                    k.decode("utf-8"): v.decode("utf-8") for k, v in raw_meta.items()
+                }
+
+        if unit_override is not None:
+            resolved_unit = (
+                TimeUnit(unit_override)
+                if isinstance(unit_override, str)
+                else unit_override
+            )
+        elif "unit" in meta:
+            resolved_unit = TimeUnit(meta["unit"])
+        else:
+            resolved_unit = None  # caller decides if this is fatal
+
+        if nt_override is not None:
+            resolved_nt = (
+                NumberType(nt_override) if isinstance(nt_override, str) else nt_override
+            )
+        elif "number_type" in meta:
+            resolved_nt = NumberType(meta["number_type"])
+        else:
+            resolved_nt = NumberType.float
+
+        return resolved_unit, resolved_nt
+
     def _repr_bound(self) -> str:
         """The repr of a bound field."""
         return super().__repr__()
@@ -2875,7 +2914,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
 
     def __init__(
         self,
-        raw: StructField | DenominateNumberField | None = None,
+        raw: object = None,
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
         *,
@@ -3001,45 +3040,6 @@ class TimeScalarField(_AxisField[TimeScalarT]):
                 "bare array or StructField"
             )
         return NumberType(number_type) if isinstance(number_type, str) else number_type
-
-    @staticmethod
-    def _resolve_metadata(
-        pa_field: pa.Field[pa.DataType],
-        unit_override: TimeUnit | str | None,
-        nt_override: NumberType | str | None,
-    ) -> tuple[TimeUnit | None, NumberType]:
-        """Extract unit and number_type from a ``pa.Field``'s metadata."""
-        meta: dict[str, Any] = {}
-        raw_meta = pa_field.metadata
-        if raw_meta:
-            if TIMETOALIGN_METADATA_KEY in raw_meta:
-                meta = parse_metadata_blob(raw_meta[TIMETOALIGN_METADATA_KEY])
-            else:
-                meta = {
-                    k.decode("utf-8"): v.decode("utf-8") for k, v in raw_meta.items()
-                }
-
-        if unit_override is not None:
-            resolved_unit = (
-                TimeUnit(unit_override)
-                if isinstance(unit_override, str)
-                else unit_override
-            )
-        elif "unit" in meta:
-            resolved_unit = TimeUnit(meta["unit"])
-        else:
-            resolved_unit = None  # caller decides if this is fatal
-
-        if nt_override is not None:
-            resolved_nt = (
-                NumberType(nt_override) if isinstance(nt_override, str) else nt_override
-            )
-        elif "number_type" in meta:
-            resolved_nt = NumberType(meta["number_type"])
-        else:
-            resolved_nt = NumberType.float
-
-        return resolved_unit, resolved_nt
 
     # -- factories ----------------------------------------------------------
 
@@ -3840,7 +3840,7 @@ class IdCoordinateField(CoordinateField):
         raw: StructField,
         unit: Any,
         number_type: Any,
-        timeline_id: str,
+        timeline_id: object,
     ) -> None:
         super().__init__(raw, unit, number_type)
         if not isinstance(timeline_id, str) or not timeline_id:
@@ -3874,8 +3874,8 @@ class IdCoordinateField(CoordinateField):
     def from_field(
         cls,
         source: (
-            pa.Array
-            | pa.ChunkedArray
+            pa.Array[Any]
+            | pa.ChunkedArray[Any]
             | StructField
             | pa.Field[pa.DataType]
             | tuple[pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]]
@@ -4001,7 +4001,7 @@ class IdDurationField(DurationField):
         raw: StructField,
         unit: Any,
         number_type: Any,
-        timeline_id: str,
+        timeline_id: object,
     ) -> None:
         super().__init__(raw, unit, number_type)
         if not isinstance(timeline_id, str) or not timeline_id:
@@ -4035,8 +4035,8 @@ class IdDurationField(DurationField):
     def from_field(
         cls,
         source: (
-            pa.Array
-            | pa.ChunkedArray
+            pa.Array[Any]
+            | pa.ChunkedArray[Any]
             | StructField
             | pa.Field[pa.DataType]
             | tuple[pa.Array[Any] | pa.ChunkedArray[Any] | None, pa.Field[pa.DataType]]
@@ -4134,7 +4134,7 @@ OptionalCoordinate = Union[Coordinate, None]
 
 COORDINATE_CELL_TYPE: pa.StructType = pa.struct(
     [
-        *RATIONAL_STRUCT_TYPE,
+        *_member_fields(RATIONAL_STRUCT_TYPE),
         pa.field("unit", pa.string(), nullable=True),
         pa.field("number_type", pa.string(), nullable=True),
     ]
@@ -4201,15 +4201,15 @@ def axis_coordinate_cells(
     )
     valid = numbers.is_valid()
     n = len(numbers)
-    return pa.StructArray.from_arrays(
+    return _struct_array_from(
         [
-            numbers.field("value"),
-            numbers.field("numerator"),
-            numbers.field("denominator"),
+            _struct_child(numbers, "value"),
+            _struct_child(numbers, "numerator"),
+            _struct_child(numbers, "denominator"),
             pc.if_else(valid, pa.scalar(unit.value), pa.nulls(n, pa.string())),
             pc.if_else(valid, pa.scalar(number_type.name), pa.nulls(n, pa.string())),
         ],
-        fields=list(COORDINATE_CELL_TYPE),
+        fields=_member_fields(COORDINATE_CELL_TYPE),
         mask=pc.invert(valid),
     )
 
@@ -4349,7 +4349,7 @@ sides (:data:`RATIONAL_STRUCT_TYPE`); :func:`package_numbers` and
 
 PACKAGE_COORDINATE_CELL_TYPE: pa.StructType = pa.struct(
     [
-        *PACKAGE_NUMBER_TYPE,
+        *_member_fields(PACKAGE_NUMBER_TYPE),
         pa.field("unit", pa.string(), nullable=True),
         pa.field("number_type", pa.string(), nullable=True),
     ]
@@ -4364,17 +4364,15 @@ package form (:func:`package_cells`, :func:`cells_from_package`).
 _NUMBER_MEMBERS = ("numerator", "denominator", "value")
 
 
-def _members(array: Any, members: Sequence[str], what: str) -> dict[str, pa.Array]:
+def _members(array: Any, members: Sequence[str], what: str) -> dict[str, pa.Array[Any]]:
     """The members of a struct column by name, nulls of a null cell applied.
 
     Raises:
         ValueError: If *array* is not a struct holding exactly *members*.
     """
-    if isinstance(array, pa.ChunkedArray):
+    if _is_chunked(array):
         array = array.combine_chunks()
-    names = (
-        [field.name for field in array.type] if pa.types.is_struct(array.type) else []
-    )
+    names = list(array.type.names) if pa.types.is_struct(array.type) else []
     if sorted(names) != sorted(members):
         raise ValueError(
             f"{what} is not a struct of the members {list(members)}: its type is "
@@ -4388,7 +4386,7 @@ def _members(array: Any, members: Sequence[str], what: str) -> dict[str, pa.Arra
 _EXACT_DOUBLE_INT = 2**53
 
 
-def _is(number_types: pa.Array, name: str) -> pa.BooleanArray:
+def _is(number_types: pa.Array[Any], name: str) -> pa.BooleanArray:
     """Mask: the rows whose number type is *name* (a null type is no type)."""
     return _filled_mask(pc.equal(number_types, pa.scalar(name)), pa.scalar(False))
 
@@ -4419,7 +4417,7 @@ def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
         [{'numerator': None, 'denominator': None, 'value': 0.5}]
     """
     sides = _members(numbers, _NUMBER_MEMBERS, "A number column")
-    if isinstance(number_types, pa.ChunkedArray):
+    if _is_chunked(number_types):
         number_types = number_types.combine_chunks()
     valid = _struct_array(numbers).is_valid()
     is_int = _is(number_types, "int")
@@ -4432,13 +4430,13 @@ def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
             f"Row {row} holds a number of the number type "
             f"{number_types[row].as_py()!r}, not 'int', 'fraction' or 'float'"
         )
-    return pa.StructArray.from_arrays(
+    return _struct_array_from(
         [
             pc.if_else(is_float, pa.scalar(None, pa.int64()), sides["numerator"]),
             pc.if_else(is_fraction, sides["denominator"], pa.scalar(None, pa.int64())),
             pc.if_else(is_float, sides["value"], pa.scalar(None, pa.float64())),
         ],
-        fields=list(PACKAGE_NUMBER_TYPE),
+        fields=_member_fields(PACKAGE_NUMBER_TYPE),
         mask=pc.invert(valid),
     )
 
@@ -4483,7 +4481,7 @@ def numbers_from_package(
         [{'value': 3.0, 'numerator': 3, 'denominator': 1}]
     """
     sides = _members(numbers, _NUMBER_MEMBERS, where)
-    if isinstance(number_types, pa.ChunkedArray):
+    if _is_chunked(number_types):
         number_types = number_types.combine_chunks()
     valid = _struct_array(numbers).is_valid()
     numerator, denominator, value = (sides[name] for name in _NUMBER_MEMBERS)
@@ -4550,13 +4548,13 @@ def numbers_from_package(
     # float key.
     out_x = np.where(float_rows, x, _ratio_values(n, d))
     null = pc.invert(valid).to_numpy(zero_copy_only=False)
-    return pa.StructArray.from_arrays(
+    return _struct_array_from(
         [
             pa.array(out_x, pa.float64(), mask=null),
             pa.array(out_n, pa.int64(), mask=null),
             pa.array(out_d, pa.int64(), mask=null),
         ],
-        fields=list(RATIONAL_STRUCT_TYPE),
+        fields=_member_fields(RATIONAL_STRUCT_TYPE),
         mask=pa.array(null),
     )
 
@@ -4577,15 +4575,15 @@ def package_cells(cells: Any) -> pa.StructArray:
         cells, list(COORDINATE_CELL_TYPE.names), "A coordinate cell column"
     )
     valid = _struct_array(cells).is_valid()
-    numbers = pa.StructArray.from_arrays(
+    numbers = _struct_array_from(
         [members[name] for name in RATIONAL_STRUCT_TYPE.names],
-        fields=list(RATIONAL_STRUCT_TYPE),
+        fields=_member_fields(RATIONAL_STRUCT_TYPE),
         mask=pc.invert(valid),
     )
     written = package_numbers(numbers, members["number_type"])
-    return pa.StructArray.from_arrays(
+    return _struct_array_from(
         [*written.flatten(), members["unit"], members["number_type"]],
-        fields=list(PACKAGE_COORDINATE_CELL_TYPE),
+        fields=_member_fields(PACKAGE_COORDINATE_CELL_TYPE),
         mask=pc.invert(valid),
     )
 
@@ -4617,15 +4615,15 @@ def cells_from_package(
         raise ValueError(
             f"{where} row {pc.index(unitless, True).as_py()}: it names no unit"
         )
-    numbers = pa.StructArray.from_arrays(
+    numbers = _struct_array_from(
         [members[name] for name in _NUMBER_MEMBERS],
-        fields=list(PACKAGE_NUMBER_TYPE),
+        fields=_member_fields(PACKAGE_NUMBER_TYPE),
         mask=pc.invert(valid),
     )
     read = numbers_from_package(numbers, members["number_type"], where=where)
-    return pa.StructArray.from_arrays(
+    return _struct_array_from(
         [*read.flatten(), members["unit"], members["number_type"]],
-        fields=list(COORDINATE_CELL_TYPE),
+        fields=_member_fields(COORDINATE_CELL_TYPE),
         mask=pc.invert(valid),
     )
 
@@ -4714,7 +4712,7 @@ class SharedAxisField(_AxisField[AxisScalarT]):
             self._unit = None
             self._number_type = NumberType.float
             return
-        resolved_unit, resolved_number_type = TimeScalarField._resolve_metadata(
+        resolved_unit, resolved_number_type = self._resolve_metadata(
             raw.field, unit, number_type
         )
         if resolved_unit is None:
@@ -4817,8 +4815,8 @@ class SharedAxisField(_AxisField[AxisScalarT]):
     def from_field(
         cls,
         source: (
-            pa.Array
-            | pa.ChunkedArray
+            pa.Array[Any]
+            | pa.ChunkedArray[Any]
             | StructField
             | pa.Field[pa.DataType]
             | tuple[pa.Array[Any] | None, pa.Field[pa.DataType]]
@@ -4844,14 +4842,14 @@ class SharedAxisField(_AxisField[AxisScalarT]):
             A live or blueprint field.
         """
         cls._warn_ignored_keywords(kw)
-        if isinstance(source, tuple):
+        if _is_tuple(source):
             data, field = source
             return cls(StructField(data, field), unit, number_type)
-        if isinstance(source, pa.Field):
+        if _is_arrow_field(source):
             return cls(StructField(None, source), unit, number_type)
         if isinstance(source, StructField):
             return cls(source, unit, number_type)
-        if isinstance(source, (pa.Array, pa.ChunkedArray)):
+        if _is_arrow_column(source):
             field_name = name if name is not None else cls._default_name()
             return cls(
                 StructField(source, pa.field(field_name, source.type)),
@@ -5098,9 +5096,12 @@ class IntervalField(SharedAxisField[Interval]):
     def _declares_interval(self) -> bool:
         """Whether the declared struct holds ``start`` and ``end`` as number structs."""
         declared = self.pa_type
-        return isinstance(declared, pa.StructType) and all(
+        if not isinstance(declared, pa.StructType):
+            return False
+        members = _member_fields(declared)
+        return all(
             declared.get_field_index(member) >= 0
-            and declared.field(member).type == RATIONAL_STRUCT_TYPE
+            and members[declared.get_field_index(member)].type == RATIONAL_STRUCT_TYPE
             for member in ("start", "end")
         )
 
@@ -5125,7 +5126,7 @@ class IntervalField(SharedAxisField[Interval]):
                 number_type=self.number_type,
             )
         array = _struct_array(self.to_pyarrow())
-        child = array.field(name)
+        child = _struct_child(array, name)
         outer_valid = array.is_valid()
         child = pc.if_else(outer_valid, child, pa.scalar(None, type=child.type))
         return CoordinateField.from_field(
@@ -5168,7 +5169,7 @@ class IntervalField(SharedAxisField[Interval]):
 # ---------------------------------------------------------------------------
 
 
-def _resolve_timeline_id(source: Any, override: str | None) -> str:
+def _resolve_timeline_id(source: Any, override: object) -> str:
     """Resolve ``timeline_id`` from a kwarg override or field metadata."""
     if override is not None:
         if not isinstance(override, str) or not override:
@@ -5178,9 +5179,9 @@ def _resolve_timeline_id(source: Any, override: str | None) -> str:
         return override
 
     pa_field: pa.Field[pa.DataType] | None = None
-    if isinstance(source, tuple) and len(source) == 2:
+    if _is_tuple(source) and len(source) == 2:
         pa_field = source[1]
-    elif isinstance(source, pa.Field):
+    elif _is_arrow_field(source):
         pa_field = source
     elif isinstance(source, StructField):
         pa_field = source.field

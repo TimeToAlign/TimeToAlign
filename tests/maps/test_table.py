@@ -383,3 +383,17 @@ class TestDeclaredOutputNumberType:
                 target_unit="ticks",
                 output_number_type="float",
             )
+
+
+class TestIsInvertibleIsABool:
+    """``is_invertible`` answers a Python ``bool``, as every map declares."""
+
+    def test_identity_and_json(self):
+        answers = [
+            TableMap(x_values=[0, 1, 2], y_values=y).is_invertible
+            for y in ([0, 1, 3], [3, 1, 0], [0, 2, 1])
+        ]
+        assert answers[0] is True
+        assert answers[1] is True
+        assert answers[2] is False
+        assert json.dumps(answers) == "[true, true, false]"

@@ -199,8 +199,8 @@ class TableMap(ConversionMap[CoordinateValue]):
 
         # Check if y is monotonic (for invertibility)
         y_diff = np.diff(self._y)
-        self._y_increasing = np.all(y_diff > 0)
-        self._y_decreasing = np.all(y_diff < 0)
+        self._y_increasing = bool(np.all(y_diff > 0))
+        self._y_decreasing = bool(np.all(y_diff < 0))
         self._is_invertible = self._y_increasing or self._y_decreasing
 
     @property

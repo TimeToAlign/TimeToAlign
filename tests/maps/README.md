@@ -260,6 +260,15 @@ matched against anything.
   extrapolation compute `y0 + (x - x0)·(y1 - y0)/(x1 - x0)` in `Fraction`
   arithmetic; any float among them keeps the float path.
 
+**`is_invertible` is a Python `bool`** (`TestIsInvertibleIsABool`). Every map
+declares the property `bool`; `TableMap` computed it from NumPy comparisons and
+answered a `numpy.bool`, which equals `True` but is not `True` and which
+`json.dumps` refuses. The test asserts identity (`is True` / `is False`), which
+only a Python `bool` passes, on all three monotonicity cases: increasing
+`[0, 1, 3]` and decreasing `[3, 1, 0]` (both `True`), and the non-monotonic
+`[0, 2, 1]` (`False`); and `json.dumps` of the three answers gives
+`[true, true, false]`.
+
 **Why these values prove exactness.** A float path can only be told apart
 from an exact one by a result that no binary float represents, so every
 exact probe lands on a non-dyadic ratio, and the assertion checks the type

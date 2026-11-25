@@ -878,6 +878,9 @@ class SegmentsMixin:
                 is no measure of the measure map or whose length is unknown;
                 the flow control cannot be played; or the given ID is
                 already held. Nothing has changed then.
+            TypeError: If the flow :meth:`get_flow` returns holds a gap,
+                which a flow played from flow control never does. Nothing
+                has changed then.
             UnknownLengthError: If the length is unknown.
 
         Examples:
@@ -900,7 +903,7 @@ class SegmentsMixin:
         from timetoalign.core import Coordinate
         from timetoalign.core.enums import TimeUnit
 
-        from ..flow.flowmap import FlowMap, StatedFlow
+        from ..flow.flowmap import FlowMap, PlacedChunk, StatedFlow
 
         what = f"timeline {quote_id(self._id)}"
         if self._parent is not None:
@@ -955,10 +958,16 @@ class SegmentsMixin:
                     together.append((start, end))
             return together
 
-        default = joined(
-            (chunk.source.start.value, chunk.source.end.value)
-            for chunk in self.get_flow().chunks
-        )
+        played: list[tuple[Any, Any]] = []
+        for chunk in self.get_flow().chunks:
+            if not isinstance(chunk, PlacedChunk):
+                raise TypeError(
+                    f"the flow get_flow returns for {what} holds a gap at "
+                    f"{chunk.start}: an order of measures is compared with "
+                    "stretches of the timeline only"
+                )
+            played.append((chunk.source.start.value, chunk.source.end.value))
+        default = joined(played)
         agreed: Any = 0
         differs = False
         stated_runs = joined(stretches)

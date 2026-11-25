@@ -1424,6 +1424,12 @@ holding the Regions and FlowMaps it held before: a count that is no
 measure, an empty order, a child timeline, a timeline without a measure
 map, and a given FlowMap ID that is already held (the Regions written for
 it are taken out again).
+The flow compared is what `get_flow` returns, which, played from flow
+control, holds no gap. A subclass whose `get_flow` answers a flow of a
+stretch [0, 4) and a gap of 2 quarters is refused with a `TypeError` naming
+the timeline and the gap's place (`holds a gap at 4 quarters`), the
+timeline holding no Region and no FlowMap after; the comparison reading a
+gap as a stretch failed with an `AttributeError` (a gap has no `source`).
 
 **The finding.** `repeat_end_findings` returns a repeat end without a
 printed start when the last sign before it that closes anything is a last

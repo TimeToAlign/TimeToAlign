@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from timetoalign.core import Coordinate, Interval
+from timetoalign.core import Coordinate, Duration, Interval
 from timetoalign.core.enums import MeasureFindingKind
 from timetoalign.core.provenance import Provenance
 from timetoalign.testdata import ensure_data
@@ -30,6 +30,7 @@ from timetoalign.timelines.flow import (
     repeat_end_findings,
 )
 from timetoalign.timelines.flow.engine import atomic_sections, play
+from timetoalign.timelines.flow.flowmap import PlayedFlow
 from timetoalign.timelines.flowcontrol import (
     FlowControlRegistry,
     Jump,
@@ -629,6 +630,34 @@ def test_a_stated_order_that_cannot_be_written_changes_nothing() -> None:
     with pytest.raises(ValueError, match="a FlowMap names a root timeline"):
         child.create_flow_map_from_measure_order([1, 2, 3])
     assert (child.list_regions(), child.list_flow_maps()) == ([], [])
+
+
+class _FlowWithGap(ContinuousLogicalTimeline):
+    """A timeline whose get_flow answers a flow holding a gap."""
+
+    def get_flow(self, *args: Any, **kwargs: Any) -> PlayedFlow:
+        return PlayedFlow.from_stretches(
+            self.id,
+            [
+                Interval(Coordinate(0, "quarters"), Coordinate(4, "quarters")),
+                Duration(2, "quarters"),
+            ],
+            unit=self.unit,
+            number_type=self.number_type,
+        )
+
+
+def test_a_played_flow_holding_a_gap_is_refused() -> None:
+    score = _FlowWithGap(length=12, uid="score")
+    score.add_measure_map(bars({}, {}, {}))
+    with pytest.raises(TypeError) as refused:
+        score.create_flow_map_from_measure_order([1, 2, 3])
+    assert str(refused.value) == (
+        "the flow get_flow returns for timeline 'score' holds a gap at 4 "
+        "quarters: an order of measures is compared with stretches of the "
+        "timeline only"
+    )
+    assert (score.list_regions(), score.list_flow_maps()) == ([], [])
 
 
 # endregion

@@ -43,7 +43,7 @@ import re
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, overload
 
 import numpy as np
 import pandas as pd
@@ -76,6 +76,13 @@ from timetoalign.core import (
 from timetoalign.core.fields import (
     SemanticField,
     StructField,
+    _compared,
+    _filled_mask,
+    _struct_array,
+    _struct_array_of,
+    _struct_child,
+    _struct_members,
+    _valid_struct_cell,
     drop_from_schema,
     register_value_projector,
 )
@@ -269,7 +276,7 @@ def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, holder: str) -> No
             f"claim of this {holder}"
         )
     counts = pc.value_counts(present)
-    repeated = counts.filter(pc.greater(counts.field("counts"), 1))
+    repeated = counts.filter(pc.greater(counts.field("counts"), pa.scalar(1)))
     if len(repeated):
         raise ValueError(
             f"claim id {quote_id(repeated.field('values')[0].as_py())} is held "
@@ -302,7 +309,7 @@ def _admitted_claim_ids(ids: pa.Array, taken: pa.Array, *, holder: str) -> pa.Ar
     _refuse_held_claim_ids(ids, taken, holder=holder)
     present = ids.filter(pc.is_valid(ids))
     missing = pc.is_null(ids)
-    count = pc.sum(missing).as_py() or 0
+    count = missing.true_count
     if count == 0:
         return ids
     fresh = mint_ids(_CLAIM_ID_PREFIX, pa.concat_arrays([taken, present]), count)
@@ -490,6 +497,33 @@ class AlignmentAnchor(BaseModel):
     def coordinates(self) -> tuple[Coordinate, Coordinate]:
         """Return tuple of coordinates."""
         return (self.coordinate_a, self.coordinate_b)
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["id_coordinate"] = ...,
+        rounding: Rounding = ...,
+    ) -> IdCoordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["coordinate"],
+        rounding: Rounding = ...,
+    ) -> Coordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: CoordinateFormat,
+        rounding: Rounding = ...,
+    ) -> CoordinateResult | pd.Series: ...
 
     def get_coordinate_for(
         self,
@@ -927,6 +961,33 @@ class MatchClaim(BaseModel):
                 )
         return self
 
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["id_coordinate"] = ...,
+        rounding: Rounding = ...,
+    ) -> IdCoordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["coordinate"],
+        rounding: Rounding = ...,
+    ) -> Coordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: CoordinateFormat,
+        rounding: Rounding = ...,
+    ) -> CoordinateResult | pd.Series: ...
+
     def get_coordinate_for(
         self,
         timeline_id: str,
@@ -1036,9 +1097,10 @@ class MatchClaim(BaseModel):
         """
         if timeline_id is not None:
             raise TypeError("MatchClaim.get_coordinate does not accept timeline_id")
-        branch = classify_dispatch_input(at, empty_is_keys=True)
-        if branch == "key":
+        # A string is the one input classified as a key.
+        if isinstance(at, str):
             return self.get_coordinate_for(at, format=format, rounding=rounding)
+        branch = classify_dispatch_input(at, empty_is_keys=True)
         if branch == "keys":
             return self.get_coordinates_for(at, format=format, rounding=rounding)
         raise TypeError("MatchClaim.get_coordinate accepts timeline keys only")
@@ -1442,7 +1504,7 @@ class MatchClaim(BaseModel):
             A reconstructed :class:`MatchClaim`.
         """
         payload = copy.deepcopy(row)
-        for path in _coordinate_paths(MatchClaimField.pa_schema):
+        for path in _coordinate_paths(MatchClaimField.struct_schema()):
             holder = _holder(payload, path)
             if holder is not None and holder[path[-1]] is not None:
                 holder[path[-1]] = cell_coordinate(holder[path[-1]])
@@ -1475,13 +1537,16 @@ class MatchClaim(BaseModel):
                 f"{_format_coordinate(start_b)}-{_format_coordinate(end_b)}]{badge})"
             )
         else:
+            # The validator gives every synchronous claim a start anchor.
+            anchor = self.start_anchor
+            assert anchor is not None
             return (
                 f"MatchClaim({match_type}: "
                 f"{self.timeline_a_id}@"
-                f"{_format_coordinate(self.start_anchor.coordinate_a)}"
+                f"{_format_coordinate(anchor.coordinate_a)}"
                 f" <-> "
                 f"{self.timeline_b_id}@"
-                f"{_format_coordinate(self.start_anchor.coordinate_b)}"
+                f"{_format_coordinate(anchor.coordinate_b)}"
                 f"{badge})"
             )
 
@@ -1760,10 +1825,10 @@ def _given(
     A NaN is given, so that its cell (a null, since no cell holds it) is
     refused rather than read as no number.
     """
-    values = _number_column(values)
-    if isinstance(values, pa.Array):
-        return values.is_valid()
-    return pa.array([value is not None for value in values], type=pa.bool_())
+    column = _number_column(values)
+    if isinstance(column, pa.Array):
+        return column.is_valid()
+    return pa.array([value is not None for value in column], type=pa.bool_())
 
 
 def _timeline_cells(
@@ -1788,25 +1853,27 @@ def _timeline_cells(
         ValueError: If a row names a timeline whose axis is not given, or
             the values and the timeline ids differ in length.
     """
-    values = _number_column(values)
-    if len(values) != len(timeline_ids):
+    column = _number_column(values)
+    if len(column) != len(timeline_ids):
         raise ValueError("Coordinate values and timeline ids must have equal length.")
-    named = pc.unique(timeline_ids).to_pylist()
-    unknown = [value for value in named if value not in axes]
+    distinct = pc.unique(timeline_ids).to_pylist()
+    unknown = [value for value in distinct if value not in axes]
     if unknown:
         raise ValueError(
             f"The rows name timeline {quote_id(str(unknown[0]))}, which is not "
             f"among the timelines given."
         )
+    # Every timeline named is now a key of *axes*, so a string.
+    named = [value for value in distinct if isinstance(value, str)]
     parts: list[pa.StructArray] = []
     rows: list[pa.Array] = []
     for timeline_id in named:
         axis = axes[timeline_id]
-        where = pc.indices_nonzero(pc.equal(timeline_ids, timeline_id))
+        where = pc.indices_nonzero(pc.equal(timeline_ids, pa.scalar(timeline_id)))
         taken = (
-            values.take(where)
-            if isinstance(values, pa.Array)
-            else values[where.to_numpy()].tolist()
+            column.take(where)
+            if isinstance(column, pa.Array)
+            else column[where.to_numpy()].tolist()
         )
         parts.append(
             axis_coordinate_cells(taken, unit=axis.unit, number_type=axis.number_type)
@@ -1845,7 +1912,7 @@ def _holder(row: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any] | None
 
 def _with_children(
     array: pa.StructArray,
-    children: dict[tuple[str, ...], pa.Array],
+    children: Mapping[tuple[str, ...], pa.Array],
     prefix: tuple[str, ...] = (),
 ) -> pa.StructArray:
     """Return *array* with the children at the given paths replaced.
@@ -1853,14 +1920,15 @@ def _with_children(
     Every struct on a path is rebuilt with its own validity, so a null end
     anchor stays null.
     """
-    arrays = []
-    for index, sub_field in enumerate(array.type):
+    arrays: list[pa.Array] = []
+    for sub_field in array.type:
         path = (*prefix, sub_field.name)
-        child = array.field(index)
+        child = _struct_child(array, sub_field.name)
         if path in children:
             child = children[path]
         elif any(key[: len(path)] == path for key in children):
-            child = _with_children(child, children, path)
+            # A path leading further passes through a struct child.
+            child = _with_children(_struct_array(child), children, path)
         arrays.append(child)
     return pa.StructArray.from_arrays(
         arrays,
@@ -1887,12 +1955,16 @@ def _anchors_converted(table: pa.Table, convert: Any) -> pa.Table:
         if name not in table.column_names:
             continue
         anchors = table.column(name).combine_chunks()
-        if not pa.types.is_struct(anchors.type) or sorted(
+        if not isinstance(anchors, pa.StructArray) or sorted(
             field.name for field in anchors.type
         ) != sorted(_ANCHOR_SIDES):
             continue
         sides = dict(
-            zip((field.name for field in anchors.type), anchors.flatten(), strict=True)
+            zip(
+                (field.name for field in anchors.type),
+                _struct_members(anchors),
+                strict=True,
+            )
         )
         converted = [convert(sides[side], f"{name}.{side}") for side in _ANCHOR_SIDES]
         written = pa.StructArray.from_arrays(
@@ -2097,7 +2169,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 _timeline_cells(coordinate_b, tl_b, axes),
             )
         }
-        if end_coordinate_a is not None:
+        if end_coordinate_a is not None and end_coordinate_b is not None:
             # Only a row without an end on either side is an instant claim:
             # an end given on one side alone, or one no cell can hold (a
             # non-finite number), leaves a null coordinate in the end
@@ -2166,7 +2238,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         claims = list(claims)
         if provenance is None:
             provenance = cls._common_provenance(claims)
-        schema = cls.pa_schema
+        schema = cls.struct_schema()
         columns: dict[str, pa.Array] = {
             name: pa.array(
                 [getattr(claim, name) for claim in claims],
@@ -2229,9 +2301,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         provenance = None if shared is None else Provenance.from_dict(shared)
         rows = copy.deepcopy(data["rows"])
         for index, row in enumerate(rows):
-            cls._refuse_other_keys(row, cls.pa_schema, index)
+            cls._refuse_other_keys(row, cls.struct_schema(), index)
         cells: dict[tuple[str, ...], pa.StructArray] = {}
-        for path in _coordinate_paths(cls.pa_schema):
+        for path in _coordinate_paths(cls.struct_schema()):
             coordinates: list[Coordinate | None] = []
             for index, row in enumerate(rows):
                 holder = _holder(row, path)
@@ -2249,7 +2321,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 holder[path[-1]] = None
             cells[path] = coordinate_cells(coordinates)
         return cls._read(
-            _with_children(pa.array(rows, type=cls.pa_schema), cells),
+            _with_children(_struct_array_of(rows, cls.struct_schema()), cells),
             provenance,
             source="dictionary",
             where="under its key 'provenance'",
@@ -2259,7 +2331,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
     def _refuse_other_keys(
         cls,
         value: Any,
-        data_type: pa.DataType,
+        data_type: pa.StructType | pa.ListType[Any],
         index: int,
         path: tuple[str, ...] = (),
     ) -> None:
@@ -2283,7 +2355,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         if value is None and path:
             return
         where = f"row {index}" + (f" {'.'.join(path)}" if path else "")
-        if pa.types.is_list(data_type):
+        if isinstance(data_type, pa.ListType):
             if not isinstance(value, list):
                 raise ValueError(
                     f"In a MatchClaimField dictionary, {where} must be a list, "
@@ -2311,13 +2383,14 @@ class MatchClaimField(SemanticField[MatchClaim]):
         if coordinate:
             return
         for sub_field in data_type:
-            if pa.types.is_struct(sub_field.type) or (
-                pa.types.is_list(sub_field.type)
-                and pa.types.is_struct(sub_field.type.value_type)
+            sub_type = sub_field.type
+            if isinstance(sub_type, pa.StructType) or (
+                isinstance(sub_type, pa.ListType)
+                and pa.types.is_struct(sub_type.value_type)
             ):
                 cls._refuse_other_keys(
                     value[sub_field.name],
-                    sub_field.type,
+                    sub_type,
                     index,
                     (*path, sub_field.name),
                 )
@@ -2356,14 +2429,14 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 rows; or if two rows hold the same id (a MatchClaim is
                 addressed by its id alone).
         """
-        columns = cls.pa_schema.names
+        columns = cls.struct_schema().names
         missing = [name for name in columns if name not in table.column_names]
         if missing:
             raise ValueError(
                 f"A MatchClaim table holds one column per MatchClaim property, "
                 f"{columns}; this table lacks {missing}."
             )
-        for sub_field in cls.pa_schema:
+        for sub_field in cls.struct_schema():
             stored = table.schema.field(sub_field.name).type
             if stored != sub_field.type:
                 raise ValueError(
@@ -2385,7 +2458,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         )
         struct_array = pa.StructArray.from_arrays(
             [table.column(name).combine_chunks() for name in columns],
-            fields=list(cls.pa_schema),
+            fields=list(cls.struct_schema()),
         )
         stored = (table.schema.metadata or {}).get(cls._PROVENANCE_KEY)
         provenance = (
@@ -2526,7 +2599,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         tl_a = data.field("timeline_a_id")
         tl_b = data.field("timeline_b_id")
         certainty = data.field("certainty")
-        checks = (
+        checks: tuple[tuple[pa.BooleanArray, str], ...] = (
             (
                 pc.or_(pc.is_null(tl_a), pc.is_null(tl_b)),
                 "names no timeline_a_id or no timeline_b_id",
@@ -2544,21 +2617,24 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 "is not synchronous and holds an anchor",
             ),
             (
-                pc.and_(synchronous, pc.not_equal(n_events, 2)),
+                pc.and_(synchronous, pc.not_equal(n_events, pa.scalar(2))),
                 "is synchronous and does not name an event on each side; give a "
                 "side without an event of its own a Projection event first",
             ),
             (
-                pc.and_(pc.invert(synchronous), pc.equal(n_events, 0)),
+                pc.and_(pc.invert(synchronous), pc.equal(n_events, pa.scalar(0))),
                 "names no event",
             ),
             (
-                pc.or_(pc.less(certainty, 0.0), pc.greater(certainty, 1.0)),
+                pc.or_(
+                    pc.less(certainty, pa.scalar(0.0)),
+                    pc.greater(certainty, pa.scalar(1.0)),
+                ),
                 "has a certainty outside [0, 1]",
             ),
         )
-        for mask, reason in checks:
-            mask = pc.fill_null(mask, False)
+        for check, reason in checks:
+            mask = _filled_mask(check, pa.scalar(False))
             if pc.any(mask).as_py():
                 row = pc.index(mask, True).as_py()
                 raise ValueError(f"MatchClaim table row {row} {reason}.")
@@ -2578,7 +2654,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 the coordinate is null.``
         """
         for anchor_name in ("start_anchor", "end_anchor"):
-            anchor = data.field(anchor_name)
+            anchor = _struct_array(data.field(anchor_name))
             for side in ("a", "b"):
                 missing = pc.and_(
                     anchor.is_valid(),
@@ -2608,12 +2684,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
         cells: list[pa.Array] = []
         for anchor_name in ("start_anchor", "end_anchor"):
             # ``flatten`` carries a null anchor over to its coordinates.
-            anchor = data.field(anchor_name).flatten()
+            anchor = _struct_members(_struct_array(data.field(anchor_name)))
             names = data.type.field(anchor_name).type.names
             for side in ("a", "b"):
                 timelines.append(data.field(f"timeline_{side}_id"))
                 cells.append(anchor[names.index(f"coordinate_{side}")])
-        cell = pa.concat_arrays(cells)
+        cell = _struct_array(pa.concat_arrays(cells))
         axes = pa.table(
             {
                 "timeline": pa.concat_arrays(timelines),
@@ -2623,7 +2699,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         ).filter(cell.is_valid())
         distinct = axes.group_by(["timeline", "unit", "number_type"]).aggregate([])
         counts = distinct.group_by("timeline").aggregate([("unit", "count")])
-        repeated = counts.filter(pc.greater(counts.column("unit_count"), 1))
+        repeated = counts.filter(pc.greater(counts.column("unit_count"), pa.scalar(1)))
         if repeated.num_rows:
             timeline_id = repeated.column("timeline")[0].as_py()
             stated = distinct.filter(
@@ -2705,9 +2781,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         ids = _admitted_claim_ids(struct_array.field("id"), taken, holder=holder)
         arrays = [
             ids if sub_field.name == "id" else struct_array.field(sub_field.name)
-            for sub_field in cls.pa_schema
+            for sub_field in cls.struct_schema()
         ]
-        rebuilt = pa.StructArray.from_arrays(arrays, fields=list(cls.pa_schema))
+        rebuilt = pa.StructArray.from_arrays(arrays, fields=list(cls.struct_schema()))
         return cls._from_struct_array(rebuilt, provenance=provenance, further=further)
 
     @classmethod
@@ -2725,7 +2801,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         a column of its own. *further* holds the further columns a table
         read held, row for row (:meth:`from_table`).
         """
-        pa_field = pa.field(cls.__name__.removesuffix("Field").lower(), cls.pa_schema)
+        pa_field = pa.field(
+            cls.__name__.removesuffix("Field").lower(), cls.struct_schema()
+        )
         raw = StructField(struct_array, pa_field)
         field = cls(raw, provenance=provenance)
         field._further = further
@@ -2745,9 +2823,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 if sub_field.name in columns
                 else pa.nulls(n, type=sub_field.type)
             )
-            for sub_field in cls.pa_schema
+            for sub_field in cls.struct_schema()
         ]
-        return pa.StructArray.from_arrays(arrays, fields=list(cls.pa_schema))
+        return pa.StructArray.from_arrays(arrays, fields=list(cls.struct_schema()))
 
     @classmethod
     def _anchor_array(
@@ -2762,7 +2840,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         The anchor's timelines are its row's, so the struct holds the two
         coordinates alone.
         """
-        anchor_type = cls.pa_schema.field("start_anchor").type
+        anchor_type = cls.struct_schema().field("start_anchor").type
         sources: dict[str, pa.Array] = {
             "coordinate_a": coordinate_a,
             "coordinate_b": coordinate_b,
@@ -2873,8 +2951,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """
         if not isinstance(other, MatchClaimField):
             return NotImplemented
-        if (self._further is None) != (other._further is None) or (
-            self._further is not None and not self._further.equals(other._further)
+        mine, theirs = self._further, other._further
+        if (mine is None) != (theirs is None) or (
+            mine is not None and theirs is not None and not mine.equals(theirs)
         ):
             return False
         return self._rows_with_provenance().equals(other._rows_with_provenance())
@@ -2939,13 +3018,17 @@ class MatchClaimField(SemanticField[MatchClaim]):
         entries: list[dict[str, Any]] = []
         if self._provenance is not None:
             entries.append(self._provenance.to_dict())
-        data = self._raw.data
-        if data is not None and len(data):
+        data = self._struct_array()
+        if len(data):
             # ``flatten`` carries a null parent over to its children.
-            provenance = data.flatten()[self.pa_schema.get_field_index("provenance")]
+            provenance = _struct_array(
+                _struct_members(data)[
+                    self.struct_schema().get_field_index("provenance")
+                ]
+            )
             members = {
                 member.name: column
-                for member, column in zip(provenance.type, provenance.flatten())
+                for member, column in zip(provenance.type, _struct_members(provenance))
             }
             beliefs = pc.list_flatten(members["beliefs"])
             references = [
@@ -2987,7 +3070,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             return set()
         cached = self.__dict__.get("_timeline_ids_read")
         if cached is None or cached[0] is not data:
-            cached = (data, self._distinct_timeline_ids(data))
+            cached = (data, self._distinct_timeline_ids(_struct_array(data)))
             self._timeline_ids_read = cached
         return set(cached[1])
 
@@ -3002,7 +3085,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
         both = pa.concat_arrays(
             [data.field("timeline_a_id"), data.field("timeline_b_id")]
         )
-        return tuple(pc.unique(both.drop_null()).to_pylist())
+        # Without its nulls, the column holds strings only.
+        return tuple(
+            value
+            for value in pc.unique(both.drop_null()).to_pylist()
+            if isinstance(value, str)
+        )
 
     @property
     def _ids(self) -> pa.Array:
@@ -3043,9 +3131,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         )
         cells_by_place: list[tuple[str, pa.Array, pa.StructArray, pa.Array]] = []
         for anchor_name in ("start_anchor", "end_anchor"):
-            anchor = data.field(anchor_name)
+            anchor = _struct_array(data.field(anchor_name))
             for side in ("a", "b"):
-                cells = anchor.field(f"coordinate_{side}")
+                cells = _struct_array(anchor.field(f"coordinate_{side}"))
                 cells_by_place.append(
                     (
                         f"{anchor_name}.coordinate_{side}",
@@ -3073,11 +3161,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
                     ),
                 ),
             )
-            off = pc.fill_null(off, False)
+            off = _filled_mask(off, pa.scalar(False))
             if pc.any(off).as_py():
                 row = pc.index(off, True).as_py()
                 timeline_id = timeline_ids[row].as_py()
-                cell = cells[row].as_py()
+                # An off-axis cell is a valid one.
+                cell = _valid_struct_cell(cells[row])
                 _refuse_off_axis(
                     TimeUnit(cell["unit"]),
                     NumberType(cell["number_type"]),
@@ -3125,8 +3214,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
             A new :class:`MatchClaimField` holding only the matching rows
             (possibly empty).
         """
-        data = self._raw.data
-        if data is None or len(data) == 0:
+        data = self._struct_array()
+        if len(data) == 0:
             return self._empty()
         if isinstance(coordinate, IdCoordinate):
             if coordinate.timeline_id != timeline_id:
@@ -3157,9 +3246,15 @@ class MatchClaimField(SemanticField[MatchClaim]):
             )
         masks: list[pa.Array] = []
         for side in ("a", "b"):
-            side_id = pc.equal(data.field(f"timeline_{side}_id"), timeline_id)
-            start_cells = data.field("start_anchor").field(f"coordinate_{side}")
-            end_cells = data.field("end_anchor").field(f"coordinate_{side}")
+            side_id = pc.equal(
+                data.field(f"timeline_{side}_id"), pa.scalar(timeline_id)
+            )
+            start_cells = _struct_array(data.field("start_anchor")).field(
+                f"coordinate_{side}"
+            )
+            end_cells = _struct_array(data.field("end_anchor")).field(
+                f"coordinate_{side}"
+            )
             start = compare_number_column(
                 start_cells, query.value, "equal", query.number_type
             )
@@ -3181,7 +3276,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                         pc.and_(side_id, data.field("start_anchor").is_valid()),
                         relevant,
                     ),
-                    False,
+                    pa.scalar(False),
                 )
             )
         mask = pc.or_(*masks)
@@ -3271,7 +3366,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         if within is not None:
             masks.append(self._within_mask(within))
         if synchronous_only:
-            masks.append(pc.fill_null(data.field("is_synchronous"), False))
+            masks.append(data.field("is_synchronous").fill_null(False))
         if nomatch_only:
             masks.append(self._nomatch_mask())
         if believer is not None:
@@ -3305,8 +3400,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Returns:
             True if some claim connects the two sets.
         """
-        data = self._raw.data
-        if data is None or len(data) == 0:
+        data = self._struct_array()
+        if len(data) == 0:
             return False
         column_a = data.field("timeline_a_id")
         column_b = data.field("timeline_b_id")
@@ -3371,14 +3466,15 @@ class MatchClaimField(SemanticField[MatchClaim]):
             (None, None)
         """
         rows = self._struct_array().to_pylist()
-        paths = list(_coordinate_paths(self.pa_schema))
+        paths = list(_coordinate_paths(self.struct_schema()))
         for row in rows:
             for path in paths:
                 holder = _holder(row, path)
-                if holder is not None and holder[path[-1]] is not None:
-                    holder[path[-1]] = _coordinate_to_dict(
-                        cell_coordinate(holder[path[-1]])
-                    )
+                if holder is None:
+                    continue
+                cell: dict[str, Any] | None = holder[path[-1]]
+                if cell is not None:
+                    holder[path[-1]] = _coordinate_to_dict(cell_coordinate(cell))
         return {
             "provenance": (
                 self._provenance.to_dict() if self._provenance is not None else None
@@ -3479,7 +3575,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             before = old.column(name).combine_chunks()
             after = new.column(name).combine_chunks()
             same = pc.or_(
-                pc.fill_null(pc.equal(before, after), False),
+                _filled_mask(_compared("equal", before, after), pa.scalar(False)),
                 pc.and_(pc.is_null(before), pc.is_null(after)),
             )
             if not pc.all(same).as_py():
@@ -3518,7 +3614,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Raises:
             KeyError: If no row holds *claim_id*.
         """
-        rows = pc.indices_nonzero(pc.equal(self._ids, claim_id)).to_pylist()
+        held = pc.indices_nonzero(pc.equal(self._ids, pa.scalar(claim_id)))
+        # An index is never null.
+        rows = [row for row in held.to_pylist() if row is not None]
         if not rows:
             raise KeyError(
                 f"The MatchClaim table holds no MatchClaim {quote_id(claim_id)} "
@@ -3537,7 +3635,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 further=self._further,
             )
         data = self._rows_with_provenance()
-        index = self.pa_schema.get_field_index("provenance")
+        index = self.struct_schema().get_field_index("provenance")
         children = data.flatten()
         column = children[index]
         earlier = column[row].as_py()
@@ -3551,7 +3649,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 column.slice(row + 1),
             ]
         )
-        rows = pa.StructArray.from_arrays(children, fields=list(self.pa_schema))
+        rows = pa.StructArray.from_arrays(children, fields=list(self.struct_schema()))
         return self._from_struct_array(rows, provenance=None, further=self._further)
 
     def _rows_with_provenance(self) -> pa.StructArray:
@@ -3564,11 +3662,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
         data = self._struct_array()
         if self._provenance is None:
             return data
-        schema = self.pa_schema
+        schema = self.struct_schema()
         children = data.flatten()
         children[schema.get_field_index("provenance")] = provenance_array(
             [self._provenance]
-        ).take(pa.array(np.zeros(len(data), dtype=np.int64)))
+        ).take(np.zeros(len(data), dtype=np.int64))
         return pa.StructArray.from_arrays(children, fields=list(schema))
 
     def _concatenated(self, other: "MatchClaimField") -> "MatchClaimField":
@@ -3657,7 +3755,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
     def _struct_array(self) -> pa.StructArray:
         """The claim rows, an empty array of the struct type when none."""
         data = self._raw.data
-        return pa.array([], type=self.pa_schema) if data is None else data
+        return (
+            _struct_array_of([], self.struct_schema())
+            if data is None
+            else _struct_array(data)
+        )
 
     def _empty(self) -> "MatchClaimField":
         """Return a zero-row field of this schema, keeping the provenance."""
@@ -3683,9 +3785,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
             pc.cast(pc.is_valid(data.field("event_a_id")), pa.int8()),
             pc.cast(pc.is_valid(data.field("event_b_id")), pa.int8()),
         )
-        return pc.fill_null(
-            pc.and_(pc.invert(data.field("is_synchronous")), pc.equal(n_events, 1)),
-            False,
+        return _filled_mask(
+            pc.and_(
+                pc.invert(data.field("is_synchronous")),
+                pc.equal(n_events, pa.scalar(1)),
+            ),
+            pa.scalar(False),
         )
 
     def _belief_mask(
@@ -3717,8 +3822,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """Boolean mask: rows where either id sub-field equals ``timeline_id``."""
         data = self._struct_array()
         return pc.or_(
-            pc.equal(data.field("timeline_a_id"), timeline_id),
-            pc.equal(data.field("timeline_b_id"), timeline_id),
+            pc.equal(data.field("timeline_a_id"), pa.scalar(timeline_id)),
+            pc.equal(data.field("timeline_b_id"), pa.scalar(timeline_id)),
         )
 
     def _involves_any_mask(self, timeline_ids: set[str]) -> pa.Array:
@@ -3746,12 +3851,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
         column_b = data.field("timeline_b_id")
         return pc.or_(
             pc.and_(
-                pc.equal(column_a, timeline_a_id),
-                pc.equal(column_b, timeline_b_id),
+                pc.equal(column_a, pa.scalar(timeline_a_id)),
+                pc.equal(column_b, pa.scalar(timeline_b_id)),
             ),
             pc.and_(
-                pc.equal(column_a, timeline_b_id),
-                pc.equal(column_b, timeline_a_id),
+                pc.equal(column_a, pa.scalar(timeline_b_id)),
+                pc.equal(column_b, pa.scalar(timeline_a_id)),
             ),
         )
 
@@ -3848,11 +3953,11 @@ def _held_events(timeline: Any, ids: list[str]) -> list[dict[str, Any] | None]:
         pc.or_(own, pc.invert(pc.is_in(held, value_set=held.filter(own)))),
     )
     counts = pc.value_counts(held.filter(answering))
-    repeated = counts.filter(pc.greater(counts.field("counts"), 1))
+    repeated = counts.filter(pc.greater(counts.field("counts"), pa.scalar(1)))
     if len(repeated):
         event_id = repeated.field("values")[0].as_py()
         spelled = ", ".join(
-            quote_id(holder)
+            quote_id(str(holder))
             for holder in holders.filter(pc.equal(held, event_id)).to_pylist()
         )
         raise ValueError(
@@ -3866,7 +3971,7 @@ def _held_events(timeline: Any, ids: list[str]) -> list[dict[str, Any] | None]:
     if table.num_rows == 0:
         return [None] * len(ids)
     positions = pc.index_in(wanted, value_set=held.filter(answering))
-    found = table.take(pc.fill_null(positions, 0)).to_pylist()
+    found = table.take(positions.fill_null(0)).to_pylist()
     return [
         row if valid else None
         for row, valid in zip(found, pc.is_valid(positions).to_pylist(), strict=True)
@@ -4351,18 +4456,22 @@ def _recorded_names(
     for side in ("a", "b"):
         names = table.column(f"event_{side}_name").combine_chunks()
         ids = table.column(f"event_{side}_id").combine_chunks()
-        mask = pc.fill_null(
-            pc.and_(pc.is_valid(names), pc.is_in(ids, value_set=event_ids)), False
+        mask = _filled_mask(
+            pc.and_(pc.is_valid(names), pc.is_in(ids, value_set=event_ids)),
+            pa.scalar(False),
         )
-        rows = pa.array(np.flatnonzero(mask.to_numpy(zero_copy_only=False)))
+        rows = np.flatnonzero(mask.to_numpy(zero_copy_only=False))
         timeline_ids = table.column(f"timeline_{side}_id").combine_chunks().take(rows)
         for row, timeline_id, event_id, name in zip(
-            rows.to_pylist(),
+            rows.tolist(),
             timeline_ids.to_pylist(),
             ids.take(rows).to_pylist(),
             names.take(rows).to_pylist(),
             strict=True,
         ):
+            # The mask keeps the rows naming a wanted event with a name, and
+            # every row of a MatchClaim table names its two timelines.
+            assert timeline_id is not None and event_id is not None and name is not None
             found.append((row, side, (timeline_id, event_id), name))
     recorded: dict[tuple[str, str], str] = {}
     for _, _, key, name in sorted(found):

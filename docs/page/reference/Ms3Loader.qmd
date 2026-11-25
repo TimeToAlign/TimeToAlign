@@ -63,20 +63,37 @@ loader.score.Ms3Loader.create_timeline(
     name=None,
     *,
     flatten=False,
+    ppq=None,
+    attach_cmaps=True,
     **kwargs,
 )
 ```
 
 Create a score timeline carrying the parsed measure structure.
 
-Known limitation: a score whose measures are **split** — two
-records sharing one notated downbeat, as when a bar is divided
-across a repeat sign — has no floating-measure lattice, because
-the two halves cannot both anchor the same ordinal. The timeline
-then carries no ``floating_measures`` conversion; every other
-conversion, and the measure structure itself, is unaffected. No
-approximate lattice is built in its place, since an fm reading
-those measures do not support is worse than no fm reading.
+The timeline carries the C-Maps the tables state (floating measures
+from the measure table, seconds from tempo markings); a ticks map
+only at the ``ppq`` the caller names, since a DCML table states no
+tick resolution. Only measures that cannot be joined into one
+floating measure and share a nominal downbeat leave the
+floating-measure conversion absent.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name         | Type                 | Description                                                                                                                | Default   |
+|--------------|----------------------|----------------------------------------------------------------------------------------------------------------------------|-----------|
+| uid          | [str](`str`) \| None | Unique ID for the timeline. Auto-generated if None.                                                                        | `None`    |
+| name         | [str](`str`) \| None | Display name of the timeline.                                                                                              | `None`    |
+| flatten      | [bool](`bool`)       | If True, merge all events into a single parent timeline.                                                                   | `False`   |
+| ppq          | [int](`int`) \| None | Pulses per quarter note. Given, a quarters → ticks C-Map at this resolution is attached; ``None`` (default) attaches none. | `None`    |
+| attach_cmaps | [bool](`bool`)       | If True (default), attach the C-Maps the tables state; if False, attach none.                                              | `True`    |
+| **kwargs     | [Any](`typing.Any`)  | Further arguments of :meth:`ScoreLoader.create_timeline`.                                                                  | `{}`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                         | Description         |
+|--------|----------------------------------------------|---------------------|
+|        | [Timeline](`timetoalign.timelines.Timeline`) | The score timeline. |
 
 ### from_file { #timetoalign.loader.score.Ms3Loader.from_file }
 
@@ -124,7 +141,9 @@ Load one or more TSV source files.
 When ``auto_discover`` is enabled, each source file is expanded to
 include its companion facet files (measures, chords, harmonies,
 etc.) before loading. Files that have already been loaded (or that
-appear more than once in the expanded set) are silently skipped.
+appear more than once in the expanded set) are silently skipped, and
+so is a discovered companion that holds no table (an empty file); a
+source the caller names that holds no table is refused.
 A facet the piece does not have is not looked for further; a source
 for which no companion at all is found raises a ``UserWarning``
 naming the paths that were looked at, and is loaded alone.

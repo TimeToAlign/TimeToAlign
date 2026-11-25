@@ -66,19 +66,36 @@ QuartersToFloatingMeasures.from_measure_map(measure_map)
 
 Build the floating-measure lattice of a measure map.
 
-One knot per measure record, placed at that bar's **virtual
-nominal downbeat** — its sounding start minus the offset at which
-its content sits inside the notated bar — carrying that bar's
-ordinal.  A final knot closes the lattice at the end of the last
-bar.  Between two knots the map is linear, so the slope inside a
-bar is exactly ``1 / nominal_length``.
+A floating measure is a **compound measure**: a maximal run of
+consecutive measure records that share one ``number`` and one
+``nominal_length``, each continuing the one before it.  A record
+continues the compound so far when the last record's ``next``
+names it, or when its ``offset_within_measure`` is exactly where
+the compound so far ends inside the notated bar (the first
+record's offset plus the records' actual lengths) — the second
+part of a bar split at a repeat sign whose first part jumps back.
+Two records stating different ``volta`` brackets never join, nor
+does a record without a number.  A record on its own is a
+compound of one.  The records of a split bar, whose parts the
+source represents separately, thus read as the one bar they are
+notated as.
 
-Ordinals count the measure records, never the printed labels:
-the first record is ``0`` when it is an anacrusis (offset
-content, shorter than its nominal bar) and ``1`` otherwise, and
-every following record adds one.  Counting runs monotonically
-through voltas — ``15a`` and ``15b`` are two bars and get two
-consecutive ordinals — and never resets.
+One knot per compound measure, placed at its first record's
+**virtual nominal downbeat** — its sounding start minus the
+offset at which its content sits inside the notated bar — and
+carrying the compound's ordinal.  A final knot closes the lattice
+at the end of the last record.  Between two knots the map is
+linear, so the slope inside a bar is ``1 / nominal_length`` when
+the bar fills its nominal length, and inside a compound the
+reading spreads over the compound's whole extent.
+
+Ordinals count compound measures, never the printed labels: the
+first is ``0`` when it is an anacrusis (its first record's content
+is offset and its records are shorter together than its nominal
+bar) and ``1`` otherwise, and every following compound adds one.
+Counting runs monotonically through voltas — a first ending
+``15a`` that jumps back and the second ending ``15b`` are two bars
+and get two consecutive ordinals — and never resets.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -95,9 +112,9 @@ consecutive ordinals — and never resets.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                    |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the measure map has no measures, or if two records share a virtual nominal downbeat (a split bar, whose two halves cannot both anchor the same fm ordinal). |
+| Name   | Type                       | Description                                                                                                                                                                                                        |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the measure map has no measures, a record lacks its qstamp or actual length, or the knots do not increase: two compound measures share a virtual nominal downbeat, or a later one starts before an earlier one. |
 
 ### inverse { #timetoalign.QuartersToFloatingMeasures.inverse }
 

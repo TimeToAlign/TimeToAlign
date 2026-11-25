@@ -407,21 +407,6 @@ def _are_dictionary_chunks(
     return pa.types.is_dictionary(column[1])
 
 
-def _parse_octave_from_sp(sp: str | None, step: str) -> int:
-    """Extract octave number from a specific-pitch string like ``"C4"``."""
-    if not sp:
-        return 4
-    try:
-        idx = len(sp)
-        while idx > 0 and (sp[idx - 1].isdigit() or sp[idx - 1] == "-"):
-            idx -= 1
-        if idx < len(sp):
-            return int(sp[idx:])
-    except (ValueError, IndexError):
-        pass
-    return 4
-
-
 # ---------------------------------------------------------------------------
 # Point, Shape, BoundingBox, Quadrilateral + paired Fields
 # ---------------------------------------------------------------------------

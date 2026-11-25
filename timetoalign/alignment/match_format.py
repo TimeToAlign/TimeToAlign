@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pandas import DataFrame
 
+    from timetoalign.alignment.graph import MatchStamp
     from timetoalign.alignment.matchline import MatchLine
 
 module_logger = logging.getLogger(__name__)
@@ -539,6 +540,30 @@ def format_score_properties(ctx: MatchFileContext) -> list[str]:
     return list(ctx.score_properties)
 
 
+class _RawStampExportView:
+    """Present a stamp's coordinates as the floats the ``.match`` writer reads."""
+
+    def __init__(self, stamp: MatchStamp) -> None:
+        self._stamp = stamp
+
+    def _get_float_coordinate_for(self, timeline_id: str) -> float:
+        """Return the stamp's coordinate on *timeline_id* as a float."""
+        return self._stamp.get_coordinate_for(timeline_id, format="float")
+
+
+class _RawMatchLineExportView:
+    """Present a MatchLine to the ``.match`` writer, its stamps as float views."""
+
+    def __init__(self, match_line: MatchLine) -> None:
+        self.source_timeline_id = match_line.source_timeline_id
+        self.stamps = [_RawStampExportView(stamp) for stamp in match_line.stamps]
+        self._target_timeline_ids = match_line.target_timeline_ids()
+
+    def target_timeline_ids(self) -> set[str]:
+        """Return target timeline IDs from the source MatchLine."""
+        return self._target_timeline_ids
+
+
 def write_match_file(
     filepath: str | Path,
     match_line: "MatchLine",
@@ -562,9 +587,10 @@ def write_match_file(
         The resolved output :class:`~pathlib.Path`.
     """
     filepath = Path(filepath)
+    view = _RawMatchLineExportView(match_line)
 
     if context is None:
-        context = _build_minimal_context(match_line)
+        context = _build_minimal_context(view)
 
     lines: list[str] = []
 
@@ -580,8 +606,8 @@ def write_match_file(
         lines.append("scoreprop(timeSignature,4/4,1:1,0,0.0000).")
 
     # Match lines (from stamps)
-    source_id = match_line.source_timeline_id
-    target_ids = match_line.target_timeline_ids()
+    source_id = view.source_timeline_id
+    target_ids = view.target_timeline_ids()
 
     if not target_ids:
         module_logger.warning(
@@ -593,7 +619,7 @@ def write_match_file(
         # Pick the first (and usually only) target timeline
         target_id = sorted(target_ids)[0]
 
-    for stamp in match_line.stamps:
+    for stamp in view.stamps:
         source_coord = stamp._get_float_coordinate_for(source_id)
         if source_coord is None:
             continue
@@ -725,26 +751,26 @@ def _placeholder_note(coord: float) -> NoteRecord:
     )
 
 
-def _build_minimal_context(match_line: "MatchLine") -> MatchFileContext:
+def _build_minimal_context(view: _RawMatchLineExportView) -> MatchFileContext:
     """Build a minimal MatchFileContext from coordinate data only.
 
     Creates placeholder SnoteRecords and NoteRecords from the stamps,
     with no real note-level data.
 
     Args:
-        match_line: The MatchLine to derive context from.
+        view: The MatchLine to derive context from, as the writer reads it.
 
     Returns:
         A :class:`MatchFileContext` with placeholder data.
     """
-    source_id = match_line.source_timeline_id
-    target_ids = match_line.target_timeline_ids()
+    source_id = view.source_timeline_id
+    target_ids = view.target_timeline_ids()
     target_id = sorted(target_ids)[0] if target_ids else None
 
     score_notes: dict[float, list[SnoteRecord]] = {}
     perf_notes: dict[float, list[NoteRecord]] = {}
 
-    for stamp in match_line.stamps:
+    for stamp in view.stamps:
         source_coord = stamp._get_float_coordinate_for(source_id)
         if source_coord is not None and source_coord not in score_notes:
             score_notes[source_coord] = [_placeholder_snote(source_coord)]

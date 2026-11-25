@@ -3005,6 +3005,20 @@ def test_from_graphs_hendrix_pattern(self):
 
 This validates the Hendrix M6-M9 use case from the conceptual model: multiple MatchGraphs representing contiguous subsections can be merged into a single ordered MatchLine for WarpMap generation.
 
+## `.match` export: `write_match_file` (`test_matchline_save_as.py::TestWriteMatchFile`)
+
+`MatchLine.save_as` writes a `.match` file through the module function
+`write_match_file(filepath, match_line, context)`, which reads each stamp's
+coordinates as floats. The function is documented as taking a `MatchLine`,
+and it used to read a float accessor only the private view `save_as`
+wrapped the line in, so called with a `MatchLine` as documented it raised
+`AttributeError`. It now wraps the line itself and `save_as` passes the
+line. What proves it: the direct call, given the line as `save_as` is
+given it, writes byte for byte the file `save_as` writes, once without a
+context (placeholder notes from the coordinates) and once with the rich
+`sample_context`; and the direct file holds the two `snote(...)-note(...)`
+lines of the two stamps, so two equal broken files cannot pass.
+
 ---
 
 ## A Timeline in Several Groups (`test_bundle.py::TestSeveralGroups`, `test_bundle_dict.py`, `test_graph.py::TestExtendToSeveralGroups`)

@@ -55,30 +55,6 @@ if TYPE_CHECKING:
 module_logger = logging.getLogger(__name__)
 
 
-class _RawStampExportView:
-    """Present raw stamp coordinates to storage writers."""
-
-    def __init__(self, stamp: MatchStamp) -> None:
-        self._stamp = stamp
-
-    def _get_float_coordinate_for(self, timeline_id: str) -> float:
-        """Return the raw coordinate expected by storage writers."""
-        return self._stamp.get_coordinate_for(timeline_id, format="float")
-
-
-class _RawMatchLineExportView:
-    """Present a MatchLine with raw-coordinate stamp views."""
-
-    def __init__(self, match_line: MatchLine) -> None:
-        self.source_timeline_id = match_line.source_timeline_id
-        self.stamps = [_RawStampExportView(stamp) for stamp in match_line.stamps]
-        self._target_timeline_ids = match_line.target_timeline_ids()
-
-    def target_timeline_ids(self) -> set[str]:
-        """Return target timeline IDs from the source MatchLine."""
-        return self._target_timeline_ids
-
-
 @dataclass
 class MatchLine:
     """Ordered sequence of MatchStamps for a source timeline.
@@ -592,7 +568,7 @@ class MatchLine:
                 f"Currently supported: 'match'."
             )
 
-        return write_match_file(filepath, _RawMatchLineExportView(self), context)
+        return write_match_file(filepath, self, context)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for storage.

@@ -30,6 +30,7 @@ from timetoalign.alignment.match_format import (
     format_note_line,
     format_score_properties,
     format_snote_line,
+    write_match_file,
 )
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.core import TimeUnit
@@ -440,6 +441,38 @@ class TestRichExport:
         )
         assert isinstance(output, Path)
         assert output.exists()
+
+
+class TestWriteMatchFile:
+    """``write_match_file`` called with a MatchLine writes what ``save_as`` writes.
+
+    Validation logic is documented in ``tests/alignment/README.md`` under
+    "``.match`` export: ``write_match_file``".
+    """
+
+    @pytest.mark.parametrize("rich", [False, True])
+    def test_a_matchline_writes_what_save_as_writes(
+        self,
+        tmp_path: Path,
+        sample_context: MatchFileContext,
+        two_stamp_matchline: MatchLine,
+        rich: bool,
+    ) -> None:
+        context = sample_context if rich else None
+        saved = two_stamp_matchline.save_as(tmp_path / "saved.match", context=context)
+
+        written = write_match_file(
+            tmp_path / "written.match", two_stamp_matchline, context
+        )
+
+        assert written == tmp_path / "written.match"
+        assert written.read_text() == saved.read_text()
+        match_lines = [
+            line
+            for line in written.read_text().splitlines()
+            if line.startswith("snote(") and "-note(" in line
+        ]
+        assert len(match_lines) == 2
 
 
 # endregion

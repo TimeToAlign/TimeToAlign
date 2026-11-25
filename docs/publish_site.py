@@ -9,8 +9,10 @@ holds one folder per version:
 - ``stable/`` a copy of the newest release's folder,
 
 and, at the root, ``index.html`` (redirects to ``stable/``, or to ``dev/``
-while no release is published), ``versions.json`` (the version list, rebuilt
-from the folders present), ``versions.js`` (the version menu and banner, see
+while no release is published), ``404.html`` (forwards the addresses of the
+former unversioned site, ``page/_site/<path>``, and version-less paths to
+``stable/<path>``), ``versions.json`` (the version list, rebuilt from the
+folders present), ``versions.js`` (the version menu and banner, see
 ``versions.js`` next to this script) and ``.nojekyll``.
 
 Publishing replaces the target folder with the built site, refreshes
@@ -149,6 +151,56 @@ def redirect_page(target: str) -> str:
     )
 
 
+def not_found_page(base_path: str) -> str:
+    """Return the root ``404.html`` that forwards former and version-less URLs.
+
+    GitHub Pages serves this page for every missing path below the base path.
+    A path below ``page/_site/`` (where the site was served before it was
+    published per version) or a path outside every version folder is
+    forwarded to the same page in ``stable/``, keeping the query string and
+    the fragment. A missing page inside a version folder is not forwarded, so
+    a forward never loops.
+
+    Args:
+        base_path: The URL path the gh-pages root is served at, starting and
+            ending with ``/``.
+
+    Returns:
+        The HTML text of the page.
+    """
+    stable = html.escape(f"{base_path}{STABLE}/", quote=True)
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '<meta charset="utf-8">\n'
+        "<title>Page not found · TimeToAlign! documentation</title>\n"
+        "<script>\n"
+        "(function () {\n"
+        f"  var base = {json.dumps(base_path)};\n"
+        "  var path = window.location.pathname;\n"
+        "  if (path.indexOf(base) !== 0) { return; }\n"
+        "  var rest = path.slice(base.length);\n"
+        '  var former = "page/_site/";\n'
+        "  if (rest.indexOf(former) === 0) {\n"
+        "    rest = rest.slice(former.length);\n"
+        "  } else if (/^(dev|stable|\\d+\\.\\d+\\.\\d+)(\\/|$)/.test(rest)) {\n"
+        "    return;\n"
+        "  }\n"
+        "  window.location.replace(\n"
+        f'    base + "{STABLE}/" + rest + window.location.search + window.location.hash\n'
+        "  );\n"
+        "})();\n"
+        "</script>\n"
+        "</head>\n"
+        "<body>\n"
+        "<p>This page does not exist. The documentation is at\n"
+        f'<a href="{stable}">{stable}</a>.</p>\n'
+        "</body>\n"
+        "</html>\n"
+    )
+
+
 def inject_script_tag(text: str, tag: str) -> str | None:
     """Add the version script tag to an HTML page that does not carry it yet.
 
@@ -252,6 +304,7 @@ def publish(
     )
     redirect = f"{STABLE}/" if (pages / STABLE).is_dir() else f"{DEV}/"
     (pages / "index.html").write_text(redirect_page(redirect), encoding="utf-8")
+    (pages / "404.html").write_text(not_found_page(base_path), encoding="utf-8")
     shutil.copyfile(VERSIONS_JS, pages / "versions.js")
     (pages / ".nojekyll").touch()
     return written
@@ -266,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         The exit status.
     """
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     parser.add_argument(
         "site", type=Path, help="the built site (holding its index.html)"
     )

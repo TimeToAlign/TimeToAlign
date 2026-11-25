@@ -54,39 +54,79 @@
     });
   }
 
+  function luminance(color) {
+    var match = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(color || "");
+    if (!match) {
+      return null;
+    }
+    var channels = [match[1], match[2], match[3]].map(function (value) {
+      var c = Number(value) / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  }
+
+  function isTransparent(color) {
+    return (
+      !color ||
+      color === "transparent" ||
+      /^rgba\(.*,\s*0(\.0+)?\s*\)$/.test(color) ||
+      /\/\s*0(\.0+)?\s*\)$/.test(color)
+    );
+  }
+
+  // The colours of the page as the site draws it (its theme may differ from
+  // the operating system's colour scheme): the background of the body, else
+  // of the root element, else the browser's default canvas, read as light.
   function pageColors() {
-    var style = window.getComputedStyle(document.body);
-    var background = style.backgroundColor;
-    if (!background || background === "transparent" || background === "rgba(0, 0, 0, 0)") {
+    var body = window.getComputedStyle(document.body);
+    var background = body.backgroundColor;
+    if (isTransparent(background)) {
+      background = window.getComputedStyle(document.documentElement).backgroundColor;
+    }
+    if (isTransparent(background)) {
       background = "Canvas";
     }
-    return { background: background, text: style.color || "CanvasText" };
+    var level = luminance(background);
+    return {
+      background: background,
+      text: body.color || "CanvasText",
+      dark: level !== null && level < 0.5
+    };
   }
 
   function addStyle(colors) {
+    var banner = colors.dark
+      ? { background: "#332701", text: "#ffda6a", border: "#664d03" }
+      : { background: "#fff3cd", text: "#664d03", border: "#ffe69c" };
+    var scheme = colors.dark ? "dark" : "light";
     var css =
       "#tta-version-menu{position:fixed;right:12px;bottom:12px;z-index:1050;" +
-      "display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;" +
-      "font:13px/1.4 system-ui,sans-serif;opacity:.85;" +
-      "border:1px solid currentColor;color-scheme:light dark;" +
+      "display:flex;align-items:center;gap:6px;margin:0;padding:4px 8px;" +
+      "border-radius:6px;font:13px/1.4 system-ui,sans-serif;opacity:.85;" +
+      "border:1px solid currentColor;color-scheme:" + scheme + ";" +
       "background:" + colors.background + ";color:" + colors.text + "}" +
       "#tta-version-menu:hover,#tta-version-menu:focus-within{opacity:1}" +
-      "#tta-version-menu select{font:inherit;color:inherit;background:inherit;" +
-      "border:1px solid currentColor;border-radius:4px;padding:1px 4px}" +
+      "#tta-version-menu select,#tta-version-menu button{font:inherit;" +
+      "color:inherit;background:inherit;border:1px solid currentColor;" +
+      "border-radius:4px;padding:1px 4px;margin:0}" +
+      "#tta-version-menu button{cursor:pointer}" +
       "#tta-version-banner{padding:8px 16px;text-align:center;" +
-      "font:14px/1.5 system-ui,sans-serif;background:#fff3cd;color:#664d03;" +
-      "border-bottom:1px solid #ffe69c}" +
-      "#tta-version-banner a{color:inherit;font-weight:600;text-decoration:underline}" +
-      "@media (prefers-color-scheme: dark){#tta-version-banner{background:#332701;" +
-      "color:#ffda6a;border-bottom-color:#664d03}}";
+      "font:14px/1.5 system-ui,sans-serif;color-scheme:" + scheme + ";" +
+      "background:" + banner.background + ";color:" + banner.text + ";" +
+      "border-bottom:1px solid " + banner.border + "}" +
+      "#tta-version-banner a{color:inherit;font-weight:600;text-decoration:underline}";
     var element = document.createElement("style");
     element.textContent = css;
     document.head.appendChild(element);
   }
 
+  // A form, so that choosing a version in the list (with the arrow keys, for
+  // instance) navigates only once the reader activates "Go".
   function addMenu(versions, here) {
-    var menu = document.createElement("div");
+    var menu = document.createElement("form");
     menu.id = "tta-version-menu";
+    menu.setAttribute("aria-label", "Documentation version");
     var label = document.createElement("label");
     label.htmlFor = "tta-version-select";
     label.textContent = "Version";
@@ -99,11 +139,16 @@
       option.selected = entry.path === here.folder + "/";
       select.appendChild(option);
     });
-    select.addEventListener("change", function () {
+    var go = document.createElement("button");
+    go.type = "submit";
+    go.textContent = "Go";
+    menu.addEventListener("submit", function (event) {
+      event.preventDefault();
       switchTo(versions[Number(select.value)], here.page);
     });
     menu.appendChild(label);
     menu.appendChild(select);
+    menu.appendChild(go);
     document.body.appendChild(menu);
   }
 

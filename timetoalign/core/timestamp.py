@@ -41,7 +41,7 @@ import pandas as pd
 
 from ..maps.base import ConversionMap
 from .enums import NumberType, TimeUnit
-from .fields import field_metadata
+from .fields import _is_list, _is_tuple, field_metadata
 from .retrieval import (
     CoordinateFormat,
     CoordinateResult,
@@ -83,19 +83,19 @@ ConversionMapsSpec = (
 )
 
 
-def _conversion_map_enabled_for_spec(
-    cmap: "ConversionMap[Any]", spec: "ConversionMapsSpec"
-) -> bool:
+def _conversion_map_enabled_for_spec(cmap: "ConversionMap[Any]", spec: object) -> bool:
     """Return whether a ``conversion_maps`` *spec* surfaces *cmap*.
 
     Pure predicate over a spec and a single map — shared by every
     :class:`Stamp` and by table assembly, which holds a spec but no stamp.
+    *spec* is a :data:`ConversionMapsSpec` as a caller passed it, unchecked:
+    an entry of any other kind enables nothing.
     """
     if spec is True:
         return True
     if spec is False or spec is None:
         return False
-    requested = spec if isinstance(spec, list) else [spec]
+    requested = spec if _is_list(spec) else [spec]
     for allowed in requested:
         if isinstance(allowed, TimeUnit):
             if cmap.target_unit == allowed:
@@ -1170,7 +1170,7 @@ def build_timestamp_table(columns: Sequence[TimestampColumn]) -> "pa.Table":
     """
     import pyarrow as pa
 
-    from .fields import blob_metadata
+    from .fields import _is_arrow_column, blob_metadata
     from .time import (
         RATIONAL_STRUCT_TYPE,
         CoordinateField,
@@ -1178,14 +1178,12 @@ def build_timestamp_table(columns: Sequence[TimestampColumn]) -> "pa.Table":
         build_number_struct_array,
     )
 
-    arrays: list[pa.Array] = []
-    fields: list[pa.Field] = []
+    arrays: list[pa.Array[Any]] = []
+    fields: list[pa.Field[pa.DataType]] = []
     for column in columns:
         values = _table_cell_values(column.values)
-        if (
-            isinstance(values, (pa.Array, pa.ChunkedArray))
-            and values.type == RATIONAL_STRUCT_TYPE
-        ):
+        array: pa.Array[Any]
+        if _is_arrow_column(values) and values.type == RATIONAL_STRUCT_TYPE:
             # Already in storage shape: re-encoding it would mean decoding to
             # a number first, and a decode-encode round trip is exactly where
             # an authored ratio turns into the dyadic of its double.
@@ -1201,8 +1199,9 @@ def build_timestamp_table(columns: Sequence[TimestampColumn]) -> "pa.Table":
                 rounding="round",
                 on_error="raise",
             )
+        semantic: CoordinateField
         if column.timeline_id is not None:
-            semantic: Any = IdCoordinateField.from_field(
+            semantic = IdCoordinateField.from_field(
                 array,
                 unit=column.unit,
                 number_type=column.number_type,
@@ -1220,7 +1219,8 @@ def build_timestamp_table(columns: Sequence[TimestampColumn]) -> "pa.Table":
         if column.metadata:
             payload = field_metadata(pa_field)
             payload.update(column.metadata)
-            pa_field = pa_field.with_metadata(blob_metadata(**payload))
+            metadata: dict[bytes | str, bytes | str] = {**blob_metadata(**payload)}
+            pa_field = pa_field.with_metadata(metadata)
         arrays.append(semantic.to_pyarrow())
         fields.append(pa_field)
     return pa.Table.from_arrays(arrays, schema=pa.schema(fields))
@@ -1228,7 +1228,7 @@ def build_timestamp_table(columns: Sequence[TimestampColumn]) -> "pa.Table":
 
 def _table_cell_values(values: Any) -> Any:
     """Unwrap ``Coordinate`` cells so the column builder sees plain numbers."""
-    if isinstance(values, (list, tuple)):
+    if _is_list(values) or _is_tuple(values):
         return [
             value.value if isinstance(value, Coordinate) else value for value in values
         ]
@@ -1295,13 +1295,14 @@ def timestamp_table_to_dataframe(
     # df.columns, which is how an event-less timeline could not be exported.
     # Build field name mapping
     new_field_names: list[str] = []
+    schema_fields: list[pa.Field[pa.DataType]] = list(table.schema)
 
-    for i, data_field in enumerate(table.schema):
+    for i, data_field in enumerate(schema_fields):
         field_name = data_field.name
         meta_dict = field_metadata(data_field)
 
         # Determine base name
-        if isinstance(fields, list):
+        if _is_list(fields):
             if i < len(fields):
                 base_name = fields[i]
             else:
@@ -1334,7 +1335,7 @@ def timestamp_table_to_dataframe(
     # axis writes numbers -- the struct is the storage shape, a scalar is what
     # a frame reader expects.
     data: dict[str, pd.Series] = {}
-    for i, data_field in enumerate(table.schema):
+    for i, data_field in enumerate(schema_fields):
         data[new_field_names[i]] = _column_on_declared_axis(
             table.column(data_field.name), field_metadata(data_field)
         )
@@ -1343,7 +1344,7 @@ def timestamp_table_to_dataframe(
 
 
 def _column_on_declared_axis(
-    column: "pa.ChunkedArray | pa.Array", metadata: dict[str, Any]
+    column: "pa.ChunkedArray[Any] | pa.Array[Any]", metadata: dict[str, Any]
 ) -> "pd.Series":
     """Decode one timestamp column into the representation its axis declares.
 

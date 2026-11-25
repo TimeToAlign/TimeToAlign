@@ -53,6 +53,7 @@ from timetoalign.core.fields import (
     SemanticField,
     StringField,
     StructField,
+    _filled_mask,
     _GenericField,
     blob_metadata,
     field_metadata,
@@ -905,7 +906,9 @@ class SemanticFieldAccessMixin:
         cache[cache_key] = field
         return field
 
-    def _holds_properties(self, scalar_cls: type[BaseModel], schema: pa.Schema) -> bool:
+    def _holds_properties(
+        self, scalar_cls: type[BaseModel], schema: pa.StructType
+    ) -> bool:
         """Whether the table holds the data of the event type *scalar_cls*.
 
         Every property the scalar requires must be a column of the table: of
@@ -960,7 +963,9 @@ class SemanticFieldAccessMixin:
         for kind in scalar_cls.__mro__:
             if not issubclass(kind, BaseModel) or kind is BaseModel:
                 continue
-            rows = pc.fill_null(pc.equal(types, kind.__name__), False)
+            rows = _filled_mask(
+                pc.equal(types, pa.scalar(kind.__name__)), pa.scalar(False)
+            )
             if not pc.any(rows).as_py():
                 continue
             if kind is scalar_cls:

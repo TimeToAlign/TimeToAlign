@@ -1,9 +1,15 @@
 [
   {
     "version": "stable",
-    "title": "stable (0.1.0)",
+    "title": "stable (0.2.0)",
     "path": "stable/",
-    "copy_of": "0.1.0"
+    "copy_of": "0.2.0"
+  },
+  {
+    "version": "0.2.0",
+    "title": "0.2.0",
+    "path": "0.2.0/",
+    "release": true
   },
   {
     "version": "0.1.0",

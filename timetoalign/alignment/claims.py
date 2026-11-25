@@ -78,10 +78,14 @@ from timetoalign.core.fields import (
     StructField,
     _compared,
     _filled,
+    _if_else,
+    _inferred_array,
+    _null_column,
     _struct_array,
     _struct_array_of,
     _struct_child,
     _struct_members,
+    _struct_rows,
     _valid_struct_cell,
     drop_from_schema,
     register_value_projector,
@@ -1813,7 +1817,7 @@ def _number_column(
     if isinstance(values, pa.Array):
         return values
     try:
-        return pa.array(values)
+        return _inferred_array(values)
     except (pa.ArrowInvalid, pa.ArrowTypeError):
         return np.asarray(list(values), dtype=object)
 
@@ -3267,12 +3271,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
                     end_cells, query.value, "greater_equal", query.number_type
                 ),
             )
-            relevant = pc.if_else(
-                pc.is_valid(data.field("end_anchor")), contained, start
-            )
+            relevant = _if_else(pc.is_valid(data.field("end_anchor")), contained, start)
             # A side whose cells cannot answer the query (null) is not relevant.
             masks.append(
-                pc.fill_null(
+                _filled(
                     pc.and_(
                         pc.and_(side_id, data.field("start_anchor").is_valid()),
                         relevant,
@@ -3466,7 +3468,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             >>> row["id"], row["end_anchor"]
             (None, None)
         """
-        rows = self._struct_array().to_pylist()
+        rows = _struct_rows(self._struct_array())
         paths = list(_coordinate_paths(self.struct_schema()))
         for row in rows:
             for path in paths:
@@ -3719,7 +3721,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 (
                     further.column(name).combine_chunks()
                     if further is not None and name in further.column_names
-                    else pa.nulls(n, type=kind)
+                    else _null_column(n, kind)
                 )
                 for name, kind in names.items()
             ]

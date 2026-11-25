@@ -31,7 +31,7 @@ from timetoalign.alignment import (
     Provenance,
 )
 from timetoalign.core import Coordinate, NumberType, TimeUnit
-from timetoalign.core.fields import SemanticField, derive_arrow_struct
+from timetoalign.core.fields import SemanticField, StructField, derive_arrow_struct
 from timetoalign.core.time import COORDINATE_CELL_TYPE, RATIONAL_STRUCT_TYPE
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -1679,6 +1679,83 @@ class TestNullCoordinateRefused:
 
 
 # region One spelling of a value
+
+
+class TestNullRowRefused:
+    """A null row is no MatchClaim: the constructor and every reader refuse it."""
+
+    CONSTRUCTOR = (
+        "MatchClaimField row 1 is null: a MatchClaim table holds no null rows."
+    )
+
+    @staticmethod
+    def _field() -> MatchClaimField:
+        return MatchClaimField.from_columns(
+            ["score", "score"],
+            ["audio", "audio"],
+            ["n1", "n2"],
+            ["o1", "o2"],
+            [Fraction(1, 3), Fraction(2, 3)],
+            [0.5, 0.7],
+            timelines={
+                "score": ("quarters", "fraction"),
+                "audio": ("seconds", "float"),
+            },
+        )
+
+    @classmethod
+    def _rows(cls, mask: list[bool]) -> pa.StructArray:
+        """The field's rows as one struct array, with *mask* marking null rows."""
+        rows = cls._field().table.to_struct_array().combine_chunks()
+        return pa.StructArray.from_arrays(
+            [rows.field(i) for i in range(rows.type.num_fields)],
+            fields=list(rows.type),
+            mask=pa.array(mask),
+        )
+
+    @staticmethod
+    def _wrap(rows: pa.StructArray | pa.ChunkedArray) -> MatchClaimField:
+        return MatchClaimField(StructField(rows, pa.field("matchclaim", rows.type)))
+
+    def test_the_rows_without_a_null_one_are_accepted(self) -> None:
+        assert len(self._wrap(self._rows([False, False]))) == 2
+
+    def test_the_constructor_refuses_a_null_row(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            self._wrap(self._rows([False, True]))
+        assert str(excinfo.value) == self.CONSTRUCTOR
+
+    def test_the_constructor_refuses_a_null_row_of_a_chunked_array(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            self._wrap(pa.chunked_array([self._rows([False, True])]))
+        assert str(excinfo.value) == self.CONSTRUCTOR
+
+    def test_from_table_keeps_its_message(self) -> None:
+        table = self._field().table
+        nulled = pa.Table.from_arrays(
+            [
+                pa.array([column[0].as_py(), None], type=column.type)
+                for column in table.columns
+            ],
+            names=table.column_names,
+        )
+        with pytest.raises(ValueError) as excinfo:
+            MatchClaimField.from_table(nulled)
+        assert str(excinfo.value) == (
+            "MatchClaim table row 1 names no timeline_a_id or no timeline_b_id."
+        )
+
+    def test_from_dict_keeps_its_message(self) -> None:
+        data = self._field().to_dict()
+        data["rows"][1] = None
+        with pytest.raises(ValueError) as excinfo:
+            MatchClaimField.from_dict(data)
+        assert str(excinfo.value) == (
+            "In a MatchClaimField dictionary, row 1 must be a mapping holding the "
+            "keys ['timeline_a_id', 'timeline_b_id', 'start_anchor', 'end_anchor', "
+            "'is_synchronous', 'provenance', 'certainty', 'event_a_id', "
+            "'event_a_name', 'event_b_id', 'event_b_name', 'id'], not None."
+        )
 
 
 class TestOneSpelling:

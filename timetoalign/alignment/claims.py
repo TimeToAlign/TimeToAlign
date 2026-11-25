@@ -1902,12 +1902,16 @@ def _coordinate_paths(
             yield from _coordinate_paths(sub_field.type, path)
 
 
-def _holder(row: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any] | None:
+def _holder(row: dict[str, Any] | None, path: tuple[str, ...]) -> dict[str, Any] | None:
     """The mapping holding the last key of *path* in *row*, or ``None``.
 
-    ``None`` where a mapping on the way is null (an absent end anchor).
+    ``None`` where a mapping on the way is null (an absent end anchor), or
+    where *row* itself is null, which :class:`MatchClaimField` refuses at
+    construction, so its rows never reach here null.
     """
     holder: Any = row
+    if holder is None:
+        return None
     for key in path[:-1]:
         holder = holder[key]
         if holder is None:
@@ -2894,8 +2898,19 @@ class MatchClaimField(SemanticField[MatchClaim]):
         :meth:`from_dict` / :meth:`from_parquet` classmethods; this
         constructor mirrors the base ``SemanticField`` so blueprint
         construction keeps working, plus a field-level ``provenance``.
+
+        Raises:
+            ValueError: If a row of *raw* is null: a MatchClaim table holds
+                no null rows.
         """
         super().__init__(raw, source_fields=source_fields, name=name)
+        data = self._raw.data
+        if data is not None and data.null_count > 0:
+            row = pc.index(pc.is_null(data), True).as_py()
+            raise ValueError(
+                f"MatchClaimField row {row} is null: a MatchClaim table holds no "
+                "null rows."
+            )
         self._provenance: Provenance | None = provenance
         # The further columns of a table read (:meth:`from_table`), row for
         # row; ``None`` where there are none.

@@ -1243,6 +1243,20 @@ nan]`) with `... row 1 end_anchor.coordinate_b: ...`, and NaN on both sides
 ...`; a null end on both sides stays the instant claim of
 `test_from_columns_end_columns`.
 
+**A null row is no MatchClaim, and the field refuses it at construction.**
+Every reader already refuses one (`from_table` because the row names no
+timeline, `from_dict` because the row is no mapping), and TimeToShare's
+MatchClaim table requires both timeline ids, so a field holding a null row
+could only be built by wrapping a struct array directly; it then reported a
+length its rows could not be read for. Evidence (`TestNullRowRefused`): the
+two-row field `score` ↔ `audio` with row 1 masked null, wrapped by the bare
+constructor as a plain and as a chunked struct array, is refused with
+`MatchClaimField row 1 is null: a MatchClaim table holds no null rows.`; the
+same field unmasked is accepted (two claims); and the two readers keep their
+own messages for the same row (`MatchClaim table row 1 names no
+timeline_a_id or no timeline_b_id.` and `In a MatchClaimField dictionary,
+row 1 must be a mapping holding the keys [...], not None.`).
+
 ### One spelling of a value in memory (`TestOneSpelling`)
 
 Any fraction is valid, `2/4` included, and compares by value. Three places
@@ -1433,6 +1447,7 @@ timeline.
 | `test_from_columns_end_columns` | an end on both sides makes the row an interval claim, a null end an instant |
 | `test_from_columns_refusals` | unequal lengths, a null event id, a timeline not given, one end column alone |
 | `TestNullCoordinateRefused` | a null coordinate refused by every reader; an end on one side only or a NaN end refused by `from_columns`, as specified above |
+| `TestNullRowRefused` | a null row refused by the constructor (plain and chunked), by `from_table` and by `from_dict`, each with its exact message, as specified above |
 | `TestOneSpelling` | an unreduced fraction is held reduced, so fields compare and succeed by value, as specified above |
 | `test_getitem_first_row` | `f[0]` is a `MatchClaim`, `A`↔`B`, synchronous instant, events `a0`/`b0`, provenance identity `is` the field's |
 | `test_getitem_injects_provenance` | the `provenance` column is null and a materialised claim carries the field's |

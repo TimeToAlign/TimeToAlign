@@ -226,17 +226,21 @@ partitura_tl.get_timestamp_table()
 # ---
 # ## 3. Music21Loader (MusicXML/MEI via music21)
 #
-# Parses MusicXML and MEI files using the `music21` library.
+# Parses MusicXML and MEI files using the `music21` library. music21 gives a
+# measure without timed content no length, so a source holding such measures
+# (the MEI skeleton of this piece, whose measures are empty) states no measure
+# positions through it and the load raises `ValueError`. The piece's MusicXML
+# times every measure.
 
 # %%
 from timetoalign.loader.score.music21 import Music21Loader
 
-# Use a small MEI file
+# Use a small MusicXML file
 music21_file = (
     SCORE_DIR
     / "beethoven_op18-4iv_multimodal"
     / "op18_no4_mov4_flow"
-    / "op18_no4_mov4_flow.mei"
+    / "op18_no4_mov4_flow.musicxml"
 )
 music21_file.name
 

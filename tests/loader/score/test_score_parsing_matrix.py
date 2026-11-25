@@ -507,6 +507,22 @@ _MUSIC21_MEI_DROPS_MEASURES = pytest.mark.xfail(
     reason="music21's MEI reader drops the 5 measures without @n (10 of 15)",
 )
 
+# music21 gives the skeleton's empty measures no length, so the load raises.
+_MUSIC21_MEI_MEASURES_WITHOUT_LENGTH = pytest.mark.xfail(
+    raises=ValueError,
+    strict=True,
+    reason="music21 gives 9 of the skeleton's 21 measures no length",
+)
+
+
+def _music21_mei_marks(name: str) -> Any:
+    """Return the known differences of Music21's MEI reading of a specimen."""
+    if name == "flow_only":
+        return pytest.param(name, marks=_MUSIC21_MEI_DROPS_MEASURES)
+    if name == "op18_no4_mov4_flow":
+        return pytest.param(name, marks=_MUSIC21_MEI_MEASURES_WITHOUT_LENGTH)
+    return name
+
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestMusic21LoaderMEI:
@@ -517,15 +533,7 @@ class TestMusic21LoaderMEI:
     """
 
     @pytest.mark.parametrize(
-        "specimen_name",
-        [
-            (
-                pytest.param(name, marks=_MUSIC21_MEI_DROPS_MEASURES)
-                if name == "flow_only"
-                else name
-            )
-            for name in SPECIMENS
-        ],
+        "specimen_name", [_music21_mei_marks(name) for name in SPECIMENS]
     )
     def test_music21_mei_folded_count(self, specimen_name: str) -> None:
         """Music21Loader MEI folded measure count is correct."""
@@ -578,11 +586,7 @@ class TestMusic21LoaderMEI:
             (
                 pytest.param(name, marks=pytest.mark.slow)
                 if name == "c05n05_musete"
-                else (
-                    pytest.param(name, marks=_MUSIC21_MEI_DROPS_MEASURES)
-                    if name == "flow_only"
-                    else name
-                )
+                else _music21_mei_marks(name)
             )
             for name in SPECIMENS
         ],
@@ -643,6 +647,28 @@ class TestMusic21LoaderMEI:
 
         assert signs(mei_loader) == signs(xml_loader)
         assert len(signs(xml_loader)) >= spec.folded_measures
+
+    def test_measures_without_length_are_refused(self) -> None:
+        """A measure music21 gives no length states no position after it.
+
+        The ``op18_no4_mov4_flow`` skeleton's empty measures have no timed
+        content, and music21 leaves out its endings, which hold nothing but
+        measure rests. The load raises rather than write measures of length
+        zero, on which two runs of brackets would fall on one coordinate.
+        """
+        pytest.importorskip("music21")
+        from timetoalign.loader.score import Music21Loader
+
+        path = get_specimen_path(SPECIMENS["op18_no4_mov4_flow"], "mei")
+        with pytest.raises(ValueError) as raised:
+            Music21Loader().load(path)
+        assert str(raised.value) == (
+            "music21 gives 9 of the 21 measures it reads from op18_no4_mov4_flow.mei no "
+            "length (a measure without timed content has none): measure numbers "
+            "[2, 11, 20, 29, 46, 79, 86, 95, 104]. Neither their lengths nor the "
+            "positions of the measures after them are stated, so no measure table is "
+            "written"
+        )
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")

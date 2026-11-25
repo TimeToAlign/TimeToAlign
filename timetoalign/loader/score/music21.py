@@ -46,6 +46,13 @@ class Music21Loader(ScoreLoader):
     See ``PartituraLoader`` for the full rationale; both loaders apply the
     same convention so that score timelines built from either source are
     directly comparable and compatible with ``MatchfileLoader``.
+
+    Known issue: music21 gives a measure without timed content no length
+    (the empty measures of an MEI skeleton, which leaves out the measures it
+    repeats unchanged), and its MEI reader leaves out ``<ending>`` measures
+    holding nothing but measure rests. A source with such a measure states
+    no measure positions through music21, and the load raises
+    ``ValueError`` naming them.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -91,6 +98,7 @@ class Music21Loader(ScoreLoader):
 
             # Get measure list for MC lookup
             measure_list = list(part.getElementsByClass(m21.stream.Measure))
+            self._refuse_measures_without_length(measure_list, source)
             mei_skeleton_expanded = False
 
             # ===== MEI sparse skeleton expansion =====
@@ -462,6 +470,34 @@ class Music21Loader(ScoreLoader):
             "staff": getattr(obj, "staff", None),
             "part_id": part_id,
         }
+
+    @staticmethod
+    def _refuse_measures_without_length(measure_list: list[Any], source: Path) -> None:
+        """Raise if music21 gives a measure of *source* no length.
+
+        music21 times a measure by its content: one without timed content
+        (an empty layer, such as an MEI skeleton's) has length zero, and its
+        MEI reader leaves out ``<ending>`` measures holding nothing but
+        measure rests. Such a measure states neither its own length nor the
+        position of any measure after it; measures of length zero would put
+        flow control at false coordinates (two brackets on one).
+
+        Raises:
+            ValueError: Naming the measure numbers music21 gives no length.
+        """
+        unmeasured = [
+            measure.number
+            for measure in measure_list
+            if measure.duration.quarterLength == 0
+        ]
+        if unmeasured:
+            raise ValueError(
+                f"music21 gives {len(unmeasured)} of the {len(measure_list)} measures it "
+                f"reads from {source.name} no length (a measure without timed content "
+                f"has none): measure numbers {unmeasured}. Neither their lengths nor the "
+                "positions of the measures after them are stated, so no measure table "
+                "is written"
+            )
 
     @staticmethod
     def _parse_mei_measure_info(source: Path) -> dict[int, dict[str, Any]]:

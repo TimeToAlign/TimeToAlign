@@ -128,6 +128,15 @@ different on `flow_only`: it completes repeat regions by inferring boundaries.
 - The `flow_only` CSV must retain both `default` and `ms3` interpretations.
 - Music21 reads only the 10 measures of the `flow_only` MEI that state an `@n` (of 15): its
   MEI folded count and MEI-against-MusicXML flow are strict `xfail`s.
+- Music21 gives a measure without timed content no length, and its MEI reader leaves out the
+  endings of the `op18_no4_mov4_flow` skeleton, which hold nothing but measure rests. Such a
+  measure states neither its own length nor the position of any measure after it, so the
+  flow control written from it would lie at false coordinates (on the skeleton, two runs of
+  brackets fell on one coordinate). `Music21Loader` refuses the source instead, as
+  `VerovioLoader` refuses the same skeleton: the load raises `ValueError` naming the nine
+  measures (`@n` 2, 11, 20, 29, 46, 79, 86, 95 and 104), asserted word for word. Its MEI folded
+  count and MEI-against-MusicXML signs are strict `xfail`s (`ValueError`); its MusicXML plays
+  the target flow.
 - Partitura's MEI importer (1.7.0) raises before the loader sees a measure, so the Partitura MEI
   folded count is a strict `xfail` on three scores: on `polyrhythm_only` it raises `Exception`
   in `_handle_metersig`, because staff 3 states its meter only as `meter.sym="cut"`; on

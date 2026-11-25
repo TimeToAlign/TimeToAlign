@@ -8,6 +8,7 @@ from fractions import Fraction as F
 from numbers import Real
 from pathlib import Path
 
+import numpy as np
 import pydantic
 import pytest
 from pydantic import ValidationError
@@ -657,7 +658,39 @@ class TestTempoRealizationValues:
         assert payload["alternatives"][0]["weight"] == number_to_json(F(1, 3))
         assert TempoEntry.from_dict(payload) == entry
 
-    @pytest.mark.parametrize("weight", [float("nan"), float("inf"), F(0), F(-1), F(2)])
+    @pytest.mark.parametrize(
+        ("weight", "exact"),
+        [
+            (np.float32(0.5), F(1, 2)),
+            (np.float32(0.1), F(13421773, 134217728)),
+            (np.float16(0.25), F(1, 4)),
+            (np.float64(0.1), F(0.1)),
+        ],
+    )
+    def test_numpy_float_weights_are_their_exact_values(
+        self, weight: Real, exact: F
+    ) -> None:
+        entry = TempoEntry(
+            at=Coordinate(F(0), "quarters"),
+            alternatives=((Coordinate(F(1), "seconds"), weight),),
+        )
+        assert entry.alternatives[0][1] == exact
+        assert type(entry.alternatives[0][1]) is F
+
+    @pytest.mark.parametrize(
+        "weight",
+        [
+            float("nan"),
+            float("inf"),
+            F(0),
+            F(-1),
+            F(2),
+            np.float32("nan"),
+            np.float32("inf"),
+            np.float32(0),
+            np.float32(2),
+        ],
+    )
     def test_invalid_alternative_weight_is_rejected(self, weight: Real) -> None:
         with pytest.raises(
             pydantic.ValidationError,

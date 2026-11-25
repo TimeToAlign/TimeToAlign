@@ -1951,6 +1951,16 @@ on a timeline object is an unknown key, kept and written back, never read. These
 forests, positionless tempo facts, ambiguous simultaneous pulse units, and
 accidental mixing of symbolic and physical axes.
 
+A tempo entry's alternative weight is read as the exact value of the number
+given: a rational number as it is, any other finite real number (a `float`,
+or a NumPy float of any width) as the exact value of its double, so
+`np.float32(0.5)` is `1/2`, `np.float32(0.1)` is `13421773/134217728` (the
+float32's own value, not the double nearest 0.1), `np.float16(0.25)` is
+`1/4` and `np.float64(0.1)` equals `Fraction(0.1)`. The bounds apply to that
+value: NaN, the infinities, 0 and 2 are refused as NumPy float32 values just
+as they are as Python numbers. A reader passing a NumPy float32 to
+`Fraction` refused every float32 weight with a `TypeError`.
+
 Measure serialization is tested with all six concrete subclasses and
 non-dyadic fractions such as ``Fraction(1, 3)``. The exact class name and every
 field must survive JSON; a float detour would change at least one denominator and

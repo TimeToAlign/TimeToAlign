@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from fractions import Fraction
 from math import gcd, isfinite, lcm
-from numbers import Real
+from numbers import Rational, Real
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Literal, NamedTuple, TypeVar
 
@@ -1060,6 +1060,24 @@ def _thaw_json(value: Any) -> Any:
     return value
 
 
+def _exact_weight(weight: object) -> Fraction | None:
+    """The exact value of a finite real weight, or None for anything else.
+
+    A rational number (``int``, ``Fraction``, a NumPy integer) is taken as
+    it is; any other real number (``float``, a NumPy float of any width) by
+    the exact value of its double. ``bool``, a non-real value, NaN and the
+    infinities give None.
+    """
+    if isinstance(weight, bool) or not isinstance(weight, Real):
+        return None
+    if isinstance(weight, Rational):
+        return Fraction(weight)
+    value = float(weight)
+    if not isfinite(value):
+        return None
+    return Fraction(value)
+
+
 class TempoEntry(BaseModel):
     """One positioned symbolic-axis row in a tempo map.
 
@@ -1170,18 +1188,13 @@ class TempoEntry(BaseModel):
             if not isinstance(item, (list, tuple)) or len(item) != 2:
                 return value
             at, weight = item
-            if (
-                isinstance(weight, bool)
-                or not isinstance(weight, Real)
-                or weight <= 0
-                or weight > 1
-                or not isfinite(float(weight))
-            ):
+            exact = _exact_weight(weight)
+            if exact is None or exact <= 0 or exact > 1:
                 raise ValueError(
                     "TempoEntry alternative weight must be a finite real number "
                     "greater than zero and at most one"
                 )
-            normalized.append((at, Fraction(weight)))
+            normalized.append((at, exact))
         return tuple(normalized)
 
     @model_validator(mode="after")

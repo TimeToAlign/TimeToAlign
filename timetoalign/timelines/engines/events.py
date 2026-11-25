@@ -25,6 +25,13 @@ from timetoalign.core import (
     Shape,
     struct_to_coordinate,
 )
+from timetoalign.core.fields import (
+    _filled_mask,
+    _struct_array,
+    _struct_if_else,
+    _struct_members,
+    _valid_struct_cell,
+)
 from timetoalign.core.ids import quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
@@ -171,7 +178,7 @@ def _projection_keys(table: pa.Table) -> pa.Table:
             data = table.column(name).combine_chunks()
             if isinstance(data, pa.StructArray) and len(data.type) > 0:
                 flat = dict(
-                    zip((f.name for f in data.type), data.flatten(), strict=True)
+                    zip((f.name for f in data.type), _struct_members(data), strict=True)
                 )
                 return [
                     pc.is_valid(data),
@@ -190,7 +197,10 @@ def _projection_keys(table: pa.Table) -> pa.Table:
         for key, part in zip(number, parts, strict=True):
             part = pc.cast(part, number[key])
             columns[f"{name}_{key}"] = pc.fill_null(part, fills[number[key]])
-    reference = {"timeline_id": pa.string(), "event_id": pa.string()}
+    reference: dict[str, pa.DataType] = {
+        "timeline_id": pa.string(),
+        "event_id": pa.string(),
+    }
     present, *parts = struct("projection_of", reference)
     columns["projection_of_present"] = present
     for key, part in zip(reference, parts, strict=True):
@@ -517,13 +527,14 @@ class EventsMixin:
         table = added.table
         if "event_type" not in table.column_names:
             return
-        is_box = pc.fill_null(
-            pc.equal(table.column("event_type"), BOX_EVENT_TYPE), False
+        event_types = table.column("event_type").combine_chunks()
+        is_box = _filled_mask(
+            pc.equal(event_types, pa.scalar(BOX_EVENT_TYPE)), pa.scalar(False)
         )
         if not pc.any(is_box).as_py():
             return
         boxes = table.filter(is_box)
-        positions = pc.indices_nonzero(is_box).to_pylist()
+        positions = pc.indices_nonzero(is_box).to_numpy()
         number_type = self._number_type
 
         def refuse_as_the_box(wrong: pa.Array) -> None:
@@ -557,15 +568,15 @@ class EventsMixin:
             data = boxes.column(name).combine_chunks()
             n_shapes = pc.add(n_shapes, pc.cast(data.is_valid(), pa.int64()))
             field = field_class.from_field((data, boxes.schema.field(name)))
-            x_min = pc.if_else(data.is_valid(), field.x_min(), x_min)
-            x_max = pc.if_else(data.is_valid(), field.x_max(), x_max)
-        refuse_as_the_box(pc.not_equal(n_shapes, 1))
+            x_min = _struct_if_else(data.is_valid(), field.x_min(), x_min)
+            x_max = _struct_if_else(data.is_valid(), field.x_max(), x_max)
+        refuse_as_the_box(pc.not_equal(n_shapes, pa.scalar(1)))
         duration = boxes.column("duration").combine_chunks()
         refuse_as_the_box(duration.is_null())
 
         origin = _image_origin(self)
         expected = combine_number_columns(x_min, origin.value, "subtract", number_type)
-        start = boxes.column("start").combine_chunks()
+        start = _struct_array(boxes.column("start"))
         wrong = pc.invert(compare_number_column(start, expected, "equal", number_type))
         if pc.any(wrong).as_py():
             at = pc.index(wrong, True).as_py()
@@ -573,7 +584,7 @@ class EventsMixin:
             def written(cells: pa.StructArray) -> str:
                 """Format the cell of *cells* at the refused row as a coordinate value."""
                 return _format_coordinate_value(
-                    struct_to_coordinate(cells[at].as_py(), number_type)
+                    struct_to_coordinate(_valid_struct_cell(cells[at]), number_type)
                 )
 
             raise ValueError(
@@ -675,7 +686,9 @@ class EventsMixin:
         )
         keys = list(zip(*(column.to_pylist() for column in _projection_keys(placed))))
         table = self._events.table
-        held = table.filter(pc.equal(table.column("event_type"), PROJECTION_EVENT_TYPE))
+        held = table.filter(
+            pc.equal(table.column("event_type"), pa.scalar(PROJECTION_EVENT_TYPE))
+        )
         held_keys = _projection_keys(held).append_column(
             "held_id", held.column("id").combine_chunks()
         )
@@ -712,8 +725,9 @@ class EventsMixin:
                 ids.append(event_id)
                 first.setdefault(key, event_id)
                 continue
-            if by_key[index] is not None:
-                ids.append(by_key[index])
+            held_id = by_key[index]
+            if held_id is not None:
+                ids.append(held_id)
             elif key in first:
                 ids.append(first[key])
             else:
@@ -955,7 +969,7 @@ class EventsMixin:
         """
         # Search own events first
         table = self._events.table
-        mask = pc.equal(table.column("id"), event_id)
+        mask = pc.equal(table.column("id"), pa.scalar(event_id))
         filtered = table.filter(mask)
         if filtered.num_rows > 0:
             return filtered.to_pylist()[0]

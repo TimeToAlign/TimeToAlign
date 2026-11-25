@@ -41,7 +41,7 @@ import pandas as pd
 
 from ..maps.base import ConversionMap
 from .enums import NumberType, TimeUnit
-from .fields import _is_list, _is_tuple, field_metadata
+from .fields import _is_list, _is_tuple, _struct_member, field_metadata
 from .retrieval import (
     CoordinateFormat,
     CoordinateResult,
@@ -1363,7 +1363,6 @@ def _column_on_declared_axis(
     and uses nullable ``Int64`` only where the column actually has gaps.
     """
     import pyarrow as pa
-    import pyarrow.compute as pc
 
     declared = metadata.get("number_type")
     unit = metadata.get("unit")
@@ -1377,11 +1376,11 @@ def _column_on_declared_axis(
     if isinstance(column, pa.ChunkedArray):
         column = column.combine_chunks()
     valid = column.is_valid().to_pylist()
-    doubles = pc.struct_field(column, "value").to_pylist()
+    doubles = _struct_member(column, "value").to_pylist()
 
     if number_type is NumberType.fraction:
-        numerators = pc.struct_field(column, "numerator").to_pylist()
-        denominators = pc.struct_field(column, "denominator").to_pylist()
+        numerators = _struct_member(column, "numerator").to_pylist()
+        denominators = _struct_member(column, "denominator").to_pylist()
         cells: list[Any] = []
         for position, is_valid in enumerate(valid):
             numerator = numerators[position]
@@ -1397,20 +1396,18 @@ def _column_on_declared_axis(
     if number_type is NumberType.int:
         # The integer side is stored exactly; reading it back through the
         # float mirror would round away magnitudes past 2**53.
-        numerators = pc.struct_field(column, "numerator").to_pylist()
-        denominators = pc.struct_field(column, "denominator").to_pylist()
-        integers = [
-            (
-                None
-                if not is_valid or numerators[position] is None
-                else (
-                    numerators[position]
-                    if denominators[position] in (None, 1)
-                    else round(Fraction(numerators[position], denominators[position]))
-                )
-            )
-            for position, is_valid in enumerate(valid)
-        ]
+        numerators = _struct_member(column, "numerator").to_pylist()
+        denominators = _struct_member(column, "denominator").to_pylist()
+        integers: list[Any] = []
+        for position, is_valid in enumerate(valid):
+            numerator = numerators[position]
+            denominator = denominators[position]
+            if not is_valid or numerator is None:
+                integers.append(None)
+            elif denominator in (None, 1):
+                integers.append(numerator)
+            else:
+                integers.append(round(Fraction(numerator, denominator)))
         series = pd.Series(integers, dtype=object)
         return series.astype("Int64" if series.isna().any() else "int64")
 

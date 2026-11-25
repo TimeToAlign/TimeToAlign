@@ -804,6 +804,21 @@ def _struct_child(array: pa.StructArray, name: str) -> pa.Array[Any]:
     return cast("pa.Array[Any]", array.field(name))
 
 
+def _struct_member(
+    array: pa.Array[Any] | pa.ChunkedArray[Any], name: str
+) -> pa.Array[Any] | pa.ChunkedArray[Any]:
+    """``pc.struct_field(array, name)``.
+
+    The member column with the struct's own validity applied: a null struct
+    row gives a null member. pyarrow-stubs 20.0 declares ``pc.struct_field``
+    without any annotation, so its return type is unknown; PyArrow returns an
+    array for an array and a chunked array for a chunked array. Remove once
+    pyarrow-stubs declares ``pc.struct_field`` with parameter and return
+    types; call ``pc.struct_field`` directly then.
+    """
+    return cast("pa.Array[Any] | pa.ChunkedArray[Any]", pc.struct_field(array, name))
+
+
 def _struct_array_from(
     arrays: Sequence[pa.Array[Any]],
     fields: list[pa.Field[pa.DataType]],

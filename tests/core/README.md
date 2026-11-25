@@ -2730,6 +2730,18 @@ helper's annotation is false and its test fails.
 - **Struct child.** The member of a struct array whose second row is null:
   the stored child, its placeholder kept (the helper reads the child as
   stored, ignoring the struct's validity, as `StructArray.field` does).
+- **Struct member.** Unlike the struct child, the member read through
+  `pc.struct_field` applies the struct's validity, so the timestamp-table
+  reader sees a null wherever the struct row is null. Its callers pass
+  plain struct columns; the helper's stated union also names the chunked
+  case. A three-row struct array whose second row is masked: a
+  `pa.Int64Array` `[1, None, None]` (the masked row null although its child
+  holds `2`, the third row null from its own member). The same rows as a
+  chunked column of two chunks: a `pa.ChunkedArray` of the member's type,
+  two chunks, values `["x", None, "z"]`. No rows, as an array and as a
+  chunked column of zero chunks: a `pa.Int64Array` of length 0 and a
+  `pa.ChunkedArray` of type int64 with zero chunks. This proves the array
+  kind follows the input kind, with or without rows.
 - **Struct array from arrays.** Two member arrays with fields, with and
   without a mask: a `pa.StructArray`, the masked row null.
 

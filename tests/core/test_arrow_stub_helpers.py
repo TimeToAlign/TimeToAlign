@@ -18,6 +18,7 @@ from timetoalign.core.fields import (
     _struct_array_of,
     _struct_child,
     _struct_if_else,
+    _struct_member,
     _valid_struct_cell,
 )
 
@@ -131,6 +132,36 @@ def test_struct_child_is_the_stored_child() -> None:
     result = _struct_child(array, "a")
     assert type(result) is pa.Int64Array
     assert result.to_pylist() == [1, 2]
+
+
+def test_struct_member_applies_the_struct_validity() -> None:
+    fields = [pa.field("a", pa.int64())]
+    array = pa.StructArray.from_arrays(
+        [pa.array([1, 2, None])], fields=fields, mask=pa.array([False, True, False])
+    )
+    result = _struct_member(array, "a")
+    assert type(result) is pa.Int64Array
+    assert result.to_pylist() == [1, None, None]
+
+
+def test_struct_member_of_a_chunked_column_is_chunked() -> None:
+    array = pa.array([{"a": 1, "b": "x"}, None, {"a": None, "b": "z"}], type=PAIR)
+    chunked = pa.chunked_array([array[:1], array[1:]])
+    result = _struct_member(chunked, "b")
+    assert type(result) is pa.ChunkedArray
+    assert result.type == pa.string()
+    assert result.num_chunks == 2
+    assert result.to_pylist() == ["x", None, "z"]
+
+
+def test_struct_member_of_no_rows_keeps_the_kind() -> None:
+    plain = _struct_member(pa.array([], type=PAIR), "a")
+    assert type(plain) is pa.Int64Array
+    assert len(plain) == 0
+    no_chunks = _struct_member(pa.chunked_array([], type=PAIR), "a")
+    assert type(no_chunks) is pa.ChunkedArray
+    assert no_chunks.type == pa.int64()
+    assert no_chunks.num_chunks == 0
 
 
 def test_struct_array_from_is_a_struct_array() -> None:

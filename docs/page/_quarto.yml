@@ -257,8 +257,11 @@ quartodoc:
     - title: Flow Control
       desc: The elements of a timeline's flow control, the engine that plays them, FlowMaps over the stretches of a root timeline, and virtual timelines.
       contents:
+        - name: FlowControlView
+          package: timetoalign.timelines
         - name: FlowControlRegistry
           package: timetoalign.timelines
+          include_inherited: true
         - name: FlowControlElement
           package: timetoalign.timelines
         - name: Jump

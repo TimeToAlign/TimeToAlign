@@ -105,7 +105,7 @@ subclass, use :meth:`to_typed`.
 | [create_children_from_regions](#timetoalign.timelines.Timeline.create_children_from_regions) | Create children from multiple regions (batch partitioning). |
 | [create_flow_map](#timetoalign.timelines.Timeline.create_flow_map) | Create a FlowMap of this root timeline and attach it. |
 | [create_flow_map_from_measure_order](#timetoalign.timelines.Timeline.create_flow_map_from_measure_order) | Write an order of measures a source states as a FlowMap of this root. |
-| [create_flow_maps_from_flow_control](#timetoalign.timelines.Timeline.create_flow_maps_from_flow_control) | Write this root timeline's atomic sections and its computed FlowMaps. |
+| [create_flow_maps_from_flow_control](#timetoalign.timelines.Timeline.create_flow_maps_from_flow_control) | Write this timeline's atomic sections and its computed FlowMaps. |
 | [create_region](#timetoalign.timelines.Timeline.create_region) | Create a new Region and attach it to this timeline. |
 | [create_regions_by_grouping](#timetoalign.timelines.Timeline.create_regions_by_grouping) | Create regions by grouping *adjacent* events on a field value. |
 | [create_regions_by_splitting](#timetoalign.timelines.Timeline.create_regions_by_splitting) | Create contiguous regions by splitting at events matching a predicate. |
@@ -317,10 +317,10 @@ receives a minted id.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, a Jump of the child's subtree that is not rejected lies at a position of the root's axis where one of this timeline's tree lies (one Jump lies at a position of a root's axis), or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
 
 ### add_conversion_map { #timetoalign.timelines.Timeline.add_conversion_map }
 
@@ -1348,10 +1348,14 @@ timelines.Timeline.create_flow_maps_from_flow_control(
 )
 ```
 
-Write this root timeline's atomic sections and its computed FlowMaps.
+Write this timeline's atomic sections and its computed FlowMaps.
 
-The flow control is played with the three conventions
-(:func:`~timetoalign.timelines.flow.engine.play`). The atomic
+The flow control of the timeline and of its descendants of its unit
+(:attr:`tree_flow_control
+<timetoalign.timelines.Timeline.tree_flow_control>`) is played on
+the timeline's axis with the three conventions
+(:func:`~timetoalign.timelines.flow.engine.play`): a root plays its
+whole tree, a child its own subtree. The atomic
 sections (:func:`~timetoalign.timelines.flow.engine.atomic_sections`)
 become Regions of the timeline, each named by its letter and stating
 the type ``tts:AtomicSection`` with the provenance method
@@ -1360,6 +1364,16 @@ Regions in the order played; ``single`` and ``printed`` become
 FlowMaps only where their chunks differ from ``default``'s. Each
 FlowMap names its ``convention`` and the provenance method
 ``inferred``.
+
+A FlowMap names a root timeline. On a root, the Regions are the
+root's, also where its flow control lies only in descendants. On a
+child, the Regions are the child's and the FlowMaps are stored on
+the root of its tree, listing the child's Regions; a FlowMap written there anew is named after the
+child and its convention (``"Allegro, default"``). The computed
+FlowMaps of a timeline are those of its root that list its Regions
+only, so the flows of several children of one root stand side by
+side, and a virtual timeline applying one to the root takes its new
+length when it is written again.
 
 Called again after the flow control changed, the call takes nothing
 away and never lets a Region's ID name another stretch:
@@ -1399,14 +1413,14 @@ away and never lets a Region's ID name another stretch:
 |        | \'ComputedFlows \| None\' | The atomic sections as they stand now (Regions kept and        |
 |        | \'ComputedFlows \| None\' | written, in the order of the axis), the computed FlowMaps, and |
 |        | \'ComputedFlows \| None\' | the findings of the ``default`` flow; or None for a timeline   |
-|        | \'ComputedFlows \| None\' | without flow control, which writes nothing.                    |
+|        | \'ComputedFlows \| None\' | whose tree holds no flow control, which writes nothing.        |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                                                                  | Description                                                                                                                                                                                                   |
-|--------|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`)                                            | If this timeline is a child; the flow control cannot be played; an atomic section the timeline holds is none any more and no *actor* is given to reject it; or the date is invalid. Nothing has changed then. |
-|        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If the length is unknown.                                                                                                                                                                                     |
+| Name   | Type                                                                  | Description                                                                                                                                                                         |
+|--------|-----------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`)                                            | If the flow control cannot be played; an atomic section the timeline holds is none any more and no *actor* is given to reject it; or the date is invalid. Nothing has changed then. |
+|        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If the length is unknown.                                                                                                                                                           |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -2782,6 +2796,11 @@ timelines.Timeline.get_flow(
 
 Play this timeline's flow control and return the flow, writing nothing.
 
+What is played is the flow control of the timeline and of its
+descendants of its unit, on its axis (:attr:`tree_flow_control
+<timetoalign.timelines.Timeline.tree_flow_control>`): a root plays
+its whole tree, a child its own subtree.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name       | Type                                                                                   | Description                                                                                                    | Default                  |
@@ -2792,22 +2811,22 @@ Play this timeline's flow control and return the flow, writing nothing.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type           | Description                                                            |
-|--------|----------------|------------------------------------------------------------------------|
-|        | \'PlayedFlow\' | The runs of the flow (:func:`~timetoalign.timelines.flow.engine.play`) |
-|        | \'PlayedFlow\' | placed one after the other: positions of this timeline's axis          |
-|        | \'PlayedFlow\' | and of the flow convert through it. Its ``findings`` are what          |
-|        | \'PlayedFlow\' | playing found on the way (a flow that never ends, a flow ending        |
-|        | \'PlayedFlow\' | at a Break, a stretch never played); only the ``default`` flow         |
-|        | \'PlayedFlow\' | has any. A timeline without flow control is played from its            |
-|        | \'PlayedFlow\' | start to its end.                                                      |
+| Name   | Type           | Description                                                             |
+|--------|----------------|-------------------------------------------------------------------------|
+|        | \'PlayedFlow\' | The runs of the flow (:func:`~timetoalign.timelines.flow.engine.play`)  |
+|        | \'PlayedFlow\' | placed one after the other: positions of this timeline's axis           |
+|        | \'PlayedFlow\' | and of the flow convert through it. Its ``findings`` are what           |
+|        | \'PlayedFlow\' | playing found on the way (a flow that never ends, a flow ending         |
+|        | \'PlayedFlow\' | at a Break, a stretch never played); only the ``default`` flow          |
+|        | \'PlayedFlow\' | has any. A timeline whose tree holds no flow control is played from its |
+|        | \'PlayedFlow\' | start to its end.                                                       |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                                                                  | Description                                                         |
-|--------|-----------------------------------------------------------------------|---------------------------------------------------------------------|
-|        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If the length is unknown.                                           |
-|        | [ValueError](`ValueError`)                                            | If the convention is unknown, or the flow control cannot be played. |
+| Name   | Type                                                                  | Description                                                                                                                         |
+|--------|-----------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+|        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If the length is unknown.                                                                                                           |
+|        | [ValueError](`ValueError`)                                            | If the convention is unknown, or the flow control cannot be played (two Jumps of the tree at one position of this axis among them). |
 
 #### Examples {.doc-section .doc-section-examples}
 

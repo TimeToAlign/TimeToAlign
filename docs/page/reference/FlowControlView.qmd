@@ -1,0 +1,219 @@
+# FlowControlView { #timetoalign.timelines.FlowControlView }
+
+```python
+timelines.FlowControlView(elements=(), *, unit=None, number_type=None)
+```
+
+Flow-control elements on one axis, read only, in canonical order.
+
+A view holds :class:`FlowControlElement` objects, ordered by coordinate
+and then by ID, and reads them as flow control: the views by class
+(``jumps``, ``jump_targets``, ``breaks``, ``section_breaks``,
+``barlines``), the Jump at a coordinate, the place a destination goes
+on at, the elements a reading keeps. Nothing changes what a view holds.
+:class:`FlowControlRegistry`, the flow control a timeline states, is the
+view that elements are added to; :attr:`Timeline.tree_flow_control
+<timetoalign.timelines.Timeline.tree_flow_control>` is the view of a
+timeline's flow control together with that of its descendants, which
+is what playing the timeline reads.
+
+A view refuses, as a registry does, what cannot be played among the
+elements not rejected: a second Jump at a coordinate, a ``to`` naming
+neither a :class:`JumpTarget` held nor a place the view knows, an
+``after`` that does not name exactly one destination of another Jump
+held, an element or a place before 0. Two elements under one ID are
+refused too.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                   | Description                           | Default   |
+|-------------|------------------------------------------------------------------------------------------------------------------------|---------------------------------------|-----------|
+| elements    | [Iterable](`collections.abc.Iterable`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The elements, held together.          | `()`      |
+| unit        | [TimeUnit](`timetoalign.core.TimeUnit`) \| [str](`str`) \| None                                                        | The unit of the axis, if any.         | `None`    |
+| number_type | [NumberType](`timetoalign.core.NumberType`) \| [str](`str`) \| None                                                    | The number type of that axis, if any. | `None`    |
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name        | Type                                                | Description                           |
+|-------------|-----------------------------------------------------|---------------------------------------|
+| unit        | [TimeUnit](`timetoalign.core.TimeUnit`) \| None     | The unit of the axis, if any.         |
+| number_type | [NumberType](`timetoalign.core.NumberType`) \| None | The number type of that axis, if any. |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                            |
+|--------|----------------------------|------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the elements cannot be played together, or two of them share an ID. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> view = FlowControlView(
+...     [Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)])],
+...     unit="quarters",
+... )
+>>> view.jumps
+(Jump('jump_1' @ 8 quarters, 1 destination),)
+>>> view.place_of(view.jumps[0].targets[0], view.jumps[0])
+Coordinate(Fraction(0, 1), quarters)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [active_elements](#timetoalign.timelines.FlowControlView.active_elements) | Return the elements that are read as flow control, in canonical order. |
+| [destination_of](#timetoalign.timelines.FlowControlView.destination_of) | Return the Jump an ``after`` names and the index of the destination. |
+| [has_flow_control](#timetoalign.timelines.FlowControlView.has_flow_control) | Whether the registry holds any element. |
+| [jump_at](#timetoalign.timelines.FlowControlView.jump_at) | Return the Jump at *coordinate*, if one lies there. |
+| [place_of](#timetoalign.timelines.FlowControlView.place_of) | Return where *destination* of *jump* goes on. |
+| [to_dict](#timetoalign.timelines.FlowControlView.to_dict) | Return the elements as the ``flow_control`` array. |
+
+### active_elements { #timetoalign.timelines.FlowControlView.active_elements }
+
+```python
+timelines.FlowControlView.active_elements(
+    believer=None,
+    beliefs=DEFAULT_BELIEFS,
+    context=None,
+)
+```
+
+Return the elements that are read as flow control, in canonical order.
+
+Without a believer these are the elements not rejected: every
+element but those some actor believes ``"false"``
+(:attr:`FlowControlElement.is_rejected`). A believer narrows the
+reading to that actor's beliefs: the belief filter of
+:func:`~timetoalign.core.provenance.belief_mask`, read on each
+element's provenance, where an element without provenance, or
+without a belief of the believer's, is one the believer has not
+decided on, and one the believer holds two beliefs in (in two
+entries) is read as the more critical of them.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                                   | Description                                                                      | Default           |
+|----------|----------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-------------------|
+| believer | [str](`str`) \| None                                                                   | The actor whose beliefs alone decide; None leaves out what any actor rejects.    | `None`            |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | With a believer, the belief states kept; every state but ``"false"`` by default. | `DEFAULT_BELIEFS` |
+| context  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None      | The JSON-LD context under which actors compare as IRIs.                          | `None`            |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                     |
+|--------|----------------------------|-------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *beliefs* is no collection of belief states. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> registry = FlowControlRegistry(unit="quarters")
+>>> barline = registry.add(Barline(Coordinate(8, "quarters")))
+>>> _ = registry.with_belief(barline.id, "ana", "false", date="2026-11-25")
+>>> registry.elements, registry.active_elements()
+((Barline('barline_1' @ 8 quarters),), [])
+>>> registry.active_elements(believer="bea")
+[Barline('barline_1' @ 8 quarters)]
+```
+
+### destination_of { #timetoalign.timelines.FlowControlView.destination_of }
+
+```python
+timelines.FlowControlView.destination_of(reference)
+```
+
+Return the Jump an ``after`` names and the index of the destination.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                     |
+|--------|----------------------------|---------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *reference* does not name exactly one destination of a Jump of the registry. |
+
+### has_flow_control { #timetoalign.timelines.FlowControlView.has_flow_control }
+
+```python
+timelines.FlowControlView.has_flow_control()
+```
+
+Whether the registry holds any element.
+
+### jump_at { #timetoalign.timelines.FlowControlView.jump_at }
+
+```python
+timelines.FlowControlView.jump_at(coordinate)
+```
+
+Return the Jump at *coordinate*, if one lies there.
+
+Where a rejected Jump and its replacement lie together, the one not
+rejected is returned; a rejected one where no other lies.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                                                                                                     | Description                                                                                                                                                                                    | Default    |
+|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| coordinate | [_Number](`timetoalign.timelines.flowcontrol._Number`) \| [Coordinate](`timetoalign.core.Coordinate`) \| [IdCoordinate](`timetoalign.core.IdCoordinate`) | A position on the registry's axis: a bare value, a :class:`~timetoalign.core.Coordinate` or an :class:`~timetoalign.core.IdCoordinate` in the registry's unit, read in the axis's number type. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                          |
+|--------|----------------------------|------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a coordinate object's unit is not the registry's. |
+
+### place_of { #timetoalign.timelines.FlowControlView.place_of }
+
+```python
+timelines.FlowControlView.place_of(destination, jump, *, elements=None)
+```
+
+Return where *destination* of *jump* goes on.
+
+``by`` is added to the Jump's coordinate. ``to`` is the coordinate
+of the JumpTarget of that ID, else the place of that ID the
+timeline gives (the start of a Region or of a child timeline, or the
+timeline's own start; in a view of a tree, of any timeline of the
+tree). A destination without place goes on at the nearest section
+break among *elements* that lies before the Jump, in a view of a
+tree stated by any timeline of it, but never before the start of
+the timeline stating the Jump, which counts as a section boundary
+for it; that start where no section break lies from it up to the
+Jump. The start is 0 in a registry and the timeline's place on the
+axis in a view of a tree: a child at offset 4 stating a repeat sign
+without place at 8 goes back to 4 when its root is played.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                           | Description                                                                                                                | Default    |
+|-------------|--------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|------------|
+| destination | [JumpDestination](`timetoalign.timelines.flowcontrol.JumpDestination`)                                                         | The destination.                                                                                                           | _required_ |
+| jump        | [Jump](`timetoalign.timelines.flowcontrol.Jump`)                                                                               | The Jump holding it.                                                                                                       | _required_ |
+| elements    | [Sequence](`collections.abc.Sequence`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] \| None | The elements to find jump targets and section breaks among; the elements not rejected (:meth:`active_elements`) when None. | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                   | Description                                         |
+|--------|------------------------|-----------------------------------------------------|
+|        | [KeyError](`KeyError`) | If ``to`` names nothing, or a rejected jump target. |
+
+### to_dict { #timetoalign.timelines.FlowControlView.to_dict }
+
+```python
+timelines.FlowControlView.to_dict(minimal=True)
+```
+
+Return the elements as the ``flow_control`` array.
+
+Each element is written as its own object, in canonical order
+whatever order the elements were added in: by coordinate, then by
+ID, values compared exactly and IDs by Unicode code point. Nothing
+is written that the registry does not hold.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Default   |
+|---------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| minimal | [bool](`bool`) | Write each element in the minimal form (the default): every key at its default value left out, in the destinations of a Jump too. With False, the complete form: ``name``, ``label`` and ``meta`` of every element and ``determined``, ``reset`` and ``label`` of every destination are written whatever they hold. A key without a default (``manifestation``, ``ends``, ``provenance``, ``to``, ``by``, ``passes``, ``repeat_count``, ``after``) is written only when stated. | `True`    |

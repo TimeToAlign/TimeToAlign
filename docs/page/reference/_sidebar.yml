@@ -62,6 +62,7 @@ website:
       - reference/BeatPolicy.qmd
       section: Beat Grids
     - contents:
+      - reference/FlowControlView.qmd
       - reference/FlowControlRegistry.qmd
       - reference/FlowControlElement.qmd
       - reference/Jump.qmd

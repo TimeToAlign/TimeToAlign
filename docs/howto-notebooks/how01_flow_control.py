@@ -36,8 +36,9 @@
 # {{< glossary "Virtual timeline" >}}, the axis of a FlowMap.
 #
 # This guide encodes a short piece by hand, plays it, breaks it and repairs
-# it, loads a real score, writes its flows, writes a FlowMap of its own, and
-# saves everything in a manifest.
+# it, plays a work whose movement states its own repeat, loads a real score,
+# writes its flows, writes a FlowMap of its own, and saves everything in a
+# manifest.
 #
 # **Prerequisites:** [How to Construct Timelines Manually](how01_manual_timeline_construction.ipynb)
 # and [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).
@@ -262,7 +263,8 @@ fine = Break(
 #
 # A {{< glossary SectionBreak >}} ends a section and lets the flow go on. A
 # destination without a place goes on at the nearest section break before its
-# Jump, so the repeat end at measure 12 repeats the second section only. A
+# Jump, never before the start of the timeline stating the Jump (here the
+# score's 0), so the repeat end at measure 12 repeats the second section only. A
 # flow ended by a Break begins again at the next section break: after the
 # *Fine*, the second section is played. A {{< glossary Barline >}} records the
 # final barline and changes nothing.
@@ -283,7 +285,8 @@ second_section = [
 #
 # `flow_control.add_all()` adds elements that name one another together, or
 # none of them. The registry refuses what cannot be played: a `to` naming
-# nothing, a second Jump at one coordinate, an element outside the axis. It
+# nothing, a second Jump at one coordinate (of the timeline, and of its
+# root's axis over the root's whole tree), an element outside the axis. It
 # holds the elements in canonical order, by coordinate and then by ID; the
 # Barline, given no ID, gets a minted one.
 
@@ -474,6 +477,61 @@ repaired = draft.get_flow()
     "the editor": draft.get_flow(believer=EDITOR).length,
     "another reader": draft.get_flow(believer=READER).length,
 }
+
+# %% [markdown]
+# ## A work and its movements
+#
+# Flow control holds across descendants: a movement states its own repeat
+# signs, the work states what concerns the whole, and the work is played
+# with both. A sonata of two movements of 16 quarters each; the second, at
+# offset 16, states a repeat end without a place at its quarter 8:
+
+# %%
+sonata = ContinuousLogicalTimeline(length=32, uid="sonata", name="Sonata")
+first = sonata.create_child(16, 0, uid="first", name="First movement")
+second = sonata.create_child(16, 16, uid="second", name="Second movement")
+second.flow_control.add(
+    Jump(
+        q(8),
+        [JumpDestination(repeat_count=1, manifestation="repeat_end")],
+        id="second_repeat",
+    )
+)
+{
+    "stated by the sonata": sonata.flow_control.elements,
+    "played on the sonata": sonata.tree_flow_control.elements,
+}
+
+# %% [markdown]
+# `tree_flow_control` is a `FlowControlView`: the elements of
+# the timeline and of every descendant, each at its position on the
+# timeline's axis (its coordinate plus the offsets down to it), read only and
+# under their IDs. The elements stay stored on the timeline stating them.
+# `get_flow()` plays this view: the sonata its whole tree, a movement its own
+# subtree.
+#
+# The repeat end has no place, so it goes back to the nearest section break
+# before it on the played axis, stated by any timeline of the tree, but never
+# before the start of the timeline stating it. No section break lies between
+# 16 and 24, so the sonata goes back to the start of the second movement,
+# not to its own 0, as the movement played alone goes back to its own 0:
+
+# %%
+{
+    "the sonata": [str(chunk.source) for chunk in sonata.get_flow().chunks],
+    "the second movement": [str(chunk.source) for chunk in second.get_flow().chunks],
+}
+
+# %% [markdown]
+# One Jump lies at a position of the root's axis over the root's whole tree.
+# The sonata cannot state a second Jump at 24, where the movement's repeat
+# end lies; several signs at one place are destinations of one Jump:
+
+# %%
+try:
+    sonata.flow_control.add(Jump(q(24), [JumpDestination(by=4)], id="skip"))
+except ValueError as e:
+    print(f"ValueError: {e}")
 
 # %% [markdown]
 # ## A loaded score
@@ -680,6 +738,7 @@ read = Timeline.from_file(path)
 # | A destination | `JumpDestination(to= or by=, passes=, repeat_count=, after=, determined=, reset=)` |
 # | A Break that ends the flow only sometimes | `Break(..., ends=FlowCondition(passes=, after=))` |
 # | Play, writing nothing | `timeline.get_flow(convention, believer=)` → stretches, `findings`, `unfold()`, `fold()` |
+# | Flow control with the descendants' | `timeline.tree_flow_control`, which `get_flow()` plays |
 # | Play a registry | `play(registry, length)`, `atomic_sections(registry, length)` |
 # | Reject an element | `flow_control.with_belief(id, actor, "false")`, several at once with `with_beliefs()` |
 # | The order a source states | `loader.create_stated_flow_map(timeline)` |

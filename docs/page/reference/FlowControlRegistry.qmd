@@ -19,7 +19,10 @@ taken is refused. A manifest writes the registry as the timeline's
 ``flow_control`` array.
 
 The registry refuses what cannot be played: a second Jump at a
-coordinate, a ``to`` naming neither a :class:`JumpTarget` of the
+coordinate, or, once the registry belongs to a timeline, at a position
+of the root's axis that a Jump of the root's tree holds (the
+coordinate plus the offsets of the timeline and its ancestors, summed
+exactly), a ``to`` naming neither a :class:`JumpTarget` of the
 registry nor a place of its timeline, an ``after`` that does not name
 exactly one destination of another Jump of the registry, and an element
 or a destination's place lying outside the axis, which runs from 0 to
@@ -195,9 +198,9 @@ elements added with it name it by that ID.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If an element's given ID is already taken, its unit is not the registry's, or an element that is not rejected cannot be played among those not rejected: a coordinate holds a second Jump, a ``to`` names neither a JumpTarget of the registry nor a place of its timeline, an ``after`` does not name exactly one destination of another Jump of the registry, or the element's coordinate or the place of one of its destinations lies before 0 or beyond the known length of the registry's timeline. Nothing has changed then. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an element's given ID is already taken, its unit is not the registry's, or an element that is not rejected cannot be played among those not rejected: a coordinate holds a second Jump, or a Jump lies at a position of the root's axis where a Jump of another timeline of the root's tree lies (:attr:`Timeline.tree_flow_control <timetoalign.timelines.Timeline.tree_flow_control>`), a ``to`` names neither a JumpTarget of the registry nor a place of its timeline, an ``after`` does not name exactly one destination of another Jump of the registry, or the element's coordinate or the place of one of its destinations lies before 0 or beyond the known length of the registry's timeline. Nothing has changed then. |
 
 ### copy { #timetoalign.timelines.FlowControlRegistry.copy }
 
@@ -300,9 +303,16 @@ Return where *destination* of *jump* goes on.
 
 ``by`` is added to the Jump's coordinate. ``to`` is the coordinate
 of the JumpTarget of that ID, else the place of that ID the
-registry's timeline gives (the start of a Region or of a child
-timeline, or the timeline's own start). A destination without place
-goes on at the nearest section break before the Jump, or at 0.
+timeline gives (the start of a Region or of a child timeline, or the
+timeline's own start; in a view of a tree, of any timeline of the
+tree). A destination without place goes on at the nearest section
+break among *elements* that lies before the Jump, in a view of a
+tree stated by any timeline of it, but never before the start of
+the timeline stating the Jump, which counts as a section boundary
+for it; that start where no section break lies from it up to the
+Jump. The start is 0 in a registry and the timeline's place on the
+axis in a view of a tree: a child at offset 4 stating a repeat sign
+without place at 8 goes back to 4 when its root is played.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

@@ -80,6 +80,7 @@ The elements of a timeline's flow control, the engine that plays them, FlowMaps 
 
 | | |
 | --- | --- |
+| [FlowControlView](FlowControlView.qmd#timetoalign.timelines.FlowControlView) | Flow-control elements on one axis, read only, in canonical order. |
 | [FlowControlRegistry](FlowControlRegistry.qmd#timetoalign.timelines.FlowControlRegistry) | The flow control of one timeline: its elements in canonical order. |
 | [FlowControlElement](FlowControlElement.qmd#timetoalign.timelines.FlowControlElement) | What the five kinds of flow-control element share. |
 | [Jump](Jump.qmd#timetoalign.timelines.Jump) | Where the flow may leave the axis, and every place it may go on at. |

@@ -1104,11 +1104,16 @@ class SegmentsMixin:
         Returns:
             Whether this timeline holds such an element.
         """
-        for held in (self._flow_maps, self._virtual_timelines):
-            if old_id in held:
-                element = replace(held.pop(old_id), id=new_id, _minted=True)
-                held[new_id] = element
-                return True
+        if old_id in self._flow_maps:
+            flow_map = replace(self._flow_maps.pop(old_id), id=new_id, _minted=True)
+            self._flow_maps[new_id] = flow_map
+            return True
+        if old_id in self._virtual_timelines:
+            virtual = replace(
+                self._virtual_timelines.pop(old_id), id=new_id, _minted=True
+            )
+            self._virtual_timelines[new_id] = virtual
+            return True
         return False
 
     def _rename_flow_references(self, renamed: Mapping[str, str | None]) -> None:

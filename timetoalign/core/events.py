@@ -61,12 +61,15 @@ from .enums import NumberType, TimeUnit
 from .fields import (
     ScalarVocabulary,
     SemanticField,
+    _compared,
     _dictionary_chunked_array,
     _is_dict,
     _joined_strings,
     _member_fields,
+    _struct_array,
     _struct_array_from,
     _struct_if_else,
+    _struct_member,
     blob_metadata,
     build_struct_array,
     data_shaped,
@@ -118,7 +121,7 @@ def _pc_mod(arr: pa.Array[Any], n: int) -> pa.Array[Any]:
     quot = pc.divide(arr, n)
     r = pc.subtract(arr, pc.multiply(quot, n))
     # Adjust to non-negative when r is negative.
-    return pc.if_else(pc.less(r, pa.scalar(0)), pc.add(r, n), r)
+    return pc.if_else(_compared("less", r, pa.scalar(0)), pc.add(r, n), r)
 
 
 def _member(field: SemanticField[Any], name: str) -> pa.Array[Any]:
@@ -128,7 +131,7 @@ def _member(field: SemanticField[Any], name: str) -> pa.Array[Any]:
     row's children may hold anything (a loader writes ``""`` and ``0``
     there); ``pc.struct_field`` applies the row's validity.
     """
-    return pc.struct_field(field.to_pyarrow(), name)
+    return _struct_member(field.to_pyarrow(), name)
 
 
 def _step_lookup(steps: pa.Array[Any], table: dict[str, int]) -> pa.Array[Any]:
@@ -1327,9 +1330,9 @@ class BoundingBoxField(ShapeField[BoundingBox]):
 
     def _x_columns(self) -> tuple[list[pa.StructArray], list[pa.StructArray]]:
         array = self.to_pyarrow()
-        left = pc.struct_field(array, "x")
+        left = _struct_array(_struct_member(array, "x"))
         right = combine_number_columns(
-            left, pc.struct_field(array, "width"), "add", self.number_type
+            left, _struct_member(array, "width"), "add", self.number_type
         )
         return [left], [right]
 
@@ -1622,7 +1625,7 @@ class QuadrilateralField(ShapeField[Quadrilateral]):
     def _x_columns(self) -> tuple[list[pa.StructArray], list[pa.StructArray]]:
         array = self.to_pyarrow()
         columns = [
-            pc.struct_field(pc.struct_field(array, name), "x")
+            _struct_array(_struct_member(_struct_member(array, name), "x"))
             for name in Quadrilateral.CORNER_ORDER
         ]
         return columns, columns
@@ -2170,7 +2173,7 @@ class SpecificPitchClassField(SemanticField[SpecificPitchClass]):
                 marker = "♯" * n
             else:
                 marker = "♭" * abs(n)
-            mask = pc.equal(alter, pa.scalar(n))
+            mask = _compared("equal", alter, pa.scalar(n))
             out = pc.if_else(mask, pa.scalar(marker, type=pa.string()), out)
         return pc.binary_join_element_wise(step, out, "")
 
@@ -2693,7 +2696,7 @@ class SpecificPitchField(SemanticField[SpecificPitch]):
                 marker = "♯" * n
             else:
                 marker = "♭" * abs(n)
-            mask = pc.equal(alter, pa.scalar(n))
+            mask = _compared("equal", alter, pa.scalar(n))
             out = pc.if_else(mask, pa.scalar(marker, type=pa.string()), out)
         return pc.binary_join_element_wise(
             pc.binary_join_element_wise(step, out, ""), octave_str, ""
@@ -4509,7 +4512,7 @@ class MeasureNumberField(SemanticField[MeasureNumber]):
         label_type = members[schema.get_field_index("mn")].type
         labels = source if source.type == label_type else source.cast(label_type)
         arrays: list[pa.Array[Any]] = [
-            labels if field.name == "mn" else pa.nulls(len(labels), type=field.type)
+            labels if field.name == "mn" else pa.nulls(len(labels)).cast(field.type)
             for field in members
         ]
         struct_arr = _struct_array_from(arrays, members)

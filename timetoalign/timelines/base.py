@@ -302,7 +302,7 @@ class Timeline(
 
     def __init__(
         self,
-        length: CoordinateValue | None = 0,
+        length: CoordinateValue | Coordinate | None = 0,
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
         uid: str | None = None,
@@ -375,10 +375,10 @@ class Timeline(
         # Conversion maps
         self._conversion_maps: dict[str, ConversionMap[Any]] = {}
 
-        # Maps TimeUnit -> the ConversionMap registered for that unit via
-        # add_conversion_map(), so that any C-Map with a target_unit is
-        # available in the TimeStamp system.
-        self._unit_maps: dict[TimeUnit, ConversionMap[Any]] = {}
+        # Maps TimeUnit -> the ConversionMaps registered for that unit via
+        # add_conversion_map(), in attachment order, so that any C-Map with a
+        # target_unit is available in the TimeStamp system.
+        self._unit_maps: dict[TimeUnit, list[ConversionMap[Any]]] = {}
 
         # Region storage (named TimeIntervals)
         # A Region is a named part of a timeline defined by a TimeInterval.
@@ -853,6 +853,9 @@ class Timeline(
             return None
         if isinstance(record, ChainMap):
             record = record.maps[-1]
+        # _set_measure_record_map admits only a MeasureRecordMap, alone or last
+        # in a ChainMap.
+        assert isinstance(record, MeasureRecordMap)
         return record.measure_map
 
     @property
@@ -1558,6 +1561,8 @@ class Timeline(
         if not isinstance(record, ChainMap):
             return value
         to_quarters = record.maps[0]
+        # _set_measure_record_map admits only a LinearMap or ScalarMap here.
+        assert isinstance(to_quarters, (LinearMap, ScalarMap))
         offset = getattr(to_quarters, "offset", 0)
         return (Fraction(value) - offset) / Fraction(to_quarters.scalar)
 
@@ -2043,7 +2048,8 @@ class Timeline(
                     event[coord_col] = number_to_json(struct_to_rational(value))
             for key, field_class in SHAPE_FIELDS.items():
                 if event.get(key) is not None:
-                    event[key] = field_class.scalar_cls.from_row(
+                    shape_class = field_class.paired_scalar()
+                    event[key] = shape_class.from_row(
                         event[key], unit=self._unit, number_type=self._number_type
                     ).to_dict()
             event_rows.append(event)
@@ -2075,7 +2081,7 @@ class Timeline(
                 for key, field_class in SHAPE_FIELDS.items():
                     if event.get(key) is None:
                         continue
-                    shape_class = field_class.scalar_cls
+                    shape_class = field_class.paired_scalar()
                     try:
                         event[key] = shape_class.from_dict(
                             event[key], unit=self._unit, number_type=self._number_type

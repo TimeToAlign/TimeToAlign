@@ -16,7 +16,12 @@ from timetoshare import fixture_paths, loads
 
 from timetoalign import AlignmentBundle
 from timetoalign.core.time import number_from_json, number_to_json
-from timetoalign.timelines.flow.engine import AtomicSection, atomic_sections, play
+from timetoalign.timelines.flow.engine import (
+    AtomicSection,
+    FlowFinding,
+    atomic_sections,
+    play,
+)
 
 FIXTURES = Path(os.path.commonpath(fixture_paths()))
 """The package's ``fixtures/<version>/`` directory."""
@@ -67,6 +72,19 @@ def _covered(
     ]
 
 
+def _stated(finding: FlowFinding) -> dict[str, Any]:
+    """A finding as the file states it: ``{kind, coordinate, end?, cause?}``."""
+    stated: dict[str, Any] = {
+        "kind": str(finding.kind),
+        "coordinate": number_to_json(finding.coordinate.value),
+    }
+    if finding.end is not None:
+        stated["end"] = number_to_json(finding.end.value)
+    if finding.cause is not None:
+        stated["cause"] = str(finding.cause)
+    return stated
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -108,12 +126,6 @@ def test_the_engine_plays_the_expected_flow(case: str) -> None:
             type(bound) for run in _joined(stated["runs"]) for bound in run
         ], convention
         assert _covered(runs, sections) == stated["sections"], convention
-        if "findings" in stated:
-            assert [
-                {
-                    "coordinate": number_to_json(finding.coordinate.value),
-                    "kind": str(finding.kind),
-                }
-                for finding in result.findings
-            ] == stated["findings"], convention
-    assert "findings" in expected["conventions"]["default"]
+        assert [_stated(finding) for finding in result.findings] == stated[
+            "findings"
+        ], convention

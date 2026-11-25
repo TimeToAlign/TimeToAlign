@@ -68,6 +68,14 @@ destination lying before its Jump is taken, no ``after`` holds, and each
 Jump and Break is arrived at on pass 1 + the sum of the ``repeat_count`` of
 the restoring destinations of other Jumps whose stretch contains its
 coordinate. ``printed`` is the axis from 0 to its length.
+
+**Findings of every convention.** ``default`` and ``single`` report what
+their walk finds and the stretches they never play; ``printed`` plays the
+whole axis and finds nothing. A stretch ``single`` never plays that the
+``default`` flow plays has the cause
+:attr:`~timetoalign.core.enums.FlowFindingCause.single_playback`: going
+through once took the last bracket, or did not take a repeat. Every other
+finding has no cause.
 """
 
 from __future__ import annotations
@@ -80,7 +88,7 @@ from typing import Any
 from timetoshare import DEFAULT_BELIEFS, BeliefState
 
 from timetoalign.core import Coordinate, Interval
-from timetoalign.core.enums import FlowConvention, FlowFindingKind
+from timetoalign.core.enums import FlowConvention, FlowFindingCause, FlowFindingKind
 
 from ..flowcontrol import (
     Break,
@@ -109,12 +117,16 @@ class FlowFinding:
             stretch never played.
         end: The end of a stretch never played; None otherwise.
         message: The finding as a sentence.
+        cause: Why the convention played found it: ``single_playback`` for
+            a stretch the ``single`` flow leaves out and the ``default``
+            flow plays; None for every other finding.
     """
 
     kind: FlowFindingKind
     coordinate: Coordinate
     end: Coordinate | None
     message: str
+    cause: FlowFindingCause | None = None
 
 
 @dataclass(frozen=True)
@@ -126,8 +138,8 @@ class FlowResult:
             half-open :class:`~timetoalign.core.Interval`; stretches played
             one after the other without a jump between them are one run.
         findings: What was found on the way, in the order found, the
-            stretches never played last. Only the ``default`` flow has
-            findings.
+            stretches never played last, in the order of the axis. The
+            ``printed`` flow has none.
     """
 
     runs: tuple[Interval, ...]
@@ -444,87 +456,69 @@ def _merged(walk: _Walk, runs: Sequence[tuple[Any, Any]]) -> tuple[Interval, ...
     )
 
 
-def _never_played(walk: _Walk, runs: Sequence[Interval]) -> list[FlowFinding]:
-    """A finding for each stretch of the axis that lies in no run."""
+def _gaps(start: Any, end: Any, runs: Sequence[Interval]) -> list[tuple[Any, Any]]:
+    """The stretches of ``[start, end)`` that lie in no run, in the order of the axis."""
+    gaps: list[tuple[Any, Any]] = []
+    reached = start
+    for first, last in sorted((run.start.value, run.end.value) for run in runs):
+        if first > reached:
+            gaps.append((reached, min(first, end)))
+        reached = max(reached, last)
+        if reached >= end:
+            break
+    if reached < end:
+        gaps.append((reached, end))
+    return gaps
+
+
+def _never_played(
+    walk: _Walk, runs: Sequence[Interval], default: Sequence[Interval] | None
+) -> list[FlowFinding]:
+    """A finding for each stretch of the axis that lies in no run.
+
+    With the runs of the *default* flow, a stretch is divided where the
+    ``default`` flow begins or ends playing it: what it plays has the cause
+    ``single_playback``.
+    """
     findings: list[FlowFinding] = []
-    reached = walk.coordinate(0).value
-    for start, end in sorted((run.start.value, run.end.value) for run in runs):
-        if start > reached:
-            findings.append(_gap(walk, reached, start))
-        reached = max(reached, end)
-    if reached < walk.length.value:
-        findings.append(_gap(walk, reached, walk.length.value))
+    for start, end in _gaps(walk.coordinate(0).value, walk.length.value, runs):
+        if default is None:
+            findings.append(_gap(walk, start, end, None))
+            continue
+        unplayed = _gaps(start, end, default)
+        bounds = sorted({start, end, *(at for gap in unplayed for at in gap)})
+        pieces: list[tuple[Any, Any, FlowFindingCause | None]] = []
+        for first, last in zip(bounds, bounds[1:], strict=False):
+            cause = (
+                None
+                if any(a <= first and last <= b for a, b in unplayed)
+                else FlowFindingCause.single_playback
+            )
+            if pieces and pieces[-1][2] is cause:
+                pieces[-1] = (pieces[-1][0], last, cause)
+            else:
+                pieces.append((first, last, cause))
+        findings.extend(_gap(walk, *piece) for piece in pieces)
     return findings
 
 
-def _gap(walk: _Walk, start: Any, end: Any) -> FlowFinding:
+def _gap(
+    walk: _Walk, start: Any, end: Any, cause: FlowFindingCause | None
+) -> FlowFinding:
     first, last = walk.coordinate(start), walk.coordinate(end)
-    return FlowFinding(
-        FlowFindingKind.never_played,
-        first,
-        last,
-        f"The stretch {Interval(start=first, end=last)} is never played.",
+    stretch = Interval(start=first, end=last)
+    message = (
+        f"The stretch {stretch} is never played."
+        if cause is None
+        else f"The stretch {stretch} is never played: going through once leaves "
+        "it out, the default flow plays it."
     )
+    return FlowFinding(FlowFindingKind.never_played, first, last, message, cause)
 
 
-def play(
-    registry: FlowControlView,
-    length: _Number | Coordinate,
-    *,
-    convention: FlowConvention | str = FlowConvention.default,
-    believer: str | None = None,
-    beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
-) -> FlowResult:
-    """Play flow control over an axis of *length*.
-
-    Args:
-        registry: The flow control.
-        length: The length of the axis: a coordinate on the registry's axis,
-            or a bare number on a bound registry.
-        convention: ``default`` (every Jump and Break acts), ``single``
-            (once through) or ``printed`` (the axis as it stands).
-        believer: The actor whose beliefs alone decide which elements are
-            read (:meth:`FlowControlView.active_elements
-            <timetoalign.timelines.flowcontrol.FlowControlView.active_elements>`);
-            None reads the elements no actor rejects.
-        beliefs: With a believer, the belief states read; every state but
-            ``"false"`` by default.
-
-    Returns:
-        The runs in the order played and the findings. Findings are a
-        result of ``default`` alone: ``single`` and ``printed`` return
-        none, also where going through once ends at a Break before the
-        length or leaves a stretch unplayed. What is wrong with flow
-        control shows in its ``default`` flow.
-
-    Raises:
-        ValueError: If the length is negative or not on the registry's
-            axis, or the elements read cannot be played, in the words the
-            registry refuses an element with: a ``to`` or an ``after``
-            names an element that is not read (a rejected one names
-            nothing), two of the Jumps read lie at one coordinate (a
-            rejected Jump and its replacement, read for a believer who
-            rejects neither), or an element, or the place a destination
-            goes on at, lies before 0 or beyond the length.
-
-    Examples:
-        >>> from timetoalign.core import Coordinate
-        >>> from timetoalign.timelines.flowcontrol import (
-        ...     FlowControlRegistry, Jump, JumpDestination)
-        >>> registry = FlowControlRegistry(unit="quarters")
-        >>> _ = registry.add(
-        ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
-        >>> [str(run) for run in play(registry, 12).runs]
-        ['[0, 8) quarters', '[0, 12) quarters']
-        >>> [str(run) for run in play(registry, 12, convention="single").runs]
-        ['[0, 12) quarters']
-    """
-    convention = FlowConvention(convention)
-    walk = _walk(registry, length, believer, beliefs)
+def _runs(walk: _Walk, single: bool) -> list[tuple[Any, Any]]:
+    """Walk the axis: the runs played, as pairs of values, in the order played."""
     start, end = walk.coordinate(0).value, walk.length.value
-    if convention is FlowConvention.printed:
-        return FlowResult(_merged(walk, [(start, end)]))
-    single = convention is FlowConvention.single
     runs: list[tuple[Any, Any]] = []
     seen: set[Hashable] = set()
     position = start
@@ -571,10 +565,89 @@ def play(
             position = restart
             continue
         position = nxt
-    played = _merged(walk, runs)
-    if single:
-        return FlowResult(played)
-    return FlowResult(played, (*walk.findings, *_never_played(walk, played)))
+    return runs
+
+
+def play(
+    registry: FlowControlView,
+    length: _Number | Coordinate,
+    *,
+    convention: FlowConvention | str = FlowConvention.default,
+    believer: str | None = None,
+    beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+) -> FlowResult:
+    """Play flow control over an axis of *length*.
+
+    Args:
+        registry: The flow control.
+        length: The length of the axis: a coordinate on the registry's axis,
+            or a bare number on a bound registry.
+        convention: ``default`` (every Jump and Break acts), ``single``
+            (once through) or ``printed`` (the axis as it stands).
+        believer: The actor whose beliefs alone decide which elements are
+            read (:meth:`FlowControlView.active_elements
+            <timetoalign.timelines.flowcontrol.FlowControlView.active_elements>`);
+            None reads the elements no actor rejects.
+        beliefs: With a believer, the belief states read; every state but
+            ``"false"`` by default.
+
+    Returns:
+        The runs in the order played and the findings. ``default`` and
+        ``single`` find a flow that never ends, a flow ending at a Break,
+        destinations not determined or holding together, and the
+        stretches never played; ``printed`` finds nothing. A stretch
+        ``single`` never plays that the ``default`` flow plays has the
+        cause ``single_playback``; every other finding has none.
+
+    Raises:
+        ValueError: If the length is negative or not on the registry's
+            axis, or the elements read cannot be played, in the words the
+            registry refuses an element with: a ``to`` or an ``after``
+            names an element that is not read (a rejected one names
+            nothing), two of the Jumps read lie at one coordinate (a
+            rejected Jump and its replacement, read for a believer who
+            rejects neither), or an element, or the place a destination
+            goes on at, lies before 0 or beyond the length.
+
+    Examples:
+        >>> from timetoalign.core import Coordinate
+        >>> from timetoalign.timelines.flowcontrol import (
+        ...     FlowControlRegistry, Jump, JumpDestination)
+        >>> registry = FlowControlRegistry(unit="quarters")
+        >>> _ = registry.add(
+        ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+        >>> [str(run) for run in play(registry, 12).runs]
+        ['[0, 8) quarters', '[0, 12) quarters']
+        >>> [str(run) for run in play(registry, 12, convention="single").runs]
+        ['[0, 12) quarters']
+
+        Going through once takes the second of two brackets at once:
+
+        >>> from timetoalign.timelines.flowcontrol import JumpTarget
+        >>> brackets = FlowControlRegistry(unit="quarters")
+        >>> _ = brackets.add_all([
+        ...     Jump(Coordinate(4, "quarters"), [
+        ...         JumpDestination(by=0, passes=[1]),
+        ...         JumpDestination(to="second", passes=[2])]),
+        ...     JumpTarget(Coordinate(8, "quarters"), id="second"),
+        ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)])])
+        >>> [(str(f.kind), str(f.coordinate), str(f.end), str(f.cause))
+        ...  for f in play(brackets, 12, convention="single").findings]
+        [('never_played', '4 quarters', '8 quarters', 'single_playback')]
+    """
+    convention = FlowConvention(convention)
+    walk = _walk(registry, length, believer, beliefs)
+    start, end = walk.coordinate(0).value, walk.length.value
+    if convention is FlowConvention.printed:
+        return FlowResult(_merged(walk, [(start, end)]))
+    single = convention is FlowConvention.single
+    played = _merged(walk, _runs(walk, single))
+    default = (
+        _merged(walk, _runs(_Walk(registry, walk.length, walk.elements), False))
+        if single
+        else None
+    )
+    return FlowResult(played, (*walk.findings, *_never_played(walk, played, default)))
 
 
 def atomic_sections(

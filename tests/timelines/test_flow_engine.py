@@ -15,6 +15,7 @@ import pytest
 from timetoalign.core import (
     Coordinate,
     FlowConvention,
+    FlowFindingCause,
     FlowFindingKind,
     IdCoordinate,
     TimeUnit,
@@ -36,6 +37,7 @@ from timetoalign.timelines.flowcontrol import (
 )
 
 K = FlowFindingKind
+SP = FlowFindingCause.single_playback
 TARGET_FLOWS = ensure_data("target_flows")
 
 
@@ -78,6 +80,14 @@ def _runs(result: FlowResult) -> list[tuple[Any, Any]]:
 def _findings(result: FlowResult) -> list[tuple[Any, ...]]:
     return [
         (f.kind, f.coordinate.value, None if f.end is None else f.end.value)
+        for f in result.findings
+    ]
+
+
+def _caused(result: FlowResult) -> list[tuple[Any, ...]]:
+    """The findings with their causes."""
+    return [
+        (f.kind, f.coordinate.value, None if f.end is None else f.end.value, f.cause)
         for f in result.findings
     ]
 
@@ -336,12 +346,33 @@ def test_by_zero_divides_no_atomic_section_and_a_place_does() -> None:
 
 # region Conventions
 
-SINGLE = {
-    "brackets 1, 2": [(0, 4), (8, 12)],
-    "three brackets": [(0, 4), (12, 16)],
-    # Ends at the Break at 8; a finding is a result of ``default`` alone.
-    "brackets (1, 3), (2)": [(0, 8)],
-    "brackets (1, 3), (2) ending with a Fine": [(0, 4), (8, 12)],
+# A stretch ``single`` leaves out that the default flow plays has the cause
+# ``single_playback``; what neither plays, and every other finding, has none.
+SINGLE: dict[str, tuple[list[Any], list[Any]]] = {
+    # Pass 2 at the brackets: the second is taken, the first left out.
+    "brackets 1, 2": ([(0, 4), (8, 12)], [(K.never_played, 4, 8, SP)]),
+    # Pass 3: the third bracket; the first and the second are left out.
+    "three brackets": ([(0, 4), (12, 16)], [(K.never_played, 4, 12, SP)]),
+    # Pass 3 takes the first bracket again, whose Break ends the flow; the
+    # default flow plays the second bracket and the rest.
+    "brackets (1, 3), (2)": (
+        [(0, 8)],
+        [(K.flow_ends_at_break, 8, None, None), (K.never_played, 8, 16, SP)],
+    ),
+    "brackets (1, 3), (2) ending with a Fine": (
+        [(0, 4), (8, 12)],
+        [(K.never_played, 4, 8, SP)],
+    ),
+    # The default flow ends at the Break too: what follows has no cause.
+    "first bracket without sign": (
+        [(0, 8)],
+        [(K.flow_ends_at_break, 8, None, None), (K.never_played, 8, 12, None)],
+    ),
+    "ossia": (
+        [(0, 8), (12, 16)],
+        [(K.undetermined_target, 4, None, None), (K.never_played, 8, 12, None)],
+    ),
+    "endless loop": ([(0, 8)], []),
 }
 
 
@@ -349,8 +380,35 @@ SINGLE = {
 def test_single_goes_through_once(case: str) -> None:
     elements, length, _, _ = CASES[case]
     result = play(_registry(*elements), length, convention=FlowConvention.single)
-    assert _runs(result) == SINGLE[case]
-    assert result.findings == ()
+    assert (_runs(result), _caused(result)) == SINGLE[case]
+
+
+def test_a_stretch_single_leaves_out_is_divided_where_default_plays_it() -> None:
+    # The second bracket begins at 10; nothing plays [8, 10).
+    registry = _registry(
+        J(4, D(by=0, passes=[1]), D(to="v2", passes=[2])),
+        J(8, D(repeat_count=1)),
+        T(10, "v2"),
+    )
+    default = play(registry, 12)
+    assert _runs(default) == [(0, 8), (0, 4), (10, 12)]
+    assert _caused(default) == [(K.never_played, 8, 10, None)]
+    single = play(registry, 12, convention="single")
+    assert _runs(single) == [(0, 4), (10, 12)]
+    assert _caused(single) == [
+        (K.never_played, 4, 8, SP),
+        (K.never_played, 8, 10, None),
+    ]
+    assert [f.message for f in single.findings] == [
+        "The stretch [4, 8) ticks is never played: going through once leaves it "
+        "out, the default flow plays it.",
+        "The stretch [8, 10) ticks is never played.",
+    ]
+
+
+def test_the_default_flow_names_no_cause() -> None:
+    for elements, length, _, _ in CASES.values():
+        assert {f.cause for f in play(_registry(*elements), length).findings} <= {None}
 
 
 @pytest.mark.parametrize("case", SINGLE)
@@ -733,11 +791,27 @@ def test_the_gold_file_states_the_flows_the_readme_lists() -> None:
     assert measures(_gold("single")) == [(1, 4), (6, 6), (8, 13), (15, 15)]
 
 
-@pytest.mark.parametrize("convention", ["default", "single"])
-def test_the_repaired_stress_score_plays_the_gold_flow(convention: str) -> None:
+@pytest.mark.parametrize(
+    "convention, findings",
+    [
+        ("default", []),
+        # Measures 5, 7 and 14, each a bracket going through once leaves out.
+        (
+            "single",
+            [
+                (K.never_played, 7, 9, SP),
+                (K.never_played, 10, 12, SP),
+                (K.never_played, 32, 34, SP),
+            ],
+        ),
+    ],
+)
+def test_the_repaired_stress_score_plays_the_gold_flow(
+    convention: str, findings: list[Any]
+) -> None:
     result = play(_stress_score(repaired=True), STRESS_LENGTH, convention=convention)
     assert _runs(result) == _gold(convention)
-    assert result.findings == ()
+    assert _caused(result) == findings
     assert all(type(bound) is Fraction for run in _runs(result) for bound in run)
 
 

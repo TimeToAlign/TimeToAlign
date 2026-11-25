@@ -698,6 +698,14 @@ class FlowFindingKind(FancyStrEnum):
     """A destination nobody can check was passed and not taken."""
 
 
+class FlowFindingCause(FancyStrEnum):
+    """Why a convention other than ``default`` found what it found."""
+
+    single_playback = auto()
+    """Going through once left out a stretch the ``default`` flow plays: it
+    took the last bracket, or did not take a repeat."""
+
+
 class MeasureFindingKind(FancyStrEnum):
     """What a look at a score's measures found about their flow control."""
 

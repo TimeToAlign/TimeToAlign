@@ -554,11 +554,18 @@ engine plays the timeline's own flow control, `measure_ranges` states the runs i
 counts. The result must equal the file's rows exactly: the same number of rows, the same
 `[mc_start, mc_end)` of each, and the same letters of the atomic sections each covers, for
 `default` and for `single`; and the atomic sections must equal the `atomic` rows. A finding
-of the walk is a failure too, since a correct score plays through. Nothing is patched between
-the three steps, so a wrong sign, a wrong rule and a wrong conversion each show.
+of the `default` walk is a failure too, since a correct score plays through. Going through
+once leaves the earlier brackets out, and `single` reports each such stretch: its findings
+must be exactly the measures the file's `default` rows play and its `single` rows do not,
+each stretch of consecutive measures one `never_played` with the cause `single_playback`,
+compared in measure counts (`_left_out` reads them from the file alone, `_found` states the
+engine's findings through `measure_ranges`). Nothing is patched between the three steps, so a
+wrong sign, a wrong rule and a wrong conversion each show.
 
 - **`c05n05_musete`, `c11n08_Rondeau`, `op18_no4_mov4_flow`, `WoO71`**: `default`, `single`
-  and `atomic` equal the file; no finding; `repeat_end_findings` is empty.
+  and `atomic` equal the file; `default` finds nothing; `single` finds what the file leaves
+  out of it: nothing for the Musette and the Rondeau, MC 44, 93 and 102 for Op. 18 no. 4,
+  MC 260 for WoO 71; `repeat_end_findings` is empty.
 - **`rachmaninoff`, `polyrhythm_only`**: no jump, break or jump target. The file states one
   atomic section and one `default` row, both the whole piece, and no `single` rows; `default`
   and `single` are both played and both must be that one row.
@@ -592,8 +599,9 @@ the three steps, so a wrong sign, a wrong rule and a wrong conversion each show.
   The test asserts the bookkeeping (five elements more than the loader wrote, exactly two
   of them rejected, by the editor; three more elements read by the engine than before; the
   five added ones `manual`; the loaded timeline's own registry untouched) and then the
-  result: `default` and `single` equal the file's rows without a finding, and the atomic
-  sections equal its `atomic` rows. The file's `ms3` and `music21` rows are another tool's
+  result: `default` and `single` equal the file's rows, `default` without a finding and
+  `single` with the three brackets it leaves out (MC 5, 7 and 14, each `single_playback`),
+  and the atomic sections equal its `atomic` rows. The file's `ms3` and `music21` rows are another tool's
   unfolding and are not computed.
 
 ## Signs written as flow control

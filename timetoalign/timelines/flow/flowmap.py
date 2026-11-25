@@ -586,8 +586,10 @@ class PlayedFlow(ResolvedFlowMap):
     Attributes:
         findings: What playing the flow control found, in the order found:
             a flow that never ends, a flow ending at a Break, two
-            destinations holding together, a stretch never played. Only
-            the ``default`` flow has findings.
+            destinations holding together, a stretch never played (with
+            the cause ``single_playback`` where the ``single`` flow leaves
+            out what the ``default`` flow plays). The ``printed`` flow has
+            none.
     """
 
     findings: tuple[FlowFinding, ...] = ()
@@ -736,7 +738,9 @@ class ComputedFlows(NamedTuple):
         flow_maps: The FlowMaps written: ``default``, then ``single`` and
             ``printed`` where their chunks differ from ``default``'s.
         findings: What playing the flow control found: the findings of the
-            ``default`` flow, in the order found.
+            ``default`` flow, in the order found; those of ``single`` are
+            :meth:`Timeline.get_flow
+            <timetoalign.timelines.Timeline.get_flow>`'s.
     """
 
     sections: tuple[Region, ...]

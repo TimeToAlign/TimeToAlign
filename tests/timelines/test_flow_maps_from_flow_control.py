@@ -19,6 +19,7 @@ import timetoshare
 from timetoalign.core import (
     Coordinate,
     FlowConvention,
+    FlowFindingCause,
     FlowFindingKind,
     IdCoordinate,
     NumberType,
@@ -351,6 +352,29 @@ class TestGetFlow:
         assert flow.fold(Fraction(1393, 2)) == q(Fraction(393, 2))
         assert (score.list_regions(), score.list_flow_maps()) == ([], [])
 
+    def test_single_finds_the_first_bracket_it_leaves_out(self) -> None:
+        score = _op106()
+        assert {
+            convention: [
+                (f.kind, f.coordinate, f.end, f.cause)
+                for f in score.get_flow(convention).findings
+            ]
+            for convention in ("default", "single", "printed")
+        } == {
+            "default": [],
+            "single": [
+                (
+                    FlowFindingKind.never_played,
+                    q(Fraction(953, 2)),
+                    q(500),
+                    FlowFindingCause.single_playback,
+                )
+            ],
+            "printed": [],
+        }
+        written = score.create_flow_maps_from_flow_control()
+        assert written is not None and written.findings == ()
+
     def test_a_timeline_without_flow_control_is_played_as_it_stands(self) -> None:
         plain = ContinuousLogicalTimeline(length=12, uid="plain")
         flow = plain.get_flow()
@@ -399,7 +423,9 @@ class TestFindings:
         )
 
     @pytest.mark.parametrize("convention", ["single", "printed"])
-    def test_only_the_default_flow_has_findings(self, convention: str) -> None:
+    def test_going_through_once_or_as_printed_finds_no_loop(
+        self, convention: str
+    ) -> None:
         flow = _endless().get_flow(convention)
         assert [(chunk.source.start, chunk.source.end) for chunk in flow.chunks] == [
             (q(0), q(8))

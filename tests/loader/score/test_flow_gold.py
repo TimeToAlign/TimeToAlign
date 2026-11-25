@@ -17,8 +17,9 @@ from typing import Any
 import pytest
 import timetoshare
 
-from timetoalign.core import Coordinate
+from timetoalign.core import Coordinate, Interval
 from timetoalign.core.enums import (
+    FlowFindingCause,
     FlowFindingKind,
     FlowManifestation,
     MeasureFindingKind,
@@ -31,7 +32,7 @@ from timetoalign.timelines.flow import (
     measure_ranges,
     repeat_end_findings,
 )
-from timetoalign.timelines.flow.engine import play
+from timetoalign.timelines.flow.engine import FlowResult, play
 from timetoalign.timelines.flowcontrol import Jump, JumpDestination
 
 from .conftest import (
@@ -53,6 +54,43 @@ def _timeline(specimen: str) -> Timeline:
     return Ms3Loader().load(path).create_timeline()
 
 
+def _left_out(gold: dict[str, tuple[MeasureRange, ...]]) -> list[tuple[Any, ...]]:
+    """The measures the gold ``default`` rows play and its ``single`` rows do not.
+
+    Each stretch of consecutive measures is one ``never_played`` finding of
+    the ``single`` flow with the cause ``single_playback``, as measure counts.
+    """
+    played = {
+        convention: {
+            count for row in gold[convention] for count in range(row.start, row.end)
+        }
+        for convention in ("default", "single")
+    }
+    counts = sorted(played["default"] - played["single"])
+    stretches: list[list[int]] = []
+    for count in counts:
+        if stretches and stretches[-1][1] == count:
+            stretches[-1][1] = count + 1
+        else:
+            stretches.append([count, count + 1])
+    return [
+        (FlowFindingKind.never_played, start, end, FlowFindingCause.single_playback)
+        for start, end in stretches
+    ]
+
+
+def _found(result: FlowResult, timeline: Timeline) -> list[tuple[Any, ...]]:
+    """The findings of a flow, each stretch as measure counts."""
+    found: list[tuple[Any, ...]] = []
+    for finding in result.findings:
+        assert finding.end is not None, finding
+        (row,) = measure_ranges(
+            [Interval(start=finding.coordinate, end=finding.end)], timeline.measure_map
+        )
+        found.append((finding.kind, row.start, row.end, finding.cause))
+    return found
+
+
 # endregion
 
 # region Gold flows
@@ -69,7 +107,7 @@ def test_the_source_plays_the_gold_flows(specimen: str) -> None:
     assert result.findings == ()
     single, result = played_ranges(timeline, "single")
     assert single == gold["single"]
-    assert result.findings == ()
+    assert _found(result, timeline) == _left_out(gold)
     assert repeat_end_findings(timeline.measure_map) == ()
 
 
@@ -185,7 +223,9 @@ def test_the_repaired_stress_score_plays_its_gold_flow(convention: str) -> None:
 
     ranges, result = played_ranges(timeline, convention, registry=registry)
     assert ranges == gold[convention]
-    assert result.findings == ()
+    assert _found(result, timeline) == (
+        [] if convention == "default" else _left_out(gold)
+    )
     assert atomic_ranges(timeline, registry=registry) == gold["atomic"]
 
 

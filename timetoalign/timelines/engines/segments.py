@@ -545,8 +545,9 @@ class SegmentsMixin(_Host):
             placed one after the other: positions of this timeline's axis
             and of the flow convert through it. Its ``findings`` are what
             playing found on the way (a flow that never ends, a flow ending
-            at a Break, a stretch never played); only the ``default`` flow
-            has any. A timeline whose tree holds no flow control is played from its
+            at a Break, a stretch never played, with its cause where
+            ``single`` leaves out what ``default`` plays); the ``printed``
+            flow has none. A timeline whose tree holds no flow control is played from its
             start to its end.
 
         Raises:
@@ -657,8 +658,9 @@ class SegmentsMixin(_Host):
         Returns:
             The atomic sections as they stand now (Regions kept and
             written, in the order of the axis), the computed FlowMaps, and
-            the findings of the ``default`` flow; or None for a timeline
-            whose tree holds no flow control, which writes nothing.
+            the findings of the ``default`` flow (those of ``single`` are
+            :meth:`get_flow`'s); or None for a timeline whose tree holds no
+            flow control, which writes nothing.
 
         Raises:
             ValueError: If the flow control cannot be played; an atomic
@@ -726,8 +728,10 @@ class SegmentsMixin(_Host):
                 for index, section in enumerate(sections)
                 if run.start <= section.start and section.end <= run.end
             )
-            findings += played.findings
-            for finding in played.findings:
+            if convention is not FlowConvention.default:
+                continue
+            findings = played.findings
+            for finding in findings:
                 self._logger.warning(
                     f"Timeline '{self._id}', {convention} flow: {finding.message}"
                 )

@@ -1199,9 +1199,27 @@ the `repeat_count` of every restoring destination whose stretch contains
 it: pass 2 for brackets 1, 2 ([0,4) [8,12)); pass 3 for three brackets
 ([0,4) [12,16)); pass 4 for (1, 3), (2), which is beyond the highest pass
 named, so the destination naming 3 holds, which is going on: [0,8), ending
-at the Break at 8. Findings are a result of `default` alone: `single` and
-`printed` return none in every case, also where `single` ends at a Break
-without condition as here.
+at the Break at 8.
+
+**The findings of `single`.** `single` reports what its walk finds and the
+stretches it never plays, as `default` does; `printed` plays the whole axis
+and finds nothing, asserted in every case. What proves the cause right is
+the one thing it claims: a stretch `single` leaves out has the cause
+`single_playback` exactly where the `default` flow plays it, and no cause
+where neither plays it. So the cases are chosen to show each side, all
+derived from the traces above: brackets 1, 2 `never_played` [4,8)
+`single_playback`; three brackets [4,12) `single_playback`; (1, 3), (2)
+`flow_ends_at_break` at 8 without cause (a finding of a Break carries
+none) and [8,16) `single_playback`; with the Fine [4,8) `single_playback`.
+The first bracket without its sign ends at the Break at 8 in both flows:
+`flow_ends_at_break` at 8 and [8,12) without cause, since `default` never
+plays it either. The ossia case finds the undetermined destination at 4
+and [8,12) without cause; the endless loop goes through once and finds
+nothing. One case divides a stretch: brackets whose second begins at 10,
+two after the repeat end at 8, so `default` plays [0,8) [0,4) [10,12) and
+never [8,10), while `single` leaves out [4,10); its findings are [4,8)
+`single_playback` and [8,10) without cause, each with its sentence. Over
+every case of the table the `default` flow names no cause.
 
 **Three pieces**, on an integer axis where position = measure count − 1
 for the first two:
@@ -1233,7 +1251,10 @@ for the first two:
    `out_of_the_flow_experience-flow_only.flow.csv` measure for measure
    (1-3, 1-5, 4, 6, 8, 8-10, 10-11, 9-10, 10-12, 9, 13-14, 13, 15, 1-4, 7),
    `single` equals its `single` rows (1-4, 6, 8-13, 15), and the atomic
-   sections equal its `atomic` rows, with no finding. The gold rows are
+   sections equal its `atomic` rows. `default` finds nothing; `single`
+   finds the brackets it leaves out, measures 5, 7 and 14 ([7,9) [10,12)
+   [32,34)), each `never_played` with the cause `single_playback`, the
+   measures missing from its gold rows. The gold rows are
    read from the file and turned into quarters by the measure starts
    above; nothing is copied from the engine.
 
@@ -1294,8 +1315,8 @@ TimeToShare ships, for each of its flow fixtures with flow control, the
 flow that follows from it: `fixtures/flows/<version>/<name>.yaml` beside
 the trace it was derived by hand with. The files name a manifest and a
 timeline and state the atomic sections and, for `default`, `single` and
-`printed`, the runs and the letters of the sections they cover; for
-`default` also the findings. They were written by another hand than the
+`printed`, the runs, the letters of the sections they cover and the
+findings. They were written by another hand than the
 engine, from the same rules, so agreement is evidence for both and a
 difference is a defect of one of them, to be decided by the rules.
 
@@ -1310,9 +1331,11 @@ the named timeline's flow control and length and compares, exactly:
   before comparing. So that the joining cannot hide a difference, the
   letters of the atomic sections the engine's runs cover, in order, are
   compared with the file's `sections` as well;
-- for `default` the findings as kind and coordinate, in the file's order.
-  The files state no findings for `single` and `printed`, and none is
-  compared there.
+- for each convention the findings, in the file's order, each as the file
+  writes it: `{kind, coordinate, end?, cause?}`, `end` for a stretch never
+  played and `cause` where the finding has one, both left out otherwise.
+  A file without findings for a convention fails, so a convention cannot
+  go uncompared.
 
 The nine case names are asserted, so that a directory not found cannot
 pass as nine cases agreeing. A case whose file is known to differ from the
@@ -4935,10 +4958,15 @@ round for ever: the engine stops at the second take with `endless_loop` at
 4 and `never_played` [4, 8) (the case "endless loop" of
 `test_flow_engine.py`). `get_flow()` of that timeline returns the two runs
 [0, 4) [0, 4) and, in `findings`, exactly those two findings by kind,
-coordinate and end; `get_flow("single")` and `get_flow("printed")` return
-none, since findings are a result of `default` alone;
+coordinate and end; `get_flow("single")` and `get_flow("printed")` play
+[0, 8) and find nothing, since neither goes back;
 `create_flow_maps_from_flow_control()` returns the same two findings
-beside the sections and FlowMaps it writes. The flow returned is still a
+beside the sections and FlowMaps it writes, the findings of `default`.
+Each convention's findings come back with its own flow: of the Op. 106/i
+shape, `get_flow("single")` finds `never_played` [953/2, 500) with the
+cause `single_playback` (the first bracket, which going through once
+leaves out and `default` plays), `default` and `printed` find nothing,
+and `create_flow_maps_from_flow_control()` returns no finding. The flow returned is still a
 resolved flow (`unfold`, `fold`, `length` answer as before), and a
 timeline whose flow control plays through has `findings == ()` in both
 results.

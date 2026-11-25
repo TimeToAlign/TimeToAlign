@@ -385,16 +385,20 @@ class TestAudioLoaderTimeline:
         assert timeline.id == "take"
         assert timeline.name == "Take"
 
-    def test_create_timeline_metadata(self, wav_file: Path):
-        """Test that timeline has metadata attached."""
+    def test_the_loader_states_the_file_metadata(self, wav_file: Path):
+        """The loader states the file's metadata; the timeline holds no copy."""
         loader = AudioLoader().load(wav_file)
         timeline = loader.create_timeline()
 
-        assert hasattr(timeline, "_metadata")
-        assert timeline._metadata["sample_rate"] == 44100
-        assert timeline._metadata["channels"] == 1
-        assert timeline._metadata["format"] == "WAV"
-        assert timeline._metadata["backend"] == "soundfile"
+        assert not hasattr(timeline, "_metadata")
+        assert not hasattr(loader.create_continuous_timeline(), "_metadata")
+        info = loader.audio_info
+        assert (info.sample_rate, info.channels, info.format, info.backend) == (
+            44100,
+            1,
+            "WAV",
+            "soundfile",
+        )
 
     def test_create_samples_to_seconds_map(self, wav_file: Path):
         """Test creating a standalone C-map."""
@@ -762,8 +766,8 @@ class TestAudioLoaderSpecimen:
         assert loader.audio_info.backend == "mutagen"
         assert loader.n_samples == 10190592
         assert loader.duration_seconds == 231.0791836734694
-        assert loader.create_timeline()._metadata["backend"] == "mutagen"
-        assert loader.create_continuous_timeline()._metadata["backend"] == "mutagen"
+        assert not hasattr(loader.create_timeline(), "_metadata")
+        assert not hasattr(loader.create_continuous_timeline(), "_metadata")
 
     def test_samples_timeline(self, loader: AudioLoader):
         timeline = loader.create_timeline()

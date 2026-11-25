@@ -955,7 +955,8 @@ class AudioLoader(Loader[AudioInfo]):
             name: Human-readable name. If None, uses filename.
 
         Returns:
-            The timeline, carrying the file's metadata.
+            The timeline. The file's metadata, the backend that read it
+            included, stays on :attr:`audio_info`.
         """
         info = self.audio_info
         if uid is None and info.source_path is not None:
@@ -971,16 +972,6 @@ class AudioLoader(Loader[AudioInfo]):
             number_type=number_type,
             locked=True,
         )
-        timeline._metadata = {
-            "source_path": str(info.source_path) if info.source_path else None,
-            "sample_rate": info.sample_rate,
-            "channels": info.channels,
-            "duration_seconds": info.duration_seconds,
-            "format": info.format,
-            "subtype": info.subtype,
-            "bits_per_sample": info.bits_per_sample,
-            "backend": info.backend,
-        }
         return timeline
 
     # endregion

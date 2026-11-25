@@ -61,12 +61,14 @@ hands the loader a timeline whose C-Map would. What must hold:
   an unreadable file: a reader patched to raise `TypeError` surfaces as
   `TypeError` from `load()`, not as the final `ValueError`.
 
-**The backend travels with the timeline.** Both timelines carry the backend
-that read the file as `_metadata["backend"]`, so a timeline built from
-mutagen's estimate is recognisable as such: `"soundfile"` for the 1-second WAV
-fixture, `"mutagen"` for the Bass Kick specimen with soundfile reported as not
-installed. `_metadata` is not serialised, so manifests are unchanged
-(`tests/test_timetoshare_conformance.py` holds).
+**The backend is stated by the loader, not by the timeline.** `AudioLoader.audio_info.backend`
+names the backend that read the file, so a length taken from mutagen's estimate is recognisable
+as such: `"soundfile"` for the 1-second WAV fixture, `"mutagen"` for the Bass Kick specimen with
+soundfile reported as not installed. The timelines carry no copy of it: a private attribute
+holding the file's metadata was set on each timeline, declared nowhere, lost on copying and
+serialization, and duplicated `audio_info`; it is gone, and the tests assert that a created
+timeline has no `_metadata` while `audio_info` states the sample rate, channels, format and
+backend. Manifests never held it (`tests/test_timetoshare_conformance.py` holds).
 
 Durations are asserted **exactly**, with zero tolerance: on the exact paths
 `duration_seconds` and `SamplesToSeconds` perform the same division, so every

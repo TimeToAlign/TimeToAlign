@@ -34,11 +34,23 @@ from typing import Any, Literal
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 from timetoshare.statements import MATCHES, METHODS, expand_iri
 
-from .fields import SemanticField, _struct_array_of, data_shaped
+from .fields import (
+    SemanticField,
+    _cast_column,
+    _filled_mask,
+    _struct_array_of,
+    data_shaped,
+)
 
 BeliefValue = Literal["true", "false", "unlikely"]
 """What an actor believes of an item."""
@@ -218,7 +230,7 @@ class Provenance(BaseModel):
     @field_validator("stated_by", "basis")
     @classmethod
     def _check_iri_list(
-        cls, value: tuple[str, ...] | None, info: Any
+        cls, value: tuple[str, ...] | None, info: ValidationInfo
     ) -> tuple[str, ...] | None:
         if value is None:
             return None
@@ -406,7 +418,7 @@ def _row(value: Provenance) -> dict[str, Any]:
 
 
 def belief_mask(
-    provenance: pa.Array | pa.ChunkedArray | None,
+    provenance: pa.Array[Any] | pa.ChunkedArray[Any] | None,
     believer: str | None,
     beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     *,
@@ -472,13 +484,13 @@ def belief_mask(
     # ``struct_field`` carries a null entry over to its beliefs.
     held = pc.struct_field(provenance, "beliefs")
     stated = pc.list_flatten(held)
-    owners = pc.cast(pc.list_parent_indices(held), pa.int64())
+    owners = _cast_column(pc.list_parent_indices(held), pa.int64())
     # Each row's state is the believer's belief where the row holds one,
     # else "undecided". An entry holds at most one belief per actor as
     # written, but two spellings of one actor (``ex:ana`` and the IRI it
     # expands to) name one believer only under *context*: the row then
     # takes the most critical of them, in :data:`_CRITICAL_FIRST` order.
-    own = pc.fill_null(
+    own = _filled_mask(
         _names_actor(pc.struct_field(stated, "actor"), believer, context),
         pa.scalar(False),
     )
@@ -497,7 +509,7 @@ def belief_mask(
 
 
 def _names_actor(
-    actors: pa.Array, believer: str, context: Mapping[str, Any] | None
+    actors: pa.Array[Any], believer: str, context: Mapping[str, Any] | None
 ) -> pa.BooleanArray:
     """Per actor, whether it is *believer*, both compared as expanded IRIs.
 

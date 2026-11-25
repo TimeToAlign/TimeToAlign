@@ -42,6 +42,7 @@ inside the one number builder.
 
 from __future__ import annotations
 
+import inspect
 import re
 from fractions import Fraction
 from typing import Any, Callable, Sequence
@@ -316,7 +317,8 @@ class CallableFieldParser(FieldParser):
     supply any function that takes a ``pa.Array`` and returns a
     :class:`DataField`.  The parser defers entirely to the callable;
     the *name* parameter is forwarded as a keyword argument when the
-    callable accepts it.
+    callable's signature accepts it (a ``name`` parameter or ``**kwargs``).
+    The callable is called once, and any error it raises propagates.
 
     Args:
         fn: Callable ``(pa.Array) -> DataField`` (optionally
@@ -332,14 +334,14 @@ class CallableFieldParser(FieldParser):
     ) -> None:
         super().__init__(name=name)
         self._fn = fn
+        self._takes_name = _accepts_name(fn)
 
     def from_array(self, source: pa.Array, *, name: str | None = None) -> DataField:
-        """Call the wrapped function on *source*.
+        """Call the wrapped function on *source*, once.
 
         The output name (this parser's ``name=``, else *name*, else ``"value"``)
-        is passed as ``name=``; if the call raises ``TypeError`` (as a function
-        without a ``name`` parameter does), the function is called again with
-        *source* alone.
+        is passed as ``name=`` when the function's signature accepts it;
+        otherwise the function is called with *source* alone.
 
         Args:
             source: The raw column from the source ``pa.Table``.
@@ -353,10 +355,31 @@ class CallableFieldParser(FieldParser):
             if self._name is not None
             else (name if name is not None else "value")
         )
-        try:
+        if self._takes_name:
             return self._fn(source, name=out_name)
-        except TypeError:
-            return self._fn(source)
+        return self._fn(source)
+
+
+def _accepts_name(fn: Callable[..., Any]) -> bool:
+    """Whether *fn* can be called with a ``name=`` keyword argument.
+
+    True when its signature has a ``name`` parameter that can be passed by
+    keyword, or a ``**kwargs`` parameter. A callable whose signature cannot be
+    read (some built-ins) is called without ``name``.
+    """
+    try:
+        parameters = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        or (
+            parameter.name == "name"
+            and parameter.kind
+            in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        )
+        for parameter in parameters
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

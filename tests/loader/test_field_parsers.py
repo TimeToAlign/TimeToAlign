@@ -378,6 +378,41 @@ class TestCallableFieldParser:
         result = parser.from_array(pa.array(["10", "20"]), name="ignored")
         assert isinstance(result, NumericField)
 
+    def test_callable_with_kwargs_receives_name(self) -> None:
+        def my_fn(arr: pa.Array, **kwargs: str) -> NumericField:
+            return NumericField(
+                arr.cast(pa.int64()), pa.field(kwargs["name"], pa.int64())
+            )
+
+        result = CallableFieldParser(my_fn).from_array(pa.array(["1"]), name="column")
+        assert result.field.name == "column"
+
+    def test_type_error_inside_callable_propagates_after_one_call(self) -> None:
+        calls: list[str] = []
+
+        def my_fn(arr: pa.Array, *, name: str = "x") -> NumericField:
+            calls.append(name)
+            raise TypeError("column holds the wrong type")
+
+        parser = CallableFieldParser(my_fn)
+        with pytest.raises(TypeError) as raised:
+            parser.from_array(pa.array(["1"]), name="column")
+        assert str(raised.value) == "column holds the wrong type"
+        assert calls == ["column"]
+
+    def test_callable_without_name_is_called_once(self) -> None:
+        calls: list[int] = []
+
+        def my_fn(arr: pa.Array) -> NumericField:
+            calls.append(len(arr))
+            return NumericField(arr.cast(pa.int64()), pa.field("x", pa.int64()))
+
+        result = CallableFieldParser(my_fn).from_array(
+            pa.array(["10", "20"]), name="column"
+        )
+        assert result.field.name == "x"
+        assert calls == [2]
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Cross-resolver smoke test

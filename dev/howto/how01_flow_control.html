@@ -469,11 +469,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>one of its destinations that holds is taken</td>
 </tr>
 <tr class="even">
-<td><p><button class="glossary" title="A flow-control element marking a place a destination names by its element id: a repeat start, a segno, a coda, a bracket. Nothing happens when the flow plays up to it.">JumpTarget</button></p></td>
+<td><p><button class="glossary" title="">JumpTarget</button></p></td>
 <td>nothing: it is a place a destination names</td>
 </tr>
 <tr class="odd">
-<td><p><button class="glossary" title="">Break</button></p></td>
+<td><p><button class="glossary" title="A flow-control element at which the flow does not go on: when the flow plays up to it, a Jump at the same coordinate with a destination that holds is taken, otherwise the flow ends there and begins again at the next SectionBreak, if any. With ends (a condition: passes, after) it ends the flow only while that condition holds, as a Fine does after a D.C. or D.S. A Break lies between two brackets of alternative endings.">Break</button></p></td>
 <td>the flow does not go on across it</td>
 </tr>
 <tr class="even">
@@ -632,7 +632,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="the-places-a-destination-names" class="level2">
 <h2 class="anchored" data-anchor-id="the-places-a-destination-names">The places a destination names</h2>
-<p>A <button class="glossary" title="A flow-control element marking a place a destination names by its element id: a repeat start, a segno, a coda, a bracket. Nothing happens when the flow plays up to it.">JumpTarget</button> is a place: nothing happens when the flow plays up to it. Its <code>manifestation</code> says what it looks like in the source and decides nothing. A given <code>id</code> is kept; the IDs here make the destinations below readable.</p>
+<p>A <button class="glossary" title="">JumpTarget</button> is a place: nothing happens when the flow plays up to it. Its <code>manifestation</code> says what it looks like in the source and decides nothing. A given <code>id</code> is kept; the IDs here make the destinations below readable.</p>
 <div id="64b4853c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.381723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.381394Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.386836Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.385843Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>places <span class="op">=</span> [</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    JumpTarget(q(<span class="dv">4</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"segno"</span>, manifestation<span class="op">=</span><span class="st">"segno"</span>),</span>
@@ -649,7 +649,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>by=0, passes=[1]</code>: on the first arrival the flow goes on into the first bracket. <code>by: 0</code> is never taken; it is written where the source prints the bracket’s number.</li>
 <li><code>to="second_bracket", passes=[2]</code>: on the second arrival it goes on at the second bracket.</li>
 </ul>
-<p>A <button class="glossary" title="">Break</button> between the brackets keeps the flow from running from the first bracket into the second. At the end of the first bracket a second Jump holds the repeat end: back to the repeat start, once (<code>repeat_count=1</code>).</p>
+<p>A <button class="glossary" title="A flow-control element at which the flow does not go on: when the flow plays up to it, a Jump at the same coordinate with a destination that holds is taken, otherwise the flow ends there and begins again at the next SectionBreak, if any. With ends (a condition: passes, after) it ends the flow only while that condition holds, as a Fine does after a D.C. or D.S. A Break lies between two brackets of alternative endings.">Break</button> between the brackets keeps the flow from running from the first bracket into the second. At the end of the first bracket a second Jump holds the repeat end: back to the repeat start, once (<code>repeat_count=1</code>).</p>
 <div id="745ddcd1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.389684Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.389369Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.395529Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.394520Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>brackets <span class="op">=</span> [</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    Jump(</span>

@@ -315,8 +315,8 @@ class MatchfileLoader(AlignmentLoader):
     def _check_or_add_score_event(
         self,
         snote_id: str,
-        onset_tta: float,
-        end_tta: float,
+        onset_tta: Fraction,
+        end_tta: Fraction,
         source_file: str,
     ) -> bool:
         """Verify or register a score event on the shared timeline.
@@ -885,7 +885,10 @@ class MatchfileLoader(AlignmentLoader):
         """
         if self._score_timeline is None:
             return []
-        timelines = [self._score_timeline] + list(self._performance_timelines)
+        timelines: list[Timeline] = [
+            self._score_timeline,
+            *self._performance_timelines,
+        ]
         return AlignmentLoader._filter_timelines_by_id_pattern(timelines, id_pattern)
 
     # endregion

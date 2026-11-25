@@ -356,8 +356,8 @@ class ListenHereLoader(AlignmentLoader):
             timeline_b_ids,
             event_ids,
             event_ids,
-            coordinate_a,
-            coordinate_b,
+            pa.array(coordinate_a),
+            pa.array(coordinate_b),
             timelines={
                 uid: (TimeUnit.samples, NumberType.int) for uid in uid_by_key.values()
             },
@@ -484,7 +484,7 @@ class ListenHereLoader(AlignmentLoader):
         Args:
             id_pattern: Optional regex pattern to filter timeline IDs.
         """
-        timelines = [self._make_timeline(key) for key in self._keys]
+        timelines: list[Timeline] = [self._make_timeline(key) for key in self._keys]
         return self._filter_timelines_by_id_pattern(timelines, id_pattern)
 
     def create_timeline(self, uid: str | None = None, **kwargs: Any) -> "Timeline":

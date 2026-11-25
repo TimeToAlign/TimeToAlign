@@ -84,6 +84,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pyarrow as pa
 import pyarrow.compute as pc
 from typing_extensions import Self
 
@@ -609,7 +610,7 @@ class ParangonadaLoader(AlignmentLoader):
         each note at its own coordinate on the timeline's axis.
         """
         table = timeline.get_events(include_children=False)._table
-        notes = table.filter(pc.equal(table.column("event_type"), "Note"))
+        notes = table.filter(pc.equal(table.column("event_type"), pa.scalar("Note")))
         return {
             event_id: {"id": event_id, "start": start}
             for event_id, start in zip(

@@ -364,7 +364,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         ]
 
         score_tl = ContinuousLogicalTimeline(
-            length=self._metric_map.total_length,
+            length=self.metric_map.total_length,
             unit=self._score_unit,
             uid=_SCORE_TL_ID,
             name=self._name,
@@ -389,7 +389,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         # MetricalPositionMap is a multi-output CombinationMap (no single
         # target unit), so it is stored as an attached map for inspection
         # rather than registered for unit-based timestamp resolution.
-        score_tl.add_conversion_map(self._metrical_position_map)
+        score_tl.add_conversion_map(self.metrical_position_map)
 
         self._score_timeline = score_tl
 

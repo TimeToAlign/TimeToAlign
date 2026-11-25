@@ -120,6 +120,7 @@ import logging
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
@@ -129,7 +130,7 @@ import numpy as np
 import pyarrow as pa
 
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
-from timetoalign.core import NumberType, Provenance, TimeUnit
+from timetoalign.core import NumberType, Provenance, TimeScalarValue, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
 from timetoalign.loader.format.xml import XmlLoader
@@ -916,17 +917,17 @@ class Ieee1599Loader(XmlLoader):
         assert (
             ulx is not None and uly is not None and lrx is not None and lry is not None
         )
-        source_coordinates = tuple(
-            _float_or_none(graphic.get(name))
-            for name in (
-                "upper_left_x",
-                "upper_left_y",
-                "lower_right_x",
-                "lower_right_y",
-            )
+        source_ulx = _float_or_none(graphic.get("upper_left_x"))
+        source_uly = _float_or_none(graphic.get("upper_left_y"))
+        source_lrx = _float_or_none(graphic.get("lower_right_x"))
+        source_lry = _float_or_none(graphic.get("lower_right_y"))
+        assert (
+            source_ulx is not None
+            and source_uly is not None
+            and source_lrx is not None
+            and source_lry is not None
         )
-        assert all(value is not None for value in source_coordinates)
-        source_ulx, source_uly, source_lrx, source_lry = source_coordinates
+        source_coordinates = (source_ulx, source_uly, source_lrx, source_lry)
         row: dict[str, Any] = {
             "id": None,
             "event_type": "GraphicEvent",
@@ -1033,7 +1034,10 @@ class Ieee1599Loader(XmlLoader):
                     continue
                 for event in segment.findall("segment_event"):
                     event_ref = event.get("event_ref")
-                    if self._coordinate_of(event_ref, "segment_event") is None:
+                    if (
+                        self._coordinate_of(event_ref, "segment_event") is None
+                        or event_ref is None
+                    ):
                         continue
                     self._structural_rows.extend(
                         self._structural_row(event_ref, segment_id, place)
@@ -1249,7 +1253,7 @@ class Ieee1599Loader(XmlLoader):
             tuple[
                 str | None,
                 list[dict[str, Any]],
-                list[int | float],
+                Sequence[int | float],
                 TimeUnit,
                 NumberType,
             ]
@@ -1309,9 +1313,11 @@ class Ieee1599Loader(XmlLoader):
             event_ids,
             spine_event_ids,
             coordinates,
-            np.asarray(
-                [self._spine_coordinates[ref] for ref in spine_event_ids],
-                dtype=np.int64,
+            pa.array(
+                np.asarray(
+                    [self._spine_coordinates[ref] for ref in spine_event_ids],
+                    dtype=np.int64,
+                )
             ),
             timelines=axes,
             provenance=provenance,
@@ -1545,7 +1551,7 @@ class Ieee1599Loader(XmlLoader):
                 "pages": [page_spec.page for page_spec in spec.pages],
             },
         )
-        boundaries: list[int] = []
+        boundaries: list[TimeScalarValue] = []
         file_names: list[str | None] = []
         for page_index, page_spec in enumerate(spec.pages, start=1):
             accolade_specs = [
@@ -1573,7 +1579,10 @@ class Ieee1599Loader(XmlLoader):
                 )
                 accolade.add_events(segment_spec.rows)
                 page.append_segment(accolade)
-            boundaries.append(timeline.length.value)
+            # The edition was made with a length, which appending keeps known.
+            length = timeline.length
+            assert length is not None
+            boundaries.append(length.value)
             file_names.append(page_spec.page["file_name"])
             timeline.append_segment(page)
         if boundaries:

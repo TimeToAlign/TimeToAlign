@@ -1231,10 +1231,12 @@ class Manifest(_OpenObject):
         every ID is written as a file writes it, ``#`` followed by the ID
         (:func:`timetoshare.with_file_ids`). Every manifest written carries
         its inline JSON-LD ``@context``: the format's terms, then, sorted by
-        name, the prefixes its statements use (:func:`timetoshare.with_context`)
-        and the *table_prefixes*, each standing for the namespace the holders
-        using it declare, else the catalogue's (:meth:`_prefix_table`); a
-        prefix neither uses is not written, declared or not. The manifest
+        name, the prefixes its statements use (:func:`timetoshare.with_context`),
+        the *table_prefixes* and those the provenance of its FlowMaps uses,
+        each standing for the namespace the holders using it declare, else
+        the catalogue's (:meth:`_prefix_table`; a FlowMap's are the
+        manifest's, as a table's are); a prefix none of them uses is not
+        written, declared or not. The manifest
         written is validated whole by the format's validator
         (:func:`timetoshare.validate`), as a manifest read is, so that a
         manifest the format refuses is never emitted; its warnings are not
@@ -1345,6 +1347,14 @@ class Manifest(_OpenObject):
             fields,
             roots,
             {*entries.taken, *(entry["id"] for entry in fields["measure_maps"])},
+        )
+        # A FlowMap's provenance is read under the manifest's context, as a
+        # table beside the manifest is.
+        table_prefixes = sorted(
+            {
+                *table_prefixes,
+                *timetoshare.used_prefixes({"flow_maps": fields.get("flow_maps", [])}),
+            }
         )
         prefixes = self._prefix_table(fields, trees, table_prefixes)
         written = _timeline_ids(fields["timelines"])

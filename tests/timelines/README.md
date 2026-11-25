@@ -4726,6 +4726,13 @@ written.
   and `virtual_timelines` are sorted by ID across both roots, every ID is
   spelled `#id`, and a manifest of timelines without FlowMaps holds neither
   key.
+- **Prefixes of a FlowMap's provenance.** An actor written `ex:editor` is
+  read under the manifest's `@context`. A manifest written carries the
+  prefix where the manifest (a bundle, or a timeline read from a manifest as
+  a whole) declares it or the catalogue has it; a timeline built in memory
+  holds no manifest, so an undeclared prefix is refused when written, in
+  the format's words. A manifest stating such a prefix is read and written
+  back equal.
 - **Kept as read.** A virtual timeline that applies a conversion map, or
   states `through`, is no FlowMap applied to its root: it is read, written
   back unchanged and refuses to convert positions.

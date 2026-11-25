@@ -245,6 +245,43 @@ class TestBuiltInMemory:
             assert "virtual_timelines" not in manifest
 
 
+class TestProvenancePrefixes:
+    """A FlowMap's provenance is read under the manifest's context."""
+
+    ENTRY = {"method": "manual", "stated_by": ["ex:editor"]}
+
+    def _concert(self) -> ContinuousLogicalTimeline:
+        concert = ContinuousLogicalTimeline(length=20, uid="concert")
+        concert.create_child(8, 0, uid="first")
+        concert.create_flow_map(["first"], id="encore", provenance=[self.ENTRY])
+        return concert
+
+    def test_a_prefix_the_manifest_declares_is_written_back(self) -> None:
+        bundle = AlignmentBundle()
+        bundle.add_prefix("ex", "https://example.org/people/")
+        bundle.add_timeline(self._concert())
+        manifest = bundle.to_dict()
+        assert manifest["@context"]["ex"] == "https://example.org/people/"
+        assert manifest["flow_maps"][0]["provenance"] == [self.ENTRY]
+        timetoshare.validate(manifest)
+        assert AlignmentBundle.from_dict(manifest).to_dict() == manifest
+        # A timeline read from a manifest as a whole writes that manifest back.
+        alone = self._concert()
+        with pytest.raises(ValueError, match="the prefix 'ex' is declared neither"):
+            alone.to_dict()
+        assert Timeline.from_dict(manifest).to_dict() == manifest
+
+    def test_a_prefix_of_the_catalogue_needs_no_declaration(self) -> None:
+        concert = ContinuousLogicalTimeline(length=20, uid="concert")
+        concert.create_child(8, 0, uid="first")
+        concert.create_flow_map(
+            ["first"], provenance=[{"method": "manual", "stated_by": ["wd:Q255"]}]
+        )
+        manifest = concert.to_dict()
+        assert manifest["@context"]["wd"] == "http://www.wikidata.org/entity/"
+        assert Timeline.from_dict(manifest).to_dict() == manifest
+
+
 class TestKeptAsRead:
     """Statements the library does not evaluate are written back unchanged."""
 

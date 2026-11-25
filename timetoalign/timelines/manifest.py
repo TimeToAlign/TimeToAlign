@@ -770,7 +770,9 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
         events = timeline.events.table
         if events.num_rows == 0 or "event_type" not in events.column_names:
             continue
-        rows = events.filter(pc.equal(events.column("event_type"), event_type.__name__))
+        rows = events.filter(
+            pc.equal(events.column("event_type"), pa.scalar(event_type.__name__))
+        )
         n = rows.num_rows
         if n == 0:
             continue
@@ -783,7 +785,7 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
             "number_type": types,
         }
 
-        def column(name: str, rows: pa.Table = rows) -> pa.Array | None:
+        def column(name: str, rows: pa.Table = rows) -> pa.ChunkedArray | None:
             """Return column *name* of the timeline's rows, ``None`` if they lack it."""
             return rows.column(name) if name in rows.column_names else None
 
@@ -927,7 +929,7 @@ def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
         ValueError: If a number does not hold its value as its row's number
             type says, naming the file, the column and the row.
     """
-    return _event_tables_by_timeline(pq.read_table(path), Path(path).name)
+    return _event_tables_by_timeline(pq.read_table(os.fspath(path)), Path(path).name)
 
 
 def read_projection_table(
@@ -957,7 +959,7 @@ def read_projection_table(
         ValueError: If a ``start`` or ``duration`` does not hold its number
             as its row's number type says.
     """
-    table = pq.read_table(path)
+    table = pq.read_table(os.fspath(path))
     problems = projection_problems(table, manifest)
     if problems:
         raise TableError(problems[0])

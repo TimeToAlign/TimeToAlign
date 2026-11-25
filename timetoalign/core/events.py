@@ -811,7 +811,7 @@ class Shape(_OnOneAxis, ScalarVocabulary, BaseModel):
     @classmethod
     def from_dict(
         cls,
-        data: dict[str, Any],
+        data: Mapping[str, Any],
         *,
         unit: TimeUnit | str,
         number_type: NumberType | str | None,
@@ -910,7 +910,7 @@ class Shape(_OnOneAxis, ScalarVocabulary, BaseModel):
     @classmethod
     @abstractmethod
     def _from_dict_values(
-        cls, data: dict[str, Any], unit: TimeUnit, number_type: NumberType
+        cls, data: Mapping[str, Any], unit: TimeUnit, number_type: NumberType
     ) -> Shape:
         """The shape of a dict form holding this class's keys."""
 
@@ -1264,7 +1264,7 @@ class BoundingBox(Shape):
 
     @classmethod
     def _from_dict_values(
-        cls, data: dict[str, Any], unit: TimeUnit, number_type: NumberType
+        cls, data: Mapping[str, Any], unit: TimeUnit, number_type: NumberType
     ) -> BoundingBox:
         return cls.from_xywh(
             *(number_from_json(data[key], number_type) for key in cls._DICT_KEYS),
@@ -1519,7 +1519,7 @@ class Quadrilateral(Shape):
 
     @classmethod
     def _from_dict_values(
-        cls, data: dict[str, Any], unit: TimeUnit, number_type: NumberType
+        cls, data: Mapping[str, Any], unit: TimeUnit, number_type: NumberType
     ) -> Quadrilateral:
         points: list[tuple[int | float | Fraction, int | float | Fraction]] = []
         for name in cls.CORNER_ORDER:

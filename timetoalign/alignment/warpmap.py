@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import numpy as np
 import pandas as pd
@@ -55,6 +55,25 @@ module_logger = logging.getLogger(__name__)
 
 class AmbiguousWarpMapError(ValueError):
     """Raised when a source coordinate has incompatible target values."""
+
+
+def _all_anchors(
+    values: list[IdCoordinate] | list[AlignmentAnchor],
+) -> TypeGuard[list[AlignmentAnchor]]:
+    """Whether every value is an alignment anchor."""
+    return all(isinstance(value, AlignmentAnchor) for value in values)
+
+
+def _all_id_coordinates(
+    values: list[IdCoordinate] | list[AlignmentAnchor],
+) -> TypeGuard[list[IdCoordinate]]:
+    """Whether every value is a typed coordinate with its timeline identity."""
+    return all(isinstance(value, IdCoordinate) for value in values)
+
+
+def _is_value_cell(value: object) -> TypeGuard[dict[str, Any]]:
+    """Whether an event value is a coordinate cell holding its ``value``."""
+    return isinstance(value, dict) and "value" in value
 
 
 # Repeated anchors from chords can differ slightly while still describing one
@@ -500,7 +519,7 @@ class WarpMap:
                 raise TypeError(
                     "target_coords must be omitted when source_coords contains anchors"
                 )
-            if not all(isinstance(value, AlignmentAnchor) for value in source_coords):
+            if not _all_anchors(source_coords):
                 raise TypeError("source_coords must not mix anchors and coordinates")
             anchors = source_coords
             source_coordinates = [
@@ -521,9 +540,9 @@ class WarpMap:
                 )
             source_coordinates = source_coords
             target_coordinates = target_coords
-        if not all(isinstance(value, IdCoordinate) for value in source_coordinates):
+        if not _all_id_coordinates(source_coordinates):
             raise TypeError("source_coords must contain typed IdCoordinate values")
-        if not all(isinstance(value, IdCoordinate) for value in target_coordinates):
+        if not _all_id_coordinates(target_coordinates):
             raise TypeError("target_coords must contain typed IdCoordinate values")
         if any(value.timeline_id != source_timeline_id for value in source_coordinates):
             raise ValueError("Source coordinate timeline identities do not match")
@@ -648,8 +667,9 @@ class WarpMap:
             )
         for _, timeline in source_timeline.iter_children(include_self=True):
             timeline._require_length("materialise a warped copy")
+        source_length = source_timeline._require_length("materialise a warped copy")
         source_start = float(source_timeline.origin.value)
-        source_end = float(source_timeline.length.value)
+        source_end = float(source_length.value)
         if (
             source_start < self._source_float_array[0]
             or source_end > self._source_float_array[-1]
@@ -664,7 +684,7 @@ class WarpMap:
 
         # Determine the target unit and timeline class
         target_unit = self.target_unit
-        warped_length = self._interpolate_float(source_timeline.length.value)
+        warped_length = self._interpolate_float(source_length.value)
 
         # Choose timeline class: if target unit differs, pick the
         # appropriate typed subclass; otherwise mirror the source type.
@@ -702,7 +722,7 @@ class WarpMap:
             "Materialised '%s' -> '%s' (length %.3f -> %.3f)",
             source_timeline.id,
             warped.id,
-            float(source_timeline.length.value),
+            float(source_length.value),
             warped_length,
         )
 
@@ -733,7 +753,7 @@ class WarpMap:
                 val = warped.get(name)
                 if val is None:
                     continue
-                if isinstance(val, dict) and "value" in val:
+                if _is_value_cell(val):
                     raw = float(val["value"])
                 else:
                     raw = float(val)
@@ -745,14 +765,14 @@ class WarpMap:
                 start_val = warped.get("start")
                 if start_val is not None:
                     # start_raw = float(start_val)
-                    dur_raw = event.get("duration")
-                    if isinstance(dur_raw, dict) and "value" in dur_raw:
+                    dur_raw = event["duration"]
+                    if _is_value_cell(dur_raw):
                         dur_raw = float(dur_raw["value"])
                     else:
                         dur_raw = float(dur_raw)
                     # Get original start for correct duration warping
-                    orig_start = event.get("start")
-                    if isinstance(orig_start, dict) and "value" in orig_start:
+                    orig_start = event["start"]
+                    if _is_value_cell(orig_start):
                         orig_start = float(orig_start["value"])
                     else:
                         orig_start = float(orig_start)
@@ -787,7 +807,9 @@ class WarpMap:
         for child_id, child in source._children.items():
             offset = source._child_offsets[child_id]
             offset_val = float(offset.value)
-            child_length = float(child.length.value)
+            child_length = float(
+                child._require_length("materialise a warped copy").value
+            )
 
             warped_offset = self._interpolate_float(offset_val)
             warped_end = self._interpolate_float(offset_val + child_length)

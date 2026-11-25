@@ -23,7 +23,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeGuard, overload
 
 import pandas as pd
 import pyarrow as pa
@@ -46,6 +46,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
+from timetoalign.core.fields import _compared, _filled_mask, _struct_child
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.provenance import Belief, BeliefValue
 from timetoalign.core.retrieval import (
@@ -130,7 +131,7 @@ module_logger = logging.getLogger(__name__)
 
 #: A belief filter as the bundle's caches key it: ``(believer, beliefs)``,
 #: the states a frozen set (:func:`_belief_key`).
-_BeliefKey = tuple["str | None", frozenset[str]]
+_BeliefKey = tuple["str | None", frozenset[BeliefState]]
 #: The belief filter that filters nothing (no believer).
 _ALL_BELIEFS: _BeliefKey = (None, frozenset(DEFAULT_BELIEFS))
 
@@ -219,6 +220,18 @@ def _table_anchors(
     return anchors
 
 
+def _all_keys(values: list[object]) -> TypeGuard[list[str]]:
+    """Whether every value of a collection is a key (an event id)."""
+    return all(isinstance(value, str) for value in values)
+
+
+def _all_positions(values: list[object]) -> TypeGuard[list[CoordinateInput | Interval]]:
+    """Whether every value of a collection is a coordinate input or an Interval."""
+    return all(
+        is_coordinate_input(value) or isinstance(value, Interval) for value in values
+    )
+
+
 def _refuse_shared_claim_ids(bundles: Sequence["AlignmentBundle"]) -> None:
     """Refuse bundles to merge two of which hold a MatchClaim under one id.
 
@@ -235,14 +248,14 @@ def _refuse_shared_claim_ids(bundles: Sequence["AlignmentBundle"]) -> None:
         return
     ids = pc.cast(pa.concat_arrays(held), pa.string())
     counts = pc.value_counts(ids.filter(pc.is_valid(ids)))
-    repeated = counts.filter(pc.greater(counts.field("counts"), 1))
+    repeated = counts.filter(_compared("greater", _struct_child(counts, "counts"), 1))
     if not len(repeated):
         return
     claim_id = repeated.field("values")[0].as_py()
     places = [
         index
         for index, ids in enumerate(held)
-        if pc.any(pc.fill_null(pc.equal(ids, claim_id), False)).as_py()
+        if pc.any(_filled_mask(pc.equal(ids, claim_id), pa.scalar(False))).as_py()
     ]
     first, second = places[0], places[1]
     raise ValueError(
@@ -711,7 +724,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             if grouped_with is not None
             else ()
         )
-        if len(target_groups) > 1:
+        if grouped_with is not None and len(target_groups) > 1:
             raise ValueError(
                 f"Cannot group with {quote_id(grouped_with)}: it is a member of "
                 f"several groups {[group.id for group in target_groups]}, so the group "
@@ -725,7 +738,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             (group,) = target_groups
             group.add_timeline(timeline)
         else:
-            if target is not None and _nested(target, timeline):
+            if (
+                target is not None
+                and grouped_with is not None
+                and _nested(target, timeline)
+            ):
                 raise ValueError(
                     f"Timeline {quote_id(timeline.id)} cannot be grouped with "
                     f"{quote_id(grouped_with)}: one is nested in the other, and a parent "
@@ -2384,10 +2401,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 counterpart_start,
                 counterpart_end,
             )
-            exact = [exact_coordinate_value(operand) for operand in operands]
-            if all(value is not None for value in exact):
-                query_value, queried_start, queried_end = exact[:3]
-                counterpart_start, counterpart_end = exact[3:]
+            exact_query, exact_start, exact_end, exact_from, exact_to = (
+                exact_coordinate_value(operand) for operand in operands
+            )
+            if (
+                exact_query is not None
+                and exact_start is not None
+                and exact_end is not None
+                and exact_from is not None
+                and exact_to is not None
+            ):
+                query_value, queried_start, queried_end = (
+                    exact_query,
+                    exact_start,
+                    exact_end,
+                )
+                counterpart_start, counterpart_end = exact_from, exact_to
             mapped = counterpart_start + (
                 (query_value - queried_start) / (queried_end - queried_start)
             ) * (counterpart_end - counterpart_start)
@@ -2761,6 +2790,54 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             believer=believer,
             beliefs=beliefs,
         )
+
+    @overload
+    def get_matchstamp_at(
+        self,
+        at: CoordinateSpec,
+        timeline_id: str | None = None,
+        *,
+        support_policy: "SupportPolicy | str | None" = None,
+        conversion_maps: "ConversionMapsSpec" = False,
+        within: set[str] | None = None,
+        id_pattern: str | None = None,
+        include_domains: set["Domain"] | None = None,
+        include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+    ) -> MatchStamp: ...
+
+    @overload
+    def get_matchstamp_at(
+        self,
+        at: Interval,
+        timeline_id: str | None = None,
+        *,
+        support_policy: "SupportPolicy | str | None" = None,
+        conversion_maps: "ConversionMapsSpec" = False,
+        within: set[str] | None = None,
+        id_pattern: str | None = None,
+        include_domains: set["Domain"] | None = None,
+        include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+    ) -> MatchIntervalStamp: ...
+
+    @overload
+    def get_matchstamp_at(
+        self,
+        at: CoordinateSpec | Interval,
+        timeline_id: str | None = None,
+        *,
+        support_policy: "SupportPolicy | str | None" = None,
+        conversion_maps: "ConversionMapsSpec" = False,
+        within: set[str] | None = None,
+        id_pattern: str | None = None,
+        include_domains: set["Domain"] | None = None,
+        include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+    ) -> MatchStamp | MatchIntervalStamp: ...
 
     def get_matchstamp_at(
         self,
@@ -3321,7 +3398,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
         beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
-    ) -> MatchStamp | MatchIntervalStamp | list[MatchStamp | MatchIntervalStamp]:
+    ) -> (
+        MatchStamp
+        | MatchIntervalStamp
+        | list[MatchStamp]
+        | list[MatchStamp | MatchIntervalStamp]
+    ):
         """Dispatch a positional or event-key match-stamp query.
 
         Args:
@@ -3364,12 +3446,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if is_coordinate_input(at) or isinstance(at, Interval):
             return self.get_matchstamp_at(at, timeline_id, **options)
         values, _ = collection_values(at)
-        if all(isinstance(value, str) for value in values):
+        if _all_keys(values):
             return self.get_matchstamps_for(values, timeline_id, **options)
-        if all(
-            is_coordinate_input(value) or isinstance(value, Interval)
-            for value in values
-        ):
+        if _all_positions(values):
             return self.get_matchstamps_at(values, timeline_id, **options)
         raise TypeError(
             "Matchstamp dispatcher collections must contain only string keys or "
@@ -3838,6 +3917,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     "get_matchstamp_table does not support Interval queries; "
                     "there is no interval table form"
                 )
+            match_stamps: list[MatchStamp] = []
             for stamp in stamps:
                 assert isinstance(stamp, MatchStamp)
                 ambiguous = stamp._ambiguous_interval_candidates()
@@ -3847,7 +3927,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         "interval-derived coordinates for timelines "
                         f"{list(ambiguous)}"
                     )
-            rows = [dict(stamp.coordinates) for stamp in stamps]
+                match_stamps.append(stamp)
+            rows = [dict(stamp.coordinates) for stamp in match_stamps]
             all_tl_ids: set[str] = set()
             for row in rows:
                 all_tl_ids.update(row)
@@ -3969,24 +4050,27 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if conversion_maps is not False and conversion_maps is not None:
             from timetoalign.core.timestamp import _conversion_map_enabled_for_spec
 
-            collected: list[tuple[str, str, "ConversionMap[Any]"]] = []
+            collected: list[tuple[TimeUnit, str, "ConversionMap[Any]"]] = []
             for tl_id in list(field_lists.keys()):
                 for cmap in self._get_conversion_maps_for_timeline(tl_id):
-                    if cmap.target_unit is None:
+                    target_unit = cmap.target_unit
+                    if target_unit is None:
                         continue  # numeric unit conversions only in tables
                     if not _conversion_map_enabled_for_spec(cmap, conversion_maps):
                         continue
-                    collected.append((cmap.target_unit.value, tl_id, cmap))
+                    collected.append((target_unit, tl_id, cmap))
             label_counts: dict[str, int] = {}
-            for label, _tl_id, _cmap in collected:
-                label_counts[label] = label_counts.get(label, 0) + 1
-            for label, tl_id, cmap in collected:
+            for target_unit, _tl_id, _cmap in collected:
+                label_counts[target_unit.value] = (
+                    label_counts.get(target_unit.value, 0) + 1
+                )
+            for target_unit, tl_id, cmap in collected:
+                label = target_unit.value
                 col_name = label if label_counts[label] == 1 else f"{tl_id}:{label}"
                 source_timeline = self.get_timeline(tl_id)
-                target_type = cmap.target_unit.resolve_number_type(
+                target_type = target_unit.resolve_number_type(
                     source_timeline.number_type
-                    if source_timeline.number_type
-                    in cmap.target_unit.allowed_number_types
+                    if source_timeline.number_type in target_unit.allowed_number_types
                     else None
                 )
                 derived: list[Coordinate | None] = []
@@ -4470,7 +4554,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         target_ids: Sequence[str],
         support_policy: SupportPolicy,
         belief_key: _BeliefKey = _ALL_BELIEFS,
-    ) -> tuple[str, float] | None:
+    ) -> tuple[str, CoordinateValue] | None:
         """Transfer a coordinate from one group to another via WarpMap.
 
         Searches for a WarpMap connecting any timeline in the source
@@ -4571,11 +4655,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         membership = self.timeline_to_groups
         for tl_id in sorted(self.timelines.keys()):
             tl = self.timelines[tl_id]
+            length = tl.length
             timeline_info[tl_id] = {
                 "name": tl.name,
-                "length": (
-                    float(tl.length.value) if hasattr(tl.length, "value") else tl.length
-                ),
+                "length": float(length.value) if length is not None else length,
                 "unit": str(tl.unit) if hasattr(tl, "unit") else None,
                 "groups": list(membership.get(tl_id, ())),
             }
@@ -4802,8 +4885,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             return url, path
 
         # Every place is resolved (a URL refused) before the first file is written.
-        if len(claims):
-            claim_place = place("MatchClaim", MatchClaimField.file_name)
+        claim_place = (
+            place("MatchClaim", MatchClaimField.file_name) if len(claims) else None
+        )
         file_names = {"Projection": PROJECTIONS_FILE_NAME, "Box": BOXES_FILE_NAME}
         event_places = {kind: place(kind, file_names[kind]) for kind in event_tables}
         kept = {
@@ -4811,7 +4895,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             for table_type, held in named.items()
             if resource_path(directory, held.url).is_file()
         }
-        if len(claims):
+        if claim_place is not None:
             url, path = claim_place
             claims.to_parquet(path)
             table = claims.table

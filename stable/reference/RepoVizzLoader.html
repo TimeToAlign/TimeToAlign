@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>repovizzloader – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-a0f9fd0d421825b736dc1bbcbcba2219.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html">
+<span class="menu-text">Home</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html">
+<span class="menu-text">Tutorials</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html">
+<span class="menu-text">How-To Guides</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html">
+<span class="menu-text">Explanation</span></a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="../reference.html" aria-current="page">
+<span class="menu-text">API Reference</span></a>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/RepoVizzLoader.html">RepoVizzLoader</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container">
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container">
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a>
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentAnchor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentAnchor</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AlignmentBundle.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentBundle</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/AudioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/BeatGrid.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGrid</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ChainMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ChainMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimFilter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ContinuousPhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousPhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ConversionMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConversionMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Coordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateSpec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateSpec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/CoordinateValue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateValue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscreteLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/DiscretePhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscretePhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Domain.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Domain</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EepNotesLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EepNotesLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventData.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/GraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/IdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LinearMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LinearMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/LogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchClaim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaim</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchfileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchfileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchGraph.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchGraph</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchMetadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchMetadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/MatchStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/NumberType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NumberType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PerfectAlignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerfectAlignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/PiecewiseMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewiseMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/RepoVizzLoader.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">RepoVizzLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScalarMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScopedId</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SecondsToSamples.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SecondsToSamples</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/ShiftMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShiftMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/SingleStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SingleStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TableMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TableMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaDictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaDictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TiliaJsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaJsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/Timeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineGroup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineGroup</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimelineIdGenerator.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineIdGenerator</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/TimeUnit.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeUnit</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container">
+  <a href="../reference/WarpMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">WarpMap</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+
+  <ul>
+  <li><a href="#timetoalign.RepoVizzLoader" id="toc-timetoalign.RepoVizzLoader" class="nav-link active" data-scroll-target="#timetoalign.RepoVizzLoader">RepoVizzLoader</a>
+  <ul>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#timetoalign.RepoVizzLoader.clear" id="toc-timetoalign.RepoVizzLoader.clear" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.clear">clear</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.create_group" id="toc-timetoalign.RepoVizzLoader.create_group" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.create_group">create_group</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.create_timeline" id="toc-timetoalign.RepoVizzLoader.create_timeline" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.create_timeline">create_timeline</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.create_timelines" id="toc-timetoalign.RepoVizzLoader.create_timelines" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.create_timelines">create_timelines</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.find_audio" id="toc-timetoalign.RepoVizzLoader.find_audio" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.find_audio">find_audio</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.find_audio_descriptor" id="toc-timetoalign.RepoVizzLoader.find_audio_descriptor" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.find_audio_descriptor">find_audio_descriptor</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.find_descriptor" id="toc-timetoalign.RepoVizzLoader.find_descriptor" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.find_descriptor">find_descriptor</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.find_signal" id="toc-timetoalign.RepoVizzLoader.find_signal" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.find_signal">find_signal</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.from_file" id="toc-timetoalign.RepoVizzLoader.from_file" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.from_file">from_file</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.get_entry" id="toc-timetoalign.RepoVizzLoader.get_entry" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.get_entry">get_entry</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.get_sample_rate_for_descriptor_type" id="toc-timetoalign.RepoVizzLoader.get_sample_rate_for_descriptor_type" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.get_sample_rate_for_descriptor_type">get_sample_rate_for_descriptor_type</a></li>
+  <li><a href="#timetoalign.RepoVizzLoader.load" id="toc-timetoalign.RepoVizzLoader.load" class="nav-link" data-scroll-target="#timetoalign.RepoVizzLoader.load">load</a></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/RepoVizzLoader.html">RepoVizzLoader</a></li></ol></nav></header>
+
+
+
+
+<section id="timetoalign.RepoVizzLoader" class="level1">
+<h1>RepoVizzLoader</h1>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Load RepoVizz XML manifests or single CSV files for creating physical timelines.</p>
+<p>RepoVizzLoader supports two modes:</p>
+<p><strong>XML Manifest Mode</strong> (when loading a <code>.xml</code> file): Parses the RepoVizz XML manifest and builds a catalogue of all data files in the recording directory. Provides lazy access to: - Audio recordings (ambient + pickup) - Essentia audio descriptors - Bowing gesture descriptors - MoCap position data - Score alignment files (.notes)</p>
+<p><strong>Legacy CSV Mode</strong> (when loading a <code>.csv</code> file): Reads the 2-line RepoVizz CSV format for a single sensor signal. This preserves backwards compatibility with existing code.</p>
+<p>Both modes create :class:<code>DiscretePhysicalTimeline</code> instances with the <code>samples</code> unit and an attached <code>SamplesToSeconds</code> conversion map.</p>
+<p>Examples: XML manifest mode::</p>
+<pre><code>    &gt;&gt;&gt; loader = RepoVizzLoader.from_file("StringQuartetEEP_I_Normal.xml")
+    &gt;&gt;&gt; loader.groups
+    ['audio', 'descriptors', 'mocap', 'score']
+    &gt;&gt;&gt; loader.timeline_ids[:5]
+    ['ROOT0_Audi1_Audi0_Ambi0', 'ROOT0_Audi1_Audi0_Ambi1', ...]
+
+    &gt;&gt;&gt; tl = loader.create_timeline("ROOT0_Audi1_Audi0_Ambi0")
+    &gt;&gt;&gt; tl.length
+    Coordinate(11753638, samples)
+
+Legacy CSV mode::
+
+    &gt;&gt;&gt; loader = RepoVizzLoader.from_file("vln1_bb_angle.csv")
+    &gt;&gt;&gt; loader.n_samples
+    63965
+    &gt;&gt;&gt; loader.frame_rate
+    240</code></pre>
+<p>See Also: timetoalign.loader.base.ManifestLoader timetoalign.loader.physical.audio.AudioLoader timetoalign.loader.physical.eep_notes.EepNotesLoader</p>
+<section id="attributes" class="level2">
+<h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.catalogue">catalogue</a></td>
+<td>The full catalogue of entries (XML mode only).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.duration_seconds">duration_seconds</a></td>
+<td>Duration in seconds (legacy CSV mode only).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.frame_rate">frame_rate</a></td>
+<td>Sampling rate in Hz (legacy CSV mode only).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.groups">groups</a></td>
+<td>List of all group names present (XML mode only).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.info">info</a></td>
+<td>Return parsed RepoVizz metadata (legacy CSV mode only).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.is_xml_mode">is_xml_mode</a></td>
+<td>True if loader is in XML manifest mode, False for legacy CSV.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.n_samples">n_samples</a></td>
+<td>Number of data samples (legacy CSV mode only).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.store">store</a></td>
+<td>The <code>RepovizzDictStore</code> containing catalogue and cached data.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.timeline_ids">timeline_ids</a></td>
+<td>Identifiers for all loadable timelines (XML mode only).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.timeline_specs">timeline_specs</a></td>
+<td>Metadata dicts for each loadable timeline (XML mode only).</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.clear">clear</a></td>
+<td>Clear all loaded data.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.create_group">create_group</a></td>
+<td>Create a TimelineGroup containing timelines.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.create_timeline">create_timeline</a></td>
+<td>Create a DiscretePhysicalTimeline from a catalogue entry.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.create_timelines">create_timelines</a></td>
+<td>Create multiple timelines.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.find_audio">find_audio</a></td>
+<td>Find an audio entry by source name.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.find_audio_descriptor">find_audio_descriptor</a></td>
+<td>Find an audio descriptor entry (Essentia features).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.find_descriptor">find_descriptor</a></td>
+<td>Find a descriptor entry by name.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.find_signal">find_signal</a></td>
+<td>Find a signal entry by name pattern.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.from_file">from_file</a></td>
+<td>Load files and return the loader (convenience constructor).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.get_entry">get_entry</a></td>
+<td>Get a catalogue entry by ID.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.RepoVizzLoader.get_sample_rate_for_descriptor_type">get_sample_rate_for_descriptor_type</a></td>
+<td>Get the sample rate for a descriptor type.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.RepoVizzLoader.load">load</a></td>
+<td>Load one or more source files.</td>
+</tr>
+</tbody>
+</table>
+<section id="timetoalign.RepoVizzLoader.clear" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.clear">clear</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.clear()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Clear all loaded data.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.create_group" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.create_group">create_group</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.create_group(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    category<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    ids<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    with_notes<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    group_id<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a TimelineGroup containing timelines.</p>
+<p>Args: category: Filter to a specific category (“audio”, “mocap”, etc.). ids: Specific timeline IDs to include. id: Custom ID for the TimelineGroup. Defaults to <code>"repovizz:{category or 'all'}"</code>. name: Custom name for the TimelineGroup. Defaults to the source filename stem. with_notes: If True, add notes as a child of the first audio timeline using <code>use_conversion_map=True</code>. This enables automatic coordinate transfer from seconds (notes) to samples (audio). Default: False. group_id: Deprecated alias for <code>category</code>.</p>
+<p>Returns: A TimelineGroup containing the specified timelines.</p>
+<p>Raises: ValueError: If category is invalid. RuntimeError: If no XML manifest loaded.</p>
+<p>Examples: Load an EEP recording with all timelines and notes:</p>
+<pre><code>&gt;&gt;&gt; loader = RepoVizzLoader.from_file("recording.xml")
+&gt;&gt;&gt; group = loader.create_group(id="normal", name="Normal Recording", with_notes=True)</code></pre>
+</section>
+<section id="timetoalign.RepoVizzLoader.create_timeline" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.create_timeline">create_timeline</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.create_timeline(uid<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create a DiscretePhysicalTimeline from a catalogue entry.</p>
+<p>In XML mode: looks up the entry and creates a timeline with its metadata. In legacy CSV mode: creates timeline from the loaded CSV.</p>
+<p>Args: uid: Entry lookup key or timeline ID. In XML mode, supports: - Audio shorthand: “mono”, “binaural”, “pickup_vln1” - Descriptor pattern: “tonal.ChordsStrength.mono” - Exact xml_id or name **kwargs: Additional arguments: - name: Override the timeline’s name (defaults to entry’s name). - attach_cmap: If True (default), attach a SamplesToSeconds C-map. - tl_uid: Override the timeline’s ID (defaults to entry’s xml_id).</p>
+<p>Returns: A DiscretePhysicalTimeline representing the data.</p>
+<p>Raises: RuntimeError: If no file has been loaded. KeyError: If uid doesn’t match any catalogue entry (XML mode).</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.create_timelines" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.create_timelines">create_timelines</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.create_timelines(id_pattern<span class="op">=</span><span class="va">None</span>, <span class="op">*</span>, ids<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Create multiple timelines.</p>
+<p>Args: id_pattern: Regex pattern to filter timeline IDs. ids: List of timeline identifiers to create. If None, all are created.</p>
+<p>Returns: List of Timeline objects.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.find_audio" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.find_audio">find_audio</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.find_audio(source)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Find an audio entry by source name.</p>
+<p>Args: source: Source name (e.g., “mono”, “binaural”, “pickup_vln1”). For pickup sources, can use “vln1” shorthand.</p>
+<p>Returns: The matching entry ID, or None if not found.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.find_audio_descriptor" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.find_audio_descriptor">find_audio_descriptor</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.find_audio_descriptor(descriptor_type, descriptor_name, source)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Find an audio descriptor entry (Essentia features).</p>
+<p>Audio descriptors are WAV files with feature data extracted from audio by Essentia. They’re organized by type (tonal, lowlevel, rhythm) and named by the feature (ChordsStrength, Dissonance, etc.).</p>
+<p>Args: descriptor_type: Type of descriptor (“tonal”, “lowlevel”, “rhythm”). descriptor_name: Feature name (e.g., “ChordsStrength”, “Dissonance”). source: Audio source (e.g., “mono”, “binaural”, “pickup_vln1”).</p>
+<p>Returns: The matching entry ID, or None if not found.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.find_descriptor" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.find_descriptor">find_descriptor</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.find_descriptor(descriptor_name, instrument<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Find a descriptor entry by name.</p>
+<p>Searches both the entry name and filename for matches. The instrument filter is checked against the subgroup first, then the filename as a fallback (bowing gesture descriptors often encode the instrument in the filename, e.g.&nbsp;<code>vln1_bb_angle.csv</code>).</p>
+<p>Args: descriptor_name: Descriptor name (e.g., “bb_angle”, “bow_vel”). instrument: Optional instrument filter (e.g., “vln1”, “cello”).</p>
+<p>Returns: The matching entry ID, or None if not found.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.find_signal" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.find_signal">find_signal</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.find_signal(name_pattern, source<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Find a signal entry by name pattern.</p>
+<p>Args: name_pattern: Regex pattern to match signal names. source: Optional source filter (e.g., “mono”, “vln1”).</p>
+<p>Returns: The matching entry ID, or None if not found.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.from_file" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.from_file">from_file</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.from_file(<span class="op">*</span>paths, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Load files and return the loader (convenience constructor).</p>
+<p>Args: *paths: Paths to XML manifest or CSV files. **kwargs: Additional keyword arguments passed to <code>__init__</code>.</p>
+<p>Returns: A RepoVizzLoader with the files already loaded.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.get_entry" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.get_entry">get_entry</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.get_entry(<span class="bu">id</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get a catalogue entry by ID.</p>
+<p>This is the public API for accessing catalogue entries.</p>
+<p>Args: id: Entry identifier, name, or partial match.</p>
+<p>Returns: The CatalogueEntry.</p>
+<p>Raises: KeyError: If not found.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.get_sample_rate_for_descriptor_type" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.get_sample_rate_for_descriptor_type">get_sample_rate_for_descriptor_type</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.get_sample_rate_for_descriptor_type(descriptor_type)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Get the sample rate for a descriptor type.</p>
+<p>Args: descriptor_type: Type of descriptor (“tonal”, “lowlevel”, “rhythm”).</p>
+<p>Returns: Sample rate in Hz.</p>
+</section>
+<section id="timetoalign.RepoVizzLoader.load" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.RepoVizzLoader.load">load</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>RepoVizzLoader.load(<span class="op">*</span>sources)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Load one or more source files.</p>
+<p>If the source is an <code>.xml</code> file, uses XML manifest mode. Otherwise, falls back to legacy CSV mode.</p>
+<p>Args: *sources: Paths to XML manifest or CSV files.</p>
+<p>Returns: Self, for method chaining.</p>
+<p>Raises: FileNotFoundError: If any source doesn’t exist. ValueError: If any source is invalid.</p>
+
+
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button,
+          { trigger: "manual",
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined;
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              }
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            }
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

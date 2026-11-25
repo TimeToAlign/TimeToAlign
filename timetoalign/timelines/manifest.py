@@ -929,7 +929,10 @@ def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
         ValueError: If a number does not hold its value as its row's number
             type says, naming the file, the column and the row.
     """
-    return _event_tables_by_timeline(pq.read_table(os.fspath(path)), Path(path).name)
+    return _event_tables_by_timeline(
+        pq.read_table(os.fspath(path) if isinstance(path, PathLike) else path),
+        Path(path).name,
+    )
 
 
 def read_projection_table(
@@ -959,7 +962,7 @@ def read_projection_table(
         ValueError: If a ``start`` or ``duration`` does not hold its number
             as its row's number type says.
     """
-    table = pq.read_table(os.fspath(path))
+    table = pq.read_table(os.fspath(path) if isinstance(path, PathLike) else path)
     problems = projection_problems(table, manifest)
     if problems:
         raise TableError(problems[0])

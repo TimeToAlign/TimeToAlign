@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import copy
 import difflib
+import io
 import os
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
 import pytest
 from timetoshare import (
     FORMAT_CONTEXT,
@@ -25,10 +27,12 @@ from timetoshare import (
     validate,
     with_context,
 )
+from timetoshare.tables import fixture_path
 
 from tests.helpers import refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.timelines import Timeline, TimelineGroup
+from timetoalign.timelines.manifest import read_projection_table
 from timetoalign.timelines.types import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -438,6 +442,21 @@ def test_a_timeline_added_changes_only_its_own_lines(tmp_path: Path) -> None:
         "after.yaml",
     )
     assert "".join(diff) == EDITED_DIFF
+
+
+def test_the_projection_table_is_read_from_what_parquet_reads() -> None:
+    """A path string, a Path, and two file objects give the same Projections."""
+    path = fixture_path("projections.parquet")
+    manifest = loads(fixture_path("manifest.yaml").read_text(encoding="utf-8"))
+    data = path.read_bytes()
+    read = read_projection_table(str(path), manifest)
+    assert {key: [p.id for p in value] for key, value in read.items()} == {
+        "clt_2": ["projection_10"],
+        "cpt_1": ["projection_7", "projection_11"],
+        "dpt_1": [f"projection_{n}" for n in (1, 2, 3, 4, 5, 6, 8, 9)],
+    }
+    for source in (path, io.BytesIO(data), pa.BufferReader(data)):
+        assert read_projection_table(source, manifest) == read
 
 
 # endregion

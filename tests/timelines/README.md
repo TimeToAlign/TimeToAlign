@@ -814,6 +814,14 @@ tables are absent, is one more byte-identical round trip.
   the whole manifest whatever the file holds refuses the second; one
   validating nothing writes the first.
 
+- **The Projections table is read from what Parquet reads.**
+  `read_projection_table` takes the package fixture `projections.parquet`
+  as a `str`, a `Path`, an `io.BytesIO` of its bytes and a
+  `pyarrow.BufferReader` of them; each gives the same Projections by
+  timeline as the `str` (one on `clt_2`, two on `cpt_1`, eight on
+  `dpt_1`, their IDs in row order). A reader that turned every argument
+  into a path string refuses the two file objects with a `TypeError`.
+
 ### Measure maps in a manifest (`test_manifest_measure_maps.py`)
 
 A manifest holds its measure maps in the top-level `measure_maps` array, each

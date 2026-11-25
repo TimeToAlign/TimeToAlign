@@ -33,7 +33,12 @@ from timetoalign.core import (
 from timetoalign.core.fields import join_row_member
 from timetoalign.core.ids import _OpenObject, mint_id, validate_id
 from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
-from timetoalign.core.time import number_from_json, number_to_json, struct_to_rational
+from timetoalign.core.time import (
+    TimeScalarValue,
+    number_from_json,
+    number_to_json,
+    struct_to_rational,
+)
 from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 from timetoalign.timelines.manifest import read_id, read_meta, read_name, require_object
 
@@ -936,8 +941,13 @@ class MeasureMap(_OpenObject):
             return successor
 
         unknown = self._unknown_row_keys
+
+        def unknown_keys(measure_id: str | None) -> Mapping[str, Any]:
+            """Return the keys kept for the measure *measure_id* beyond the row's."""
+            return {} if measure_id is None else unknown.get(measure_id, {})
+
         return [
-            {**row_for(index), **deepcopy(dict(unknown.get(measures[index].id, {})))}
+            {**row_for(index), **deepcopy(dict(unknown_keys(measures[index].id)))}
             for index in range(len(measures))
             if not compress
             or index in (0, last)
@@ -1530,7 +1540,7 @@ def _node_identity(node: MetricNode) -> tuple[int, Interval]:
     return node.level, node.span
 
 
-def _rational_gcd(values: Iterable[Fraction]) -> Fraction:
+def _rational_gcd(values: Iterable[TimeScalarValue]) -> Fraction:
     """Return the greatest common divisor of positive rational values."""
     exact = tuple(Fraction(value) for value in values)
     denominator = lcm(*(value.denominator for value in exact))

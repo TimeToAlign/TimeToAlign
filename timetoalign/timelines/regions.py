@@ -151,7 +151,8 @@ end=Coordinate(Fraction(32, 1), quarters))
             name=read_name(data, what),
             meta=read_meta(data, what),
             _statement_state=read_statement_state(data),
-            **bounds,
+            start=bounds["start"],
+            end=bounds["end"],
         )
         region._keep_unknown_keys(data)
         return region

@@ -590,9 +590,10 @@ class StatementsMixin:
         note: str | None,
         node: NodePath,
     ) -> dict[str, Any]:
+        day = _day(date)
         entry = Provenance(
             stated_by=tuple(_agents(stated_by)),
-            date=_day(date),
+            date=day,
             method=method,
             service=service,
             basis=tuple(basis) or None,
@@ -606,8 +607,8 @@ class StatementsMixin:
                 property,
                 value,
                 stated_by=list(entry.stated_by or ()),
-                date=entry.date,
-                method=entry.method,
+                date=day,
+                method=method,
                 service=entry.service,
                 basis=list(entry.basis or ()),
                 match=entry.match,

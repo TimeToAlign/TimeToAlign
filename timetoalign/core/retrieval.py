@@ -7,6 +7,7 @@ from fractions import Fraction
 from typing import Any, Literal, TypeAlias, TypeGuard, TypeVar, overload
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 from .enums import NumberType, TimeUnit
@@ -360,7 +361,7 @@ def resolve_key_collection(
     return [resolve(key) for key in values], index
 
 
-def is_key_input(value: object) -> bool:
+def is_key_input(value: object) -> TypeGuard[str | KeyCollection | npt.NDArray[Any]]:
     """Return whether a query input names identities rather than positions.
 
     Args:

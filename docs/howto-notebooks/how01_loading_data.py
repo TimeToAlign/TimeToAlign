@@ -53,11 +53,16 @@
 
 # %%
 import json
+import os
+import tempfile
+import zipfile
+from pathlib import Path
 
 import pandas as pd
 
 from timetoalign import Ms3Loader
 from timetoalign.core.events import EnharmonicPitch
+from timetoalign.loader import materialize
 from timetoalign.loader.score.music21 import Music21Loader
 from timetoalign.loader.score.partitura import PartituraLoader
 from timetoalign.testdata import ensure_data
@@ -67,6 +72,13 @@ DATA_DIR = ensure_data("vienna_1x22")
 # Our test piece: Chopin Etude Op.10 No.3
 CHOPIN_XML = DATA_DIR / "Chopin_op10_no3.musicxml"
 CHOPIN_TSV = DATA_DIR / "ms3" / "chopin_op10_no3.notes.tsv"
+
+
+def source_entry(loader):
+    """The `path` and `member` a loader records for its one source, the path by name."""
+    entry = loader.metadata["sources"][0]
+    return {"path": Path(entry["path"]).name, "member": entry.get("member", "—")}
+
 
 CHOPIN_XML.name, CHOPIN_TSV.name
 
@@ -306,6 +318,93 @@ note_events = tsv_loader.get_events()
 tsv_df.groupby(["staff", "voice"]).size().unstack(fill_value=0)
 
 # %% [markdown]
+# ## Loading from an Archive
+#
+# Corpora often travel as ZIP archives. Every loader reads a file inside a ZIP
+# archive wherever it reads a path, in `load()` and `from_file()` alike,
+# without extracting the archive. Name the file with the standard library's
+# `zipfile.Path`: the archive, opened from its path, and the member's path
+# inside it. Here we pack the two Chopin files into an archive in a temporary
+# folder:
+
+# %%
+ARCHIVE_DIR = Path(tempfile.mkdtemp())
+ARCHIVE = ARCHIVE_DIR / "chopin.zip"
+with zipfile.ZipFile(ARCHIVE, "w") as archive:
+    archive.write(CHOPIN_TSV, "ms3/chopin_op10_no3.notes.tsv")
+    archive.write(CHOPIN_XML, "score/Chopin_op10_no3.musicxml")
+
+TSV_MEMBER = zipfile.Path(ARCHIVE, at="ms3/chopin_op10_no3.notes.tsv")
+XML_MEMBER = zipfile.Path(ARCHIVE, at="score/Chopin_op10_no3.musicxml")
+
+# Copies of members (see `materialize` below) go to a folder of our choice.
+os.environ["TTA_CACHE_DIR"] = str(ARCHIVE_DIR / "cache")
+
+ARCHIVE.name, TSV_MEMBER.at, XML_MEMBER.at
+
+# %% [markdown]
+# `Ms3Loader` reads the member in place. Partitura needs a file on disk, so
+# `PartituraLoader` reads a copy of the member; so do the other loaders built
+# on a parser of that kind (music21, Verovio, the match-file reader, Verovio
+# timemaps). Either way, the events equal those loaded from disk above:
+
+# %%
+archived_tsv = Ms3Loader.from_file(TSV_MEMBER)
+archived_xml = PartituraLoader.from_file(XML_MEMBER)
+
+{
+    "Ms3Loader": archived_tsv.store.notes.table.equals(tsv_loader.store.notes.table),
+    "PartituraLoader": archived_xml.store.notes.table.equals(
+        partitura_loader.store.notes.table
+    ),
+}
+
+# %% [markdown]
+# Each loader records where its sources came from in `metadata["sources"]`.
+# For a member, `path` is the archive's absolute path (shown here by name) and
+# `member` the member's path inside it; a filesystem source records its path
+# and no `member` (— below). Messages and warnings name a member the same way,
+# `<archive> member <name>`, and `loader.sources` holds the `zipfile.Path`
+# itself.
+
+# %%
+pd.DataFrame(
+    {
+        "Ms3Loader, disk": source_entry(tsv_loader),
+        "Ms3Loader, archive": source_entry(archived_tsv),
+        "PartituraLoader, disk": source_entry(partitura_loader),
+        "PartituraLoader, archive": source_entry(archived_xml),
+    }
+).T
+
+# %% [markdown]
+# A few things to keep in mind:
+#
+# - Only a `zipfile.Path` names a member. A string such as
+#   `"chopin.zip/ms3/chopin_op10_no3.notes.tsv"` is a filesystem path, and
+#   loading it raises `FileNotFoundError` because no such file exists.
+# - A member the archive does not hold raises `FileNotFoundError` naming both
+#   the archive and the member.
+# - RDF read from a member (`MelodyLoader`) resolves relative IRIs against the
+#   member's URI, `jar:<archive file URI>!/<member>`.
+#
+# To hand a member to your own code that needs a file on disk, call
+# `materialize`. It copies a member once into the cache, in the folder the
+# environment variable `TTA_CACHE_DIR` names (by default
+# `~/.cache/timetoalign`), and returns the copy's path; a later call returns
+# the same copy, and a filesystem path comes back unchanged. The cache is
+# never pruned: delete the folder by hand to reclaim the space.
+
+# %%
+copy = materialize(XML_MEMBER)
+{
+    "copy in the cache": copy.is_relative_to(ARCHIVE_DIR / "cache"),
+    "same bytes as the member": copy.read_bytes() == XML_MEMBER.read_bytes(),
+    "second call, same copy": materialize(XML_MEMBER) == copy,
+    "a path comes back unchanged": materialize(CHOPIN_XML) == CHOPIN_XML,
+}
+
+# %% [markdown]
 # ## Summary
 #
 # In this tutorial, we learned:
@@ -315,6 +414,7 @@ tsv_df.groupby(["staff", "voice"]).size().unstack(fill_value=0)
 # 3. **EventStore**: PyArrow-backed, high-performance event storage
 # 4. **Harmonized Schema**: Consistent fields across all loaders
 # 5. **Cross-Validation**: Same piece from different sources yields same note count
+# 6. **Archives**: A `zipfile.Path` loads a file from a ZIP archive as from disk
 #
 # **Key Takeaway:**
 # > Loaders normalize heterogeneous formats into a consistent EventStore,

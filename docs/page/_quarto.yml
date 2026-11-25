@@ -426,6 +426,10 @@ quartodoc:
       contents:
         - name: Loader
           package: timetoalign.loader
+        - name: SourceLike
+          package: timetoalign.loader
+        - name: materialize
+          package: timetoalign.loader
         - EventData
         - EventStore
         - SingleStore

@@ -54,6 +54,17 @@ to the relevant section of the conceptual model.
     set is held in a {{< glossary MatchClaimField >}}.
     See [Alignment](concepts.qmd#alignment).
 
+**Archive member**
+:   A file inside a ZIP archive, named by the standard library's
+    `zipfile.Path` (the archive and the member's path inside it). Every
+    loader reads an archive member wherever it reads a path, without
+    extracting the archive; a loader whose parser needs a file on disk reads
+    the copy `materialize()` makes once in a cache. A string is always a
+    filesystem path, never a member. A loader's `metadata["sources"]` records
+    a member as the archive's absolute `path` plus `member`, its path inside
+    the archive.
+    See [How to Load Data](howto/how01_loading_data.ipynb#loading-from-an-archive).
+
 **Atomic section**
 :   A stretch of a {{< glossary Timeline >}}'s axis that its flow control
     never divides: an interval between consecutive coordinates of its

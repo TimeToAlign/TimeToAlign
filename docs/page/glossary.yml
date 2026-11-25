@@ -37,6 +37,15 @@ AlignmentMatrix: |
   score-to-performance correspondence. Read by ListenHereLoader, with the
   complete pairwise claim set held in a MatchClaimField.
 
+Archive member: |
+  A file inside a ZIP archive, named by the standard library's zipfile.Path
+  (the archive and the member's path inside it). Every loader reads an archive
+  member wherever it reads a path, without extracting the archive; a loader
+  whose parser needs a file on disk reads the copy materialize() makes once
+  in a cache. A string is always a filesystem path, never a member. A loader's
+  metadata["sources"] records a member as the archive's absolute path plus
+  member, its path inside the archive.
+
 Atomic section: |
   A stretch of a timeline's axis that its flow control never divides: an
   interval between consecutive coordinates of its Jumps, JumpTargets, Breaks

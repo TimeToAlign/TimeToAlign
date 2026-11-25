@@ -824,6 +824,17 @@ different performance whose inline-numeric bpm values resolve directly —
 its ``score:dlt_1`` then carries **25** Asynchrony events (vs 0 in the
 default) and **123** Tempo events.
 
+**A load that did not complete builds no timeline.** `load()` builds the score timelines
+before the performance ones, so a project whose performance block cannot be built leaves the
+score timelines set and the performance ones unset. `create_timelines()` then returns `[]`;
+`create_timeline` must refuse every uid as well, never answer a performance uid with `None`.
+The test copies the Reger project into `tmp_path` with the first `milliseconds.date` of the
+alignment set to `inf` (it parses as a float, so the performance block fails only when it is
+built: `OverflowError` converting the infinite length to samples). After that `load()` raises,
+`create_timeline` of `score:clt_1`, `perf:cpt_1` and `perf:dpt_1` each raises `RuntimeError`
+with exactly `No project loaded yet. Call load() before create_timeline().` (before, the
+performance uids returned `None`), and `create_timelines()` is `[]`.
+
 ## Represent pitch once — validation logic
 
 `test_represent_pitch_once.py` pins the rule that **pitch is represented

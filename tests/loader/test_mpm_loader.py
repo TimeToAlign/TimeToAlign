@@ -32,6 +32,8 @@ Policy.  Validation logic is documented in ``tests/loader/README.md``.
 
 from __future__ import annotations
 
+import re
+import shutil
 from collections import Counter
 from fractions import Fraction
 from pathlib import Path
@@ -576,6 +578,31 @@ def test_create_timeline_unknown_uid_raises() -> None:
     loader = _loaded(REGER_MPR)
     with pytest.raises(KeyError, match="No timeline with uid"):
         loader.create_timeline("score:bogus")
+
+
+def test_a_load_that_did_not_complete_builds_no_timeline(tmp_path: Path) -> None:
+    """After a failed performance block no uid answers, the score's included."""
+    for source in REGER_DIR.iterdir():
+        if source.is_file():
+            shutil.copy(source, tmp_path / source.name)
+    mpr = tmp_path / REGER_MPR.name
+    text = mpr.read_text(encoding="utf-8")
+    broken = re.sub(
+        r'milliseconds\.date="[^"]*"', 'milliseconds.date="inf"', text, count=1
+    )
+    assert broken != text
+    mpr.write_text(broken, encoding="utf-8")
+
+    loader = MpmLoader()
+    with pytest.raises(OverflowError):
+        loader.load(mpr)
+    for uid in (SCORE_CLT_ID, PERF_CPT_ID, PERF_DPT_ID):
+        with pytest.raises(RuntimeError) as excinfo:
+            loader.create_timeline(uid)
+        assert str(excinfo.value) == (
+            "No project loaded yet. Call load() before create_timeline()."
+        )
+    assert loader.create_timelines() == []
 
 
 def test_create_timelines_returns_all(specimen: dict[str, Any]) -> None:

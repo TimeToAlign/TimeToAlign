@@ -1114,9 +1114,15 @@ class MpmLoader(AlignmentLoader):
 
         Raises:
             KeyError: If no timeline matches.
-            RuntimeError: If ``load()`` has not been called yet.
+            RuntimeError: If ``load()`` has not been called yet, or did not
+                complete.
         """
-        if self._score_clt is None:
+        if (
+            self._score_clt is None
+            or self._score_dlt is None
+            or self._perf_cpt is None
+            or self._perf_dpt is None
+        ):
             raise RuntimeError(
                 "No project loaded yet. Call load() before create_timeline()."
             )

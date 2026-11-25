@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>atomic_sections – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../reference.html" aria-current="page"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/atomic_sections.html">atomic_sections</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../contributing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Developers’ Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AlignmentAnchor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentAnchor</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AlignmentBundle.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentBundle</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/atomic_sections.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">atomic_sections</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AtomicSection.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AtomicSection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ATONLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ATONLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AudioInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AudioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Barline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Barline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BeatGrid.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGrid</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BeatGridSegment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGridSegment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BeatPolicy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatPolicy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Belief.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Belief</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BoundingBox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoundingBox</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BoundingBoxField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoundingBoxField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Box.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Box</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BoxField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoxField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Break.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Break</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ChainMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ChainMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimFilter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ClaimType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ColumnNaming.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ColumnNaming</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ColumnRole.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ColumnRole</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ComputedFlows.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ComputedFlows</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ConstantMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConstantMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ContinuousGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ContinuousLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ContinuousPhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousPhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ConversionMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConversionMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Coord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Coordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CoordinateField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CoordinateSpec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateSpec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CoordinateValue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateValue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CsvLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CsvLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DestinationReference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DestinationReference</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiagonalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiagonalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiscreteGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiscreteLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiscretePhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscretePhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DmosLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DmosLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Domain.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Domain</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EepNotesLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EepNotesLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Event.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Event</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventData.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventReference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventReference</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/flow_control_from_measures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">flow_control_from_measures</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowCondition.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowCondition</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlDraft.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlDraft</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlElement.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlElement</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowConvention</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFinding.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFindingKind.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingKind</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowManifestation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowManifestation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowResult.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowResult</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Gap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Gap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/GraphicalLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/GraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/GridBeat.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GridBeat</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/HorizontalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">HorizontalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IdCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IIIFManifestLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IIIFManifestLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Integrity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Integrity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/InterpolationMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">InterpolationMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Interval.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Interval</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IntervalField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IntervalField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IntervalToConstantMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IntervalToConstantMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/JsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Jump.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Jump</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/JumpDestination.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JumpDestination</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/JumpTarget.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JumpTarget</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LabLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LabLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LIBRARY_AGENT.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LIBRARY_AGENT</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LinearMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LinearMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ListenHereLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ListenHereLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MapsLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MapsLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchClaim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaim</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchClaimField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaimField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchFileContext.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchFileContext</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchfileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchfileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchGraph.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchGraph</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/measure_keys_from_flow_control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_keys_from_flow_control</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/measure_order_from_successors.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_order_from_successors</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/measure_ranges.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_ranges</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureFinding.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureFindingKind.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureFindingKind</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureMapLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureMapLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureRange.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureRange</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeiFacsimileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeiFacsimileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeiHeadLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeiHeadLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MelodyLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MelodyLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MpmLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MpmLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Ms3Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ms3Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Music21Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Music21Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MutableStatementsMixin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MutableStatementsMixin</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Note</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/NoteField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NoteField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/NoteRecord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NoteRecord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/NumberType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NumberType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/OptionalCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">OptionalCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ParametricPath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ParametricPath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ParangonadaLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ParangonadaLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PartituraLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PartituraLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PassesFrom.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PassesFrom</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PerformanceMidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerformanceMidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PerformancePrecisionLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerformancePrecisionLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PiecewiseMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewiseMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PiecewisePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewisePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PlacedChunk.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlacedChunk</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PlacedGap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlacedGap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/play.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">play</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PlayedFlow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlayedFlow</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Point.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Point</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PointField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PointField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Projection.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Projection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Provenance.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Provenance</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Quadrilateral.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quadrilateral</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/QuadrilateralField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuadrilateralField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/QuartersToFloatingMeasures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuartersToFloatingMeasures</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/QuartersToMeasureNumber.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuartersToMeasureNumber</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/read_flow_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">read_flow_csv</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Region.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Region</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/repeat_end_findings.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">repeat_end_findings</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/RepoVizzInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/RepoVizzLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve_coordinate_spec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ResolvedCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ResolvedCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ResolvedFlowMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ResolvedFlowMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Resource.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Resource</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScalarMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScopedId</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreMidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreMidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreNote.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreNote</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreNoteField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreNoteField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreWarpLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreWarpLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SecondsToSamples.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SecondsToSamples</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SectionBreak.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SectionBreak</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SegmentLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SegmentLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Shape.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Shape</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ShapeField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShapeField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ShiftMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShiftMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SingleStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SingleStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SnoteRecord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SnoteRecord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SoloLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SoloLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/StatedFlow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">StatedFlow</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/StatementsMixin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">StatementsMixin</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SupportPolicy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SupportPolicy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TableMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TableMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TabularLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TabularLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TiliaDictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaDictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TiliaJsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaJsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeAxisPath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeAxisPath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeIntervalStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeIntervalStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Timeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimelineGroup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineGroup</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeUnit.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeUnit</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TsvLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TsvLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/UnknownLengthError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">UnknownLengthError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/VerovioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VerovioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/VerticalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VerticalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/VirtualTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VirtualTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/WarpMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">WarpMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/XmlLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">XmlLoader</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#timetoalign.timelines.atomic_sections" id="toc-timetoalign.timelines.atomic_sections" class="nav-link active" data-scroll-target="#timetoalign.timelines.atomic_sections">atomic_sections</a>
+  <ul>
+  <li><a href="#parameters" id="toc-parameters" class="nav-link" data-scroll-target="#parameters">Parameters</a></li>
+  <li><a href="#raises" id="toc-raises" class="nav-link" data-scroll-target="#raises">Raises</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/atomic_sections.html">atomic_sections</a></li></ol></nav></header>
+
+
+
+
+<section id="timetoalign.timelines.atomic_sections" class="level1">
+<h1>atomic_sections</h1>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>timelines.atomic_sections(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    registry,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    length,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    believer<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    beliefs<span class="op">=</span>DEFAULT_BELIEFS,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return the stretches of the axis that flow control never divides.</p>
+<p>The intervals between consecutive boundaries: 0, the length, the coordinates of Jumps, JumpTargets, Breaks and SectionBreaks, and the places of every destination other than <code>by: 0</code>. They are lettered in the order of the axis; a run of a flow is the atomic sections it covers.</p>
+<section id="parameters" class="level2 doc-section doc-section-parameters">
+<h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>registry</td>
+<td><a href="../reference/FlowControlRegistry.html#timetoalign.timelines.FlowControlRegistry">FlowControlRegistry</a></td>
+<td>The flow control.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>length</td>
+<td><code>_Number</code> | <code>Coordinate</code></td>
+<td>The length of the axis, as for :func:<code>play</code>.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="odd">
+<td>believer</td>
+<td><code>str</code> | None</td>
+<td>The actor whose beliefs alone decide which elements are read; None reads the elements no actor rejects.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>beliefs</td>
+<td><code>Collection</code>[<code>BeliefState</code>]</td>
+<td>With a believer, the belief states read.</td>
+<td><code>DEFAULT_BELIEFS</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises" class="level2 doc-section doc-section-raises">
+<h2 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>As :func:<code>play</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.core <span class="im">import</span> Coordinate</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.timelines.flowcontrol <span class="im">import</span> (</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>...     FlowControlRegistry, Jump, JumpDestination)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry <span class="op">=</span> FlowControlRegistry(unit<span class="op">=</span><span class="st">"quarters"</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> registry.add(</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>...     Jump(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)]))</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [(s.name, s.start.value, s.end.value) <span class="cf">for</span> s <span class="kw">in</span> atomic_sections(registry, <span class="dv">12</span>)]</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>[(<span class="st">'A'</span>, Fraction(<span class="dv">0</span>, <span class="dv">1</span>), Fraction(<span class="dv">8</span>, <span class="dv">1</span>)), (<span class="st">'B'</span>, Fraction(<span class="dv">8</span>, <span class="dv">1</span>), Fraction(<span class="dv">12</span>, <span class="dv">1</span>))]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

@@ -1,0 +1,3096 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>matchclaimfield – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../reference.html" aria-current="page"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/MatchClaimField.html">MatchClaimField</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../contributing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Developers’ Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AlignmentAnchor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentAnchor</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AlignmentBundle.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentBundle</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/atomic_sections.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">atomic_sections</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AtomicSection.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AtomicSection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ATONLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ATONLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AudioInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/AudioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Barline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Barline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BeatGrid.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGrid</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BeatGridSegment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGridSegment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BeatPolicy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatPolicy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Belief.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Belief</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BoundingBox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoundingBox</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BoundingBoxField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoundingBoxField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Box.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Box</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/BoxField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoxField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Break.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Break</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ChainMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ChainMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimFilter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ClaimType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ColumnNaming.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ColumnNaming</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ColumnRole.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ColumnRole</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ComputedFlows.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ComputedFlows</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ConstantMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConstantMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ContinuousGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ContinuousLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ContinuousPhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousPhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ConversionMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConversionMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Coord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Coordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CoordinateField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CoordinateSpec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateSpec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CoordinateValue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateValue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/CsvLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CsvLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DestinationReference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DestinationReference</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiagonalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiagonalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiscreteGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiscreteLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DiscretePhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscretePhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DmosLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DmosLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Domain.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Domain</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EepNotesLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EepNotesLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Event.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Event</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventData.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventReference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventReference</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/flow_control_from_measures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">flow_control_from_measures</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowCondition.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowCondition</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlDraft.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlDraft</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlElement.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlElement</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowConvention</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFinding.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFindingKind.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingKind</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowManifestation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowManifestation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowResult.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowResult</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Gap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Gap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/GraphicalLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/GraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/GridBeat.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GridBeat</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/HorizontalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">HorizontalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IdCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IIIFManifestLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IIIFManifestLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Integrity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Integrity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/InterpolationMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">InterpolationMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Interval.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Interval</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IntervalField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IntervalField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/IntervalToConstantMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IntervalToConstantMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/JsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Jump.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Jump</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/JumpDestination.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JumpDestination</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/JumpTarget.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JumpTarget</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LabLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LabLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LIBRARY_AGENT.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LIBRARY_AGENT</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LinearMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LinearMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ListenHereLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ListenHereLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/LogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MapsLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MapsLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchClaim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaim</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchClaimField.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">MatchClaimField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchFileContext.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchFileContext</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchfileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchfileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchGraph.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchGraph</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MatchStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/measure_keys_from_flow_control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_keys_from_flow_control</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/measure_order_from_successors.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_order_from_successors</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/measure_ranges.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_ranges</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureFinding.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureFindingKind.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureFindingKind</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureMapLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureMapLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeasureRange.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureRange</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeiFacsimileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeiFacsimileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MeiHeadLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeiHeadLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MelodyLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MelodyLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MpmLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MpmLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Ms3Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ms3Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Music21Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Music21Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/MutableStatementsMixin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MutableStatementsMixin</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Note</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/NoteField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NoteField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/NoteRecord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NoteRecord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/NumberType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NumberType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/OptionalCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">OptionalCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ParametricPath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ParametricPath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ParangonadaLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ParangonadaLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PartituraLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PartituraLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PassesFrom.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PassesFrom</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PerformanceMidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerformanceMidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PerformancePrecisionLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerformancePrecisionLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PiecewiseMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewiseMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PiecewisePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewisePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PlacedChunk.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlacedChunk</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PlacedGap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlacedGap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/play.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">play</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PlayedFlow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlayedFlow</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Point.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Point</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/PointField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PointField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Projection.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Projection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Provenance.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Provenance</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Quadrilateral.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quadrilateral</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/QuadrilateralField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuadrilateralField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/QuartersToFloatingMeasures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuartersToFloatingMeasures</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/QuartersToMeasureNumber.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuartersToMeasureNumber</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/read_flow_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">read_flow_csv</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Region.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Region</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/repeat_end_findings.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">repeat_end_findings</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/RepoVizzInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/RepoVizzLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve_coordinate_spec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ResolvedCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ResolvedCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ResolvedFlowMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ResolvedFlowMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Resource.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Resource</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScalarMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScopedId</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreMidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreMidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreNote.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreNote</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreNoteField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreNoteField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ScoreWarpLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreWarpLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SecondsToSamples.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SecondsToSamples</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SectionBreak.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SectionBreak</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SegmentLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SegmentLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Shape.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Shape</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ShapeField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShapeField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/ShiftMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShiftMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SingleStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SingleStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SnoteRecord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SnoteRecord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SoloLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SoloLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/StatedFlow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">StatedFlow</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/StatementsMixin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">StatementsMixin</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/SupportPolicy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SupportPolicy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TableMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TableMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TabularLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TabularLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TiliaDictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaDictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TiliaJsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaJsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeAxisPath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeAxisPath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeIntervalStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeIntervalStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Timeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimelineGroup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineGroup</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TimeUnit.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeUnit</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/TsvLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TsvLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/UnknownLengthError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">UnknownLengthError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/VerovioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VerovioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/VerticalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VerticalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/VirtualTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VirtualTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/WarpMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">WarpMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/XmlLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">XmlLoader</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#timetoalign.alignment.MatchClaimField" id="toc-timetoalign.alignment.MatchClaimField" class="nav-link active" data-scroll-target="#timetoalign.alignment.MatchClaimField">MatchClaimField</a>
+  <ul>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#timetoalign.alignment.MatchClaimField.at" id="toc-timetoalign.alignment.MatchClaimField.at" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.at">at</a>
+  <ul class="collapse">
+  <li><a href="#parameters" id="toc-parameters" class="nav-link" data-scroll-target="#parameters">Parameters</a></li>
+  <li><a href="#returns" id="toc-returns" class="nav-link" data-scroll-target="#returns">Returns</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.check_on_timelines" id="toc-timetoalign.alignment.MatchClaimField.check_on_timelines" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.check_on_timelines">check_on_timelines</a>
+  <ul class="collapse">
+  <li><a href="#parameters-1" id="toc-parameters-1" class="nav-link" data-scroll-target="#parameters-1">Parameters</a></li>
+  <li><a href="#returns-1" id="toc-returns-1" class="nav-link" data-scroll-target="#returns-1">Returns</a></li>
+  <li><a href="#raises" id="toc-raises" class="nav-link" data-scroll-target="#raises">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.connecting" id="toc-timetoalign.alignment.MatchClaimField.connecting" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.connecting">connecting</a>
+  <ul class="collapse">
+  <li><a href="#parameters-2" id="toc-parameters-2" class="nav-link" data-scroll-target="#parameters-2">Parameters</a></li>
+  <li><a href="#returns-2" id="toc-returns-2" class="nav-link" data-scroll-target="#returns-2">Returns</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.connects_groups" id="toc-timetoalign.alignment.MatchClaimField.connects_groups" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.connects_groups">connects_groups</a>
+  <ul class="collapse">
+  <li><a href="#parameters-3" id="toc-parameters-3" class="nav-link" data-scroll-target="#parameters-3">Parameters</a></li>
+  <li><a href="#returns-3" id="toc-returns-3" class="nav-link" data-scroll-target="#returns-3">Returns</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.filter" id="toc-timetoalign.alignment.MatchClaimField.filter" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.filter">filter</a>
+  <ul class="collapse">
+  <li><a href="#parameters-4" id="toc-parameters-4" class="nav-link" data-scroll-target="#parameters-4">Parameters</a></li>
+  <li><a href="#returns-4" id="toc-returns-4" class="nav-link" data-scroll-target="#returns-4">Returns</a></li>
+  <li><a href="#raises-1" id="toc-raises-1" class="nav-link" data-scroll-target="#raises-1">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.from_claims" id="toc-timetoalign.alignment.MatchClaimField.from_claims" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.from_claims">from_claims</a>
+  <ul class="collapse">
+  <li><a href="#parameters-5" id="toc-parameters-5" class="nav-link" data-scroll-target="#parameters-5">Parameters</a></li>
+  <li><a href="#returns-5" id="toc-returns-5" class="nav-link" data-scroll-target="#returns-5">Returns</a></li>
+  <li><a href="#raises-2" id="toc-raises-2" class="nav-link" data-scroll-target="#raises-2">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.from_columns" id="toc-timetoalign.alignment.MatchClaimField.from_columns" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.from_columns">from_columns</a>
+  <ul class="collapse">
+  <li><a href="#parameters-6" id="toc-parameters-6" class="nav-link" data-scroll-target="#parameters-6">Parameters</a></li>
+  <li><a href="#returns-6" id="toc-returns-6" class="nav-link" data-scroll-target="#returns-6">Returns</a></li>
+  <li><a href="#raises-3" id="toc-raises-3" class="nav-link" data-scroll-target="#raises-3">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.from_dict" id="toc-timetoalign.alignment.MatchClaimField.from_dict" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.from_dict">from_dict</a>
+  <ul class="collapse">
+  <li><a href="#parameters-7" id="toc-parameters-7" class="nav-link" data-scroll-target="#parameters-7">Parameters</a></li>
+  <li><a href="#returns-7" id="toc-returns-7" class="nav-link" data-scroll-target="#returns-7">Returns</a></li>
+  <li><a href="#raises-4" id="toc-raises-4" class="nav-link" data-scroll-target="#raises-4">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.from_package_table" id="toc-timetoalign.alignment.MatchClaimField.from_package_table" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.from_package_table">from_package_table</a>
+  <ul class="collapse">
+  <li><a href="#parameters-8" id="toc-parameters-8" class="nav-link" data-scroll-target="#parameters-8">Parameters</a></li>
+  <li><a href="#returns-8" id="toc-returns-8" class="nav-link" data-scroll-target="#returns-8">Returns</a></li>
+  <li><a href="#raises-5" id="toc-raises-5" class="nav-link" data-scroll-target="#raises-5">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.from_parquet" id="toc-timetoalign.alignment.MatchClaimField.from_parquet" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.from_parquet">from_parquet</a>
+  <ul class="collapse">
+  <li><a href="#parameters-9" id="toc-parameters-9" class="nav-link" data-scroll-target="#parameters-9">Parameters</a></li>
+  <li><a href="#returns-9" id="toc-returns-9" class="nav-link" data-scroll-target="#returns-9">Returns</a></li>
+  <li><a href="#raises-6" id="toc-raises-6" class="nav-link" data-scroll-target="#raises-6">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.from_table" id="toc-timetoalign.alignment.MatchClaimField.from_table" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.from_table">from_table</a>
+  <ul class="collapse">
+  <li><a href="#parameters-10" id="toc-parameters-10" class="nav-link" data-scroll-target="#parameters-10">Parameters</a></li>
+  <li><a href="#returns-10" id="toc-returns-10" class="nav-link" data-scroll-target="#returns-10">Returns</a></li>
+  <li><a href="#raises-7" id="toc-raises-7" class="nav-link" data-scroll-target="#raises-7">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.to_claims" id="toc-timetoalign.alignment.MatchClaimField.to_claims" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.to_claims">to_claims</a>
+  <ul class="collapse">
+  <li><a href="#returns-11" id="toc-returns-11" class="nav-link" data-scroll-target="#returns-11">Returns</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.to_dict" id="toc-timetoalign.alignment.MatchClaimField.to_dict" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.to_dict">to_dict</a>
+  <ul class="collapse">
+  <li><a href="#returns-12" id="toc-returns-12" class="nav-link" data-scroll-target="#returns-12">Returns</a></li>
+  <li><a href="#examples-1" id="toc-examples-1" class="nav-link" data-scroll-target="#examples-1">Examples</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.to_parquet" id="toc-timetoalign.alignment.MatchClaimField.to_parquet" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.to_parquet">to_parquet</a>
+  <ul class="collapse">
+  <li><a href="#parameters-11" id="toc-parameters-11" class="nav-link" data-scroll-target="#parameters-11">Parameters</a></li>
+  <li><a href="#returns-13" id="toc-returns-13" class="nav-link" data-scroll-target="#returns-13">Returns</a></li>
+  <li><a href="#raises-8" id="toc-raises-8" class="nav-link" data-scroll-target="#raises-8">Raises</a></li>
+  </ul></li>
+  <li><a href="#timetoalign.alignment.MatchClaimField.with_belief" id="toc-timetoalign.alignment.MatchClaimField.with_belief" class="nav-link" data-scroll-target="#timetoalign.alignment.MatchClaimField.with_belief">with_belief</a>
+  <ul class="collapse">
+  <li><a href="#parameters-12" id="toc-parameters-12" class="nav-link" data-scroll-target="#parameters-12">Parameters</a></li>
+  <li><a href="#returns-14" id="toc-returns-14" class="nav-link" data-scroll-target="#returns-14">Returns</a></li>
+  <li><a href="#raises-9" id="toc-raises-9" class="nav-link" data-scroll-target="#raises-9">Raises</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/MatchClaimField.html">MatchClaimField</a></li></ol></nav></header>
+
+
+
+
+<section id="timetoalign.alignment.MatchClaimField" class="level1">
+<h1>MatchClaimField</h1>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    raw<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    source_fields<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The MatchClaim table: a <code>SemanticField[MatchClaim]</code> columnar store.</p>
+<p><code>MatchClaimField</code> is the Field paired with the :class:<code>MatchClaim</code> scalar. It holds a large set of MatchClaims (millions of rows) as Arrow columns instead of one frozen :class:<code>MatchClaim</code> per claim; individual claims are materialised lazily, only when a row is indexed or iterated. Every kind of MatchClaim is a row like any other: synchronous claims with their anchors, NOMATCH and conceptual claims without.</p>
+<p>Like every paired Field, its struct schema is derived from the scalar by :func:<code>~timetoalign.core.fields.derive_arrow_struct</code> — so a row’s type is exactly <code>MatchClaimField.pa_schema</code>. Its :attr:<code>table</code> (and the Parquet file :meth:<code>to_parquet</code> writes, <code>match_claims.parquet</code>) has one column per top-level property of :class:<code>MatchClaim</code>, each nested as the property is. A provenance shared by every row is held once at field level (or <code>None</code>) and <strong>injected on read</strong>: the <code>provenance</code> column is left null, and :meth:<code>__getitem__</code> gives each materialised claim the field’s provenance. Claims whose provenance differs, given to :meth:<code>from_claims</code>, carry it per row.</p>
+<p>A MatchClaim is addressed by its id alone: an id held twice is refused, and an id never changes. A field mints no id: a row without one keeps it missing until the :class:<code>~timetoalign.alignment.bundle.AlignmentBundle</code> it joins mints it.</p>
+<section id="attributes" class="level2 doc-section doc-section-attributes">
+<h2 class="doc-section doc-section-attributes anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>table</td>
+<td><code>pa</code>.<code>Table</code></td>
+<td>The claims as a :class:<code>pyarrow.Table</code> (read-only property), one column per <code>MatchClaim</code> property.</td>
+</tr>
+<tr class="even">
+<td>provenance</td>
+<td><a href="../reference/Provenance.html#timetoalign.core.Provenance">Provenance</a> | None</td>
+<td>Shared :class:<code>~timetoalign.core.provenance.Provenance</code> (or <code>None</code>) applied to every materialised claim.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> field <span class="op">=</span> MatchClaimField.from_columns(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>...     timeline_a_ids<span class="op">=</span>[<span class="st">"A"</span>, <span class="st">"A"</span>, <span class="st">"B"</span>],</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>...     timeline_b_ids<span class="op">=</span>[<span class="st">"B"</span>, <span class="st">"C"</span>, <span class="st">"C"</span>],</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>...     event_a_ids<span class="op">=</span>[<span class="st">"a1"</span>, <span class="st">"a1"</span>, <span class="st">"b1"</span>],</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>...     event_b_ids<span class="op">=</span>[<span class="st">"b0"</span>, <span class="st">"c0"</span>, <span class="st">"c1"</span>],</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>...     coordinate_a<span class="op">=</span>[<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">1</span>],</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>...     coordinate_b<span class="op">=</span>[<span class="fl">10.0</span>, <span class="fl">20.0</span>, <span class="fl">21.0</span>],</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>...     timelines<span class="op">=</span>{</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>...         <span class="st">"A"</span>: (<span class="st">"quarters"</span>, <span class="st">"fraction"</span>),</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>...         <span class="st">"B"</span>: (<span class="st">"seconds"</span>, <span class="st">"float"</span>),</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>...         <span class="st">"C"</span>: (<span class="st">"seconds"</span>, <span class="st">"float"</span>),</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>...     },</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>...     provenance<span class="op">=</span>Provenance(service<span class="op">=</span><span class="st">"https://example.org/aligner"</span>),</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>... )</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="bu">len</span>(field)</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="dv">3</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> field[<span class="dv">0</span>].timeline_a_id, field[<span class="dv">0</span>].timeline_b_id</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>(<span class="st">'A'</span>, <span class="st">'B'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.at">at</a></td>
+<td>Return claims relevant at <code>(timeline_id, coordinate)</code>.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.alignment.MatchClaimField.check_on_timelines">check_on_timelines</a></td>
+<td>Refuse this field unless every coordinate is on its timeline’s axis.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.connecting">connecting</a></td>
+<td>Return the claims that involve <code>timeline_id</code> on either side.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.alignment.MatchClaimField.connects_groups">connects_groups</a></td>
+<td>Whether any synchronous claim spans the two given sets of timeline ids.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.filter">filter</a></td>
+<td>Return a filtered view following the unified filter API.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.alignment.MatchClaimField.from_claims">from_claims</a></td>
+<td>Build a field from existing :class:<code>MatchClaim</code> objects.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.from_columns">from_columns</a></td>
+<td>Build a field of event matches from parallel columns (the vectorized path).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.alignment.MatchClaimField.from_dict">from_dict</a></td>
+<td>Deserialize a field from a plain dictionary (inverse of :meth:<code>to_dict</code>).</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.from_package_table">from_package_table</a></td>
+<td>Read a field from a MatchClaim table in the package form.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.alignment.MatchClaimField.from_parquet">from_parquet</a></td>
+<td>Read the MatchClaim table from its Parquet file.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.from_table">from_table</a></td>
+<td>Read a field back from its Arrow table (inverse of :attr:<code>table</code>).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.alignment.MatchClaimField.to_claims">to_claims</a></td>
+<td>Materialise every row into a list of :class:<code>MatchClaim</code> objects.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.to_dict">to_dict</a></td>
+<td>Render the :attr:<code>table</code> as a plain dictionary (inverse of :meth:<code>from_dict</code>).</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.alignment.MatchClaimField.to_parquet">to_parquet</a></td>
+<td>Write the MatchClaim table to its Parquet file.</td>
+</tr>
+<tr class="odd">
+<td><a href="#timetoalign.alignment.MatchClaimField.with_belief">with_belief</a></td>
+<td>A copy of the table whose MatchClaim <em>claim_id</em> holds <em>belief</em>.</td>
+</tr>
+</tbody>
+</table>
+<section id="timetoalign.alignment.MatchClaimField.at" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.at">at</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.at(timeline_id, coordinate)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return claims relevant at <code>(timeline_id, coordinate)</code>.</p>
+<p>The selection is a vectorized PyArrow boolean mask over the struct column. Instant rows compare their start coordinate exactly. Interval rows use closed containment between their start and end coordinates. Rows without anchors (NOMATCH, conceptual) are never relevant. No claim is materialised and the rest of the field is never touched; the shared provenance carries over.</p>
+<p>Coordinate matching is exact in the query coordinate’s declared number representation. There is no tolerance or nearest-value fallback.</p>
+<section id="parameters" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 10%">
+<col style="width: 42%">
+<col style="width: 37%">
+<col style="width: 9%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timeline_id</td>
+<td><code>str</code></td>
+<td>The timeline the queried coordinate lives on.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>coordinate</td>
+<td><code>CoordinateSpec</code></td>
+<td>A raw or typed coordinate on that timeline.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 22%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code> holding only the matching rows</td>
+</tr>
+<tr class="even">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>(possibly empty).</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.check_on_timelines" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.check_on_timelines">check_on_timelines</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.check_on_timelines(timelines)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Refuse this field unless every coordinate is on its timeline’s axis.</p>
+<p>The vectorized form of :meth:<code>MatchClaim.check_on_timelines</code>: every coordinate cell (both coordinates of each anchor, each on its row’s timeline of that side) is compared with the unit and declared number type of the timeline it is on; the first offending cell is refused with the scalar check’s message.</p>
+<section id="parameters-1" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 3%">
+<col style="width: 48%">
+<col style="width: 43%">
+<col style="width: 4%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timelines</td>
+<td><code>Iterable</code>[<code>Any</code>] | <code>Mapping</code>[<code>str</code>, <code>Any</code>]</td>
+<td>Every timeline the rows name: timelines, or a mapping from a timeline id to a timeline or its <code>(unit, number_type)</code> pair.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-1" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-1">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>This field.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 23%">
+<col style="width: 70%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>If a row names a timeline not given, or a coordinate is not on its timeline’s axis.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.connecting" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.connecting">connecting</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.connecting(timeline_id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return the claims that involve <code>timeline_id</code> on either side.</p>
+<p>The filter is a vectorized boolean mask over the struct’s id sub-fields; no claim is materialised. The shared provenance carries over.</p>
+<section id="parameters-2" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 13%">
+<col style="width: 14%">
+<col style="width: 58%">
+<col style="width: 12%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timeline_id</td>
+<td><code>str</code></td>
+<td>The exact timeline id to match against either column.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-2" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-2">Returns</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 22%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code> holding only the matching rows.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.connects_groups" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.connects_groups">connects_groups</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.connects_groups(group_a_ids, group_b_ids)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Whether any synchronous claim spans the two given sets of timeline ids.</p>
+<p>True when at least one row with anchors has one side in <code>group_a_ids</code> and the other side in <code>group_b_ids</code>; a NOMATCH or conceptual row states no temporal equivalence and connects nothing. The test is a vectorized mask reduced with :func:<code>pyarrow.compute.any</code>; no claim is materialised, so it answers commensurability over a million-row field in one pass.</p>
+<section id="parameters-3" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 14%">
+<col style="width: 34%">
+<col style="width: 37%">
+<col style="width: 13%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>group_a_ids</td>
+<td><code>set</code>[<code>str</code>]</td>
+<td>Timeline ids on one side.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>group_b_ids</td>
+<td><code>set</code>[<code>str</code>]</td>
+<td>Timeline ids on the other side.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-3" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-3">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>bool</code></td>
+<td>True if some claim connects the two sets.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.filter" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.filter">filter</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.<span class="bu">filter</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    timeline_id<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    timeline_ids<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    id_pattern<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    between<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    within<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    synchronous_only<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    nomatch_only<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    believer<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    beliefs<span class="op">=</span>DEFAULT_BELIEFS,</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    context<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Return a filtered view following the unified filter API.</p>
+<p>Every criterion is a vectorized boolean mask over the claim columns; no claim is materialised and the shared provenance carries over. All non-default criteria are combined with logical AND.</p>
+<p><code>include_domains</code> / <code>include_units</code> are deliberately absent: they need per-timeline metadata (domain, unit) that this store does not hold. A caller that owns that metadata — an :class:<code>~timetoalign.alignment.bundle.AlignmentBundle</code>, say — resolves them into the set of timeline ids that pass and hands that set to <code>within</code>.</p>
+<section id="parameters-4" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 26%">
+<col style="width: 62%">
+<col style="width: 5%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timeline_id</td>
+<td><code>str</code> | None</td>
+<td>Keep rows involving this exact id on either side (equivalent to :meth:<code>connecting</code>).</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>timeline_ids</td>
+<td><code>set</code>[<code>str</code>] | None</td>
+<td>Keep rows involving <strong>any</strong> id in this set on either side.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>id_pattern</td>
+<td><code>str</code> | None</td>
+<td>Keep rows involving any id matching this regex (<code>re.search</code> against the field’s :attr:<code>timeline_ids</code>).</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>between</td>
+<td><code>tuple</code>[<code>str</code>, <code>str</code>] | None</td>
+<td>Keep rows connecting exactly these two ids (order-independent).</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>within</td>
+<td><code>set</code>[<code>str</code>] | None</td>
+<td>Keep rows whose <strong>both</strong> ids are in this set. This is the primitive behind domain- and unit-restricted queries.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>synchronous_only</td>
+<td><code>bool</code></td>
+<td>Keep the synchronous rows (those with anchors).</td>
+<td><code>False</code></td>
+</tr>
+<tr class="odd">
+<td>nomatch_only</td>
+<td><code>bool</code></td>
+<td>Keep the NOMATCH rows (not synchronous, one event named).</td>
+<td><code>False</code></td>
+</tr>
+<tr class="even">
+<td>believer</td>
+<td><code>str</code> | None</td>
+<td>The actor whose beliefs filter the rows (the belief filter, :func:<code>~timetoalign.core.provenance.belief_mask</code>); <code>None</code> filters nothing.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>beliefs</td>
+<td><code>Collection</code>[<code>BeliefState</code>]</td>
+<td>The states kept: a row passes when the believer’s belief in it (<code>"true"</code>, <code>"unlikely"</code>, <code>"false"</code>), or <code>"undecided"</code> where the believer holds none, is one of them. Default: every state but <code>"false"</code>.</td>
+<td><code>DEFAULT_BELIEFS</code></td>
+</tr>
+<tr class="even">
+<td>context</td>
+<td><code>Mapping</code>[<code>str</code>, <code>Any</code>] | None</td>
+<td>The JSON-LD context under which the believer and the rows’ actors compare as IRIs (a bundle passes its manifest’s <code>@context</code>); <code>None</code> declares no prefix.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-4" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-4">Returns</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 22%">
+<col style="width: 69%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code>. With no criteria set, a copy of</td>
+</tr>
+<tr class="even">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>the whole field is returned.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-1" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-1">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 18%">
+<col style="width: 75%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>If <code>synchronous_only</code> and <code>nomatch_only</code> are both set, or <code>beliefs</code> is not a collection of belief states.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.from_claims" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_claims">from_claims</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_claims(claims, <span class="op">*</span>, provenance<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Build a field from existing :class:<code>MatchClaim</code> objects.</p>
+<p>Every kind of claim is a row: synchronous claims with their anchors (interval claims with both), NOMATCH and conceptual claims without. Each row keeps every property of its claim, so every claim materialises equal to the one stored. A MatchClaim is addressed by its id alone: two claims under one id are refused (an id is never renamed), and a claim without an id keeps it missing (the bundle the field joins mints it).</p>
+<p>If <code>provenance</code> is <code>None</code> and all claims share one equal :class:<code>~timetoalign.core.provenance.Provenance</code>, it is adopted as the field-level provenance and the rows carry none. If the claims’ provenance differs (<code>None</code> included), the field’s stays <code>None</code> and each row carries its own claim’s.</p>
+<section id="parameters-5" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>claims</td>
+<td><code>Sequence</code>[<a href="../reference/MatchClaim.html#timetoalign.alignment.MatchClaim">MatchClaim</a>]</td>
+<td>The claims to store.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>provenance</td>
+<td><a href="../reference/Provenance.html#timetoalign.core.Provenance">Provenance</a> | None</td>
+<td>Explicit field-level provenance. When provided it replaces every claim’s own.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-5" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-5">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-2" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-2">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 14%">
+<col style="width: 81%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>If two claims hold the same id, or an anchor holds a coordinate no cell can hold (a non-finite number), which every reader of the MatchClaim table refuses.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.from_columns" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_columns">from_columns</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_columns(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    timeline_a_ids,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    timeline_b_ids,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    event_a_ids,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    event_b_ids,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    coordinate_a,</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    coordinate_b,</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    timelines,</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    end_coordinate_a<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    end_coordinate_b<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    certainty<span class="op">=</span><span class="fl">1.0</span>,</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Build a field of event matches from parallel columns (the vectorized path).</p>
+<p>This is the constructor a bulk producer (e.g.&nbsp;an alignment loader) uses. It assembles the derived <code>MatchClaim</code> struct array straight from the parallel inputs and <strong>never</strong> materialises a single :class:<code>MatchClaim</code> Python object, so it scales to millions of rows.</p>
+<p>Each row is a synchronous claim between two events: the timeline and event ids are filled from the inputs, and every coordinate is a position on its row’s timeline, written in that timeline’s unit and declared number type. With the two end columns, every row with an end on both sides is an interval claim. The ids are left null: the bundle the field joins mints them (:meth:<code>~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field</code>), so fields of several sources join one bundle. Names are left null, and so is the <code>provenance</code> column (the shared provenance is injected on read). The field is checked against the timelines (:meth:<code>check_on_timelines</code>).</p>
+<section id="parameters-6" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timeline_a_ids</td>
+<td><code>Sequence</code>[<code>str</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
+<td>Timeline-A ids, one per claim.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>timeline_b_ids</td>
+<td><code>Sequence</code>[<code>str</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
+<td>Timeline-B ids, one per claim.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="odd">
+<td>event_a_ids</td>
+<td><code>Sequence</code>[<code>str</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
+<td>The event on timeline A, one per claim.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>event_b_ids</td>
+<td><code>Sequence</code>[<code>str</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
+<td>The event on timeline B, one per claim.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="odd">
+<td>coordinate_a</td>
+<td><code>Sequence</code>[<code>int</code> | <code>float</code> | <code>Fraction</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
+<td>The position of the event on timeline A.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>coordinate_b</td>
+<td><code>Sequence</code>[<code>int</code> | <code>float</code> | <code>Fraction</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
+<td>The position of the event on timeline B.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="odd">
+<td>timelines</td>
+<td><code>Iterable</code>[<code>Any</code>] | <code>Mapping</code>[<code>str</code>, <code>Any</code>]</td>
+<td>Every timeline the rows name: timelines, or a mapping from a timeline id to a timeline or its <code>(unit, number_type)</code> pair.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>end_coordinate_a</td>
+<td><code>Sequence</code>[<code>int</code> | <code>float</code> | <code>Fraction</code> | None] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code> | None</td>
+<td>The end of each event on timeline A (null on both sides for an instant claim).</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>end_coordinate_b</td>
+<td><code>Sequence</code>[<code>int</code> | <code>float</code> | <code>Fraction</code> | None] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code> | None</td>
+<td>The end of each event on timeline B.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>certainty</td>
+<td><code>float</code></td>
+<td>How certain every claim is, in [0, 1].</td>
+<td><code>1.0</code></td>
+</tr>
+<tr class="odd">
+<td>provenance</td>
+<td><a href="../reference/Provenance.html#timetoalign.core.Provenance">Provenance</a> | None</td>
+<td>Shared provenance for every claim in the field.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-6" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-6">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-3" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-3">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 2%">
+<col style="width: 9%">
+<col style="width: 87%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>If the inputs do not all have the same length, a row names no event, a row names a timeline not among <em>timelines</em>, the end columns are given one without the other, a row gives an end on one side only, or a coordinate is a number no cell holds (a NaN).</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.from_dict" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_dict">from_dict</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_dict(data)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Deserialize a field from a plain dictionary (inverse of :meth:<code>to_dict</code>).</p>
+<p>The mapping holds <code>provenance</code> (the field’s :meth:<code>~timetoalign.core.provenance.Provenance.to_dict</code>, or <code>None</code>) and <code>rows</code>: one mapping per claim whose keys are the :attr:<code>table</code>’s columns. Each coordinate is a coordinate dict (<code>{unit, number_type, value}</code>), read by :func:<code>~timetoalign.core.retrieval.coordinate_from_dict</code> and written into its storage cell as :meth:<code>from_claims</code> writes a claim’s; every other cell is read as stored. A field built from claims therefore comes back with an equal table and equal claims.</p>
+<section id="parameters-7" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 7%">
+<col style="width: 46%">
+<col style="width: 35%">
+<col style="width: 10%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>data</td>
+<td><code>dict</code>[<code>str</code>, <code>Any</code>]</td>
+<td>A mapping as :meth:<code>to_dict</code> writes it.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-7" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-7">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-4" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-4">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 2%">
+<col style="width: 7%">
+<col style="width: 90%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>If a mapping, at any depth, lacks a key it must hold or holds an unknown one (the mapping itself, row, anchor, provenance, belief, coordinate), or a coordinate dict is invalid; if a row is not a MatchClaim (:meth:<code>_read</code>); if the mapping carries provenance both under its key <code>provenance</code> and in its rows; or if two rows hold the same id.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.from_package_table" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_package_table">from_package_table</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_package_table(table)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Read a field from a MatchClaim table in the package form.</p>
+<p>The inverse of :attr:<code>package_table</code>: every anchor coordinate cell is read back from the package form, then the table is read as :meth:<code>from_table</code> reads one. A cell whose numbers do not stand as its <code>number_type</code> says (an int <code>(n, null, null)</code>, a fraction <code>(n, d &gt;= 1, null)</code>, a float <code>(null, null, x)</code>) is refused.</p>
+<section id="parameters-8" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-8">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 26%">
+<col style="width: 61%">
+<col style="width: 7%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>table</td>
+<td><code>pa</code>.<code>Table</code></td>
+<td>A table as :attr:<code>package_table</code> gives it, or as read from a package’s <code>match_claims.parquet</code>.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-8" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-8">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-5" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-5">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 22%">
+<col style="width: 70%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>As :meth:<code>from_table</code>, or naming the column and row of a cell not in the package form.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.from_parquet" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_parquet">from_parquet</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_parquet(path, <span class="op">*</span>, timelines<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Read the MatchClaim table from its Parquet file.</p>
+<section id="parameters-9" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 3%">
+<col style="width: 50%">
+<col style="width: 41%">
+<col style="width: 4%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>path</td>
+<td><code>str</code> | <code>os</code>.<code>PathLike</code>[<code>str</code>]</td>
+<td>The file, or a directory holding :attr:<code>file_name</code> (<code>match_claims.parquet</code>).</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>timelines</td>
+<td><code>Iterable</code>[<code>Any</code>] | <code>Mapping</code>[<code>str</code>, <code>Any</code>] | None</td>
+<td>Where given, the timelines the rows name (as :meth:<code>check_on_timelines</code> takes them); the field is checked against them.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-9" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-9">Returns</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 9%">
+<col style="width: 25%">
+<col style="width: 65%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>The field :meth:<code>to_parquet</code> wrote, value for value.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-6" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-6">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 29%">
+<col style="width: 61%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>As :meth:<code>from_table</code>, or as :meth:<code>check_on_timelines</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.from_table" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_table">from_table</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_table(table)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Read a field back from its Arrow table (inverse of :attr:<code>table</code>).</p>
+<p>The table must hold one column per top-level property of :class:<code>MatchClaim</code>, named and typed as the fields of :attr:<code>pa_schema</code>; the columns are read by name, in any order, and may be chunked, as they are when the table was read from Parquet. Further columns (any other name, such as a <code>scope</code> column a package written by an earlier tool holds) are kept as they stand, after the properties, and never read: :attr:<code>table</code> and the file :meth:<code>to_parquet</code> writes hold them again, and the field’s own queries carry them row for row. The field-level provenance travels in the table’s schema metadata under TimeToShare’s key <code>timetoshare:provenance</code> (the JSON of :meth:<code>~timetoalign.core.provenance.Provenance.to_dict</code>); a table without that key gives a field whose provenance is <code>None</code>. Every row is kept as stored; a row without an id keeps none (the bundle it joins mints it).</p>
+<section id="parameters-10" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-10">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 42%">
+<col style="width: 38%">
+<col style="width: 12%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>table</td>
+<td><code>pa</code>.<code>Table</code></td>
+<td>A table as written by :attr:<code>table</code>.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-10" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-10">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>A new :class:<code>MatchClaimField</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-7" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-7">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 2%">
+<col style="width: 8%">
+<col style="width: 89%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>If the table lacks a column of a <code>MatchClaim</code> property, or a column’s type is not the property’s; if a row is not a MatchClaim (:meth:<code>_read</code>); if the table carries provenance both in its schema metadata and in its rows; or if two rows hold the same id (a MatchClaim is addressed by its id alone).</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.to_claims" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.to_claims">to_claims</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.to_claims()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Materialise every row into a list of :class:<code>MatchClaim</code> objects.</p>
+<p>This is <code>O(n)</code> and defeats the columnar purpose for large sets; it is provided for convenience and round-tripping, not for hot paths.</p>
+<section id="returns-11" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-11">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>list</code>[<a href="../reference/MatchClaim.html#timetoalign.alignment.MatchClaim">MatchClaim</a>]</td>
+<td>A list of claims, one per row.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.to_dict" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.to_dict">to_dict</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.to_dict()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Render the :attr:<code>table</code> as a plain dictionary (inverse of :meth:<code>from_dict</code>).</p>
+<p><code>{"provenance": ..., "rows": [...]}</code>: the field’s provenance (:meth:<code>~timetoalign.core.provenance.Provenance.to_dict</code>, or <code>None</code>) and one mapping per claim whose keys are the table’s columns. A coordinate cell is written as a coordinate dict (:func:<code>~timetoalign.core.retrieval.coordinate_to_dict</code>: <code>unit</code>, <code>number_type</code>, <code>value</code>, a Fraction as <code>[numerator, denominator]</code>), the value the materialised claim holds, as :meth:<code>MatchClaim.to_dict</code> writes it; every other cell as stored, a nested property a nested mapping. Every value is a string, number, boolean, <code>None</code>, mapping or list, so the dictionary can be written as JSON or YAML.</p>
+<section id="returns-12" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-12">Returns</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 59%">
+<col style="width: 31%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>dict</code>[<code>str</code>, <code>Any</code>]</td>
+<td>A round-trippable mapping.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples-1" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-1">Examples</h4>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> field <span class="op">=</span> MatchClaimField.from_columns(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>...     [<span class="st">"score"</span>], [<span class="st">"audio"</span>], [<span class="st">"n1"</span>], [<span class="st">"o1"</span>], [Fraction(<span class="dv">1</span>, <span class="dv">3</span>)], [<span class="fl">0.5</span>],</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>...     timelines<span class="op">=</span>{</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>...         <span class="st">"score"</span>: (<span class="st">"quarters"</span>, <span class="st">"fraction"</span>),</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>...         <span class="st">"audio"</span>: (<span class="st">"seconds"</span>, <span class="st">"float"</span>),</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>...     },</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>... )</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row <span class="op">=</span> field.to_dict()[<span class="st">"rows"</span>][<span class="dv">0</span>]</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"start_anchor"</span>][<span class="st">"coordinate_a"</span>]</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>{<span class="st">'unit'</span>: <span class="st">'quarters'</span>, <span class="st">'number_type'</span>: <span class="st">'fraction'</span>, <span class="st">'value'</span>: [<span class="dv">1</span>, <span class="dv">3</span>]}</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"start_anchor"</span>][<span class="st">"coordinate_b"</span>]</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>{<span class="st">'unit'</span>: <span class="st">'seconds'</span>, <span class="st">'number_type'</span>: <span class="st">'float'</span>, <span class="st">'value'</span>: <span class="fl">0.5</span>}</span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"id"</span>], row[<span class="st">"end_anchor"</span>]</span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>(<span class="va">None</span>, <span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.to_parquet" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.to_parquet">to_parquet</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.to_parquet(path)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Write the MatchClaim table to its Parquet file.</p>
+<p>The file holds :attr:<code>package_table</code> (each anchor coordinate’s number written once, by its number type), the field-level provenance in its schema metadata, so :meth:<code>from_parquet</code> reads back every value exactly; further columns of a table read follow the properties (:meth:<code>from_table</code>). Where the file exists, the new table must succeed it: every MatchClaim of the existing table, by its id, is in this one, with the same timelines, events, anchors and every other value; only its provenance may differ (a MatchClaim is never removed and never changed, only believed or disbelieved). The file is replaced whole, never in part: a write that fails leaves the file as it was and no temporary file.</p>
+<p>Every MatchClaim written holds an id, which a named MatchStamp may record: a field whose rows hold none (built from columns or from claims without ids) is written from the bundle it joined, which minted them (:attr:<code>AlignmentBundle.match_claim_table &lt;timetoalign.alignment.bundle.AlignmentBundle.match_claim_table&gt;</code>).</p>
+<section id="parameters-11" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-11">Parameters</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 41%">
+<col style="width: 47%">
+<col style="width: 7%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>path</td>
+<td><code>str</code> | <code>os</code>.<code>PathLike</code>[<code>str</code>]</td>
+<td>The file, or a directory to hold :attr:<code>file_name</code> (<code>match_claims.parquet</code>).</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-13" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-13">Returns</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>Path</code></td>
+<td>The path of the file written.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-8" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-8">Raises</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 22%">
+<col style="width: 71%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>ValueError</code></td>
+<td>If a row holds no id, or the existing table holds a MatchClaim this one lacks or changes.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="timetoalign.alignment.MatchClaimField.with_belief" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.with_belief">with_belief</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.with_belief(claim_id, belief, <span class="op">*</span>, context<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A copy of the table whose MatchClaim <em>claim_id</em> holds <em>belief</em>.</p>
+<p>Only that row’s provenance changes, as :meth:<code>MatchClaim.with_belief</code> changes a claim’s; every other row, and every other column, is kept. A provenance the field holds once for every row stays shared where the field has one row; otherwise every row then carries its own, since one row’s differs.</p>
+<section id="parameters-12" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-12">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>claim_id</td>
+<td><code>str</code></td>
+<td>The MatchClaim’s id, held by one row.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>belief</td>
+<td><a href="../reference/Belief.html#timetoalign.core.Belief">Belief</a></td>
+<td>The belief.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="odd">
+<td>context</td>
+<td><code>Mapping</code>[<code>str</code>, <code>Any</code>] | None</td>
+<td>The JSON-LD context under which actors compare as IRIs; <code>None</code> declares no prefix.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-14" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-14">Returns</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 11%">
+<col style="width: 29%">
+<col style="width: 59%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>'MatchClaimField'</td>
+<td>The new field; this one is left as it is.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-9" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-9">Raises</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><code>KeyError</code></td>
+<td>If no row holds <em>claim_id</em>.</td>
+</tr>
+</tbody>
+</table>
+
+
+</section>
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

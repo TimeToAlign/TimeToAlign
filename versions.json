@@ -1,5 +1,10 @@
 [
   {
+    "version": "dev",
+    "title": "dev (main)",
+    "path": "dev/"
+  },
+  {
     "version": "stable",
     "title": "stable (1.2.0)",
     "path": "stable/",

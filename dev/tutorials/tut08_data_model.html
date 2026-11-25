@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Why PyArrow, the three layers, raw and semantic fields, blueprints, and Parquet metadata">
+
+<title>The Data Model – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../tutorials.html" aria-current="page"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut08_data_model.html">Under the Hood</a></li><li class="breadcrumb-item"><a href="../tutorials/tut08_data_model.html">The Data Model</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutorials</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut00_quickstart.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quickstart</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Foundations</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut01_timelines_and_coordinates.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timelines and Coordinates</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut02_nesting_and_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Nesting and Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut03_events.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Events on a Timeline</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Working with Data</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut04_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loading Real Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut05_timeline_groups.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline Groups</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut06_alignment_bundles.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Alignment Bundles and MatchClaims</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut07_flow_and_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Flow Control and Grids</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Under the Hood</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut08_data_model.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">The Data Model</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut09_pitch_and_harmony.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Pitch and Harmony across Formats</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-data-model" id="toc-the-data-model" class="nav-link active" data-scroll-target="#the-data-model">The Data Model</a>
+  <ul>
+  <li><a href="#what-you-will-build" id="toc-what-you-will-build" class="nav-link" data-scroll-target="#what-you-will-build">What you will build</a></li>
+  <li><a href="#before-you-start" id="toc-before-you-start" class="nav-link" data-scroll-target="#before-you-start">Before you start</a></li>
+  <li><a href="#why-pyarrow" id="toc-why-pyarrow" class="nav-link" data-scroll-target="#why-pyarrow">Why PyArrow</a></li>
+  <li><a href="#the-three-layers" id="toc-the-three-layers" class="nav-link" data-scroll-target="#the-three-layers">The three layers</a></li>
+  <li><a href="#protocol-scalar-field" id="toc-protocol-scalar-field" class="nav-link" data-scroll-target="#protocol-scalar-field">Protocol, Scalar, Field</a></li>
+  <li><a href="#layer-0-by-hand" id="toc-layer-0-by-hand" class="nav-link" data-scroll-target="#layer-0-by-hand">Layer 0 by hand</a></li>
+  <li><a href="#layer-0-from-a-real-table" id="toc-layer-0-from-a-real-table" class="nav-link" data-scroll-target="#layer-0-from-a-real-table">Layer 0 from a real table</a></li>
+  <li><a href="#layer-1" id="toc-layer-1" class="nav-link" data-scroll-target="#layer-1">Layer 1</a></li>
+  <li><a href="#promoting-a-column-yourself" id="toc-promoting-a-column-yourself" class="nav-link" data-scroll-target="#promoting-a-column-yourself">Promoting a column yourself</a></li>
+  <li><a href="#blueprints" id="toc-blueprints" class="nav-link" data-scroll-target="#blueprints">Blueprints</a></li>
+  <li><a href="#attaching-semantic-schemas" id="toc-attaching-semantic-schemas" class="nav-link" data-scroll-target="#attaching-semantic-schemas">Attaching semantic schemas</a></li>
+  <li><a href="#finding-fields" id="toc-finding-fields" class="nav-link" data-scroll-target="#finding-fields">Finding fields</a></li>
+  <li><a href="#ambiguous-field-requests" id="toc-ambiguous-field-requests" class="nav-link" data-scroll-target="#ambiguous-field-requests">Ambiguous field requests</a></li>
+  <li><a href="#discovery-by-protocol" id="toc-discovery-by-protocol" class="nav-link" data-scroll-target="#discovery-by-protocol">Discovery by protocol</a></li>
+  <li><a href="#metadata-survives-parquet" id="toc-metadata-survives-parquet" class="nav-link" data-scroll-target="#metadata-survives-parquet">Metadata survives Parquet</a></li>
+  <li><a href="#what-you-learned" id="toc-what-you-learned" class="nav-link" data-scroll-target="#what-you-learned">What you learned</a></li>
+  <li><a href="#next" id="toc-next" class="nav-link" data-scroll-target="#next">Next</a></li>
+  <li><a href="#go-deeper" id="toc-go-deeper" class="nav-link" data-scroll-target="#go-deeper">Go deeper</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut08_data_model.html">Under the Hood</a></li><li class="breadcrumb-item"><a href="../tutorials/tut08_data_model.html">The Data Model</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">The Data Model</h1>
+</div>
+
+<div>
+  <div class="description">
+    Why PyArrow, the three layers, raw and semantic fields, blueprints, and Parquet metadata
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="the-data-model" class="level1">
+<h1>The Data Model</h1>
+<section id="what-you-will-build" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-will-build">What you will build</h2>
+<p>You will load a table of Chopin notes, move from its faithful Arrow columns to typed musical views, and promote a column yourself. By the end, you can take any column and ask what typed musical value it affords, while understanding why the table is Arrow-backed.</p>
+</section>
+<section id="before-you-start" class="level2">
+<h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
+<p>Complete <a href="../tutorials/tut04_loading_data.html">Loading Real Data</a>, which introduces loaders and the <code>EventStore</code> used here.</p>
+<div id="d708914c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:50.699788Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:50.699186Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:52.726264Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:52.725380Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tempfile <span class="im">import</span> TemporaryDirectory</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Protocol, runtime_checkable</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pyarrow <span class="im">as</span> pa</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pyarrow.parquet <span class="im">as</span> pq</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pydantic <span class="im">import</span> BaseModel</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> EventData, Ms3Loader</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> (</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    Coordinate,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    CoordinateField,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    DataField,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    DurationField,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    NumberType,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    NumericField,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    SemanticField,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    StringField,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    StructField,</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    TimeUnit,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    build_struct_array,</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.storage <span class="im">import</span> MultipleFieldsError</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>data_root <span class="op">=</span> ensure_data(<span class="st">"vienna_1x22"</span>)</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>notes_path <span class="op">=</span> data_root <span class="op">/</span> <span class="st">"ms3"</span> <span class="op">/</span> <span class="st">"chopin_op10_no3.notes.tsv"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="why-pyarrow" class="level2">
+<h2 class="anchored" data-anchor-id="why-pyarrow">Why PyArrow</h2>
+<p>Arrow is columnar and supports zero-copy operations, so a million notes cost what a million notes should cost; Parquet also preserves nested columns, letting one object’s schema describe both that object and a corpus-sized column of them. Arrow carries metadata on tables and columns, so units and musical meanings travel with the data rather than depending on names, making TimeToAlign! big-data-ready by construction; the library does not restrict which <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> types a loader’s <code>EventStore</code> may contain, but it does provide an interface for declaring event types that live on <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button>s.</p>
+<div id="e153a96f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:52.728346Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:52.728039Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:52.736931Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:52.736134Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>number_array <span class="op">=</span> pa.array([<span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">5</span>], <span class="bu">type</span><span class="op">=</span>pa.int64())</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>label_array <span class="op">=</span> pa.array([<span class="st">"A"</span>, <span class="st">"B"</span>, <span class="st">"C"</span>], <span class="bu">type</span><span class="op">=</span>pa.string())</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>point_array <span class="op">=</span> pa.array([{<span class="st">"x"</span>: <span class="dv">10</span>, <span class="st">"y"</span>: <span class="dv">20</span>}, {<span class="st">"x"</span>: <span class="dv">30</span>, <span class="st">"y"</span>: <span class="dv">40</span>}, {<span class="st">"x"</span>: <span class="dv">50</span>, <span class="st">"y"</span>: <span class="dv">60</span>}])</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>number_schema <span class="op">=</span> pa.field(<span class="st">"number"</span>, pa.int64(), metadata<span class="op">=</span>{<span class="st">b"meaning"</span>: <span class="st">b"example count"</span>})</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>label_schema <span class="op">=</span> pa.field(<span class="st">"label"</span>, pa.string())</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>point_schema <span class="op">=</span> pa.field(<span class="st">"point"</span>, point_array.<span class="bu">type</span>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>primer_schema <span class="op">=</span> pa.schema(</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    [number_schema, label_schema, point_schema],</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    metadata<span class="op">=</span>{<span class="st">b"collection"</span>: <span class="st">b"data-model primer"</span>},</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>primer_table <span class="op">=</span> pa.Table.from_arrays(</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    [number_array, label_array, point_array], schema<span class="op">=</span>primer_schema</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>primer_table.schema</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>number: int64
+  -- field metadata --
+  meaning: 'example count'
+label: string
+point: struct&lt;x: int64, y: int64&gt;
+  child 0, x: int64
+  child 1, y: int64
+-- schema metadata --
+collection: 'data-model primer'</code></pre>
+</div>
+</div>
+<p>The schema shows a nested <code>point</code> column, column metadata on <code>number</code>, and table metadata for the collection. Parquet can retain this whole description.</p>
+</section>
+<section id="the-three-layers" class="level2">
+<h2 class="anchored" data-anchor-id="the-three-layers">The three layers</h2>
+<p>Layer 0 is the faithful typed data parsed by the loader; Layer 1 is the musical view the table <em>affords</em> on request, and indexing that view produces one typed <button class="glossary" title="">Coordinate</button> or other scalar. “Affords” matters: loaders never store semantic types, and requested views are computed lazily and cached rather than baked into the table. Here the loader-level <code>get_events()</code> assembles the loaded note table directly from its <code>EventStore</code>; unlike a timeline’s <code>get_events()</code>, it does not query a timeline hierarchy or translate child coordinates.</p>
+<div id="0fafa55b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:52.738592Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:52.738442Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.021095Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.019512Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> Ms3Loader.from_file(notes_path)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>events <span class="op">=</span> loader.get_events()</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>layer_bases <span class="op">=</span> {</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Layer 0 base"</span>: DataField.<span class="va">__name__</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Layer 1 base"</span>: SemanticField.<span class="va">__name__</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"indexed scalar example"</span>: Coordinate.<span class="va">__name__</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"stored table"</span>: <span class="bu">type</span>(events.table).<span class="va">__name__</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>layer_bases</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>{'Layer 0 base': 'DataField',
+ 'Layer 1 base': 'SemanticField',
+ 'indexed scalar example': 'Coordinate',
+ 'stored table': 'Table'}</code></pre>
+</div>
+</div>
+<p><code>events</code> stores an Arrow table. <code>DataField</code> and <code>SemanticField</code> are two views over its columns; only indexing the semantic view creates an individual scalar.</p>
+</section>
+<section id="protocol-scalar-field" class="level2">
+<h2 class="anchored" data-anchor-id="protocol-scalar-field">Protocol, Scalar, Field</h2>
+<p>These three roles separate checking a value’s capabilities, representing one validated value, and processing many values as a column.</p>
+<div id="930f8d23" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.029216Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.023903Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.057935Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.049569Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>role_table <span class="op">=</span> pd.DataFrame(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    [</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Role"</span>: <span class="st">"Protocol"</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Example"</span>: Protocol.<span class="va">__name__</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Plain-English job"</span>: <span class="st">"Checks whether a value has the required attributes and methods."</span>,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Role"</span>: <span class="st">"Scalar"</span>,</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Example"</span>: Coordinate.<span class="va">__name__</span>,</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Plain-English job"</span>: <span class="st">"Validates and represents one musical value."</span>,</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Role"</span>: <span class="st">"Field"</span>,</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Example"</span>: CoordinateField.<span class="va">__name__</span>,</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>            <span class="st">"Plain-English job"</span>: <span class="st">"Holds many values as a column and yields a scalar when indexed."</span>,</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>role_table</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">Role</th>
+<th data-quarto-table-cell-role="th">Example</th>
+<th data-quarto-table-cell-role="th">Plain-English job</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>Protocol</td>
+<td>Protocol</td>
+<td>Checks whether a value has the required attrib...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>Scalar</td>
+<td>Coordinate</td>
+<td>Validates and represents one musical value.</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>Field</td>
+<td>CoordinateField</td>
+<td>Holds many values as a column and yields a sca...</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>A Protocol asks “is this the right shape?”, a Scalar represents one checked value, and a Field keeps many such values in efficient columnar storage.</p>
+</section>
+<section id="layer-0-by-hand" class="level2">
+<h2 class="anchored" data-anchor-id="layer-0-by-hand">Layer 0 by hand</h2>
+<p>Raw <code>NumericField</code>, <code>StringField</code>, and <code>StructField</code> wrappers add convenient access to Arrow data and schemas, but they attach no musical interpretation.</p>
+<div id="48514ddd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.063211Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.063026Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.076354Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.075491Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>number_field <span class="op">=</span> NumericField.from_field((number_array, number_schema))</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>label_field <span class="op">=</span> StringField.from_field((label_array, label_schema))</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>point_field <span class="op">=</span> StructField.from_field((point_array, point_schema))</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>handmade_raw <span class="op">=</span> {</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"numeric value"</span>: number_field[<span class="dv">1</span>],</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"string value"</span>: label_field[<span class="dv">1</span>],</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"struct value"</span>: point_field[<span class="dv">1</span>],</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"struct field_names"</span>: point_field.field_names,</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"all are DataField"</span>: <span class="bu">all</span>(</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>        <span class="bu">isinstance</span>(field, DataField)</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> field <span class="kw">in</span> (number_field, label_field, point_field)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>handmade_raw</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>{'numeric value': 3,
+ 'string value': 'B',
+ 'struct value': {'x': 30, 'y': 40},
+ 'struct field_names': ['x', 'y'],
+ 'all are DataField': True}</code></pre>
+</div>
+</div>
+<p>The Python values differ because the Arrow types differ. <code>field_names</code> exposes the two children of the struct, but nothing here says that either child is musical.</p>
+</section>
+<section id="layer-0-from-a-real-table" class="level2">
+<h2 class="anchored" data-anchor-id="layer-0-from-a-real-table">Layer 0 from a real table</h2>
+<p><code>get_raw("start")</code> exposes exactly what the Chopin loader parsed: an onset struct with a float value plus numerator and denominator, whose exact ratio survives a Parquet round trip. Both sides are always populated — the pair is not a signal, and a null denominator no longer means “trust the float”. Which side is canonical is declared once, in the column’s field metadata, rather than inferred from the data.</p>
+<div id="8540b161" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.098542Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.098259Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.122477Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.121044Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>raw_start <span class="op">=</span> events.get_raw(<span class="st">"start"</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>raw_start_value <span class="op">=</span> raw_start[<span class="dv">1</span>]</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>raw_snapshot <span class="op">=</span> {</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"wrapper type"</span>: <span class="bu">type</span>(raw_start).<span class="va">__name__</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Arrow type"</span>: raw_start.pa_type,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"field_names"</span>: raw_start.field_names,</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"indexed value"</span>: raw_start_value,</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>raw_snapshot</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>{'wrapper type': 'StructField',
+ 'Arrow type': StructType(struct&lt;value: double, numerator: int64, denominator: int64&gt;),
+ 'field_names': ['value', 'numerator', 'denominator'],
+ 'indexed value': {'value': 0.5, 'numerator': 1, 'denominator': 2}}</code></pre>
+</div>
+</div>
+<p>The numerator <code>1</code> and denominator <code>2</code> preserve one half exactly instead of trusting a floating-point reconstruction. At Layer 0, however, the struct does not know that it denotes an onset measured in quarters — and because the unit is what decides whether the exact or the float side is authoritative, Layer 0 cannot decide that either. That is precisely the job of the metadata Layer 1 reads.</p>
+</section>
+<section id="layer-1" class="level2">
+<h2 class="anchored" data-anchor-id="layer-1">Layer 1</h2>
+<p>Asking for <code>start</code> promotes the raw struct to a <code>CoordinateField</code>; asking for <code>duration</code> produces a <code>DurationField</code>, and indexing either returns a scalar with its unit attached.</p>
+<div id="7a2c305f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.160170Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.159828Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.170121Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.167317Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>start_field <span class="op">=</span> events.get_field(<span class="st">"start"</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>typed_start <span class="op">=</span> start_field[<span class="dv">1</span>]</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>expected_start <span class="op">=</span> Coordinate(Fraction(<span class="dv">1</span>, <span class="dv">2</span>), TimeUnit.quarters)</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>duration_field <span class="op">=</span> events.get_field(<span class="st">"duration"</span>)</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>typed_duration <span class="op">=</span> duration_field[<span class="dv">1</span>]</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>layer_comparison <span class="op">=</span> {</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"raw"</span>: {<span class="st">"type"</span>: <span class="bu">type</span>(raw_start_value).<span class="va">__name__</span>, <span class="st">"value"</span>: raw_start_value},</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"start"</span>: {</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>        <span class="st">"field type"</span>: <span class="bu">type</span>(start_field).<span class="va">__name__</span>,</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">"is CoordinateField"</span>: <span class="bu">isinstance</span>(start_field, CoordinateField),</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>        <span class="st">"scalar type"</span>: <span class="bu">type</span>(typed_start).<span class="va">__name__</span>,</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>        <span class="st">"value"</span>: typed_start,</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>        <span class="st">"exactly one half"</span>: typed_start <span class="op">==</span> expected_start,</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"duration"</span>: {</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>        <span class="st">"field type"</span>: <span class="bu">type</span>(duration_field).<span class="va">__name__</span>,</span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>        <span class="st">"is DurationField"</span>: <span class="bu">isinstance</span>(duration_field, DurationField),</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a>        <span class="st">"scalar type"</span>: <span class="bu">type</span>(typed_duration).<span class="va">__name__</span>,</span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>        <span class="st">"value"</span>: typed_duration,</span>
+<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a>layer_comparison</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>{'raw': {'type': 'dict',
+  'value': {'value': 0.5, 'numerator': 1, 'denominator': 2}},
+ 'start': {'field type': 'CoordinateField',
+  'is CoordinateField': True,
+  'scalar type': 'Coordinate',
+  'value': Coordinate(Fraction(1, 2), quarters),
+  'exactly one half': True},
+ 'duration': {'field type': 'DurationField',
+  'is DurationField': True,
+  'scalar type': 'Duration',
+  'value': Duration(Fraction(1, 4), quarters)}}</code></pre>
+</div>
+</div>
+<p>The same onset is now a <code>Coordinate(Fraction(1, 2), quarters)</code>, not a dictionary. Its type distinguishes it from the quarter-note <code>Duration</code>, and both objects retain exact rational content and their unit.</p>
+</section>
+<section id="promoting-a-column-yourself" class="level2">
+<h2 class="anchored" data-anchor-id="promoting-a-column-yourself">Promoting a column yourself</h2>
+<p>When a source column has meaning that its loader did not declare, define the scalar shape, materialise its Field with <code>from_array()</code>, or build its nested Arrow storage explicitly with <code>build_struct_array()</code> and <code>from_field()</code>.</p>
+<div id="211b9694" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.174633Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.174475Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.181975Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.181108Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MetricalAddress(BaseModel):</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    bar: <span class="bu">int</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    beat: <span class="bu">int</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MetricalAddressField(SemanticField[MetricalAddress]):</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">@property</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> semantic_type(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">"MetricalAddress"</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__getitem__</span>(<span class="va">self</span>, index: <span class="bu">int</span>) <span class="op">-&gt;</span> MetricalAddress:</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>        record <span class="op">=</span> <span class="bu">super</span>().<span class="fu">__getitem__</span>(index)</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> MetricalAddress.model_validate(record)</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>address_source <span class="op">=</span> pa.array([{<span class="st">"bar"</span>: <span class="dv">1</span>, <span class="st">"beat"</span>: <span class="dv">1</span>}, {<span class="st">"bar"</span>: <span class="dv">2</span>, <span class="st">"beat"</span>: <span class="dv">3</span>}])</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>address_template <span class="op">=</span> MetricalAddressField(name<span class="op">=</span><span class="st">"metrical_address"</span>)</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>address_from_array <span class="op">=</span> address_template.from_array(address_source)</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>address_scalars <span class="op">=</span> [MetricalAddress(bar<span class="op">=</span><span class="dv">3</span>, beat<span class="op">=</span><span class="dv">1</span>), MetricalAddress(bar<span class="op">=</span><span class="dv">3</span>, beat<span class="op">=</span><span class="dv">4</span>)]</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>address_struct <span class="op">=</span> build_struct_array(MetricalAddress, address_scalars)</span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>address_schema <span class="op">=</span> pa.field(<span class="st">"primary_address"</span>, address_struct.<span class="bu">type</span>)</span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>address_from_field <span class="op">=</span> MetricalAddressField.from_field((address_struct, address_schema))</span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true" tabindex="-1"></a>promotion_examples <span class="op">=</span> {</span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true" tabindex="-1"></a>    <span class="st">"from_array"</span>: address_from_array[<span class="dv">0</span>],</span>
+<span id="cb13-25"><a href="#cb13-25" aria-hidden="true" tabindex="-1"></a>    <span class="st">"from_field"</span>: address_from_field[<span class="dv">1</span>],</span>
+<span id="cb13-26"><a href="#cb13-26" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb13-27"><a href="#cb13-27" aria-hidden="true" tabindex="-1"></a>promotion_examples</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>{'from_array': MetricalAddress(bar=1, beat=1),
+ 'from_field': MetricalAddress(bar=3, beat=4)}</code></pre>
+</div>
+</div>
+<p><code>from_array()</code> validates rows against the scalar class and creates the paired semantic field. For a scalar made from several values, <code>build_struct_array()</code> makes the nested column explicitly, while <code>from_field()</code> attaches its semantic wrapper.</p>
+</section>
+<section id="blueprints" class="level2">
+<h2 class="anchored" data-anchor-id="blueprints">Blueprints</h2>
+<p>A blueprint is a Field instance that names its <code>source_fields</code> but carries no data, deferring resolution until a table receives it. This lets the same analysis request a musical concept from loaders that use different source-column names.</p>
+<div id="c2dbed05" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.183476Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.183323Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.187383Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.186715Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>start_blueprint <span class="op">=</span> CoordinateField(source_fields<span class="op">=</span><span class="st">"start"</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>resolved_start <span class="op">=</span> events.get_field(start_blueprint)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>blueprint_result <span class="op">=</span> {</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is blueprint"</span>: start_blueprint.is_blueprint,</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"source_fields"</span>: <span class="st">"start"</span>,</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"resolved field"</span>: resolved_start,</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first scalar"</span>: resolved_start[<span class="dv">1</span>],</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>blueprint_result</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>{'is blueprint': True,
+ 'source_fields': 'start',
+ 'resolved field': CoordinateField(name='start', unit=quarters, number_type=fraction, len=498),
+ 'first scalar': Coordinate(Fraction(1, 2), quarters)}</code></pre>
+</div>
+</div>
+<p>The blueprint contains a deferred instruction rather than 498 values. Here it resolves <code>start</code>; code for another loader can supply a blueprint naming that loader’s corresponding onset column.</p>
+</section>
+<section id="attaching-semantic-schemas" class="level2">
+<h2 class="anchored" data-anchor-id="attaching-semantic-schemas">Attaching semantic schemas</h2>
+<p><code>to_field()</code> extracts a column’s semantic Arrow schema. <code>EventData.from_arrays()</code> builds a table from parallel arrays, and its <code>extra_fields=</code> argument attaches such schemas to source columns; here that creates two address columns for lookup practice.</p>
+<div id="adc7fca3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.188860Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.188717Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.195084Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.194433Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>address_semantic_schema <span class="op">=</span> address_from_field.to_field()</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>secondary_address_schema <span class="op">=</span> address_semantic_schema.with_name(<span class="st">"secondary_address"</span>)</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>marker_arrays <span class="op">=</span> {</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"id"</span>: [<span class="st">"marker-1"</span>, <span class="st">"marker-2"</span>],</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"event_type"</span>: [<span class="st">"Marker"</span>, <span class="st">"Marker"</span>],</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"start"</span>: [<span class="dv">0</span>, <span class="dv">1</span>],</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"primary_address"</span>: address_struct,</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"secondary_address"</span>: address_struct,</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>ambiguous_events <span class="op">=</span> EventData.from_arrays(</span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>    marker_arrays,</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>    unit<span class="op">=</span>TimeUnit.quarters,</span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>    number_type<span class="op">=</span>NumberType.fraction,</span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>    extra_fields<span class="op">=</span>[address_semantic_schema, secondary_address_schema],</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>semantic_schema_setup <span class="op">=</span> {</span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"events"</span>: ambiguous_events,</span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"primary schema metadata"</span>: address_semantic_schema.metadata,</span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a>    <span class="st">"secondary schema metadata"</span>: secondary_address_schema.metadata,</span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a>semantic_schema_setup</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>{'events': EventData(count=2, unit=quarters, number_type=fraction),
+ 'primary schema metadata': {b'timetoalign': b'{"field_type": "MetricalAddressField", "version": 1}'},
+ 'secondary schema metadata': {b'timetoalign': b'{"field_type": "MetricalAddressField", "version": 1}'}}</code></pre>
+</div>
+</div>
+<p>The two-row <code>EventData</code> object now carries <code>MetricalAddressField</code> metadata on both named struct columns. The following lookups use those attached schemas.</p>
+</section>
+<section id="finding-fields" class="level2">
+<h2 class="anchored" data-anchor-id="finding-fields">Finding fields</h2>
+<p>Use <code>has_field()</code> and <code>get_fields()</code> for discovery, rely on identity caching for repeated requests, and pass <code>name=</code> when a scalar class matches several columns.</p>
+<div id="78438ec8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.197231Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.197052Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.201911Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.201372Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>has_addresses <span class="op">=</span> ambiguous_events.has_field(MetricalAddressField)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>address_fields <span class="op">=</span> ambiguous_events.get_fields(MetricalAddressField)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>named_address <span class="op">=</span> ambiguous_events.get_field(MetricalAddress, name<span class="op">=</span><span class="st">"primary_address"</span>)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>cached_address <span class="op">=</span> ambiguous_events.get_field(MetricalAddress, name<span class="op">=</span><span class="st">"primary_address"</span>)</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>field_lookup_summary <span class="op">=</span> {</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"has MetricalAddressField"</span>: has_addresses,</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"matching columns"</span>: [field.name <span class="cf">for</span> field <span class="kw">in</span> address_fields],</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"cached object reused"</span>: cached_address <span class="kw">is</span> named_address,</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"name= selects a scalar"</span>: named_address[<span class="dv">0</span>],</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>field_lookup_summary</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>{'has MetricalAddressField': True,
+ 'matching columns': ['primary_address', 'secondary_address'],
+ 'cached object reused': True,
+ 'name= selects a scalar': MetricalAddress(bar=3, beat=1)}</code></pre>
+</div>
+</div>
+<p>Both address columns are discoverable, <code>name=</code> selects the primary one, and the <code>True</code> cache result shows that repeating the same request returns the same object.</p>
+</section>
+<section id="ambiguous-field-requests" class="level2">
+<h2 class="anchored" data-anchor-id="ambiguous-field-requests">Ambiguous field requests</h2>
+<p>Without <code>name=</code>, the scalar class does not identify which address column to use. Catching the specific error lets the notebook show this deliberate refusal cleanly.</p>
+<div id="4d74da11" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.203370Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.203219Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.206795Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.206233Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>ambiguity <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    ambiguous_events.get_field(MetricalAddress)</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> MultipleFieldsError <span class="im">as</span> exc:</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    ambiguity <span class="op">=</span> exc</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>ambiguity</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>timetoalign.storage.mixins.MultipleFieldsError("MetricalAddress matches multiple columns ['primary_address', 'secondary_address']; pass name=&lt;col&gt; to disambiguate (one of: ['primary_address', 'secondary_address']).")</code></pre>
+</div>
+</div>
+<p>The rendered <code>MultipleFieldsError</code> lists <code>primary_address</code> and <code>secondary_address</code>, the column names that can disambiguate the request.</p>
+</section>
+<section id="discovery-by-protocol" class="level2">
+<h2 class="anchored" data-anchor-id="discovery-by-protocol">Discovery by protocol</h2>
+<p><code>get_fields_satisfying()</code> searches by scalar shape rather than by a concrete class; this small runtime-checkable Protocol asks for the octave-bearing shape present in this score’s pitch columns.</p>
+<div id="aa0c2408" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.208347Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.208210Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.213708Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.212947Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="at">@runtime_checkable</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> OctaveBearingPitch(Protocol):</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">@property</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> octave(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">int</span>: ...</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>pitch_fields <span class="op">=</span> events.get_fields_satisfying(OctaveBearingPitch)</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>pitch_discovery <span class="op">=</span> [</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"column"</span>: field.name, <span class="st">"field type"</span>: <span class="bu">type</span>(field).<span class="va">__name__</span>} <span class="cf">for</span> field <span class="kw">in</span> pitch_fields</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>pitch_discovery</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>[{'column': 'midi', 'field type': 'EnharmonicPitchField'},
+ {'column': 'specific_pitch', 'field type': 'SpecificPitchField'}]</code></pre>
+</div>
+</div>
+<p>Exactly the <code>midi</code> and <code>specific_pitch</code> views satisfy this pitch shape; the output names their types <code>EnharmonicPitchField</code> and <code>SpecificPitchField</code>. The next tutorial introduces both field types and the library’s <code>GenericPitchLike</code> root Protocol for queries across several formats.</p>
+</section>
+<section id="metadata-survives-parquet" class="level2">
+<h2 class="anchored" data-anchor-id="metadata-survives-parquet">Metadata survives Parquet</h2>
+<p>A semantic Field writes its identity, domain, unit and number type into Arrow column metadata as one <code>timetoalign</code> JSON blob, so Parquet can preserve the nested values and enough schema information for <code>from_table()</code> to reconstruct typed scalars without the original loader. One blob rather than several loose keys means there is a single place where a column’s declared number type is recorded.</p>
+<div id="1e028924" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:54.215333Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:54.215150Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:54.228461Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:54.227876Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>semantic_array <span class="op">=</span> start_field.to_pyarrow()</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>semantic_schema <span class="op">=</span> start_field.to_field()</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>parquet_schema <span class="op">=</span> pa.schema([semantic_schema])</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>parquet_table <span class="op">=</span> pa.Table.from_arrays([semantic_array], schema<span class="op">=</span>parquet_schema)</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> TemporaryDirectory() <span class="im">as</span> directory:</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    parquet_path <span class="op">=</span> Path(directory) <span class="op">/</span> <span class="st">"semantic-start.parquet"</span></span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>    pq.write_table(parquet_table, parquet_path)</span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>    restored_table <span class="op">=</span> pq.read_table(parquet_path)</span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>restored_start <span class="op">=</span> CoordinateField.from_table(restored_table)</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>restored_scalar <span class="op">=</span> restored_start[<span class="dv">1</span>]</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>restored_metadata <span class="op">=</span> restored_table.schema.field(<span class="st">"start"</span>).metadata</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>round_trip <span class="op">=</span> {</span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"column metadata"</span>: restored_metadata,</span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"field type"</span>: <span class="bu">type</span>(restored_start).<span class="va">__name__</span>,</span>
+<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"scalar type"</span>: <span class="bu">type</span>(restored_scalar).<span class="va">__name__</span>,</span>
+<span id="cb25-18"><a href="#cb25-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"typed value"</span>: restored_scalar,</span>
+<span id="cb25-19"><a href="#cb25-19" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same value and unit"</span>: restored_scalar <span class="op">==</span> expected_start,</span>
+<span id="cb25-20"><a href="#cb25-20" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb25-21"><a href="#cb25-21" aria-hidden="true" tabindex="-1"></a>round_trip</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>{'column metadata': {b'timetoalign': b'{"domain": "logical", "field_type": "CoordinateField", "number_type": "fraction", "unit": "quarters", "version": 1}'},
+ 'field type': 'CoordinateField',
+ 'scalar type': 'Coordinate',
+ 'typed value': Coordinate(Fraction(1, 2), quarters),
+ 'same value and unit': True}</code></pre>
+</div>
+</div>
+<p><code>to_pyarrow()</code> supplied the nested data and <code>to_field()</code> supplied its semantic metadata. After the Parquet round trip, <code>from_table()</code> rebuilds a <code>CoordinateField</code> whose indexed value is still the exact half-quarter <code>Coordinate</code> seen earlier.</p>
+</section>
+<section id="what-you-learned" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-learned">What you learned</h2>
+<ul>
+<li>You can explain how Arrow’s columnar storage, nested schemas, and metadata make the library big-data-ready.</li>
+<li>You can distinguish faithful raw columns, afforded semantic views, and indexed scalars.</li>
+<li>You can explain the separate jobs of a Protocol, Scalar, and Field.</li>
+<li>You can construct raw numeric, string, and struct fields by hand.</li>
+<li>You can inspect a real onset’s rational Layer 0 representation.</li>
+<li>You can request coordinate and duration views that retain exact values and units.</li>
+<li>You can promote a source column into a semantic Field yourself.</li>
+<li>You can defer column resolution with a blueprint and <code>source_fields</code>.</li>
+<li>You can attach extracted semantic schemas when building an <code>EventData</code> table from arrays.</li>
+<li>You can discover, cache, and disambiguate semantic fields.</li>
+<li>You can interpret the specific error raised by an ambiguous semantic-field request.</li>
+<li>You can find fields by the shape of their scalars.</li>
+<li>You can round-trip a semantic field through Parquet without losing its type or unit.</li>
+</ul>
+</section>
+<section id="next" class="level2">
+<h2 class="anchored" data-anchor-id="next">Next</h2>
+<p><a href="../tutorials/tut09_pitch_and_harmony.html">Pitch and Harmony across Formats</a></p>
+</section>
+<section id="go-deeper" class="level2">
+<h2 class="anchored" data-anchor-id="go-deeper">Go deeper</h2>
+<p><a href="../howto/how01_loading_data.html">Loading data</a>, <a href="../howto/how01_tabular_loaders.html">tabular loaders</a>, and <a href="../howto/how01_coordinate_math.html">coordinate mathematics</a>.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

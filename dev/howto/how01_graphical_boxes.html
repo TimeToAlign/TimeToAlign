@@ -1,0 +1,1891 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="BoundingBox, Quadrilateral and Box events: shapes in image space and their xywh, SVG and MEI forms, the time path of a page made from its boxes, a page built of accolades with their measures, DmosLoader, MeiFacsimileLoader, an IIIF volume along given paths, and boxes.parquet in a package">
+
+<title>How to Represent Areas of Page Images as Boxes – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../howto.html" aria-current="page"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how01_coordinate_math.html">Timelines, Events &amp; Maps</a></li><li class="breadcrumb-item"><a href="../howto/how01_graphical_boxes.html">How to Represent Areas of Page Images as Boxes</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How-To Guides</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Timelines, Events &amp; Maps</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_coordinate_math.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Do Coordinate Math</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_advanced_cmaps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Use Advanced Conversion Maps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_advanced_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Query Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_manual_timeline_construction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Construct Timelines Manually</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_tabular_loaders.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Tabular Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_graphical_timelines.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Work with Graphical Timelines</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_thoresen_annotation_transfer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Transfer Annotations Between Graphical Analyses</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_graphical_boxes.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">How to Represent Areas of Page Images as Boxes</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_beat_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Build Beat Grids</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_flow_control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode and Play Flow Control</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">TimelineGroups</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how02_supra_piano_roll.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align a Piano Roll (SUPRA)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how02_group_and_bundle_files.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Save and Load Timelines, Groups and Bundles</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">AlignmentBundles</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_create_note_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Create a Note Alignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_beethoven_multimodal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align Multimodal Data (Beethoven)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_loading_vienna_corpus.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_engraved_score_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align an Engraved Score with a Recording and a Drawn Time Axis</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_describe_the_work.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Describe What a Bundle and Its Timelines Stand For</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_match_claims_package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Keep MatchClaims, Projections and Beliefs in a Package</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">In-depth Topics</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_load_anything.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Anything</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#how-to-represent-areas-of-page-images-as-boxes" id="toc-how-to-represent-areas-of-page-images-as-boxes" class="nav-link active" data-scroll-target="#how-to-represent-areas-of-page-images-as-boxes">How to Represent Areas of Page Images as Boxes</a>
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#shapes" id="toc-shapes" class="nav-link" data-scroll-target="#shapes">Shapes</a></li>
+  <li><a href="#the-time-path-of-a-page" id="toc-the-time-path-of-a-page" class="nav-link" data-scroll-target="#the-time-path-of-a-page">The time path of a page</a></li>
+  <li><a href="#a-page-its-accolades-and-their-measures" id="toc-a-page-its-accolades-and-their-measures" class="nav-link" data-scroll-target="#a-page-its-accolades-and-their-measures">A page, its accolades and their measures</a></li>
+  <li><a href="#the-rectangles-of-a-graphical-analysis" id="toc-the-rectangles-of-a-graphical-analysis" class="nav-link" data-scroll-target="#the-rectangles-of-a-graphical-analysis">The rectangles of a graphical analysis</a></li>
+  <li><a href="#a-dmos-page-layout" id="toc-a-dmos-page-layout" class="nav-link" data-scroll-target="#a-dmos-page-layout">A DMOS page layout</a></li>
+  <li><a href="#an-mei-facsimile" id="toc-an-mei-facsimile" class="nav-link" data-scroll-target="#an-mei-facsimile">An MEI facsimile</a></li>
+  <li><a href="#an-iiif-volume" id="toc-an-iiif-volume" class="nav-link" data-scroll-target="#an-iiif-volume">An IIIF volume</a></li>
+  <li><a href="#boxes-in-a-package" id="toc-boxes-in-a-package" class="nav-link" data-scroll-target="#boxes-in-a-package">Boxes in a package</a></li>
+  <li><a href="#next" id="toc-next" class="nav-link" data-scroll-target="#next">Next</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how01_coordinate_math.html">Timelines, Events &amp; Maps</a></li><li class="breadcrumb-item"><a href="../howto/how01_graphical_boxes.html">How to Represent Areas of Page Images as Boxes</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">How to Represent Areas of Page Images as Boxes</h1>
+</div>
+
+<div>
+  <div class="description">
+    BoundingBox, Quadrilateral and Box events: shapes in image space and their xywh, SVG and MEI forms, the time path of a page made from its boxes, a page built of accolades with their measures, DmosLoader, MeiFacsimileLoader, an IIIF volume along given paths, and boxes.parquet in a package
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="how-to-represent-areas-of-page-images-as-boxes" class="level1">
+<h1>How to Represent Areas of Page Images as Boxes</h1>
+<p>A measure on a scanned page, a zone of an MEI facsimile and a rectangle drawn on an analytical diagram are all areas of an image. An image has no time axis of its own: neither its width nor its height is one. It has one only along a <strong>time path</strong>, the line a reader follows through it. On a page of a score the path runs along the first <strong>accolade</strong> (a system, one line of the page) from left to right, then along the second, and so on. A page is therefore built of its accolades, laid end to end, and a volume of its pages. Along one accolade each area is an interval: it starts where the area starts in x, counted from the accolade’s left end, and lasts as long as the area is wide.</p>
+<p>The library holds both views in one event, the <strong>Box</strong>. A Box keeps the area as the source states it, its <strong>shape</strong>, in the image’s own pixels: either a <strong>BoundingBox</strong> (<code>x</code>, <code>y</code>, <code>width</code>, <code>height</code>, the IIIF and Media Fragments <code>xywh</code>) or a <strong>Quadrilateral</strong> (four corners, for the skewed measures of a scan). Its <code>start</code> and <code>duration</code> are the interval on the timeline. The two always agree, and the library refuses a Box in which they do not.</p>
+<p>This guide builds shapes and writes them in the forms other formats use, makes the time path of a page from the areas drawn on it, builds the page from its accolades and puts Boxes on them, shows the rectangles of a graphical analysis as Boxes on its image crops, reads pages from a DMOS page layout and from an MEI facsimile, lays the pages of an IIIF volume along their paths, and writes a bundle holding Boxes as a package and reads it back.</p>
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<p>Install the library with <code>pip install timetoalign</code>. Every source file this guide reads, except the annotation table of the graphical analysis, is written by the guide into a temporary directory. A timeline’s Boxes come back as the events of any type do: <code>get_events(event_type="Box")</code> selects them and <code>get_field(Box)</code> reads them as <code>Box</code> objects, each with its ID, interval and shape. The helpers: <code>box_table</code> shows them one per row with the x extent of each shape beside the interval, <code>segment_table</code> lists the timelines a page or a volume is built of, <code>refusal</code> runs a call the library refuses and prints its message, <code>write</code> writes a source file into the temporary directory, and <code>show</code> prints one key of a manifest file.</p>
+<div id="c80938dc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:02.525921Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:02.525722Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.650666Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.649770Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoshare <span class="im">import</span> dumps, loads</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    AlignmentBundle,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    BoundingBox,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    Box,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    ContinuousLogicalTimeline,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    DiscreteGraphicalTimeline,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    DmosLoader,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    IIIFManifestLoader,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    MeiFacsimileLoader,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    Quadrilateral,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.graphical <span class="im">import</span> TimeAxisPath</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> SegmentLine</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>FILES <span class="op">=</span> Path(tempfile.mkdtemp())</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> box_table(timeline):</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""One row per Box: its interval on the timeline and its shape's x extent."""</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> pd.DataFrame(</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>        [</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>            {</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>                <span class="st">"id"</span>: box.<span class="bu">id</span>,</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>                <span class="st">"start"</span>: box.start.value,</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>                <span class="st">"duration"</span>: box.duration.value,</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>                <span class="st">"shape"</span>: <span class="bu">type</span>(box.shape).<span class="va">__name__</span>,</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>                <span class="st">"x_min"</span>: box.shape.x_min.value,</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>                <span class="st">"x_max"</span>: box.shape.x_max.value,</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>            }</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> box <span class="kw">in</span> timeline.get_events(event_type<span class="op">=</span><span class="st">"Box"</span>).get_field(Box)</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> segment_table(line):</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""One row per timeline a page or a volume is built of, in reading order."""</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> pd.DataFrame(</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>        [</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>            {</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>                <span class="st">"id"</span>: child_id,</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>                <span class="st">"name"</span>: line.get_child(child_id).name,</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>                <span class="st">"offset"</span>: line.get_child_offset(child_id).value,</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>                <span class="st">"length"</span>: line.get_child(child_id).length.value,</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>            }</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> child_id <span class="kw">in</span> line.list_children()</span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> write(name, text):</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Write a source file into the temporary directory."""</span></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    (FILES <span class="op">/</span> name).write_text(text, encoding<span class="op">=</span><span class="st">"utf-8"</span>)</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> refusal(call):</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Run a call the library refuses and print its message."""</span></span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>        call()</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> error:</span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(error)</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> show(manifest_path, key):</span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Print one key of a manifest file as canonical YAML."""</span></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(dumps({key: loads(manifest_path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>))[key]}), end<span class="op">=</span><span class="st">""</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="shapes" class="level2">
+<h2 class="anchored" data-anchor-id="shapes">Shapes</h2>
+<p>A shape is an area of an image in <strong>image space</strong>: the origin is the image’s top-left corner, x runs right and y down, and every number is in one unit and one number type. On <code>pixels</code> the numbers are integers.</p>
+<p>A <code>BoundingBox</code> is built from its top-left corner and its extent with <code>from_xywh()</code>. This one is a rectangle of the graphical analysis used below: x 385, y 46, 139 pixels wide, 20 high.</p>
+<div id="f3d26960" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.652355Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.652058Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.657056Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.656460Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>rect <span class="op">=</span> BoundingBox.from_xywh(<span class="dv">385</span>, <span class="dv">46</span>, <span class="dv">139</span>, <span class="dv">20</span>, unit<span class="op">=</span><span class="st">"pixels"</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>rect</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>BoundingBox(x=Coordinate(385, pixels), y=Coordinate(46, pixels), width=Duration(139, pixels), height=Duration(20, pixels))</code></pre>
+</div>
+</div>
+<p>A shape writes itself in the forms other formats use: its dict form (as a manifest holds it), a Media Fragments and IIIF selector, the <code>points</code> of an SVG polygon (corners in the order top-left, top-right, bottom-right, bottom-left), and the attributes of an MEI <code>zone</code>, whose <code>lrx</code> and <code>lry</code> are the lower-right corner (<code>x + width</code>, <code>y + height</code>).</p>
+<div id="b2b4b9a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.658535Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.658399Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.661972Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.661439Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"dict form"</span>: rect.to_dict(),</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"media fragment"</span>: rect.as_media_fragment(),</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"SVG points"</span>: rect.as_svg_points(),</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MEI zone"</span>: rect.as_mei_zone(),</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>{'dict form': {'x': 385, 'y': 46, 'width': 139, 'height': 20},
+ 'media fragment': 'xywh=385,46,139,20',
+ 'SVG points': '385,46 524,46 524,66 385,66',
+ 'MEI zone': {'ulx': '385', 'uly': '46', 'lrx': '524', 'lry': '66'}}</code></pre>
+</div>
+</div>
+<p>Each form reads back into the same box: <code>from_media_fragment()</code> reads the selector, <code>from_corners()</code> the corners an MEI zone states.</p>
+<div id="dcf04cc0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.663390Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.663252Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.667197Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.666446Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    BoundingBox.from_media_fragment(<span class="st">"xywh=385,46,139,20"</span>, unit<span class="op">=</span><span class="st">"pixels"</span>) <span class="op">==</span> rect,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    BoundingBox.from_corners(<span class="dv">385</span>, <span class="dv">46</span>, <span class="dv">524</span>, <span class="dv">66</span>, unit<span class="op">=</span><span class="st">"pixels"</span>) <span class="op">==</span> rect,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>(True, True)</code></pre>
+</div>
+</div>
+<p>A <code>Quadrilateral</code> holds four corners, so it can follow a measure whose sides are not upright. <code>from_points()</code> takes the points in any order the source writes them, with <code>order=</code> naming the corner each one is; the optical music recognition tool DMOS writes a measure top-left, top-right, bottom-left, bottom-right. These are the corners of the first measure of the first system on page 2 of a printed score in Gallica (<code>ark:/12148/bpt6k11620688</code>), as DMOS states them; measure 2 follows it on that system, and measure 3 is the first of the second system. The quadrilateral keeps the corners in the canonical order.</p>
+<div id="2cc2ea2a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.668641Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.668501Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.673890Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.673103Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>DMOS_MEASURE_ORDER <span class="op">=</span> (<span class="st">"top_left"</span>, <span class="st">"top_right"</span>, <span class="st">"bottom_left"</span>, <span class="st">"bottom_right"</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>MEASURE_1 <span class="op">=</span> [[<span class="dv">1221</span>, <span class="dv">1589</span>], [<span class="dv">2151</span>, <span class="dv">1589</span>], [<span class="dv">1221</span>, <span class="dv">2266</span>], [<span class="dv">2161</span>, <span class="dv">2266</span>]]</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>MEASURE_2 <span class="op">=</span> [[<span class="dv">2151</span>, <span class="dv">1589</span>], [<span class="dv">2766</span>, <span class="dv">1589</span>], [<span class="dv">2161</span>, <span class="dv">2266</span>], [<span class="dv">2775</span>, <span class="dv">2266</span>]]</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>MEASURE_3 <span class="op">=</span> [[<span class="dv">971</span>, <span class="dv">2493</span>], [<span class="dv">1935</span>, <span class="dv">2493</span>], [<span class="dv">971</span>, <span class="dv">3192</span>], [<span class="dv">1945</span>, <span class="dv">3192</span>]]</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>measure_1, measure_2, measure_3 <span class="op">=</span> (</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    Quadrilateral.from_points(corners, order<span class="op">=</span>DMOS_MEASURE_ORDER, unit<span class="op">=</span><span class="st">"pixels"</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> corners <span class="kw">in</span> (MEASURE_1, MEASURE_2, MEASURE_3)</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>measure_1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>Quadrilateral(top_left=(1221, 1589), top_right=(2151, 1589), bottom_right=(2161, 2266), bottom_left=(1221, 2266), unit=pixels)</code></pre>
+</div>
+</div>
+<p>Its top edge is 930 pixels long and its bottom edge 940: the scan is slightly skewed. The quadrilateral’s bounding box is the smallest upright box holding it, and its MEI zone carries both, the box as <code>ulx</code> to <code>lry</code> and the corners as <code>points</code>.</p>
+<div id="dee8f225" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.675357Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.675217Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.678429Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.677909Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>measure_1.bounding_box</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>BoundingBox(x=Coordinate(1221, pixels), y=Coordinate(1589, pixels), width=Duration(940, pixels), height=Duration(677, pixels))</code></pre>
+</div>
+</div>
+<div id="5e2c63a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.679938Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.679808Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.683121Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.682596Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>{<span class="st">"SVG points"</span>: measure_1.as_svg_points(), <span class="st">"MEI zone"</span>: measure_1.as_mei_zone()}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>{'SVG points': '1221,1589 2151,1589 2161,2266 1221,2266',
+ 'MEI zone': {'ulx': '1221',
+  'uly': '1589',
+  'lrx': '2161',
+  'lry': '2266',
+  'points': '1221,1589 2151,1589 2161,2266 1221,2266'}}</code></pre>
+</div>
+</div>
+<p>SVG and MEI <code>points</code> may start at any corner and run in either direction. <code>from_svg_points()</code> reads such a list and brings it into the canonical order; here the list starts at the bottom-right corner and runs anticlockwise.</p>
+<div id="21d569c4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.684644Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.684495Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.687902Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.687312Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>Quadrilateral.from_svg_points(</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"2161,2266 2151,1589 1221,1589 1221,2266"</span>, unit<span class="op">=</span><span class="st">"pixels"</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>) <span class="op">==</span> (measure_1)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>A shape’s numbers are never rounded. A whole number given as a float is taken (<code>385.0</code> is 385); a pixel position of 385.5 cannot be held on an integer axis and is refused.</p>
+<div id="97003647" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.689146Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.689002Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.692454Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.691713Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>BoundingBox.from_xywh(<span class="fl">385.0</span>, <span class="dv">46</span>, <span class="dv">139</span>, <span class="dv">20</span>, unit<span class="op">=</span><span class="st">"pixels"</span>) <span class="op">==</span> rect</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div id="23956f60" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.694030Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.693848Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.696646Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.696017Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>refusal(<span class="kw">lambda</span>: BoundingBox.from_xywh(<span class="fl">385.5</span>, <span class="dv">46</span>, <span class="dv">139</span>, <span class="dv">20</span>, unit<span class="op">=</span><span class="st">"pixels"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>A shape's x is 385.5, which pixels as int cannot hold exactly: geometry is never rounded.</code></pre>
+</div>
+</div>
+</section>
+<section id="the-time-path-of-a-page" class="level2">
+<h2 class="anchored" data-anchor-id="the-time-path-of-a-page">The time path of a page</h2>
+<p><strong>No image has a time axis until its path through the image is defined.</strong> A set of boxes makes one: <code>TimeAxisPath.from_boxes()</code> takes the areas of one page in reading order and returns a <code>PiecewisePath</code>, one horizontal piece per accolade.</p>
+<p>DMOS states the systems of the page as areas too (corners top-left, bottom-left, top-right, bottom-right). Each system is one accolade, so <code>accolades=</code> gives every box its own label.</p>
+<div id="f964e559" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.698111Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.697955Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.703035Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.702357Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>PAGE_URL <span class="op">=</span> <span class="st">"https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2"</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>DMOS_SYSTEM_ORDER <span class="op">=</span> (<span class="st">"top_left"</span>, <span class="st">"bottom_left"</span>, <span class="st">"top_right"</span>, <span class="st">"bottom_right"</span>)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>SYSTEM_1 <span class="op">=</span> [[<span class="dv">1221</span>, <span class="dv">1589</span>], [<span class="dv">1221</span>, <span class="dv">2266</span>], [<span class="dv">4097</span>, <span class="dv">1589</span>], [<span class="dv">4101</span>, <span class="dv">2266</span>]]</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>SYSTEM_2 <span class="op">=</span> [[<span class="dv">971</span>, <span class="dv">2493</span>], [<span class="dv">971</span>, <span class="dv">3192</span>], [<span class="dv">4104</span>, <span class="dv">2493</span>], [<span class="dv">4112</span>, <span class="dv">3192</span>]]</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>system_areas <span class="op">=</span> [</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    Quadrilateral.from_points(corners, order<span class="op">=</span>DMOS_SYSTEM_ORDER, unit<span class="op">=</span><span class="st">"pixels"</span>)</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> corners <span class="kw">in</span> (SYSTEM_1, SYSTEM_2)</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> TimeAxisPath.from_boxes(system_areas, accolades<span class="op">=</span>[<span class="dv">1</span>, <span class="dv">2</span>])</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>path.pieces</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>(HorizontalLinePath(x0=1221, x1=4101, y=Fraction(3855, 2), tolerance=Fraction(677, 2)),
+ HorizontalLinePath(x0=971, x1=4112, y=Fraction(5685, 2), tolerance=Fraction(699, 2)))</code></pre>
+</div>
+</div>
+<p>A piece spans its boxes exactly: <code>x0</code> is their least x and <code>x1</code> their greatest, <code>y</code> is the middle of their y extent and <code>tolerance</code> half of it, so the strip <code>y ± tolerance</code> is the accolade’s height. Nothing is rounded: the first system spans y 1589 to 2266, whose middle is 3855/2.</p>
+<p>The path’s length is the sum of its pieces, 2880 + 3141 pixels, and each piece starts on the path where the ones before it end.</p>
+<div id="568c2850" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.704612Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.704475Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.707475Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.706972Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>(path.offsets, path.length)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>((0, 2880), 6021)</code></pre>
+</div>
+</div>
+<p>The path converts between its own coordinate and the image’s (x, y). Coordinate 2880 is the left end of the second accolade, x 971; the point (2151, 1900) lies in the first accolade’s strip, 930 pixels from its left end; a point between the two strips is on no piece.</p>
+<div id="e2c4465a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.709197Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.709048Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.712645Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.711869Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>(path.to_2d(<span class="dv">2880</span>), path.from_2d(<span class="dv">2151</span>, <span class="dv">1900</span>), path.from_2d(<span class="dv">2151</span>, <span class="dv">2400</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>((971, Fraction(5685, 2)), 930, None)</code></pre>
+</div>
+</div>
+<p>Where a source states no accolades, <code>accolades=</code> is left out and <code>from_boxes()</code> finds them: reading on, the left edges of the boxes grow within an accolade and fall back at the start of the next, so a box begins a new accolade when its left edge lies left of the previous box’s by more than half the span of all left edges. Of the three measures, the third falls back from x 2151 to 971 and begins the second piece; each piece spans the measures given, not the whole system.</p>
+<div id="100fb74d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.714179Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.714024Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.717715Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.717100Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>TimeAxisPath.from_boxes([measure_1, measure_2, measure_3]).pieces</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>(HorizontalLinePath(x0=1221, x1=2775, y=Fraction(3855, 2), tolerance=Fraction(677, 2)),
+ HorizontalLinePath(x0=971, x1=1945, y=Fraction(5685, 2), tolerance=Fraction(699, 2)))</code></pre>
+</div>
+</div>
+</section>
+<section id="a-page-its-accolades-and-their-measures" class="level2">
+<h2 class="anchored" data-anchor-id="a-page-its-accolades-and-their-measures">A page, its accolades and their measures</h2>
+<p>The timelines mirror the path. An accolade is a timeline as long as its piece, and it says which area of which image it stands for in its <code>meta</code>: <code>meta["box"]</code> is that area as a shape’s dict form, in the image’s space, and <code>meta["image"]</code> names the image. Identifiers are given at creation: <code>uid=</code> for a timeline, <code>id=</code> for a Box.</p>
+<p><code>Box.from_shape()</code> makes the Box of a shape on a timeline. Its <code>origin</code> is the x at which the timeline stands in the image, here the accolade’s <code>x_min</code>. The Box’s interval follows from the shape:</p>
+<ul>
+<li><code>start</code> = the shape’s <code>x_min</code> − the timeline’s origin,</li>
+<li><code>duration</code> = the shape’s <code>x_max</code> − <code>x_min</code>.</li>
+</ul>
+<div id="e9627649" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.719217Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.719069Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.755998Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.755298Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>system_1, system_2 <span class="op">=</span> (</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    DiscreteGraphicalTimeline(</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>        length<span class="op">=</span>(area.x_max <span class="op">-</span> area.x_min).value,</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>        unit<span class="op">=</span><span class="st">"pixels"</span>,</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>        uid<span class="op">=</span><span class="ss">f"system_</span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="ss">f"System </span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>        meta<span class="op">=</span>{<span class="st">"box"</span>: area.to_dict(), <span class="st">"image"</span>: PAGE_URL},</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> number, area <span class="kw">in</span> <span class="bu">enumerate</span>(system_areas, start<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>system_1.add_events(</span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>    [</span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>        Box.from_shape(measure_1, origin<span class="op">=</span>system_areas[<span class="dv">0</span>].x_min, <span class="bu">id</span><span class="op">=</span><span class="st">"m1"</span>),</span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>        Box.from_shape(measure_2, origin<span class="op">=</span>system_areas[<span class="dv">0</span>].x_min, <span class="bu">id</span><span class="op">=</span><span class="st">"m2"</span>),</span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a>system_2.add_events([Box.from_shape(measure_3, origin<span class="op">=</span>system_areas[<span class="dv">1</span>].x_min, <span class="bu">id</span><span class="op">=</span><span class="st">"m3"</span>)])</span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a>box_table(system_1)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">shape</th>
+<th data-quarto-table-cell-role="th">x_min</th>
+<th data-quarto-table-cell-role="th">x_max</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>m1</td>
+<td>0</td>
+<td>940</td>
+<td>Quadrilateral</td>
+<td>1221</td>
+<td>2161</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>m2</td>
+<td>930</td>
+<td>624</td>
+<td>Quadrilateral</td>
+<td>2151</td>
+<td>2775</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>Measure 1 starts at x 1221 of the image and the accolade stands at x 1221, so the measure starts at 0 on the accolade; measure 2 starts at 2151, which is 930 on the accolade.</p>
+<p>The page is the segment line of its accolades, in reading order. It names its image and states no <code>meta["box"]</code>: its axis is the accolades laid end to end, which is no area of the image.</p>
+<div id="aee8de27" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.757630Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.757485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.767797Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.767165Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>page <span class="op">=</span> SegmentLine[DiscreteGraphicalTimeline](</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span><span class="dv">0</span>, unit<span class="op">=</span><span class="st">"pixels"</span>, uid<span class="op">=</span><span class="st">"page"</span>, name<span class="op">=</span><span class="st">"Page 2"</span>, meta<span class="op">=</span>{<span class="st">"image"</span>: PAGE_URL}</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>page.append_segment(system_1, name<span class="op">=</span><span class="st">"System 1"</span>)</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>page.append_segment(system_2, name<span class="op">=</span><span class="st">"System 2"</span>)</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>page</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">SegmentLine[DiscreteGraphicalTimeline][page] (3 events, 2 children)
+                      0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 6021 pixels
+  ├─ System 1         0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶                   2880 (2 events)
+  └─ System 2      2880                 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 6021 (1 events)</pre>
+</div>
+</div>
+<p>The page is as long as the path, 6021 pixels, and its accolades start at the path’s offsets. A coordinate on the page is therefore a position along the path, not an x of the image: measure 3 starts at x 971 of the image, at 0 on its accolade, and at 2880 on the page.</p>
+<div id="dad8960e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.769394Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.769249Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.778462Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.777821Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(page.get_timestamp_for(<span class="st">"m3"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TimeIntervalStamp [2880, 3854) pixels
+  page  2880  3854 pixels
+  system_2  0  974 pixels</code></pre>
+</div>
+</div>
+<p>A Box whose interval contradicts its shape is refused, on every path that adds events. Forgetting the origin is the common case: the Box below starts at 1221, the shape’s x in the image, but on an accolade standing at x 1221 of its image the shape starts at 0.</p>
+<div id="077ddb11" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.779913Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.779772Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.790074Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.789489Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>refusal(<span class="kw">lambda</span>: system_1.add_events([Box.from_shape(measure_1, <span class="bu">id</span><span class="op">=</span><span class="st">"m1_again"</span>)]))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Box 'm1_again' starts at 1221 on timeline 'system_1', but its shape starts at x 1221 and the timeline stands at x 1221 of its image (meta["box"]): its start is 0.</code></pre>
+</div>
+</div>
+</section>
+<section id="the-rectangles-of-a-graphical-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="the-rectangles-of-a-graphical-analysis">The rectangles of a graphical analysis</h2>
+<p><a href="../howto/how01_thoresen_annotation_transfer.html">How to Transfer Annotations Between Graphical Analyses</a> places eleven rectangles, drawn on five image crops of an analytical diagram, on a segment line of those crops. The diagram is read along one horizontal line per crop, one crop after the other, so the crops are to the analysis what accolades are to a page. Each rectangle is stated in its image’s pixels, and each crop starts a few pixels right of its image’s left edge. As Boxes, the rectangles keep their shapes and each crop states where it stands in its image.</p>
+<div id="22cbb608" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.791553Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.791407Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.847107Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.846489Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>DATA_DIR <span class="op">=</span> ensure_data(<span class="st">"thoresen"</span>)</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>annotations <span class="op">=</span> pd.read_csv(DATA_DIR <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Each crop: its image, its left and right x in the image, the image's height</span></span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>CROPS <span class="op">=</span> [</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"thoresen_2010_form-building-patterns_p90-91_page1_1.jpeg"</span>, <span class="dv">8</span>, <span class="dv">874</span>, <span class="dv">264</span>),</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"thoresen_2010_form-building-patterns_p90-91_page1_2.jpeg"</span>, <span class="dv">7</span>, <span class="dv">874</span>, <span class="dv">270</span>),</span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"thoresen_2010_form-building-patterns_p90-91_page1_3.jpeg"</span>, <span class="dv">7</span>, <span class="dv">874</span>, <span class="dv">266</span>),</span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"thoresen_2010_form-building-patterns_p90-91_page1_4.jpeg"</span>, <span class="dv">8</span>, <span class="dv">872</span>, <span class="dv">272</span>),</span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"thoresen_2010_form-building-patterns_p90-91_page2_1.jpeg"</span>, <span class="dv">9</span>, <span class="dv">873</span>, <span class="dv">278</span>),</span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a>analysis <span class="op">=</span> SegmentLine[DiscreteGraphicalTimeline](</span>
+<span id="cb34-14"><a href="#cb34-14" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span><span class="dv">0</span>, unit<span class="op">=</span><span class="st">"pixels"</span>, uid<span class="op">=</span><span class="st">"dgt_2"</span>, name<span class="op">=</span><span class="st">"Thoresen 2010"</span></span>
+<span id="cb34-15"><a href="#cb34-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb34-16"><a href="#cb34-16" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> number, (image, x0, x1, height) <span class="kw">in</span> <span class="bu">enumerate</span>(CROPS, start<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb34-17"><a href="#cb34-17" aria-hidden="true" tabindex="-1"></a>    area <span class="op">=</span> BoundingBox.from_xywh(x0, <span class="dv">0</span>, x1 <span class="op">-</span> x0, height, unit<span class="op">=</span><span class="st">"pixels"</span>)</span>
+<span id="cb34-18"><a href="#cb34-18" aria-hidden="true" tabindex="-1"></a>    crop <span class="op">=</span> DiscreteGraphicalTimeline(</span>
+<span id="cb34-19"><a href="#cb34-19" aria-hidden="true" tabindex="-1"></a>        length<span class="op">=</span>x1 <span class="op">-</span> x0,</span>
+<span id="cb34-20"><a href="#cb34-20" aria-hidden="true" tabindex="-1"></a>        unit<span class="op">=</span><span class="st">"pixels"</span>,</span>
+<span id="cb34-21"><a href="#cb34-21" aria-hidden="true" tabindex="-1"></a>        uid<span class="op">=</span><span class="ss">f"crop_</span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb34-22"><a href="#cb34-22" aria-hidden="true" tabindex="-1"></a>        meta<span class="op">=</span>{<span class="st">"box"</span>: area.to_dict(), <span class="st">"image"</span>: image},</span>
+<span id="cb34-23"><a href="#cb34-23" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb34-24"><a href="#cb34-24" aria-hidden="true" tabindex="-1"></a>    on_crop <span class="op">=</span> annotations[annotations[<span class="st">"image_filename"</span>] <span class="op">==</span> image]</span>
+<span id="cb34-25"><a href="#cb34-25" aria-hidden="true" tabindex="-1"></a>    crop.add_events(</span>
+<span id="cb34-26"><a href="#cb34-26" aria-hidden="true" tabindex="-1"></a>        [</span>
+<span id="cb34-27"><a href="#cb34-27" aria-hidden="true" tabindex="-1"></a>            Box.from_shape(</span>
+<span id="cb34-28"><a href="#cb34-28" aria-hidden="true" tabindex="-1"></a>                BoundingBox.from_xywh(<span class="op">**</span>json.loads(rectangle), unit<span class="op">=</span><span class="st">"pixels"</span>),</span>
+<span id="cb34-29"><a href="#cb34-29" aria-hidden="true" tabindex="-1"></a>                origin<span class="op">=</span>x0,</span>
+<span id="cb34-30"><a href="#cb34-30" aria-hidden="true" tabindex="-1"></a>                <span class="bu">id</span><span class="op">=</span>rectangle_id,</span>
+<span id="cb34-31"><a href="#cb34-31" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb34-32"><a href="#cb34-32" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> rectangle_id, rectangle <span class="kw">in</span> <span class="bu">zip</span>(</span>
+<span id="cb34-33"><a href="#cb34-33" aria-hidden="true" tabindex="-1"></a>                on_crop[<span class="st">"graphical_element_id"</span>], on_crop[<span class="st">"rect_coords_json"</span>]</span>
+<span id="cb34-34"><a href="#cb34-34" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb34-35"><a href="#cb34-35" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb34-36"><a href="#cb34-36" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb34-37"><a href="#cb34-37" aria-hidden="true" tabindex="-1"></a>    analysis.append_segment(crop, name<span class="op">=</span><span class="ss">f"seg_</span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb34-38"><a href="#cb34-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-39"><a href="#cb34-39" aria-hidden="true" tabindex="-1"></a>crop_2 <span class="op">=</span> analysis.get_child(<span class="st">"crop_2"</span>)</span>
+<span id="cb34-40"><a href="#cb34-40" aria-hidden="true" tabindex="-1"></a>crop_2.meta</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>{'box': {'x': 7, 'y': 0, 'width': 867, 'height': 270},
+ 'image': 'thoresen_2010_form-building-patterns_p90-91_page1_2.jpeg'}</code></pre>
+</div>
+</div>
+<p>Crop 2 stands at x 7 of its image. Rectangle <code>rect_h2</code> is the box (385, 46, 139, 20), so on the crop it starts at 385 − 7 = 378 and lasts 139 pixels.</p>
+<div id="7015c4d2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.848627Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.848471Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.857804Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.857233Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>box_table(crop_2)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">shape</th>
+<th data-quarto-table-cell-role="th">x_min</th>
+<th data-quarto-table-cell-role="th">x_max</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>rect_a2</td>
+<td>138</td>
+<td>160</td>
+<td>BoundingBox</td>
+<td>145</td>
+<td>305</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>rect_h2</td>
+<td>378</td>
+<td>139</td>
+<td>BoundingBox</td>
+<td>385</td>
+<td>524</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>On the segment line, crop 2 follows crop 1 (866 pixels), so <code>rect_h2</code> spans 1244 to 1383 there: the same interval the annotation-transfer guide computes, now with the rectangle’s y and height kept beside it.</p>
+<div id="bff310ca" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.859371Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.859231Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.871448Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.870835Z&quot;}}" data-execution_count="21">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(analysis.get_timestamp_for(<span class="st">"rect_h2"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TimeIntervalStamp [1244, 1383) pixels
+  dgt_2  1244  1383 pixels
+  crop_2  378  517 pixels</code></pre>
+</div>
+</div>
+</section>
+<section id="a-dmos-page-layout" class="level2">
+<h2 class="anchored" data-anchor-id="a-dmos-page-layout">A DMOS page layout</h2>
+<p>DMOS writes the layout it recognises on each page as JSON: per page its image (<code>page_url</code>) and its systems, per system its region and its measures, each with its region. Region corners are in the orders seen above. The excerpt below is pages 2 and 3 of the Gallica score, trimmed to the first two systems of page 2 and the first of page 3, to the measures used above and the first measure of page 3, and to the keys the loader reads.</p>
+<div id="c06c5c21" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.873332Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.873136Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.877480Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.876905Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>SCORE_URL <span class="op">=</span> <span class="st">"https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688"</span></span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>SYSTEM_3 <span class="op">=</span> [[<span class="dv">519</span>, <span class="dv">896</span>], [<span class="dv">519</span>, <span class="dv">1647</span>], [<span class="dv">3661</span>, <span class="dv">896</span>], [<span class="dv">3655</span>, <span class="dv">1647</span>]]</span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>MEASURE_4 <span class="op">=</span> [[<span class="dv">519</span>, <span class="dv">896</span>], [<span class="dv">1520</span>, <span class="dv">896</span>], [<span class="dv">519</span>, <span class="dv">1647</span>], [<span class="dv">1522</span>, <span class="dv">1647</span>]]</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>write(</span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"dmos_pages.json"</span>,</span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a>    json.dumps(</span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a>            <span class="st">"score_image_url"</span>: SCORE_URL,</span>
+<span id="cb39-10"><a href="#cb39-10" aria-hidden="true" tabindex="-1"></a>            <span class="st">"pages"</span>: [</span>
+<span id="cb39-11"><a href="#cb39-11" aria-hidden="true" tabindex="-1"></a>                {</span>
+<span id="cb39-12"><a href="#cb39-12" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"page_url"</span>: PAGE_URL,</span>
+<span id="cb39-13"><a href="#cb39-13" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"no_page"</span>: <span class="dv">1</span>,</span>
+<span id="cb39-14"><a href="#cb39-14" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"systems"</span>: [</span>
+<span id="cb39-15"><a href="#cb39-15" aria-hidden="true" tabindex="-1"></a>                        {</span>
+<span id="cb39-16"><a href="#cb39-16" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"id"</span>: <span class="dv">1</span>,</span>
+<span id="cb39-17"><a href="#cb39-17" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"region"</span>: SYSTEM_1,</span>
+<span id="cb39-18"><a href="#cb39-18" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"measures"</span>: [{<span class="st">"region"</span>: MEASURE_1}, {<span class="st">"region"</span>: MEASURE_2}],</span>
+<span id="cb39-19"><a href="#cb39-19" aria-hidden="true" tabindex="-1"></a>                        },</span>
+<span id="cb39-20"><a href="#cb39-20" aria-hidden="true" tabindex="-1"></a>                        {</span>
+<span id="cb39-21"><a href="#cb39-21" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"id"</span>: <span class="dv">2</span>,</span>
+<span id="cb39-22"><a href="#cb39-22" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"region"</span>: SYSTEM_2,</span>
+<span id="cb39-23"><a href="#cb39-23" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"measures"</span>: [{<span class="st">"region"</span>: MEASURE_3}],</span>
+<span id="cb39-24"><a href="#cb39-24" aria-hidden="true" tabindex="-1"></a>                        },</span>
+<span id="cb39-25"><a href="#cb39-25" aria-hidden="true" tabindex="-1"></a>                    ],</span>
+<span id="cb39-26"><a href="#cb39-26" aria-hidden="true" tabindex="-1"></a>                },</span>
+<span id="cb39-27"><a href="#cb39-27" aria-hidden="true" tabindex="-1"></a>                {</span>
+<span id="cb39-28"><a href="#cb39-28" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"page_url"</span>: <span class="ss">f"</span><span class="sc">{</span>SCORE_URL<span class="sc">}</span><span class="ss">/f3"</span>,</span>
+<span id="cb39-29"><a href="#cb39-29" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"no_page"</span>: <span class="dv">2</span>,</span>
+<span id="cb39-30"><a href="#cb39-30" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"systems"</span>: [</span>
+<span id="cb39-31"><a href="#cb39-31" aria-hidden="true" tabindex="-1"></a>                        {</span>
+<span id="cb39-32"><a href="#cb39-32" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"id"</span>: <span class="dv">1</span>,</span>
+<span id="cb39-33"><a href="#cb39-33" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"region"</span>: SYSTEM_3,</span>
+<span id="cb39-34"><a href="#cb39-34" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"measures"</span>: [{<span class="st">"region"</span>: MEASURE_4}],</span>
+<span id="cb39-35"><a href="#cb39-35" aria-hidden="true" tabindex="-1"></a>                        }</span>
+<span id="cb39-36"><a href="#cb39-36" aria-hidden="true" tabindex="-1"></a>                    ],</span>
+<span id="cb39-37"><a href="#cb39-37" aria-hidden="true" tabindex="-1"></a>                },</span>
+<span id="cb39-38"><a href="#cb39-38" aria-hidden="true" tabindex="-1"></a>            ],</span>
+<span id="cb39-39"><a href="#cb39-39" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb39-40"><a href="#cb39-40" aria-hidden="true" tabindex="-1"></a>        indent<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb39-41"><a href="#cb39-41" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb39-42"><a href="#cb39-42" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>DMOS gives each page its time path: the systems, read one after the other. <code>create_paths()</code> returns it per page number (<code>no_page</code>), every stated system one piece over the x extent of its region. Page 1 has the path made by hand above.</p>
+<div id="33e7d612" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.879128Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.878983Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.885155Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.884406Z&quot;}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>dmos <span class="op">=</span> DmosLoader.from_file(FILES <span class="op">/</span> <span class="st">"dmos_pages.json"</span>)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>dmos_paths <span class="op">=</span> dmos.create_paths()</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>(dmos_paths[<span class="dv">1</span>] <span class="op">==</span> path, dmos_paths[<span class="dv">2</span>].pieces)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<pre><code>(True,
+ (HorizontalLinePath(x0=519, x1=3661, y=Fraction(2543, 2), tolerance=Fraction(751, 2)),))</code></pre>
+</div>
+</div>
+<p><code>create_timeline()</code> reads the whole file as one volume: a segment line of its pages, each page a segment line of its systems’ accolades, each measure a Box of its system’s accolade with its quadrilateral. The identifiers are given in the same call. <code>uid</code> names the volume; <code>page_ids</code>, <code>accolade_ids</code> and <code>box_ids</code> each name every element of their kind, as a sequence of IDs in document order or as a template filled from <code>page</code> (the page’s position, from 1), <code>accolade</code> (its position on its page), <code>box</code> (its position in its accolade) and <code>n</code> (the running count). DMOS states no measure numbers, so <code>box_ids="m{n}"</code> numbers the measures through the score.</p>
+<div id="c677af47" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.886690Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.886538Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.926110Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.925348Z&quot;}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>scan <span class="op">=</span> dmos.create_timeline(</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="st">"scan"</span>,</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"Gallica bpt6k11620688"</span>,</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>    page_ids<span class="op">=</span><span class="st">"page_</span><span class="sc">{page}</span><span class="st">"</span>,</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>    accolade_ids<span class="op">=</span><span class="st">"p</span><span class="sc">{page}</span><span class="st">_s</span><span class="sc">{accolade}</span><span class="st">"</span>,</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    box_ids<span class="op">=</span><span class="st">"m</span><span class="sc">{n}</span><span class="st">"</span>,</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>scan</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">SegmentLine[SegmentLine[DiscreteGraphicalTimeline]][scan] (2 children)
+                      0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 9163 pixels
+  ├─ 1                0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶             6021
+  │  ├─ 1             0 ∶∶∶∶∶∶∶∶∶∶                         2880 (2 events)
+  │  └─ 2          2880           ∶∶∶∶∶∶∶∶∶∶∶∶             6021 (1 events)
+  └─ 2             6021                       ∶∶∶∶∶∶∶∶∶∶∶∶ 9163
+     └─ 1          6021                       ∶∶∶∶∶∶∶∶∶∶∶∶ 9163 (1 events)</pre>
+</div>
+</div>
+<p>Pages are named by their <code>no_page</code>, accolades by their DMOS system ID. The volume and the pages name their images and state no area; each accolade states its system’s region.</p>
+<div id="cf019088" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.927719Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.927577Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.931195Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.930627Z&quot;}}" data-execution_count="25">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>dmos_page <span class="op">=</span> scan.get_child(<span class="st">"page_1"</span>)</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"volume"</span>: scan.meta,</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"page"</span>: dmos_page.meta,</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"accolade"</span>: dmos_page.get_child(<span class="st">"p1_s2"</span>).meta,</span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<pre><code>{'volume': {'image': 'https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688'},
+ 'page': {'image': 'https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2'},
+ 'accolade': {'box': {'top_left': {'x': 971, 'y': 2493},
+   'top_right': {'x': 4104, 'y': 2493},
+   'bottom_right': {'x': 4112, 'y': 3192},
+   'bottom_left': {'x': 971, 'y': 3192}},
+  'image': 'https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2'}}</code></pre>
+</div>
+</div>
+<div id="dd91902d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.932850Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.932695Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.939111Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.938484Z&quot;}}" data-execution_count="26">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>segment_table(dmos_page)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">name</th>
+<th data-quarto-table-cell-role="th">offset</th>
+<th data-quarto-table-cell-role="th">length</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>p1_s1</td>
+<td>1</td>
+<td>0</td>
+<td>2880</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>p1_s2</td>
+<td>2</td>
+<td>2880</td>
+<td>3141</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div id="1decf2fd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.940647Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.940485Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.950307Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.949459Z&quot;}}" data-execution_count="27">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>box_table(dmos_page.get_child(<span class="st">"p1_s1"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">shape</th>
+<th data-quarto-table-cell-role="th">x_min</th>
+<th data-quarto-table-cell-role="th">x_max</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>m1</td>
+<td>0</td>
+<td>940</td>
+<td>Quadrilateral</td>
+<td>1221</td>
+<td>2161</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>m2</td>
+<td>930</td>
+<td>624</td>
+<td>Quadrilateral</td>
+<td>2151</td>
+<td>2775</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>The loader builds what the previous section built by hand: the same lengths and offsets and the same measure shapes.</p>
+<div id="af3e9627" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.951908Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.951760Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.963343Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.962641Z&quot;}}" data-execution_count="28">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>system_events <span class="op">=</span> dmos_page.get_child(<span class="st">"p1_s1"</span>).get_events(event_type<span class="op">=</span><span class="st">"Box"</span>)</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>    segment_table(dmos_page)[[<span class="st">"offset"</span>, <span class="st">"length"</span>]].equals(</span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>        segment_table(page)[[<span class="st">"offset"</span>, <span class="st">"length"</span>]]</span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>    [box.shape <span class="cf">for</span> box <span class="kw">in</span> system_events.get_field(Box)]</span>
+<span id="cb47-7"><a href="#cb47-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">==</span> [box.shape <span class="cf">for</span> box <span class="kw">in</span> system_1.get_events(event_type<span class="op">=</span><span class="st">"Box"</span>).get_field(Box)],</span>
+<span id="cb47-8"><a href="#cb47-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<pre><code>(True, True)</code></pre>
+</div>
+</div>
+<p>On the volume, measure 4, the first of the second page, starts where the first page ends, at 6021.</p>
+<div id="1116c71a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.964763Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.964590Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:04.979628Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:04.978949Z&quot;}}" data-execution_count="29">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(scan.get_timestamp_for(<span class="st">"m4"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TimeIntervalStamp [6021, 7024) pixels
+  scan  6021  7024 pixels
+  page_2  0  1003 pixels
+  p2_s1  0  1003 pixels</code></pre>
+</div>
+</div>
+<p><code>create_timelines()</code> returns one root timeline per page instead. Without the identity parameters, timelines are minted <code>dgt_N</code> and Boxes <code>box_N</code> per accolade.</p>
+<div id="60bd03ff" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:04.981271Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:04.981074Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.023738Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.023105Z&quot;}}" data-execution_count="30">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>    root.<span class="bu">id</span>: {</span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>        accolade_id: [</span>
+<span id="cb51-4"><a href="#cb51-4" aria-hidden="true" tabindex="-1"></a>            box.<span class="bu">id</span></span>
+<span id="cb51-5"><a href="#cb51-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> box <span class="kw">in</span> root.get_child(accolade_id)</span>
+<span id="cb51-6"><a href="#cb51-6" aria-hidden="true" tabindex="-1"></a>            .get_events(event_type<span class="op">=</span><span class="st">"Box"</span>)</span>
+<span id="cb51-7"><a href="#cb51-7" aria-hidden="true" tabindex="-1"></a>            .get_field(Box)</span>
+<span id="cb51-8"><a href="#cb51-8" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb51-9"><a href="#cb51-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> accolade_id <span class="kw">in</span> root.list_children()</span>
+<span id="cb51-10"><a href="#cb51-10" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb51-11"><a href="#cb51-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> root <span class="kw">in</span> DmosLoader.from_file(FILES <span class="op">/</span> <span class="st">"dmos_pages.json"</span>).create_timelines()</span>
+<span id="cb51-12"><a href="#cb51-12" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="30">
+<pre><code>{'dgt_1': {'dgt_2': ['box_1', 'box_2'], 'dgt_3': ['box_1']},
+ 'dgt_4': {'dgt_5': ['box_1']}}</code></pre>
+</div>
+</div>
+</section>
+<section id="an-mei-facsimile" class="level2">
+<h2 class="anchored" data-anchor-id="an-mei-facsimile">An MEI facsimile</h2>
+<p>An MEI <code>facsimile</code> holds one <code>surface</code> per page image, with a <code>graphic</code> naming the image and one <code>zone</code> per area; elements of the encoding point to their zones with <code>@facs</code>. The first surface below is a page of a chorale of the <em>Anhaltisches Choralbuch digital</em> edition (CC BY 4.0) with its nine measure zones, and two measures pointing to the first two. The second surface is page 2 of the Gallica score, holding measure 1 as the zone <code>as_mei_zone()</code> wrote above, its corners as <code>points</code>.</p>
+<div id="c753c803" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.025287Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.025148Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.029790Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.029160Z&quot;}}" data-execution_count="31">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>SURFACE <span class="op">=</span> <span class="st">"surface_01M7DF2D8Q8FYGETPJXXMG03QP"</span></span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>ZONES <span class="op">=</span> [</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8RNCKHKF6SMCWB94Z5"</span>, <span class="dv">490</span>, <span class="dv">344</span>, <span class="dv">973</span>, <span class="dv">877</span>),</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8R00HP8JYGXRTE13G3"</span>, <span class="dv">944</span>, <span class="dv">368</span>, <span class="dv">1523</span>, <span class="dv">864</span>),</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8R4E9KQCXCPC9RV59F"</span>, <span class="dv">1481</span>, <span class="dv">388</span>, <span class="dv">2082</span>, <span class="dv">912</span>),</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8S9S18YJ6CYJVF4QCJ"</span>, <span class="dv">2034</span>, <span class="dv">402</span>, <span class="dv">2694</span>, <span class="dv">884</span>),</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8SY6CN7SFAZFPE58FT"</span>, <span class="dv">2669</span>, <span class="dv">389</span>, <span class="dv">3296</span>, <span class="dv">916</span>),</span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8SF9X38YEGDA0JCD04"</span>, <span class="dv">498</span>, <span class="dv">858</span>, <span class="dv">1496</span>, <span class="dv">1337</span>),</span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8S1F9S83VHS68E6N7W"</span>, <span class="dv">1465</span>, <span class="dv">885</span>, <span class="dv">2146</span>, <span class="dv">1353</span>),</span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8TV0F9DCHY6QNWYTDX"</span>, <span class="dv">2110</span>, <span class="dv">886</span>, <span class="dv">2748</span>, <span class="dv">1357</span>),</span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"zone_01M7DF2D8TSXCHCSA07C235VTV"</span>, <span class="dv">2704</span>, <span class="dv">886</span>, <span class="dv">3302</span>, <span class="dv">1387</span>),</span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a>chorale_zones <span class="op">=</span> <span class="st">"</span><span class="ch">\n</span><span class="st">        "</span>.join(</span>
+<span id="cb53-14"><a href="#cb53-14" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f'&lt;zone xml:id="</span><span class="sc">{</span>zone_id<span class="sc">}</span><span class="ss">" type="measure" ulx="</span><span class="sc">{</span>ulx<span class="sc">}</span><span class="ss">" uly="</span><span class="sc">{</span>uly<span class="sc">}</span><span class="ss">" '</span></span>
+<span id="cb53-15"><a href="#cb53-15" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f'lrx="</span><span class="sc">{</span>lrx<span class="sc">}</span><span class="ss">" lry="</span><span class="sc">{</span>lry<span class="sc">}</span><span class="ss">"/&gt;'</span></span>
+<span id="cb53-16"><a href="#cb53-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> zone_id, ulx, uly, lrx, lry <span class="kw">in</span> ZONES</span>
+<span id="cb53-17"><a href="#cb53-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb53-18"><a href="#cb53-18" aria-hidden="true" tabindex="-1"></a>zone_attributes <span class="op">=</span> <span class="st">" "</span>.join(</span>
+<span id="cb53-19"><a href="#cb53-19" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f'</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">="</span><span class="sc">{</span>value<span class="sc">}</span><span class="ss">"'</span> <span class="cf">for</span> name, value <span class="kw">in</span> measure_1.as_mei_zone().items()</span>
+<span id="cb53-20"><a href="#cb53-20" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb53-21"><a href="#cb53-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-22"><a href="#cb53-22" aria-hidden="true" tabindex="-1"></a>write(</span>
+<span id="cb53-23"><a href="#cb53-23" aria-hidden="true" tabindex="-1"></a>    <span class="st">"facsimile.mei"</span>,</span>
+<span id="cb53-24"><a href="#cb53-24" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"""&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span></span>
+<span id="cb53-25"><a href="#cb53-25" aria-hidden="true" tabindex="-1"></a><span class="ss">&lt;mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1"&gt;</span></span>
+<span id="cb53-26"><a href="#cb53-26" aria-hidden="true" tabindex="-1"></a><span class="ss">  &lt;meiHead&gt;&lt;fileDesc&gt;&lt;titleStmt&gt;&lt;title&gt;Ach bleib bei uns, Herr Jesu Christ&lt;/title&gt;&lt;/titleStmt&gt;</span></span>
+<span id="cb53-27"><a href="#cb53-27" aria-hidden="true" tabindex="-1"></a><span class="ss">  &lt;pubStmt/&gt;&lt;/fileDesc&gt;&lt;/meiHead&gt;</span></span>
+<span id="cb53-28"><a href="#cb53-28" aria-hidden="true" tabindex="-1"></a><span class="ss">  &lt;music&gt;</span></span>
+<span id="cb53-29"><a href="#cb53-29" aria-hidden="true" tabindex="-1"></a><span class="ss">    &lt;facsimile&gt;</span></span>
+<span id="cb53-30"><a href="#cb53-30" aria-hidden="true" tabindex="-1"></a><span class="ss">      &lt;surface xml:id="</span><span class="sc">{</span>SURFACE<span class="sc">}</span><span class="ss">" n="15" ulx="0" uly="0" lrx="3999" lry="2999"&gt;</span></span>
+<span id="cb53-31"><a href="#cb53-31" aria-hidden="true" tabindex="-1"></a><span class="ss">        &lt;graphic xml:id="graphic_01M7DF2D8RMG9SGXTZRR3S1BA3"</span></span>
+<span id="cb53-32"><a href="#cb53-32" aria-hidden="true" tabindex="-1"></a><span class="ss">                 target="facsimile/20251230_180023.jpg" width="4000" height="3000"/&gt;</span></span>
+<span id="cb53-33"><a href="#cb53-33" aria-hidden="true" tabindex="-1"></a><span class="ss">        </span><span class="sc">{</span>chorale_zones<span class="sc">}</span></span>
+<span id="cb53-34"><a href="#cb53-34" aria-hidden="true" tabindex="-1"></a><span class="ss">      &lt;/surface&gt;</span></span>
+<span id="cb53-35"><a href="#cb53-35" aria-hidden="true" tabindex="-1"></a><span class="ss">      &lt;surface xml:id="gallica_f2" n="2"&gt;</span></span>
+<span id="cb53-36"><a href="#cb53-36" aria-hidden="true" tabindex="-1"></a><span class="ss">        &lt;graphic target="</span><span class="sc">{</span>PAGE_URL<span class="sc">}</span><span class="ss">" width="4512" height="6174"/&gt;</span></span>
+<span id="cb53-37"><a href="#cb53-37" aria-hidden="true" tabindex="-1"></a><span class="ss">        &lt;zone xml:id="m1" type="measure" </span><span class="sc">{</span>zone_attributes<span class="sc">}</span><span class="ss">/&gt;</span></span>
+<span id="cb53-38"><a href="#cb53-38" aria-hidden="true" tabindex="-1"></a><span class="ss">      &lt;/surface&gt;</span></span>
+<span id="cb53-39"><a href="#cb53-39" aria-hidden="true" tabindex="-1"></a><span class="ss">    &lt;/facsimile&gt;</span></span>
+<span id="cb53-40"><a href="#cb53-40" aria-hidden="true" tabindex="-1"></a><span class="ss">    &lt;body&gt;</span></span>
+<span id="cb53-41"><a href="#cb53-41" aria-hidden="true" tabindex="-1"></a><span class="ss">      &lt;mdiv&gt;</span></span>
+<span id="cb53-42"><a href="#cb53-42" aria-hidden="true" tabindex="-1"></a><span class="ss">        &lt;score&gt;</span></span>
+<span id="cb53-43"><a href="#cb53-43" aria-hidden="true" tabindex="-1"></a><span class="ss">          &lt;section&gt;</span></span>
+<span id="cb53-44"><a href="#cb53-44" aria-hidden="true" tabindex="-1"></a><span class="ss">            &lt;measure xml:id="m-43" metcon="false" n="0" facs="#</span><span class="sc">{</span>ZONES[<span class="dv">0</span>][<span class="dv">0</span>]<span class="sc">}</span><span class="ss">"/&gt;</span></span>
+<span id="cb53-45"><a href="#cb53-45" aria-hidden="true" tabindex="-1"></a><span class="ss">            &lt;measure xml:id="m-57" n="1" facs="#</span><span class="sc">{</span>ZONES[<span class="dv">1</span>][<span class="dv">0</span>]<span class="sc">}</span><span class="ss">"/&gt;</span></span>
+<span id="cb53-46"><a href="#cb53-46" aria-hidden="true" tabindex="-1"></a><span class="ss">          &lt;/section&gt;</span></span>
+<span id="cb53-47"><a href="#cb53-47" aria-hidden="true" tabindex="-1"></a><span class="ss">        &lt;/score&gt;</span></span>
+<span id="cb53-48"><a href="#cb53-48" aria-hidden="true" tabindex="-1"></a><span class="ss">      &lt;/mdiv&gt;</span></span>
+<span id="cb53-49"><a href="#cb53-49" aria-hidden="true" tabindex="-1"></a><span class="ss">    &lt;/body&gt;</span></span>
+<span id="cb53-50"><a href="#cb53-50" aria-hidden="true" tabindex="-1"></a><span class="ss">  &lt;/music&gt;</span></span>
+<span id="cb53-51"><a href="#cb53-51" aria-hidden="true" tabindex="-1"></a><span class="ss">&lt;/mei&gt;</span></span>
+<span id="cb53-52"><a href="#cb53-52" aria-hidden="true" tabindex="-1"></a><span class="ss">"""</span>,</span>
+<span id="cb53-53"><a href="#cb53-53" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>MEI zones name no accolade, so <code>MeiFacsimileLoader</code> makes each surface’s time path from its zones, with <code>TimeAxisPath.from_boxes()</code> and the rule of the left edges. On the chorale page the sixth zone falls back from x 2669 to 498: the page has two accolades, of five and four measures.</p>
+<div id="6d52b711" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.031337Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.031184Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.036889Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.036243Z&quot;}}" data-execution_count="32">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>mei <span class="op">=</span> MeiFacsimileLoader.from_file(FILES <span class="op">/</span> <span class="st">"facsimile.mei"</span>)</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>mei.create_paths()[SURFACE].pieces</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="32">
+<pre><code>(HorizontalLinePath(x0=490, x1=3296, y=630, tolerance=286),
+ HorizontalLinePath(x0=498, x1=3302, y=Fraction(2245, 2), tolerance=Fraction(529, 2)))</code></pre>
+</div>
+</div>
+<p><code>create_timelines()</code> reads one root timeline per surface, a page built of the accolades of that path: its ID is the surface’s <code>xml:id</code>, its name the surface’s <code>@n</code>, its <code>meta["image"]</code> the graphic’s target. The graphic’s size is on no timeline. Each accolade is named <code>accolade_K</code> and states the strip of its piece as <code>meta["box"]</code>. Each zone becomes a Box of the accolade it lies on, with the zone’s <code>xml:id</code> as its ID: a <code>BoundingBox</code> from <code>ulx</code> … <code>lry</code>, or a <code>Quadrilateral</code> where the zone has <code>points</code>. Here the accolades are named in the call, with <code>accolade_ids</code>.</p>
+<div id="b68100a1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.038383Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.038243Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.070395Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.069630Z&quot;}}" data-execution_count="33">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>chorale, gallica_page <span class="op">=</span> mei.create_timelines(accolade_ids<span class="op">=</span><span class="st">"p</span><span class="sc">{page}</span><span class="st">_a</span><span class="sc">{accolade}</span><span class="st">"</span>)</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>    surface.<span class="bu">id</span>: (surface.name, surface.length, surface.meta)</span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> surface <span class="kw">in</span> (chorale, gallica_page)</span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="33">
+<pre><code>{'surface_01M7DF2D8Q8FYGETPJXXMG03QP': ('15',
+  Coordinate(5610, pixels),
+  {'image': 'facsimile/20251230_180023.jpg'}),
+ 'gallica_f2': ('2',
+  Coordinate(940, pixels),
+  {'image': 'https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2'})}</code></pre>
+</div>
+</div>
+<div id="93746649" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.071862Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.071718Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.077518Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.076857Z&quot;}}" data-execution_count="34">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>segment_table(chorale)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="34">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">name</th>
+<th data-quarto-table-cell-role="th">offset</th>
+<th data-quarto-table-cell-role="th">length</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>p1_a1</td>
+<td>accolade_1</td>
+<td>0</td>
+<td>2806</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>p1_a2</td>
+<td>accolade_2</td>
+<td>2806</td>
+<td>2804</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div id="e93e5808" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.078921Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.078785Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.082098Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.081477Z&quot;}}" data-execution_count="35">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>second_accolade <span class="op">=</span> chorale.get_child(<span class="st">"p1_a2"</span>)</span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>second_accolade.meta</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>{'box': {'x': 498, 'y': 858, 'width': 2804, 'height': 529},
+ 'image': 'facsimile/20251230_180023.jpg'}</code></pre>
+</div>
+</div>
+<p>The second accolade stands at x 498 of the image, so its first zone (x 498 to 1496) starts at 0 and lasts 998 pixels. On the page that zone starts at 2806, the length of the first accolade.</p>
+<div id="e63fcf09" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.083609Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.083471Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.093125Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.092373Z&quot;}}" data-execution_count="36">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a>box_table(second_accolade)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="36">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">start</th>
+<th data-quarto-table-cell-role="th">duration</th>
+<th data-quarto-table-cell-role="th">shape</th>
+<th data-quarto-table-cell-role="th">x_min</th>
+<th data-quarto-table-cell-role="th">x_max</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>zone_01M7DF2D8SF9X38YEGDA0JCD04</td>
+<td>0</td>
+<td>998</td>
+<td>BoundingBox</td>
+<td>498</td>
+<td>1496</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>zone_01M7DF2D8S1F9S83VHS68E6N7W</td>
+<td>967</td>
+<td>681</td>
+<td>BoundingBox</td>
+<td>1465</td>
+<td>2146</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>zone_01M7DF2D8TV0F9DCHY6QNWYTDX</td>
+<td>1612</td>
+<td>638</td>
+<td>BoundingBox</td>
+<td>2110</td>
+<td>2748</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>zone_01M7DF2D8TSXCHCSA07C235VTV</td>
+<td>2206</td>
+<td>598</td>
+<td>BoundingBox</td>
+<td>2704</td>
+<td>3302</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div id="f47c899e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.094668Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.094514Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.103883Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.103209Z&quot;}}" data-execution_count="37">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(chorale.get_timestamp_for(ZONES[<span class="dv">5</span>][<span class="dv">0</span>]))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TimeIntervalStamp [2806, 3804) pixels
+  surface_01M7DF2D8Q8FYGETPJXXMG03QP  2806  3804 pixels
+  p1_a2  0  998 pixels</code></pre>
+</div>
+</div>
+<p>The <code>@facs</code> links are kept per element, so a measure of the encoding finds its zone, and through it its Box.</p>
+<div id="dd290eb7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.105373Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.105232Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.108197Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.107646Z&quot;}}" data-execution_count="38">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>mei.facs</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="38">
+<pre><code>{'m-43': ('zone_01M7DF2D8RNCKHKF6SMCWB94Z5',),
+ 'm-57': ('zone_01M7DF2D8R00HP8JYGXRTE13G3',)}</code></pre>
+</div>
+</div>
+<p>The zone written from measure 1 reads back as the same quadrilateral.</p>
+<div id="bb59331d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.109573Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.109441Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.114791Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.114278Z&quot;}}" data-execution_count="39">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>accolade_boxes <span class="op">=</span> gallica_page.get_child(<span class="st">"p2_a1"</span>).get_events(event_type<span class="op">=</span><span class="st">"Box"</span>)</span>
+<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a>accolade_boxes.get_field(Box)[<span class="dv">0</span>].shape <span class="op">==</span> measure_1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="39">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>Where the rule of the left edges does not find a page’s accolades (zones not listed accolade by accolade, say), the path returned by <code>create_paths()</code> is corrected or written anew and given back as <code>paths=</code>, keyed by the surface’s <code>xml:id</code>. <code>zone_types=</code> selects the zones taking part by their <code>@type</code>, and <code>box_ids=</code> replaces the zones’ <code>xml:id</code>s, as in the DMOS section; <code>create_timeline()</code> gives the whole facsimile as one volume.</p>
+</section>
+<section id="an-iiif-volume" class="level2">
+<h2 class="anchored" data-anchor-id="an-iiif-volume">An IIIF volume</h2>
+<p>An IIIF Presentation manifest lists the page images of a volume as canvases, each with its width and height. It states no areas, so nothing in it says where the page is read: <code>IIIFManifestLoader</code> builds a timeline only along the time path it is given for a canvas. The excerpt below is the Gallica manifest of the score above (Presentation 2), trimmed to its first three canvases.</p>
+<div id="748bef5b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.116517Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.116373Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.120189Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.119577Z&quot;}}" data-execution_count="40">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>MANIFEST_ID <span class="op">=</span> <span class="ss">f"</span><span class="sc">{</span>SCORE_URL<span class="sc">}</span><span class="ss">/manifest.json"</span></span>
+<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>CANVAS <span class="op">=</span> SCORE_URL <span class="op">+</span> <span class="st">"/canvas/f</span><span class="sc">{}</span><span class="st">"</span></span>
+<span id="cb68-3"><a href="#cb68-3" aria-hidden="true" tabindex="-1"></a>write(</span>
+<span id="cb68-4"><a href="#cb68-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"manifest.json"</span>,</span>
+<span id="cb68-5"><a href="#cb68-5" aria-hidden="true" tabindex="-1"></a>    json.dumps(</span>
+<span id="cb68-6"><a href="#cb68-6" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb68-7"><a href="#cb68-7" aria-hidden="true" tabindex="-1"></a>            <span class="st">"@context"</span>: <span class="st">"http://iiif.io/api/presentation/2/context.json"</span>,</span>
+<span id="cb68-8"><a href="#cb68-8" aria-hidden="true" tabindex="-1"></a>            <span class="st">"@id"</span>: MANIFEST_ID,</span>
+<span id="cb68-9"><a href="#cb68-9" aria-hidden="true" tabindex="-1"></a>            <span class="st">"@type"</span>: <span class="st">"sc:Manifest"</span>,</span>
+<span id="cb68-10"><a href="#cb68-10" aria-hidden="true" tabindex="-1"></a>            <span class="st">"label"</span>: <span class="st">"Exemplaire localisé à la Médiathèque Hector Berlioz (CNSMDP), D-9658 (1)"</span>,</span>
+<span id="cb68-11"><a href="#cb68-11" aria-hidden="true" tabindex="-1"></a>            <span class="st">"sequences"</span>: [</span>
+<span id="cb68-12"><a href="#cb68-12" aria-hidden="true" tabindex="-1"></a>                {</span>
+<span id="cb68-13"><a href="#cb68-13" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"@type"</span>: <span class="st">"sc:Sequence"</span>,</span>
+<span id="cb68-14"><a href="#cb68-14" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"canvases"</span>: [</span>
+<span id="cb68-15"><a href="#cb68-15" aria-hidden="true" tabindex="-1"></a>                        {</span>
+<span id="cb68-16"><a href="#cb68-16" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"@id"</span>: CANVAS.<span class="bu">format</span>(number),</span>
+<span id="cb68-17"><a href="#cb68-17" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"@type"</span>: <span class="st">"sc:Canvas"</span>,</span>
+<span id="cb68-18"><a href="#cb68-18" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"label"</span>: label,</span>
+<span id="cb68-19"><a href="#cb68-19" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"width"</span>: width,</span>
+<span id="cb68-20"><a href="#cb68-20" aria-hidden="true" tabindex="-1"></a>                            <span class="st">"height"</span>: height,</span>
+<span id="cb68-21"><a href="#cb68-21" aria-hidden="true" tabindex="-1"></a>                        }</span>
+<span id="cb68-22"><a href="#cb68-22" aria-hidden="true" tabindex="-1"></a>                        <span class="cf">for</span> number, label, width, height <span class="kw">in</span> [</span>
+<span id="cb68-23"><a href="#cb68-23" aria-hidden="true" tabindex="-1"></a>                            (<span class="dv">1</span>, <span class="st">"NP"</span>, <span class="dv">4564</span>, <span class="dv">6174</span>),</span>
+<span id="cb68-24"><a href="#cb68-24" aria-hidden="true" tabindex="-1"></a>                            (<span class="dv">2</span>, <span class="st">"2"</span>, <span class="dv">4512</span>, <span class="dv">6174</span>),</span>
+<span id="cb68-25"><a href="#cb68-25" aria-hidden="true" tabindex="-1"></a>                            (<span class="dv">3</span>, <span class="st">"3"</span>, <span class="dv">4564</span>, <span class="dv">6174</span>),</span>
+<span id="cb68-26"><a href="#cb68-26" aria-hidden="true" tabindex="-1"></a>                        ]</span>
+<span id="cb68-27"><a href="#cb68-27" aria-hidden="true" tabindex="-1"></a>                    ],</span>
+<span id="cb68-28"><a href="#cb68-28" aria-hidden="true" tabindex="-1"></a>                }</span>
+<span id="cb68-29"><a href="#cb68-29" aria-hidden="true" tabindex="-1"></a>            ],</span>
+<span id="cb68-30"><a href="#cb68-30" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb68-31"><a href="#cb68-31" aria-hidden="true" tabindex="-1"></a>        indent<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb68-32"><a href="#cb68-32" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb68-33"><a href="#cb68-33" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>create_timeline()</code> takes the paths as a mapping from a canvas, named by its position from 0 or by its ID, to its path, and <code>canvases=</code> selects the canvases to read. The first canvas is an unnumbered page without music; the second and third are the pages DMOS read, and DMOS’s <code>no_page</code> is the canvas’s position, so the paths of <code>create_paths()</code> fit as they are. The volume is the segment line of the selected pages, each page the segment line of its accolades. IDs are given in the call, as above.</p>
+<div id="0dd06458" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.121544Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.121410Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.188813Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.188217Z&quot;}}" data-execution_count="41">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>volume <span class="op">=</span> IIIFManifestLoader.from_file(FILES <span class="op">/</span> <span class="st">"manifest.json"</span>).create_timeline(</span>
+<span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>    dmos_paths,</span>
+<span id="cb69-3"><a href="#cb69-3" aria-hidden="true" tabindex="-1"></a>    canvases<span class="op">=</span>[<span class="dv">1</span>, <span class="dv">2</span>],</span>
+<span id="cb69-4"><a href="#cb69-4" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="st">"volume"</span>,</span>
+<span id="cb69-5"><a href="#cb69-5" aria-hidden="true" tabindex="-1"></a>    page_ids<span class="op">=</span>[<span class="st">"f2"</span>, <span class="st">"f3"</span>],</span>
+<span id="cb69-6"><a href="#cb69-6" aria-hidden="true" tabindex="-1"></a>    accolade_ids<span class="op">=</span><span class="st">"p</span><span class="sc">{page}</span><span class="st">_s</span><span class="sc">{accolade}</span><span class="st">"</span>,</span>
+<span id="cb69-7"><a href="#cb69-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb69-8"><a href="#cb69-8" aria-hidden="true" tabindex="-1"></a>volume</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="41">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">SegmentLine[SegmentLine[DiscreteGraphicalTimeline]][volume] (2 children)
+                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 9163 pixels
+  ├─ 2                 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶             6021
+  │  ├─ accolade_1     0 ∶∶∶∶∶∶∶∶∶∶                        2880
+  │  └─ accolade_2  2880           ∶∶∶∶∶∶∶∶∶∶∶             6021
+  └─ 3              6021                      ∶∶∶∶∶∶∶∶∶∶∶∶ 9163
+     └─ accolade_1  6021                      ∶∶∶∶∶∶∶∶∶∶∶∶ 9163</pre>
+</div>
+</div>
+<p>Each page is named with its canvas’s label and is as long as its path; no page is as long as its canvas is wide. Each page, and the volume, states the IIIF resource it stands for as a <code>dcterms:source</code> statement, and each accolade the strip of its piece as <code>meta["box"]</code>.</p>
+<div id="624b21f0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.190135Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.189985Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.197074Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.196495Z&quot;}}" data-execution_count="42">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>pages <span class="op">=</span> segment_table(volume)</span>
+<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>pages[<span class="st">"dcterms:source"</span>] <span class="op">=</span> [</span>
+<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a>    volume.get_child(page_id).statements[<span class="st">"dcterms:source"</span>][<span class="dv">0</span>][<span class="st">"id"</span>]</span>
+<span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> page_id <span class="kw">in</span> pages[<span class="st">"id"</span>]</span>
+<span id="cb70-5"><a href="#cb70-5" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb70-6"><a href="#cb70-6" aria-hidden="true" tabindex="-1"></a>pages</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="42">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">id</th>
+<th data-quarto-table-cell-role="th">name</th>
+<th data-quarto-table-cell-role="th">offset</th>
+<th data-quarto-table-cell-role="th">length</th>
+<th data-quarto-table-cell-role="th">dcterms:source</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>f2</td>
+<td>2</td>
+<td>0</td>
+<td>6021</td>
+<td>https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11...</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>f3</td>
+<td>3</td>
+<td>6021</td>
+<td>3142</td>
+<td>https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11...</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div id="88dcadd4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.198636Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.198490Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.201589Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.201100Z&quot;}}" data-execution_count="43">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>(volume.length, volume.statements, volume.get_child(<span class="st">"f2"</span>).get_child(<span class="st">"p1_s1"</span>).meta)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="43">
+<pre><code>(Coordinate(9163, pixels),
+ {'dcterms:source': [{'id': 'https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/manifest.json'}]},
+ {'box': {'x': 1221, 'y': 1589, 'width': 2880, 'height': 677},
+  'image': 'https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/canvas/f2'})</code></pre>
+</div>
+</div>
+<p>A canvas read along a single line is one plain timeline of the line’s length: a piano roll, read from top to bottom, takes a <code>VerticalLinePath</code> down its image (see <a href="../howto/how04_load_anything.html">How to Load Anything</a>).</p>
+</section>
+<section id="boxes-in-a-package" class="level2">
+<h2 class="anchored" data-anchor-id="boxes-in-a-package">Boxes in a package</h2>
+<p>A bundle keeps its timelines in a TimeToShare manifest; the Boxes are data and live beside it in a table, <code>boxes.parquet</code>, one row per Box with its timeline’s ID, which the manifest names among its <code>resources</code> with the type <code>Box</code>. The bundle below holds the page built by hand, with its two accolades and their three measures, and a logical timeline beside it.</p>
+<div id="c475096f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.203131Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.202993Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.372165Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.371601Z&quot;}}" data-execution_count="44">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">8</span>), uid<span class="op">=</span><span class="st">"score"</span>, name<span class="op">=</span><span class="st">"Score"</span>)</span>
+<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> AlignmentBundle(name<span class="op">=</span><span class="st">"Page and score"</span>)</span>
+<span id="cb73-3"><a href="#cb73-3" aria-hidden="true" tabindex="-1"></a>bundle.add_timeline(page)</span>
+<span id="cb73-4"><a href="#cb73-4" aria-hidden="true" tabindex="-1"></a>bundle.add_timeline(score)</span>
+<span id="cb73-5"><a href="#cb73-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb73-6"><a href="#cb73-6" aria-hidden="true" tabindex="-1"></a>manifest_path <span class="op">=</span> bundle.to_file(FILES <span class="op">/</span> <span class="st">"package"</span> <span class="op">/</span> <span class="st">"page.yaml"</span>)</span>
+<span id="cb73-7"><a href="#cb73-7" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(path.name <span class="cf">for</span> path <span class="kw">in</span> manifest_path.parent.iterdir())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="44">
+<pre><code>['boxes.parquet', 'page.yaml']</code></pre>
+</div>
+</div>
+<p>The manifest holds the timelines and their <code>meta</code>, and names the table:</p>
+<div id="43b6b2b7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.373698Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.373555Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.382633Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.382105Z&quot;}}" data-execution_count="45">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>show(manifest_path, <span class="st">"resources"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>resources:
+  -
+    id: "#resource_1"
+    integrity:
+      algorithm: SHA-256
+      digest: b5a999332327a7bb77c000e5903d4bc523c7a28297ab87b32e9761a4514c33fb
+    media_type: application/vnd.apache.parquet
+    size: 13097
+    timelines: ["#system_1", "#system_2"]
+    type: Box
+    url: boxes.parquet</code></pre>
+</div>
+</div>
+<p><code>from_file()</code> reads the manifest and the table. Every Box comes back on its timeline with the same ID, interval and shape, and is checked against its shape on the way in.</p>
+<div id="a0caa133" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:34:05.384151Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:34:05.384001Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:34:05.444262Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:34:05.443615Z&quot;}}" data-execution_count="46">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> AlignmentBundle.from_file(manifest_path)</span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>read_page <span class="op">=</span> read.timelines[<span class="st">"page"</span>]</span>
+<span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>[</span>
+<span id="cb77-4"><a href="#cb77-4" aria-hidden="true" tabindex="-1"></a>    (</span>
+<span id="cb77-5"><a href="#cb77-5" aria-hidden="true" tabindex="-1"></a>        accolade.<span class="bu">id</span>,</span>
+<span id="cb77-6"><a href="#cb77-6" aria-hidden="true" tabindex="-1"></a>        <span class="bu">list</span>(</span>
+<span id="cb77-7"><a href="#cb77-7" aria-hidden="true" tabindex="-1"></a>            read_page.get_child(accolade.<span class="bu">id</span>).get_events(event_type<span class="op">=</span><span class="st">"Box"</span>).get_field(Box)</span>
+<span id="cb77-8"><a href="#cb77-8" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb77-9"><a href="#cb77-9" aria-hidden="true" tabindex="-1"></a>        <span class="op">==</span> <span class="bu">list</span>(accolade.get_events(event_type<span class="op">=</span><span class="st">"Box"</span>).get_field(Box)),</span>
+<span id="cb77-10"><a href="#cb77-10" aria-hidden="true" tabindex="-1"></a>        read_page.get_child(accolade.<span class="bu">id</span>).meta <span class="op">==</span> accolade.meta,</span>
+<span id="cb77-11"><a href="#cb77-11" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb77-12"><a href="#cb77-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> accolade <span class="kw">in</span> (system_1, system_2)</span>
+<span id="cb77-13"><a href="#cb77-13" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="46">
+<pre><code>[('system_1', True, True), ('system_2', True, True)]</code></pre>
+</div>
+</div>
+</section>
+<section id="next" class="level2">
+<h2 class="anchored" data-anchor-id="next">Next</h2>
+<ul>
+<li>The same rectangles carried from one analysis to another through seconds, with MatchClaims and Projections: <a href="../howto/how01_thoresen_annotation_transfer.html">How to Transfer Annotations Between Graphical Analyses</a>.</li>
+<li>Time paths of every kind, and timelines laid along drawn paths in an image: <a href="../howto/how01_graphical_timelines.html">How to Work with Graphical Timelines</a>.</li>
+<li>Manifests, files and packages in depth: <a href="../howto/how02_group_and_bundle_files.html">How to Save and Load Timelines, Groups and Bundles</a> and <a href="../howto/how03_match_claims_package.html">How to Keep MatchClaims, Projections and Beliefs in a Package</a>.</li>
+</ul>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

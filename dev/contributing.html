@@ -1,0 +1,2403 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Architecture, build/test/release workflow, documentation pipeline, and contribution rules for TimeToAlign!">
+
+<title>Developers’ Reference – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./tutorials.html"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./howto.html"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="./reference.html" aria-current="page"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./contributing.html">Developers’ Reference</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./contributing.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Developers’ Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">API Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/AlignmentAnchor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentAnchor</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/AlignmentBundle.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AlignmentBundle</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/atomic_sections.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">atomic_sections</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/AtomicSection.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AtomicSection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ATONLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ATONLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/AudioInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/AudioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">AudioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Barline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Barline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/BeatGrid.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGrid</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/BeatGridSegment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatGridSegment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/BeatPolicy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BeatPolicy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Belief.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Belief</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/BoundingBox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoundingBox</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/BoundingBoxField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoundingBoxField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Box.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Box</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/BoxField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">BoxField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Break.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Break</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ChainMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ChainMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimFilter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ClaimType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ClaimType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ColumnNaming.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ColumnNaming</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ColumnRole.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ColumnRole</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ComputedFlows.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ComputedFlows</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ConstantMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConstantMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ContinuousGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ContinuousLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ContinuousPhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ContinuousPhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ConversionMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ConversionMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Coord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Coordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/CoordinateField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/CoordinateSpec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateSpec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/CoordinateValue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CoordinateValue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/CsvLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CsvLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DestinationReference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DestinationReference</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DiagonalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiagonalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DiscreteGraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteGraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DiscreteLogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscreteLogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DiscretePhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DiscretePhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DmosLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DmosLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Domain.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Domain</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/EepNotesLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EepNotesLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Event.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Event</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/EventData.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventData</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/EventField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/EventLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/EventReference.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventReference</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/EventStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/EventType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/flow_control_from_measures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">flow_control_from_measures</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowCondition.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowCondition</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowControlDraft.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlDraft</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowControlElement.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlElement</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowControlRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowConvention</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowFinding.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowFindingKind.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingKind</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowManifestation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowManifestation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/FlowResult.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowResult</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Gap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Gap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/GraphicalLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/GraphicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GraphicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/GridBeat.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">GridBeat</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/HorizontalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">HorizontalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/IdCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IdCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/IIIFManifestLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IIIFManifestLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Integrity.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Integrity</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/InterpolationMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">InterpolationMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Interval.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Interval</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/IntervalField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IntervalField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/IntervalToConstantMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">IntervalToConstantMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/JsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Jump.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Jump</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/JumpDestination.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JumpDestination</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/JumpTarget.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">JumpTarget</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/LabLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LabLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/LIBRARY_AGENT.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LIBRARY_AGENT</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/LinearMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LinearMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ListenHereLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ListenHereLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/LogicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">LogicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MapsLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MapsLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MatchClaim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaim</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MatchClaimField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchClaimField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MatchFileContext.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchFileContext</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MatchfileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchfileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MatchGraph.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchGraph</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MatchLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MatchStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MatchStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/measure_keys_from_flow_control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_keys_from_flow_control</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/measure_order_from_successors.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_order_from_successors</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/measure_ranges.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">measure_ranges</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MeasureFinding.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MeasureFindingKind.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureFindingKind</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MeasureMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MeasureMapLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureMapLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MeasureRange.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeasureRange</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MeiFacsimileLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeiFacsimileLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MeiHeadLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MeiHeadLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MelodyLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MelodyLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MpmLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MpmLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Ms3Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ms3Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Music21Loader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Music21Loader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/MutableStatementsMixin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">MutableStatementsMixin</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Note.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Note</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/NoteField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NoteField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/NoteRecord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NoteRecord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/NumberType.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NumberType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/OptionalCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">OptionalCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ParametricPath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ParametricPath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ParangonadaLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ParangonadaLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PartituraLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PartituraLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PassesFrom.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PassesFrom</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PerformanceMidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerformanceMidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PerformancePrecisionLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PerformancePrecisionLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PhysicalTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PhysicalTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PiecewiseMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewiseMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PiecewisePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PiecewisePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PlacedChunk.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlacedChunk</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PlacedGap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlacedGap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/play.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">play</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PlayedFlow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PlayedFlow</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Point.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Point</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/PointField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">PointField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Projection.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Projection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Provenance.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Provenance</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Quadrilateral.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quadrilateral</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/QuadrilateralField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuadrilateralField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/QuartersToFloatingMeasures.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuartersToFloatingMeasures</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/QuartersToMeasureNumber.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">QuartersToMeasureNumber</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/read_flow_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">read_flow_csv</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Region.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Region</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/repeat_end_findings.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">repeat_end_findings</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/RepoVizzInfo.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzInfo</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/RepoVizzLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">RepoVizzLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve_coordinate_spec</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ResolvedCoordinate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ResolvedCoordinate</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ResolvedFlowMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ResolvedFlowMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Resource.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Resource</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScalarMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ScopedId.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScopedId</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ScoreMidiLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreMidiLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ScoreNote.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreNote</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ScoreNoteField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreNoteField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ScoreWarpLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ScoreWarpLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/SecondsToSamples.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SecondsToSamples</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/SectionBreak.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SectionBreak</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/SegmentLine.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SegmentLine</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Shape.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Shape</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ShapeField.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShapeField</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/ShiftMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ShiftMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/SingleStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SingleStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/SnoteRecord.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SnoteRecord</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/SoloLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SoloLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/StatedFlow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">StatedFlow</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/StatementsMixin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">StatementsMixin</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/SupportPolicy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SupportPolicy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TableMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TableMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TabularLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TabularLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TiliaDictStore.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaDictStore</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TiliaJsonLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TiliaJsonLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TimeAxisPath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeAxisPath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TimeIntervalStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeIntervalStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Timeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TimelineGroup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimelineGroup</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TimeStamp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeStamp</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TimeUnit.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TimeUnit</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/TsvLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TsvLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/UnknownLengthError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">UnknownLengthError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/VerovioLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VerovioLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/VerticalLinePath.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VerticalLinePath</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/VirtualTimeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">VirtualTimeline</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/WarpMap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">WarpMap</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/XmlLoader.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">XmlLoader</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#repository-layout" id="toc-repository-layout" class="nav-link active" data-scroll-target="#repository-layout">1. Repository Layout</a></li>
+  <li><a href="#architecture-overview" id="toc-architecture-overview" class="nav-link" data-scroll-target="#architecture-overview">2. Architecture Overview</a>
+  <ul>
+  <li><a href="#subpackages" id="toc-subpackages" class="nav-link" data-scroll-target="#subpackages">2.1 Subpackages</a></li>
+  <li><a href="#import-direction-mandatory" id="toc-import-direction-mandatory" class="nav-link" data-scroll-target="#import-direction-mandatory">2.2 Import Direction (MANDATORY)</a>
+  <ul class="collapse">
+  <li><a href="#storage-ownership-and-timeline-dependencies" id="toc-storage-ownership-and-timeline-dependencies" class="nav-link" data-scroll-target="#storage-ownership-and-timeline-dependencies">Storage ownership and timeline dependencies</a></li>
+  </ul></li>
+  <li><a href="#stable-architectural-invariants" id="toc-stable-architectural-invariants" class="nav-link" data-scroll-target="#stable-architectural-invariants">2.3 Stable Architectural Invariants</a></li>
+  <li><a href="#architectural-decision-log" id="toc-architectural-decision-log" class="nav-link" data-scroll-target="#architectural-decision-log">2.4 Architectural decision log</a></li>
+  </ul></li>
+  <li><a href="#environment-installation" id="toc-environment-installation" class="nav-link" data-scroll-target="#environment-installation">3. Environment &amp; Installation</a>
+  <ul>
+  <li><a href="#python" id="toc-python" class="nav-link" data-scroll-target="#python">3.1 Python</a></li>
+  <li><a href="#install" id="toc-install" class="nav-link" data-scroll-target="#install">3.2 Install</a></li>
+  <li><a href="#pre-commit-hook" id="toc-pre-commit-hook" class="nav-link" data-scroll-target="#pre-commit-hook">3.3 Pre-commit Hook</a></li>
+  </ul></li>
+  <li><a href="#build-test-publish-tox" id="toc-build-test-publish-tox" class="nav-link" data-scroll-target="#build-test-publish-tox">4. Build, Test, Publish (<code>tox</code>)</a>
+  <ul>
+  <li><a href="#direct-pytest-for-iteration" id="toc-direct-pytest-for-iteration" class="nav-link" data-scroll-target="#direct-pytest-for-iteration">4.1 Direct <code>pytest</code> for Iteration</a></li>
+  <li><a href="#test-discipline-mandatory" id="toc-test-discipline-mandatory" class="nav-link" data-scroll-target="#test-discipline-mandatory">4.2 Test Discipline (MANDATORY)</a></li>
+  </ul></li>
+  <li><a href="#coding-standards" id="toc-coding-standards" class="nav-link" data-scroll-target="#coding-standards">5. Coding Standards</a>
+  <ul>
+  <li><a href="#style-and-formatting" id="toc-style-and-formatting" class="nav-link" data-scroll-target="#style-and-formatting">5.1 Style and Formatting</a></li>
+  <li><a href="#class-member-order" id="toc-class-member-order" class="nav-link" data-scroll-target="#class-member-order">5.2 Class Member Order</a></li>
+  <li><a href="#typing" id="toc-typing" class="nav-link" data-scroll-target="#typing">5.3 Typing</a></li>
+  <li><a href="#docstrings-google-style" id="toc-docstrings-google-style" class="nav-link" data-scroll-target="#docstrings-google-style">5.4 Docstrings (Google Style)</a>
+  <ul class="collapse">
+  <li><a href="#cross-linking" id="toc-cross-linking" class="nav-link" data-scroll-target="#cross-linking">Cross-linking</a></li>
+  </ul></li>
+  <li><a href="#error-handling" id="toc-error-handling" class="nav-link" data-scroll-target="#error-handling">5.5 Error Handling</a></li>
+  <li><a href="#pitch-spelling" id="toc-pitch-spelling" class="nav-link" data-scroll-target="#pitch-spelling">5.6 Pitch Spelling</a></li>
+  </ul></li>
+  <li><a href="#documentation-site" id="toc-documentation-site" class="nav-link" data-scroll-target="#documentation-site">6. Documentation Site</a>
+  <ul>
+  <li><a href="#building-locally" id="toc-building-locally" class="nav-link" data-scroll-target="#building-locally">6.1 Building Locally</a></li>
+  <li><a href="#site-structure-diátaxis" id="toc-site-structure-diátaxis" class="nav-link" data-scroll-target="#site-structure-diátaxis">6.2 Site Structure (Diátaxis)</a></li>
+  <li><a href="#notebook-integration-pipeline" id="toc-notebook-integration-pipeline" class="nav-link" data-scroll-target="#notebook-integration-pipeline">6.3 Notebook Integration Pipeline</a>
+  <ul class="collapse">
+  <li><a href="#adding-a-new-how-to-tutorial-notebook" id="toc-adding-a-new-how-to-tutorial-notebook" class="nav-link" data-scroll-target="#adding-a-new-how-to-tutorial-notebook">Adding a new how-to / tutorial notebook</a></li>
+  <li><a href="#notebook-style-rules" id="toc-notebook-style-rules" class="nav-link" data-scroll-target="#notebook-style-rules">Notebook style rules</a></li>
+  </ul></li>
+  <li><a href="#jupytext-and-quarto-upgrade-only" id="toc-jupytext-and-quarto-upgrade-only" class="nav-link" data-scroll-target="#jupytext-and-quarto-upgrade-only">6.4 Jupytext and Quarto: Upgrade-Only</a></li>
+  <li><a href="#quartodoc-api-reference" id="toc-quartodoc-api-reference" class="nav-link" data-scroll-target="#quartodoc-api-reference">6.5 quartodoc API Reference</a></li>
+  </ul></li>
+  <li><a href="#conventional-commits-releases" id="toc-conventional-commits-releases" class="nav-link" data-scroll-target="#conventional-commits-releases">7. Conventional Commits &amp; Releases</a>
+  <ul>
+  <li><a href="#commit-types" id="toc-commit-types" class="nav-link" data-scroll-target="#commit-types">7.1 Commit Types</a></li>
+  <li><a href="#breaking-changes-major-bump" id="toc-breaking-changes-major-bump" class="nav-link" data-scroll-target="#breaking-changes-major-bump">7.2 Breaking Changes (MAJOR Bump)</a></li>
+  <li><a href="#manual-edits-are-forbidden" id="toc-manual-edits-are-forbidden" class="nav-link" data-scroll-target="#manual-edits-are-forbidden">7.3 Manual Edits Are Forbidden</a></li>
+  </ul></li>
+  <li><a href="#branching-and-pull-requests" id="toc-branching-and-pull-requests" class="nav-link" data-scroll-target="#branching-and-pull-requests">8. Branching and Pull Requests</a></li>
+  <li><a href="#ide" id="toc-ide" class="nav-link" data-scroll-target="#ide">9. IDE</a></li>
+  <li><a href="#where-to-look-next" id="toc-where-to-look-next" class="nav-link" data-scroll-target="#where-to-look-next">10. Where to Look Next</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Developers’ Reference</h1>
+</div>
+
+<div>
+  <div class="description">
+    Architecture, build/test/release workflow, documentation pipeline, and contribution rules for TimeToAlign!
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>This page is the canonical reference for contributing to <strong>TimeToAlign!</strong>. The conceptual model lives in <a href="./concepts.html">Concepts</a> and the per-class API lives under <a href="./reference.html">API Reference</a>; everything you need to <em>build, test, document, and release</em> the library is here.</p>
+<p>The package is named <code>timetoalign</code> for machines (imports, PyPI) and written <strong>TimeToAlign!</strong> for humans (prose, headings, comments).</p>
+<hr>
+<section id="repository-layout" class="level2">
+<h2 class="anchored" data-anchor-id="repository-layout">1. Repository Layout</h2>
+<p>The git repository is a multi-project workspace; the library itself lives in <code>timetoalign/</code>.</p>
+<pre><code>tta/                                 # Repository root
+├── timetoalign/                     # The Python library — the focus of this doc
+│   ├── timetoalign/                 # Importable package
+│   ├── tests/                       # pytest suite (mirrors the package layout)
+│   ├── docs/                        # Documentation source
+│   │   ├── page/                    # Quarto site (this site)
+│   │   ├── tuto-notebooks/          # Tutorial notebooks (jupytext .py + paired .ipynb)
+│   │   └── howto-notebooks/         # How-to notebooks (jupytext .py + paired .ipynb)
+│   ├── pyproject.toml               # PEP 621 project metadata + ruff/coverage/pytest config
+│   ├── tox.ini                      # Build/test/lint/publish orchestrator
+│   ├── .pre-commit-config.yaml      # Pinned formatter/linter versions
+│   ├── .github/workflows/           # CI (release-please)
+│   └── CHANGELOG.md                 # Auto-generated by release-please — DO NOT edit by hand
+├── tta_article/                     # TISMIR article (LaTeX, published 2026) — out of scope here
+├── pyMeasureMap/                    # Sibling project; standalone
+└── dashboard/                       # Sibling project; standalone</code></pre>
+<p>Sibling projects (<code>tta_article/</code>, <code>pyMeasureMap/</code>, <code>dashboard/</code>) have their own build infrastructure and are <strong>not</strong> governed by the rules below.</p>
+<hr>
+</section>
+<section id="architecture-overview" class="level2">
+<h2 class="anchored" data-anchor-id="architecture-overview">2. Architecture Overview</h2>
+<section id="subpackages" class="level3">
+<h3 class="anchored" data-anchor-id="subpackages">2.1 Subpackages</h3>
+<p>The importable package <code>timetoalign/</code> is organised into focused subpackages, each with a single responsibility:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 13%">
+<col style="width: 86%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Subpackage</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>core/</code></td>
+<td>Foundational types: enums (<code>Domain</code>, <code>TimeUnit</code>, …), <code>Coordinate</code> / <code>IdCoordinate</code>, <code>TimeStamp</code>, <code>ScopedId</code> and the id minting of <code>core/ids.py</code>; <code>core/fields.py</code> contains the <code>SemanticField</code> bases plus the Arrow translator/builder.</td>
+</tr>
+<tr class="even">
+<td><code>display/</code></td>
+<td>ASCII rendering helpers for timelines, groups, bundles, flows.</td>
+</tr>
+<tr class="odd">
+<td><code>maps/</code></td>
+<td><code>ConversionMap</code> family (<code>LinearMap</code>, <code>TableMap</code>, <code>ChainMap</code>, <code>PiecewiseMap</code>, …).</td>
+</tr>
+<tr class="even">
+<td><code>timelines/</code></td>
+<td><code>Timeline</code> classes for all six domain × modality combinations, <code>TimelineGroup</code>, regions, flow control, beat grids.</td>
+</tr>
+<tr class="odd">
+<td><code>alignment/</code></td>
+<td><code>MatchClaim</code>, <code>AlignmentAnchor</code>, <code>AlignmentBundle</code>, <code>MatchGraph</code>, <code>MatchLine</code>, <code>WarpMap</code>.</td>
+</tr>
+<tr class="even">
+<td><code>storage/</code></td>
+<td>PyArrow-backed <code>EventData</code> / <code>EventStore</code> storage primitives.</td>
+</tr>
+<tr class="odd">
+<td><code>loader/</code></td>
+<td>File-format-specific ingestion.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="import-direction-mandatory" class="level3">
+<h3 class="anchored" data-anchor-id="import-direction-mandatory">2.2 Import Direction (MANDATORY)</h3>
+<p>Subpackages are arranged in strict layers. <strong>Imports may only flow downward</strong>, from a higher-numbered layer to a lower-numbered one. This is a hard rule: violations create circular-import landmines and are refused at review.</p>
+<pre><code>                    ┌──────────────────────────────┐
+       Layer 5 ──▶  │            loader            │
+                    └──────────────┬───────────────┘
+                                   │ may import from layers 0–4
+                    ┌──────────────▼───────────────┐
+       Layer 4 ──▶  │          alignment           │
+                    └──────────────┬───────────────┘
+                                   │ may import from layers 0–3
+                    ┌──────────────▼───────────────┐
+       Layer 3 ──▶  │          timelines           │
+                    └──────────────┬───────────────┘
+                                   │ may import from layers 0–2
+                    ┌──────────────▼───────────────┐
+       Layer 2 ──▶  │           storage            │
+                    └──────────────┬───────────────┘
+                                   │ may import from layers 0–1
+                    ┌──────────────▼───────────────┐
+       Layer 1 ──▶  │             maps             │
+                    └──────────────┬───────────────┘
+                                   │ may import from layer 0
+                    ┌──────────────▼───────────────┐
+       Layer 0 ──▶  │       core       display      │
+                    └──────────────────────────────┘
+                       (no internal dependencies)</code></pre>
+<p>Equivalently:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 19%">
+<col style="width: 80%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Subpackage</th>
+<th>May import from</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>core/</code></td>
+<td>nothing internal</td>
+</tr>
+<tr class="even">
+<td><code>display/</code></td>
+<td>nothing internal at runtime (TYPE_CHECKING only)</td>
+</tr>
+<tr class="odd">
+<td><code>maps/</code></td>
+<td><code>core</code></td>
+</tr>
+<tr class="even">
+<td><code>storage/</code></td>
+<td>lower layers as needed; owns <code>EventData</code> and <code>EventStore</code></td>
+</tr>
+<tr class="odd">
+<td><code>timelines/</code></td>
+<td><code>core</code>, <code>maps</code>, <code>storage</code></td>
+</tr>
+<tr class="even">
+<td><code>alignment/</code></td>
+<td>lower layers, including <code>timelines</code></td>
+</tr>
+<tr class="odd">
+<td><code>loader/</code></td>
+<td>all lower layers</td>
+</tr>
+</tbody>
+</table>
+<section id="storage-ownership-and-timeline-dependencies" class="level4">
+<h4 class="anchored" data-anchor-id="storage-ownership-and-timeline-dependencies">Storage ownership and timeline dependencies</h4>
+<p><code>storage/</code> is a first-class layer that owns <code>EventData</code> and <code>EventStore</code>, the PyArrow-backed event storage used by timelines and loaders. <code>Timeline</code> instances therefore import storage types at runtime as part of the normal layering:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.storage <span class="im">import</span> EventData</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>There is no <code>timelines</code>–<code>loader</code> import cycle: <code>loader/</code> is the upper layer and imports downward to construct storage-backed timelines. Runtime imports from <code>timelines/</code> to <code>storage/</code> are legitimate dependencies; keep all imports flowing from a higher layer to a lower one.</p>
+</section>
+</section>
+<section id="stable-architectural-invariants" class="level3">
+<h3 class="anchored" data-anchor-id="stable-architectural-invariants">2.3 Stable Architectural Invariants</h3>
+<p>These invariants are tested at the unit level and enforced at review. If you find yourself wanting to break one, raise it as a discussion before coding.</p>
+<ul>
+<li><strong>Coordinate resolution returns a shared stamp type.</strong> <code>TimeStamp</code> and <code>MatchStamp</code> implement the common <code>Stamp</code> interface; each exposes raw and unit-bearing coordinate access consistently.</li>
+<li><strong><code>Coordinate</code> and <code>IdCoordinate</code> are the canonical input types</strong> for every method that takes a coordinate value. Raw numbers are accepted for ergonomics; raw numbers are <strong>not</strong> acceptable as return types — every getter returns a <code>Coordinate</code>.</li>
+<li><strong><code>ConversionMap</code> properties belong to a single <code>Timeline</code>.</strong> They are not graph edges between timelines.</li>
+<li><strong><code>MatchGraph</code> is on-demand and analytical.</strong> It is built from claims when needed, not maintained as a system-wide structure.</li>
+<li><strong>Loaders use a strict two-phase contract.</strong> <code>loader.load(*sources)</code> ingests files; <code>loader.create_*()</code> produces domain objects and <strong>never</strong> takes file paths. The <code>from_file()</code> classmethod is sugar for the common case.</li>
+<li><strong>All enums live in <code>core/enums.py</code></strong> and subclass <code>FancyStrEnum</code>. Member names are lowercase. The single documented exception is <code>NumberType</code>, whose values are Python <code>type</code> objects.</li>
+<li><strong>Timeline IDs are systematic:</strong> <code>clt</code>/<code>dlt</code>/<code>cpt</code>/<code>dpt</code>/<code>cgt</code>/<code>dgt</code> prefixes for the six domain × modality combinations, with optional role prefixes, each minted as <code>{prefix}_{N}</code> (<code>clt_1</code>, <code>score:clt_1</code>, <code>perf:dlt_1</code>).</li>
+</ul>
+<p>For the full conceptual rationale see <a href="./concepts.html">Concepts</a> and the <a href="./glossary.html">Glossary</a>.</p>
+</section>
+<section id="architectural-decision-log" class="level3">
+<h3 class="anchored" data-anchor-id="architectural-decision-log">2.4 Architectural decision log</h3>
+<p>The invariants below are load-bearing design rules. They are not auto-discoverable from any single docstring; new code is expected to respect them, and breaking changes are expected to be discussed and recorded here.</p>
+<p><strong>Pydantic-derived schemas + value projectors.</strong> Every scalar (<code>Coordinate</code>, <code>Duration</code>, <code>SpecificPitch</code>, <code>Note</code>, <code>Measure</code>, the pitch / harmony hierarchies, …) is a pydantic <code>BaseModel</code> subclass with <code>model_config = ConfigDict(frozen=True)</code>. The corresponding PyArrow <code>pa.StructType</code> is derived <strong>once at class-definition time</strong> via <code>derive_arrow_struct(model_cls)</code> (see <code>timetoalign/core/fields.py</code>). Computed pydantic fields are deliberately excluded from the derived struct. Individual fields may be denormalised or dropped via <code>register_value_projector(model_cls, field_name, projector)</code>: for example, <code>Coordinate.value</code> projects to <code>{value, numerator, denominator}</code> so rationals survive Parquet, and <code>Note.pitch</code> is dropped entirely so pitch lives in its own field (<code>midi_pitch</code> / <code>specific_pitch</code>) rather than as a sub-field of <code>Note</code>.</p>
+<p><strong>Union-of-<code>BaseModel</code> rejected.</strong> Distinct scalar types live in distinct PyArrow fields. The translator deliberately raises on <code>BaseModel | BaseModel</code> unions: storing them as PyArrow <code>dense_union</code> is forbidden because consumers (DuckDB, polars, pandas) cannot project the union arms cleanly. The required pattern is <strong>columnar separation</strong> — drop the polymorphic field with <code>register_value_projector(..., lambda *_: [])</code> and expose each scalar type in its own field.</p>
+<p><strong>Bulk construction path.</strong> The canonical bulk constructor is <code>StructArrayBuilder.from_model(model_cls).build(objects)</code>, with <code>build_struct_array(model_cls, objects)</code> as the public facade and <code>build_coordinate_struct_array</code> as the specialised facade for the rational denormalisation of <code>Coordinate</code> / <code>Duration</code>. The builder traverses each scalar once and accumulates per-field arrays. <strong>Never <code>model_dump</code> row-wise in production paths.</strong> The microbenchmark gate requires the store-builder to be ≥ 2× faster than row-wise <code>model_dump</code>; on <code>Coordinate</code> the observed ratio is ~5×, and the underlying load-bearing claim — vectorised <code>pa.compute</code> operations on a 1M-element field being ~150–210× faster than the equivalent per-object Python loop — is <em>the</em> justification for the columnar architecture as a whole.</p>
+<p><strong>Paired scalar + field convention.</strong> Every scalar <code>X</code> is followed in the same source file by its paired <code>XField(SemanticField[X])</code>. <code>core/time.py</code> cohabits the time scalars (<code>DenominateNumber</code>, <code>Coordinate</code>, <code>Duration</code>, <code>IdCoordinate</code>, <code>IdDuration</code>, <code>Interval</code>) and their paired fields under a single <code>TimeScalarField</code> parent that consolidates <code>from_field</code> / <code>from_table</code> / metadata plumbing; <code>core/events.py</code> cohabits pitch, harmony, <code>Note</code>, and <code>Measure</code> with their paired fields. Object + ObjectField is the unit of code organisation and must never be split across files. <code>DenominateNumber</code> is the unit-bearing number every time scalar is built on, and <code>Interval</code> is the half-open span two <code>Coordinate</code>s make; both follow the same rule, so <code>DenominateNumberField</code> and <code>IntervalField</code> sit immediately after them.</p>
+<p><strong>Raw vs semantic DataField branch.</strong> <code>DataField</code> is the abstract base for field wrappers. Raw subclasses (<code>NumericField</code>, <code>StringField</code>, <code>StructField</code>, <code>MapField</code>, plus the struct-shaped numeric branch <code>NumberField</code> → <code>RedundantNumberField</code> → <code>DenominateNumberField</code>) wrap PyArrow data with type checks and accessors. <code>SemanticField[T]</code> is the strictly-typed bridge between a pydantic scalar <code>T</code> and a struct-shaped raw field; it pins the inner raw type via the <code>_raw_cls</code> ClassVar (default <code>StructField</code>, refined to <code>DenominateNumberField</code> by <code>TimeScalarField</code>).</p>
+<p><strong>Unified <code>TimeStamp</code> architecture.</strong> <code>TimeStamp</code> is the canonical result of coordinate resolution for timelines and groups, <code>MatchStamp</code> for bundles. They share the same <code>Stamp</code> interface for timeline presence, raw coordinates, and unit-bearing coordinate access. <code>MatchGraph</code> remains on-demand (see §2.3).</p>
+<hr>
+</section>
+</section>
+<section id="environment-installation" class="level2">
+<h2 class="anchored" data-anchor-id="environment-installation">3. Environment &amp; Installation</h2>
+<section id="python" class="level3">
+<h3 class="anchored" data-anchor-id="python">3.1 Python</h3>
+<ul>
+<li>Supported: <strong>Python 3.11, 3.12, 3.13</strong> (CI matrix).</li>
+<li>Required: <code>&gt;=3.11</code> per <code>pyproject.toml</code>.</li>
+</ul>
+</section>
+<section id="install" class="level3">
+<h3 class="anchored" data-anchor-id="install">3.2 Install</h3>
+<p>From the <code>timetoalign/</code> directory:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">".[dev]"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>dev</code> is the convenience extra that pulls in everything: all loaders, plotting, the tutorial Jupyter stack, the docs build chain, the test stack, and the formatter/linter tooling. See <code>pyproject.toml</code> for the full extras hierarchy (<code>midi</code>, <code>partitura</code>, <code>music21</code>, <code>ms3</code>, <code>audio</code>, <code>graphical</code>, <code>plot</code>, <code>scores</code>, <code>loaders</code>, <code>tutorial</code>, <code>docs</code>, <code>testing</code>, <code>all</code>, <code>dev</code>).</p>
+<p><code>timetoshare</code>, the TimeToShare package (the manifest schema and its validator, which checks every manifest the library reads and writes), is a runtime dependency listed in <code>[project] dependencies</code>, so every install above brings it. Until a release of TimeToShare carries the schema version the library writes, it is a git reference to TimeToShare’s <code>main</code> branch. PyPI refuses a direct reference in a published package’s requirements, so a release of the library needs the registry range in its place.</p>
+<p>The conformance tests also need a test oracle that no extra installs: <code>pymeasuremap</code>, the Measure Map reference implementation, the oracle for compressed measure-map rows. It is installed from a git reference to a fixed commit, so it lives in the <code>conformance</code> dependency group (PEP 735), which is not part of the published distribution metadata. Install it beside the extras (pip 25.1 or later):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">--group</span> conformance</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>tox</code> installs the group in every test environment by itself. From a checkout with the sibling repositories, <code>pip install -e ../TimeToShare/python -e ../pyMeasureMap</code> installs both packages from source instead.</p>
+</section>
+<section id="pre-commit-hook" class="level3">
+<h3 class="anchored" data-anchor-id="pre-commit-hook">3.3 Pre-commit Hook</h3>
+<p>After installing, register the git hook once per clone:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pre-commit</span> install</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The pinned hook versions in <code>.pre-commit-config.yaml</code> are:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 10%">
+<col style="width: 63%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Hook</th>
+<th>Version</th>
+<th>Settings</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>black</code></td>
+<td>26.1.0</td>
+<td><code>language_version: python3.11</code></td>
+</tr>
+<tr class="even">
+<td><code>isort</code></td>
+<td>7.0.0</td>
+<td><code>--profile black --filter-files</code></td>
+</tr>
+<tr class="odd">
+<td><code>flake8</code></td>
+<td>7.3.0</td>
+<td><code>max-line-length=120</code>, <code>__init__.py:F401</code> ignored, <code>docs/howto-notebooks/*.py:E402</code> ignored</td>
+</tr>
+<tr class="even">
+<td><code>seed-isort-config</code></td>
+<td>2.2.0</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><code>pre-commit-hooks</code></td>
+<td>6.0.0</td>
+<td>trailing-whitespace, check-ast/json/xml/yaml, end-of-file-fixer, mixed-line-ending (auto), debug-statements, requirements-txt-fixer</td>
+</tr>
+</tbody>
+</table>
+<p>These are pinned deliberately — bump them in a dedicated <code>chore:</code> commit so the diff is isolated.</p>
+<hr>
+</section>
+</section>
+<section id="build-test-publish-tox" class="level2">
+<h2 class="anchored" data-anchor-id="build-test-publish-tox">4. Build, Test, Publish (<code>tox</code>)</h2>
+<p><code>tox</code> is the canonical entry point for everything CI-relevant. It uses <code>tox-uv</code> for fast environment creation. All commands run from <code>timetoalign/</code>.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 19%">
+<col style="width: 80%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>tox</code></td>
+<td>Runs the full pytest suite under py311, py312, py313 (skips missing interpreters).</td>
+</tr>
+<tr class="even">
+<td><code>tox -e lint</code></td>
+<td><code>pre-commit run --all-files --show-diff-on-failure</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>tox -e build</code></td>
+<td>PEP 517 sdist + wheel into <code>./dist/</code> via <code>python -m build</code>.</td>
+</tr>
+<tr class="even">
+<td><code>tox -e clean</code></td>
+<td>Removes <code>./build/</code> and <code>./dist/</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>tox -e publish</code></td>
+<td><code>twine check dist/*</code> then <code>twine upload dist/*</code> (testpypi by default).</td>
+</tr>
+</tbody>
+</table>
+<p>To publish to production PyPI explicitly:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">tox</span> <span class="at">-e</span> publish <span class="at">--</span> <span class="at">--repository</span> pypi</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The <code>publish</code> env passes <code>TWINE_USERNAME</code> / <code>TWINE_PASSWORD</code> / <code>TWINE_REPOSITORY</code> / <code>TWINE_REPOSITORY_URL</code> through from the environment.</p>
+<p>There is <strong>no <code>tox -e docs</code> env</strong>; documentation is built directly with <code>quartodoc</code> + <code>quarto</code> (see §6).</p>
+<section id="direct-pytest-for-iteration" class="level3">
+<h3 class="anchored" data-anchor-id="direct-pytest-for-iteration">4.1 Direct <code>pytest</code> for Iteration</h3>
+<p>Inside the active venv, plain <code>pytest</code> is faster than <code>tox</code> for tight edit-test loops:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pytest</span>                              <span class="co"># full suite, parallel via pytest-xdist (-n auto)</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pytest</span> <span class="at">-n</span> 0                         <span class="co"># serial — debugging only</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pytest</span> tests/timelines              <span class="co"># one subtree</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="ex">pytest</span> tests/timelines/test_base.py::test_lock</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Coverage is on by default (configured in <code>pyproject.toml [tool.pytest.ini_options]</code>).</p>
+</section>
+<section id="test-discipline-mandatory" class="level3">
+<h3 class="anchored" data-anchor-id="test-discipline-mandatory">4.2 Test Discipline (MANDATORY)</h3>
+<ul>
+<li><strong>Parallel-safe.</strong> No global mutable state, no inter-test ordering, use <code>tmp_path</code> not hardcoded <code>/tmp/</code> paths, no port collisions.</li>
+<li><strong>Exact assertions.</strong> Use exact gold-standard counts, never <code>&gt;=</code>, never “approximate”. If floating-point tolerance is required, document the mathematical reason in the test and the test data README.</li>
+<li><strong>Cover happy path + edge cases.</strong> Boundaries, empty inputs, type mismatches.</li>
+<li><strong>Property tests for math.</strong> ConversionMap-style code uses <code>hypothesis</code> to verify invariants such as <code>inverse(forward(x)) == x</code>.</li>
+<li><strong>Test data needs a README.</strong> Every directory under <code>tests/data/</code> documents provenance, validation logic, and known discrepancies between loaders.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="coding-standards" class="level2">
+<h2 class="anchored" data-anchor-id="coding-standards">5. Coding Standards</h2>
+<section id="style-and-formatting" class="level3">
+<h3 class="anchored" data-anchor-id="style-and-formatting">5.1 Style and Formatting</h3>
+<ul>
+<li>Line length <strong>120</strong> (enforced by black + flake8).</li>
+<li><code>from __future__ import annotations</code> is the <strong>first</strong> non-comment line.</li>
+<li>Imports grouped: standard library, third-party, local — handled by isort with the black profile.</li>
+<li>Module logger: <code>module_logger = logging.getLogger(__name__)</code> immediately after imports.</li>
+<li>Use <code># region &lt;name&gt;</code> / <code># endregion &lt;name&gt;</code> to group related class / function definitions inside a module.</li>
+</ul>
+</section>
+<section id="class-member-order" class="level3">
+<h3 class="anchored" data-anchor-id="class-member-order">5.2 Class Member Order</h3>
+<p>Inside a class, declare members in this order:</p>
+<ol type="1">
+<li>Class variables.</li>
+<li><code>@classmethod @property</code> accessors.</li>
+<li><code>@classmethod</code> factories / helpers.</li>
+<li>Nested classes (especially <code>Schema</code>).</li>
+<li><code>__init__</code>.</li>
+<li>Magic methods (<code>__eq__</code>, <code>__hash__</code>, <code>__repr__</code>, <code>__str__</code>).</li>
+<li><code>@property</code> accessors.</li>
+<li>Public and private methods.</li>
+</ol>
+</section>
+<section id="typing" class="level3">
+<h3 class="anchored" data-anchor-id="typing">5.3 Typing</h3>
+<ul>
+<li>Every public function signature and class attribute is type-hinted.</li>
+<li>Use modern generics (<code>list[str]</code>, <code>dict[str, int]</code>, <code>X | None</code>) — the <code>__future__ annotations</code> import makes these free at runtime on 3.11+.</li>
+<li>Use <code>typing_extensions.Self</code> for methods returning the instance type.</li>
+<li>Break circular dependencies with <code>if TYPE_CHECKING:</code> blocks and string annotations, <strong>not</strong> by collapsing modules.</li>
+</ul>
+</section>
+<section id="docstrings-google-style" class="level3">
+<h3 class="anchored" data-anchor-id="docstrings-google-style">5.4 Docstrings (Google Style)</h3>
+<p>Every public module, class, function, and method needs a Google-style docstring. Quartodoc renders them into the API reference site.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> lookup(<span class="va">self</span>, coord: CoordinateSpec) <span class="op">-&gt;</span> TimeStamp:</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Return the timestamp at ``coord``.</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co">    Args:</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">        coord: A raw value, ``Coordinate``, or ``IdCoordinate``.</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co">    Returns:</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co">        A `timetoalign.TimeStamp` populated with all synchronous child</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co">        coordinates and conversion-map results.</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="co">    Raises:</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="co">        ValueError: If ``coord`` is outside the timeline length.</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="cross-linking" class="level4">
+<h4 class="anchored" data-anchor-id="cross-linking">Cross-linking</h4>
+<ul>
+<li><strong>In docstrings:</strong> wrap fully-qualified names in backticks (<code>`timetoalign.ConversionMap`</code>); the <code>interlinks</code> filter resolves them.</li>
+<li><strong>In <code>.qmd</code> pages and notebook markdown:</strong> every model term goes through the glossary shortcode: <code></code>. Bare uses without the shortcode are documentation bugs.</li>
+<li><strong>When you add a new concept:</strong> update <code>glossary.yml</code> <em>and</em> <code>glossary.qmd</code> in the same commit as the implementation.</li>
+</ul>
+</section>
+</section>
+<section id="error-handling" class="level3">
+<h3 class="anchored" data-anchor-id="error-handling">5.5 Error Handling</h3>
+<ul>
+<li>Never use <code>assert</code> for runtime validation — it disappears under <code>-O</code>.</li>
+<li><code>ValueError</code> for invalid arguments.</li>
+<li><code>TypeError</code> for unit / type mismatches.</li>
+<li><code>RuntimeError</code> (or a custom subclass) for invalid state, e.g.&nbsp;mutating a locked timeline.</li>
+</ul>
+</section>
+<section id="pitch-spelling" class="level3">
+<h3 class="anchored" data-anchor-id="pitch-spelling">5.6 Pitch Spelling</h3>
+<p>Normalise all input to canonical Unicode characters:</p>
+<ul>
+<li>Sharp: <code>♯</code> (U+266F)</li>
+<li>Flat: <code>♭</code> (U+266D)</li>
+</ul>
+<p><code>#</code>, <code>b</code>, <code>-</code>, etc. are converted at the boundary.</p>
+<hr>
+</section>
+</section>
+<section id="documentation-site" class="level2">
+<h2 class="anchored" data-anchor-id="documentation-site">6. Documentation Site</h2>
+<p>The docs site is built with <strong>Quarto</strong> + <strong>quartodoc</strong> and lives at <a href="https://timetoalign.github.io/">https://timetoalign.github.io/</a>.</p>
+<section id="building-locally" class="level3">
+<h3 class="anchored" data-anchor-id="building-locally">6.1 Building Locally</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> docs/page</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">quartodoc</span> build           <span class="co"># regenerate the API reference pages from docstrings</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render             <span class="co"># build the full site into _site/</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The Quarto pre-render hook automatically runs <code>sync_notebooks.py</code> (see §6.3) to refresh tutorial and how-to notebooks before rendering.</p>
+</section>
+<section id="site-structure-diátaxis" class="level3">
+<h3 class="anchored" data-anchor-id="site-structure-diátaxis">6.2 Site Structure (Diátaxis)</h3>
+<p>The site follows the <a href="https://diataxis.fr/">Diátaxis</a> framework:</p>
+<ul>
+<li><strong>Tutorials</strong> (<code>tutorials.qmd</code> + <code>tutorials/</code>): learning-oriented, step-by-step.</li>
+<li><strong>How-to Guides</strong> (<code>howto.qmd</code> + <code>howto/</code>): task-oriented, focused recipes.</li>
+<li><strong>Explanation</strong> (<code>concepts.qmd</code>, <code>glossary.qmd</code>): understanding-oriented.</li>
+<li><strong>API Reference</strong> (<code>reference.qmd</code> + auto-generated <code>reference/</code>): information-oriented; this <em>Developers’ Reference</em> lives here too.</li>
+</ul>
+<p>The navigation (top navbar + per-section sidebar) is configured in <code>_quarto.yml</code>.</p>
+</section>
+<section id="notebook-integration-pipeline" class="level3">
+<h3 class="anchored" data-anchor-id="notebook-integration-pipeline">6.3 Notebook Integration Pipeline</h3>
+<p>Tutorial and how-to notebooks live as <strong>jupytext <code>py:percent</code> files</strong> in <code>docs/tuto-notebooks/</code> and <code>docs/howto-notebooks/</code>. The paired <code>.ipynb</code> files are regenerated mechanically; the <code>.py</code> is the source of truth in git.</p>
+<p>The pipeline is driven by <code>docs/page/notebooks.csv</code>, with one row per notebook:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 82%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>section</code></td>
+<td>Either <code>tutorials</code> or <code>howto</code>. Selects the source directory and target subdirectory of the rendered site.</td>
+</tr>
+<tr class="even">
+<td><code>source</code></td>
+<td>Filename of the <code>.py</code> jupytext source.</td>
+</tr>
+<tr class="odd">
+<td><code>slug</code></td>
+<td>Stem used for the rendered <code>.ipynb</code> (without extension).</td>
+</tr>
+<tr class="even">
+<td><code>title</code></td>
+<td>Title injected as Quarto YAML front matter.</td>
+</tr>
+<tr class="odd">
+<td><code>description</code></td>
+<td>Short description used in listing pages.</td>
+</tr>
+</tbody>
+</table>
+<p><code>docs/page/sync_notebooks.py</code> (run as the Quarto pre-render step) does three things per row:</p>
+<ol type="1">
+<li>Runs <code>jupytext --sync --execute</code> on the <code>.py</code> source, regenerating the paired <code>.ipynb</code> with fresh outputs.</li>
+<li>Copies the resulting <code>.ipynb</code> into <code>docs/page/{tutorials,howto}/&lt;slug&gt;.ipynb</code>.</li>
+<li>Replaces the notebook metadata with a Quarto-friendly YAML cell built from the CSV row.</li>
+</ol>
+<p>A SHA-256 cache (<code>docs/page/.sync_state.json</code>) skips notebooks whose <code>.py</code> source has not changed.</p>
+<section id="adding-a-new-how-to-tutorial-notebook" class="level4">
+<h4 class="anchored" data-anchor-id="adding-a-new-how-to-tutorial-notebook">Adding a new how-to / tutorial notebook</h4>
+<ol type="1">
+<li>Drop the new <code>.py</code> (jupytext <code>py:percent</code>) into <code>docs/tuto-notebooks/</code> or <code>docs/howto-notebooks/</code>.</li>
+<li>Add a row to <code>docs/page/notebooks.csv</code>.</li>
+<li>Add a sidebar entry under the appropriate section in <code>docs/page/_quarto.yml</code>.</li>
+<li>If the notebook introduces a new model term, also update <code>glossary.yml</code> and <code>glossary.qmd</code>.</li>
+<li>Run <code>cd docs/page &amp;&amp; python sync_notebooks.py --verbose</code> once locally to confirm it executes cleanly.</li>
+<li>Run <code>quartodoc build &amp;&amp; quarto render</code> to confirm it renders.</li>
+</ol>
+</section>
+<section id="notebook-style-rules" class="level4">
+<h4 class="anchored" data-anchor-id="notebook-style-rules">Notebook style rules</h4>
+<ul>
+<li>Markdown cells use the <code></code> shortcode for every model term. A bare “Timeline” / “ConversionMap” / etc. is a documentation bug.</li>
+<li>Use <code>Loader.from_file()</code> rather than the two-phase <code>load()</code> + <code>create_*()</code> pattern in tutorials. The two-phase form is library-internal.</li>
+<li>Coordinate conversion is demonstrated through a <code>TimeStamp</code> or <code>MatchStamp</code>, which expose the resolved coordinates directly.</li>
+</ul>
+</section>
+</section>
+<section id="jupytext-and-quarto-upgrade-only" class="level3">
+<h3 class="anchored" data-anchor-id="jupytext-and-quarto-upgrade-only">6.4 Jupytext and Quarto: Upgrade-Only</h3>
+<p><strong>Jupytext and Quarto versions may only ever be upgraded, never downgraded.</strong></p>
+<p>Both tools rewrite notebook structure on save; downgrading silently introduces incompatible changes that break the diff history and may corrupt outputs across the entire notebook corpus. If a contributor’s local install is older than the version that last touched the notebooks, they must upgrade before running <code>sync_notebooks.py</code>.</p>
+<p>This rule applies equally to CI environments — pin versions upward only.</p>
+</section>
+<section id="quartodoc-api-reference" class="level3">
+<h3 class="anchored" data-anchor-id="quartodoc-api-reference">6.5 quartodoc API Reference</h3>
+<p>The API reference under <code>docs/page/reference/</code> is <strong>fully generated</strong> from the live docstrings. Do not hand-edit those files; they are overwritten by <code>quartodoc build</code>. To add a class to the reference:</p>
+<ol type="1">
+<li>Make sure the class is exported from <code>timetoalign/__init__.py</code> (or list it with an explicit <code>name:</code> / <code>package:</code> entry).</li>
+<li>Add it to the appropriate <code>contents:</code> list under <code>quartodoc:</code> in <code>docs/page/_quarto.yml</code>.</li>
+<li><code>quartodoc build</code> regenerates the page.</li>
+</ol>
+<hr>
+</section>
+</section>
+<section id="conventional-commits-releases" class="level2">
+<h2 class="anchored" data-anchor-id="conventional-commits-releases">7. Conventional Commits &amp; Releases</h2>
+<p>The library is released by <strong>release-please</strong>, configured in <code>.github/workflows/release-please.yml</code> with <code>release-type: python</code> and <code>package-name: timetoalign</code>. The action runs on every push to <code>main</code> and:</p>
+<ol type="1">
+<li>Reads commit messages since the last release tag.</li>
+<li>Computes the next semantic version from those messages.</li>
+<li>Opens (or updates) a release PR that bumps <code>pyproject.toml</code>’s <code>version</code> and rewrites <code>CHANGELOG.md</code>.</li>
+<li>When the release PR is merged, tags the commit and creates a GitHub release.</li>
+</ol>
+<p>Because the version bump is computed from commit messages, <strong>every commit that lands on <code>main</code> must follow Conventional Commits</strong>.</p>
+<section id="commit-types" class="level3">
+<h3 class="anchored" data-anchor-id="commit-types">7.1 Commit Types</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 14%">
+<col style="width: 28%">
+<col style="width: 57%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Prefix</th>
+<th>Effect on version</th>
+<th>Use for</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>feat:</code></td>
+<td>minor bump</td>
+<td>New user-facing capability.</td>
+</tr>
+<tr class="even">
+<td><code>fix:</code></td>
+<td>patch bump</td>
+<td>Bug fix.</td>
+</tr>
+<tr class="odd">
+<td><code>perf:</code></td>
+<td>patch bump</td>
+<td>Performance improvement (no behaviour change).</td>
+</tr>
+<tr class="even">
+<td><code>docs:</code></td>
+<td>none</td>
+<td>Documentation only.</td>
+</tr>
+<tr class="odd">
+<td><code>style:</code></td>
+<td>none</td>
+<td>Formatting / whitespace.</td>
+</tr>
+<tr class="even">
+<td><code>refactor:</code></td>
+<td>none</td>
+<td>Restructuring with no behaviour change.</td>
+</tr>
+<tr class="odd">
+<td><code>test:</code></td>
+<td>none</td>
+<td>Adding or correcting tests.</td>
+</tr>
+<tr class="even">
+<td><code>build:</code></td>
+<td>none</td>
+<td>Build system or dependency changes.</td>
+</tr>
+<tr class="odd">
+<td><code>ci:</code></td>
+<td>none</td>
+<td>CI configuration changes.</td>
+</tr>
+<tr class="even">
+<td><code>chore:</code></td>
+<td>none</td>
+<td>Repo housekeeping with no src/test impact.</td>
+</tr>
+<tr class="odd">
+<td><code>revert:</code></td>
+<td>depends on reverted</td>
+<td>Revert of a previous commit.</td>
+</tr>
+</tbody>
+</table>
+<p>Optional scopes are encouraged for clarity: <code>feat(loader): …</code>, <code>fix(maps): …</code>.</p>
+</section>
+<section id="breaking-changes-major-bump" class="level3">
+<h3 class="anchored" data-anchor-id="breaking-changes-major-bump">7.2 Breaking Changes (MAJOR Bump)</h3>
+<p>A breaking change triggers a <strong>major</strong> version bump. Mark it both ways:</p>
+<ol type="1">
+<li>Add <code>!</code> after the type, e.g.&nbsp;<code>refactor!:</code>, <code>feat!:</code>.</li>
+<li>Include a <code>BREAKING CHANGE:</code> footer describing the migration.</li>
+</ol>
+<pre><code>refactor!: make every TimelineGroup member span the whole group
+
+BREAKING CHANGE: TimelineGroup.add_timeline no longer takes start, end or
+allow_extension. To let only part of a timeline take part, add the child
+timeline covering that part.</code></pre>
+<p>The <code>!</code> is what release-please reads to compute the bump; the <code>BREAKING CHANGE:</code> footer is what readers of the changelog rely on. Use both.</p>
+</section>
+<section id="manual-edits-are-forbidden" class="level3">
+<h3 class="anchored" data-anchor-id="manual-edits-are-forbidden">7.3 Manual Edits Are Forbidden</h3>
+<ul>
+<li><strong>Do not edit <code>pyproject.toml</code>’s <code>version</code> by hand.</strong></li>
+<li><strong>Do not edit <code>CHANGELOG.md</code> by hand.</strong></li>
+</ul>
+<p>Both are owned by release-please. Manual edits will be overwritten or, worse, will fight the next release PR.</p>
+<hr>
+</section>
+</section>
+<section id="branching-and-pull-requests" class="level2">
+<h2 class="anchored" data-anchor-id="branching-and-pull-requests">8. Branching and Pull Requests</h2>
+<ul>
+<li><code>main</code> is the release branch; release-please runs against it.</li>
+<li>Feature work happens on topic branches; squash-merge into <code>main</code> with a Conventional Commit message that becomes the merge commit.</li>
+<li>The PR title also follows Conventional Commits — release-please reads the merge commit, but a consistent title makes the PR list scannable.</li>
+<li>Run <code>tox -e lint</code> and <code>tox</code> (or at least targeted <code>pytest</code>) locally before opening a PR.</li>
+</ul>
+<hr>
+</section>
+<section id="ide" class="level2">
+<h2 class="anchored" data-anchor-id="ide">9. IDE</h2>
+<p><strong>PyCharm is the preferred IDE.</strong> The repo is set up to work cleanly with it out of the box:</p>
+<ul>
+<li>Import the <code>timetoalign/</code> directory as a PyCharm project (not the repo root — sibling projects have their own settings).</li>
+<li>Configure the project interpreter to a venv with <code>pip install -e ".[dev]"</code> applied.</li>
+<li>Enable the <strong>Black</strong> and <strong>isort</strong> integrations and point them at the project tools (PyCharm reads <code>.pre-commit-config.yaml</code> for the pinned versions; mirror them in <em>Settings → Tools → Black</em> and <em>Settings → Editor → Code Style → Python → Imports</em>).</li>
+<li>Enable <em>Settings → Editor → Inspections → Python → Type checker</em> with strict mode if you want the same level of typing the codebase already enforces.</li>
+<li>The flake8 line length is <strong>120</strong>; set <em>Settings → Editor → Code Style → Python → Hard wrap at</em> to 120 to match.</li>
+</ul>
+<p>VS Code, Neovim, and other editors all work — the formatters and linters are externally driven by <code>pre-commit</code> and <code>tox</code>, so editor choice is not load-bearing — but PyCharm is what the maintainers use day-to-day.</p>
+<hr>
+</section>
+<section id="where-to-look-next" class="level2">
+<h2 class="anchored" data-anchor-id="where-to-look-next">10. Where to Look Next</h2>
+<ul>
+<li><strong>The conceptual model:</strong> <a href="./concepts.html">Concepts</a>.</li>
+<li><strong>Term definitions:</strong> <a href="./glossary.html">Glossary</a>.</li>
+<li><strong>Per-class API:</strong> <a href="./reference.html">API Reference</a>.</li>
+<li><strong>Worked examples:</strong> <a href="./tutorials.html">Tutorials</a> and <a href="./howto.html">How-To Guides</a>.</li>
+</ul>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

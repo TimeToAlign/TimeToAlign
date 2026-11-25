@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Commensurability, one shared start and end, exact linear conversion, timestamps from a group, and a child as a partial member">
+
+<title>Timeline Groups – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../tutorials.html" aria-current="page"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut04_loading_data.html">Working with Data</a></li><li class="breadcrumb-item"><a href="../tutorials/tut05_timeline_groups.html">Timeline Groups</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutorials</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut00_quickstart.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quickstart</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Foundations</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut01_timelines_and_coordinates.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timelines and Coordinates</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut02_nesting_and_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Nesting and Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut03_events.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Events on a Timeline</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Working with Data</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut04_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loading Real Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut05_timeline_groups.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Timeline Groups</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut06_alignment_bundles.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Alignment Bundles and MatchClaims</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut07_flow_and_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Flow Control and Grids</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Under the Hood</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut08_data_model.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">The Data Model</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut09_pitch_and_harmony.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Pitch and Harmony across Formats</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#timeline-groups" id="toc-timeline-groups" class="nav-link active" data-scroll-target="#timeline-groups">Timeline Groups</a>
+  <ul>
+  <li><a href="#what-you-will-build" id="toc-what-you-will-build" class="nav-link" data-scroll-target="#what-you-will-build">What you will build</a></li>
+  <li><a href="#before-you-start" id="toc-before-you-start" class="nav-link" data-scroll-target="#before-you-start">Before you start</a></li>
+  <li><a href="#the-problem-groups-solve" id="toc-the-problem-groups-solve" class="nav-link" data-scroll-target="#the-problem-groups-solve">The problem groups solve</a></li>
+  <li><a href="#building-a-group" id="toc-building-a-group" class="nav-link" data-scroll-target="#building-a-group">Building a group</a></li>
+  <li><a href="#between-the-start-and-the-end" id="toc-between-the-start-and-the-end" class="nav-link" data-scroll-target="#between-the-start-and-the-end">Between the start and the end</a></li>
+  <li><a href="#transferring-one-coordinate" id="toc-transferring-one-coordinate" class="nav-link" data-scroll-target="#transferring-one-coordinate">Transferring one coordinate</a></li>
+  <li><a href="#transferring-several-coordinates" id="toc-transferring-several-coordinates" class="nav-link" data-scroll-target="#transferring-several-coordinates">Transferring several coordinates</a></li>
+  <li><a href="#the-shared-start" id="toc-the-shared-start" class="nav-link" data-scroll-target="#the-shared-start">The shared start</a></li>
+  <li><a href="#the-whole-table" id="toc-the-whole-table" class="nav-link" data-scroll-target="#the-whole-table">The whole table</a></li>
+  <li><a href="#the-represented-range" id="toc-the-represented-range" class="nav-link" data-scroll-target="#the-represented-range">The represented range</a></li>
+  <li><a href="#partial-alignment" id="toc-partial-alignment" class="nav-link" data-scroll-target="#partial-alignment">Partial alignment</a></li>
+  <li><a href="#what-you-learned" id="toc-what-you-learned" class="nav-link" data-scroll-target="#what-you-learned">What you learned</a></li>
+  <li><a href="#next" id="toc-next" class="nav-link" data-scroll-target="#next">Next</a></li>
+  <li><a href="#go-deeper" id="toc-go-deeper" class="nav-link" data-scroll-target="#go-deeper">Go deeper</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut04_loading_data.html">Working with Data</a></li><li class="breadcrumb-item"><a href="../tutorials/tut05_timeline_groups.html">Timeline Groups</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Timeline Groups</h1>
+</div>
+
+<div>
+  <div class="description">
+    Commensurability, one shared start and end, exact linear conversion, timestamps from a group, and a child as a partial member
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="timeline-groups" class="level1">
+<h1>Timeline Groups</h1>
+<section id="what-you-will-build" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-will-build">What you will build</h2>
+<p>You will put a Rachmaninoff score and performance into one <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button>, keeping the events loaded from both MIDI files as <button class="glossary" title="">Event</button>s on two <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button>s. Every member of a group shares one start and one end: score tick 0 is performance tick 0, and the score’s end is the performance’s end. For a score position between them, you will ask the group for the corresponding performance <button class="glossary" title="A position on a timeline, expressed as the distance from the origin in the timeline’s measuring unit. Combines a numeric value with a TimeUnit. The unit alone decides the number policy: quarters and beats are exact Fractions, discrete units (ticks, samples, frames, pixels) are locked to int, and the remaining continuous units (seconds, points, centimeters, …) are float. That declared number type is preserved at every boundary — authored, converted, interpolated, queried or retrieved — so a fraction-canonical axis always yields Fractions and a float-canonical axis always yields floats. An explicit number_type= overrides the default, and exact input is never degraded.">Coordinate</button> and see that the answer was interpolated.</p>
+</section>
+<section id="before-you-start" class="level2">
+<h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
+<p>Complete <a href="../tutorials/tut04_loading_data.html">Loading Real Data</a>.</p>
+<div id="ba67c21b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:00.319413Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:00.319240Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.198156Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.197402Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    ContinuousLogicalTimeline,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    ContinuousPhysicalTimeline,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    Coordinate,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    IdCoordinate,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    PerformanceMidiLoader,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    ScoreMidiLoader,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    TimelineGroup,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    TimeUnit,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>midi_dir <span class="op">=</span> ensure_data(<span class="st">"midi"</span>)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>score_path <span class="op">=</span> midi_dir <span class="op">/</span> <span class="st">"score"</span> <span class="op">/</span> <span class="st">"rachmaninoff_piano.mid"</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>performance_path <span class="op">=</span> midi_dir <span class="op">/</span> <span class="st">"performance"</span> <span class="op">/</span> <span class="st">"rachmaninoff_perf.mid"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-problem-groups-solve" class="level2">
+<h2 class="anchored" data-anchor-id="the-problem-groups-solve">The problem groups solve</h2>
+<p>Load the two files with the methods introduced in the previous tutorial. Each loader creates a complete timeline. Its <button class="glossary" title="">Length</button> is available through <code>length</code>, without inspecting loader metadata or MIDI-specific settings.</p>
+<div id="2829a7c5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.200240Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.199949Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.262667Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.262027Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>score_loader <span class="op">=</span> ScoreMidiLoader.from_file(score_path)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>performance_loader <span class="op">=</span> PerformanceMidiLoader.from_file(performance_path)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> score_loader.create_timeline(uid<span class="op">=</span><span class="st">"rachmaninoff-score"</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>performance <span class="op">=</span> performance_loader.create_timeline(uid<span class="op">=</span><span class="st">"rachmaninoff-performance"</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>source_facts <span class="op">=</span> {</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score extent"</span>: score.length,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score events"</span>: score.n_events,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance extent"</span>: performance.length,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance events"</span>: performance.n_events,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>source_facts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>{'score extent': Coordinate(12473, ticks),
+ 'score events': 111,
+ 'performance extent': Coordinate(11537, ticks),
+ 'performance events': 111}</code></pre>
+</div>
+</div>
+<p>Both results contain the loaded musical events. Their extents are native MIDI ticks: ticks in a quantized score and ticks in a performance are separate coordinate systems even though they share a unit name, so a value on one is not automatically a value on the other.</p>
+</section>
+<section id="building-a-group" class="level2">
+<h2 class="anchored" data-anchor-id="building-a-group">Building a group</h2>
+<p>Create an empty group, then add the two loaded timelines. Membership declares their <button class="glossary" title="Two timelines are commensurable if connected by a chain of C-maps, membership in the same TimelineGroup, or cross-group MatchClaims, enabling coordinate translation between them.">Commensurability</button>: by definition, every member’s 0 coincides with every other member’s 0 and every member’s length with every other member’s length, so the group relates any position on one member to a position on the other.</p>
+<div id="5cea5c15" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.264158Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.264015Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.268512Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.267786Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>group <span class="op">=</span> TimelineGroup(<span class="bu">id</span><span class="op">=</span><span class="st">"rachmaninoff-score-performance"</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>group.add_timeline(score)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>group.add_timeline(performance)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>retrieved_score <span class="op">=</span> group.get_timeline(score.<span class="bu">id</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>members_present <span class="op">=</span> <span class="bu">all</span>(</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    timeline_id <span class="kw">in</span> group.timeline_ids <span class="cf">for</span> timeline_id <span class="kw">in</span> (score.<span class="bu">id</span>, performance.<span class="bu">id</span>)</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>group_facts <span class="op">=</span> {</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"are_commensurable"</span>: members_present,</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"n_timelines"</span>: group.n_timelines,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timeline_ids"</span>: group.timeline_ids,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"retrieved timeline"</span>: retrieved_score.<span class="bu">id</span>,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>group_facts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>{'are_commensurable': True,
+ 'n_timelines': 2,
+ 'timeline_ids': ['rachmaninoff-score', 'rachmaninoff-performance'],
+ 'retrieved timeline': 'rachmaninoff-score'}</code></pre>
+</div>
+</div>
+<p>Both IDs are present, <code>n_timelines</code> is two, and <code>get_timeline</code> returns the score by ID. The <code>are_commensurable</code> label reports the consequence of that membership; the method with that name belongs to the bundle API introduced in the next tutorial.</p>
+</section>
+<section id="between-the-start-and-the-end" class="level2">
+<h2 class="anchored" data-anchor-id="between-the-start-and-the-end">Between the start and the end</h2>
+<p>A position between the shared start and end converts linearly: position <code>p</code> on one member is <code>p · len_B / len_A</code> on the other, computed exactly and then written the way the target member writes numbers. <code>get_coordinate_at</code> applies it: name the source axis by wrapping the value in an <code>IdCoordinate</code>, and name the axis you want the answer on with <code>timeline_id</code>. This linear interpolation is the second of three coordinate-transfer mechanisms in the series, after the exact parent/child offsets introduced in <a href="../tutorials/tut02_nesting_and_timestamps.html">Nesting and Timestamps</a>.</p>
+<div id="cffb3e6f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.269973Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.269807Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.274755Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.274023Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> group_facts[<span class="st">"are_commensurable"</span>]</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> score.n_events <span class="op">==</span> source_facts[<span class="st">"score events"</span>]</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>score_position <span class="op">=</span> Coordinate(<span class="dv">6000</span>, TimeUnit.ticks)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>performance_position <span class="op">=</span> group.get_coordinate_at(</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    IdCoordinate(score_position.value, score_position.unit, score.<span class="bu">id</span>),</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    timeline_id<span class="op">=</span>performance.<span class="bu">id</span>,</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>map_example <span class="op">=</span> {</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score length"</span>: score.length,</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance length"</span>: performance.length,</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score coordinate"</span>: score_position,</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance coordinate"</span>: performance_position,</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>map_example</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>{'score length': Coordinate(12473, ticks),
+ 'performance length': Coordinate(11537, ticks),
+ 'score coordinate': Coordinate(6000, ticks),
+ 'performance coordinate': IdCoordinate(5550, ticks, 'rachmaninoff-performance')}</code></pre>
+</div>
+</div>
+<p>The answer comes back as an <code>IdCoordinate</code>, not a bare number, so the target unit, the integer required by the <button class="glossary" title="">Discrete</button> performance timeline, and the timeline the value belongs to all remain visible. The ratio of the two lengths is the whole relation: one constant ratio cannot represent rubato, fermatas, or other local timing differences.</p>
+</section>
+<section id="transferring-one-coordinate" class="level2">
+<h2 class="anchored" data-anchor-id="transferring-one-coordinate">Transferring one coordinate</h2>
+<p><code>get_timestamp_at</code> returns a <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. It stores one Coordinate per timeline ID, so each entry carries its own unit and number type. TimeStamp implements the Stamp interface it shares with MatchStamp: a typed axis, get_coordinate_for() and get_coordinates_for() returning IdCoordinates by default, get_unit() for unit conversion, get_conversion_for() for label and structured map values, present_timelines, and is_interpolated. A bare number is an explicit format=“float”/“int”/“fraction” request; there is no ambient float view. Which children answer follows the containment rule of Child.">TimeStamp</button> across the group. Its coordinate accessors expose the queried position and the corresponding position on the other member.</p>
+<div id="7b6dbd29" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.276369Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.276226Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.280523Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.279703Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>shared_stamp <span class="op">=</span> group.get_timestamp_at(score_position, score.<span class="bu">id</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>stamp_view <span class="op">=</span> {</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score coordinate"</span>: shared_stamp.get_coordinate(score.<span class="bu">id</span>),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance coordinate"</span>: shared_stamp.get_coordinate(performance.<span class="bu">id</span>),</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is_interpolated"</span>: shared_stamp.is_interpolated,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> stamp_view[<span class="st">"performance coordinate"</span>] <span class="op">==</span> map_example[<span class="st">"performance coordinate"</span>]</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>stamp_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>{'score coordinate': IdCoordinate(6000, ticks, 'rachmaninoff-score'),
+ 'performance coordinate': IdCoordinate(5550, ticks, 'rachmaninoff-performance'),
+ 'is_interpolated': True}</code></pre>
+</div>
+</div>
+<p>Both values are unit-bearing coordinates. <code>is_interpolated</code> is true because score tick 6000 lies between the shared start and end rather than on one of them; the flag describes how the answer was obtained, not how accurately two endpoints model expressive timing. The group answers with the same <code>TimeStamp</code> type a single timeline returns, so everything you learned about stamps in <a href="../tutorials/tut02_nesting_and_timestamps.html">Nesting and Timestamps</a> applies unchanged.</p>
+</section>
+<section id="transferring-several-coordinates" class="level2">
+<h2 class="anchored" data-anchor-id="transferring-several-coordinates">Transferring several coordinates</h2>
+<p>Retrieval follows one grid, and a batch is where you can see the whole of it. The suffix names what you are asking with: <code>_at</code> takes a position, <code>_for</code> takes a key such as an event ID. The plural of the noun takes many of them. The bare name — <code>get_timestamp(...)</code> — is a convenience dispatcher that picks the precise method from what you hand it, and the table is that same query asked for in tabular form.</p>
+<p>So <code>get_timestamps_at</code> is simply the plural of <code>get_timestamp_at</code>: the same transfer, many positions. Use integer tick positions because ticks are a discrete unit.</p>
+<div id="f56ed02f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.281978Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.281796Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.286153Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.285559Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>batch_positions <span class="op">=</span> [</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    Coordinate(<span class="dv">0</span>, TimeUnit.ticks),</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    Coordinate(<span class="dv">4000</span>, TimeUnit.ticks),</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    Coordinate(<span class="dv">8000</span>, TimeUnit.ticks),</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>batch_stamps <span class="op">=</span> group.get_timestamps_at(</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    batch_positions,</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    score.<span class="bu">id</span>,</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>batch_stamps</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>[TimeStamp(axis=0 ticks @rachmaninoff-score, source='rachmaninoff-score'),
+ TimeStamp(axis=4000 ticks @rachmaninoff-score, source='rachmaninoff-score' (interpolated)),
+ TimeStamp(axis=8000 ticks @rachmaninoff-score, source='rachmaninoff-score' (interpolated))]</code></pre>
+</div>
+</div>
+<p>You get one <code>TimeStamp</code> per requested position, in the order you asked for them. A plural getter always returns a list of stamps and never collapses them into a table — tabulating is a separate question, asked of <code>get_timestamp_table</code> with the same arguments.</p>
+<div id="201d556a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.287635Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.287493Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.296670Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.296048Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>batch_frame <span class="op">=</span> group.get_timestamp_table(</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    batch_positions,</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    score.<span class="bu">id</span>,</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">format</span><span class="op">=</span><span class="st">"dataframe"</span>,</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>batch_frame</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">rachmaninoff-score (ticks)</th>
+<th data-quarto-table-cell-role="th">rachmaninoff-performance (ticks)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>4000</td>
+<td>3700</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>8000</td>
+<td>7400</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>Each input score tick now appears beside its mapped performance tick. Every column names the member it belongs to, and every cell holds one value in that member’s declared number type — integers here, because both axes are ticks. The default <code>format="table"</code> answers the same query as a PyArrow table whose cells are coordinate structs instead.</p>
+</section>
+<section id="the-shared-start" class="level2">
+<h2 class="anchored" data-anchor-id="the-shared-start">The shared start</h2>
+<p>At the shared start, every member stands at 0. A stamp asked for there is not interpolated: the start and the end are the two positions the group stores.</p>
+<div id="dc947590" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.298179Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.298028Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.302183Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.301392Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>start_stamp <span class="op">=</span> group.get_timestamp_at(Coordinate(<span class="dv">0</span>, TimeUnit.ticks), score.<span class="bu">id</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>start_view <span class="op">=</span> {</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    score.<span class="bu">id</span>: start_stamp.get_coordinate(score.<span class="bu">id</span>),</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    performance.<span class="bu">id</span>: start_stamp.get_coordinate(performance.<span class="bu">id</span>),</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is_interpolated"</span>: start_stamp.is_interpolated,</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>start_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>{'rachmaninoff-score': IdCoordinate(0, ticks, 'rachmaninoff-score'),
+ 'rachmaninoff-performance': IdCoordinate(0, ticks, 'rachmaninoff-performance'),
+ 'is_interpolated': False}</code></pre>
+</div>
+</div>
+<p>The mapping displays both unit-bearing coordinates at the start and shows <code>is_interpolated</code> as false.</p>
+</section>
+<section id="the-whole-table" class="level2">
+<h2 class="anchored" data-anchor-id="the-whole-table">The whole table</h2>
+<p>Asked without a position, <code>get_timestamp_table</code> materializes the stored rows at once: the shared start and the shared end, each member at 0 and at its own length.</p>
+<div id="86143912" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.303659Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.303521Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.310147Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.309521Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> start_view[<span class="st">"is_interpolated"</span>] <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(batch_frame) <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>group_frame <span class="op">=</span> group.get_timestamp_table(<span class="bu">format</span><span class="op">=</span><span class="st">"dataframe"</span>, units<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>group_frame</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">rachmaninoff-score (ticks)</th>
+<th data-quarto-table-cell-role="th">rachmaninoff-performance (ticks)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>12473</td>
+<td>11537</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>The two rows are the shared start and end; the three-row batch above contained requested positions, not three stored rows. The tick columns hold integers, because ticks are a <button class="glossary" title="">Discrete</button> unit and a column is re-expressed in its axis’s declared type just as a scalar accessor is. The columnar view and the scalar accessors agree; neither is a lower-fidelity shortcut to the other.</p>
+</section>
+<section id="the-represented-range" class="level2">
+<h2 class="anchored" data-anchor-id="the-represented-range">The represented range</h2>
+<p><code>get_interval_for</code> reports a member’s range in the group. Every member spans the whole group, so the range is the member’s own axis from 0 to its length.</p>
+<div id="5a1a87d6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.311437Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.311301Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.315039Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.314374Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>score_range <span class="op">=</span> group.get_interval_for(score.<span class="bu">id</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>range_view <span class="op">=</span> {</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"reported range"</span>: score_range,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"range duration"</span>: score_range.duration,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timeline extent"</span>: retrieved_score.length,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>range_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>{'reported range': Interval(start=Coordinate(0, ticks), end=Coordinate(12473, ticks)),
+ 'range duration': Duration(12473, ticks),
+ 'timeline extent': Coordinate(12473, ticks)}</code></pre>
+</div>
+</div>
+<p>The range runs from zero to the endpoint carried by the score’s unit-bearing <code>length</code>. <code>get_interval_for</code> returns one <button class="glossary" title="A frozen scalar pairing two plain Coordinates as a half-open span [start, end): the start is inclusive, the end exclusive. Both endpoints must share one TimeUnit and one number type, which makes the interval’s own unit and number_type unambiguous; its duration is exactly end - start, returned as a Duration. Reversed intervals raise; zero-length ones are valid. It renders through the same formatter the scalars use, so str(Interval(Coordinate(Fraction(1, 2), quarters), Coordinate(Fraction(3, 2), quarters))) is “[1/2, 3/2) quarters”. Interval is the scalar leaf of interval retrieval: TimeIntervalStamp.get_interval() and TimelineGroup.get_interval_for() both return one.">Interval</button> rather than a pair of numbers, so both endpoints keep the tick unit and the integer representation a <button class="glossary" title="">Discrete</button> axis requires, and the span’s own <code>duration</code> is available without subtracting anything by hand. Asking for a member the group does not hold raises <code>KeyError</code>; absence is reported, never returned as an empty value.</p>
+</section>
+<section id="partial-alignment" class="level2">
+<h2 class="anchored" data-anchor-id="partial-alignment">Partial alignment</h2>
+<p>A member always spans the whole group, so when a recording covers only part of a score, the part is what joins the group: a child of the score, which carries the part’s exact offset. In this small, deliberately constructed example, a 40-second recording covers only score quarters 8 through 16.</p>
+<div id="94488c71" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.316490Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.316351Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.322622Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.321996Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>partial_score <span class="op">=</span> ContinuousLogicalTimeline.from_events(</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    [{<span class="st">"id"</span>: <span class="st">"score-end"</span>, <span class="st">"event_type"</span>: <span class="st">"Boundary"</span>, <span class="st">"instant"</span>: Fraction(<span class="dv">16</span>)}],</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="st">"sixteen-quarter-score"</span>,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>second_half <span class="op">=</span> partial_score.create_child(</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span>Fraction(<span class="dv">8</span>), offset<span class="op">=</span>Fraction(<span class="dv">8</span>), uid<span class="op">=</span><span class="st">"second-half"</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>second_half_recording <span class="op">=</span> ContinuousPhysicalTimeline.from_events(</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    [{<span class="st">"id"</span>: <span class="st">"recording-end"</span>, <span class="st">"event_type"</span>: <span class="st">"Boundary"</span>, <span class="st">"instant"</span>: <span class="fl">40.0</span>}],</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="st">"second-half-recording"</span>,</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>partial_group <span class="op">=</span> TimelineGroup(</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"second-half-only"</span>, timelines<span class="op">=</span>[second_half, second_half_recording]</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>partial_group.timeline_ids</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>['second-half', 'second-half-recording']</code></pre>
+</div>
+</div>
+<p>The group holds the second half and the recording; the score itself is no member. A score position reaches the recording in two steps, each a mechanism you already know: the exact offset carries it onto the child, and the group carries the child’s position onto the recording.</p>
+<div id="8cca5437" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-12T22:54:02.324028Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-12T22:54:02.323893Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-12T22:54:02.329195Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-12T22:54:02.328731Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>second_half_boundary <span class="op">=</span> Coordinate(Fraction(<span class="dv">8</span>), TimeUnit.quarters)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>between_pairs <span class="op">=</span> Coordinate(Fraction(<span class="dv">25</span>, <span class="dv">2</span>), TimeUnit.quarters)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> recording_position(score_position: Coordinate) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Carry a score position onto the child, then across the group."""</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    on_child <span class="op">=</span> partial_score.get_timestamp_at(score_position).get_coordinate(</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>        second_half.<span class="bu">id</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    stamp <span class="op">=</span> partial_group.get_timestamp_at(on_child)</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>        <span class="st">"on the child"</span>: on_child,</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>        <span class="st">"on the recording"</span>: stamp.get_coordinate(second_half_recording.<span class="bu">id</span>),</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>        <span class="st">"is_interpolated"</span>: stamp.is_interpolated,</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>partial_checks <span class="op">=</span> {</span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarter 8"</span>: recording_position(second_half_boundary),</span>
+<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarter 25/2"</span>: recording_position(between_pairs),</span>
+<span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb20-22"><a href="#cb20-22" aria-hidden="true" tabindex="-1"></a>partial_checks</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>{'quarter 8': {'on the child': IdCoordinate(Fraction(0, 1), quarters, 'second-half'),
+  'on the recording': IdCoordinate(0.0, seconds, 'second-half-recording'),
+  'is_interpolated': False},
+ 'quarter 25/2': {'on the child': IdCoordinate(Fraction(9, 2), quarters, 'second-half'),
+  'on the recording': IdCoordinate(22.5, seconds, 'second-half-recording'),
+  'is_interpolated': True}}</code></pre>
+</div>
+</div>
+<p>Quarter 8 is the child’s 0, the shared start of the group, and maps to 0 seconds, so its flag is false. Quarter 25/2 is the child’s exact 9/2, which maps to 22.5 seconds and has a true interpolation flag. With no further stored positions, the group cannot measure how far this straight-line estimate departs from the performed rubato.</p>
+</section>
+<section id="what-you-learned" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-learned">What you learned</h2>
+<ul>
+<li>You can load event-bearing score and performance timelines and compare their extents.</li>
+<li>You can build a group, inspect its members, and establish commensurability.</li>
+<li>You can use the group’s linear conversion through <code>get_coordinate_at</code>.</li>
+<li>You can transfer one coordinate and identify an interpolated answer.</li>
+<li>You can transfer a batch of discrete coordinates and tabulate the same query.</li>
+<li>You can read the shared start as a stamp that is not interpolated.</li>
+<li>You can inspect the stored start and end rows and read one typed value per cell.</li>
+<li>You can query a member’s represented range.</li>
+<li>You can align a recording to only part of a score by grouping it with a child.</li>
+</ul>
+</section>
+<section id="next" class="level2">
+<h2 class="anchored" data-anchor-id="next">Next</h2>
+<p><a href="../tutorials/tut06_alignment_bundles.html">Alignment Bundles and MatchClaims</a></p>
+</section>
+<section id="go-deeper" class="level2">
+<h2 class="anchored" data-anchor-id="go-deeper">Go deeper</h2>
+<p><a href="../howto/how01_coordinate_math.html">Coordinate Math</a> and <a href="../howto/how03_create_note_alignment.html">Create a Note Alignment</a>.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Children, offsets, regions, segment lines, and the cross-section a timestamp gives you">
+
+<title>Nesting and Timestamps – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../tutorials.html" aria-current="page"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut01_timelines_and_coordinates.html">Foundations</a></li><li class="breadcrumb-item"><a href="../tutorials/tut02_nesting_and_timestamps.html">Nesting and Timestamps</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutorials</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut00_quickstart.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quickstart</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Foundations</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut01_timelines_and_coordinates.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timelines and Coordinates</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut02_nesting_and_timestamps.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Nesting and Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut03_events.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Events on a Timeline</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Working with Data</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut04_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loading Real Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut05_timeline_groups.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline Groups</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut06_alignment_bundles.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Alignment Bundles and MatchClaims</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut07_flow_and_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Flow Control and Grids</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Under the Hood</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut08_data_model.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">The Data Model</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut09_pitch_and_harmony.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Pitch and Harmony across Formats</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#nesting-and-timestamps" id="toc-nesting-and-timestamps" class="nav-link active" data-scroll-target="#nesting-and-timestamps">Nesting and Timestamps</a>
+  <ul>
+  <li><a href="#what-you-will-build" id="toc-what-you-will-build" class="nav-link" data-scroll-target="#what-you-will-build">What you will build</a></li>
+  <li><a href="#before-you-start" id="toc-before-you-start" class="nav-link" data-scroll-target="#before-you-start">Before you start</a></li>
+  <li><a href="#why-nesting" id="toc-why-nesting" class="nav-link" data-scroll-target="#why-nesting">Why nesting</a></li>
+  <li><a href="#creating-a-child" id="toc-creating-a-child" class="nav-link" data-scroll-target="#creating-a-child">Creating a child</a></li>
+  <li><a href="#adding-a-child-at-an-offset" id="toc-adding-a-child-at-an-offset" class="nav-link" data-scroll-target="#adding-a-child-at-an-offset">Adding a child at an offset</a></li>
+  <li><a href="#appending-a-child" id="toc-appending-a-child" class="nav-link" data-scroll-target="#appending-a-child">Appending a child</a></li>
+  <li><a href="#converting-down-and-up" id="toc-converting-down-and-up" class="nav-link" data-scroll-target="#converting-down-and-up">Converting down and up</a></li>
+  <li><a href="#many-children-at-once" id="toc-many-children-at-once" class="nav-link" data-scroll-target="#many-children-at-once">Many children at once</a></li>
+  <li><a href="#children-that-keep-their-measures" id="toc-children-that-keep-their-measures" class="nav-link" data-scroll-target="#children-that-keep-their-measures">Children that keep their measures</a></li>
+  <li><a href="#seeing-the-shape" id="toc-seeing-the-shape" class="nav-link" data-scroll-target="#seeing-the-shape">Seeing the shape</a></li>
+  <li><a href="#a-grandchild" id="toc-a-grandchild" class="nav-link" data-scroll-target="#a-grandchild">A grandchild</a></li>
+  <li><a href="#segment-lines" id="toc-segment-lines" class="nav-link" data-scroll-target="#segment-lines">Segment lines</a></li>
+  <li><a href="#regions-naming-a-span-without-creating-a-child" id="toc-regions-naming-a-span-without-creating-a-child" class="nav-link" data-scroll-target="#regions-naming-a-span-without-creating-a-child">Regions: naming a span without creating a child</a></li>
+  <li><a href="#timestamps" id="toc-timestamps" class="nav-link" data-scroll-target="#timestamps">Timestamps</a></li>
+  <li><a href="#reversing-a-conversion-map" id="toc-reversing-a-conversion-map" class="nav-link" data-scroll-target="#reversing-a-conversion-map">Reversing a conversion map</a></li>
+  <li><a href="#conversion-maps-show-up-in-an-existing-stamp" id="toc-conversion-maps-show-up-in-an-existing-stamp" class="nav-link" data-scroll-target="#conversion-maps-show-up-in-an-existing-stamp">Conversion maps show up in an existing stamp</a></li>
+  <li><a href="#a-span-instead-of-a-point" id="toc-a-span-instead-of-a-point" class="nav-link" data-scroll-target="#a-span-instead-of-a-point">A span instead of a point</a></li>
+  <li><a href="#what-you-learned" id="toc-what-you-learned" class="nav-link" data-scroll-target="#what-you-learned">What you learned</a></li>
+  <li><a href="#next" id="toc-next" class="nav-link" data-scroll-target="#next">Next</a></li>
+  <li><a href="#go-deeper" id="toc-go-deeper" class="nav-link" data-scroll-target="#go-deeper">Go deeper</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut01_timelines_and_coordinates.html">Foundations</a></li><li class="breadcrumb-item"><a href="../tutorials/tut02_nesting_and_timestamps.html">Nesting and Timestamps</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Nesting and Timestamps</h1>
+</div>
+
+<div>
+  <div class="description">
+    Children, offsets, regions, segment lines, and the cross-section a timestamp gives you
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="nesting-and-timestamps" class="level1">
+<h1>Nesting and Timestamps</h1>
+<section id="what-you-will-build" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-will-build">What you will build</h2>
+<p>You will build an exact three-level <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> hierarchy: a piece as the <button class="glossary" title="The top-level timeline in a hierarchy of nested timelines. No parent bounds its length; an unlocked descendant grows within its parent’s length, or grows an unlocked parent with it.">Root</button>, a movement inside it, and three phrases inside the movement. You will be able to move a <button class="glossary" title="A position on a timeline, expressed as the distance from the origin in the timeline’s measuring unit. Combines a numeric value with a TimeUnit. The unit alone decides the number policy: quarters and beats are exact Fractions, discrete units (ticks, samples, frames, pixels) are locked to int, and the remaining continuous units (seconds, points, centimeters, …) are float. That declared number type is preserved at every boundary — authored, converted, interpolated, queried or retrieved — so a fraction-canonical axis always yields Fractions and a float-canonical axis always yields floats. An explicit number_type= overrides the default, and exact input is never degraded.">Coordinate</button> in both directions through the hierarchy and inspect point and interval cross-sections of its coordinate systems.</p>
+</section>
+<section id="before-you-start" class="level2">
+<h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
+<p>Complete <a href="../tutorials/tut01_timelines_and_coordinates.html">Timelines and Coordinates</a> first.</p>
+<div id="e2e59a03" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:27.955794Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:27.955119Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.630663Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.629884Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> IdCoordinate, TimeIntervalStamp, TimeStamp, TimeUnit</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.maps <span class="im">import</span> TicksToQuarters</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> ContinuousLogicalTimeline, MeasureMap</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="why-nesting" class="level2">
+<h2 class="anchored" data-anchor-id="why-nesting">Why nesting</h2>
+<p>A piece contains movements, and a movement contains phrases; putting all three on one flat axis discards those relationships. A <button class="glossary" title="">Child</button> is therefore part of the library’s model, not merely a display convenience.</p>
+<div id="899ad1d2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.632291Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.632134Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.637938Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.637204Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>structure <span class="op">=</span> {</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"piece"</span>: (Fraction(<span class="dv">0</span>), Fraction(<span class="dv">20</span>)),</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"movement"</span>: (Fraction(<span class="dv">3</span>), Fraction(<span class="dv">15</span>)),</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"phrases"</span>: [<span class="st">"opening"</span>, <span class="st">"development"</span>, <span class="st">"closing"</span>],</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"phrase_boundaries"</span>: [Fraction(<span class="dv">0</span>), Fraction(<span class="dv">4</span>), Fraction(<span class="dv">9</span>), Fraction(<span class="dv">12</span>)],</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>structure</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>{'piece': (Fraction(0, 1), Fraction(20, 1)),
+ 'movement': (Fraction(3, 1), Fraction(15, 1)),
+ 'phrases': ['opening', 'development', 'closing'],
+ 'phrase_boundaries': [Fraction(0, 1),
+  Fraction(4, 1),
+  Fraction(9, 1),
+  Fraction(12, 1)]}</code></pre>
+</div>
+</div>
+<p>The nested plan keeps the movement’s range and its phrase names together. We will turn this plan into timelines rather than flattening it into labels on the piece axis.</p>
+</section>
+<section id="creating-a-child" class="level2">
+<h2 class="anchored" data-anchor-id="creating-a-child">Creating a child</h2>
+<p>Start the piece with one direct child. <code>create_child</code> makes a child at the beginning of its <button class="glossary" title="A timeline that contains one or more Child timelines. The parent and all its children must share the same measuring unit. Coordinate transfer uses exact offset arithmetic.">Parent</button> and returns it.</p>
+<div id="7d04497c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.639524Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.639381Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.645802Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.645093Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>piece <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">3</span>), uid<span class="op">=</span><span class="st">"piece"</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>initial_piece_length <span class="op">=</span> piece.length</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>introduction <span class="op">=</span> piece.create_child(length<span class="op">=</span>Fraction(<span class="dv">3</span>), uid<span class="op">=</span><span class="st">"introduction"</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>introduction_offset <span class="op">=</span> piece.get_child_offset(<span class="st">"introduction"</span>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>created_child_view <span class="op">=</span> {</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"piece length"</span>: initial_piece_length,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"child ID"</span>: introduction.<span class="bu">id</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"child offset"</span>: introduction_offset,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>created_child_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>{'piece length': Coordinate(Fraction(3, 1), quarters),
+ 'child ID': 'introduction',
+ 'child offset': Coordinate(Fraction(0, 1), quarters)}</code></pre>
+</div>
+</div>
+<p>The piece is deliberately only three quarters long at first. The returned <code>introduction</code> begins at zero and fills that initial span.</p>
+</section>
+<section id="adding-a-child-at-an-offset" class="level2">
+<h2 class="anchored" data-anchor-id="adding-a-child-at-an-offset">Adding a child at an offset</h2>
+<p>Place an existing movement timeline three quarters along the piece. The offset is measured on the parent’s axis, and the relation is <code>parent_position = child_position + child_offset</code>.</p>
+<div id="184a6ee0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.647296Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.647154Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.652815Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.652234Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>movement <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">12</span>), uid<span class="op">=</span><span class="st">"movement"</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>movement_offset <span class="op">=</span> piece.make_coordinate(structure[<span class="st">"movement"</span>][<span class="dv">0</span>])</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>piece.add_child(movement, offset<span class="op">=</span>movement_offset, allow_expansion<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>piece_length_after_movement <span class="op">=</span> piece.length</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>added_child_view <span class="op">=</span> {</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"movement offset"</span>: movement_offset,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"piece length before"</span>: initial_piece_length,</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"piece length after"</span>: piece_length_after_movement,</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>added_child_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>{'movement offset': Coordinate(Fraction(3, 1), quarters),
+ 'piece length before': Coordinate(Fraction(3, 1), quarters),
+ 'piece length after': Coordinate(Fraction(15, 1), quarters)}</code></pre>
+</div>
+</div>
+<p>The movement starts at parent position 3 and ends at 15 quarters. Because that exceeds the piece’s initial length, <code>allow_expansion=True</code> permits the parent to grow from 3 to 15 quarters instead of rejecting the child.</p>
+</section>
+<section id="appending-a-child" class="level2">
+<h2 class="anchored" data-anchor-id="appending-a-child">Appending a child</h2>
+<p><code>append_child</code> places a child at the current end of its parent. Append a coda to complete the planned twenty-quarter piece.</p>
+<div id="aeba556f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.654371Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.654223Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.660388Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.659488Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>coda <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">5</span>), uid<span class="op">=</span><span class="st">"coda"</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>piece.append_child(coda)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>coda_offset <span class="op">=</span> piece.get_child_offset(<span class="st">"coda"</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>final_piece_length <span class="op">=</span> piece.length</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>appended_child_view <span class="op">=</span> {</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"previous piece length"</span>: piece_length_after_movement,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coda offset"</span>: coda_offset,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"final piece length"</span>: final_piece_length,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>appended_child_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>{'previous piece length': Coordinate(Fraction(15, 1), quarters),
+ 'coda offset': Coordinate(Fraction(15, 1), quarters),
+ 'final piece length': Coordinate(Fraction(20, 1), quarters)}</code></pre>
+</div>
+</div>
+<p>The coda offset equals the previous piece length, so there is no gap. Its five-quarter length extends the piece from 15 to the planned 20 quarters.</p>
+</section>
+<section id="converting-down-and-up" class="level2">
+<h2 class="anchored" data-anchor-id="converting-down-and-up">Converting down and up</h2>
+<p>Lift a movement-local position into the piece, then subtract the same offset to return. This is the first of three coordinate-transfer mechanisms in the series; <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button> and <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> transfer arrive in their own tutorials.</p>
+<div id="91075c83" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.662271Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.662114Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.666589Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.665935Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>movement_position <span class="op">=</span> movement.make_coordinate(Fraction(<span class="dv">5</span>, <span class="dv">2</span>))</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>piece_position <span class="op">=</span> piece.get_coordinate_at(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    IdCoordinate(movement_position.value, movement.unit, movement.<span class="bu">id</span>)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>returned_value <span class="op">=</span> piece_position.value <span class="op">-</span> movement_offset.value</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>returned_position <span class="op">=</span> movement.get_coordinate_at(returned_value, <span class="bu">format</span><span class="op">=</span><span class="st">"coordinate"</span>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>coordinate_round_trip <span class="op">=</span> {</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"movement to piece"</span>: piece_position,</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"piece back to movement"</span>: returned_position,</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"exact round trip"</span>: returned_position <span class="op">==</span> movement_position,</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>coordinate_round_trip</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>{'movement to piece': IdCoordinate(Fraction(11, 2), quarters, 'piece'),
+ 'piece back to movement': Coordinate(Fraction(5, 2), quarters),
+ 'exact round trip': True}</code></pre>
+</div>
+</div>
+<p>The local position gains three quarters on the way to the piece and loses exactly three on the way back. The final <code>True</code> proves that this transfer is exact offset arithmetic. Note the two return types: naming the source with an <code>IdCoordinate</code> gets you an <code>IdCoordinate</code> back, tagged with the axis the answer is on, while <code>format="coordinate"</code> asks for the same value with the timeline identity dropped — which is what makes it comparable to the plain coordinate we started from.</p>
+</section>
+<section id="many-children-at-once" class="level2">
+<h2 class="anchored" data-anchor-id="many-children-at-once">Many children at once</h2>
+<p>A boundary list is a compact way to divide one timeline into named children: <em>k</em> + 1 boundaries create <em>k</em> children.</p>
+<div id="df36c6ab" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.668209Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.668047Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.677283Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.676739Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>phrase_boundaries <span class="op">=</span> structure[<span class="st">"phrase_boundaries"</span>]</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>phrase_names <span class="op">=</span> structure[<span class="st">"phrases"</span>]</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>phrases <span class="op">=</span> movement.create_children_from_boundaries(</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    phrase_boundaries,</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    names<span class="op">=</span>phrase_names,</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>listed_children <span class="op">=</span> movement.list_children()</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>phrase_count <span class="op">=</span> movement.n_children</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>development <span class="op">=</span> movement.get_child(<span class="st">"development"</span>)</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>development_offset <span class="op">=</span> movement.get_child_offset(<span class="st">"development"</span>)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>phrase_inventory <span class="op">=</span> {</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"ids"</span>: listed_children,</span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"count"</span>: phrase_count,</span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"retrieved ID"</span>: development.<span class="bu">id</span>,</span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"selected offset"</span>: development_offset,</span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>phrase_inventory</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>{'ids': ['opening', 'development', 'closing'],
+ 'count': 3,
+ 'retrieved ID': 'development',
+ 'selected offset': Coordinate(Fraction(4, 1), quarters)}</code></pre>
+</div>
+</div>
+<p>Four boundaries produced three named phrase timelines. The inventory shows how to list and count direct children, retrieve one by ID, and inspect its offset on the movement.</p>
+</section>
+<section id="children-that-keep-their-measures" class="level2">
+<h2 class="anchored" data-anchor-id="children-that-keep-their-measures">Children that keep their measures</h2>
+<p>A parent may carry a measure map: its bars, each with a number, a time signature and a position. A child takes its share of those bars only when you ask for it with <code>measures=True</code>; by default it has no measure map. The share is the slice of the parent’s map over the child’s span, re-based to the child’s origin. Four bars of 3/4 make a twelve-quarter song.</p>
+<div id="34d15aed" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.679018Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.678855Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.697534Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.696644Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>bars <span class="op">=</span> MeasureMap.from_rows([{<span class="st">"count"</span>: <span class="dv">1</span>, <span class="st">"time_signature"</span>: <span class="st">"3/4"</span>}, {<span class="st">"count"</span>: <span class="dv">4</span>}])</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>song <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">12</span>), uid<span class="op">=</span><span class="st">"song"</span>).add_measure_map(bars)</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>halves <span class="op">=</span> song.create_children_from_boundaries(</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    [Fraction(<span class="dv">0</span>), Fraction(<span class="dv">6</span>), Fraction(<span class="dv">12</span>)],</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    names<span class="op">=</span>[<span class="st">"first half"</span>, <span class="st">"second half"</span>],</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    measures<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>late_entry <span class="op">=</span> song.create_child(</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    length<span class="op">=</span>Fraction(<span class="dv">4</span>), offset<span class="op">=</span>Fraction(<span class="dv">5</span>), uid<span class="op">=</span><span class="st">"late entry"</span>, measures<span class="op">=</span><span class="va">True</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>plain <span class="op">=</span> song.create_child(length<span class="op">=</span>Fraction(<span class="dv">4</span>), offset<span class="op">=</span>Fraction(<span class="dv">5</span>), uid<span class="op">=</span><span class="st">"plain"</span>)</span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> bar_rows(timeline):</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> [</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>        (measure.number, measure.qstamp, measure.actual_length, <span class="bu">type</span>(measure).<span class="va">__name__</span>)</span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> measure <span class="kw">in</span> timeline.measure_map</span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>measure_view <span class="op">=</span> {</span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>    <span class="st">"second half"</span>: bar_rows(halves[<span class="dv">1</span>]),</span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a>    <span class="st">"late entry"</span>: bar_rows(late_entry),</span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>    <span class="st">"plain child"</span>: plain.measure_map,</span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>measure_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>{'second half': [(3, Fraction(0, 1), Fraction(3, 1), 'RegularMeasure'),
+  (4, Fraction(3, 1), Fraction(3, 1), 'RegularMeasure')],
+ 'late entry': [(2, Fraction(0, 1), Fraction(1, 1), 'MeasureConstituent'),
+  (3, Fraction(1, 1), Fraction(3, 1), 'RegularMeasure')],
+ 'plain child': None}</code></pre>
+</div>
+</div>
+<p>Each row is a bar’s number, its position on the child’s own axis, the part of it the child holds, and its class. The second half holds bars 3 and 4, re-based to start at 0. The late entry starts on the third beat of bar 2, so it holds that bar’s last quarter as a <button class="glossary" title="A measure of a measure map that is only part of its nominal measure: an anacrusis, or one constituent of a split measure. It carries offset_within_measure, the strictly positive quarter-note position at which it begins inside the nominal measure. A measure is a constituent exactly when that offset is stated and non-zero; a shared measure number never marks a split measure. MeasureMapLoader reads a first row numbered 0 that is shorter than nominal as an anacrusis at offset nominal minus actual length.">MeasureConstituent</button>, then the whole of bar 3. The same child created without <code>measures=True</code> has no measure map. <code>bars.get_slice(start, end)</code> gives the same slice of a map without creating a child.</p>
+</section>
+<section id="seeing-the-shape" class="level2">
+<h2 class="anchored" data-anchor-id="seeing-the-shape">Seeing the shape</h2>
+<p>A diagram makes containment visible. Its default view follows every level, while <code>depth=1</code> stops after the piece’s direct children.</p>
+<div id="3c8ddf06" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.699067Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.698892Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.714164Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.713443Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>full_shape <span class="op">=</span> piece.diagram()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>shallow_shape <span class="op">=</span> piece.diagram(depth<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Full hierarchy (</span><span class="sc">{</span>phrase_inventory[<span class="st">'count'</span>]<span class="sc">}</span><span class="ss"> phrases):"</span>)</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(full_shape)</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">One level below the piece:"</span>)</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(shallow_shape)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Full hierarchy (3 phrases):
+ContinuousLogicalTimeline[piece] (3 children)
+                        0 ________________________________ 20 quarters
+  ├─ introduction       0 ____                             3
+  ├─ movement           3     ____________________         15
+  │  ├─ opening         3     _______                      7
+  │  ├─ development     7            ________              12
+  │  └─ closing        12                    _____         15
+  └─ coda              15                         ________ 20
+
+One level below the piece:
+ContinuousLogicalTimeline[piece] (3 children)
+                      0 __________________________________ 20 quarters
+  ├─ introduction     0 _____                              3
+  ├─ movement         3      ____________________          15
+  └─ coda            15                          _________ 20</code></pre>
+</div>
+</div>
+<p>The full view reaches the phrases beneath <code>movement</code>; the shallow view keeps only <code>introduction</code>, <code>movement</code>, and <code>coda</code>. Diagram depth changes the view, not the hierarchy itself.</p>
+</section>
+<section id="a-grandchild" class="level2">
+<h2 class="anchored" data-anchor-id="a-grandchild">A grandchild</h2>
+<p>Because the movement sits inside the larger piece and the phrases sit inside the movement, a phrase-local position crosses two offsets to reach the root.</p>
+<div id="73c0aa02" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.716099Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.715837Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.722855Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.722056Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>phrase_position <span class="op">=</span> development.make_coordinate(Fraction(<span class="dv">3</span>, <span class="dv">2</span>))</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>root_position <span class="op">=</span> piece.get_coordinate_at(</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    IdCoordinate(phrase_position.value, development.unit, development.<span class="bu">id</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>movement_again_value <span class="op">=</span> root_position.value <span class="op">-</span> movement_offset.value</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>movement_again <span class="op">=</span> movement.get_coordinate_at(movement_again_value)</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>phrase_again_value <span class="op">=</span> movement_again.value <span class="op">-</span> development_offset.value</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>phrase_again <span class="op">=</span> development.get_coordinate_at(phrase_again_value, <span class="bu">format</span><span class="op">=</span><span class="st">"coordinate"</span>)</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>grandchild_round_trip <span class="op">=</span> {</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"development to piece"</span>: root_position,</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"piece back to development"</span>: phrase_again,</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"both round trips exact"</span>: (</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>        coordinate_round_trip[<span class="st">"exact round trip"</span>] <span class="kw">and</span> phrase_again <span class="op">==</span> phrase_position</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>grandchild_round_trip</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>{'development to piece': IdCoordinate(Fraction(17, 2), quarters, 'piece'),
+ 'piece back to development': Coordinate(Fraction(3, 2), quarters),
+ 'both round trips exact': True}</code></pre>
+</div>
+</div>
+<p>The phrase position gains the phrase offset and then the movement offset. Subtracting those offsets in reverse order restores the original coordinate; the round trip is the proof.</p>
+</section>
+<section id="segment-lines" class="level2">
+<h2 class="anchored" data-anchor-id="segment-lines">Segment lines</h2>
+<p>When children tile their parent with no gaps or overlaps, the hierarchy is a <button class="glossary" title="A runtime class parameterized by its segment class, such as SegmentLine[DiscreteGraphicalTimeline], whose contiguous Segments tile its full length. A line is also an instance of that segment class. Any timeline can check this structure with the property is_segment_line and adopt enforcement with as_segment_line(); a line returns to an unenforced timeline with to_timeline(). create_children_from_boundaries() creates boundary-driven tilings. Appending extends an unlocked line, while appending to a locked line raises RuntimeError.">SegmentLine</button>. Every parent position then belongs to exactly one child, so lookup is unambiguous. One rule makes it so: a child holds its parent’s positions from its start up to its end, and its end only where no sibling starts there. A boundary two children share belongs to the one starting at it, and the last child keeps its parent’s end.</p>
+<div id="1cf8c975" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.724758Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.724524Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.734315Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.733680Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>piece_is_segment_line <span class="op">=</span> piece.is_segment_line</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>movement_is_segment_line <span class="op">=</span> movement.is_segment_line</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>children_here <span class="op">=</span> movement.get_children_at(movement_again)</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>children_here_ids <span class="op">=</span> [child.<span class="bu">id</span> <span class="cf">for</span> child <span class="kw">in</span> children_here]</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>development_end_value <span class="op">=</span> development_offset.value <span class="op">+</span> development.length.value</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>development_end <span class="op">=</span> movement.make_coordinate(development_end_value)</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>development_slice <span class="op">=</span> movement.get_slice(development_offset, development_end)</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>slice_child_count <span class="op">=</span> development_slice.n_children</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>segment_line_view <span class="op">=</span> {</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"piece tiles exactly"</span>: piece_is_segment_line,</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"movement tiles exactly"</span>: movement_is_segment_line,</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"child at the position"</span>: children_here_ids,</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"slice length"</span>: development_slice.length,</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"children retained by the slice"</span>: slice_child_count,</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>segment_line_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>{'piece tiles exactly': True,
+ 'movement tiles exactly': True,
+ 'child at the position': ['development'],
+ 'slice length': Coordinate(Fraction(5, 1), quarters),
+ 'children retained by the slice': 1}</code></pre>
+</div>
+</div>
+<p>Both levels tile exactly. <code>get_children_at</code> identifies the one phrase that owns the position, while <code>get_slice</code> returns an independent, zero-based copy of the selected movement span and preserves its child structure.</p>
+</section>
+<section id="regions-naming-a-span-without-creating-a-child" class="level2">
+<h2 class="anchored" data-anchor-id="regions-naming-a-span-without-creating-a-child">Regions: naming a span without creating a child</h2>
+<p>A <button class="glossary" title="A part of a timeline defined by a TimeInterval, identified by its element id and displayed by its name (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button> names a range without adding another coordinate system. A child is a timeline with its own coordinates; a region is a name for an interval of this timeline’s coordinates. Like every element of a timeline, a region has an <code>id</code> that identifies it and an optional <code>name</code> for display: give the id yourself, or let the timeline mint <code>region_1</code>, <code>region_2</code>, and so on.</p>
+<div id="71bdd9f5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.736019Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.735826Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.742366Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.741660Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>transition <span class="op">=</span> piece.create_region(Fraction(<span class="dv">8</span>), Fraction(<span class="dv">11</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"transition"</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>large_regions <span class="op">=</span> piece.create_regions_from_boundaries(</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    [Fraction(<span class="dv">0</span>), Fraction(<span class="dv">8</span>), Fraction(<span class="dv">16</span>), Fraction(<span class="dv">20</span>)],</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    names<span class="op">=</span>[<span class="st">"first part"</span>, <span class="st">"second part"</span>, <span class="st">"final part"</span>],</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>named_transition <span class="op">=</span> piece.get_region(<span class="st">"transition"</span>)</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>regions_here <span class="op">=</span> piece.get_regions_at(root_position)</span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>listed_regions <span class="op">=</span> piece.list_regions()</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>region_count <span class="op">=</span> piece.n_regions</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>region_view <span class="op">=</span> {</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"one region"</span>: named_transition,</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"boundary regions"</span>: large_regions,</span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"regions at the position"</span>: regions_here,</span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"all ids"</span>: listed_regions,</span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"count"</span>: region_count,</span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>region_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>{'one region': Region('transition', 8-11 quarters),
+ 'boundary regions': [Region('region_1', name='first part', 0-8 quarters),
+  Region('region_2', name='second part', 8-16 quarters),
+  Region('region_3', name='final part', 16-20 quarters)],
+ 'regions at the position': [Region('transition', 8-11 quarters),
+  Region('region_2', name='second part', 8-16 quarters)],
+ 'all ids': ['transition', 'region_1', 'region_2', 'region_3'],
+ 'count': 4}</code></pre>
+</div>
+</div>
+<p>The three boundary regions were given names only, so their ids were minted; <code>get_region</code> and <code>list_regions</code> work with ids. The queried position belongs to both <code>transition</code> and the region named <code>second part</code>, because regions may overlap. Rule of thumb: choose a child when the span needs local coordinates of its own; choose a region when a name on the current axis is enough.</p>
+</section>
+<section id="timestamps" class="level2">
+<h2 class="anchored" data-anchor-id="timestamps">Timestamps</h2>
+<p><code>piece.get_timestamp_at(coord)</code> returns a <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. It stores one Coordinate per timeline ID, so each entry carries its own unit and number type. TimeStamp implements the Stamp interface it shares with MatchStamp: a typed axis, get_coordinate_for() and get_coordinates_for() returning IdCoordinates by default, get_unit() for unit conversion, get_conversion_for() for label and structured map values, present_timelines, and is_interpolated. A bare number is an explicit format=“float”/“int”/“fraction” request; there is no ambient float view. Which children answer follows the containment rule of Child.">TimeStamp</button>: a cross-section answering, “given this position on the piece, which related positions can I query?” The <code>_at</code> suffix says the query is a <em>position</em>; its counterpart <code>get_timestamp_for(event_id)</code> answers the same question about a <em>key</em>. There is also a bare <code>get_timestamp(...)</code> that dispatches to whichever of the two fits what you pass it — a convenience when reading, but code is clearer naming the precise method.</p>
+<div id="82b11e0e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.744059Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.743873Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.748680Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.747982Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>timestamp <span class="op">=</span> piece.get_timestamp_at(root_position)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>is_timestamp <span class="op">=</span> <span class="bu">isinstance</span>(timestamp, TimeStamp)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>present_timeline_ids <span class="op">=</span> timestamp.present_timelines</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>movement_number <span class="op">=</span> timestamp.get_coordinate_for(<span class="st">"movement"</span>, <span class="bu">format</span><span class="op">=</span><span class="st">"float"</span>)</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>movement_coordinate_from_stamp <span class="op">=</span> timestamp.get_coordinate_for(<span class="st">"movement"</span>)</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>phrase_coordinate_from_stamp <span class="op">=</span> timestamp.get_coordinate_for(<span class="st">"development"</span>)</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>timestamp_view <span class="op">=</span> {</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is TimeStamp"</span>: is_timestamp,</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"present timelines"</span>: present_timeline_ids,</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"format='float'"</span>: movement_number,</span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"float result type"</span>: <span class="bu">type</span>(movement_number).<span class="va">__name__</span>,</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"default for 'movement'"</span>: movement_coordinate_from_stamp,</span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"default for 'development'"</span>: phrase_coordinate_from_stamp,</span>
+<span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate value type"</span>: <span class="bu">type</span>(phrase_coordinate_from_stamp.value).<span class="va">__name__</span>,</span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>timestamp_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>{'is TimeStamp': True,
+ 'present timelines': ['piece', 'movement', 'development'],
+ "format='float'": 5.5,
+ 'float result type': 'float',
+ "default for 'movement'": IdCoordinate(Fraction(11, 2), quarters, 'movement'),
+ "default for 'development'": IdCoordinate(Fraction(3, 2), quarters, 'development'),
+ 'coordinate value type': 'Fraction'}</code></pre>
+</div>
+</div>
+<p><code>present_timelines</code> lists every timeline the stamp holds a coordinate for — the piece, the active movement, and the active grandchild phrase. The position reaches the phrase through the movement: a nested timeline answers only when every timeline on the way down holds the position. One retrieval method serves them all, and <code>format=</code> decides what comes back: <code>format="float"</code> gives the bare number <code>5.5</code>, while the default returns an <code>IdCoordinate</code> carrying the exact <code>Fraction</code>, the unit, and the timeline the value belongs to. Neither is more true than the other; asking for a bare number is a request you make explicitly rather than a second lane the stamp keeps open. This is the first of two point-stamp types introduced across the series: a group of timelines answers with this same <code>TimeStamp</code>, and bundles add the <code>MatchStamp</code>.</p>
+</section>
+<section id="reversing-a-conversion-map" class="level2">
+<h2 class="anchored" data-anchor-id="reversing-a-conversion-map">Reversing a conversion map</h2>
+<p><code>TicksToQuarters</code> points from ticks to quarters, but the piece needs a map from quarters to ticks. <code>inverse()</code> flips the direction of a <button class="glossary" title="">ConversionMap</button> before it is attached.</p>
+<div id="0d7941f9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.750181Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.750037Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.753813Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.753193Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>ticks_to_quarters <span class="op">=</span> TicksToQuarters(ppq<span class="op">=</span><span class="dv">480</span>)</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>quarters_to_ticks <span class="op">=</span> ticks_to_quarters.inverse()</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>piece.add_conversion_map(quarters_to_ticks)</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>conversion_direction <span class="op">=</span> {</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"original"</span>: (ticks_to_quarters.source_unit, ticks_to_quarters.target_unit),</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"inverse"</span>: (quarters_to_ticks.source_unit, quarters_to_ticks.target_unit),</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>conversion_direction</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>{'original': ("ticks", "quarters"), 'inverse': ("quarters", "ticks")}</code></pre>
+</div>
+</div>
+<p>The original map reads <code>(ticks, quarters)</code>; its inverse reads <code>(quarters, ticks)</code>. The inverse therefore accepts positions on the piece and produces discrete tick positions.</p>
+</section>
+<section id="conversion-maps-show-up-in-an-existing-stamp" class="level2">
+<h2 class="anchored" data-anchor-id="conversion-maps-show-up-in-an-existing-stamp">Conversion maps show up in an existing stamp</h2>
+<p>Ask the earlier timestamp for ticks after attaching the map. A stamp retains its source hierarchy and resolves available maps when an accessor is called.</p>
+<div id="f03df51b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.755366Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.755200Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.759096Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.758404Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>ticks_typed <span class="op">=</span> timestamp.get_unit(TimeUnit.ticks)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>ticks_number <span class="op">=</span> timestamp.get_unit(TimeUnit.ticks, <span class="bu">format</span><span class="op">=</span><span class="st">"int"</span>)</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>tick_view <span class="op">=</span> {</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"get_unit(TimeUnit.ticks)"</span>: ticks_typed,</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"get_unit(TimeUnit.ticks, format='int')"</span>: ticks_number,</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"typed result type"</span>: <span class="bu">type</span>(ticks_typed).<span class="va">__name__</span>,</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"int result type"</span>: <span class="bu">type</span>(ticks_number).<span class="va">__name__</span>,</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>tick_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>{'get_unit(TimeUnit.ticks)': IdCoordinate(4080, ticks, 'piece'),
+ "get_unit(TimeUnit.ticks, format='int')": 4080,
+ 'typed result type': 'IdCoordinate',
+ 'int result type': 'int'}</code></pre>
+</div>
+</div>
+<p>The stamp finds the newly attached map even though <code>timestamp</code> already existed. <code>get_unit</code> reads the same converted position twice over: by default as an <code>IdCoordinate</code> that keeps the unit and the timeline it converted from, and under <code>format="int"</code> as the bare <code>4080</code>. Ticks are a discrete unit, so both spellings are integral — the conversion is expressed as an <code>int</code> because the tick axis is locked to one, not because a float was rounded on the way out.</p>
+</section>
+<section id="a-span-instead-of-a-point" class="level2">
+<h2 class="anchored" data-anchor-id="a-span-instead-of-a-point">A span instead of a point</h2>
+<p><code>get_interval_stamp(start, end)</code> extends the same cross-section idea over a span and returns a <button class="glossary" title="Combination of a start TimeStamp and an end TimeStamp, representing a cross-section of an interval through the timeline hierarchy. It stores one Interval per timeline ID; get_interval(timeline_id) returns that Interval, get_intervals() the whole mapping, get_duration_for() an IdDuration, and get_interval_in(unit) the span converted through a C-map. Interval retrieval takes no format argument — its scalar leaf is always an Interval.">TimeIntervalStamp</button>, the span variant of the first point-stamp rung rather than another rung in the three-part ladder.</p>
+<div id="ca1bf66b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-24T03:28:28.760575Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-24T03:28:28.760444Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-24T03:28:28.765726Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-24T03:28:28.765153Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>interval_start <span class="op">=</span> piece.make_coordinate(Fraction(<span class="dv">8</span>))</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>interval_end <span class="op">=</span> piece.make_coordinate(Fraction(<span class="dv">9</span>))</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>interval_stamp <span class="op">=</span> piece.get_interval_stamp(interval_start, interval_end)</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>is_interval_stamp <span class="op">=</span> <span class="bu">isinstance</span>(interval_stamp, TimeIntervalStamp)</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>development_interval <span class="op">=</span> interval_stamp.get_interval(<span class="st">"development"</span>)</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>development_endpoint_types <span class="op">=</span> (</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">type</span>(development_interval.start.value).<span class="va">__name__</span>,</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">type</span>(development_interval.end.value).<span class="va">__name__</span>,</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>interval_view <span class="op">=</span> {</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is TimeIntervalStamp"</span>: is_interval_stamp,</span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"start on piece"</span>: interval_start,</span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"end on piece"</span>: interval_end,</span>
+<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"get_interval('development')"</span>: development_interval,</span>
+<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"printed form"</span>: <span class="bu">str</span>(development_interval),</span>
+<span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"phrase-local duration"</span>: development_interval.duration,</span>
+<span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"endpoint value types"</span>: development_endpoint_types,</span>
+<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb30-19"><a href="#cb30-19" aria-hidden="true" tabindex="-1"></a>interval_view</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>{'is TimeIntervalStamp': True,
+ 'start on piece': Coordinate(Fraction(8, 1), quarters),
+ 'end on piece': Coordinate(Fraction(9, 1), quarters),
+ "get_interval('development')": Interval(start=Coordinate(Fraction(1, 1), quarters), end=Coordinate(Fraction(2, 1), quarters)),
+ 'printed form': '[1, 2) quarters',
+ 'phrase-local duration': Duration(Fraction(1, 1), quarters),
+ 'endpoint value types': ('Fraction', 'Fraction')}</code></pre>
+</div>
+</div>
+<p>The result holds a start stamp and an end stamp from the same hierarchy, and <code>get_interval</code> hands back the phrase-local span as one <code>Interval</code> scalar rather than a pair of loose numbers. Its endpoints are exact <code>Fraction</code>s because the phrase measures quarters. Printed, the same interval reads <code>[1, 2) quarters</code>, which states the convention the model uses throughout: the start is inclusive, the end exclusive. <code>duration</code> is that span’s own length, <code>end - start</code>, and it arrives as a unit-bearing <code>Duration</code>.</p>
+</section>
+<section id="what-you-learned" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-learned">What you learned</h2>
+<ul>
+<li>You can preserve musical containment instead of flattening every level.</li>
+<li>You can create a child at the beginning of a parent.</li>
+<li>You can add an existing child at an exact offset and permit necessary growth.</li>
+<li>You can append a child at the current end of a parent.</li>
+<li>You can transfer a coordinate down and up with an exact round trip.</li>
+<li>You can create, list, count, retrieve, and locate many named children.</li>
+<li>You can give a child the slice of its parent’s measure map with <code>measures=True</code>.</li>
+<li>You can inspect the full hierarchy or limit a diagram’s depth.</li>
+<li>You can resolve a grandchild coordinate to the root and invert the path.</li>
+<li>You can recognize a segment line, find its child at a position, and slice it.</li>
+<li>You can choose regions for names on the current axis and children for local axes.</li>
+<li>You can choose between a timestamp’s typed coordinate and a bare number with <code>format=</code>.</li>
+<li>You can reverse a conversion map to obtain the direction a timeline needs.</li>
+<li>You can read a newly attached unit conversion from an existing timestamp.</li>
+<li>You can read a span across nested levels as one unit-bearing <code>Interval</code>.</li>
+</ul>
+</section>
+<section id="next" class="level2">
+<h2 class="anchored" data-anchor-id="next">Next</h2>
+<p><a href="../tutorials/tut03_events.html">Events on a Timeline</a> adds <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> data to a timeline like this one and builds an event-driven timestamp table.</p>
+</section>
+<section id="go-deeper" class="level2">
+<h2 class="anchored" data-anchor-id="go-deeper">Go deeper</h2>
+<ul>
+<li><a href="../howto/how01_coordinate_math.html">Coordinate math</a></li>
+<li><a href="../howto/how01_manual_timeline_construction.html">Manual timeline construction</a></li>
+<li><a href="../howto/how01_advanced_timestamps.html">Advanced timestamps</a></li>
+</ul>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Coordinates, units, domains, the six timeline classes, and conversion maps">
+
+<title>Timelines and Coordinates – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../tutorials.html" aria-current="page"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../howto.html"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut01_timelines_and_coordinates.html">Foundations</a></li><li class="breadcrumb-item"><a href="../tutorials/tut01_timelines_and_coordinates.html">Timelines and Coordinates</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutorials</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut00_quickstart.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quickstart</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Foundations</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut01_timelines_and_coordinates.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Timelines and Coordinates</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut02_nesting_and_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Nesting and Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut03_events.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Events on a Timeline</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Working with Data</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut04_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Loading Real Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut05_timeline_groups.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Timeline Groups</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut06_alignment_bundles.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Alignment Bundles and MatchClaims</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut07_flow_and_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Flow Control and Grids</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">Under the Hood</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut08_data_model.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">The Data Model</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorials/tut09_pitch_and_harmony.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Pitch and Harmony across Formats</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#timelines-and-coordinates" id="toc-timelines-and-coordinates" class="nav-link active" data-scroll-target="#timelines-and-coordinates">Timelines and Coordinates</a>
+  <ul>
+  <li><a href="#what-you-will-build" id="toc-what-you-will-build" class="nav-link" data-scroll-target="#what-you-will-build">What you will build</a></li>
+  <li><a href="#before-you-start" id="toc-before-you-start" class="nav-link" data-scroll-target="#before-you-start">Before you start</a></li>
+  <li><a href="#why-a-number-is-not-a-position" id="toc-why-a-number-is-not-a-position" class="nav-link" data-scroll-target="#why-a-number-is-not-a-position">Why a number is not a position</a></li>
+  <li><a href="#coordinate" id="toc-coordinate" class="nav-link" data-scroll-target="#coordinate">Coordinate</a></li>
+  <li><a href="#coordinate-arithmetic" id="toc-coordinate-arithmetic" class="nav-link" data-scroll-target="#coordinate-arithmetic">Coordinate arithmetic</a></li>
+  <li><a href="#three-domains-two-modalities" id="toc-three-domains-two-modalities" class="nav-link" data-scroll-target="#three-domains-two-modalities">Three domains, two modalities</a></li>
+  <li><a href="#your-first-timeline" id="toc-your-first-timeline" class="nav-link" data-scroll-target="#your-first-timeline">Your first timeline</a></li>
+  <li><a href="#the-timeline-makes-coordinates-for-you" id="toc-the-timeline-makes-coordinates-for-you" class="nav-link" data-scroll-target="#the-timeline-makes-coordinates-for-you">The timeline makes coordinates for you</a></li>
+  <li><a href="#resolving-a-coordinate" id="toc-resolving-a-coordinate" class="nav-link" data-scroll-target="#resolving-a-coordinate">Resolving a coordinate</a></li>
+  <li><a href="#the-discrete-twin" id="toc-the-discrete-twin" class="nav-link" data-scroll-target="#the-discrete-twin">The discrete twin</a></li>
+  <li><a href="#conversion-maps" id="toc-conversion-maps" class="nav-link" data-scroll-target="#conversion-maps">Conversion maps</a></li>
+  <li><a href="#a-c-map-belongs-to-one-timeline" id="toc-a-c-map-belongs-to-one-timeline" class="nav-link" data-scroll-target="#a-c-map-belongs-to-one-timeline">A C-Map belongs to one timeline</a></li>
+  <li><a href="#exact-logical-coordinates" id="toc-exact-logical-coordinates" class="nav-link" data-scroll-target="#exact-logical-coordinates">Exact logical coordinates</a></li>
+  <li><a href="#quarters-and-ticks" id="toc-quarters-and-ticks" class="nav-link" data-scroll-target="#quarters-and-ticks">Quarters and ticks</a></li>
+  <li><a href="#conversion-map-shapes" id="toc-conversion-map-shapes" class="nav-link" data-scroll-target="#conversion-map-shapes">Conversion-map shapes</a></li>
+  <li><a href="#naming-a-coordinates-home" id="toc-naming-a-coordinates-home" class="nav-link" data-scroll-target="#naming-a-coordinates-home">Naming a coordinate’s home</a></li>
+  <li><a href="#what-you-learned" id="toc-what-you-learned" class="nav-link" data-scroll-target="#what-you-learned">What you learned</a></li>
+  <li><a href="#next" id="toc-next" class="nav-link" data-scroll-target="#next">Next</a></li>
+  <li><a href="#go-deeper" id="toc-go-deeper" class="nav-link" data-scroll-target="#go-deeper">Go deeper</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../tutorials/tut01_timelines_and_coordinates.html">Foundations</a></li><li class="breadcrumb-item"><a href="../tutorials/tut01_timelines_and_coordinates.html">Timelines and Coordinates</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Timelines and Coordinates</h1>
+</div>
+
+<div>
+  <div class="description">
+    Coordinates, units, domains, the six timeline classes, and conversion maps
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="timelines-and-coordinates" class="level1">
+<h1>Timelines and Coordinates</h1>
+<section id="what-you-will-build" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-will-build">What you will build</h2>
+<p>You will build two <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> objects for the same 30 seconds of audio. One is a continuous axis measured in seconds; the other is a <button class="glossary" title="A timeline is discrete when coordinates exist only at discrete points (e.g., pixels, samples, ticks). Contrast with Continuous timelines where coordinates can take any real value (e.g., seconds, quarters).">Discrete</button> axis that counts whole samples. You will then attach a <button class="glossary" title="">ConversionMap</button> that supplies a sample reading for the seconds axis without linking the two timeline objects.</p>
+</section>
+<section id="before-you-start" class="level2">
+<h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
+<p>Complete <a href="../tutorials/tut00_quickstart.html">Quickstart</a> first.</p>
+<div id="f366dfc6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.410848Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.410271Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.881111Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.880310Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    ContinuousGraphicalTimeline,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    ContinuousLogicalTimeline,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    ContinuousPhysicalTimeline,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    ConversionMap,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    Coordinate,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    DiscreteGraphicalTimeline,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    DiscreteLogicalTimeline,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    DiscretePhysicalTimeline,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    Domain,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    IdCoordinate,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    LinearMap,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    NumberType,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    ScalarMap,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    SecondsToSamples,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    TimeUnit,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> Duration</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.maps <span class="im">import</span> TicksToQuarters</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="why-a-number-is-not-a-position" class="level2">
+<h2 class="anchored" data-anchor-id="why-a-number-is-not-a-position">Why a number is not a position</h2>
+<p>A colleague sends you <code>2.5</code> and says, “the theme starts here.” Seconds, beats, or pixels? A number without a <button class="glossary" title="A position on a timeline, expressed as the distance from the origin in the timeline’s measuring unit. Combines a numeric value with a TimeUnit. The unit alone decides the number policy: quarters and beats are exact Fractions, discrete units (ticks, samples, frames, pixels) are locked to int, and the remaining continuous units (seconds, points, centimeters, …) are float. That declared number type is preserved at every boundary — authored, converted, interpolated, queried or retrieved — so a fraction-canonical axis always yields Fractions and a float-canonical axis always yields floats. An explicit number_type= overrides the default, and exact input is never degraded.">Coordinate</button> system is not information.</p>
+<div id="93172a60" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.883014Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.882788Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.887466Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.886904Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>reported_position <span class="op">=</span> <span class="fl">2.5</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>reported_position</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>2.5</code></pre>
+</div>
+</div>
+<p>The output gives only a magnitude. It cannot tell you where to listen, what point in the score to inspect, or where on an image to look.</p>
+</section>
+<section id="coordinate" class="level2">
+<h2 class="anchored" data-anchor-id="coordinate">Coordinate</h2>
+<p>A coordinate combines a value with a unit. A <code>Duration</code> is the <button class="glossary" title="">Length</button> between two positions: it describes an extent, not a place.</p>
+<div id="8b3b24f3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.888939Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.888802Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.892596Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.892036Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>theme_start <span class="op">=</span> Coordinate(reported_position, TimeUnit.seconds)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>intro_duration <span class="op">=</span> Duration(<span class="fl">0.75</span>, TimeUnit.seconds)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate"</span>: theme_start,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"value"</span>: theme_start.value,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: theme_start.unit,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"duration"</span>: intro_duration,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>{'coordinate': Coordinate(2.5, seconds),
+ 'value': 2.5,
+ 'unit': "seconds",
+ 'duration': Duration(0.75, seconds)}</code></pre>
+</div>
+</div>
+<p><code>theme_start</code> now carries enough information to locate the onset on a seconds axis. Its value and unit remain separately available, while <code>intro_duration</code> represents a span of three quarters of a second.</p>
+</section>
+<section id="coordinate-arithmetic" class="level2">
+<h2 class="anchored" data-anchor-id="coordinate-arithmetic">Coordinate arithmetic</h2>
+<p>Position arithmetic preserves that distinction. <code>Coordinate</code> is imported from <code>timetoalign</code>, whereas <code>Duration</code> currently comes from <code>timetoalign.core</code>.</p>
+<div id="d517752b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.894064Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.893922Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.897843Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.897119Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>theme_end <span class="op">=</span> theme_start <span class="op">+</span> intro_duration</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>elapsed <span class="op">=</span> theme_end <span class="op">-</span> theme_start</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate plus duration"</span>: theme_end,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"returned type"</span>: <span class="bu">type</span>(theme_end),</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate minus coordinate"</span>: elapsed,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"difference type"</span>: <span class="bu">type</span>(elapsed),</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>{'coordinate plus duration': Coordinate(3.25, seconds),
+ 'returned type': timetoalign.core.time.Coordinate,
+ 'coordinate minus coordinate': Duration(0.75, seconds),
+ 'difference type': timetoalign.core.time.Duration}</code></pre>
+</div>
+</div>
+<p>Adding a duration moves to another position, so the result is a <code>Coordinate</code>. Subtracting two positions asks how far apart they are, so the result is a <code>Duration</code>.</p>
+</section>
+<section id="three-domains-two-modalities" class="level2">
+<h2 class="anchored" data-anchor-id="three-domains-two-modalities">Three domains, two modalities</h2>
+<p><button class="glossary" title="One of three temporal categories: Graphical (visual/spatial), Logical (symbolic/musical), or Physical (audio/sound). Each domain has both discrete and continuous timeline variants.">Domain</button> and <code>TimeUnit</code> encode what an axis measures; <code>NumberType</code> records the Python numeric representation used for its values.</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Domain</th>
+<th>Typical units</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Physical</td>
+<td>seconds, samples</td>
+</tr>
+<tr class="even">
+<td>Logical</td>
+<td>quarters, ticks</td>
+</tr>
+<tr class="odd">
+<td>Graphical</td>
+<td>pixels, points</td>
+</tr>
+</tbody>
+</table>
+<div id="b0bd5e9e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.899406Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.899234Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.903351Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.902779Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>timeline_families <span class="op">=</span> {</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    Domain.physical: (ContinuousPhysicalTimeline, DiscretePhysicalTimeline),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    Domain.logical: (ContinuousLogicalTimeline, DiscreteLogicalTimeline),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    Domain.graphical: (ContinuousGraphicalTimeline, DiscreteGraphicalTimeline),</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timeline classes"</span>: timeline_families,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"number types"</span>: <span class="bu">tuple</span>(NumberType),</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"seconds are discrete"</span>: TimeUnit.seconds.is_discrete,</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"samples are discrete"</span>: TimeUnit.samples.is_discrete,</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>{'timeline classes': {"physical": (timetoalign.timelines.types.ContinuousPhysicalTimeline,
+   timetoalign.timelines.types.DiscretePhysicalTimeline),
+  "logical": (timetoalign.timelines.types.ContinuousLogicalTimeline,
+   timetoalign.timelines.types.DiscreteLogicalTimeline),
+  "graphical": (timetoalign.timelines.types.ContinuousGraphicalTimeline,
+   timetoalign.timelines.types.DiscreteGraphicalTimeline)},
+ 'number types': (&lt;NumberType.int: &lt;class 'int'&gt;&gt;,
+  &lt;NumberType.float: &lt;class 'float'&gt;&gt;,
+  &lt;NumberType.fraction: &lt;class 'fractions.Fraction'&gt;&gt;),
+ 'seconds are discrete': False,
+ 'samples are discrete': True}</code></pre>
+</div>
+</div>
+<p>The six classes combine three domains with two modalities. A continuous unit admits any value between two positions; a discrete unit counts indivisible steps. Thus seconds normally use floating-point values, while samples, ticks, and pixels use integers.</p>
+</section>
+<section id="your-first-timeline" class="level2">
+<h2 class="anchored" data-anchor-id="your-first-timeline">Your first timeline</h2>
+<p>A continuous physical timeline is a suitable model of an audio axis on which onsets may occur between any two measured positions.</p>
+<div id="1e62a1e8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.904811Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.904668Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.911183Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.910459Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>audio <span class="op">=</span> ContinuousPhysicalTimeline(length<span class="op">=</span><span class="fl">30.0</span>, uid<span class="op">=</span><span class="st">"audio"</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"id"</span>: audio.<span class="bu">id</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: audio.unit,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"domain"</span>: audio.domain,</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is continuous"</span>: audio.is_continuous,</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"start"</span>: audio.start,</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"end"</span>: audio.end,</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"length"</span>: audio.length,</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"physical timeline"</span>: <span class="bu">isinstance</span>(audio, timeline_families[Domain.physical]),</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>{'id': 'audio',
+ 'unit': "seconds",
+ 'domain': "physical",
+ 'is continuous': True,
+ 'start': Coordinate(0.0, seconds),
+ 'end': Coordinate(30.0, seconds),
+ 'length': Coordinate(30.0, seconds),
+ 'physical timeline': True}</code></pre>
+</div>
+</div>
+<p>The timeline knows that it is the continuous physical axis called <code>audio</code>. Notice especially that <code>start</code>, <code>end</code>, and <code>length</code> render as <code>Coordinate</code> objects in seconds, rather than as unlabelled numbers.</p>
+</section>
+<section id="the-timeline-makes-coordinates-for-you" class="level2">
+<h2 class="anchored" data-anchor-id="the-timeline-makes-coordinates-for-you">The timeline makes coordinates for you</h2>
+<p>Because <code>audio</code> knows its own unit, <code>make_coordinate()</code> can add that unit for you.</p>
+<div id="fb7af98e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.912654Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.912514Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.916199Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.915486Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>theme_on_audio <span class="op">=</span> audio.make_coordinate(<span class="fl">2.5</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>theme_on_audio</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>Coordinate(2.5, seconds)</code></pre>
+</div>
+</div>
+<p>The output displays <code>Coordinate(2.5, seconds)</code>. The unit is visible because the timeline returned a <code>Coordinate</code>, not a bare number.</p>
+</section>
+<section id="resolving-a-coordinate" class="level2">
+<h2 class="anchored" data-anchor-id="resolving-a-coordinate">Resolving a coordinate</h2>
+<p><code>get_coordinate()</code> resolves a compatible coordinate into a timeline’s unit. Without a suitable conversion map, it refuses instead of guessing.</p>
+<div id="ca6a8a15" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.917735Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.917585Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.921863Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.921192Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>unresolved_sample <span class="op">=</span> Coordinate(<span class="dv">110250</span>, TimeUnit.samples)</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>coordinate_error <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    audio.get_coordinate(unresolved_sample)</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> exc:</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    coordinate_error <span class="op">=</span> exc</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>coordinate_error</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>ValueError("No C-Map available to convert coordinate from unit 'samples' to 'seconds' on timeline 'audio'")</code></pre>
+</div>
+</div>
+<p>The rendered <code>ValueError</code> is deliberate. C-Map is the library’s shorthand for a conversion map; without one from samples to seconds, the library cannot say what sample 110250 means on this timeline.</p>
+</section>
+<section id="the-discrete-twin" class="level2">
+<h2 class="anchored" data-anchor-id="the-discrete-twin">The discrete twin</h2>
+<p>The same recording also needs a sample axis: researchers edit and annotate in seconds, but index an audio buffer in whole samples.</p>
+<div id="09a4102f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.923392Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.923241Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.927509Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.926760Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>samples <span class="op">=</span> DiscretePhysicalTimeline(length<span class="op">=</span><span class="dv">1323000</span>, uid<span class="op">=</span><span class="st">"samples"</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"id"</span>: samples.<span class="bu">id</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: samples.unit,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"domain"</span>: samples.domain,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is discrete"</span>: samples.is_discrete,</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"start"</span>: samples.start,</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"end"</span>: samples.end,</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"length"</span>: samples.length,</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>{'id': 'samples',
+ 'unit': "samples",
+ 'domain': "physical",
+ 'is discrete': True,
+ 'start': Coordinate(0, samples),
+ 'end': Coordinate(1323000, samples),
+ 'length': Coordinate(1323000, samples)}</code></pre>
+</div>
+</div>
+<p>At 44,100 samples per second, 30 seconds contains 1,323,000 samples. Every extent on this timeline is integer-valued because there is no position at a fractional sample index.</p>
+</section>
+<section id="conversion-maps" class="level2">
+<h2 class="anchored" data-anchor-id="conversion-maps">Conversion maps</h2>
+<p>A conversion map supplies the rule for reading one axis in another unit. For this recording, the rule is 44,100 samples for every second.</p>
+<div id="e708d07e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.929105Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.928961Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.933958Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.933373Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>seconds_to_samples <span class="op">=</span> SecondsToSamples(sample_rate<span class="op">=</span><span class="dv">44100</span>)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>audio.add_conversion_map(seconds_to_samples)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>sample_theme_start <span class="op">=</span> audio.convert_to(<span class="fl">2.5</span>, <span class="st">"samples"</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>sample_audio_end <span class="op">=</span> audio.convert_to(audio.end, samples.unit)</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>registered_sample_map <span class="op">=</span> audio.get_conversion_map(<span class="st">"samples"</span>)</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>resolved_sample <span class="op">=</span> audio.get_coordinate(unresolved_sample)</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"converted position"</span>: sample_theme_start,</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"integer value"</span>: <span class="bu">isinstance</span>(sample_theme_start.value, <span class="bu">int</span>),</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"converted endpoint"</span>: sample_audio_end,</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same endpoint"</span>: sample_audio_end <span class="op">==</span> samples.end,</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"registered map"</span>: registered_sample_map,</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"resolves earlier request"</span>: resolved_sample,</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"is a ConversionMap"</span>: <span class="bu">isinstance</span>(registered_sample_map, ConversionMap),</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>{'converted position': Coordinate(110250, samples),
+ 'integer value': True,
+ 'converted endpoint': Coordinate(1323000, samples),
+ 'same endpoint': True,
+ 'registered map': SecondsToSamples(sample_rate=44100),
+ 'resolves earlier request': IdCoordinate(2.5, seconds, 'audio'),
+ 'is a ConversionMap': True}</code></pre>
+</div>
+</div>
+<p><code>convert_to()</code> returns <code>Coordinate(110250, samples)</code>: an integer-valued coordinate because samples are discrete. The converted endpoint agrees with the sample timeline’s endpoint at 1,323,000. The library will not hand you a position such as sample 110250.5. <code>get_conversion_map()</code> retrieves the same registered rule, and that rule can now resolve the request refused above.</p>
+</section>
+<section id="a-c-map-belongs-to-one-timeline" class="level2">
+<h2 class="anchored" data-anchor-id="a-c-map-belongs-to-one-timeline">A C-Map belongs to one timeline</h2>
+<p>A C-Map is a property of one timeline: it supplies a second reading of that timeline’s axis. It is not, by itself, a link between two timeline objects.</p>
+<div id="c634acfb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.935608Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.935405Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.939469Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.938738Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"attached to audio"</span>: audio.get_conversion_map(samples.unit)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">is</span> registered_sample_map,</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"attached to samples"</span>: samples.get_conversion_map(audio.unit),</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>{'attached to audio': True, 'attached to samples': None}</code></pre>
+</div>
+</div>
+<p>The map is present on <code>audio</code>; the <code>None</code> beside <code>samples</code> shows that the discrete timeline has no attached map of its own. Relating separate timelines is the job of a <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button>, introduced in the Timeline Groups tutorial.</p>
+</section>
+<section id="exact-logical-coordinates" class="level2">
+<h2 class="anchored" data-anchor-id="exact-logical-coordinates">Exact logical coordinates</h2>
+<p>Musical subdivisions are ratios. A triplet quaver at one third of a quarter should remain exactly <code>Fraction(1, 3)</code>, rather than become a nearby float.</p>
+<div id="26e1c327" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.941140Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.940925Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.945557Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.944872Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">4</span>, <span class="dv">1</span>), uid<span class="op">=</span><span class="st">"score"</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>triplet_quaver <span class="op">=</span> score.make_coordinate(Fraction(<span class="dv">1</span>, <span class="dv">3</span>))</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"triplet coordinate"</span>: triplet_quaver,</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"stored value type"</span>: <span class="bu">type</span>(triplet_quaver.value),</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"logical timeline"</span>: <span class="bu">isinstance</span>(score, timeline_families[Domain.logical]),</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>{'triplet coordinate': Coordinate(Fraction(1, 3), quarters),
+ 'stored value type': fractions.Fraction,
+ 'logical timeline': True}</code></pre>
+</div>
+</div>
+<p>The coordinate displays the exact fraction <code>1/3</code>, and its stored value is a <code>Fraction</code>. A continuous logical timeline can therefore represent the triplet without a floating-point approximation.</p>
+</section>
+<section id="quarters-and-ticks" class="level2">
+<h2 class="anchored" data-anchor-id="quarters-and-ticks">Quarters and ticks</h2>
+<p>A ticks timeline counts discrete score positions. <code>TicksToQuarters</code> supplies the conversion between those integer ticks and exact quarter-note values.</p>
+<div id="ce71d747" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.947226Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.947081Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.951817Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.951293Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>ticks <span class="op">=</span> DiscreteLogicalTimeline(length<span class="op">=</span><span class="dv">1920</span>, uid<span class="op">=</span><span class="st">"ticks"</span>)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>ticks_to_quarters <span class="op">=</span> TicksToQuarters(ppq<span class="op">=</span><span class="dv">480</span>)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>ticks.add_conversion_map(ticks_to_quarters)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>triplet_tick <span class="op">=</span> ticks.get_coordinate(triplet_quaver)</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>triplet_round_trip <span class="op">=</span> ticks.convert_to(triplet_tick, TimeUnit.quarters)</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"triplet in ticks"</span>: triplet_tick,</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"back in quarters"</span>: triplet_round_trip,</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"returned value is exact"</span>: <span class="bu">isinstance</span>(triplet_round_trip.value, Fraction),</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>{'triplet in ticks': IdCoordinate(160, ticks, 'ticks'),
+ 'back in quarters': Coordinate(Fraction(1, 3), quarters),
+ 'returned value is exact': True}</code></pre>
+</div>
+</div>
+<p>The triplet becomes integer tick 160 and converts directly back to <code>Coordinate(Fraction(1, 3), quarters)</code>. The <code>True</code> value confirms that the library itself preserved the fraction through the round trip.</p>
+</section>
+<section id="conversion-map-shapes" class="level2">
+<h2 class="anchored" data-anchor-id="conversion-map-shapes">Conversion-map shapes</h2>
+<p><code>ConversionMap</code> is the common interface for conversion rules. <code>ScalarMap</code> multiplies by a scale factor, while <code>LinearMap</code> can also apply an offset.</p>
+<div id="27852b7b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.953536Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.953393Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.957120Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.956430Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>map_family <span class="op">=</span> {</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"named map"</span>: ticks_to_quarters,</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"named map is a ScalarMap"</span>: <span class="bu">isinstance</span>(ticks_to_quarters, ScalarMap),</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"ScalarMap is a ConversionMap"</span>: <span class="bu">issubclass</span>(ScalarMap, ConversionMap),</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"LinearMap is a ConversionMap"</span>: <span class="bu">issubclass</span>(LinearMap, ConversionMap),</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>map_family</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>{'named map': TicksToQuarters(ppq=480),
+ 'named map is a ScalarMap': True,
+ 'ScalarMap is a ConversionMap': True,
+ 'LinearMap is a ConversionMap': True}</code></pre>
+</div>
+</div>
+<p>The named ticks-to-quarters rule is a <code>ScalarMap</code>. The two <code>True</code> hierarchy checks show that <code>ScalarMap</code> and <code>LinearMap</code> are both specialised forms of the general <code>ConversionMap</code> interface.</p>
+</section>
+<section id="naming-a-coordinates-home" class="level2">
+<h2 class="anchored" data-anchor-id="naming-a-coordinates-home">Naming a coordinate’s home</h2>
+<p>With more than one axis, even “2.5 seconds” may be ambiguous about which timeline owns the position. <code>IdCoordinate</code> adds the timeline identifier.</p>
+<div id="f8fbfc9e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-08-10T12:43:04.958680Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-08-10T12:43:04.958538Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-08-10T12:43:04.962158Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-08-10T12:43:04.961576Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>explicit_home <span class="op">=</span> IdCoordinate(theme_on_audio.value, theme_on_audio.unit, audio.<span class="bu">id</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>named_home <span class="op">=</span> theme_on_audio.with_timeline(<span class="st">"audio"</span>)</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"constructor"</span>: explicit_home,</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"with_timeline"</span>: named_home,</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same coordinate"</span>: explicit_home <span class="op">==</span> named_home,</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>{'constructor': IdCoordinate(2.5, seconds, 'audio'),
+ 'with_timeline': IdCoordinate(2.5, seconds, 'audio'),
+ 'same coordinate': True}</code></pre>
+</div>
+</div>
+<p>Both forms produce the same timeline-qualified coordinate. The current constructor order is <code>IdCoordinate(value, unit, timeline_id)</code>; <code>with_timeline()</code> is convenient when you already hold a plain coordinate.</p>
+<p>You will rarely need either, because an <code>IdCoordinate</code> is what the library’s getters hand back by default — <code>get_coordinate()</code> above already returned one. Carrying the identity is what lets a retrieved coordinate be passed straight back as the next query without restating which axis it came from. Note that an <code>IdCoordinate</code> never compares equal to a plain <code>Coordinate</code>, in either direction: ask for <code>format="coordinate"</code> when you deliberately want the value and unit without the timeline.</p>
+</section>
+<section id="what-you-learned" class="level2">
+<h2 class="anchored" data-anchor-id="what-you-learned">What you learned</h2>
+<ul>
+<li>You can explain why a bare number cannot identify a position.</li>
+<li>You can build a coordinate from a value and unit, and distinguish a duration from a position.</li>
+<li>You can use coordinate arithmetic and recognise its returned types.</li>
+<li>You can distinguish physical, logical, and graphical domains in continuous and discrete forms.</li>
+<li>You can construct a continuous seconds timeline and inspect its coordinate-valued extents.</li>
+<li>You can ask a timeline to make a coordinate in its own unit.</li>
+<li>You can resolve compatible coordinates and understand why unsupported units are refused.</li>
+<li>You can construct the integer sample timeline for the same audio.</li>
+<li>You can attach, retrieve, and use a seconds-to-samples conversion map.</li>
+<li>You can distinguish a C-Map on one timeline from a relationship between separate timelines.</li>
+<li>You can represent a rational logical position exactly.</li>
+<li>You can convert between exact quarters and integer ticks.</li>
+<li>You can recognise <code>ScalarMap</code>, <code>LinearMap</code>, and <code>ConversionMap</code> roles.</li>
+<li>You can add a timeline identifier to a coordinate.</li>
+</ul>
+</section>
+<section id="next" class="level2">
+<h2 class="anchored" data-anchor-id="next">Next</h2>
+<p><a href="../tutorials/tut02_nesting_and_timestamps.html">Nesting and Timestamps</a></p>
+</section>
+<section id="go-deeper" class="level2">
+<h2 class="anchored" data-anchor-id="go-deeper">Go deeper</h2>
+<ul>
+<li><a href="../howto/how01_coordinate_math.html">Coordinate Math</a></li>
+<li><a href="../howto/how01_manual_timeline_construction.html">Manual Timeline Construction</a></li>
+<li><a href="../howto/how01_advanced_cmaps.html">Advanced C-Maps</a></li>
+</ul>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

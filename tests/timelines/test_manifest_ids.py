@@ -1149,16 +1149,17 @@ class TestKeyedById:
             .create_timeline()
         )
         flow = timeline.flow_control
-        segno, *repeat_starts = flow.jump_targets
-        assert (segno.id, segno.manifestation, segno.name, segno.coordinate) == (
-            "jump_target_1",
-            SEGNO,
-            "segno",
-            _q(12),
-        )
-        assert [target.manifestation for target in repeat_starts] == [
-            FlowManifestation.repeat_start,
-            FlowManifestation.repeat_start,
+        # IDs are minted in the order written: the two printed repeat
+        # starts, then the markers of the table (segno, 1e, 2e).
+        assert [
+            (target.id, target.manifestation, target.name, target.coordinate)
+            for target in flow.jump_targets
+        ] == [
+            ("jump_target_3", SEGNO, "segno", _q(12)),
+            ("jump_target_1", FlowManifestation.repeat_start, None, _q(42)),
+            ("jump_target_4", None, "1e", _q(42)),
+            ("jump_target_2", FlowManifestation.repeat_start, None, _q(84)),
+            ("jump_target_5", None, "2e", _q(84)),
         ]
         assert [(b.manifestation, b.coordinate) for b in flow.breaks] == [
             (FlowManifestation.fine, _q(42))
@@ -1168,7 +1169,7 @@ class TestKeyedById:
             for jump in flow.jumps
             for destination in jump.targets
             if destination.manifestation is FlowManifestation.dal_segno_al_fine
-        ] == ["jump_target_1", "jump_target_1"]
+        ] == ["jump_target_3", "jump_target_3"]
 
     def test_a_destination_without_a_printed_place_names_none(self) -> None:
         timeline = (
@@ -1176,18 +1177,24 @@ class TestKeyedById:
             .load(SCORE / "couperin_concerts/c11n08_Rondeau.measures.tsv")
             .create_timeline()
         )
+        repeat_end = FlowManifestation.repeat_end
+        da_capo = FlowManifestation.da_capo
         # The first repeat end has no printed start; a da capo has no place.
+        # The two destinations without a manifestation go on to a couplet
+        # (the markers 2e and 3e) after a da capo.
         assert [
-            (jump.coordinate.value, destination.manifestation.value, destination.to)
+            (jump.coordinate.value, destination.manifestation, destination.to)
             for jump in timeline.flow_control.jumps
             for destination in jump.targets
         ] == [
-            (12, "repeat_end", None),
-            (24, "da_capo", None),
-            (24, "repeat_end", "jump_target_2"),
-            (36, "da_capo", None),
-            (36, "repeat_end", "jump_target_3"),
-            (F(171, 2), "repeat_end", "jump_target_4"),
+            (12, repeat_end, None),
+            (12, None, "jump_target_5"),
+            (12, None, "jump_target_6"),
+            (24, da_capo, None),
+            (24, repeat_end, "jump_target_1"),
+            (36, da_capo, None),
+            (36, repeat_end, "jump_target_2"),
+            (F(171, 2), repeat_end, "jump_target_3"),
         ]
 
 

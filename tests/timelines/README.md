@@ -1105,7 +1105,9 @@ the `repeat_count` of every restoring destination whose stretch contains
 it: pass 2 for brackets 1, 2 ([0,4) [8,12)); pass 3 for three brackets
 ([0,4) [12,16)); pass 4 for (1, 3), (2), which is beyond the highest pass
 named, so the destination naming 3 holds, which is going on: [0,8), ending
-at the Break at 8 with `flow_ends_at_break`.
+at the Break at 8. Findings are a result of `default` alone: `single` and
+`printed` return none in every case, also where `single` ends at a Break
+without condition as here.
 
 **Three pieces**, on an integer axis where position = measure count − 1
 for the first two:
@@ -1452,13 +1454,17 @@ identification and a `name` for display. The tests prove four properties, each a
   refused, the whole message asserted, and nothing is added. A score loader
   resolves a D.S. to the segno's id: the ms3 measures of Couperin's
   `c05n05_musete` (corpus `score`, `couperin_concerts`) load the segno as
-  the jump target `jump_target_1`, named `segno`, at quarter 12, before the
-  two printed repeat starts (its Fine is a break at the end of its bar, 42,
-  and no jump target), and both D.S. al Fine destinations name
-  `jump_target_1`. In the Rondeau `c11n08_Rondeau` the two da capo
+  the jump target `jump_target_3`, named `segno`, at quarter 12 (IDs are
+  minted in the order written: the two printed repeat starts first, then
+  the table's markers `segno`, `1e`, `2e`); its Fine is a break at the end
+  of its bar, 42, and no jump target; and both D.S. al Fine destinations
+  name `jump_target_3`. In the Rondeau `c11n08_Rondeau` the two da capo
   destinations (at 24 and 36) and the first repeat end (at 12, which has
-  no printed start) name no place, and each other repeat end names the
-  repeat start printed for it (`jump_target_2` to `jump_target_4`).
+  no printed start) name no place, each other repeat end names the repeat
+  start printed for it (`jump_target_1` to `jump_target_3`), and the two
+  destinations that go on to a couplet after a da capo (at 12, without a
+  manifestation) name the markers `2e` and `3e` (`jump_target_5`,
+  `jump_target_6`).
 - **A manifest's ids are read once per write, never once per root**
   (`TestIdsReadOncePerManifest`). Reading every id a group or bundle holds
   is one pass over all its trees (`groups._held_ids`); asking it once per

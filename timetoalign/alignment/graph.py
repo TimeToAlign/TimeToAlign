@@ -1844,12 +1844,17 @@ class MatchGraph:
         stated_pairs: list[tuple[str, str]] = []
         inferred_pairs: list[tuple[str, str]] = []
 
-        # Get subgraph for this component
+        # Get subgraph for this component. Its edges come out in the order
+        # of the component's node set, which follows the process hash seed,
+        # so each edge is oriented and sorted by the stamp's node order.
         subgraph = self._graph.subgraph(component)
-        for u, v, data in sorted(
-            subgraph.edges(data=True),
-            key=lambda edge: (edge[0][0], edge[0][1], edge[1][0], edge[1][1]),
-        ):
+        rank = {node: index for index, node in enumerate(ordered_nodes)}
+        edges: list[tuple[int, int, _GraphNode, _GraphNode, dict[str, Any]]] = []
+        for u, v, data in subgraph.edges(data=True):
+            if rank[v] < rank[u]:
+                u, v = v, u
+            edges.append((rank[u], rank[v], u, v, data))
+        for _, _, u, v, data in sorted(edges, key=lambda edge: edge[:2]):
             edge_pair = (u[0], v[0])
             # Avoid duplicates (edges are undirected)
             reverse_pair = (v[0], u[0])

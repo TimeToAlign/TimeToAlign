@@ -1791,6 +1791,40 @@ class TestMatchStampDeterminism:
         ]
         assert stamp.source_id == "Chopin_op10_no3_p04"
 
+    @staticmethod
+    def _partner_claims() -> list[MatchClaim]:
+        """A score matched to two performances at three instants each."""
+        return [
+            match_claim(
+                "score:clt_1",
+                Coordinate(beat, TimeUnit.quarters),
+                performance,
+                Coordinate(seconds, TimeUnit.seconds),
+            )
+            for performance, length in (("perf:cpt_1", 40.0), ("perf:cpt_2", 32.0))
+            for beat, seconds in ((0, 0.0), (8, length / 4), (16, length))
+        ]
+
+    def test_stated_pairs_start_from_the_stamp_order(self) -> None:
+        """Each stated pair names first the timeline the stamp lists first.
+
+        With a source, the source comes first in every pair; without one,
+        the stamp's own first timeline does. The order of the pairs is
+        the order of their timelines in the stamp.
+        """
+        claims = self._partner_claims()
+
+        sourced = MatchGraph(claims=claims, source_id="score:clt_1").get_stamps()
+        unsourced = MatchGraph(claims=claims).get_stamps()
+
+        assert [stamp.stated_pairs for stamp in sourced] == [
+            [("score:clt_1", "perf:cpt_1"), ("score:clt_1", "perf:cpt_2")]
+        ] * 3
+        assert [stamp.source_id for stamp in unsourced] == ["perf:cpt_1"] * 3
+        assert [stamp.stated_pairs for stamp in unsourced] == [
+            [("perf:cpt_1", "score:clt_1"), ("perf:cpt_2", "score:clt_1")]
+        ] * 3
+
     @pytest.mark.slow
     def test_stamp_order_survives_a_changed_hash_seed(self) -> None:
         """The seed is the trigger, so the seed is what the test varies.
@@ -1836,6 +1870,28 @@ class TestMatchStampDeterminism:
             stamp = MatchGraph(claims=claims).get_stamps()[0]
             print(repr(stamp))
             print(stamp.present_timelines)
+
+            partners = [
+                MatchClaim(
+                    timeline_a_id="score:clt_1",
+                    timeline_b_id=performance,
+                    event_a_id=f"score:clt_1@{beat}",
+                    event_b_id=f"{performance}@{seconds}",
+                    start_anchor=AlignmentAnchor(
+                        timeline_a_id="score:clt_1",
+                        coordinate_a=Coordinate(beat, TimeUnit.quarters),
+                        timeline_b_id=performance,
+                        coordinate_b=Coordinate(seconds, TimeUnit.seconds),
+                    ),
+                )
+                for performance, length in (("perf:cpt_1", 40.0), ("perf:cpt_2", 32.0))
+                for beat, seconds in ((0, 0.0), (8, length / 4), (16, length))
+            ]
+            for source_id in (None, "score:clt_1"):
+                graph = MatchGraph(claims=partners, source_id=source_id)
+                for stamp in graph.get_stamps():
+                    print(stamp.source_id, stamp.stated_pairs, stamp.inferred_pairs)
+                    print(stamp.to_dict())
             """)
 
         outputs = set()

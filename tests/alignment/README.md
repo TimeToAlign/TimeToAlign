@@ -2821,6 +2821,7 @@ one run, so the tests are built around comparison:
 |---|---|
 | `test_stamp_order_survives_claim_insertion_order` | The same claims added in several shuffled orders, asserting byte-identical `repr` and `present_timelines` |
 | `test_stamp_order_is_the_source_then_lexical_order` | The concrete order against the retrieval spec: source first, then lexical |
+| `test_stated_pairs_start_from_the_stamp_order` | The concrete orientation and order of each stamp's stated pairs against the stamp's own timeline order |
 | `test_stamp_order_survives_a_changed_hash_seed` (slow) | Byte-identical output from subprocesses run under different `PYTHONHASHSEED` values |
 
 The hash-seed test is the only one that reproduces the original defect, since
@@ -2828,6 +2829,30 @@ shuffling insertion order does not by itself change set iteration for the same
 seed. It is slow-marked because it spawns interpreters, and it asserts equality
 between runs rather than against a stored string, so it cannot rot into a
 snapshot test of whatever the ordering happens to be.
+
+The same holds for the pairs a stamp lists. A graph's edges are undirected,
+and the subgraph of one component yields each edge oriented and ordered as
+the component's node set iterates, so `stated_pairs` once read
+`[('perf:cpt_2', 'score:clt_1'), ('score:clt_1', 'perf:cpt_1')]` under one
+seed and `[('score:clt_1', 'perf:cpt_1'), ('score:clt_1', 'perf:cpt_2')]`
+under another, while `repr` and `present_timelines` agreed. The fixture
+that shows it is a score matched to two performances at three instants:
+three stamps of three timelines and two stated edges each, which one
+timeline's set of nodes can order either way. Every pair names first the
+timeline the stamp lists first (the source, then lexical order), and the
+pairs follow that order too.
+
+- `test_stated_pairs_start_from_the_stamp_order`: with `source_id=
+  "score:clt_1"` every stamp's `stated_pairs` is `[('score:clt_1',
+  'perf:cpt_1'), ('score:clt_1', 'perf:cpt_2')]`; without a source the
+  stamps' source is `perf:cpt_1` (the first timeline in lexical order) and
+  the pairs are `[('perf:cpt_1', 'score:clt_1'), ('perf:cpt_2',
+  'score:clt_1')]`. Pinned beside the agreement test for the same reason
+  as the source-then-lexical test: an order that is stable but stable on
+  the wrong thing fails here.
+- The hash-seed test also prints, for this fixture without and with a
+  source, each stamp's source, stated and inferred pairs and `to_dict()`,
+  so a pair order that follows the seed makes its runs differ.
 
 **Validity Rationale:** asserting that the first element equals one particular
 timeline id would pass under the broken code for whichever seed the suite drew

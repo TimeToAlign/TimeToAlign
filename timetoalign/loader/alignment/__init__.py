@@ -5,7 +5,8 @@ score-performance correspondences, cross-domain alignments, and related
 multimodal data.
 
 Loaders:
-    MatchfileLoader: Vienna Match (.match) score-to-performance alignment files.
+    MatchfileLoader: Vienna Match (.match) score-to-performance alignment files;
+        requires the ``partitura`` extra.
     TiliaJsonLoader: TiLiA JSON annotation exports (.tla/.json).
     PerformancePrecisionLoader: CAAMP audio-to-score alignment specimens
         (.solo score + Verovio timemap + per-performer alignment CSVs).
@@ -16,7 +17,7 @@ Loaders:
         audio-to-audio AlignmentBundle with complete-topology pairwise claims.
     MpmLoader: MPM-Toolbox MSM+MPM+MPR triples (notated score + modelled
         performance markup + observed alignment) ingested as one
-        multimodal AlignmentBundle.
+        multimodal AlignmentBundle; requires the ``mpm`` extra (``lxml``).
     MapsLoader: MAPS score-to-performance alignment JSON (TROMPA's
         trompa-align), stated as MatchClaims between a score timeline keyed
         by MEI ``xml:id`` and a performance timeline.
@@ -26,27 +27,37 @@ Loaders:
 
 Stores:
     TiliaDictStore: DictStore subclass with TiLiA timeline type properties.
+
+Asking for a loader whose dependency is not installed raises an
+:exc:`ImportError` naming the extra to install.
 """
 
 from __future__ import annotations
 
+from timetoalign.loader._optional import import_optional, resolve_optional
+
 from .ieee1599 import Ieee1599Loader
 from .listen_here import ListenHereLoader
-from .matchfile import MatchfileLoader
-from .mpm import MpmLoader
 from .parangonada import ParangonadaLoader
 from .performance_precision import PerformancePrecisionLoader
 from .tilia import TiliaDictStore, TiliaJsonLoader
 from .trompa_maps import MapsLoader
 
+# Optional loaders: importing the package never fails because one loader's
+# dependency is absent; asking for that loader names its extra.
+_OPTIONAL_LOADERS = {
+    "MatchfileLoader": ("matchfile", "partitura"),
+    "MpmLoader": ("mpm", "mpm"),
+}
+
 __all__ = [
     "Ieee1599Loader",
     "ListenHereLoader",
     "MapsLoader",
-    "MatchfileLoader",
-    "MpmLoader",
+    *import_optional(__name__, _OPTIONAL_LOADERS, globals()),
     "ParangonadaLoader",
     "PerformancePrecisionLoader",
     "TiliaDictStore",
     "TiliaJsonLoader",
 ]
+__getattr__ = resolve_optional(__name__, _OPTIONAL_LOADERS)

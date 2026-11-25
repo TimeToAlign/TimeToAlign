@@ -2,13 +2,14 @@
 
 The core classes (:class:`MidiLoader`, :class:`MidiStore`,
 :class:`MidiEventData`, :data:`CC_PURPOSE`, :class:`MidiEventType`) are
-always available.  Individual loader backends are guarded behind optional
-dependencies:
+always available.  The loaders need optional dependencies:
 
 * :class:`PerformanceMidiLoader` — requires the ``midi`` extra (``mido``)
-* :class:`ScoreMidiLoader` — requires the ``partitura`` extra
+  to load a file; importing it does not.
+* :class:`ScoreMidiLoader` — requires the ``partitura`` extra.
 
-If you attempt to import a loader whose dependency is not installed, an
+If you attempt to import :class:`ScoreMidiLoader`, or to load a file with
+:class:`PerformanceMidiLoader`, without its dependency, an
 :exc:`ImportError` is raised with installation instructions.
 """
 
@@ -19,6 +20,7 @@ from timetoalign.loader._optional import import_optional, resolve_optional
 from .base import MidiLoader
 from .constants import CC_PURPOSE, MidiEventType
 from .events import MidiEventData, ScoreMidiEventData
+from .performance import PerformanceMidiLoader
 from .store import MidiStore
 
 __all__ = [
@@ -28,12 +30,12 @@ __all__ = [
     "MidiLoader",
     "MidiStore",
     "ScoreMidiEventData",
+    "PerformanceMidiLoader",
 ]
 
 # Optional loader backends: importing the package never fails because one
 # backend's dependency is absent; asking for that backend names its extra.
 _OPTIONAL_LOADERS = {
-    "PerformanceMidiLoader": ("performance", "midi"),
     "ScoreMidiLoader": ("score", "partitura"),
 }
 

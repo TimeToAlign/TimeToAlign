@@ -7,13 +7,13 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-import mido
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader import EventLoader
+from timetoalign.loader._optional import missing_dependency
 from timetoalign.loader.base import LoadSourceResult
 
 from .constants import MidiEventType
@@ -65,7 +65,17 @@ class MidiLoader(EventLoader):
 
         Returns:
             Tuple of MIDI metadata and vectorized event field arrays.
+
+        Raises:
+            ImportError: If ``mido`` is not installed, naming the extra.
+            ValueError: If the file is no valid MIDI file.
         """
+        try:
+            import mido
+        except ModuleNotFoundError as error:
+            raise ImportError(
+                missing_dependency(type(self).__name__, error.name, "midi")
+            ) from error
         try:
             mid = mido.MidiFile(source)
         except (OSError, EOFError, ValueError) as e:

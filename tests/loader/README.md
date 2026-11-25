@@ -58,24 +58,38 @@ the dependency's entry in `sys.modules` to `None` (so importing it raises `Modul
 naming it) and drop the cached loader module, both restored by `monkeypatch`.
 
 * **Package exports.** For each optional loader of `timetoalign.loader.score` (Partitura,
-  Music21, Verovio) and `timetoalign.loader.midi` (`PerformanceMidiLoader` needing `mido`,
-  `ScoreMidiLoader` needing `partitura`), asking the package for the loader raises
-  `ImportError` with exactly `<Loader> needs <package>: pip install "timetoalign[<extra>]"`,
-  and so does the statement `from timetoalign.loader.score import Music21Loader`.
+  Music21, Verovio), `timetoalign.loader.midi` (`ScoreMidiLoader` needing `partitura`) and
+  `timetoalign.loader.alignment` (`MatchfileLoader` needing `partitura`, `MpmLoader` needing
+  `lxml`), asking the package for the loader raises `ImportError` with exactly
+  `<Loader> needs <package>: pip install "timetoalign[<extra>]"`, and so does the statement
+  `from timetoalign.loader.score import Music21Loader`.
 * **Loading.** `Ms3Loader` imports without `ms3` (it needs it only to read a notes, chords or
-  harmonies TSV), so the same message is raised by `load()` of a notes TSV.
+  harmonies TSV), so the same message is raised by `load()` of a notes TSV. Likewise
+  `PerformanceMidiLoader` imports without `mido`, which only parsing a file needs: its `load()`
+  raises `PerformanceMidiLoader needs mido: pip install "timetoalign[midi]"`.
 * **Graphical sources.** `ImageSource` imports without its backends. Without `pymupdf`,
   `ImageSource.from_image_file` raises exactly `ImageSource needs pymupdf: pip install
   "timetoalign[graphical]"`; without pillow, `draw_rectangle`, `draw_line` and `draw_path`
   raise exactly `Drawing on an ImageSource needs PIL: pip install "timetoalign[graphical]"`
   (pillow's import name is `PIL`, which is what Python reports missing).
-* **What the midi cases reach.** `timetoalign.loader` imports `partitura` and `mido` when it is
-  imported itself, so they are hidden only after the package is imported: the midi cases test the
-  package's attribute lookup, not an installation without partitura or mido, where importing the
-  package already fails with Python's `ModuleNotFoundError`.
+* **An installation without a package.** The cases above hide a package after the library is
+  imported, so they test the lookup, not an installation that lacks the package. That is tested
+  in a fresh interpreter per package (a subprocess, since an imported module cannot be
+  un-imported): with `partitura`, `mido`, `lxml` or `scipy` (which Partitura imports) hidden
+  before anything is imported, `timetoalign.loader` and each of its subpackages (`score`, `midi`,
+  `alignment`, `graphical`, `tabular`, `physical`, `metadata`, `format`) import, a loader that
+  does not need the package (`CsvLoader`) is bound, and the loader that does reports its extra
+  with the exact message: `MatchfileLoader` from `timetoalign.loader` for `partitura`
+  (`[partitura]`) and for `scipy` (`MatchfileLoader needs scipy.interpolate: pip install
+  "timetoalign[partitura]"`: Python names the module Partitura asked for, here a submodule of the
+  hidden package), `MpmLoader` for `lxml`
+  (`[mpm]`), and `PerformanceMidiLoader().load(...)` for `mido` (`[midi]`). Before, every
+  subpackage failed to import in all four cases, because `timetoalign.loader` imported the
+  Matchfile loader, and with it Partitura, unconditionally.
 * **Nothing else changes.** With every dependency installed, each package's `__all__` lists its
-  core names followed by the optional loaders in their declared order, and a name the package
-  does not export raises `AttributeError` in Python's own wording.
+  names in the order it always did (`score` and `midi`: core names, then the optional loaders in
+  their declared order; `alignment`: alphabetical, the optional loaders in their places), and a
+  name the package does not export raises `AttributeError` in Python's own wording.
 
 `AudioLoader` reads through a chain of backends, so a missing one is not an error by itself;
 its message naming `timetoalign[audio]` is pinned in `physical/test_audio.py`.

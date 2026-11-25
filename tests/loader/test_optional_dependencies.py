@@ -6,7 +6,9 @@ Strategy: ``tests/loader/README.md``, "Optional dependencies".
 from __future__ import annotations
 
 import importlib
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -25,14 +27,15 @@ MISSING = [
     ),
     ("timetoalign.loader.score", "Music21Loader", ["music21"], "music21", "music21"),
     ("timetoalign.loader.score", "VerovioLoader", ["verovio"], "verovio", "verovio"),
-    (
-        "timetoalign.loader.midi",
-        "PerformanceMidiLoader",
-        ["performance", "base"],
-        "mido",
-        "midi",
-    ),
     ("timetoalign.loader.midi", "ScoreMidiLoader", ["score"], "partitura", "partitura"),
+    (
+        "timetoalign.loader.alignment",
+        "MatchfileLoader",
+        ["matchfile"],
+        "partitura",
+        "partitura",
+    ),
+    ("timetoalign.loader.alignment", "MpmLoader", ["mpm"], "lxml", "mpm"),
 ]
 
 
@@ -90,6 +93,90 @@ def test_ms3_load_names_the_extra(
     with pytest.raises(ImportError) as excinfo:
         Ms3Loader().load(source)
     assert str(excinfo.value) == 'Ms3Loader needs ms3: pip install "timetoalign[ms3]"'
+
+
+def test_performance_midi_load_names_the_extra(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from timetoalign.loader.midi import PerformanceMidiLoader
+
+    source = tmp_path / "piece.mid"
+    source.write_bytes(b"")
+    monkeypatch.setitem(sys.modules, "mido", None)
+    with pytest.raises(ImportError) as excinfo:
+        PerformanceMidiLoader().load(source)
+    assert str(excinfo.value) == (
+        'PerformanceMidiLoader needs mido: pip install "timetoalign[midi]"'
+    )
+
+
+SUBPACKAGES = [
+    "timetoalign.loader",
+    "timetoalign.loader.score",
+    "timetoalign.loader.midi",
+    "timetoalign.loader.alignment",
+    "timetoalign.loader.graphical",
+    "timetoalign.loader.tabular",
+    "timetoalign.loader.physical",
+    "timetoalign.loader.metadata",
+    "timetoalign.loader.format",
+]
+
+USES = {
+    "partitura": "from timetoalign.loader import MatchfileLoader",
+    "scipy": "from timetoalign.loader import MatchfileLoader",
+    "lxml": "from timetoalign.loader.alignment import MpmLoader",
+    "mido": "PerformanceMidiLoader().load(source)",
+}
+
+
+@pytest.mark.parametrize(
+    ("hidden", "message"),
+    [
+        (
+            "partitura",
+            'MatchfileLoader needs partitura: pip install "timetoalign[partitura]"',
+        ),
+        (
+            "scipy",
+            'MatchfileLoader needs scipy.interpolate: pip install "timetoalign[partitura]"',
+        ),
+        ("lxml", 'MpmLoader needs lxml: pip install "timetoalign[mpm]"'),
+        ("mido", 'PerformanceMidiLoader needs mido: pip install "timetoalign[midi]"'),
+    ],
+)
+def test_an_installation_without_the_package_imports_every_loader_subpackage(
+    tmp_path: Path, hidden: str, message: str
+) -> None:
+    source = tmp_path / "piece.mid"
+    source.write_bytes(b"")
+    script = textwrap.dedent(f"""
+        import importlib
+        import sys
+        from pathlib import Path
+
+        sys.modules[{hidden!r}] = None
+        for name in {SUBPACKAGES!r}:
+            importlib.import_module(name)
+            print(name)
+        from timetoalign.loader.midi import PerformanceMidiLoader
+        from timetoalign.loader.tabular import CsvLoader
+
+        print(CsvLoader.__name__)
+        source = Path({str(source)!r})
+        try:
+            {USES[hidden]}
+        except ImportError as error:
+            print(error)
+        """)
+    completed = subprocess.run(
+        [sys.executable, "-W", "ignore", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.splitlines() == [*SUBPACKAGES, "CsvLoader", message]
 
 
 GRAPHICAL = 'pip install "timetoalign[graphical]"'
@@ -152,6 +239,20 @@ def test_drawing_without_pillow_names_the_extra(
                 "ScoreMidiEventData",
                 "PerformanceMidiLoader",
                 "ScoreMidiLoader",
+            ],
+        ),
+        (
+            "timetoalign.loader.alignment",
+            [
+                "Ieee1599Loader",
+                "ListenHereLoader",
+                "MapsLoader",
+                "MatchfileLoader",
+                "MpmLoader",
+                "ParangonadaLoader",
+                "PerformancePrecisionLoader",
+                "TiliaDictStore",
+                "TiliaJsonLoader",
             ],
         ),
     ],

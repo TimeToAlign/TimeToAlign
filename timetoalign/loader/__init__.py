@@ -70,7 +70,8 @@ from timetoalign.storage.schema import (
     parse_table_metadata,
 )
 
-from .alignment import MapsLoader, MatchfileLoader, TiliaDictStore, TiliaJsonLoader
+from ._optional import import_optional, resolve_optional
+from .alignment import MapsLoader, TiliaDictStore, TiliaJsonLoader
 from .base import AlignmentLoader, EventLoader, Loader, ManifestData, ManifestLoader
 from .metadata import MeiHeadLoader, MelodyLoader
 from .physical import (
@@ -82,6 +83,10 @@ from .physical import (
     RepoVizzLoader,
 )
 
+# Optional loaders: importing the package never fails because one loader's
+# dependency is absent; asking for that loader names its extra.
+_OPTIONAL_LOADERS = {"MatchfileLoader": ("alignment", "partitura")}
+
 __all__ = [
     "ManifestData",
     # Loader ABCs
@@ -91,7 +96,7 @@ __all__ = [
     "AlignmentLoader",
     # Alignment loaders
     "MapsLoader",
-    "MatchfileLoader",
+    *import_optional(__name__, _OPTIONAL_LOADERS, globals()),
     "TiliaDictStore",
     "TiliaJsonLoader",
     # Physical domain loaders
@@ -121,3 +126,4 @@ __all__ = [
     "TEMPORAL_TYPE_INSTANT",
     "TEMPORAL_TYPE_INTERVAL",
 ]
+__getattr__ = resolve_optional(__name__, _OPTIONAL_LOADERS)

@@ -141,7 +141,7 @@ def _played(tsv_path: Path, specimen: str | None = None) -> tuple[Any, list[Any]
 
     Returns:
         The timeline and the runs of its default flow. The flow of the
-        stress score ``flow_only`` is played with its three repairs.
+        stress score ``flow_only`` is played with its repair.
     """
     timeline = Ms3Loader().load(tsv_path).create_timeline()
     registry = (

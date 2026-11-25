@@ -31,6 +31,7 @@ from timetoalign.timelines.flow.engine import play
 from timetoalign.timelines.flowcontrol import Jump
 
 from .conftest import (
+    EDITOR,
     SPECIMENS,
     atomic_ranges,
     get_specimen_path,
@@ -138,15 +139,46 @@ def test_the_stress_score_as_its_source_stands_ends_at_a_bracket() -> None:
 
 
 @pytest.mark.parametrize("convention", ["default", "single"])
-def test_three_repairs_give_the_stress_scores_gold_flow(convention: str) -> None:
+def test_the_repaired_stress_score_plays_its_gold_flow(convention: str) -> None:
     timeline, gold = _timeline(STRESS), gold_flows(STRESS)
+    loaded = timeline.flow_control.to_dict()
     registry = repaired_stress_score(timeline)
-    assert len(registry.elements) == len(timeline.flow_control.elements) + 3
+
+    # The repair worked on a copy: the loaded registry holds what it held.
+    assert timeline.flow_control.to_dict() == loaded
+    # Nothing was deleted or changed in place: five elements were added, and
+    # two of the loader's are rejected, by the editor.
+    assert len(registry.elements) == len(loaded) + 5
+    rejected = [element for element in registry.elements if element.is_rejected]
     assert [
-        (element.id, element.provenance.method)
-        for element in registry.elements
+        (type(element), element.coordinate.value, len(element.targets))
+        for element in rejected
+    ] == [
+        (Jump, 16, 1),
+        (Jump, 34, 1),
+    ]  # MC 8 is [12, 16), MC 14 is [32, 34)
+    for element in rejected:
+        (entry,) = element.provenance
+        assert entry.to_dict() == {
+            "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-25"}]
+        }
+        assert registry.jump_at(element.coordinate).id != element.id
+    assert len(registry.active_elements()) == len(loaded) + 3
+    assert [
+        (element.id, [entry.to_dict() for entry in element.provenance])
+        for element in registry.active_elements()
         if element.provenance is not None
-    ] == [("on_to_8", "manual"), ("start_8", "manual"), ("start_13", "manual")]
+    ] == [
+        (added, [{"stated_by": [EDITOR], "method": "manual"}])
+        for added in (
+            "on_to_8",
+            "start_8",
+            "repeat_to_start_8",
+            "start_13",
+            "repeat_to_start_13",
+        )
+    ]
+
     ranges, result = played_ranges(timeline, convention, registry=registry)
     assert ranges == gold[convention]
     assert result.findings == ()

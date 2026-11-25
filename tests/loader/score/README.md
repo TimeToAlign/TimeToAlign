@@ -7,7 +7,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 
 | File | Remaining coverage |
 |---|---|
-| `conftest.py` | Seven specimen definitions, source lookup, size guards, `.flow.csv` parsing, a timeline's flow in the form of that file, and the stress score's three repairs. |
+| `conftest.py` | Seven specimen definitions, source lookup, size guards, `.flow.csv` parsing, a timeline's flow in the form of that file, and the stress score's repair. |
 | `test_score_parsing_matrix.py` | CSV modes, folded counts, loader/format combinations, exact flow-control profiles, each loader's played default flow against the target, cross-loader counts, and pinned parser differences. |
 | `test_flow_gold.py` | The gold flows played from the ms3 measures tables (see "Gold flows"), and the signs a loader writes as flow control (see "Signs written as flow control"). |
 | `test_loaders.py` | MS3 coordinate and duration semantics, pitch schema, Partitura measure/MIDI regressions, shared `mc_onset`, anacrusis offsets, and parquet round trips. |
@@ -73,7 +73,7 @@ timeline's flow control. `polyrhythm_only` matches exactly. `flow_only` has a te
 the MEI's marks give the signs the ms3 table gives (every jump target, break and section
 break at the same coordinate with the same manifestation; Verovio names the second coda
 `coda2`, the table `codab`), so the flow ends at the second of three brackets as the table's
-does, the atomic sections are the target's, and with the same three repairs the flow is the
+does, the atomic sections are the target's, and with the same repair the flow is the
 target's `default` flow (see "Gold flows"). Each residue is a strict `xfail` naming what the
 MEI states:
 
@@ -510,12 +510,27 @@ the three steps, so a wrong sign, a wrong rule and a wrong conversion each show.
   walk reports `flow_ends_at_break` there and `never_played` for `[10, 37)`. The atomic
   sections are the file's thirteen all the same. `repeat_end_findings` returns the repeat end
   of MC 8, whose repeat would begin right behind the last bracket.
-- **`flow_only` with three repairs.** `conftest.repaired_stress_score` adds exactly three
-  elements with provenance method `manual`: repeat starts at the starts of MC 8 and MC 13,
-  which the repeat ends of MC 8 and MC 14 name (an element is never changed in place, so
-  those two Jumps are written anew with their place), and a Jump at the end of MC 6 to the
-  start of MC 8. `default` and `single` then equal the file's rows, without a finding. The
-  file's `ms3` and `music21` rows are another tool's unfolding and are not computed.
+- **`flow_only`, repaired.** `conftest.repaired_stress_score` is the one worked repair of
+  the suite, done on a copy of the loaded registry as an editor would do it. A repair adds
+  elements and rejects elements; none is deleted or changed in place.
+  1. *Reject.* The Jumps at the ends of MC 8 and MC 14 each hold one destination, a repeat
+     end without a place (no repeat start is printed for it). The editor records the belief
+     `false` on both with `registry.with_belief(id, actor, "false")`: they stay in the
+     registry and in what it writes, and are left out of every flow.
+  2. *Add the places.* Two JumpTargets (`repeat_start`) at the starts of MC 8 and MC 13,
+     provenance method `manual`, stated by the editor.
+  3. *Replace.* At each of the two coordinates one new Jump holding the destination of the
+     rejected one (`repeat_end`, `repeat_count: 1`) with `to` naming its new start. A
+     rejected Jump and its replacement share a coordinate.
+  4. *Add the way past the third bracket.* A Jump at the end of MC 6 (the second of three
+     brackets, which has no sign at its end) `to` the start of MC 8.
+
+  The test asserts the bookkeeping (five elements more than the loader wrote, exactly two
+  of them rejected, by the editor; three more elements read by the engine than before; the
+  five added ones `manual`; the loaded timeline's own registry untouched) and then the
+  result: `default` and `single` equal the file's rows without a finding, and the atomic
+  sections equal its `atomic` rows. The file's `ms3` and `music21` rows are another tool's
+  unfolding and are not computed.
 
 ## Signs written as flow control
 

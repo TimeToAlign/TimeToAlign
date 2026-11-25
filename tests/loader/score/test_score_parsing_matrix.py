@@ -870,7 +870,7 @@ class TestVerovioLoaderMEI:
         """The MEI's marks give the flow the ms3 table gives, sign for sign.
 
         As the source stands the flow ends at the second of three brackets;
-        with the same three repairs it is the target's ``default`` flow.
+        with the same repair it is the target's ``default`` flow.
         """
         from timetoalign.loader.score import Ms3Loader
 

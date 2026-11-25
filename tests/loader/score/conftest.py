@@ -6,7 +6,7 @@ This module consolidates:
 - Common path constants (TARGET_FLOWS_DIR, SCORE_DATA_DIR), resolved via ensure_data
 - Shared helper functions (find_source_file, get_loader_for_source_file)
 - Flows in the form of a .flow.csv file (gold_flows, played_ranges,
-  atomic_ranges) and the stress score's three repairs (repaired_stress_score)
+  atomic_ranges) and the stress score's repair (repaired_stress_score)
 """
 
 from __future__ import annotations
@@ -485,51 +485,75 @@ def atomic_ranges(
     return measure_ranges(sections, timeline.measure_map, sections=sections)
 
 
-def repaired_stress_score(timeline: Any) -> FlowControlRegistry:
-    """The stress score's flow control with three elements added by hand.
+#: The actor who repairs the stress score.
+EDITOR = "https://example.org/people/editor"
 
-    Two repeat starts, at the starts of measure counts 8 and 13, which the
-    repeat ends of counts 8 and 14 name; and a Jump at the end of count 6
-    (the second of three brackets) to the start of count 8. The three carry
-    the provenance method ``manual``. An element is never changed in place:
-    the Jumps of the two repeat ends are written anew with their place.
+
+def repaired_stress_score(timeline: Any) -> FlowControlRegistry:
+    """The stress score's flow control, repaired on a copy of the registry.
+
+    A repair rejects elements and adds elements; it deletes and changes none.
+    The repeat ends of measure counts 8 and 14 have no printed start, and the
+    second of three brackets (count 6) has no sign at its end:
+
+    1. the two Jumps holding those repeat ends are rejected (the editor's
+       belief ``false``);
+    2. two repeat starts are added at the starts of counts 8 and 13;
+    3. each rejected Jump is replaced by one at its coordinate whose repeat
+       end names its new start;
+    4. a Jump is added at the end of count 6 to the start of count 8.
+
+    The added elements carry the provenance method ``manual``.
     """
     start = {measure.count: measure.qstamp for measure in timeline.measure_map}
     end = {
         measure.count: measure.qstamp + measure.actual_length
         for measure in timeline.measure_map
     }
-    manual = {"method": "manual"}
+    manual = {"method": "manual", "stated_by": [EDITOR]}
 
     def at(value: Any) -> Coordinate:
         return Coordinate(value, "quarters")
 
-    added = [
-        JumpTarget(
-            at(start[8]), id="start_8", manifestation="repeat_start", provenance=manual
-        ),
-        JumpTarget(
-            at(start[13]),
-            id="start_13",
-            manifestation="repeat_start",
-            provenance=manual,
-        ),
-        Jump(
-            at(end[6]), [JumpDestination(to="start_8")], id="on_to_8", provenance=manual
-        ),
-    ]
-    named = {end[8]: "start_8", end[14]: "start_13"}
-    kept = []
-    for element in timeline.flow_control.elements:
-        to = named.get(element.coordinate.value)
-        if isinstance(element, Jump) and to is not None:
-            assert [destination.to_dict() for destination in element.targets] == [
-                {"repeat_count": 1, "manifestation": "repeat_end"}
-            ]
-            element = replace(element, targets=(replace(element.targets[0], to=to),))
-        kept.append(element)
-    registry = FlowControlRegistry(unit="quarters")
-    registry.add_all([*kept, *added])
+    registry = timeline.flow_control.copy()
+    replacements = []
+    for count, to in ((8, "start_8"), (14, "start_13")):
+        without_start = registry.jump_at(at(end[count]))
+        assert [destination.to_dict() for destination in without_start.targets] == [
+            {"repeat_count": 1, "manifestation": "repeat_end"}
+        ]
+        registry.with_belief(without_start.id, EDITOR, "false", date="2026-11-25")
+        replacements.append(
+            Jump(
+                without_start.coordinate,
+                [replace(without_start.targets[0], to=to)],
+                id=f"repeat_to_{to}",
+                provenance=manual,
+            )
+        )
+    registry.add_all(
+        [
+            JumpTarget(
+                at(start[8]),
+                id="start_8",
+                manifestation="repeat_start",
+                provenance=manual,
+            ),
+            JumpTarget(
+                at(start[13]),
+                id="start_13",
+                manifestation="repeat_start",
+                provenance=manual,
+            ),
+            *replacements,
+            Jump(
+                at(end[6]),
+                [JumpDestination(to="start_8")],
+                id="on_to_8",
+                provenance=manual,
+            ),
+        ]
+    )
     return registry
 
 

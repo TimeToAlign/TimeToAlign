@@ -19,7 +19,6 @@ import html
 import logging
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from fractions import Fraction
@@ -43,7 +42,7 @@ from timetoalign.storage import EventData
 # Event loaders return source metadata and a vectorized field dictionary. Other
 # payload families return their payload directly and use ``_accept_source``.
 LoadSourceResult = tuple[
-    dict[str, Any], Mapping[str, np.ndarray | pa.Array | pa.ChunkedArray]
+    dict[str, Any], dict[str, np.ndarray | pa.Array | pa.ChunkedArray]
 ]
 
 if TYPE_CHECKING:
@@ -553,7 +552,7 @@ class EventLoader(Loader[LoadSourceResult]):
 
     def _unpack_source_result(
         self, result: LoadSourceResult
-    ) -> tuple[dict[str, Any], Mapping[str, np.ndarray | pa.Array | pa.ChunkedArray]]:
+    ) -> tuple[dict[str, Any], dict[str, np.ndarray | pa.Array | pa.ChunkedArray]]:
         """Split an event parser result into metadata and field arrays."""
         return result
 
@@ -561,7 +560,7 @@ class EventLoader(Loader[LoadSourceResult]):
         self,
         path: Path,
         source_meta: dict[str, Any],
-        payload: Mapping[str, np.ndarray | pa.Array | pa.ChunkedArray],
+        payload: dict[str, np.ndarray | pa.Array | pa.ChunkedArray],
     ) -> None:
         """Accept one loaded source using the event payload implementation."""
         if not isinstance(payload, dict):

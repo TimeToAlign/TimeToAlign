@@ -351,5 +351,7 @@ class ScoreMidiLoader(MidiLoader):
         if not events:
             return metadata, {}
         table = pa.Table.from_pylist(events)
-        fields = {name: table.column(name) for name in table.column_names}
+        fields: dict[str, np.ndarray | pa.Array | pa.ChunkedArray] = {
+            name: table.column(name) for name in table.column_names
+        }
         return metadata, fields

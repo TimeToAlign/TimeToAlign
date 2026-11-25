@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import mido
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
@@ -199,20 +200,21 @@ class MidiLoader(EventLoader):
         if not events:
             return metadata, {}
         table = pa.Table.from_pylist(events)
-        fields = {name: table.column(name) for name in table.column_names}
-        if "instant" in fields:
-            starts = fields.get(
+        columns = {name: table.column(name) for name in table.column_names}
+        if "instant" in columns:
+            starts = columns.get(
                 "start",
-                pa.chunked_array([pa.nulls(len(events), type=fields["instant"].type)]),
+                pa.chunked_array([pa.nulls(len(events), type=columns["instant"].type)]),
             )
-            instants = fields["instant"]
+            instants = columns["instant"]
             if pa.types.is_null(instants.type):
-                fields["start"] = starts
+                columns["start"] = starts
             elif pa.types.is_null(starts.type):
-                fields["start"] = instants
+                columns["start"] = instants
             else:
-                fields["start"] = pc.coalesce(starts, instants)
-            del fields["instant"]
+                columns["start"] = pc.coalesce(starts, instants)
+            del columns["instant"]
+        fields: dict[str, np.ndarray | pa.Array | pa.ChunkedArray] = dict(columns)
         return metadata, fields
 
     @property

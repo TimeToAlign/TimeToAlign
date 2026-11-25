@@ -4582,6 +4582,15 @@ measures.
     - Segment offsets form contiguous sequence
     - Rejects non-contiguous offsets
     - First segment must start at 0
+    - `add_child` on a segment line takes every parameter of
+      `Timeline.add_child`, `use_conversion_map` included: on a line of one
+      4 s segment carrying a `ScalarMap` seconds → milliseconds, a 2000 ms
+      timeline added at 4 s with `use_conversion_map=True` becomes the second
+      segment, at 4.0 s, of length 2.0 s in seconds, the line 6 s long, the
+      timeline given unchanged (2000 ms, not a child of the line); a further
+      1 s segment added with `use_conversion_map=None` makes the line 7 s.
+      An override dropping the parameter refuses both calls with a
+      `TypeError`.
     - get_segment_by_index()
     - get_segment_at() finds segment by coordinate
     - `is_segment_line` uses exact structural coverage, including

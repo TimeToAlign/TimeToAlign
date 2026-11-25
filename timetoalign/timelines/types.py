@@ -22,7 +22,7 @@ from timetoalign.core import (
     Domain,
     TimeUnit,
 )
-from timetoalign.core.timestamp import _format_coordinate_value
+from timetoalign.core.timestamp import ConversionMapsSpec, _format_coordinate_value
 
 from .base import Timeline, UnknownLengthError
 
@@ -373,6 +373,7 @@ class SegmentLineMixin:
         child: Timeline,
         offset: CoordinateSpec,
         allow_expansion: bool = False,
+        use_conversion_map: ConversionMapsSpec = None,
         *,
         locked: bool | None = None,
     ) -> None:
@@ -386,7 +387,9 @@ class SegmentLineMixin:
         The line ends where its last segment ends, so a growing line whose
         new last segment is of unknown length has an unknown length too.
         """
-        super().add_child(child, offset, allow_expansion, locked=locked)
+        super().add_child(
+            child, offset, allow_expansion, use_conversion_map, locked=locked
+        )
 
     def _embed_child(
         self,

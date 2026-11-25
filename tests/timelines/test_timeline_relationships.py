@@ -33,7 +33,7 @@ import pytest
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.time import Duration, Interval
-from timetoalign.maps import LinearMap
+from timetoalign.maps import LinearMap, ScalarMap
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -525,6 +525,30 @@ class TestSegmentLineBasics:
         # Offset 5 is wrong - should be 4 (immediately after s1)
         with pytest.raises(ValueError, match="contiguous"):
             sl.add_child(s2, offset=5)
+
+    def test_add_child_converts_a_segment_by_conversion_map(self):
+        """A segment line takes use_conversion_map as any timeline does."""
+        line = SegmentLine.from_segmentation(
+            ContinuousPhysicalTimeline(length=4), [0, 4]
+        )
+        line.add_conversion_map(
+            ScalarMap(scalar=1000, source_unit="seconds", target_unit="milliseconds")
+        )
+        given = ContinuousPhysicalTimeline(length=2000, unit="milliseconds")
+
+        line.add_child(given, 4, use_conversion_map=True)
+
+        assert line.length == Coordinate(6.0, TimeUnit.seconds)
+        _, offset, segment = list(line.iter_segments())[1]
+        assert offset == Coordinate(4.0, TimeUnit.seconds)
+        assert segment.unit == TimeUnit.seconds
+        assert segment.length == Coordinate(2.0, TimeUnit.seconds)
+        assert given.unit == TimeUnit.milliseconds
+        assert given.length == Coordinate(2000, TimeUnit.milliseconds)
+        assert not line.has_child(given)
+
+        line.add_child(ContinuousPhysicalTimeline(length=1), 6, use_conversion_map=None)
+        assert line.length == Coordinate(7.0, TimeUnit.seconds)
 
     def test_first_segment_must_start_at_zero(self):
         """First segment must have offset 0."""

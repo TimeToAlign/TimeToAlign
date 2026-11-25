@@ -48,12 +48,19 @@ from timetoalign.core import (
     Quadrilateral,
     QuadrilateralField,
     Shape,
+    ShapeField,
     TimeUnit,
     resolve_coordinate_spec,
 )
 from timetoalign.core.fields import (
     ONE_OR_SEVERAL_SUFFIX,
     SemanticField,
+    _filled_mask,
+    _member_fields,
+    _struct_array,
+    _struct_array_from,
+    _struct_members,
+    _valid_struct_cell,
     blob_metadata,
     field_metadata,
     split_row_member,
@@ -61,7 +68,6 @@ from timetoalign.core.fields import (
 from timetoalign.core.ids import id_column, mint_ids, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
-    SharedAxisField,
     build_number_struct_array,
     combine_number_columns,
     combine_numbers,
@@ -127,10 +133,10 @@ _DECLARED_EXTRA_FIELDS: dict[str, type[SemanticField[Any]]] = {
 #: The declared columns whose numbers lie on the table's axis, each with its
 #: field: a Box's shape, in the order of :data:`_DECLARED_EXTRA_FIELDS`. Only
 #: a Box row holds a value there.
-SHAPE_FIELDS: dict[str, type[SharedAxisField[Any]]] = {
+SHAPE_FIELDS: dict[str, type[ShapeField[Any]]] = {
     name: declared
     for name, declared in _DECLARED_EXTRA_FIELDS.items()
-    if issubclass(declared, SharedAxisField)
+    if issubclass(declared, ShapeField)
 }
 
 
@@ -165,7 +171,8 @@ def mint_event_ids(
             pa.string(),
         )
     types = pc.cast(event_types, pa.string())
-    types = pc.if_else(pc.equal(pc.fill_null(types, ""), ""), "Event", types)
+    empty = pa.scalar("")
+    types = pc.if_else(pc.equal(pc.fill_null(types, empty), empty), "Event", types)
     prefixes = pc.utf8_lower(types)
     held = id_column(taken)
     ids = pa.nulls(len(prefixes), pa.string())
@@ -187,8 +194,9 @@ def projection_ids(events: pa.Table) -> pa.Array:
     """
     if events.num_rows == 0 or "event_type" not in events.column_names:
         return pa.array([], pa.string())
-    rows = pc.fill_null(
-        pc.equal(events.column("event_type"), PROJECTION_EVENT_TYPE), False
+    rows = _filled_mask(
+        pc.equal(events.column("event_type"), pa.scalar(PROJECTION_EVENT_TYPE)),
+        pa.scalar(False),
     )
     return pc.cast(events.column("id").filter(rows).combine_chunks(), pa.string())
 
@@ -218,14 +226,14 @@ def refuse_shared_projection_ids(
             timelines of its first two rows.
     """
     counts = pc.value_counts(ids)
-    shared = counts.filter(pc.greater(counts.field("counts"), 1))
+    shared = counts.filter(pc.greater(counts.field("counts"), pa.scalar(1)))
     if not len(shared):
         return
     shared_id = shared.field("values")[0].as_py()
     first, second = pc.filter(timeline_ids, pc.equal(ids, shared_id)).to_pylist()[:2]
     raise ValueError(
         f"Projection ID {quote_id(shared_id)} names a Projection on the timeline "
-        f"{quote_id(first)} and one on {quote_id(second)}: a Projection's ID is "
+        f"{quote_id(str(first))} and one on {quote_id(str(second))}: a Projection's ID is "
         f"unique among all Projections of a manifest and its package"
         + ("" if remedy is None else f". {remedy}")
     )
@@ -368,7 +376,7 @@ def _is_cell_of(value: Any, kind: pa.DataType) -> bool:
 def _axis_cells(
     rows: list[dict[str, Any]],
     key: str,
-    declared: type[SharedAxisField[Any]],
+    declared: type[ShapeField[Any]],
     unit: TimeUnit,
     number_type: NumberType,
 ) -> list[Any]:
@@ -393,7 +401,7 @@ def _axis_cells(
             a cell states a number the axis cannot hold exactly, or a
             cell's two sides hold two numbers.
     """
-    shape_class = declared.scalar_cls
+    shape_class = declared.paired_scalar()
     shapes: list[Shape | None] = []
     for row in rows:
         value = row.get(key)
@@ -414,7 +422,7 @@ def _axis_cells(
         if isinstance(value, shape_class):
             _refuse_shape_off_the_axis(value, key, unit, number_type)
             shapes.append(value)
-        elif _is_cell_of(value, declared.pa_schema):
+        elif _is_cell_of(value, declared.struct_schema()):
             shapes.append(_shape_of_cell(value, shape_class, unit, number_type))
         else:
             hint = (
@@ -430,6 +438,8 @@ def _axis_cells(
     for row, cell in zip(rows, cells, strict=True):
         value = row.get(key)
         if isinstance(value, dict):
+            # The memory cell was read as its shape above: the row holds one.
+            assert cell is not None
             _refuse_two_numbers(value, cell, f"{_box_named(row.get('id'))}: its {key}")
     return cells
 
@@ -444,7 +454,7 @@ def _cell_number(cell: dict[str, Any], number_type: NumberType) -> Any:
 
 def _shape_of_cell(
     cell: dict[str, Any],
-    shape_class: type[Shape],
+    shape_class: type[BoundingBox] | type[Quadrilateral],
     unit: TimeUnit,
     number_type: NumberType,
 ) -> Shape:
@@ -529,8 +539,8 @@ def _cell_column(column: Any, n: int) -> pa.StructArray:
     if isinstance(column, pa.ChunkedArray):
         column = column.combine_chunks()
     if not isinstance(column, pa.StructArray):
-        return pa.nulls(n, RATIONAL_STRUCT_TYPE)
-    return column.cast(RATIONAL_STRUCT_TYPE)
+        return _struct_array(pa.nulls(n, RATIONAL_STRUCT_TYPE))
+    return _struct_array(column.cast(RATIONAL_STRUCT_TYPE))
 
 
 def _completed_column(
@@ -565,7 +575,7 @@ def _completed_column(
         )
     positions = np.arange(len(cells))
     positions[selected] = len(cells) + np.arange(len(selected))
-    return pa.concat_arrays([cells, computed]).take(pa.array(positions))
+    return pa.concat_arrays([cells, computed]).take(positions)
 
 
 @contextmanager
@@ -632,21 +642,22 @@ def _inconsistent_rows(
             _FLOAT_TOLERANCE
         )
         return inconsistent
-    indices = pa.array(selected)
     with _naming_the_computation(
         "Checking the events' durations against end - start", number_type
     ):
         expected = combine_number_columns(
-            end.take(indices),
-            start.take(indices),
+            end.take(selected),
+            start.take(selected),
             "subtract",
             number_type,
             row_numbers=selected,
         )
     equal = compare_number_column(
-        duration.take(indices), expected, "equal", number_type
+        duration.take(selected), expected, "equal", number_type
     )
-    inconsistent[selected] = ~pc.fill_null(equal, True).to_numpy(zero_copy_only=False)
+    inconsistent[selected] = ~_filled_mask(equal, pa.scalar(True)).to_numpy(
+        zero_copy_only=False
+    )
     return inconsistent
 
 
@@ -713,7 +724,7 @@ def _extreme_coordinate(
     candidates = pc.equal(values, extreme)
     if number_type is NumberType.float:
         return values[pc.index(candidates, True).as_py()].as_py()
-    chosen = pa.Table.from_struct_array(pc.filter(cells, candidates).combine_chunks())
+    chosen = pa.Table.from_struct_array(_struct_array(pc.filter(cells, candidates)))
     distinct = chosen.group_by(chosen.column_names).aggregate([])
     return pick(
         struct_to_coordinate(cell, number_type) for cell in distinct.to_pylist()
@@ -745,11 +756,11 @@ def _leaves_in_lowest_terms(column: pa.Array | pa.ChunkedArray) -> pa.Array:
         column = column.combine_chunks()
     if column.type == RATIONAL_STRUCT_TYPE:
         return in_lowest_terms(column)
-    if not pa.types.is_struct(column.type):
+    if not isinstance(column, pa.StructArray):
         return column
-    return pa.StructArray.from_arrays(
-        [_leaves_in_lowest_terms(member) for member in column.flatten()],
-        fields=list(column.type),
+    return _struct_array_from(
+        [_leaves_in_lowest_terms(member) for member in _struct_members(column)],
+        _member_fields(column.type),
         mask=column.is_null(),
     )
 
@@ -824,8 +835,7 @@ def _reexpressed(
     cells: pa.Array | pa.ChunkedArray, source: NumberType, target: NumberType
 ) -> pa.StructArray:
     """A column of number cells declared *source*, written in *target*."""
-    if isinstance(cells, pa.ChunkedArray):
-        cells = cells.combine_chunks()
+    cells = _struct_array(cells)
     if source is NumberType.int and target is NumberType.fraction:
         return cells  # n/1 is a fraction cell as it stands
     if source is NumberType.fraction and target is NumberType.int:
@@ -992,7 +1002,7 @@ def _build_extra_field_schema(
     new_fields = list(schema)
     for name in extra_field_names:
         declared = _DECLARED_EXTRA_FIELDS.get(name)
-        if declared is not None and issubclass(declared, SharedAxisField):
+        if declared is not None and issubclass(declared, ShapeField):
             cells = _axis_cells(
                 processed_rows,
                 name,
@@ -1004,7 +1014,7 @@ def _build_extra_field_schema(
                 row[name] = cell
             new_fields.append(
                 declared.from_field(
-                    pa.field(name, declared.pa_schema),
+                    pa.field(name, declared.struct_schema()),
                     unit=unit,
                     number_type=number_type,
                 ).to_field()
@@ -1019,7 +1029,7 @@ def _build_extra_field_schema(
             new_fields.append(
                 pa.field(
                     name,
-                    declared.pa_schema,
+                    declared.struct_schema(),
                     nullable=True,
                     metadata={
                         TIMETOALIGN_METADATA_KEY: metadata_blob_from_dict(
@@ -1126,7 +1136,10 @@ def _build_extra_field_schema(
                 row[name] = None
         new_fields.append(pa.field(name, pa.string(), nullable=True))
 
-    return pa.schema(new_fields, metadata=schema.metadata)
+    metadata: dict[bytes | str, bytes | str] | None = (
+        None if schema.metadata is None else {**schema.metadata}
+    )
+    return pa.schema(new_fields, metadata=metadata)
 
 
 class EventData(SemanticFieldAccessMixin):
@@ -1356,7 +1369,9 @@ class EventData(SemanticFieldAccessMixin):
             n_bad = int(inconsistent.sum())
             first_idx = int(np.argmax(inconsistent))
             first = _inconsistency(
-                *(cells[first_idx].as_py() for cells in (start, end, duration)),
+                _valid_struct_cell(start[first_idx]),
+                _valid_struct_cell(end[first_idx]),
+                _valid_struct_cell(duration[first_idx]),
                 number_type,
             )
             if policy == IntervalPolicy.strict:
@@ -1890,13 +1905,17 @@ class EventData(SemanticFieldAccessMixin):
                                         pa.array(full_values),
                                         pa.array(
                                             np.where(
-                                                np.isnan(full_nums), None, full_nums
+                                                np.isnan(full_nums),
+                                                np.array(None),
+                                                full_nums,
                                             ).astype(object),
                                             type=pa.int64(),
                                         ),
                                         pa.array(
                                             np.where(
-                                                np.isnan(full_dens), None, full_dens
+                                                np.isnan(full_dens),
+                                                np.array(None),
+                                                full_dens,
                                             ).astype(object),
                                             type=pa.int64(),
                                         ),
@@ -2298,12 +2317,12 @@ class EventData(SemanticFieldAccessMixin):
         names = table.schema.names
         if "event_type" not in names or "id" not in names:
             return self
-        mask = pc.fill_null(
+        mask = _filled_mask(
             pc.and_kleene(
-                pc.equal(table.column("event_type"), "Segment"),
-                pc.equal(table.column("id"), old_id),
+                pc.equal(table.column("event_type"), pa.scalar("Segment")),
+                pc.equal(table.column("id"), pa.scalar(old_id)),
             ),
-            False,
+            pa.scalar(False),
         )
         for column in ("id", "name"):
             if column not in names:
@@ -2355,11 +2374,11 @@ class EventData(SemanticFieldAccessMixin):
         mask = None
 
         if temporal_type is not None:
-            expr = pc.equal(pc.field("temporal_type"), temporal_type)
+            expr = pc.equal(pc.field("temporal_type"), pa.scalar(temporal_type))
             mask = expr if mask is None else (mask & expr)
 
         if event_type is not None:
-            expr = pc.equal(pc.field("event_type"), event_type)
+            expr = pc.equal(pc.field("event_type"), pa.scalar(event_type))
             mask = expr if mask is None else (mask & expr)
 
         bounds = []
@@ -2492,7 +2511,11 @@ class EventData(SemanticFieldAccessMixin):
                 # The kernels read struct members, which a dictionary-encoded
                 # column does not offer: decode it, chunk by chunk.
                 cells = pa.chunked_array(
-                    [chunk.dictionary_decode() for chunk in cells.chunks],
+                    [
+                        chunk.dictionary_decode()
+                        for chunk in cells.chunks
+                        if isinstance(chunk, pa.DictionaryArray)
+                    ],
                     type=cells.type.value_type,
                 )
             values = pc.struct_field(cells, "value")
@@ -2643,7 +2666,7 @@ class EventData(SemanticFieldAccessMixin):
 
                     if coordinates:
                         field_unit = unit
-                        df[field_name] = df[field_name].apply(
+                        df[field_name] = df[field_name].map(
                             lambda s, u=field_unit: (
                                 Coordinate(
                                     struct_to_coordinate(s, self._number_type), u
@@ -2653,7 +2676,7 @@ class EventData(SemanticFieldAccessMixin):
                             )
                         )
                     else:
-                        df[field_name] = df[field_name].apply(
+                        df[field_name] = df[field_name].map(
                             lambda s: (
                                 struct_to_coordinate(s, self._number_type)
                                 if s is not None

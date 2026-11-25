@@ -5045,32 +5045,72 @@ class IntervalField(SharedAxisField[Interval]):
             ),
         )
 
-    def _endpoint(self, name: str) -> CoordinateField:
+    def _declares_interval(self) -> bool:
+        """Whether the declared struct holds ``start`` and ``end`` as number structs."""
+        declared = self.pa_type
+        return isinstance(declared, pa.StructType) and all(
+            declared.get_field_index(member) >= 0
+            and declared.field(member).type == RATIONAL_STRUCT_TYPE
+            for member in ("start", "end")
+        )
+
+    def _endpoint(self, name: str) -> CoordinateField | None:
+        """The field of the endpoint *name* on the interval's axis.
+
+        ``None`` while the field is unbound; a field carrying no data of
+        its own when the interval field carries none.
+
+        Raises:
+            TypeError: If the field carries no data and its declared struct
+                is not an interval's, or a member is not a number struct.
+            KeyError: If the rows' struct has no member *name*.
+        """
+        unit = self.unit
+        if unit is None:
+            return None
+        if self.is_empty and self._declares_interval():
+            return CoordinateField.from_field(
+                pa.field(name, RATIONAL_STRUCT_TYPE),
+                unit=unit,
+                number_type=self.number_type,
+            )
         array = _struct_array(self.to_pyarrow())
         child = array.field(name)
         outer_valid = array.is_valid()
         child = pc.if_else(outer_valid, child, pa.scalar(None, type=child.type))
         return CoordinateField.from_field(
             child,
-            unit=self.unit,
+            unit=unit,
             number_type=self.number_type,
             name=name,
         )
 
     @property
-    def start(self) -> CoordinateField:
-        """Return the vectorized start-coordinate field."""
+    def start(self) -> CoordinateField | None:
+        """Return the vectorized start-coordinate field; ``None`` while unbound."""
         return self._endpoint("start")
 
     @property
-    def end(self) -> CoordinateField:
-        """Return the vectorized end-coordinate field."""
+    def end(self) -> CoordinateField | None:
+        """Return the vectorized end-coordinate field; ``None`` while unbound."""
         return self._endpoint("end")
 
     @property
-    def duration(self) -> DurationField:
-        """Return the vectorized duration field."""
-        return self.end - self.start
+    def duration(self) -> DurationField | None:
+        """Return the vectorized duration field; ``None`` while unbound.
+
+        A field carrying no data answers a duration field carrying none.
+        """
+        end, start = self.end, self.start
+        if end is None or start is None:
+            return None
+        if self.is_empty:
+            return DurationField.from_field(
+                pa.field("value", RATIONAL_STRUCT_TYPE),
+                unit=end.unit,
+                number_type=self.number_type,
+            )
+        return end - start
 
 
 # ---------------------------------------------------------------------------

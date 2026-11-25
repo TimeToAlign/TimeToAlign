@@ -3442,10 +3442,15 @@ class NoteField(SharedAxisField[Note]):
         ``Note.is_rest`` is data-shaped, but the pitch data lives outside the
         ``Note`` struct in the represent-once TTA layout — so this method must
         be invoked on a higher-level container that knows about the separated
-        pitch columns. Until that container exists, the mirror raises with a
-        clear message.
+        pitch columns. Until that container exists, the field has no such
+        attribute: the mirror raises ``AttributeError``, so ``hasattr`` and
+        runtime protocol checks answer ``False``. The field's attribute
+        delegation then reports the name missing on the raw struct field.
+
+        Raises:
+            AttributeError: Always.
         """
-        raise NotImplementedError(
+        raise AttributeError(
             "NoteField.is_rest requires access to the represent-once pitch "
             "columns on NoteEventData (the default specific_pitch field and "
             "the raw midi number), not available on the bare Note struct "

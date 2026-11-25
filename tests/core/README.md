@@ -731,6 +731,61 @@ one metadata triple; indexing reconstructs `Interval | None`, and its `start`,
 `end`, and `duration` accessors return the paired semantic field types without
 changing exact rational values.
 
+#### An interval field answers its endpoints whenever it is an interval
+
+An `IntervalField` is in one of four states, and the endpoint accessors
+(`start`, `end`, `duration`) answer according to what the field *is*, never
+according to how many rows it holds:
+
+- **Bound, no data** (declared from a `pa.Field` on an axis, as a table schema
+  declares it): the accessors answer fields on the interval's axis that carry
+  no data either: `start` and `end` a schema-only `CoordinateField` named
+  `start` / `end`, `duration` a schema-only `DurationField` named `value` (the
+  name the subtraction gives a field with rows), each with the interval's unit
+  and number type. Proof: for a `fraction`-on-`quarters` and an `int`-on-`ticks`
+  field, assert the exact class, name, `unit`, `number_type` and
+  `is_empty is True` (a field without data has no length to ask, as any
+  schema-only field). Two axes, so the axis cannot be a hard-coded default.
+- **Bound, zero rows / rows with nulls**: these answered before and must answer
+  the same: zero-length fields for zero rows; for rows `[null, {start: null,
+  end: 2}, {start: null, end: null}]`, `start` is `[None, None, None]`, `end`
+  `[None, 2, None]` and `duration` `[None, None, None]` (a null endpoint makes a
+  null duration, never a zero or a raise).
+- **Unbound** (declared with `source_fields=` only): the field has no axis yet,
+  so the accessors answer `None`, as `unit` and `domain` do.
+- **Malformed** (the column is not an interval): the accessors keep raising
+  exactly as before. Each case is pinned with its exception class and its full
+  message: a schema-only struct lacking `start` or `end`, or whose member is
+  not the number struct (`int64`, a string, a struct of other members) raises
+  `TypeError` "Cannot convert schema-only field 'iv' to PyArrow array" on all
+  three accessors; with rows, the member absent raises `KeyError`, a member of a
+  non-struct type `TypeError` "StructField requires a struct type, got …", a
+  struct member of other members `TypeError` "DenominateNumberField requires the
+  number struct schema …"; a non-struct column cannot be built at all
+  (`TypeError` "StructField requires a struct type, got int64"). A test that
+  checked only "raises" would let a malformed field slip into the empty answer;
+  the exact message tells the two paths apart.
+
+#### `NoteField.is_rest` is a missing attribute, and protocol checks always answer
+
+A note field cannot tell rests (the pitch lives in another column), so
+`is_rest` raises `AttributeError`, and `hasattr(field, "is_rest")` is `False`.
+Python answers a property's `AttributeError` by asking the class's
+`__getattr__`, which delegates to the raw struct field, so the message the
+caller sees is the raw field's (`'StructField' object has no attribute
+'is_rest'`); the test pins that message exactly, so a change to the delegation
+shows here. A runtime-checkable protocol checks its members in an
+order that follows the process's hash seed; a property raising anything but
+`AttributeError` made `isinstance(note_field, NoteLike)` answer `False` under one
+seed and crash under another. The proof therefore runs the checks in fresh
+interpreters under two `PYTHONHASHSEED` values (seed `42` is one that crashed
+before) and asserts the identical printed answers: for a schema-only and an
+unbound `IntervalField` and a `NoteField` with rows, every runtime protocol of
+`core/protocols.py`, by name. Expected: the bound interval field is
+`TimedObjectLike`, `InstantEventLike`, `IntervalEventLike` (it now has
+`start`, `end` and `duration`) and not `NoteLike`; the note field is none of
+the note protocols.
+
 ### `test_shapes.py` - Boxes and quadrilaterals in an image's pixel space
 
 **Purpose:** A graphical area is a `Shape`: a `BoundingBox` (`x, y, width,
@@ -1478,7 +1533,8 @@ performance has neither. `Note` therefore holds only what every note has, and
 - **One field hierarchy.** `issubclass(ScoreNoteField, NoteField)`, its
   `scalar_cls` is `ScoreNote`, and `is_rest` on it is NoteField's own member
   (the same function object, not a copy): it raises the same
-  `NotImplementedError` as on NoteField.
+  `AttributeError` as on NoteField (a missing attribute; see
+  `test_interval.py`).
 - **Rows read alike.** `to_dict` of a ScoreNote is Note's dictionary plus
   `voice` and `staff`; `ScoreNote.from_row(score_note.to_dict())` equals the
   original exactly (exact Fractions kept). `Note.from_row` of that same row

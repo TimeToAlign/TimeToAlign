@@ -399,15 +399,11 @@ class TestScoreNote:
         assert ScoreNoteField.scalar_cls is ScoreNote
         assert ScoreNoteField.field_type() == "ScoreNoteField"
         assert ScoreNoteField.is_rest is NoteField.is_rest
-        with pytest.raises(NotImplementedError) as exc_info:
+        with pytest.raises(AttributeError) as exc_info:
             ScoreNoteField.from_field(
                 pa.field("notes", ScoreNoteField.pa_schema), unit="quarters"
             ).is_rest
-        assert str(exc_info.value) == (
-            "NoteField.is_rest requires access to the represent-once pitch "
-            "columns on NoteEventData (the default specific_pitch field and "
-            "the raw midi number), not available on the bare Note struct field."
-        )
+        assert str(exc_info.value) == "'StructField' object has no attribute 'is_rest'"
 
     def test_protocols(self) -> None:
         note = _score_note()

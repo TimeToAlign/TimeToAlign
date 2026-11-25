@@ -37,11 +37,14 @@ from timetoalign.maps import ConversionMap, OutputNumberTypeError
 
 if TYPE_CHECKING:
     from ..base import Timeline
+    from .host import TimelineHost as _Host
+else:
+    _Host = object
 
 SEGMENT_EVENT_TYPE = "Segment"
 
 
-class ConversionMapsMixin:
+class ConversionMapsMixin(_Host):
     """Provide coordinate conversion operations for timeline instances."""
 
     @property
@@ -619,7 +622,7 @@ class ConversionMapsMixin:
                 if candidate_path is not None:
                     candidates.append((len(candidate_path[0]), candidate))
             if self is not owner:
-                candidates.append((len(steps), self))
+                candidates.append((len(steps), self._timeline))
             unit_map = None
             for _, candidate in sorted(candidates, key=lambda item: item[0]):
                 unit_map = candidate._get_unit_map(resolved.unit)

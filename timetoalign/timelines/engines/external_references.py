@@ -29,7 +29,7 @@ when no locator is known; it is never null.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 from typing_extensions import Self
@@ -51,6 +51,11 @@ EXTERNAL_REFERENCE_SCHEMA = pa.schema(
         pa.field("comment", pa.string(), nullable=True),
     ]
 )
+
+if TYPE_CHECKING:
+    from .host import TimelineHost as _Host
+else:
+    _Host = object
 
 # Column names in canonical order; also the exact set a row dict may carry.
 EXTERNAL_REFERENCE_COLUMNS: tuple[str, ...] = (
@@ -192,7 +197,7 @@ def _normalize_rows(
 # endregion
 
 
-class ExternalReferencesMixin:
+class ExternalReferencesMixin(_Host):
     """Provide incoming external-reference storage for timeline instances."""
 
     @property

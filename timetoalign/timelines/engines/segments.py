@@ -29,9 +29,12 @@ if TYPE_CHECKING:
         VirtualTimeline,
     )
     from ..types import SegmentLine
+    from .host import TimelineHost as _Host
+else:
+    _Host = object
 
 
-class SegmentsMixin:
+class SegmentsMixin(_Host):
     """Provide segment line, FlowMap and virtual timeline operations for
     timeline instances."""
 
@@ -108,7 +111,7 @@ class SegmentsMixin:
             end = coords[i + 1]
             length = end - start
 
-            segment = self.__class__(
+            segment = type(self._timeline)(
                 length=length,
                 unit=self._unit,
                 number_type=self._number_type,
@@ -419,8 +422,8 @@ class SegmentsMixin:
                 timeline already holds a canonical FlowMap and this is a
                 second one, or its given ID is already held in the manifest.
         """
-        stored = flow_map._on_axis(self)
-        stored.resolve(self)
+        stored = flow_map._on_axis(self._timeline)
+        stored.resolve(self._timeline)
         first = next(
             (held for held in self._flow_maps.values() if held.canonical), None
         )
@@ -704,7 +707,7 @@ class SegmentsMixin:
         from ..flow.engine import FlowFinding, atomic_sections, play
         from ..flow.flowmap import ComputedFlows, FlowMap
 
-        owner = self
+        owner = self._timeline
         while owner._parent is not None:
             owner = owner._parent
         flow_control = self.tree_flow_control
@@ -1037,7 +1040,7 @@ class SegmentsMixin:
                 states another length than its FlowMap gives, or its given
                 ID is already held in the manifest.
         """
-        length = virtual.resolve(self).length
+        length = virtual.resolve(self._timeline).length
         if virtual.length != length or virtual.number_type is not length.number_type:
             raise ValueError(
                 f"virtual timeline {quote_id(virtual.id)} states the length "
@@ -1086,7 +1089,7 @@ class SegmentsMixin:
 
         held = self.get_flow_map(flow_map if isinstance(flow_map, str) else flow_map.id)
         return self.add_virtual_timeline(
-            VirtualTimeline.from_flow_map(held, self, id=id, name=name)
+            VirtualTimeline.from_flow_map(held, self._timeline, id=id, name=name)
         )
 
     def get_virtual_timeline(self, virtual_id: str) -> "VirtualTimeline":

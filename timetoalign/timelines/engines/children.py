@@ -47,6 +47,9 @@ from .regions import _resolve_boundary_names
 if TYPE_CHECKING:
     from ..base import Timeline
     from ..structure import MeasureMap
+    from .host import TimelineHost as _Host
+else:
+    _Host = object
 
 SEGMENT_EVENT_TYPE = "Segment"
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
@@ -96,12 +99,12 @@ class _MeasureSlice(NamedTuple):
             child.add_conversion_map(view)
 
 
-class ChildrenMixin:
+class ChildrenMixin(_Host):
     """Provide child timeline and slicing operations for timeline instances."""
 
     def _spawn_class(self) -> type["Timeline"]:
         """The class used for children and slices of this timeline."""
-        return type(self)
+        return type(self._timeline)
 
     @property
     def n_children(self) -> int:
@@ -654,7 +657,7 @@ class ChildrenMixin:
         # Store child reference
         self._children[child.id] = child
         self._child_offsets[child.id] = offset_coord
-        child._parent = self
+        child._parent = self._timeline
 
         if plain_segment:
             child._locked = False
@@ -1011,7 +1014,7 @@ class ChildrenMixin:
             Tuples of (offset_coordinate, child_timeline).
         """
         if include_self:
-            yield self._make_coordinate(0), self
+            yield self._make_coordinate(0), self._timeline
 
         if recursion_limit is not None and recursion_limit <= 0:
             return

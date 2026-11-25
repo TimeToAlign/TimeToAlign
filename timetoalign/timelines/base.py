@@ -331,6 +331,9 @@ class Timeline(
                 or if *uid* is not a valid id.
             TypeError: If length is not a valid coordinate value.
         """
+        # The types of the state the engines read are declared once, on
+        # ``engines.host.TimelineHost``.
+
         # Resolve unit
         if unit is None:
             unit = self._default_unit
@@ -350,7 +353,7 @@ class Timeline(
         self._id = (
             mint_id(timeline_id_prefix(unit), ()) if uid is None else validate_id(uid)
         )
-        self._parent: Timeline | None = None
+        self._parent = None
         # The groups and bundles this timeline joined, held weakly: their
         # trees share one id scope with this timeline's tree while they live.
         self._scopes: list[weakref.ref[_IdScope]] = []
@@ -369,26 +372,26 @@ class Timeline(
         self._external_references = empty_external_reference_table()
 
         # Child timeline storage
-        self._children: dict[str, Timeline] = {}
-        self._child_offsets: dict[str, Coordinate] = {}
+        self._children = {}
+        self._child_offsets = {}
 
         # Conversion maps
-        self._conversion_maps: dict[str, ConversionMap[Any]] = {}
+        self._conversion_maps = {}
 
         # Maps TimeUnit -> the ConversionMaps registered for that unit via
         # add_conversion_map(), in attachment order, so that any C-Map with a
         # target_unit is available in the TimeStamp system.
-        self._unit_maps: dict[TimeUnit, list[ConversionMap[Any]]] = {}
+        self._unit_maps = {}
 
         # Region storage (named TimeIntervals)
         # A Region is a named part of a timeline defined by a TimeInterval.
-        self._regions: dict[str, Region] = {}
+        self._regions = {}
 
         # Authored structure and control events belong to this exact extent.
         # The measure map is held by the conversion map reading it on this
         # axis: a MeasureRecordMap, or a ChainMap of a LinearMap to quarters
         # and a MeasureRecordMap.
-        self._measure_record_map: ConversionMap[Any] | None = None
+        self._measure_record_map = None
         self._metric_hierarchy: MetricHierarchy | None = None
         self._adopt_flow_control(
             FlowControlRegistry(unit=self._unit, number_type=self._number_type)
@@ -630,6 +633,11 @@ class Timeline(
     def _is_segment_line_instance(self) -> bool:
         """Whether this timeline is a SegmentLine (the dictionary's flag)."""
         return False
+
+    @property
+    def _timeline(self) -> Timeline:
+        """This timeline itself, where an engine passes ``self`` on as a Timeline."""
+        return self
 
     # endregion
 

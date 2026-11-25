@@ -61,6 +61,9 @@ from .children import placed_on
 
 if TYPE_CHECKING:
     from ..base import Timeline
+    from .host import TimelineHost as _Host
+else:
+    _Host = object
 
 SEGMENT_EVENT_TYPE = "Segment"
 
@@ -321,7 +324,7 @@ def _decoded_rows(data: EventData) -> list[dict[str, Any]]:
     return rows
 
 
-class EventsMixin:
+class EventsMixin(_Host):
     """Provide event storage operations for timeline instances."""
 
     @property
@@ -574,7 +577,7 @@ class EventsMixin:
         duration = boxes.column("duration").combine_chunks()
         refuse_as_the_box(duration.is_null())
 
-        origin = _image_origin(self)
+        origin = _image_origin(self._timeline)
         expected = combine_number_columns(x_min, origin.value, "subtract", number_type)
         start = _struct_array(boxes.column("start"))
         wrong = pc.invert(compare_number_column(start, expected, "equal", number_type))

@@ -14,7 +14,7 @@ Additionally provides:
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Iterator
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 
 from timetoalign.core import (
     Coordinate,
@@ -211,8 +211,15 @@ class DiscreteGraphicalTimeline(GraphicalTimeline):
 
 # region SegmentLine
 
+# SegmentLine(SegmentLineMixin, Timeline) is the mixin's one user, so the type
+# checker reads the mixin's self and super() as that Timeline.
+if TYPE_CHECKING:
+    _SegmentLineBase = Timeline
+else:
+    _SegmentLineBase = object
 
-class SegmentLineMixin:
+
+class SegmentLineMixin(_SegmentLineBase):
     """Enforce and expose contiguous, homogeneously typed child segments."""
 
     _segment_type: type[Timeline] | None = None

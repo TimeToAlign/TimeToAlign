@@ -50,6 +50,10 @@ if TYPE_CHECKING:
     from timetoalign.core.enums import ColumnNaming
     from timetoalign.timelines.base import Timeline
 
+    from .host import TimelineHost as _Host
+else:
+    _Host = object
+
 
 def _empty_coordinates() -> pa.StructArray:
     """Return an empty coordinate column of the canonical storage shape."""
@@ -171,7 +175,7 @@ def conversion_map_column(
     )
 
 
-class TabularExportMixin:
+class TabularExportMixin(_Host):
     """Provide timestamp and tabular export operations for timeline instances."""
 
     def get_timestamp_at(
@@ -273,7 +277,7 @@ class TabularExportMixin:
 
         return TimeStamp(
             coordinates=coordinates,
-            source=self,
+            source=self._timeline,
             source_id=self._id,
             conversion_maps=conversion_maps,
         )
@@ -363,7 +367,7 @@ class TabularExportMixin:
         return TimeIntervalStamp(
             intervals=intervals,
             source_id=self._id,
-            source=self,
+            source=self._timeline,
             is_interpolated=(start_stamp.is_interpolated or end_stamp.is_interpolated),
         )
 

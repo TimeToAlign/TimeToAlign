@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
@@ -14,6 +14,11 @@ from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
 from ..regions import Region
+
+if TYPE_CHECKING:
+    from .host import TimelineHost as _Host
+else:
+    _Host = object
 
 
 def _resolve_boundary_names(
@@ -50,7 +55,7 @@ def _resolve_boundary_names(
     ]
 
 
-class RegionsMixin:
+class RegionsMixin(_Host):
     """Provide region operations for timeline instances."""
 
     def add_region(self, region: Region) -> Region:

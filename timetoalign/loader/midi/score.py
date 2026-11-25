@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import warnings
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import mido
 import pyarrow as pa
@@ -15,9 +15,11 @@ from timetoalign.core.backends import suppressed_backend_warnings
 with suppressed_backend_warnings():
     import partitura as pt
     from partitura.io.importmidi import quantize
+    from partitura.utils.music import note_array_from_part_list
     from partitura.score import Part, PartGroup, Score
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.loader.base import LoadSourceResult
 
 from .base import MidiLoader
 from .constants import MidiEventType
@@ -56,7 +58,8 @@ def _partitura_note_velocities(
             time += message.time
             if message.type not in ("note_on", "note_off"):
                 continue
-            at = quantize(time, quantization_unit) if quantization_unit else time
+            # With an integer unit, Partitura's quantize returns an int.
+            at = int(quantize(time, quantization_unit)) if quantization_unit else time
             key = (message.channel, message.note)
             if message.type == "note_on" and message.velocity > 0:
                 sounding[key] = (at, message.velocity)
@@ -88,7 +91,7 @@ class ScoreMidiLoader(MidiLoader):
     the first such note; ``parser="mido"`` reads every velocity.
     """
 
-    _event_data_class: ClassVar[type[MidiEventData]] = ScoreMidiEventData
+    _event_data_class = ScoreMidiEventData
 
     def __init__(
         self,
@@ -198,9 +201,7 @@ class ScoreMidiLoader(MidiLoader):
             )
         return velocities
 
-    def _load_source(
-        self, source: Path
-    ) -> tuple[dict[str, Any], dict[str, pa.ChunkedArray]]:
+    def _load_source(self, source: Path) -> LoadSourceResult:
         """Load a MIDI file using the configured parser.
 
         Args:
@@ -272,7 +273,7 @@ class ScoreMidiLoader(MidiLoader):
 
         # Generate note array with all info
         # We use include_staff=True if available in partitura version
-        note_array = pt.utils.music.note_array_from_part_list(
+        note_array = note_array_from_part_list(
             parts,
             include_staff=True,
             include_divs_per_quarter=True,  # To get PPQ info

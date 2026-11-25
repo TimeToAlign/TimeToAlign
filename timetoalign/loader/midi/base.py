@@ -13,6 +13,7 @@ import pyarrow.compute as pc
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader import EventLoader
+from timetoalign.loader.base import LoadSourceResult
 
 from .constants import MidiEventType
 from .events import MidiEventData
@@ -30,7 +31,7 @@ class MidiLoader(EventLoader):
     """
 
     _default_unit: ClassVar[TimeUnit] = TimeUnit.ticks
-    _event_data_class: ClassVar[type[MidiEventData]] = MidiEventData
+    _event_data_class = MidiEventData
 
     @property
     @abstractmethod
@@ -51,7 +52,7 @@ class MidiLoader(EventLoader):
         include_controls: bool,
         include_program_changes: bool,
         on0_means_off: bool,
-    ) -> tuple[dict[str, Any], dict[str, pa.ChunkedArray]]:
+    ) -> LoadSourceResult:
         """Parse a MIDI file's event stream with mido.
 
         Args:

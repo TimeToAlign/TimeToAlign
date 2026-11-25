@@ -5,9 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pyarrow as pa
-
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.loader.base import LoadSourceResult
 
 from .base import MidiLoader
 
@@ -97,9 +96,7 @@ class PerformanceMidiLoader(MidiLoader):
         """Return the ticks per beat (PPQ) of the loaded file."""
         return self._ticks_per_beat
 
-    def _load_source(
-        self, source: Path
-    ) -> tuple[dict[str, Any], dict[str, pa.ChunkedArray]]:
+    def _load_source(self, source: Path) -> LoadSourceResult:
         """Load a MIDI file using mido.
 
         Args:

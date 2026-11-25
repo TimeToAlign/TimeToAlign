@@ -781,9 +781,10 @@ seed and crash under another. The proof therefore runs the checks in fresh
 interpreters under two `PYTHONHASHSEED` values (seed `42` is one that crashed
 before) and asserts the identical printed answers: for a schema-only and an
 unbound `IntervalField` and a `NoteField` with rows, every runtime protocol of
-`core/protocols.py`, by name. Expected: the bound interval field is
-`TimedObjectLike`, `InstantEventLike`, `IntervalEventLike` (it now has
-`start`, `end` and `duration`) and not `NoteLike`; the note field is none of
+`core/protocols.py`, by name. Expected: both interval fields, the
+schema-only and the unbound one, are `TimedObjectLike`, `InstantEventLike`,
+`IntervalEventLike` (both have `start`, `end` and `duration`) and not
+`NoteLike`; the note field is none of
 the note protocols.
 
 ### `test_shapes.py` - Boxes and quadrilaterals in an image's pixel space
@@ -2669,11 +2670,25 @@ helper's annotation is false and its test fails.
 - **Struct if-else.** Choosing between two struct arrays by `[True, False]`:
   a `pa.StructArray` holding the first array's first row and the second's
   second row.
+- **No rows for the row-wise helpers.** The library calls the filled mask,
+  the joined strings and the struct if-else on fields without rows (a
+  number-type mask of an empty column, `x_min` / `x_max` of a shape field
+  without rows, the pitch names of a pitch field without rows). With
+  zero-length inputs each still returns the class it states, of length 0:
+  a `pa.BooleanArray`, a `pa.StringArray`, and a `pa.StructArray` of the
+  operands' struct type. This proves the stated class does not depend on
+  there being a row to compute.
 - **Dictionary chunked array.** Two dictionary chunks and zero chunks: a
   `pa.ChunkedArray` of the given dictionary type, its chunk count and values
   as given.
 - **Cast column.** An int64 array and a chunked int64 array cast to float64:
-  a `pa.DoubleArray` and a `pa.ChunkedArray`, values equal.
+  a `pa.DoubleArray` and a `pa.ChunkedArray`, values equal. Its caller,
+  `DataField.from_array`, also passes plain sequences, which PyArrow packs
+  into an array before casting; so `[1, None, 3]` as a Python list, the same
+  as a tuple, and `[1, 3]` as a NumPy int64 array cast to float64 each give
+  a `pa.DoubleArray` (`[1.0, None, 3.0]` and `[1.0, 3.0]`), never a chunked
+  array. This proves the array case of the stated union is the one a plain
+  sequence reaches.
 - **Struct child.** The member of a struct array whose second row is null:
   the stored child, its placeholder kept (the helper reads the child as
   stored, ignoring the struct's validity, as `StructArray.field` does).

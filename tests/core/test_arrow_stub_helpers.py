@@ -6,6 +6,7 @@ differently; these tests check every stated type against PyArrow itself.
 
 from __future__ import annotations
 
+import numpy as np
 import pyarrow as pa
 
 from timetoalign.core.fields import (
@@ -67,6 +68,20 @@ def test_struct_if_else_is_a_struct_array() -> None:
     assert result.to_pylist() == [{"a": 1, "b": "x"}, None]
 
 
+def test_row_wise_helpers_on_no_rows_keep_their_class() -> None:
+    mask = _filled_mask(pa.array([], pa.bool_()), pa.scalar(False))
+    assert type(mask) is pa.BooleanArray
+    assert len(mask) == 0
+    joined = _joined_strings(pa.array([], pa.string()), pa.array([], pa.string()), "")
+    assert type(joined) is pa.StringArray
+    assert len(joined) == 0
+    empty = pa.array([], type=PAIR)
+    chosen = _struct_if_else(pa.array([], pa.bool_()), empty, empty)
+    assert type(chosen) is pa.StructArray
+    assert chosen.type == PAIR
+    assert len(chosen) == 0
+
+
 def test_dictionary_chunked_array_is_a_chunked_array_of_the_type() -> None:
     dictionary_type = pa.dictionary(pa.int8(), pa.string())
     chunks = [
@@ -99,6 +114,13 @@ def test_cast_column_keeps_the_array_kind() -> None:
     assert type(chunked) is pa.ChunkedArray
     assert chunked.type == pa.float64()
     assert chunked.to_pylist() == [1.0, 2.0, 3.0]
+    for sequence in ([1, None, 3], (1, None, 3)):
+        packed = _cast_column(sequence, pa.float64())
+        assert type(packed) is pa.DoubleArray
+        assert packed.to_pylist() == [1.0, None, 3.0]
+    numpy_packed = _cast_column(np.array([1, 3], dtype=np.int64), pa.float64())
+    assert type(numpy_packed) is pa.DoubleArray
+    assert numpy_packed.to_pylist() == [1.0, 3.0]
 
 
 def test_struct_child_is_the_stored_child() -> None:

@@ -58,8 +58,6 @@ from .unfolding import compute_qb_sections
 if TYPE_CHECKING:
     from timetoalign.display.ascii import Diagram
 
-    from ..flowcontrol import Break, FlowControlRegistry, Jump, Marker
-
 module_logger = logging.getLogger(__name__)
 
 
@@ -404,7 +402,7 @@ class ScoreFlowController(FlowControllerBase):
         """Create MeasureUnits from the measure lookup.
 
         MeasureUnits represent the folded score skeleton - one per MeasureData row.
-        Populates all FlowControlElement fields including computed values:
+        Populates all FlowManifestation fields including computed values:
         - jump_from, jump_to derived from next[] patterns
         - timesig_duration_qb computed from timesig string
         - flow_control_types tuple for serialization
@@ -567,11 +565,11 @@ class ScoreFlowController(FlowControllerBase):
     def _extract_flow_control_types(
         self, info: dict[str, Any], is_jump_from: bool, is_jump_to: bool
     ) -> tuple[str, ...]:
-        """Extract FlowControlElement values from measure info.
+        """Extract FlowManifestation values from measure info.
 
-        Builds a tuple of FlowControlElement.value strings for serialization.
+        Builds a tuple of FlowManifestation.value strings for serialization.
         Recognises ms3 jump-instruction columns (``jump_bwd``, ``jump_fwd``,
-        ``play_until``) and folds them into the canonical FlowControlElement
+        ``play_until``) and folds them into the canonical FlowManifestation
         vocabulary (``dal_segno``, ``dal_segno_al_coda``, ``dal_segno_al_fine``,
         ``da_capo``, ``da_capo_al_coda``, ``da_capo_al_fine``, ``to_coda``).
 
@@ -581,7 +579,7 @@ class ScoreFlowController(FlowControllerBase):
             is_jump_to: Whether this MC is a jump target.
 
         Returns:
-            Tuple of FlowControlElement value strings.
+            Tuple of FlowManifestation value strings.
         """
         types: list[str] = []
 
@@ -641,7 +639,7 @@ class ScoreFlowController(FlowControllerBase):
         - OverlengthMeasure: actual > expected (fermata, cadenza)
 
         The typed copy inherits all properties from the generating MeasureUnit,
-        including FlowControlElements.
+        including FlowManifestations.
 
         Args:
             unit: The MeasureUnit to type.
@@ -981,7 +979,7 @@ class ScoreFlowController(FlowControllerBase):
         """
         yield from self._units
 
-    # region Flow control object accessors
+    # region Measure coordinates
 
     def _qb_at_mc(self, mc: int) -> Fraction:
         """Quarterbeat coordinate at the start of an MC, as a Fraction."""
@@ -999,219 +997,6 @@ class ScoreFlowController(FlowControllerBase):
         if not isinstance(dur, Fraction):
             dur = Fraction(dur)
         return qb + dur
-
-    def get_breaks(self) -> list["Break"]:
-        """Return all `Break` events derived from the score's flow control.
-
-        Currently emits one `Break` per measure flagged as a section break.
-        Each `Break` is positioned at the END coordinate of its MC and
-        carries a label indicating the source MC.
-
-        Returns:
-            List of `timetoalign.timelines.flowcontrol.Break` objects, sorted
-            by coordinate.
-        """
-        from timetoalign.core import Coordinate, TimeUnit
-        from timetoalign.core.enums import FlowControlElement
-
-        from ..flowcontrol import Break
-
-        breaks: list[Break] = []
-        for unit in self._units:
-            if unit.section_break:
-                breaks.append(
-                    Break(
-                        coordinate=Coordinate(
-                            self._qb_at_mc_end(unit.mc), TimeUnit.quarters
-                        ),
-                        control_type=FlowControlElement.section_break,
-                        label=f"section break after MC {unit.mc}",
-                    )
-                )
-            if unit.fine:
-                breaks.append(
-                    Break(
-                        coordinate=Coordinate(
-                            self._qb_at_mc_end(unit.mc), TimeUnit.quarters
-                        ),
-                        control_type=FlowControlElement.fine,
-                        name="fine",
-                        label=f"fine at MC {unit.mc}",
-                    )
-                )
-        return breaks
-
-    def get_jumps(self) -> list["Jump"]:
-        """Return all `Jump` events derived from the score's flow control.
-
-        Emits one `Jump` per repeat-end, plus one per D.S./D.C./to-coda
-        instruction (including the ``_al_coda`` and ``_al_fine`` variants).
-        Each jump's `from_coordinate` is the END of the originating MC and
-        its `to_coordinate` is the START of the destination MC.
-
-        Returns:
-            List of `timetoalign.timelines.flowcontrol.Jump` objects, sorted
-            by their from-coordinate.
-        """
-        from timetoalign.core import Coordinate, TimeUnit
-        from timetoalign.core.enums import FlowControlElement
-
-        from ..flowcontrol import Jump
-
-        jumps: list[Jump] = []
-        sorted_mcs = sorted(self._measure_lookup)
-
-        # Find the MC and the marker id of any named target marker (segno,
-        # coda, codab); the first marker of a name is the target.
-        marker_mc: dict[str, int] = {}
-        for unit in self._units:
-            if unit.segno:
-                marker_mc.setdefault(unit.segno, unit.mc)
-            if unit.coda:
-                marker_mc.setdefault(unit.coda, unit.mc)
-        marker_ids: dict[str, str] = {}
-        for marker in self.get_markers():
-            marker_ids.setdefault(marker.name, marker.id)
-
-        # Resolve every repeat-end to its back-jump target once, via the
-        # nearest-first candidate generator (see _repeat_end_resolution).
-        repeat_targets, _ = self._repeat_end_resolution()
-
-        for unit in self._units:
-            from_qb = self._qb_at_mc_end(unit.mc)
-            from_coord = Coordinate(from_qb, TimeUnit.quarters)
-
-            # Repeat: an end-repeat jumps back to its resolved candidate
-            # target. A repeat-end with no candidate is dangling and emits no
-            # jump (the diagnostic is surfaced by flow_diagnostics()).
-            if unit.end_repeat:
-                target_mc = repeat_targets.get(unit.mc)
-                if target_mc is not None:
-                    jumps.append(
-                        Jump(
-                            from_coordinate=from_coord,
-                            to_coordinate=Coordinate(
-                                self._qb_at_mc(target_mc), TimeUnit.quarters
-                            ),
-                            control_type=FlowControlElement.repeat_end,
-                            repeat_count=1,
-                            label=f"MC {unit.mc} → MC {target_mc}",
-                        )
-                    )
-
-            # D.S./D.C. (and -al-coda/-al-fine) and To Coda.
-            fct = unit.flow_control_types
-            jump_type: FlowControlElement | None = None
-            target_name: str
-            for cand in (
-                FlowControlElement.dal_segno_al_coda,
-                FlowControlElement.dal_segno_al_fine,
-                FlowControlElement.da_capo_al_coda,
-                FlowControlElement.da_capo_al_fine,
-                FlowControlElement.dal_segno,
-                FlowControlElement.da_capo,
-                FlowControlElement.to_coda,
-            ):
-                if cand.value in fct:
-                    jump_type = cand
-                    break
-            if jump_type is None:
-                continue
-
-            if jump_type in (
-                FlowControlElement.da_capo,
-                FlowControlElement.da_capo_al_coda,
-                FlowControlElement.da_capo_al_fine,
-            ):
-                if not sorted_mcs:
-                    continue
-                to_mc = sorted_mcs[0]
-                target_name = "start"
-            elif jump_type == FlowControlElement.to_coda:
-                target_name = unit.jump_fwd or "coda"
-                to_mc = marker_mc.get(target_name)
-            else:
-                # dal_segno / dal_segno_al_coda / dal_segno_al_fine
-                target_name = unit.jump_bwd or "segno"
-                to_mc = marker_mc.get(target_name)
-
-            if to_mc is None:
-                continue
-
-            jumps.append(
-                Jump(
-                    from_coordinate=from_coord,
-                    to_coordinate=Coordinate(self._qb_at_mc(to_mc), TimeUnit.quarters),
-                    control_type=jump_type,
-                    target=marker_ids.get(target_name),
-                    label=f"MC {unit.mc} → {target_name} (MC {to_mc})",
-                )
-            )
-
-        return jumps
-
-    def get_markers(self) -> list["Marker"]:
-        """Return all named target markers (segno and coda instances).
-
-        A Fine is no jump target: it is a :class:`Break` (see
-        :meth:`get_breaks`).
-
-        Returns:
-            List of `timetoalign.timelines.flowcontrol.Marker` objects in MC
-            order, with minted ids ``jump_to_1``, ``jump_to_2``, ... ``name``
-            is the marker instance name (e.g., ``"segno"``, ``"coda"``,
-            ``"codab"``) and ``control_type`` ``segno`` or ``coda``;
-            ``coordinate`` is the start of the MC.
-        """
-        from timetoalign.core import Coordinate, TimeUnit
-        from timetoalign.core.enums import FlowControlElement
-
-        from ..flowcontrol import FlowControlRegistry, Marker
-
-        registry = FlowControlRegistry()
-        for unit in self._units:
-            coord = Coordinate(self._qb_at_mc(unit.mc), TimeUnit.quarters)
-            for name, control_type in (
-                (unit.segno, FlowControlElement.segno),
-                (unit.coda, FlowControlElement.coda),
-            ):
-                if name:
-                    registry.add_marker(
-                        Marker(coord, name=name, control_type=control_type)
-                    )
-        return registry.markers
-
-    def get_flow_control_registry(self) -> "FlowControlRegistry":
-        """Return a `FlowControlRegistry` populated from this controller.
-
-        Bundles the breaks, jumps, and named markers into a single object,
-        which is the canonical registry shape used elsewhere in the library.
-        """
-        from ..flowcontrol import FlowControlRegistry
-
-        registry = FlowControlRegistry()
-        for brk in self.get_breaks():
-            registry.add_break(brk)
-        for marker in self.get_markers():
-            registry.add_marker(marker)
-        for jump in self.get_jumps():
-            registry.add_jump(jump)
-        return registry
-
-    @property
-    def breaks(self) -> list["Break"]:
-        """All `Break` events derived from the score (see `get_breaks()`)."""
-        return self.get_breaks()
-
-    @property
-    def jumps(self) -> list["Jump"]:
-        """All `Jump` events derived from the score (see `get_jumps()`)."""
-        return self.get_jumps()
-
-    @property
-    def markers(self) -> list["Marker"]:
-        """All named target markers (see `get_markers()`)."""
-        return self.get_markers()
 
     # endregion
 
@@ -1247,7 +1032,7 @@ class ScoreFlowController(FlowControllerBase):
         #    - This includes repeat_start when repeat_end jumps back to it
         # 3. MCs after jump sources (when next[] indicates non-sequential continuation)
         # 4. After explicit section_break markers
-        # Note: Uses derived flow info (next column). When principal FlowControlElements
+        # Note: Uses derived flow info (next column). When principal FlowManifestations
         # are available, they should be preferred for boundary detection.
         boundaries: set[int] = {sorted_mcs[0]}  # Start of first segment
         volta_endings: set[int] = set()  # Track volta ending MCs

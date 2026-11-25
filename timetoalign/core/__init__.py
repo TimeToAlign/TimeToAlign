@@ -22,7 +22,6 @@ Flat module layout (no sub-packages):
 from __future__ import annotations
 
 from .enums import (
-    ActivationCondition,
     ClaimType,
     ColumnNaming,
     ColumnRole,
@@ -30,7 +29,9 @@ from .enums import (
     EventType,
     ExtrapolationPolicy,
     FancyStrEnum,
-    FlowControlElement,
+    FlowConvention,
+    FlowFindingKind,
+    FlowManifestation,
     FlowMode,
     IncompletePosition,
     InterpolationKind,
@@ -224,7 +225,6 @@ from .timestamp import (
 
 __all__ = [
     # Enums
-    "ActivationCondition",
     "ClaimType",
     "ColumnNaming",
     "ColumnRole",
@@ -232,7 +232,9 @@ __all__ = [
     "EventType",
     "ExtrapolationPolicy",
     "FancyStrEnum",
-    "FlowControlElement",
+    "FlowConvention",
+    "FlowFindingKind",
+    "FlowManifestation",
     "FlowMode",
     "IncompletePosition",
     "InterpolationKind",

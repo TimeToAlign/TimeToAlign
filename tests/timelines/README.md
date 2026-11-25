@@ -238,29 +238,8 @@ both optional measure structures are exactly ``None``. Adding either structure a
 second time must raise, because replacing the authored structure would describe a
 different timeline.
 
-The number-type boundary is proved in both directions and through every storing
-entry point: a break coordinate, both coordinates of a jump, and a marker. A
-quarters registry bound to fractions receives float-authored coordinates at
-``1.5`` and must store the exact ``Fraction(3, 2)``, because ``1.5`` is a dyadic
-double whose exact value is three halves; a seconds registry bound to floats
-receives ``Fraction(1, 3)`` and must store exactly Python's
-``0.3333333333333333``, the nearest double to one third. Break, jump, and marker
-unit mismatches are each rejected with both units named. A query coordinate
-object whose unit differs from a bound registry's unit is rejected with both
-units named as well, since comparing its bare value with stored values of another
-unit would answer a different question; a raw number query still compares by
-value, and an unbound registry compares values as it always has.
-
-An unbound registry retains the input objects unchanged: an added break, jump, or
-marker whose id is free is stored as the identical object, so a marker at an
-``IdCoordinate`` keeps that ``IdCoordinate``. A raw marker number names no unit,
-so an unbound registry rejects it. Constructor content passes through the same
-add methods, but the registry copies the given containers first. The caller's
-list therefore remains a distinct object in its original order, even though the
-registry sorts its own copy by coordinate; of two breaks constructed without an
-id (both minted ``flow_marker_1``), the one added second is stored as ``flow_marker_2``. Copying a registry must reproduce its
-binding and exact content while subsequent mutation of either registry leaves the
-other unchanged.
+The registry's binding to its axis (units, number types, unbound storage,
+copies) is described under *Flow control* below.
 
 A region answers containment for raw numbers by value on its own axis. A
 coordinate object in another unit is rejected with both units named instead of
@@ -268,10 +247,8 @@ comparing values that measure different quantities.
 
 Flow-control elements and regions write every coordinate as a bare value on
 the timeline's own axis, represented as its number type selects, and read it
-back against that axis. Their round trips pin every manifestation, label/name
-field, repeat count, and metadata dictionary. The registry is written as one
-array of elements (see *Flow control in a manifest*); a JSON encode/decode
-cycle cannot change it.
+back against that axis. The registry is written as one array of elements (see
+*Flow control*); a JSON encode/decode cycle cannot change it.
 
 A structure-bearing timeline combines a measure map containing regular,
 irregular, and constituent measures, each with the number and nominal length
@@ -906,64 +883,189 @@ entry, with literal manifests written from the format's rules.
 - **Unknown keys of an entry are kept.** An entry's unknown key and a row's
   unknown key are written back where they were found.
 
-### Flow control in a manifest (`test_manifest_flow_control.py`)
+### Flow control (`test_flowcontrol.py`, `test_manifest_flow_control.py`)
 
-`flow_control` is one array of elements `{id, type, manifestation,
-coordinate, target?, repeat_count?, name?, label?, meta?}`, written in
-canonical order by coordinate and then id. A `Break` writes a `flow_marker`
-(`fine`, `section_break`, `double_barline`, `final_barline`), a `Jump` a
-`jump_from` (`repeat_end`, the six D.C./D.S. manifestations, `to_coda`) and
-a `Marker` a `jump_to` (`repeat_start`, `segno`, `coda`); the element's
-manifestation is the library element's `control_type`, which each class
-restricts to its own set (constructing a `Break` of `segno` raises).
-`Marker.control_type` is required: the library states whether a marker is a
-segno, a coda or a repeat start rather than guessing it from a name.
+`flow_control` is one array of elements `{id, role, coordinate, …, name?,
+label?, meta?, provenance?}`, written in canonical order by coordinate and
+then ID. The `role` names the class: `jump` (`Jump`, with `targets`),
+`jump_target` (`JumpTarget`), `break` (`Break`, with `ends`),
+`section_break` (`SectionBreak`) and `barline` (`Barline`); the last four
+may state a `manifestation`. A destination in `targets` is an object with
+the keys `to`, `by`, `passes`, `repeat_count`, `after`, `determined`,
+`reset`, `manifestation`, `label`, all optional; `ends` is an object with
+`passes` and `after`. What proves the classes right is that the dictionary
+form and the object are the same statement, so the tests are written from
+literals of the format and never from what the writer happens to produce.
 
-- **The literal round-trips.** A quarters timeline with a section break, a
-  fine, a segno, a coda, a repeat start, a repeat end (`repeat_count` 2)
-  targeting the repeat start, a D.S. al Coda targeting the segno and a
-  `to_coda` targeting the coda reads from its complete and minimal literal
-  and writes each back equal to the literal; every element's id, name,
-  label, meta and unknown key survives.
-- **The target is a `jump_to`, and the jump's destination its coordinate.**
-  Reading sets a jump's `to_coordinate` to its target's coordinate, or 0 for
-  a `da_capo*` or `repeat_end` without target. Writing a jump whose target
-  marker lies elsewhere than its `to_coordinate` is refused naming both.
-- **A destination without a marker gets one.** A `repeat_end` to 8, a
-  `dal_segno` to 4, a `to_coda` to 12 and a `da_capo_al_coda` to 10, none
-  with a marker, write a `jump_to` at each destination whose manifestation
-  follows from the jump (`repeat_start`, `segno`, `coda`, `coda`), with ids
-  minted in the timeline's tree (`jump_to_1`, ... around the ids it holds,
-  among them a break given the id `jump_to_1`, which the minting steps
-  around);
-  two jumps to one destination of one manifestation share one. A
-  `repeat_end` and a `da_capo` to 0 write no target. A `da_capo` to another
-  position than 0 is refused.
-- **When an element acts follows from its manifestation.** The library's
-  `condition` is derived, not stored: `repeat_end` acts on its first
-  `repeat_count` passes (`first_n`), `to_coda` only after a D.C. or D.S.
-  (`after_dc_ds`), every other element always. `repeat_count` is written on
-  `repeat_end` only; a `Jump` of another manifestation with a
-  `repeat_count` other than 1 is refused at construction, and reading a
-  `repeat_count` elsewhere, a target on a `jump_to` or `flow_marker`, a
-  target naming no `jump_to`, a missing target on a `dal_segno`, an unknown
-  `type`, a manifestation of another type and a `repeat_count` of 0 are
-  each refused by the format's validator, each case breaking one rule only so that
-  the reported pointer is that fault's. Its code and the JSON pointer of
-  the fault are asserted exactly; of its message only what names the fault
-  (the key, the value: `'repeat_count'`, `'nowhere'`, `'jump_over'`), since
-  the wording is TimeToShare's and changes there without any change in what
-  is refused. The library's own refusal at construction is asserted with
-  its whole message.
-- **Score loaders keep their traversal.** The flow tests (`test_flow.py`)
-  are the oracle and stay green: the traversal reads the controller, not
-  the registry. The registry of the ms3 measures of Couperin's
-  `c05n05_musete` (repeats and two D.S. al Fine) writes and reads back to
-  the same breaks and the same jumps (id, manifestation, from, to,
-  `repeat_count`, condition) with exact values; the two repeat ends landing
-  at 42 and 84, where no marker lies, gain the `repeat_start` markers
-  `jump_to_2` and `jump_to_3` written there, and the read registry is a
-  fixpoint of writing.
+- **Every class and every key round-trips.** One literal array holds each
+  of the five roles, a destination stating every key (in two destinations,
+  since `to` and `by` exclude each other), both forms of `passes` (a list
+  and `{from: n}`), an `after` with `to`, one with `by` and one with
+  neither, an `ends` with both conditions, `provenance` with a belief,
+  `name`, `label`, `meta`, and an unknown key on an element, on a
+  destination, on an `after` and on an `ends`. Reading it and writing it in
+  the minimal form gives the literal back; the complete form adds exactly
+  `name: null`, `label: null`, `meta: {}` to each element that left them
+  out and nothing inside a destination or a condition, where a key at its
+  default is absent in both forms. `determined: true` and `reset: true` are
+  read and never written.
+- **Reading builds the objects.** The same literal read gives, by exact
+  value, each element's class, coordinate on the axis's number type,
+  manifestation as a `FlowManifestation`, each destination's attributes,
+  each distance as a `Duration` of the axis, `passes` as a tuple or a
+  `PassesFrom`, and the provenance as a `Provenance`.
+- **A manifestation outside the vocabulary is kept.** `"x-wavy-line"` on a
+  jump target, a break, a section break, a barline and a destination is
+  read, held as the string and written back unchanged. A word of the
+  vocabulary on the wrong class (a break that is a `segno`, a destination
+  that is a `coda`, a section break that is a `fine`) is refused with the
+  class's own words listed.
+- **The old form is refused, naming the new one.** An element with `type`
+  (each of `jump_from`, `jump_to`, `flow_marker`), one with those words as
+  its `role`, one with `target` and one with its own `repeat_count` is
+  each refused with a message that names `role`, `targets` or the
+  destination; nothing is converted. An unknown role is refused listing
+  the five.
+- **What cannot be played is refused**, each case breaking one rule only,
+  the whole message asserted: a second Jump at a coordinate; two
+  destinations of one Jump with the same `to`, the same `by` (`[1, 1]` and
+  `1.0` on a float axis are one distance) or both without place; a `to`
+  naming nothing; an `after` naming no Jump, the holder's own Jump, a place
+  no destination of that Jump has, and no place where that Jump has two
+  placed destinations; `ends: {}`; a `repeat_count` of 0, of `true` and of
+  `1.5`; `passes` empty, with 0, with a repeated number, `{from: 0}`; a
+  destination with both `to` and `by`; a Jump without destination. After
+  each refusal by the registry its elements are what they were.
+- **Elements naming one another are added together.** A Fine naming a D.C.
+  and a To Coda naming it are refused one by one in the wrong order and
+  accepted by `add_all` in any order. Two elements arriving with the same
+  minted ID are stored as `jump_target_1` and `jump_target_2`, and a
+  registry absorbed into a timeline whose manifest holds `jump_target_1`
+  has that target stored as `jump_target_2` with the destination naming it
+  following.
+- **Canonical order.** Elements added in reverse are held and written by
+  coordinate and then ID, an integer, a fraction and a float axis each
+  with values whose text order differs from their numeric order.
+- **Places.** `place_of` is asserted for every kind of place: a jump
+  target; `by` forwards, backwards and 0, on an integer, a fraction (9/2 −
+  1/2 = 4 exactly) and a float axis; a Region of the timeline (its start),
+  a child timeline (its offset) and the timeline itself (0), all three
+  through a real timeline, with a Region renamed afterwards followed by
+  the destination naming it; no place without and with section breaks
+  before the Jump (the nearest one before it; one at the Jump's own
+  coordinate does not count).
+- **The axis.** A bound registry refuses another unit naming both, and
+  stores a float-authored `1.5` on a fraction axis as `Fraction(3, 2)` and
+  `Fraction(1, 3)` on a float axis as `0.3333333333333333`, for the
+  element's coordinate and for a destination's `by` alike. An unbound
+  registry stores the identical object. A copy is equal and independent.
+- **Rejection.** An element whose provenance holds the belief `"false"` of
+  an actor is left out by `active_elements(believer=<that actor>)` and
+  kept for every other believer and without one; a rejected Jump and its
+  replacement lie at one coordinate, `jump_at` answers the replacement,
+  and reading both without a believer is refused.
+- **Score loaders.** The elements derived from the ms3 measures of
+  Couperin's `c05n05_musete` are asserted element for element (role,
+  coordinate, destinations, `ends`) against the measures table read by
+  hand: a segno, two printed repeat starts, three repeat ends (the first
+  without a start, the others naming theirs), two D.S. al Fine to the
+  segno on the barlines of the second and third repeat end, and the Fine
+  without a condition because either leap could be meant.
+
+Tests of whole manifests holding flow control (through `Timeline.from_dict`
+and `to_dict`, which run the format's validator) are added with the release
+of the format that defines these roles.
+
+### The flow engine (`test_flow_engine.py`)
+
+`play(registry, length, convention=…)` returns the flow as runs of the
+axis and its findings; `atomic_sections` the stretches flow control never
+divides. The engine reads places and conditions only, so a test proves it
+right by stating a piece of music as elements, deriving by hand what a
+player plays, and comparing run for run. No expected value comes from the
+engine: each one below is derived from the rules in the order the walk
+applies them, and where a published flow exists (the gold files in
+`target_flows`) the engine is compared with the file. Synthetic cases use
+an integer axis and name stretches by letters of four units (A = [0, 4),
+B = [4, 8), …) so that the played order can be read off the runs.
+
+**One rule per case** (runs in played order; a run that goes on where the
+one before stopped is merged with it):
+
+| Case | Elements | Runs |
+|---|---|---|
+| repeat without start | Jump 8 `{repeat_count: 1}`; length 12 | [0,8) [0,12) |
+| repeat with start | target 4; Jump 8 to it, once | [0,8) [4,12) |
+| `repeat_count: 3` | Jump 4, length 8 | [0,4) [0,4) [0,4) [0,8) |
+| nested repeats | target 4; Jump 8 to it once; Jump 12 `{repeat_count: 1}`; length 16 | [0,8) [4,12) [0,8) [4,16): the outer repeat restores the inner Jump, which lies wholly inside [0, 12) |
+| brackets 1, 2 | Jump 4 `{by: 0, passes: [1]}`, `{to: 8, passes: [2]}`; Break 8; Jump 8 once; length 12 | [0,8) [0,4) [8,12) |
+| three brackets | Jump 4 with passes 1, 2, 3 to 4, 8, 12; Breaks 8, 12; Jumps 8 and 12 once; length 16 | [0,8) [0,4) [8,12) [0,4) [12,16) |
+| brackets (1, 3), (2) | Jump 4 `{by: 0, passes: [1, 3]}`, `{to: 8, passes: [2]}`; Break 8; Jump 8 `{repeat_count: 2}`; Jump 12 once; length 16 | [0,8) [0,4) [8,12) [0,8) [0,4) [8,16), see below |
+| first bracket without sign | brackets 1, 2 without the Jump at 8 | [0,8); `flow_ends_at_break` at 8, `never_played` [8,12) |
+| D.C. al Fine | Break 4 ending after the Jump at 8 `{repeat_count: 1, reset: false}`; length 8 | [0,8) [0,4) |
+| D.S. al Coda | segno 4; Jump 8 to the coda at 16 after the D.S.; Jump 16 to the segno, once, no reset; length 20 | [0,16) [4,8) [16,20) |
+| repeat end and D.S. on one barline | segno 4; Jump 8 `{repeat_count: 1}` and `{to: segno, repeat_count: 1, reset: false}` | [0,8) [0,8) [4,8): the restoring destination first |
+| `A Fine B :‖ D.C. al Fine` on one barline | repeat start 0; Jump 8 to it once and `{repeat_count: 1, reset: false}`; Break 4 ending after that Jump's placeless destination | [0,8) [0,8) [0,4) |
+| D.C. with `reset` at its default | Jump 4 once; Jump 8 `{repeat_count: 1}` | [0,4) [0,8) [0,4) [0,8): the repeat is played again |
+| loop on a seconds axis | Jump 2.5 `{repeat_count: 127}`; length 4.0 | 127 × [0.0, 2.5), then [0.0, 4.0), every bound a float |
+| ossia | Jump 4 `{by: 0}` and `{to: 8, determined: false}`; Jump 8 to 12; Jump 12 to 12; length 16 | [0,8) [12,16); `undetermined_target` at 4, `never_played` [8,12) |
+| endless loop | Jump 4 `{}`; length 8 | [0,4) [0,4); `endless_loop` at 4, `never_played` [4,8): the second take meets the state of the first |
+| two sections, D.C. in the second | SectionBreak 8; Jump 16 `{repeat_count: 1, reset: false}`; length 16 | [0,16) [8,16) |
+| a Fine ending the first section | Break 4 ending after the Jump at 8; Jump 8 `{repeat_count: 1, reset: false}`; SectionBreak 8; length 12 | [0,8) [0,4) [8,12): the D.C. lands at 0, since the section break at its own coordinate ends its section, and the flow begins again at the section break behind the Fine |
+| barline | Barline 4; length 8 | [0,8), one atomic section |
+| two destinations of one kind | Jump 4 to targets at 6 and 8, unconditional; length 10 | [0,4) [6,10); `ambiguous_targets` at 4, `never_played` [4,6) |
+
+The brackets (1, 3), (2), by the rules as they stand: pass 1 plays [0, 8)
+and the repeat at 8 is taken (1 of 2); pass 2 goes to the second bracket,
+whose repeat at 12 goes back to 0 and restores every Jump and Break lying
+wholly inside [0, 12): the bracket Jump at 4 (its places 4 and 8) and the
+Jump at 8. The bracket Jump is therefore arrived at for the first time
+again, plays the first bracket, the restored repeat at 8 is taken, and the
+fourth time through enters the second bracket and goes on to the end. A
+"third pass" numbered 3 is never reached. The test asserts this reading and
+is the place to change when the rule changes.
+
+`single` and `printed` are asserted for the three bracket cases: `printed`
+is [0, length) for each. `single` arrives at the bracket Jump on pass 1 +
+the `repeat_count` of every restoring destination whose stretch contains
+it: pass 2 for brackets 1, 2 ([0,4) [8,12)); pass 3 for three brackets
+([0,4) [12,16)); pass 4 for (1, 3), (2), which is beyond the highest pass
+named, so the destination naming 3 holds, which is going on: [0,8), ending
+at the Break at 8 with `flow_ends_at_break`.
+
+**Three pieces**, on an integer axis where position = measure count − 1
+for the first two:
+
+1. *Musette* (length 58; segno 5; repeats ending at 16, 31, 58; a D.S. at
+   31 and at 58; at 16 a Fine after the second D.S. and a jump to the
+   second ending after the first). Trace: [0,16), repeat to 0, [0,16) and
+   on to 31; repeat to 16 (the Fine is restored, the Jump at 16 is not: its
+   places 0 and 31 lie outside), [16,31); first D.S. to 5, [5,16), where
+   the destination after the first D.S. holds and goes to 31; [31,58),
+   repeat to 31, [31,58); second D.S. to 5, [5,16), where the Fine now
+   ends the flow. Runs [0,16) [0,31) [16,31) [5,16) [31,58) [31,58) [5,16),
+   no finding. `single`: [0,58). Atomic sections [0,5) [5,16) [16,31)
+   [31,58).
+2. *Rondeau* (length 60; the refrain [0, 9) played after each couplet):
+   runs [0,9) [0,18) [9,18) [0,9) [18,27) [18,27) [0,9) [27,60) [27,60);
+   `single` [0,60).
+3. *The stress score* (quarters, length 37, fifteen measures starting at 0,
+   1, 5, 6, 7, 9, 10, 12, 16, 20, 24, 28, 30, 32, 34), stated twice.
+   (a) As the source prints it: the repeat ends at 16 and 34 have no
+   start, and nothing stands at the end of the second of three brackets.
+   The flow plays [0,6), repeats, plays on to 9 through the first bracket,
+   repeats from 6, enters the second bracket [9,10) and meets the Break at
+   10 with no Jump: runs [0,6) [0,9) [6,7) [9,10), `flow_ends_at_break` at
+   10, `never_played` [10,37). (b) With three repair elements stated as
+   such (jump targets at 12 and 30 that the repeat ends at 16 and 34 name,
+   and a Jump at 10 to the target at 12): the default flow equals the
+   `default` rows of the gold file
+   `out_of_the_flow_experience-flow_only.flow.csv` measure for measure
+   (1-3, 1-5, 4, 6, 8, 8-10, 10-11, 9-10, 10-12, 9, 13-14, 13, 15, 1-4, 7),
+   `single` equals its `single` rows (1-4, 6, 8-13, 15), and the atomic
+   sections equal its `atomic` rows, with no finding. The gold rows are
+   read from the file and turned into quarters by the measure starts
+   above; nothing is copied from the engine.
 
 ### Manifest identity (`test_manifest_ids.py`)
 

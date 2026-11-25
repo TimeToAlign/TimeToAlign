@@ -23,6 +23,7 @@ from .stores.notes import NoteEventData
 if TYPE_CHECKING:
     from timetoalign.timelines import MeasureMap, Timeline
     from timetoalign.timelines.flow import ScoreFlowController, SegmentNameGenerator
+    from timetoalign.timelines.flowcontrol import FlowControlRegistry
 
 module_logger = logging.getLogger(__name__)
 
@@ -50,6 +51,199 @@ def _struct_coordinate_value(struct: dict[str, Any]) -> Fraction | float:
     ):
         return Fraction(int(numerator), int(denominator))
     return float(struct["value"])
+
+
+_LEAPS = (
+    "dal_segno_al_coda",
+    "dal_segno_al_fine",
+    "da_capo_al_coda",
+    "da_capo_al_fine",
+    "dal_segno",
+    "da_capo",
+)
+"""The manifestations of a D.S. or D.C., the most specific first."""
+
+
+def _flow_control_of(controller: "ScoreFlowController") -> "FlowControlRegistry":
+    """Return the flow-control elements a score's measures state.
+
+    A repeat start, a segno and a coda are jump targets at the start of
+    their measure; everything else lies at the end of its measure. The signs
+    at one measure's end are the destinations of one jump:
+
+    - a repeat end: ``repeat_count: 1``, ``to`` its repeat start where the
+      measures state one, without place where it goes back to the start;
+    - a D.C. or D.S.: ``repeat_count: 1`` and ``reset: false``, a D.S. ``to``
+      its segno;
+    - a To Coda: ``to`` its coda, ``after`` the score's D.C. or D.S. where
+      it has exactly one on another jump; otherwise ``determined: false``.
+
+    A Fine is a break that ends the flow ``after`` the score's one D.C. or
+    D.S., and without condition where the score has none or several; a
+    section break is a section break. A repeat end that resolves to no
+    measure, and a D.S. or To Coda whose sign no measure carries, give no
+    destination. Nothing is added that the measures do not state.
+    """
+    from timetoalign.core import Coordinate
+    from timetoalign.core.enums import FlowManifestation
+    from timetoalign.timelines.flowcontrol import (
+        Break,
+        DestinationReference,
+        FlowCondition,
+        FlowControlRegistry,
+        Jump,
+        JumpDestination,
+        JumpTarget,
+        SectionBreak,
+    )
+
+    def start_of(mc: int) -> Coordinate:
+        return Coordinate(controller._qb_at_mc(mc), TimeUnit.quarters)
+
+    def end_of(mc: int) -> Coordinate:
+        return Coordinate(controller._qb_at_mc_end(mc), TimeUnit.quarters)
+
+    registry = FlowControlRegistry()
+    units = list(controller.iter_units())
+    repeat_starts: dict[int, str] = {}
+    signs: dict[str, str] = {}
+    for unit in units:
+        if unit.start_repeat:
+            repeat_starts[unit.mc] = registry.add(
+                JumpTarget(
+                    start_of(unit.mc), manifestation=FlowManifestation.repeat_start
+                )
+            ).id
+        for name, manifestation in (
+            (unit.segno, FlowManifestation.segno),
+            (unit.coda, FlowManifestation.coda),
+        ):
+            if name:
+                sign = registry.add(
+                    JumpTarget(
+                        start_of(unit.mc), name=name, manifestation=manifestation
+                    )
+                )
+                # The first sign of a name is the one a jump goes on at.
+                signs.setdefault(name, sign.id)
+        if unit.section_break:
+            registry.add(
+                SectionBreak(end_of(unit.mc), label=f"section break after MC {unit.mc}")
+            )
+
+    repeat_targets, _ = controller._repeat_end_resolution()
+    # The destinations of each measure's end, a To Coda flagged: its
+    # condition names a jump that has to be stored first.
+    drafts: dict[int, list[tuple[dict[str, Any], bool]]] = {}
+    leaps: list[tuple[int, dict[str, Any]]] = []
+    for unit in units:
+        found: list[tuple[dict[str, Any], bool]] = []
+        if unit.end_repeat and unit.mc in repeat_targets:
+            target_mc = repeat_targets[unit.mc]
+            found.append(
+                (
+                    {
+                        "to": repeat_starts.get(target_mc),
+                        "repeat_count": 1,
+                        "manifestation": FlowManifestation.repeat_end,
+                        "label": f"MC {unit.mc} → MC {target_mc}",
+                    },
+                    False,
+                )
+            )
+        types = unit.flow_control_types
+        leap = next((kind for kind in _LEAPS if kind in types), None)
+        if leap is not None:
+            sign_name = None if leap.startswith("da_capo") else unit.jump_bwd or "segno"
+            if sign_name is None or sign_name in signs:
+                destination = {
+                    "to": None if sign_name is None else signs[sign_name],
+                    "repeat_count": 1,
+                    "reset": False,
+                    "manifestation": FlowManifestation(leap),
+                    "label": f"MC {unit.mc} → {sign_name or 'start'}",
+                }
+                found.append((destination, False))
+                leaps.append((unit.mc, destination))
+        elif FlowManifestation.to_coda.value in types:
+            sign_name = unit.jump_fwd or "coda"
+            if sign_name in signs:
+                found.append(
+                    (
+                        {
+                            "to": signs[sign_name],
+                            "manifestation": FlowManifestation.to_coda,
+                            "label": f"MC {unit.mc} → {sign_name}",
+                        },
+                        True,
+                    )
+                )
+        kept: list[tuple[dict[str, Any], bool]] = []
+        for destination, is_to_coda in found:
+            if any(destination["to"] == other["to"] for other, _ in kept):
+                module_logger.warning(
+                    "The signs at the end of MC %s go on at one place; %s is left out.",
+                    unit.mc,
+                    destination["manifestation"].value,
+                )
+                leaps[:] = [entry for entry in leaps if entry[1] is not destination]
+                continue
+            kept.append((destination, is_to_coda))
+        if kept:
+            drafts[unit.mc] = kept
+
+    # A To Coda and a Fine act after the score's leap, which they can name
+    # only where the score has exactly one.
+    leap_mc = leaps[0][0] if len(leaps) == 1 else None
+    reference: DestinationReference | None = None
+
+    def add_jump(mc: int) -> Jump:
+        destinations: list[JumpDestination] = []
+        for destination, is_to_coda in drafts[mc]:
+            if not is_to_coda:
+                destinations.append(JumpDestination(**destination))
+            elif reference is not None and mc != leap_mc:
+                destinations.append(JumpDestination(**destination, after=reference))
+            else:
+                module_logger.warning(
+                    "The To Coda at the end of MC %s cannot name the D.C. or D.S. "
+                    "it follows (the score has %s); it is written as not "
+                    "determined.",
+                    mc,
+                    "it on the same barline" if mc == leap_mc else f"{len(leaps)}",
+                )
+                destinations.append(JumpDestination(**destination, determined=False))
+        return registry.add(Jump(end_of(mc), destinations))
+
+    if leap_mc is not None:
+        reference = DestinationReference(
+            jump=add_jump(leap_mc).id, to=leaps[0][1]["to"]
+        )
+    for mc in drafts:
+        if mc != leap_mc:
+            add_jump(mc)
+
+    for unit in units:
+        if not unit.fine:
+            continue
+        if reference is None:
+            module_logger.warning(
+                "The Fine at the end of MC %s cannot name the D.C. or D.S. it "
+                "follows (the score has %s); it is written as a break without "
+                "condition.",
+                unit.mc,
+                len(leaps),
+            )
+        registry.add(
+            Break(
+                end_of(unit.mc),
+                manifestation=FlowManifestation.fine,
+                name="fine",
+                label=f"fine at MC {unit.mc}",
+                ends=None if reference is None else FlowCondition(after=reference),
+            )
+        )
+    return registry
 
 
 class ScoreLoader(EventLoader):
@@ -358,9 +552,7 @@ class ScoreLoader(EventLoader):
         measure_map = self._measure_map()
         timeline.add_measure_map(measure_map)
 
-        timeline.flow_control._absorb(
-            self.create_flow_controller().get_flow_control_registry()
-        )
+        timeline.flow_control._absorb(_flow_control_of(self.create_flow_controller()))
 
         notated_length = measure_map.total_actual_length
         if notated_length is not None:

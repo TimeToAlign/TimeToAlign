@@ -464,7 +464,7 @@ class ColumnNaming(FancyStrEnum):
     """Use unique identifier."""
 
 
-class FlowControlElement(FancyStrEnum):
+class FlowManifestation(FancyStrEnum):
     """Canonical taxonomy of flow control markers in musical scores.
 
     This enum provides a unified vocabulary for flow control across all loaders
@@ -482,10 +482,10 @@ class FlowControlElement(FancyStrEnum):
        while others affect traversal (jumps, breaks). The `is_structural_marker`
        property distinguishes these.
 
-    3. **Volta Model**: Volta (alternative ending) information is a MEASURE ATTRIBUTE,
-       not a separate flow control type. Each measure has a `volta` field (1, 2, None)
-       indicating which ending it belongs to. The repeat_end jump evaluates which
-       volta to take based on pass count.
+    3. **Alternatives**: ``volta`` names a bracket of alternative endings
+       wherever it shows in flow control (the destination of the Jump before
+       the brackets, the place it lands on, the Break between two brackets),
+       ``ossia`` an alternative text nobody can choose by rule.
 
     **Taxonomy** (aligned with the Conceptual Model documentation and
     MeasureMap paper):
@@ -530,7 +530,7 @@ class FlowControlElement(FancyStrEnum):
 
     **Loader Mappings**:
 
-    | FlowControlElement | MeasureMap | ms3/TSV | partitura | music21 |
+    | FlowManifestation | MeasureMap | ms3/TSV | partitura | music21 |
     |-----------------|------------|---------|-----------|---------|
     | repeat_start | start_repeat=true | repeats="start" | Repeat.start | leftBarline.type="heavy-light" |
     | repeat_end | end_repeat=true | repeats="end" | Repeat.end | rightBarline.type="light-heavy" |
@@ -606,6 +606,15 @@ class FlowControlElement(FancyStrEnum):
     fine = auto()
     """End marker TYPE (instance name defaults to "fine")"""
 
+    # Alternatives
+    volta = auto()
+    """A bracket of alternative endings: its Jump's destination, the place
+    the Jump lands on, or the Break between two brackets."""
+
+    ossia = auto()
+    """An alternative text nobody can choose by rule: its Jump's destination
+    or the place the Jump lands on."""
+
     # Structural breaks (void contiguity - single instant)
     section_break = auto()
     """Single instant that voids contiguity (e.g., section boundary)"""
@@ -642,14 +651,14 @@ class FlowControlElement(FancyStrEnum):
     """
 
     @classmethod
-    def from_ms3_repeats(cls, value: str | None) -> "FlowControlElement | None":
-        """Convert ms3 'repeats' column value to FlowControlElement.
+    def from_ms3_repeats(cls, value: str | None) -> "FlowManifestation | None":
+        """Convert ms3 'repeats' column value to FlowManifestation.
 
         Args:
             value: Value from ms3 repeats column ("start", "end", "firstMeasure", etc.)
 
         Returns:
-            Corresponding FlowControlElement or None.
+            Corresponding FlowManifestation or None.
         """
         if not value:
             return None
@@ -662,14 +671,14 @@ class FlowControlElement(FancyStrEnum):
         return mapping.get(value)
 
     @classmethod
-    def from_ms3_breaks(cls, value: str | None) -> "FlowControlElement | None":
-        """Convert ms3 'breaks' column value to FlowControlElement.
+    def from_ms3_breaks(cls, value: str | None) -> "FlowManifestation | None":
+        """Convert ms3 'breaks' column value to FlowManifestation.
 
         Args:
             value: Value from ms3 breaks column ("section", "double", etc.)
 
         Returns:
-            Corresponding FlowControlElement or None.
+            Corresponding FlowManifestation or None.
         """
         if not value:
             return None
@@ -682,17 +691,17 @@ class FlowControlElement(FancyStrEnum):
     @classmethod
     def from_measuremap(
         cls, start_repeat: bool = False, end_repeat: bool = False
-    ) -> list["FlowControlElement"]:
-        """Convert MeasureMap flow control fields to FlowControlElement list.
+    ) -> list["FlowManifestation"]:
+        """Convert MeasureMap flow control fields to FlowManifestation list.
 
         Args:
             start_repeat: Whether start_repeat is true in MeasureMap.
             end_repeat: Whether end_repeat is true in MeasureMap.
 
         Returns:
-            List of corresponding FlowControlElements.
+            List of corresponding FlowManifestations.
         """
-        result: list[FlowControlElement] = []
+        result: list[FlowManifestation] = []
         if start_repeat:
             result.append(cls.repeat_start)
         if end_repeat:
@@ -707,15 +716,15 @@ class FlowControlElement(FancyStrEnum):
         ``jump_from`` role.
         """
         return self in {
-            FlowControlElement.repeat_end,
-            FlowControlElement.da_capo,
-            FlowControlElement.dal_segno,
-            FlowControlElement.dal_segno_al_coda,
-            FlowControlElement.dal_segno_al_fine,
-            FlowControlElement.da_capo_al_coda,
-            FlowControlElement.da_capo_al_fine,
-            FlowControlElement.to_coda,
-            FlowControlElement.jump_from,
+            FlowManifestation.repeat_end,
+            FlowManifestation.da_capo,
+            FlowManifestation.dal_segno,
+            FlowManifestation.dal_segno_al_coda,
+            FlowManifestation.dal_segno_al_fine,
+            FlowManifestation.da_capo_al_coda,
+            FlowManifestation.da_capo_al_fine,
+            FlowManifestation.to_coda,
+            FlowManifestation.jump_from,
         }
 
     @property
@@ -730,10 +739,10 @@ class FlowControlElement(FancyStrEnum):
         "coda" and "codab") are differentiated by name.
         """
         return self in {
-            FlowControlElement.repeat_start,
-            FlowControlElement.segno,
-            FlowControlElement.coda,
-            FlowControlElement.jump_to,
+            FlowManifestation.repeat_start,
+            FlowManifestation.segno,
+            FlowManifestation.coda,
+            FlowManifestation.jump_to,
         }
 
     @property
@@ -745,19 +754,19 @@ class FlowControlElement(FancyStrEnum):
         intrinsic to the type.
         """
         return self in {
-            FlowControlElement.fine,
-            FlowControlElement.section_break,
+            FlowManifestation.fine,
+            FlowManifestation.section_break,
         }
 
     @property
     def is_structural_marker(self) -> bool:
         """Whether this is a structural marker that does NOT void contiguity."""
         return self in {
-            FlowControlElement.repeat_start,
-            FlowControlElement.double_barline,
-            FlowControlElement.final_barline,
-            FlowControlElement.first_measure,
-            FlowControlElement.last_measure,
+            FlowManifestation.repeat_start,
+            FlowManifestation.double_barline,
+            FlowManifestation.final_barline,
+            FlowManifestation.first_measure,
+            FlowManifestation.last_measure,
         }
 
 
@@ -820,25 +829,6 @@ class SupportPolicy(FancyStrEnum):
     omit = auto()
     clamp = auto()
     extrapolate = auto()
-
-
-class ActivationCondition(FancyStrEnum):
-    """When a flow control event becomes active.
-
-    This determines on which traversal pass the event takes effect. An
-    element's manifestation decides its condition: a ``repeat_end`` acts on
-    its first N passes, a ``to_coda`` after a D.C. or D.S., every other
-    element always.
-    """
-
-    always = auto()
-    """Always active (e.g., section end)."""
-
-    first_n = auto()
-    """Active on first N passes (e.g., repeat 2x)."""
-
-    after_dc_ds = auto()
-    """Active after Da Capo or Dal Segno."""
 
 
 class ColumnRole(FancyStrEnum):
@@ -927,6 +917,39 @@ class FlowMode(FancyStrEnum):
     printed = auto()
     single = auto()
     custom = auto()
+
+
+class FlowConvention(FancyStrEnum):
+    """How flow control is played into a flow.
+
+    - default: every Jump and Break acts as its conditions say.
+    - single: once through: nothing goes back, and every Jump is arrived at
+      on the pass it would have after the repeats around it.
+    - printed: the axis from its start to its end, flow control ignored.
+    """
+
+    default = auto()
+    single = auto()
+    printed = auto()
+
+
+class FlowFindingKind(FancyStrEnum):
+    """What playing flow control found."""
+
+    flow_ends_at_break = auto()
+    """The flow ended at a Break that states no condition, before the end."""
+
+    never_played = auto()
+    """A stretch of the axis lies in no run."""
+
+    endless_loop = auto()
+    """A Jump was taken in a state the flow had been in before."""
+
+    ambiguous_targets = auto()
+    """Two destinations of one Jump, of the same kind, held at once."""
+
+    undetermined_target = auto()
+    """A destination nobody can check was passed and not taken."""
 
 
 class IncompletePosition(FancyStrEnum):

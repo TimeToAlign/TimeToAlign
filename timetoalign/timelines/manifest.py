@@ -28,8 +28,8 @@ measure map that do not follow one another, and maps the library cannot
 evaluate.
 
 A value on a timeline's own axis (``length``, ``offset``, region ``start``
-and ``end``, break and marker ``coordinate``, jump ``from_coordinate`` and
-``to_coordinate``) is written bare, represented as the axis's number type
+and ``end``, the ``coordinate`` of a flow-control element and the ``by`` of
+a destination) is written bare, represented as the axis's number type
 selects: a JSON integer for ``int``, a JSON number for ``float``, a
 ``[numerator, denominator]`` pair for ``fraction``. Reading follows the
 number type, never the lexical form: an integral JSON number on an ``int``
@@ -1406,9 +1406,7 @@ class MeasureMapEntries:
 
     Every id of the manifest is unique: :attr:`taken` holds every id the
     manifest written holds besides its measure maps, mapped to its holder,
-    and grows with every id minted while it is written (a ``jump_to`` a
-    jump needs, see
-    :meth:`~timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict`).
+    and grows with every id minted while it is written.
     A given measure map id is kept: two different measure maps carrying
     one, or one carrying an id another element holds, are refused. A minted
     id is minted again around every id the manifest holds, the given ones

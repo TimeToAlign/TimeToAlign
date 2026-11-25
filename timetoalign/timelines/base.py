@@ -774,10 +774,13 @@ class Timeline(
         for region in self._regions.values():
             candidates.append(region.end.value)
         registry = self._flow_control
-        candidates.extend(item.coordinate.value for item in registry.breaks)
-        candidates.extend(item.coordinate.value for item in registry.markers)
+        candidates.extend(item.coordinate.value for item in registry.elements)
         for jump in registry.jumps:
-            candidates.extend((jump.from_coordinate.value, jump.to_coordinate.value))
+            candidates.extend(
+                registry.place_of(destination, jump).value
+                for destination in jump.targets
+                if destination.by is not None
+            )
         measure_map = self.measure_map
         if measure_map is not None:
             for measure in measure_map:
@@ -853,7 +856,7 @@ class Timeline(
 
     @property
     def flow_control(self) -> FlowControlRegistry:
-        """Axis-bound breaks, jumps, and markers."""
+        """The timeline's flow-control elements, bound to its axis."""
         return self._flow_control
 
     # endregion
@@ -861,9 +864,40 @@ class Timeline(
     # region Manifest Identity
 
     def _adopt_flow_control(self, registry: FlowControlRegistry) -> None:
-        """Make *registry* this timeline's, admitting its ids into the manifest."""
+        """Make *registry* this timeline's: its ids are admitted into the
+        manifest, and its destinations may name the timeline's places."""
         self._flow_control = registry
-        registry._admit = self._admit_element_id
+        registry._admit = self._admit_flow_control
+        registry._places = self._flow_places
+
+    def _admit_flow_control(
+        self, entries: Sequence[tuple[str, bool, str, str]], *, check_only: bool
+    ) -> list[str]:
+        """Return the ids under which flow-control elements join the manifest.
+
+        Raises:
+            ValueError: If a given id is already taken.
+        """
+        owner = f" of timeline {quote_id(self._id)}"
+        return self._admit_entries(
+            [
+                (element_id, minted, prefix, element + owner)
+                for element_id, minted, prefix, element in entries
+            ],
+            check_only=check_only,
+        )
+
+    def _flow_places(self) -> dict[str, Coordinate]:
+        """The places a destination of this timeline's flow control may name
+        beside a jump target: the timeline itself (its start), each of its
+        Regions (its start) and each of its child timelines (its offset)."""
+        places = {self._id: Coordinate(0, self._unit, number_type=self._number_type)}
+        places.update(
+            (region_id, express_scalar_as(region.start, self._number_type))
+            for region_id, region in self._regions.items()
+        )
+        places.update(self._child_offsets)
+        return places
 
     def _set_id(self, new_id: str, *, minted: bool = False) -> None:
         """Give this timeline a new id, renaming it under its parent.
@@ -883,7 +917,7 @@ class Timeline(
         """Return ``(id, minted, prefix, description)`` for this timeline and
         every element it holds itself (its children excluded), in the order
         timeline, conversion maps (each followed by the maps nested in it),
-        regions, breaks, markers, jumps."""
+        regions, flow-control elements."""
         owner = f"of timeline {quote_id(self._id)}"
         return [
             (
@@ -906,7 +940,7 @@ class Timeline(
                 )
                 for element in (
                     *self._regions.values(),
-                    *self._flow_control._elements(),
+                    *self._flow_control.elements,
                 )
             ),
         ]
@@ -1143,6 +1177,7 @@ class Timeline(
     def _rename_statement_references(self, renamed: Mapping[str, str | None]) -> None:
         """Rename the elements this timeline's statements and its regions' name."""
         super()._rename_statement_references(renamed)
+        self._flow_control._rename_references(renamed)
         self._regions = {
             region_id: region._with_references_renamed(renamed)
             for region_id, region in self._regions.items()
@@ -1627,8 +1662,8 @@ class Timeline(
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
         text: ``children`` by offset, then id; ``conversion_maps`` by id;
-        ``regions`` by start, then end, then id; ``flow_control`` (breaks,
-        markers and jumps in one array, see
+        ``regions`` by start, then end, then id; ``flow_control`` (every element in
+        one array, see
         :meth:`FlowControlRegistry.to_dict
         <timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict>`) by
         coordinate, then id; ``measure_maps`` by id. Values compare exactly and ids by
@@ -1716,15 +1751,7 @@ class Timeline(
             cmap._to_manifest(minimal=False, entries=entries)
             for cmap in sorted(self._all_conversion_maps(), key=lambda cmap: cmap.id)
         ]
-        # A jump_to written where a jump lands on none takes a minted id,
-        # which no element written later may take.
-        flow_control = self._flow_control.to_dict(minimal=False, taken=entries.taken)
-        for element in flow_control:
-            entries.taken.setdefault(
-                element["id"],
-                f"{element['type']} {quote_id(element['id'])} of timeline "
-                f"{quote_id(self._id)}",
-            )
+        flow_control = self._flow_control.to_dict(minimal=False)
         fields: dict[str, Any] = {
             "id": self._id,
             "name": self._name,
@@ -2078,6 +2105,7 @@ class Timeline(
                 data.get("flow_control", []),
                 unit=unit,
                 number_type=number_type,
+                places=timeline._flow_places(),
             )
         )
 

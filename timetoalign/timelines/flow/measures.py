@@ -33,7 +33,7 @@ class MeasureUnit:
         coda: Coda marker name if present (e.g., "coda", "codab").
         fine: True if Fine marker present.
         section_break: True if section break at this MC.
-        flow_control_types: Tuple of FlowControlElement.value strings for serialization.
+        flow_control_types: Tuple of FlowManifestation.value strings for serialization.
         jump_bwd: Name of backward-jump target (e.g., "segno", "start") or None.
         jump_fwd: Name of forward-jump target (e.g., "coda", "codab", "fine") or None.
         play_until: Name of play-until target on after-DC/DS pass
@@ -185,7 +185,7 @@ class IncompleteMeasure(MeasureUnit):
     the Typing step of the two-step typing/grouping algorithm.
 
     IncompleteMeasure inherits all MeasureUnit properties including
-    FlowControlElements, enabling serialization round-trip.
+    FlowManifestations, enabling serialization round-trip.
 
     Examples:
         - Anacrusis (pickup): First measure shorter than time signature
@@ -213,7 +213,7 @@ class CompleteMeasure(MeasureUnit):
     The simple, default case: duration_qb == timesig_duration_qb.
 
     CompleteMeasure inherits all MeasureUnit properties including
-    FlowControlElements, enabling serialization round-trip.
+    FlowManifestations, enabling serialization round-trip.
     """
 
     pass
@@ -227,7 +227,7 @@ class OverlengthMeasure(MeasureUnit):
     the Typing step of the two-step typing/grouping algorithm.
 
     OverlengthMeasure inherits all MeasureUnit properties including
-    FlowControlElements, enabling serialization round-trip.
+    FlowManifestations, enabling serialization round-trip.
 
     Examples:
         - Fermata: Written duration > time signature

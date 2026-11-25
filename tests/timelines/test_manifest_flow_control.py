@@ -1,410 +1,599 @@
-"""Flow control in a manifest (see README, *Flow control in a manifest*).
+"""Flow control as a manifest writes it (see README, *Flow control*).
 
-``flow_control`` is one array of ``flow_marker``, ``jump_from`` and
-``jump_to`` elements; the library's breaks, jumps and markers write and read
-it.
+``flow_control`` is one array of elements, each stating its ``role``; the
+library's five classes read and write it. The tests here read and write the
+array itself; whole manifests are read through the format's validator.
 """
 
 from __future__ import annotations
 
 import copy
 import json
+import re
 from fractions import Fraction
 from typing import Any
 
 import pytest
 
-from tests.helpers import bare, filed, refusal
 from timetoalign import Ms3Loader
-from timetoalign.core import (
-    ActivationCondition,
-    Coordinate,
-    FlowControlElement,
-    TimeUnit,
-)
+from timetoalign.core import Coordinate, Duration, FlowManifestation, TimeUnit
+from timetoalign.core.provenance import Belief, Provenance
 from timetoalign.testdata import ensure_data
-from timetoalign.timelines import Timeline
-from timetoalign.timelines.flowcontrol import Break, FlowControlRegistry, Jump, Marker
-from timetoalign.timelines.types import ContinuousLogicalTimeline
+from timetoalign.timelines.flowcontrol import (
+    Barline,
+    Break,
+    DestinationReference,
+    FlowCondition,
+    FlowControlElement,
+    FlowControlRegistry,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+    PassesFrom,
+    SectionBreak,
+)
 
 F = Fraction
-E = FlowControlElement
+M = FlowManifestation
 SCORE = ensure_data("score")
+EDITOR = "https://example.org/people/editor"
 
 
 def _q(value: Any) -> Coordinate:
     return Coordinate(F(value), TimeUnit.quarters)
 
 
-def _manifest(flow_control: list[dict[str, Any]], **timeline: Any) -> dict[str, Any]:
-    return {
-        "timetoshare": "0.2.0",
-        "timelines": [
-            {
-                "id": "score",
-                "unit": "quarters",
-                "length": [32, 1],
-                "flow_control": flow_control,
-                **timeline,
-            }
-        ],
-    }
-
-
-def _element(
-    element_id: str, kind: str, manifestation: str, at: int, **keys: Any
-) -> dict:
-    return {
-        "id": element_id,
-        "type": kind,
-        "manifestation": manifestation,
-        "coordinate": [at, 1],
-        **keys,
-    }
+def _read(data: list[dict[str, Any]], **axis: Any) -> FlowControlRegistry:
+    return FlowControlRegistry.from_dict(
+        copy.deepcopy(data), **({"unit": "quarters"} | axis)
+    )
 
 
 # region The literal
 
-MINIMAL_FLOW: list[dict[str, Any]] = [
-    _element("top", "jump_to", "repeat_start", 0, name="||:"),
-    _element("segno", "jump_to", "segno", 4, meta={"glyph": "U+1D10B"}),
-    _element("section", "flow_marker", "section_break", 8, label="end of A"),
-    _element("back", "jump_from", "repeat_end", 8, target="top", repeat_count=2),
-    _element("coda", "jump_to", "coda", 24, **{"x-note": "kept"}),
-    _element("to_coda", "jump_from", "to_coda", 20, target="coda"),
-    _element("ds", "jump_from", "dal_segno_al_coda", 22, target="segno", label="D.S."),
-    _element("fine", "flow_marker", "fine", 32, name="Fine"),
+LITERAL: list[dict[str, Any]] = [
+    {
+        "id": "start",
+        "role": "jump_target",
+        "coordinate": [0, 1],
+        "manifestation": "repeat_start",
+        "name": "||:",
+    },
+    {
+        "id": "segno",
+        "role": "jump_target",
+        "coordinate": [4, 1],
+        "manifestation": "segno",
+        "meta": {"glyph": "U+1D10B"},
+    },
+    {
+        "id": "movement",
+        "role": "section_break",
+        "coordinate": [8, 1],
+        "label": "end of A",
+    },
+    {
+        "id": "back",
+        "role": "jump",
+        "coordinate": [8, 1],
+        "targets": [
+            {
+                "to": "start",
+                "repeat_count": 2,
+                "manifestation": "repeat_end",
+                "label": "twice",
+                "x-note": "kept",
+            },
+            {
+                "by": [-4, 1],
+                "passes": {"from": 2},
+                "after": {"jump": "ds", "to": "segno", "x-why": "kept"},
+                "determined": False,
+                "reset": False,
+                "manifestation": "ossia",
+            },
+        ],
+        "label": "end of the first part",
+    },
+    {
+        "id": "brackets",
+        "role": "jump",
+        "coordinate": [12, 1],
+        "targets": [
+            {"by": [0, 1], "passes": [1, 3], "manifestation": "volta"},
+            {"to": "second", "passes": [2], "manifestation": "volta"},
+        ],
+    },
+    {
+        "id": "second",
+        "role": "jump_target",
+        "coordinate": [16, 1],
+        "manifestation": "volta",
+    },
+    {
+        "id": "between",
+        "role": "break",
+        "coordinate": [16, 1],
+        "manifestation": "volta",
+    },
+    {
+        "id": "fine",
+        "role": "break",
+        "coordinate": [20, 1],
+        "manifestation": "fine",
+        "ends": {"passes": [2], "after": {"jump": "ds"}, "x-ends": 1},
+        "name": "Fine",
+    },
+    {
+        "id": "to_coda",
+        "role": "jump",
+        "coordinate": [24, 1],
+        "targets": [
+            {
+                "to": "coda",
+                "after": {"jump": "back", "by": [-4, 1]},
+                "manifestation": "to_coda",
+            }
+        ],
+    },
+    {
+        "id": "ds",
+        "role": "jump",
+        "coordinate": [28, 1],
+        "targets": [
+            {
+                "to": "segno",
+                "repeat_count": 1,
+                "reset": False,
+                "manifestation": "dal_segno_al_coda",
+            },
+            {"repeat_count": 1, "reset": False, "manifestation": "da_capo"},
+        ],
+        "provenance": {
+            "stated_by": [EDITOR],
+            "method": "manual",
+            "beliefs": [{"actor": EDITOR, "belief": "true", "date": "2026-11-25"}],
+        },
+    },
+    {
+        "id": "coda",
+        "role": "jump_target",
+        "coordinate": [30, 1],
+        "manifestation": "coda",
+    },
+    {
+        "id": "double",
+        "role": "barline",
+        "coordinate": [32, 1],
+        "manifestation": "double_barline",
+        "x-note": "kept",
+    },
 ]
-MINIMAL_FLOW.sort(key=lambda element: (element["coordinate"][0], element["id"]))
+LITERAL.sort(key=lambda element: (element["coordinate"][0], element["id"]))
 
 
 def _complete(element: dict[str, Any]) -> dict[str, Any]:
-    result = {"name": None, "label": None, "meta": {}, **element}
-    if element["manifestation"] == "repeat_end":
-        result.setdefault("repeat_count", 1)
-    return result
+    return {"name": None, "label": None, "meta": {}, **element}
 
 
-@pytest.mark.parametrize("form", ["minimal", "complete"])
-def test_the_literal_round_trips(form: str) -> None:
-    flow = MINIMAL_FLOW if form == "minimal" else [_complete(e) for e in MINIMAL_FLOW]
-    timeline = Timeline.from_dict(filed(_manifest(copy.deepcopy(flow))))
-    written = bare(timeline.to_dict(minimal=form == "minimal"))["timelines"][0][
-        "flow_control"
-    ]
-    assert written == flow
-    other = bare(timeline.to_dict(minimal=form != "minimal"))["timelines"][0][
-        "flow_control"
-    ]
-    assert other == (
-        [_complete(e) for e in MINIMAL_FLOW] if form == "minimal" else MINIMAL_FLOW
-    )
+def test_the_literal_round_trips() -> None:
+    registry = _read(LITERAL)
+    assert registry.to_dict() == LITERAL
+    assert registry.to_dict(minimal=False) == [_complete(e) for e in LITERAL]
+    assert _read([_complete(e) for e in LITERAL]).to_dict() == LITERAL
+    assert json.loads(json.dumps(registry.to_dict())) == LITERAL
+
+
+def test_the_defaults_of_a_destination_are_read_and_never_written() -> None:
+    element = {
+        "id": "j",
+        "role": "jump",
+        "coordinate": [8, 1],
+        "targets": [{"repeat_count": 1, "determined": True, "reset": True}],
+    }
+    registry = _read([element])
+    (destination,) = registry.jumps[0].targets
+    assert (destination.determined, destination.reset) == (True, True)
+    for minimal in (True, False):
+        (written,) = registry.to_dict(minimal=minimal)
+        assert written["targets"] == [{"repeat_count": 1}]
 
 
 def test_reading_builds_the_library_s_elements() -> None:
-    registry = Timeline.from_dict(
-        filed(_manifest(copy.deepcopy(MINIMAL_FLOW)))
-    ).flow_control
+    registry = _read(LITERAL)
+
+    assert [(type(e), e.id, e.coordinate) for e in registry.elements] == [
+        (JumpTarget, "start", _q(0)),
+        (JumpTarget, "segno", _q(4)),
+        (Jump, "back", _q(8)),
+        (SectionBreak, "movement", _q(8)),
+        (Jump, "brackets", _q(12)),
+        (Break, "between", _q(16)),
+        (JumpTarget, "second", _q(16)),
+        (Break, "fine", _q(20)),
+        (Jump, "to_coda", _q(24)),
+        (Jump, "ds", _q(28)),
+        (JumpTarget, "coda", _q(30)),
+        (Barline, "double", _q(32)),
+    ]
+    assert [e.id for e in registry.jumps] == ["back", "brackets", "to_coda", "ds"]
+    assert [e.id for e in registry.jump_targets] == ["start", "segno", "second", "coda"]
+    assert [e.id for e in registry.breaks] == ["between", "fine"]
+    assert [e.id for e in registry.section_breaks] == ["movement"]
+    assert [e.id for e in registry.barlines] == ["double"]
 
     assert [
-        (b.id, b.control_type, b.position, b.name, b.label) for b in registry.breaks
+        (e.id, e.manifestation, e.name, e.label, e.meta)
+        for e in registry.elements
+        if not isinstance(e, Jump)
     ] == [
-        ("section", E.section_break, 8, None, "end of A"),
-        ("fine", E.fine, 32, "Fine", None),
-    ]
-    assert [(m.id, m.control_type, m.position) for m in registry.markers] == [
-        ("top", E.repeat_start, 0),
-        ("segno", E.segno, 4),
-        ("coda", E.coda, 24),
-    ]
-    assert [
-        (j.id, j.control_type, j.from_position, j.to_position, j.target, j.repeat_count)
-        for j in registry.jumps
-    ] == [
-        ("back", E.repeat_end, 8, 0, "top", 2),
-        ("to_coda", E.to_coda, 20, 24, "coda", 1),
-        ("ds", E.dal_segno_al_coda, 22, 4, "segno", 1),
-    ]
-    assert [j.condition for j in registry.jumps] == [
-        ActivationCondition.first_n,
-        ActivationCondition.after_dc_ds,
-        ActivationCondition.always,
-    ]
-    assert [b.condition for b in registry.breaks] == [ActivationCondition.always] * 2
-
-
-# endregion
-
-# region Targets
-
-
-def test_a_jump_without_target_lands_at_the_start() -> None:
-    flow = [
-        _element("back", "jump_from", "repeat_end", 8),
-        _element("dc", "jump_from", "da_capo", 16),
-    ]
-    registry = Timeline.from_dict(filed(_manifest(flow))).flow_control
-    assert [(j.to_coordinate, j.target) for j in registry.jumps] == [
-        (_q(0), None),
-        (_q(0), None),
+        ("start", M.repeat_start, "||:", None, {}),
+        ("segno", M.segno, None, None, {"glyph": "U+1D10B"}),
+        ("movement", None, None, "end of A", {}),
+        ("between", M.volta, None, None, {}),
+        ("second", M.volta, None, None, {}),
+        ("fine", M.fine, "Fine", None, {}),
+        ("coda", M.coda, None, None, {}),
+        ("double", M.double_barline, None, None, {}),
     ]
 
-
-def test_a_jump_landing_elsewhere_than_its_target_is_refused() -> None:
-    timeline = ContinuousLogicalTimeline(length=F(32), uid="score")
-    segno = timeline.flow_control.add_marker(
-        Marker(_q(4), control_type=E.segno, id="segno")
+    back, brackets, to_coda, ds = registry.jumps
+    assert back.label == "end of the first part"
+    assert back.targets == (
+        JumpDestination(
+            to="start", repeat_count=2, manifestation=M.repeat_end, label="twice"
+        ),
+        JumpDestination(
+            by=Duration(F(-4), "quarters"),
+            passes=PassesFrom(2),
+            after=DestinationReference(jump="ds", to="segno"),
+            determined=False,
+            reset=False,
+            manifestation=M.ossia,
+        ),
     )
-    timeline.flow_control.add_jump(
-        Jump(_q(16), _q(6), control_type=E.dal_segno, target=segno.id, id="ds")
+    assert back.manifestations == (M.repeat_end, M.ossia)
+    assert brackets.targets == (
+        JumpDestination(
+            by=Duration(F(0), "quarters"), passes=(1, 3), manifestation="volta"
+        ),
+        JumpDestination(to="second", passes=(2,), manifestation="volta"),
     )
-    with pytest.raises(ValueError) as refused:
-        bare(timeline.to_dict())
-    assert (
-        str(refused.value) == "jump 'ds' lands at 6, but its target 'segno' lies at 4"
+    assert [d.goes_on for d in brackets.targets] == [True, False]
+    assert to_coda.targets[0].after == DestinationReference(
+        jump="back", by=Duration(F(-4), "quarters")
     )
+    assert ds.provenance == Provenance(
+        stated_by=(EDITOR,),
+        method="manual",
+        beliefs=(Belief(actor=EDITOR, belief="true", date="2026-11-25"),),
+    )
+    assert registry.breaks[1].ends == FlowCondition(
+        passes=(2,), after=DestinationReference(jump="ds")
+    )
+    assert registry.destination_of(registry.breaks[1].ends.after) == (ds, 1)
+    assert registry.destination_of(back.targets[1].after) == (ds, 0)
+    assert registry.destination_of(to_coda.targets[0].after) == (back, 1)
 
 
-def test_a_destination_without_a_marker_gets_one() -> None:
-    timeline = ContinuousLogicalTimeline(length=F(32), uid="score")
-    timeline.flow_control.add_break(Break(_q(2), id="jump_to_1"))
-    for jump_id, control_type, at, to in [
-        ("rep", E.repeat_end, 16, 8),
-        ("rep2", E.repeat_end, 18, 8),
-        ("ds", E.dal_segno, 20, 4),
-        ("tc", E.to_coda, 6, 12),
-        ("dcc", E.da_capo_al_coda, 24, 10),
-        ("rep0", E.repeat_end, 26, 0),
-        ("dc0", E.da_capo, 28, 0),
-    ]:
-        timeline.flow_control.add_jump(
-            Jump(_q(at), _q(to), control_type=control_type, id=jump_id)
-        )
-
-    flow = bare(timeline.to_dict(minimal=True))["timelines"][0]["flow_control"]
-    landings = [
-        (element["id"], element["manifestation"], element["coordinate"])
-        for element in flow
-        if element["type"] == "jump_to"
-    ]
-    # Minted in the order the jumps are written (by from coordinate), around
-    # the break holding jump_to_1.
-    assert landings == [
-        ("jump_to_4", "segno", [4, 1]),
-        ("jump_to_3", "repeat_start", [8, 1]),
-        ("jump_to_5", "coda", [10, 1]),
-        ("jump_to_2", "coda", [12, 1]),
-    ]
-    assert {
-        element["id"]: element.get("target")
-        for element in flow
-        if element["type"] == "jump_from"
-    } == {
-        "rep": "jump_to_3",
-        "rep2": "jump_to_3",
-        "ds": "jump_to_4",
-        "tc": "jump_to_2",
-        "dcc": "jump_to_5",
-        "rep0": None,
-        "dc0": None,
+@pytest.mark.parametrize(
+    ("number_type", "coordinate", "by", "value", "distance"),
+    [
+        ("int", 9, -2, 9, -2),
+        ("fraction", [9, 2], [-1, 2], F(9, 2), F(-1, 2)),
+        ("float", 4.5, -0.5, 4.5, -0.5),
+    ],
+)
+def test_coordinate_and_by_are_bare_values_of_the_axis(
+    number_type: str, coordinate: Any, by: Any, value: Any, distance: Any
+) -> None:
+    unit = "ticks" if number_type == "int" else "quarters"
+    element = {
+        "id": "j",
+        "role": "jump",
+        "coordinate": coordinate,
+        "targets": [{"by": by, "repeat_count": 1}],
     }
-    read = Timeline.from_dict(timeline.to_dict())
-    assert [(j.id, j.to_position) for j in read.flow_control.jumps] == [
-        (j.id, j.to_position) for j in timeline.flow_control.jumps
-    ]
-    assert bare(read.to_dict()) == bare(Timeline.from_dict(read.to_dict()).to_dict())
+    registry = _read([element], unit=unit, number_type=number_type)
+    (jump,) = registry.jumps
+    assert jump.coordinate.value == value
+    assert type(jump.coordinate.value) is type(value)
+    assert jump.targets[0].by == Duration(distance, unit, number_type=number_type)
+    assert type(jump.targets[0].by.value) is type(distance)
+    assert registry.to_dict() == [element]
 
 
-def test_a_da_capo_landing_elsewhere_than_the_start_is_refused() -> None:
-    timeline = ContinuousLogicalTimeline(length=F(32), uid="score")
-    timeline.flow_control.add_jump(Jump(_q(16), _q(3), control_type=E.da_capo, id="dc"))
-    with pytest.raises(ValueError) as refused:
-        bare(timeline.to_dict())
-    assert (
-        str(refused.value)
-        == "jump 'dc' (da_capo) lands at 3, not at the timeline's start"
+def test_a_value_of_another_number_type_is_refused() -> None:
+    element = {"id": "t", "role": "jump_target", "coordinate": 8}
+    with pytest.raises(ValueError) as error:
+        _read([element])
+    assert str(error.value) == (
+        "coordinate 8 of 't' is an int on a fraction axis: write [8, 1]"
+    )
+    jump = {"id": "j", "role": "jump", "coordinate": [8, 1], "targets": [{"by": -4}]}
+    with pytest.raises(ValueError) as error:
+        _read([jump])
+    assert str(error.value) == (
+        "by -4 of 'destination 1 of jump 'j'' is an int on a fraction axis: "
+        "write [-4, 1]"
     )
 
 
 # endregion
 
-# region What each element is
+# region Manifestations
 
 
-def test_each_element_class_holds_its_own_manifestations() -> None:
-    with pytest.raises(ValueError) as refused:
-        Break(_q(0), control_type=E.segno)
-    assert str(refused.value) == (
-        "A Break is one of ['double_barline', 'final_barline', 'fine', "
-        "'section_break'], not 'segno'"
-    )
-    with pytest.raises(ValueError) as refused:
-        Marker(_q(0), control_type=E.fine)
-    assert str(refused.value) == (
-        "A Marker is one of ['coda', 'repeat_start', 'segno'], not 'fine'"
-    )
-    with pytest.raises(ValueError) as refused:
-        Jump(_q(4), _q(0), control_type=E.segno)
-    assert str(refused.value).startswith("A Jump is one of ['da_capo', ")
-    with pytest.raises(TypeError):
-        Marker(_q(0))  # type: ignore[call-arg]
-
-
-def test_only_a_repeat_end_has_a_repeat_count() -> None:
-    with pytest.raises(ValueError) as refused:
-        Jump(_q(4), _q(0), control_type=E.da_capo, repeat_count=2)
-    assert str(refused.value) == (
-        "A da_capo jump has no repeat_count: only a repeat_end is taken several times"
-    )
-    repeat = Jump(_q(4), _q(0), control_type=E.repeat_end, repeat_count=2)
-    assert [repeat.is_active(n) for n in (1, 2, 3)] == [True, True, False]
-    to_coda = Jump(_q(4), _q(8), control_type=E.to_coda)
-    assert [to_coda.is_active(1), to_coda.is_active(1, after_dc_ds=True)] == [
-        False,
-        True,
+def test_a_manifestation_outside_the_vocabulary_is_kept() -> None:
+    word = "x-wavy-line"
+    elements = [
+        {"id": "a", "role": "jump_target", "coordinate": [0, 1], "manifestation": word},
+        {"id": "b", "role": "break", "coordinate": [16, 1], "manifestation": word},
+        {
+            "id": "c",
+            "role": "section_break",
+            "coordinate": [16, 1],
+            "manifestation": word,
+        },
+        {"id": "d", "role": "barline", "coordinate": [16, 1], "manifestation": word},
+        {
+            "id": "e",
+            "role": "jump",
+            "coordinate": [16, 1],
+            "targets": [{"to": "a", "repeat_count": 1, "manifestation": word}],
+        },
     ]
-    assert Jump(_q(4), _q(0), control_type=E.da_capo).is_active(5) is True
+    registry = _read(elements)
+    assert [e.manifestation for e in registry.elements if not isinstance(e, Jump)] == [
+        word
+    ] * 4
+    assert registry.jumps[0].manifestations == (word,)
+    assert all(type(m) is str for m in registry.jumps[0].manifestations)
+    assert registry.to_dict() == elements
 
 
 @pytest.mark.parametrize(
-    ("flow", "code", "path", "naming"),
+    ("element", "message"),
     [
         (
-            [_element("dc", "jump_from", "da_capo", 8, repeat_count=2)],
-            "schema",
-            "#/timelines/0/flow_control/0/repeat_count",
-            "'repeat_count'",
+            {
+                "id": "b",
+                "role": "break",
+                "coordinate": [8, 1],
+                "manifestation": "segno",
+            },
+            "break 'b' is one of ['fine', 'volta'] or a word outside the "
+            "vocabulary, not 'segno'",
         ),
         (
-            [_element("s", "jump_to", "segno", 4, target="s")],
-            "schema",
-            "#/timelines/0/flow_control/0/target",
-            "'target'",
+            {
+                "id": "s",
+                "role": "section_break",
+                "coordinate": [8, 1],
+                "manifestation": "fine",
+            },
+            "section_break 's' is one of [] or a word outside the vocabulary, "
+            "not 'fine'",
         ),
         (
-            [_element("f", "flow_marker", "fine", 4, repeat_count=1)],
-            "schema",
-            "#/timelines/0/flow_control/0/repeat_count",
-            "'repeat_count'",
+            {
+                "id": "l",
+                "role": "barline",
+                "coordinate": [8, 1],
+                "manifestation": "repeat_start",
+            },
+            "barline 'l' is one of ['double_barline', 'final_barline'] or a word "
+            "outside the vocabulary, not 'repeat_start'",
         ),
         (
-            [_element("ds", "jump_from", "dal_segno", 8, target="nowhere")],
-            "dangling_target",
-            "#/timelines/0/flow_control/0/target",
-            "'nowhere'",
+            {
+                "id": "t",
+                "role": "jump_target",
+                "coordinate": [8, 1],
+                "manifestation": "fine",
+            },
+            "jump_target 't' is one of ['coda', 'ossia', 'repeat_start', 'segno', "
+            "'volta'] or a word outside the vocabulary, not 'fine'",
         ),
         (
-            [_element("ds", "jump_from", "dal_segno", 8)],
-            "schema",
-            "#/timelines/0/flow_control/0",
-            "'target'",
+            {
+                "id": "j",
+                "role": "jump",
+                "coordinate": [8, 1],
+                "targets": [{"manifestation": "coda"}],
+            },
+            "destination 1 of jump 'j': a destination is one of ['da_capo', "
+            "'da_capo_al_coda', 'da_capo_al_fine', 'dal_segno', 'dal_segno_al_coda', "
+            "'dal_segno_al_fine', 'ossia', 'repeat_end', 'to_coda', 'volta'] or a "
+            "word outside the vocabulary, not 'coda'",
         ),
-        (
-            [_element("x", "jump_over", "fine", 8)],
-            "schema",
-            "#/timelines/0/flow_control/0/type",
-            "'jump_over'",
-        ),
-        (
-            [_element("s", "jump_to", "fine", 8)],
-            "schema",
-            "#/timelines/0/flow_control/0/manifestation",
-            "'fine'",
-        ),
-        (
-            [_element("back", "jump_from", "repeat_end", 8, repeat_count=0)],
-            "schema",
-            "#/timelines/0/flow_control/0/repeat_count",
-            "0",
-        ),
-    ],
-    ids=[
-        "repeat_count_on_da_capo",
-        "target_on_jump_to",
-        "repeat_count_on_flow_marker",
-        "dangling_target",
-        "missing_target",
-        "unknown_type",
-        "foreign_manifestation",
-        "repeat_count_zero",
     ],
 )
-def test_reading_refuses_what_the_format_does_not_define(
-    flow: list[dict[str, Any]], code: str, path: str, naming: str
+def test_each_class_holds_its_own_manifestations(
+    element: dict[str, Any], message: str
 ) -> None:
-    """The validator refuses; its code and path exactly, its message by what it names.
+    with pytest.raises(ValueError) as error:
+        _read([element])
+    assert str(error.value) == message
 
-    The message's wording is the format's own, so only the part naming the
-    fault (a key, a value) is asserted.
-    """
-    with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(filed(_manifest(flow)))
-    found_code, found_path, message = refusal(refused.value)
-    assert (found_code, found_path) == (code, path)
-    assert naming in message
+
+# endregion
+
+# region The form with type and target
 
 
 @pytest.mark.parametrize(
-    ("flow", "message"),
+    ("element", "message"),
     [
         (
-            [_element("dc", "jump_from", "da_capo", 8, repeat_count=2)],
-            "jump_from 'dc' holds ['repeat_count'], which only a repeat end or a "
-            "jump has",
+            {
+                "id": "back",
+                "type": "jump_from",
+                "manifestation": "repeat_end",
+                "coordinate": [8, 1],
+            },
+            "flow-control element 'back' is a 'jump_from': an element states its "
+            "`role`, one of ['barline', 'break', 'jump', 'jump_target', "
+            "'section_break']: a jump_from is written as a `jump` with `targets`",
         ),
         (
-            [_element("s", "jump_to", "segno", 4, target="s")],
-            "jump_to 's' holds ['target'], which only a repeat end or a jump has",
+            {
+                "id": "top",
+                "type": "jump_to",
+                "manifestation": "segno",
+                "coordinate": [8, 1],
+            },
+            "flow-control element 'top' is a 'jump_to': an element states its "
+            "`role`, one of ['barline', 'break', 'jump', 'jump_target', "
+            "'section_break']: a jump_to is written as a `jump_target`",
         ),
         (
-            [_element("f", "flow_marker", "fine", 4, repeat_count=1)],
-            "flow_marker 'f' holds ['repeat_count'], which only a repeat end or a "
-            "jump has",
+            {"id": "fine", "role": "flow_marker", "coordinate": [8, 1]},
+            "flow-control element 'fine' is a 'flow_marker': an element states its "
+            "`role`, one of ['barline', 'break', 'jump', 'jump_target', "
+            "'section_break']: a flow_marker is written as a `break`, a "
+            "`section_break` or a `barline`",
         ),
         (
-            [_element("ds", "jump_from", "dal_segno", 8, target="nowhere")],
-            "jump_from 'ds' targets 'nowhere', which names no jump_to of this "
-            "timeline. Available jump_to elements: []",
+            {"id": "back", "role": "jump", "coordinate": [8, 1], "target": "top"},
+            "flow-control element 'back' holds `target`: a jump names where it "
+            "goes on in `targets`, a list of destinations such as {to: <ID>}",
         ),
         (
-            [_element("ds", "jump_from", "dal_segno", 8)],
-            "jump_from 'ds' (dal_segno) names no target: only a repeat end or a D.C. "
-            "lands at the timeline's start",
+            {
+                "id": "back",
+                "role": "jump",
+                "coordinate": [8, 1],
+                "targets": [{}],
+                "repeat_count": 2,
+            },
+            "flow-control element 'back' holds `repeat_count`: it is a key of a "
+            "destination in the `targets` of a jump",
         ),
         (
-            [_element("x", "jump_over", "fine", 8)],
-            "a flow-control element has the unknown type 'jump_over'; an element is "
-            "one of ['flow_marker', 'jump_from', 'jump_to']",
+            {"id": "x", "role": "marker", "coordinate": [8, 1]},
+            "flow-control element 'x' has the unknown role 'marker'; an element is "
+            "one of ['barline', 'break', 'jump', 'jump_target', 'section_break']",
         ),
-        (
-            [_element("s", "jump_to", "fine", 8)],
-            "jump_to 's' has the manifestation 'fine'; a jump_to is one of "
-            "['coda', 'repeat_start', 'segno']",
-        ),
-        (
-            [_element("back", "jump_from", "repeat_end", 8, repeat_count=0)],
-            "jump_from 'back' has a repeat_count 0, which is no integer of at least 1",
-        ),
-    ],
-    ids=[
-        "repeat_count_on_da_capo",
-        "target_on_jump_to",
-        "repeat_count_on_flow_marker",
-        "dangling_target",
-        "missing_target",
-        "unknown_type",
-        "foreign_manifestation",
-        "repeat_count_zero",
     ],
 )
-def test_the_flow_control_reader_refuses_what_the_format_does_not_define(
-    flow: list[dict[str, Any]], message: str
+def test_the_form_with_type_and_target_is_refused(
+    element: dict[str, Any], message: str
 ) -> None:
-    # The reader of a bare flow-control array, outside a manifest, keeps
-    # these rules of the format itself: nothing validates its input before.
-    with pytest.raises(ValueError) as refused:
-        FlowControlRegistry.from_dict(flow, unit=TimeUnit.quarters)
-    assert str(refused.value) == message
+    with pytest.raises(ValueError) as error:
+        _read([element])
+    assert str(error.value) == message
+
+
+def test_a_class_reads_its_own_role_only() -> None:
+    element = {"id": "t", "role": "jump_target", "coordinate": [8, 1]}
+    axis = {
+        "unit": TimeUnit.quarters,
+        "number_type": TimeUnit.quarters.default_number_type,
+    }
+    assert type(FlowControlElement.from_dict(element, **axis)) is JumpTarget
+    assert JumpTarget.from_dict(element, **axis).coordinate == _q(8)
+    with pytest.raises(ValueError) as error:
+        Break.from_dict(element, **axis)
+    assert str(error.value) == "flow-control element 't' is a jump_target, not a break"
+
+
+# endregion
+
+# region Refusals on reading
+
+_J = {"id": "j", "role": "jump", "coordinate": [8, 1]}
+
+
+@pytest.mark.parametrize(
+    ("elements", "message"),
+    [
+        (
+            [{**_J, "targets": []}],
+            "jump 'j' has no destination: `targets` lists at least one",
+        ),
+        (
+            [{"id": "j", "role": "jump", "coordinate": [8, 1]}],
+            "jump 'j' lacks `targets`, the list of its destinations",
+        ),
+        (
+            [{**_J, "targets": [{"to": "t", "by": [0, 1]}]}],
+            "destination 1 of jump 'j': a destination states both `to` ('t') and "
+            "`by`: a place is one of them",
+        ),
+        (
+            [{**_J, "targets": [{"repeat_count": 0}]}],
+            "destination 1 of jump 'j': repeat_count 0 is no integer of at least 1",
+        ),
+        (
+            [{**_J, "targets": [{"repeat_count": True}]}],
+            "destination 1 of jump 'j': repeat_count True is no integer of at least 1",
+        ),
+        (
+            [{**_J, "targets": [{"repeat_count": 1.5}]}],
+            "destination 1 of jump 'j': repeat_count 1.5 is no integer of at least 1",
+        ),
+        (
+            [{**_J, "targets": [{"passes": []}]}],
+            "destination 1 of jump 'j': passes lists at least one pass",
+        ),
+        (
+            [{**_J, "targets": [{"passes": [1, 0]}]}],
+            "destination 1 of jump 'j': passes [1, 0]: passes are counted from 1",
+        ),
+        (
+            [{**_J, "targets": [{"passes": [2, 2]}]}],
+            "destination 1 of jump 'j': passes [2, 2] names a pass twice",
+        ),
+        (
+            [{**_J, "targets": [{"passes": {"from": 0}}]}],
+            "destination 1 of jump 'j': passes from 0: passes are counted from 1",
+        ),
+        (
+            [{**_J, "targets": [{"passes": 2}]}],
+            "destination 1 of jump 'j': passes 2 is neither a list of pass numbers "
+            "nor {from: n}",
+        ),
+        (
+            [{**_J, "targets": [{"repeat_count": 1}, {"determined": "no"}]}],
+            "destination 2 of jump 'j': determined 'no' is neither true nor false",
+        ),
+        (
+            [{"id": "b", "role": "break", "coordinate": [8, 1], "ends": {}}],
+            "the `ends` of break 'b' states no condition: leave `ends` out for a "
+            "break that always ends the flow",
+        ),
+        (
+            [{**_J, "targets": [{"to": "nowhere"}]}],
+            "jump 'j' goes on at 'nowhere', which names no jump target of this "
+            "registry and no place of its timeline. Available jump targets: []. "
+            "Available places: []",
+        ),
+        (
+            [{"id": "t", "role": "jump_target"}],
+            "a flow-control element lacks the key(s) ['coordinate']",
+        ),
+        (
+            [{**_J, "targets": [{}], "provenance": {"method": "guessed"}}],
+            "the provenance of jump 'j': 1 validation error for Provenance",
+        ),
+    ],
+)
+def test_reading_refuses_what_cannot_be_played(
+    elements: list[dict[str, Any]], message: str
+) -> None:
+    with pytest.raises(ValueError) as error:
+        _read(elements)
+    assert str(error.value).startswith(message)
+    if "validation error" not in message:
+        assert str(error.value) == message
+
+
+def test_the_array_must_be_an_array() -> None:
+    with pytest.raises(
+        ValueError, match=re.escape("the flow_control must be an array")
+    ):
+        FlowControlRegistry.from_dict({}, unit="quarters")  # type: ignore[arg-type]
 
 
 # endregion
@@ -412,54 +601,83 @@ def test_the_flow_control_reader_refuses_what_the_format_does_not_define(
 # region Score loaders
 
 
-def test_a_score_s_registry_writes_and_reads_back() -> None:
-    timeline = (
-        Ms3Loader()
-        .load(SCORE / "couperin_concerts/c05n05_musete.measures.tsv")
-        .create_timeline()
-    )
-    written = json.loads(json.dumps(timeline.to_dict()))
-    read = Timeline.from_dict(written)
-    source, restored = timeline.flow_control, read.flow_control
+def test_a_score_s_elements_are_what_its_measures_state(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("WARNING", logger="timetoalign.loader.score.base"):
+        timeline = (
+            Ms3Loader()
+            .load(SCORE / "couperin_concerts/c05n05_musete.measures.tsv")
+            .create_timeline()
+        )
+    registry = timeline.flow_control
 
-    def jumps(registry: Any) -> list[tuple[Any, ...]]:
-        return [
-            (
-                j.id,
-                j.control_type,
-                j.from_position,
-                j.to_position,
-                j.repeat_count,
-                j.condition,
-            )
-            for j in registry.jumps
-        ]
-
-    assert restored.breaks == source.breaks
-    assert (
-        jumps(restored)
-        == jumps(source)
-        == [
-            ("jump_from_1", E.repeat_end, 42, 0, 1, ActivationCondition.first_n),
-            ("jump_from_2", E.repeat_end, 84, 42, 1, ActivationCondition.first_n),
-            ("jump_from_3", E.dal_segno_al_fine, 84, 12, 1, ActivationCondition.always),
-            ("jump_from_4", E.repeat_end, 162, 84, 1, ActivationCondition.first_n),
-            (
-                "jump_from_5",
-                E.dal_segno_al_fine,
-                162,
-                12,
-                1,
-                ActivationCondition.always,
-            ),
-        ]
-    )
-    assert [(m.id, m.control_type, m.position) for m in restored.markers] == [
-        ("jump_to_1", E.segno, 12),
-        ("jump_to_2", E.repeat_start, 42),
-        ("jump_to_3", E.repeat_start, 84),
+    # The measures table: a segno at MC 6 (12 quarters); MC 16 ends at 42
+    # with a repeat end and a Fine; MC 17 and MC 32 start repeats at 42 and
+    # 84; MC 31 and MC 58 end at 84 and 162, each with a repeat end and a
+    # D.S. al Fine.
+    assert [(type(e), e.id, e.coordinate, e.name) for e in registry.elements] == [
+        (JumpTarget, "jump_target_1", _q(12), "segno"),
+        (Break, "break_1", _q(42), "fine"),
+        (Jump, "jump_1", _q(42), None),
+        (JumpTarget, "jump_target_2", _q(42), None),
+        (Jump, "jump_2", _q(84), None),
+        (JumpTarget, "jump_target_3", _q(84), None),
+        (Jump, "jump_3", _q(162), None),
     ]
-    assert read.to_dict() == written
+    assert [t.manifestation for t in registry.jump_targets] == [
+        M.segno,
+        M.repeat_start,
+        M.repeat_start,
+    ]
+    assert [jump.targets for jump in registry.jumps] == [
+        (
+            JumpDestination(
+                repeat_count=1, manifestation=M.repeat_end, label="MC 16 → MC 1"
+            ),
+        ),
+        (
+            JumpDestination(
+                to="jump_target_2",
+                repeat_count=1,
+                manifestation=M.repeat_end,
+                label="MC 31 → MC 17",
+            ),
+            JumpDestination(
+                to="jump_target_1",
+                repeat_count=1,
+                reset=False,
+                manifestation=M.dal_segno_al_fine,
+                label="MC 31 → segno",
+            ),
+        ),
+        (
+            JumpDestination(
+                to="jump_target_3",
+                repeat_count=1,
+                manifestation=M.repeat_end,
+                label="MC 58 → MC 32",
+            ),
+            JumpDestination(
+                to="jump_target_1",
+                repeat_count=1,
+                reset=False,
+                manifestation=M.dal_segno_al_fine,
+                label="MC 58 → segno",
+            ),
+        ),
+    ]
+    (fine,) = registry.breaks
+    assert (fine.manifestation, fine.ends, fine.label) == (
+        M.fine,
+        None,
+        "fine at MC 16",
+    )
+    assert [record.getMessage() for record in caplog.records] == [
+        "The Fine at the end of MC 16 cannot name the D.C. or D.S. it follows "
+        "(the score has 2); it is written as a break without condition."
+    ]
+    assert _read(registry.to_dict()).to_dict() == registry.to_dict()
 
 
 # endregion

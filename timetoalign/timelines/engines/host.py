@@ -294,16 +294,35 @@ class TimelineHost(Protocol):
         rounding: Rounding = ...,
     ) -> CoordinateResult | pd.Series: ...
 
+    @overload
     def get_coordinate_for(
         self,
         key: str,
         timeline_id: str | None = None,
         *,
-        format: CoordinateFormat = "id_coordinate",
-        rounding: Rounding = "round",
-    ) -> CoordinateResult | pd.Series:
-        """Return an event's start coordinate on this timeline."""
-        ...
+        format: Literal["id_coordinate"] = ...,
+        rounding: Rounding = ...,
+    ) -> IdCoordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        key: str,
+        timeline_id: str | None = None,
+        *,
+        format: Literal["coordinate"],
+        rounding: Rounding = ...,
+    ) -> Coordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        key: str,
+        timeline_id: str | None = None,
+        *,
+        format: CoordinateFormat,
+        rounding: Rounding = ...,
+    ) -> CoordinateResult | pd.Series: ...
 
     def _resolve_axis_value(self, coord: CoordinateSpec) -> int | float | Fraction:
         """Resolve a coordinate and return its native numeric value."""

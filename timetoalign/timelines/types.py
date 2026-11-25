@@ -259,10 +259,11 @@ class SegmentLineMixin(_SegmentLineBase):
                 )
             self._length = self._make_coordinate(end)
             return
-        if self._length.value != end:
+        segments_end = self._require_length("check where its segments end").value
+        if segments_end != end:
             raise ValueError(
                 f"Segment line {self.id!r} has segments ending at "
-                f"{_format_coordinate_value(float(self._length.value))}, but its "
+                f"{_format_coordinate_value(float(segments_end))}, but its "
                 f"length is {_format_coordinate_value(float(end))}"
             )
 
@@ -540,7 +541,7 @@ class SegmentLineMixin(_SegmentLineBase):
         # length is still 0.  Set it to the expected slice length so
         # the caller gets a correctly-sized timeline.
         expected_length = e - s
-        if sliced._length.value < expected_length:
+        if sliced._require_length("be sliced").value < expected_length:
             sliced._length = sliced._make_coordinate(expected_length)
 
         return sliced

@@ -32,7 +32,7 @@ from timetoalign.core.retrieval import (
     validate_key_collection,
 )
 from timetoalign.core.time import shift_number
-from timetoalign.core.timestamp import ambiguous_unit_maps
+from timetoalign.core.timestamp import TimeIntervalStamp, ambiguous_unit_maps
 from timetoalign.maps import ConversionMap, OutputNumberTypeError
 
 if TYPE_CHECKING:
@@ -778,6 +778,36 @@ class ConversionMapsMixin(_Host):
             empty_number_type=self._number_type,
         )
 
+    @overload
+    def get_coordinate_for(
+        self,
+        key: str,
+        timeline_id: str | None = None,
+        *,
+        format: Literal["id_coordinate"] = ...,
+        rounding: Rounding = ...,
+    ) -> IdCoordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        key: str,
+        timeline_id: str | None = None,
+        *,
+        format: Literal["coordinate"],
+        rounding: Rounding = ...,
+    ) -> Coordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        key: str,
+        timeline_id: str | None = None,
+        *,
+        format: CoordinateFormat,
+        rounding: Rounding = ...,
+    ) -> CoordinateResult | pd.Series: ...
+
     def get_coordinate_for(
         self,
         key: str,
@@ -804,7 +834,7 @@ class ConversionMapsMixin(_Host):
                 f"Unknown result timeline ID {timeline_id!r} on timeline {self._id!r}"
             )
         stamp = self.get_timestamp_for(key)
-        if hasattr(stamp, "get_interval"):
+        if isinstance(stamp, TimeIntervalStamp):
             coordinate = stamp.get_interval(self._id).start
         else:
             coordinate = stamp.get_coordinate_for(self._id, format="coordinate")

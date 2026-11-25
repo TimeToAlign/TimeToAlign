@@ -924,9 +924,10 @@ class SegmentsMixin(_Host):
             raise ValueError(
                 f"{what} is in {self._unit}: measures lie on an axis in quarters"
             )
+        # A measure map counts its measures in printed order from 1.
         spans = {
-            measure.count: (measure.qstamp, measure.actual_length)
-            for measure in measure_map
+            count: (measure.qstamp, measure.actual_length)
+            for count, measure in enumerate(measure_map, start=1)
         }
         stretches: list[tuple[Fraction, Fraction]] = []
         before: int | None = None

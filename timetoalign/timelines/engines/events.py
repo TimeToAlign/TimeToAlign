@@ -366,13 +366,15 @@ class EventsMixin(_Host):
         )
 
         if self._length is None:
+            # An unknown length is bounded only by a parent's structure.
+            parent = self._parent
             bound = self._extent
-            if bound is not None and required > bound:
+            if parent is not None and bound is not None and required > bound:
                 raise ValueError(
                     f"Adding content ending at {_format_coordinate_value(required)} "
                     f"to timeline '{self._id}' passes "
                     f"{_format_coordinate_value(bound)}, where its parent "
-                    f"'{self._parent.id}' ends it while its length is unknown"
+                    f"'{parent.id}' ends it while its length is unknown"
                 )
             return
 

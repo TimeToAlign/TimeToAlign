@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator, Literal, overload
 
 import numpy as np
 import pandas as pd
@@ -194,13 +194,13 @@ class ConversionMapsMixin:
             raise ValueError(
                 f"No conversion map found from '{self._unit}' to '{target}'"
             )
-        converted_value = cmap(values)
-
         # Return array for array input, Coordinate for scalar input
         if isinstance(values, np.ndarray):
+            converted_array = cmap(values)
             if target.is_discrete:
-                return np.vectorize(round, otypes=[int])(converted_value)
-            return converted_value
+                return np.vectorize(round, otypes=[int])(converted_array)
+            return converted_array
+        converted_value = cmap(values)
         # The value now lives on the target unit's axis, so it is written the
         # way that axis writes numbers.
         declared = target.default_number_type
@@ -357,8 +357,10 @@ class ConversionMapsMixin:
         if descendant is None or descendant is self:
             return None
         path: list[Timeline] = []
-        node = descendant
+        node: Timeline | None = descendant
         while node is not self:
+            # The descendant lies in this subtree, so its parents lead here.
+            assert node is not None
             path.append(node)
             node = node._parent
         child_coord = parent_coord
@@ -656,6 +658,36 @@ class ConversionMapsMixin:
         for offset in reversed(offsets):
             native_value = shift_number(native_value, offset.value, subtract=False)
         return native_value
+
+    @overload
+    def get_coordinate_at(
+        self,
+        at: CoordinateInput,
+        timeline_id: str | None = None,
+        *,
+        format: Literal["id_coordinate"] = ...,
+        rounding: Rounding = ...,
+    ) -> IdCoordinate: ...
+
+    @overload
+    def get_coordinate_at(
+        self,
+        at: CoordinateInput,
+        timeline_id: str | None = None,
+        *,
+        format: Literal["coordinate"],
+        rounding: Rounding = ...,
+    ) -> Coordinate: ...
+
+    @overload
+    def get_coordinate_at(
+        self,
+        at: CoordinateInput,
+        timeline_id: str | None = None,
+        *,
+        format: CoordinateFormat,
+        rounding: Rounding = ...,
+    ) -> CoordinateResult | pd.Series: ...
 
     def get_coordinate_at(
         self,

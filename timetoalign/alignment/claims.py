@@ -113,6 +113,7 @@ from timetoalign.core.time import (
     coordinate_cell_projector,
     coordinate_cells,
     in_lowest_terms,
+    number_cell,
     package_cells,
     struct_to_coordinate,
     struct_to_rational,
@@ -4026,6 +4027,42 @@ def _placed(value: Any, timeline: Any, where: str) -> Coordinate:
     return coordinate
 
 
+_STORED_FLOATS = (-(2.0**63), 2.0**63)
+"""The range whose floats a number cell's integer ratio holds: ``[-2**63, 2**63)``."""
+
+
+def _refuse_unstorable(projections: Sequence[Projection]) -> None:
+    """Refuse a float a timeline cannot store before any Projection is added.
+
+    A timeline stores a float as a number cell (:func:`number_cell`), which
+    refuses a non-finite value (``nan``, ``inf``, ``-inf``) and one too large
+    for its integer ratio. The timeline refuses its Projections with that
+    refusal when they are added, one timeline after the other, so the check
+    runs here for every timeline first: in the order they are added and,
+    within one, row by row and value by value in the timeline's order
+    (start, duration, then the end the timeline completes as their sum).
+    The refusal is the number cell's own, so it names the same value as the
+    timeline would, and nothing has been added.
+
+    Raises:
+        ValueError: If a start, a duration or the end they make is a float
+            the number cell refuses.
+    """
+    low, high = _STORED_FLOATS
+    for projection in projections:
+        start = projection.start.value
+        duration = None if projection.duration is None else projection.duration.value
+        values = [start]
+        if duration is not None:
+            values.append(duration)
+            if isinstance(start, float) and isinstance(duration, float):
+                values.append(start + duration)
+        for value in values:
+            # A comparison with nan is false, so nan is checked too.
+            if isinstance(value, float) and not low <= value < high:
+                number_cell(value, NumberType.float)
+
+
 class _Side(NamedTuple):
     """One side of a claimed pair, resolved before anything is added.
 
@@ -4082,7 +4119,8 @@ def _claims_between_events(
     Projection is added: a float on a samples axis, a span running
     backwards, a position past where its timeline can reach (the end of a
     locked timeline, or an end its parent cannot contain) and a held event
-    named with a span not its own are refused, so a refusal leaves every
+    named with a span not its own are refused, and so is a float start,
+    end or duration a timeline cannot store, so a refusal leaves every
     timeline unchanged. The Projections of one timeline are then
     added in one call.
 
@@ -4108,8 +4146,9 @@ def _claims_between_events(
             samples axis, a span runs backwards, a position lies past where
             its timeline can reach (the end of a locked timeline, or an end
             its parent cannot contain), a held event is named with a span
-            not its own, or a position cannot be placed on its timeline's
-            axis.
+            not its own, a position cannot be placed on its timeline's
+            axis, or a float start, end or duration is one its timeline
+            cannot store.
         TypeError: If a side is neither a string, a dict nor ``None``.
     """
     pairs = list(pairs)
@@ -4171,6 +4210,8 @@ def _claims_between_events(
                 projected.setdefault(id(side.timeline), (side.timeline, []))[1].append(
                     side.projection
                 )
+    for _, projections in projected.values():
+        _refuse_unstorable(projections)
     projection_ids = {
         key: iter(timeline.add_projections(projections))
         for key, (timeline, projections) in projected.items()

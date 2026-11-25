@@ -1607,8 +1607,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 its timeline can reach (the end of a locked timeline, or an
                 end its parent cannot contain), an ``id`` the timeline holds
                 is given with a span not its own, a position cannot be placed
-                on its timeline's axis, or *date* is given without *actor* or
-                is no calendar date.
+                on its timeline's axis, a float start, end or duration is
+                one its timeline cannot store (not finite, or too large for
+                a number cell), or *date* is given without *actor* or is no
+                calendar date.
             KeyError: If a timeline id names no timeline of the bundle's
                 trees (a nested timeline is found whether or not it was
                 registered), or an id string names no event of its timeline.

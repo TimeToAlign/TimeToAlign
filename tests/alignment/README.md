@@ -3580,7 +3580,7 @@ Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score +
 ## `create_match_claims` refusals (`test_create_match_claims_refusals.py`)
 
 `AlignmentBundle.create_match_claims` places every stated position on its
-timeline's axis before anything is added. Five rules decide what a side may
+timeline's axis before anything is added. Six rules decide what a side may
 state; each is proved by the refusal itself (exception type and the three
 parts of the message: the value given, the cause, the remedy), by the
 accepted neighbour that differs from it in one respect only, and by the
@@ -3682,3 +3682,26 @@ an unlocked one with `locked=False`.
    first name, `"bar 1"`: the name a Projection was first claimed under is
    the one every claim on it shows (the claim table holds one name per
    Projection). A Note's name is its own and stays untouched by this rule.
+6. **A float a timeline cannot store.** A timeline stores a float position
+   as a number cell, which refuses a non-finite value (`nan`, `inf`,
+   `-inf`) and one too large for its integer ratio (`2**63` and beyond).
+   The refusal is the number cell's own (`cannot store non-finite value
+   nan as a number cell`, `value 9.223372036854776e+18 is too large to
+   mirror as an int64 ratio`), and it used to come only as the timeline
+   added its Projections, after the timelines before it had added theirs:
+   with the score side first, `score` kept a Projection although nothing
+   was claimed. The refusal now comes before the first add, with the same
+   message, so what the rule proves is the unchanged state after it (as
+   for rules 1 to 4), in every position a value can take: `nan`, `inf`
+   and `-inf` as the start on `clock` (the score side first); `nan` and
+   `inf` as the end; `nan` in the second pair, after a valid first pair
+   on the same two timelines; `2.0**63` as a start; and the end a start
+   and a duration make (`{"start": 1e18, "end": 1e19}`: start and
+   duration are stored, the end `1e19` the timeline completes from them
+   is not). When a side holds two such values, the message names the one
+   the timeline reads first (start, then duration, then the end it
+   completes), as it did: `{"start": nan, "end": 1e300}` names `nan`, and
+   `{"start": 1e300, "end": nan}` names `1e+300`. A `-inf` end after a
+   finite start is refused as a backwards span (rule 2), as before.
+   Accepted neighbours: `9e18`, below `2**63`, as a start on `clock`, and
+   a finite span `{"start": 1.0, "end": 2.0}`, each one claim.

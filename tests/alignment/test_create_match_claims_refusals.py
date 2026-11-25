@@ -520,3 +520,78 @@ class TestPastWhereASegmentReaches:
         ]
         assert bundle.get_timeline(segment).length == length
         assert [p[1] for p in _own_projections(bundle, segment)] == [Fraction(start)]
+
+
+NAN = float("nan")
+INF = float("inf")
+
+
+class TestFloatATimelineCannotStore:
+    """Rule 6: refused with the number cell's message, before anything is added."""
+
+    @pytest.mark.parametrize(
+        ("side", "message"),
+        [
+            ({"start": NAN}, "cannot store non-finite value nan as a number cell"),
+            ({"start": INF}, "cannot store non-finite value inf as a number cell"),
+            ({"start": -INF}, "cannot store non-finite value -inf as a number cell"),
+            (
+                {"start": 1.0, "end": NAN},
+                "cannot store non-finite value nan as a number cell",
+            ),
+            (
+                {"start": 1.0, "end": INF},
+                "cannot store non-finite value inf as a number cell",
+            ),
+            (
+                {"start": 2.0**63},
+                "value 9.223372036854776e+18 is too large to mirror as an int64 ratio",
+            ),
+            (
+                {"start": 1e18, "end": 1e19},
+                "value 1e+19 is too large to mirror as an int64 ratio",
+            ),
+            (
+                {"start": NAN, "end": 1e300},
+                "cannot store non-finite value nan as a number cell",
+            ),
+            (
+                {"start": 1e300, "end": NAN},
+                "value 1e+300 is too large to mirror as an int64 ratio",
+            ),
+        ],
+    )
+    def test_refused_before_the_score_side_is_added(
+        self, side: dict, message: str
+    ) -> None:
+        bundle = _bundle()
+        refused = _refused(bundle, [({"start": 1}, "score", side, "clock")], message)
+        assert refused == message
+
+    def test_refused_in_the_second_pair(self) -> None:
+        bundle = _bundle()
+        _refused(
+            bundle,
+            [
+                ({"start": 1}, "score", {"start": 1.0}, "clock"),
+                ({"start": 2}, "score", {"start": NAN}, "clock"),
+            ],
+            "cannot store non-finite value nan as a number cell",
+        )
+
+    def test_a_negative_infinite_end_runs_backwards(self) -> None:
+        bundle = _bundle()
+        _refused(
+            bundle,
+            [({"start": 1}, "score", {"start": 1.0, "end": -INF}, "clock")],
+            "runs backwards: its end -inf seconds lies before its start 1.0 seconds",
+        )
+
+    @pytest.mark.parametrize("side", [{"start": 9e18}, {"start": 1.0, "end": 2.0}])
+    def test_a_storable_float_is_accepted(self, side: dict) -> None:
+        bundle = _bundle()
+        claims = bundle.create_match_claims([({"start": 1}, "score", side, "clock")])
+        assert len(claims) == 1
+        assert len(bundle.match_claim_table) == 1
+        assert _timeline(bundle, "score").n_events == 2
+        assert _timeline(bundle, "clock").n_events == 1

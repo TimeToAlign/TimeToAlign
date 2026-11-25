@@ -182,6 +182,7 @@ strict = [
     "timetoalign/core/__init__.py",
     "timetoalign/core/backends.py",
     "timetoalign/core/enums.py",
+    "timetoalign/core/events.py",
     "timetoalign/core/fields.py",
     "timetoalign/core/ids.py",
     "timetoalign/core/provenance.py",

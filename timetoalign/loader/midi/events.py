@@ -72,7 +72,7 @@ class MidiEventData(EventData):
 
     # The raw ``pitch`` integer affords the most-expressive faithful pitch
     # view a number-only source supports: EnharmonicPitch.
-    _afforded_fields: ClassVar[dict[str, type[SemanticField[Any]]]] = {
+    _afforded_fields: dict[str, type[SemanticField[Any]]] = {
         "pitch": EnharmonicPitchField,
     }
 

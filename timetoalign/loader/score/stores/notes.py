@@ -51,7 +51,7 @@ class NoteEventData(EventData):
         # Pitch — represented once.  SpecificPitch is the sole default
         # semantic pitch field (schema derived from the paired Field's
         # pydantic model, see core/events.py).
-        pa.field("specific_pitch", SpecificPitchField.pa_schema, nullable=True),
+        pa.field("specific_pitch", SpecificPitchField.struct_schema(), nullable=True),
         # The source MIDI pitch, kept as a NON-DEFAULT raw int.  It is
         # redundant with ``specific_pitch`` (the spelling determines it),
         # so it is NOT a semantic pitch struct; it affords an
@@ -79,7 +79,7 @@ class NoteEventData(EventData):
 
     # The raw ``midi`` integer affords an EnharmonicPitch view on request
     # (non-default — SpecificPitch remains the sole default pitch field).
-    _afforded_fields: ClassVar[dict[str, type[SemanticField[Any]]]] = {
+    _afforded_fields: dict[str, type[SemanticField[Any]]] = {
         "midi": EnharmonicPitchField,
     }
 

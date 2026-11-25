@@ -5,6 +5,9 @@
 !docs/page/tutorials/*.ipynb
 !docs/page/howto/*.ipynb
 
+# The built documentation site; it is published on the gh-pages branch
+docs/page/_site/
+
 # Ignore Jupyter checkpoint folders
 .ipynb_checkpoints/
 

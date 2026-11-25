@@ -248,7 +248,7 @@ class ScoreLoader(EventLoader):
 
         measure_map = self._measure_map()
         timeline.add_measure_map(measure_map)
-        elements = self._flow_control_elements(measure_map)
+        elements = self._flow_control_elements(measure_map, timeline.id)
 
         notated_length = measure_map.total_actual_length
         if notated_length is not None:
@@ -261,7 +261,7 @@ class ScoreLoader(EventLoader):
     # region Flow Control
 
     def _flow_control_elements(
-        self, measure_map: MeasureMap
+        self, measure_map: MeasureMap, timeline_id: str
     ) -> list[FlowControlElement]:
         """Return the flow control the loaded score states, as elements.
 
@@ -272,15 +272,22 @@ class ScoreLoader(EventLoader):
         Every other sign comes from the columns of the measure table that
         the loader fills from its source (:meth:`_write_signs`). Signs
         falling on one coordinate are the destinations of one Jump.
+
+        Args:
+            measure_map: The measure map of the loaded score.
+            timeline_id: The ID of the timeline the elements are written
+                for, which a D.C. names where it must (:meth:`_write_signs`).
         """
         from timetoalign.timelines.flow import FlowControlDraft
 
         draft = FlowControlDraft()
         draft.add_measures(measure_map)
-        self._write_signs(draft, measure_map)
+        self._write_signs(draft, measure_map, timeline_id)
         return draft.elements()
 
-    def _write_signs(self, draft: FlowControlDraft, measure_map: MeasureMap) -> None:
+    def _write_signs(
+        self, draft: FlowControlDraft, measure_map: MeasureMap, timeline_id: str
+    ) -> None:
         """Write the signs the measure table states beside repeats and brackets.
 
         Read from the table's columns, in the meaning every score loader
@@ -292,11 +299,17 @@ class ScoreLoader(EventLoader):
           ``name`` (``segno`` and ``coda`` by their manifestation too). A
           marker named only by ``play_until`` is the place where that
           instruction acts, its measure's end, and no jump target. A
-          ``fine`` no row plays until is not written: nothing says when it
-          ends the flow.
+          ``fine`` no row plays until is a break at its measure's end that
+          ends the flow from its second arrival on (``ends: {passes:
+          {from: 2}}``): the leap that leads back to it is not stated, so
+          the count of arrivals stands in for it.
         - ``jump_bwd`` (a D.S., or with ``start`` a D.C.): a destination
           ``repeat_count: 1, reset: false`` of the Jump at the row's end,
-          ``to`` the marker's jump target, or without place for a D.C.
+          ``to`` the marker's jump target, or without place for a D.C. A
+          D.C. whose Jump already holds a destination without place (a
+          repeat end without a printed start on the same barline) names
+          the timeline instead (``to`` its ID, its start), so that the two
+          are distinct places.
         - ``play_until`` on that row: at the end of the measure carrying the
           marker of that name, either a destination ``to`` the jump target
           of the row's ``jump_fwd`` marker, ``after`` the D.S. or D.C., or,
@@ -307,10 +320,11 @@ class ScoreLoader(EventLoader):
           :attr:`_barline_manifestations`.
 
         What cannot be written is left out with a logged warning: a D.S.
-        or a ``play_until`` whose marker no measure carries, a sign going on
-        at a place another sign of its Jump goes on at, a ``play_until``
-        marker in the measure of its own D.S. or D.C., and a ``jump_fwd`` on
-        a row without ``jump_bwd``.
+        or a ``play_until`` whose marker no measure carries, a jump forward
+        going on at a place another sign of its Jump goes on at (a To Coda
+        shared by two leaps to one coda: one ``after`` names one leap), a
+        ``play_until`` marker in the measure of its own D.S. or D.C., and a
+        ``jump_fwd`` on a row without ``jump_bwd``.
 
         Raises:
             ValueError: If a measure states no count, no ``qstamp`` or no
@@ -323,6 +337,7 @@ class ScoreLoader(EventLoader):
             FlowCondition,
             JumpDestination,
             JumpTarget,
+            PassesFrom,
             SectionBreak,
         )
 
@@ -359,10 +374,14 @@ class ScoreLoader(EventLoader):
                 if name not in gone_to and name in played_until:
                     continue
                 if name not in gone_to and name == FlowManifestation.fine.value:
-                    module_logger.warning(
-                        "The Fine of MC %s is named by no D.C. or D.S.; it is not "
-                        "written.",
-                        row["mc"],
+                    # No leap of the source says when this Fine ends the
+                    # flow: it does from its second arrival on.
+                    draft.add(
+                        Break,
+                        bounds[row["mc"]][1],
+                        name=name,
+                        manifestation=FlowManifestation.fine,
+                        ends=FlowCondition(passes=PassesFrom(2)),
                     )
                     continue
                 sign = draft.add(
@@ -396,20 +415,18 @@ class ScoreLoader(EventLoader):
                 continue
             at = bounds[row["mc"]][1]
             to = None if da_capo else signs[name]
+            if da_capo and any(
+                held.place is None for held in draft.destinations_at(at)
+            ):
+                # A repeat end without a printed start lies on this barline
+                # and has no place either: the D.C. names the timeline.
+                to = timeline_id
             leap = JumpDestination(
                 to=to,
                 repeat_count=1,
                 reset=False,
                 manifestation=_leap_manifestation(da_capo, row.get("play_until")),
             )
-            if any(held.place == leap.place for held in draft.destinations_at(at)):
-                module_logger.warning(
-                    "The %s of MC %s goes on where another sign of that barline "
-                    "goes on; it is not written.",
-                    "D.C." if da_capo else "D.S.",
-                    row["mc"],
-                )
-                continue
             reference = DestinationReference(
                 jump=draft.add_destination(at, leap), to=to
             )

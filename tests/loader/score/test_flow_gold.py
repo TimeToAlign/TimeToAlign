@@ -24,7 +24,7 @@ from timetoalign.core.enums import (
     MeasureFindingKind,
 )
 from timetoalign.loader.score import MeasureMapLoader, Ms3Loader, PartituraLoader
-from timetoalign.timelines import StatedFlow, Timeline
+from timetoalign.timelines import StatedFlow, Timeline, TimelineGroup
 from timetoalign.timelines.flow import (
     MeasureFinding,
     MeasureRange,
@@ -32,7 +32,7 @@ from timetoalign.timelines.flow import (
     repeat_end_findings,
 )
 from timetoalign.timelines.flow.engine import play
-from timetoalign.timelines.flowcontrol import Jump
+from timetoalign.timelines.flowcontrol import Jump, JumpDestination
 
 from .conftest import (
     EDITOR,
@@ -749,6 +749,95 @@ def test_a_sign_no_row_names_is_a_jump_target(tmp_path: Path) -> None:
     ]
 
 
+def test_a_fine_no_leap_names_ends_the_flow_from_its_second_arrival(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="timetoalign.loader.score.base"):
+        timeline = _table(tmp_path, {}, {"markers": "fine"}, {})
+    assert caplog.records == []
+    assert timeline.flow_control.to_dict() == [
+        {
+            "id": "break_1",
+            "role": "break",
+            "coordinate": [8, 1],
+            "manifestation": "fine",
+            "ends": {"passes": {"from": 2}},
+            "name": "fine",
+        }
+    ]
+    # Arrived at once, the Fine does not act.
+    played = timeline.get_flow()
+    assert _runs(timeline) == [(0, 12)]
+    assert played.findings == ()
+    # With the D.C. the source lost, it ends the flow where it stands.
+    timeline.flow_control.add(
+        Jump(
+            Coordinate(12, "quarters"),
+            [JumpDestination(repeat_count=1, reset=False, manifestation="da_capo")],
+        )
+    )
+    assert _runs(timeline) == [(0, 12), (0, 8)]
+    assert timeline.get_flow().findings == ()
+    timetoshare.validate(timeline.to_dict())
+
+
+def test_a_da_capo_beside_a_repeat_end_without_start_names_the_timeline(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="timetoalign.loader.score.base"):
+        timeline = _table(
+            tmp_path,
+            {"breaks": "section"},
+            {},
+            {"repeats": "end", "jump_bwd": "start"},
+            {},
+        )
+    assert caplog.records == []
+    assert timeline.id == "clt_1"
+    assert timeline.flow_control.to_dict() == [
+        {"id": "section_break_1", "role": "section_break", "coordinate": [4, 1]},
+        {
+            "id": "jump_1",
+            "role": "jump",
+            "coordinate": [12, 1],
+            "targets": [
+                {"repeat_count": 1, "manifestation": "repeat_end"},
+                {
+                    "to": "clt_1",
+                    "repeat_count": 1,
+                    "reset": False,
+                    "manifestation": "da_capo",
+                },
+            ],
+        },
+    ]
+    (jump,) = timeline.flow_control.jumps
+    assert [
+        timeline.flow_control.place_of(destination, jump).value
+        for destination in jump.targets
+    ] == [4, 0]
+    # The repeat goes back to its section's start, the D.C. to the timeline's.
+    assert _runs(timeline) == [(0, 12), (4, 12), (0, 16)]
+    assert timeline.get_flow().findings == ()
+    timetoshare.validate(timeline.to_dict())
+
+
+def test_a_da_capo_naming_the_timeline_follows_its_id(tmp_path: Path) -> None:
+    rows = ({}, {"repeats": "end", "jump_bwd": "start"})
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+    first = _table(tmp_path / "a", *rows)
+    second = _table(tmp_path / "b", *rows)
+    assert (first.id, second.id) == ("clt_1", "clt_1")
+    TimelineGroup(timelines=[first, second])
+    assert (first.id, second.id) == ("clt_1", "clt_2")
+    assert [
+        [destination.to for destination in timeline.flow_control.jumps[0].targets]
+        for timeline in (first, second)
+    ] == [[None, "clt_1"], [None, "clt_2"]]
+    assert _runs(second) == [(0, 8), (0, 8), (0, 8)]
+
+
 LEFT_OUT = [
     pytest.param(
         ({}, {"jump_bwd": "segno"}),
@@ -758,12 +847,6 @@ LEFT_OUT = [
         id="a D.S. without its segno",
     ),
     pytest.param(
-        ({}, {"markers": "fine"}, {}),
-        [],
-        "The Fine of MC 2 is named by no D.C. or D.S.; it is not written.",
-        id="a Fine no leap plays until",
-    ),
-    pytest.param(
         ({}, {"jump_fwd": "coda"}, {"markers": "coda"}),
         [{"role": "jump_target", "coordinate": [8, 1], "name": "coda"}],
         "MC 2 goes on at 'coda' without a D.C. or D.S. it follows; the jump is not "
@@ -771,11 +854,31 @@ LEFT_OUT = [
         id="a jump forward without a leap",
     ),
     pytest.param(
-        ({}, {"repeats": "end", "jump_bwd": "start"}),
-        [{"role": "jump", "coordinate": [8, 1], "manifestations": ["repeat_end"]}],
-        "The D.C. of MC 2 goes on where another sign of that barline goes on; it is "
-        "not written.",
-        id="a D.C. beside a repeat end without start",
+        (
+            {"markers": "segno"},
+            {"markers": "coda"},
+            {"jump_bwd": "segno", "play_until": "coda", "jump_fwd": "codab"},
+            {"jump_bwd": "start", "play_until": "coda", "jump_fwd": "codab"},
+            {"markers": "codab"},
+        ),
+        [
+            {"role": "jump_target", "coordinate": [0, 1], "name": "segno"},
+            {"role": "jump", "coordinate": [8, 1], "manifestations": ["to_coda"]},
+            {
+                "role": "jump",
+                "coordinate": [12, 1],
+                "manifestations": ["dal_segno_al_coda"],
+            },
+            {
+                "role": "jump",
+                "coordinate": [16, 1],
+                "manifestations": ["da_capo_al_coda"],
+            },
+            {"role": "jump_target", "coordinate": [16, 1], "name": "codab"},
+        ],
+        "The jump from 'coda' to 'codab' that MC 4 states cannot be told from another "
+        "sign of its barline; it is not written.",
+        id="a To Coda shared by two leaps",
     ),
     pytest.param(
         ({}, {"jump_bwd": "start", "play_until": "fine"}),

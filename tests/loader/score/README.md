@@ -595,14 +595,36 @@ repeat end and names the leap with its place), a D.C. al Fine, two leaps playing
 Fine (two breaks at one coordinate, each naming its leap), `repeats: startend`, `breaks`
 cells with and without `section`, and markers no row names.
 
-**What cannot be written is left out and logged.** Eight tables each state one sign the
+**A sign whose meaning the source leaves open is written with what it does state.** Two
+signs were left out before although the elements can state them, so each is proved by the
+whole array written, no warning logged, the flow derived by hand, and the format's validator
+accepting the manifest:
+
+- *A Fine no D.C. or D.S. plays until.* A Fine means "end here once the piece has come
+  back", and the leap that brings it back is what the table lacks (a parse that lost the
+  D.C.). It is written as a break (`fine`) at its measure's end with
+  `ends: {passes: {from: 2}}`: the first arrival goes on, every later one ends the flow.
+  Three bars with the Fine on the second: one break at 8 and the flow [0, 12), the Fine
+  not acting. With the lost D.C. added by hand at 12 (`repeat_count: 1, reset: false`) the
+  flow is [0, 12) [0, 8): the hint the loader kept is enough.
+- *A D.C. on the barline of a repeat end without a printed start.* Both would go on
+  without a place, and the destinations of one Jump are distinct places; the D.C.
+  therefore names the timeline itself (`to` its ID), which is its start. Four bars, a
+  section break after the first, repeat end and D.C. on the third: one Jump at 12 holding
+  the repeat end (no place) and the D.C. (`to: clt_1`). The two places differ, which the
+  section break makes visible: the repeat goes back to its section's start (4), the D.C.
+  to the timeline's (0). The restoring destination is taken first, so the flow is
+  [0, 12) [4, 12) [0, 16). The ID named follows the timeline: of two such timelines
+  joining one group, the second is minted `clt_2` and its D.C. names `clt_2`.
+
+**What cannot be written is left out and logged.** Seven tables each state one sign the
 elements cannot express, and each must give exactly one warning with its text and exactly the
-remaining elements: a D.S. whose segno no measure carries; a Fine no D.C. or D.S. plays until
-(nothing says when it would end the flow); a `jump_fwd` on a row without `jump_bwd`; a D.C.
-on the barline of a repeat end without a printed start (both would go on at the section
-start, and one Jump has one destination per place); a `play_until` and a `jump_fwd` naming a
-marker no measure carries; a `jump_fwd` without `play_until`; and a To Coda in the measure of
-its own leap.
+remaining elements: a D.S. whose segno no measure carries; a `jump_fwd` on a row without
+`jump_bwd`; a `play_until` and a `jump_fwd` naming a marker no measure carries; a `jump_fwd`
+without `play_until`; a To Coda in the measure of its own leap; and a To Coda shared by two
+leaps to one coda (a D.S. and a D.C. both playing until `coda` and going on at `codab`): the
+first leap's destination is written, the second would have the same place on the same Jump,
+and one `after` names one leap, so it is left out naming its measure.
 
 ## Flows written from a loaded score
 

@@ -1111,7 +1111,7 @@ def _flow(loader: VerovioLoader) -> list[int]:
     """
     measure_map = loader._measure_map()
     registry = FlowControlRegistry(unit="quarters")
-    registry.add_all(loader._flow_control_elements(measure_map))
+    registry.add_all(loader._flow_control_elements(measure_map, "printed"))
     played = play(registry, measure_map.total_actual_length)
     return [
         mc

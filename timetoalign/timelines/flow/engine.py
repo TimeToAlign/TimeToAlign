@@ -28,6 +28,12 @@ naming it holds), it was taken fewer than ``repeat_count`` times, the
 destination its ``after`` names has been taken since it last served, and it
 is ``determined``. ``by: 0`` is going on and is never taken.
 
+**When a Break holds.** Without ``ends``, always. With it, when its
+``passes`` name the arrival, and exactly it (the passes a Break lists are
+those arrivals and no later one; ``{from: n}`` is every arrival from the
+n-th on), and the destination its ``after`` names has been taken since the
+Break was last restored.
+
 **Which one is taken.** A destination lying before the Jump that restores
 (a repeat), the nearest first; then one lying before it that does not (a
 leap); then one lying ahead, the nearest first. Two of one kind holding
@@ -51,6 +57,11 @@ or, for a named believer, those that actor does not reject. A ``to`` or an
 ``after`` naming an element that is not read names nothing, and two Jumps
 read at one coordinate cannot both be played: either is refused with a
 ``ValueError`` in the words the registry refuses such an element with.
+
+**The axis.** Every element read lies from 0 to the length, and so does the
+place of every destination: an element or a place outside is refused with a
+``ValueError`` naming the element, so that no run ever lies outside the
+axis.
 
 **Conventions.** ``default`` is the walk. ``single`` goes through once: no
 destination lying before its Jump is taken, no ``after`` holds, and each
@@ -161,13 +172,19 @@ def _top(conditions: Sequence[FlowCondition | None]) -> int:
     )
 
 
-def _passes_hold(condition: FlowCondition, arrival: int, top: int) -> bool:
+def _passes_hold(condition: FlowCondition, arrival: int, top: int | None) -> bool:
+    """Whether the ``passes`` of *condition* name the *arrival*.
+
+    *top* is the highest pass number the destinations of a Jump name in a
+    list: beyond it, the destination naming it holds. None for a Break,
+    whose listed passes are exactly those arrivals.
+    """
     passes = condition.passes
     if passes is None:
         return True
     if isinstance(passes, PassesFrom):
         return arrival >= passes.first
-    return arrival in passes or (arrival > top and top in passes)
+    return arrival in passes or (top is not None and arrival > top and top in passes)
 
 
 @dataclass
@@ -316,7 +333,7 @@ class _Walk:
         return [key for kind in kinds for key in kind]
 
     def _holds(
-        self, condition: FlowCondition, holder: Hashable, arrival: int, top: int
+        self, condition: FlowCondition, holder: Hashable, arrival: int, top: int | None
     ) -> bool:
         if not _passes_hold(condition, arrival, top):
             return False
@@ -361,7 +378,7 @@ class _Walk:
                 ending.append(brk)
             elif single and brk.ends.after is not None:
                 continue
-            elif self._holds(brk.ends, brk.id, arrival, _top([brk.ends])):
+            elif self._holds(brk.ends, brk.id, arrival, None):
                 ending.append(brk)
         return ending
 
@@ -406,6 +423,7 @@ def _walk(
         raise ValueError(f"a flow is played over a length, not over {end}")
     elements = registry.active_elements(believer=believer, beliefs=beliefs)
     registry._check(elements, elements)
+    registry._check_on_axis(elements, elements, end)
     return _Walk(registry, end, elements)
 
 
@@ -473,16 +491,20 @@ def play(
 
     Returns:
         The runs in the order played and the findings. Findings are a
-        result of ``default`` alone: ``single`` and ``printed`` return none.
+        result of ``default`` alone: ``single`` and ``printed`` return
+        none, also where going through once ends at a Break before the
+        length or leaves a stretch unplayed. What is wrong with flow
+        control shows in its ``default`` flow.
 
     Raises:
         ValueError: If the length is negative or not on the registry's
             axis, or the elements read cannot be played, in the words the
             registry refuses an element with: a ``to`` or an ``after``
             names an element that is not read (a rejected one names
-            nothing), or two of the Jumps read lie at one coordinate (a
+            nothing), two of the Jumps read lie at one coordinate (a
             rejected Jump and its replacement, read for a believer who
-            rejects neither).
+            rejects neither), or an element, or the place a destination
+            goes on at, lies before 0 or beyond the length.
 
     Examples:
         >>> from timetoalign.core import Coordinate

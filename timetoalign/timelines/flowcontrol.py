@@ -326,8 +326,11 @@ class FlowCondition(_OpenObject):
     Attributes:
         passes: The arrivals of the flow at the element that count: distinct
             positive integers (the n-th arrival is pass n), or
-            :class:`PassesFrom`. Beyond the highest number the element
-            names in a list, the list naming it holds.
+            :class:`PassesFrom`. On a Break the passes listed are exactly
+            those arrivals. Among the destinations of a Jump, the one
+            naming the highest number any of them lists also holds at
+            every later arrival (the last ending is played again after a
+            D.C.).
         after: A destination of another Jump: the condition holds once that
             destination has been taken, and is used up when it has served.
     """
@@ -932,6 +935,9 @@ class FlowControlElement(_IdentifiedElement):
             _provenance_entries(self.provenance, f"{self.role} {quote_id(self.id)}"),
         )
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.id!r} @ {self.coordinate})"
+
     @property
     def is_rejected(self) -> bool:
         """Whether the element is rejected: some actor believes it ``"false"``.
@@ -1027,9 +1033,6 @@ class FlowControlElement(_IdentifiedElement):
     def _renamed(self, renamed: Mapping[str, str]) -> Self:
         """Return the element naming the new ID of every element renamed."""
         return self
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.id!r} @ {self.coordinate})"
 
 
 @dataclass(frozen=True, repr=False)
@@ -1127,6 +1130,13 @@ class Jump(FlowControlElement):
                 )
         object.__setattr__(self, "targets", tuple(sorted(bound, key=_by_place)))
 
+    def __repr__(self) -> str:
+        count = len(self.targets)
+        return (
+            f"Jump({self.id!r} @ {self.coordinate}, "
+            f"{count} destination{'' if count == 1 else 's'})"
+        )
+
     @property
     def manifestations(self) -> tuple[FlowManifestation | str, ...]:
         """What the Jump looks like in the source: its destinations' manifestations."""
@@ -1148,13 +1158,6 @@ class Jump(FlowControlElement):
         if all(new is old for new, old in zip(targets, self.targets, strict=True)):
             return self
         return replace(self, targets=targets)
-
-    def __repr__(self) -> str:
-        count = len(self.targets)
-        return (
-            f"Jump({self.id!r} @ {self.coordinate}, "
-            f"{count} destination{'' if count == 1 else 's'})"
-        )
 
 
 @dataclass(frozen=True, repr=False)
@@ -1189,16 +1192,16 @@ class _ManifestedElement(FlowControlElement):
             ),
         )
 
-    def _own_fields(self) -> dict[str, Any]:
-        if self.manifestation is None:
-            return {}
-        return {"manifestation": _written(self.manifestation)}
-
     def __repr__(self) -> str:
         shown = (
             "" if self.manifestation is None else f", {_written(self.manifestation)}"
         )
         return f"{type(self).__name__}({self.id!r}{shown} @ {self.coordinate})"
+
+    def _own_fields(self) -> dict[str, Any]:
+        if self.manifestation is None:
+            return {}
+        return {"manifestation": _written(self.manifestation)}
 
 
 @dataclass(frozen=True, repr=False)
@@ -1390,43 +1393,71 @@ _ROLES: dict[str, type[FlowControlElement]] = {
 _Entry = tuple[str, bool, str, str]
 
 
-def _rejected(left_out: Mapping[str, str], name: str) -> str:
-    """Words saying that *name* is an element left out as rejected, if it is."""
-    return f": {left_out[name]} is rejected" if name in left_out else ""
+def _left_out(left_out: Mapping[str, str], name: str) -> str:
+    """Words saying that *name* is an element held but not read, if it is."""
+    return f": {left_out[name]}" if name in left_out else ""
 
 
-def _canonical(elements: Iterable[FlowControlElement]) -> list[FlowControlElement]:
+def _canonical(
+    elements: Iterable[FlowControlElement],
+) -> tuple[FlowControlElement, ...]:
     """Sort elements by coordinate, then by ID."""
-    return sorted(elements, key=lambda element: (element.coordinate.value, element.id))
+    return tuple(
+        sorted(elements, key=lambda element: (element.coordinate.value, element.id))
+    )
 
 
-@dataclass
+def _off_axis(value: Any, length: Coordinate | None) -> str | None:
+    """Words saying where *value* lies off an axis of *length*, if it does.
+
+    The axis runs from 0 to its length, both included; from 0 on where the
+    length is unknown (None).
+    """
+    if value < 0:
+        return "before 0"
+    if length is not None and value > length.value:
+        return f"beyond the length {length}"
+    return None
+
+
 class FlowControlRegistry:
     """The flow control of one timeline: its elements in canonical order.
 
-    One list holds every :class:`FlowControlElement`, ordered by coordinate
-    and then by ID; ``jumps``, ``jump_targets``, ``breaks``,
-    ``section_breaks`` and ``barlines`` are views of it by class. Every
-    element carries an ID unique within the registry and, once the registry
-    belongs to a timeline, within that timeline's whole manifest: an element
-    whose minted ID is taken is stored under a freshly minted ID, and one
-    whose given ID is taken is refused. A manifest writes the registry as
-    the timeline's ``flow_control`` array.
+    One collection holds every :class:`FlowControlElement`, ordered by
+    coordinate and then by ID; ``jumps``, ``jump_targets``, ``breaks``,
+    ``section_breaks`` and ``barlines`` are views of it by class. All of
+    them are tuples: the collection changes through :meth:`add`,
+    :meth:`add_all`, :meth:`with_belief` and :meth:`with_beliefs` alone,
+    and no element ever leaves it. Every element carries an ID unique
+    within the registry and, once the registry belongs to a timeline,
+    within that timeline's whole manifest: an element whose minted ID is
+    taken is stored under a freshly minted ID, and one whose given ID is
+    taken is refused. A manifest writes the registry as the timeline's
+    ``flow_control`` array.
 
     The registry refuses what cannot be played: a second Jump at a
     coordinate, a ``to`` naming neither a :class:`JumpTarget` of the
-    registry nor a place of its timeline, and an ``after`` that does not
-    name exactly one destination of another Jump of the registry.
+    registry nor a place of its timeline, an ``after`` that does not name
+    exactly one destination of another Jump of the registry, and an element
+    or a destination's place lying outside the axis, which runs from 0 to
+    the timeline's length (from 0 on while that length is unknown, and for
+    a registry that belongs to no timeline).
 
     An element that some actor believes ``"false"`` is rejected
     (:attr:`FlowControlElement.is_rejected`, :meth:`with_belief`): it stays
     in the registry and is written, but it is out of every rule, as what is
     checked and as what is named. A rejected Jump and its replacement may
-    therefore share a coordinate, and a ``to`` or ``after`` naming a
-    rejected element names nothing.
+    therefore share a coordinate. An element that another element not
+    rejected names (by ``to`` or ``after``) is not rejected alone: the
+    elements naming it are rejected in the same step
+    (:meth:`with_beliefs`).
+
+    Args:
+        elements: The elements the registry starts with, added together.
+        unit: The unit of the axis the registry is bound to, if any.
+        number_type: The number type of that axis, if any.
 
     Attributes:
-        elements: Every element, by coordinate and then by ID.
         unit: The unit of the axis the registry is bound to, if any.
         number_type: The number type of that axis, if any.
 
@@ -1447,19 +1478,6 @@ class FlowControlRegistry:
         >>> registry.place_of(registry.jumps[0].targets[0], registry.jumps[0])
         Coordinate(Fraction(16, 1), quarters)
     """
-
-    elements: list[FlowControlElement] = field(default_factory=list[FlowControlElement])
-    unit: TimeUnit | None = field(default=None, kw_only=True)
-    number_type: NumberType | None = field(default=None, kw_only=True)
-    # Set by the owning timeline: admits IDs into its whole manifest, and
-    # gives the places of the timeline a destination may name beside the
-    # registry's own jump targets.
-    _admit: Callable[..., list[str]] | None = field(
-        default=None, init=False, repr=False, compare=False
-    )
-    _places: Callable[[], Mapping[str, Coordinate]] | None = field(
-        default=None, init=False, repr=False, compare=False
-    )
 
     @classmethod
     def from_dict(
@@ -1512,44 +1530,78 @@ class FlowControlRegistry:
         )
         return registry
 
-    def __post_init__(self) -> None:
-        """Normalize binding enum spellings and any constructor content."""
-        if isinstance(self.unit, str):
-            self.unit = TimeUnit(self.unit)
-        if isinstance(self.number_type, str):
-            self.number_type = NumberType(self.number_type)
-        given, self.elements = list(self.elements), []
-        self.add_all(given)
+    def __init__(
+        self,
+        elements: Iterable[FlowControlElement] = (),
+        *,
+        unit: TimeUnit | str | None = None,
+        number_type: NumberType | str | None = None,
+    ) -> None:
+        self.unit: TimeUnit | None = None if unit is None else TimeUnit(unit)
+        self.number_type: NumberType | None = (
+            None if number_type is None else NumberType(number_type)
+        )
+        self._elements: tuple[FlowControlElement, ...] = ()
+        # Set by the owning timeline: admits IDs into its whole manifest,
+        # gives the places of the timeline a destination may name beside the
+        # registry's own jump targets, and the timeline's length.
+        self._admit: Callable[..., list[str]] | None = None
+        self._places: Callable[[], Mapping[str, Coordinate]] | None = None
+        self._length: Callable[[], Coordinate | None] | None = None
+        self.add_all(elements)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FlowControlRegistry):
+            return NotImplemented
+        return (self._elements, self.unit, self.number_type) == (
+            other._elements,
+            other.unit,
+            other.number_type,
+        )
+
+    def __repr__(self) -> str:
+        counts = ", ".join(
+            f"{len(self._of(element_class))} {element_class.role}s"
+            for element_class in _ROLES.values()
+        )
+        return f"FlowControlRegistry({counts})"
 
     # -- views --------------------------------------------------------------
 
-    def _of(self, element_class: type[Any]) -> list[Any]:
-        return [element for element in self.elements if type(element) is element_class]
+    @property
+    def elements(self) -> tuple[FlowControlElement, ...]:
+        """Every element, by coordinate and then by ID."""
+        return self._elements
 
     @property
-    def jumps(self) -> list[Jump]:
+    def jumps(self) -> tuple[Jump, ...]:
         """The Jumps, by coordinate and then by ID."""
         return self._of(Jump)
 
     @property
-    def jump_targets(self) -> list[JumpTarget]:
+    def jump_targets(self) -> tuple[JumpTarget, ...]:
         """The JumpTargets, by coordinate and then by ID."""
         return self._of(JumpTarget)
 
     @property
-    def breaks(self) -> list[Break]:
+    def breaks(self) -> tuple[Break, ...]:
         """The Breaks, by coordinate and then by ID."""
         return self._of(Break)
 
     @property
-    def section_breaks(self) -> list[SectionBreak]:
+    def section_breaks(self) -> tuple[SectionBreak, ...]:
         """The SectionBreaks, by coordinate and then by ID."""
         return self._of(SectionBreak)
 
     @property
-    def barlines(self) -> list[Barline]:
+    def barlines(self) -> tuple[Barline, ...]:
         """The Barlines, by coordinate and then by ID."""
         return self._of(Barline)
+
+    def _of(self, element_class: type[Any]) -> tuple[Any, ...]:
+        return tuple(
+            element for element in self._elements if type(element) is element_class
+        )
 
     # -- coordinates --------------------------------------------------------
 
@@ -1593,9 +1645,13 @@ class FlowControlRegistry:
     def _place_table(self) -> Mapping[str, Coordinate]:
         return {} if self._places is None else self._places()
 
+    def _known_length(self) -> Coordinate | None:
+        """The length of the registry's timeline, None when unknown or unowned."""
+        return None if self._length is None else self._length()
+
     # -- adding -------------------------------------------------------------
 
-    def add(self, element: FlowControlElement) -> Any:
+    def add(self, element: FlowControlElement) -> FlowControlElement:
         """Add one element.
 
         An element another one names (a :class:`JumpTarget` named by a
@@ -1636,9 +1692,11 @@ class FlowControlRegistry:
                 is not the registry's, or an element that is not rejected
                 cannot be played among those not rejected: a coordinate
                 holds a second Jump, a ``to`` names neither a JumpTarget of
-                the registry nor a place of its timeline, or an ``after``
-                does not name exactly one destination of another Jump of
-                the registry. Nothing has changed then.
+                the registry nor a place of its timeline, an ``after`` does
+                not name exactly one destination of another Jump of the
+                registry, or the element's coordinate or the place of one
+                of its destinations lies before 0 or beyond the known
+                length of the registry's timeline. Nothing has changed then.
         """
         staged = [self._on_axis(element) for element in elements]
         if not staged:
@@ -1666,17 +1724,13 @@ class FlowControlRegistry:
             )._renamed(renamed)
             for element, new_id in zip(staged, ids, strict=True)
         ]
-        self._check(
-            [element for element in stored if not element.is_rejected],
-            [
-                element
-                for element in (*self.elements, *stored)
-                if not element.is_rejected
-            ],
-            [*self.elements, *stored],
-        )
+        joined = [*self._elements, *stored]
+        standing = [element for element in stored if not element.is_rejected]
+        read = [element for element in joined if not element.is_rejected]
+        self._check(standing, read, joined)
+        self._check_on_axis(standing, read, self._known_length())
         self._admitted_ids(entries, check_only=False)
-        self.elements = _canonical([*self.elements, *stored])
+        self._elements = _canonical(joined)
         return stored
 
     def _admitted_ids(self, entries: list[_Entry], *, check_only: bool) -> list[str]:
@@ -1687,7 +1741,7 @@ class FlowControlRegistry:
         """
         if self._admit is not None:
             return self._admit(entries, check_only=check_only)
-        taken = {held.id: f"{held.role} {quote_id(held.id)}" for held in self.elements}
+        taken = {held.id: f"{held.role} {quote_id(held.id)}" for held in self._elements}
         plan = _plan_admissions(entries, taken)
         return [plan.get(index, entry[0]) for index, entry in enumerate(entries)]
 
@@ -1701,16 +1755,23 @@ class FlowControlRegistry:
 
         *read* holds the elements the rules see (*new* among them), *held*
         every element of the registry (its own when None): a name found
-        among *held* only is reported as naming an element left out.
+        among *held* only is reported as naming an element that is rejected,
+        or that the belief filter of the reading leaves out.
 
         Raises:
-            ValueError: As :meth:`add_all`.
+            ValueError: As :meth:`add_all`, but for the axis
+                (:meth:`_check_on_axis`).
         """
         jumps = {element.id: element for element in read if isinstance(element, Jump)}
         targets = {element.id for element in read if isinstance(element, JumpTarget)}
         left_out = {
-            element.id: f"{element.role} {quote_id(element.id)}"
-            for element in (self.elements if held is None else held)
+            element.id: f"{element.role} {quote_id(element.id)} "
+            + (
+                "is rejected"
+                if element.is_rejected
+                else "is left out by the belief filter"
+            )
+            for element in (self._elements if held is None else held)
         }
         for element in read:
             left_out.pop(element.id, None)
@@ -1737,7 +1798,7 @@ class FlowControlRegistry:
                             raise ValueError(
                                 f"{what} goes on at {quote_id(destination.to)}, which "
                                 "names no jump target of this registry and no place "
-                                f"of its timeline{_rejected(left_out, destination.to)}. "
+                                f"of its timeline{_left_out(left_out, destination.to)}. "
                                 f"Available jump targets: {sorted(targets)}. "
                                 f"Available places: {list(places)}"
                             )
@@ -1754,6 +1815,60 @@ class FlowControlRegistry:
                     self._destination_among(
                         jumps, element.ends.after, what, left_out=left_out
                     )
+
+    def _check_on_axis(
+        self,
+        new: Sequence[FlowControlElement],
+        read: Sequence[FlowControlElement],
+        length: Coordinate | None,
+    ) -> None:
+        """Refuse *new* elements that lie, or go on, outside an axis of *length*.
+
+        The coordinate of an element and the place of every destination of
+        a Jump lie from 0 to *length*, both included; from 0 on where the
+        length is unknown (None). Places are found among the elements
+        *read* (:meth:`place_of`), which :meth:`_check` has admitted.
+
+        Raises:
+            ValueError: Naming the element, and the place where it is one.
+        """
+        for element in new:
+            what = f"{element.role} {quote_id(element.id)}"
+            where = _off_axis(element.coordinate.value, length)
+            if where is not None:
+                raise ValueError(
+                    f"{what} lies at {element.coordinate}, {where}: a flow-control "
+                    "element lies from 0 to the length of its timeline"
+                )
+            if not isinstance(element, Jump):
+                continue
+            for destination in element.targets:
+                if destination.place is None:
+                    continue
+                place = self.place_of(destination, element, elements=read)
+                where = _off_axis(place.value, length)
+                if where is None:
+                    continue
+                named = (
+                    f"by {destination.by}, at {place}"
+                    if destination.to is None
+                    else f"at {quote_id(destination.to)}, which lies at {place}"
+                )
+                raise ValueError(
+                    f"{what} at {element.coordinate} goes on {named}, {where}: a "
+                    "place lies from 0 to the length of the timeline"
+                )
+
+    def _check_length(self, length: Coordinate) -> None:
+        """Refuse a length of the timeline that leaves flow control outside it.
+
+        Raises:
+            ValueError: If an element that is not rejected, or the place of
+                one of its destinations, lies beyond *length*.
+        """
+        read = [element for element in self._elements if not element.is_rejected]
+        if read:
+            self._check_on_axis(read, read, self._coordinate(length))
 
     @staticmethod
     def _destination_among(
@@ -1774,7 +1889,7 @@ class FlowControlRegistry:
         if jump is None:
             raise ValueError(
                 f"the `after` of {what} names {quote_id(reference.jump)}, which is "
-                f"no jump of this registry{_rejected(left_out or {}, reference.jump)}. "
+                f"no jump of this registry{_left_out(left_out or {}, reference.jump)}. "
                 f"Available jumps: {list(jumps)}"
             )
         if jump.id == holder:
@@ -1808,6 +1923,12 @@ class FlowControlRegistry:
 
         Where a rejected Jump and its replacement lie together, the one not
         rejected is returned; a rejected one where no other lies.
+
+        Args:
+            coordinate: A position on the registry's axis: a bare value, a
+                :class:`~timetoalign.core.Coordinate` or an
+                :class:`~timetoalign.core.IdCoordinate` in the registry's
+                unit, read in the axis's number type.
 
         Raises:
             ValueError: If a coordinate object's unit is not the registry's.
@@ -1921,16 +2042,22 @@ class FlowControlRegistry:
             >>> barline = registry.add(Barline(Coordinate(8, "quarters")))
             >>> _ = registry.with_belief(barline.id, "ana", "false", date="2026-11-25")
             >>> registry.elements, registry.active_elements()
-            ([Barline('barline_1' @ 8 quarters)], [])
+            ((Barline('barline_1' @ 8 quarters),), [])
             >>> registry.active_elements(believer="bea")
             [Barline('barline_1' @ 8 quarters)]
         """
         check_belief_filter(beliefs)
         return [
             element
-            for element in self.elements
+            for element in self._elements
             if element._passes_belief_filter(believer, beliefs, context)
         ]
+
+    def has_flow_control(self) -> bool:
+        """Whether the registry holds any element."""
+        return bool(self._elements)
+
+    # -- beliefs ------------------------------------------------------------
 
     def with_belief(
         self,
@@ -1941,7 +2068,7 @@ class FlowControlRegistry:
         date: str | datetime.date | None = None,
         note: str | None = None,
         context: Mapping[str, Any] | None = None,
-    ) -> Any:
+    ) -> FlowControlElement:
         """Record *actor*'s belief in the element *element_id*.
 
         The registry holds the element's copy whose provenance records the
@@ -1949,10 +2076,13 @@ class FlowControlRegistry:
         element's ID, coordinate and every other key stay. The belief
         ``"false"`` rejects the element, which is how flow control is
         repaired: the wrong element is rejected and another one added,
-        never changed or removed. What names a rejected element names
-        nothing from then on (:func:`~timetoalign.timelines.flow.engine.play`
-        refuses such flow control), so a repair rejects the elements naming
-        it too, or adds the replacement they name.
+        never changed or removed.
+
+        What names a rejected element would name nothing. An element that
+        another element not rejected names, by a ``to`` or an ``after``, is
+        therefore not rejected alone: :meth:`with_beliefs` rejects it
+        together with the elements naming it, and their replacements are
+        added afterwards.
 
         Args:
             element_id: The element's ID.
@@ -1969,10 +2099,7 @@ class FlowControlRegistry:
 
         Raises:
             KeyError: If the registry holds no element *element_id*.
-            ValueError: If the belief or the date is invalid, or the
-                element, no longer rejected by the belief, cannot be played
-                among the elements not rejected (:meth:`add_all`). Nothing
-                has changed then.
+            ValueError: As :meth:`with_beliefs`. Nothing has changed then.
 
         Examples:
             >>> from timetoalign.core import Coordinate
@@ -1988,30 +2115,131 @@ class FlowControlRegistry:
             >>> registry.jump_at(16).id
             'jump_2'
         """
-        held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
-        for index, element in enumerate(self.elements):
-            if element.id == element_id:
-                break
-        else:
-            raise KeyError(
-                f"{element_id!r} names no flow-control element. Available "
-                f"elements: {[element.id for element in self.elements]}"
-            )
-        believed = element.with_belief(held, context=context)
-        elements = [*self.elements]
-        elements[index] = believed
-        if not believed.is_rejected:
-            self._check(
-                [believed],
-                [other for other in elements if not other.is_rejected],
-                elements,
-            )
-        self.elements = elements
-        return believed
+        return self.with_beliefs(
+            [element_id], actor, belief, date=date, note=note, context=context
+        )[0]
 
-    def has_flow_control(self) -> bool:
-        """Whether the registry holds any element."""
-        return bool(self.elements)
+    def with_beliefs(
+        self,
+        element_ids: Iterable[str],
+        actor: str,
+        belief: BeliefValue,
+        *,
+        date: str | datetime.date | None = None,
+        note: str | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> list[FlowControlElement]:
+        """Record *actor*'s belief in several elements in one step, or in none.
+
+        As :meth:`with_belief` for each element, the result checked as a
+        whole: with the belief ``"false"``, an element and the elements
+        naming it are rejected together, which neither could be alone.
+
+        Args:
+            element_ids: The elements' IDs.
+            actor: Who holds the belief, an IRI.
+            belief: ``"true"``, ``"false"`` or ``"unlikely"``.
+            date: The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today
+                when None.
+            note: A remark.
+            context: The JSON-LD context under which actors compare as IRIs;
+                None declares no prefix.
+
+        Returns:
+            The elements as the registry holds them now, in the order given.
+
+        Raises:
+            KeyError: If the registry holds no element of one of the IDs.
+            ValueError: If the belief or the date is invalid; an element
+                rejected by the step is named, by a ``to`` or an ``after``,
+                by an element that is not rejected after it; or an element
+                no longer rejected by the step cannot be played among the
+                elements not rejected (:meth:`add_all`). Nothing has changed
+                then.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> registry = FlowControlRegistry(unit="quarters")
+            >>> segno, leap = registry.add_all([
+            ...     JumpTarget(Coordinate(4, "quarters"), id="segno"),
+            ...     Jump(Coordinate(16, "quarters"), [JumpDestination(to="segno")], id="ds"),
+            ... ])
+            >>> registry.with_belief("segno", "ana", "false")
+            Traceback (most recent call last):
+            ...
+            ValueError: jump_target 'segno' is not rejected alone: jump 'ds' names it. \
+Reject the elements naming it in the same step (with_beliefs), then add their replacements
+            >>> [e.is_rejected for e in registry.with_beliefs(["segno", "ds"], "ana", "false")]
+            [True, True]
+        """
+        if isinstance(element_ids, str):
+            raise TypeError(
+                f"with_beliefs takes the IDs of several elements, not the string "
+                f"{element_ids!r}: with_belief takes one"
+            )
+        wanted = list(element_ids)
+        held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
+        index_of = {element.id: index for index, element in enumerate(self._elements)}
+        for element_id in wanted:
+            if element_id not in index_of:
+                raise KeyError(
+                    f"{element_id!r} names no flow-control element. Available "
+                    f"elements: {list(index_of)}"
+                )
+        elements = list(self._elements)
+        for element_id in dict.fromkeys(wanted):
+            index = index_of[element_id]
+            elements[index] = elements[index].with_belief(held, context=context)
+        changed = [
+            elements[index_of[element_id]] for element_id in dict.fromkeys(wanted)
+        ]
+        read = [element for element in elements if not element.is_rejected]
+        self._refuse_named(
+            [
+                element
+                for element in changed
+                if element.is_rejected
+                and not self._elements[index_of[element.id]].is_rejected
+            ],
+            read,
+        )
+        standing = [element for element in changed if not element.is_rejected]
+        self._check(standing, read, elements)
+        self._check_on_axis(standing, read, self._known_length())
+        self._elements = tuple(elements)
+        return [elements[index_of[element_id]] for element_id in wanted]
+
+    @staticmethod
+    def _refuse_named(
+        rejected: Sequence[FlowControlElement], read: Sequence[FlowControlElement]
+    ) -> None:
+        """Refuse rejecting an element that one of the elements *read* names.
+
+        Raises:
+            ValueError: Naming the first such element of *rejected* and
+                every element naming it.
+        """
+        for element in rejected:
+            naming: list[str] = []
+            for other in read:
+                names: list[str | None] = []
+                if isinstance(other, Jump):
+                    for destination in other.targets:
+                        names.append(destination.to)
+                        if destination.after is not None:
+                            names.append(destination.after.jump)
+                elif isinstance(other, Break) and other.ends is not None:
+                    if other.ends.after is not None:
+                        names.append(other.ends.after.jump)
+                if element.id in names:
+                    naming.append(f"{other.role} {quote_id(other.id)}")
+            if naming:
+                verb = "names" if len(naming) == 1 else "name"
+                raise ValueError(
+                    f"{element.role} {quote_id(element.id)} is not rejected alone: "
+                    f"{', '.join(naming)} {verb} it. Reject the elements naming it "
+                    "in the same step (with_beliefs), then add their replacements"
+                )
 
     # -- maintenance --------------------------------------------------------
 
@@ -2020,43 +2248,39 @@ class FlowControlRegistry:
 
         Every destination and condition naming it follows.
         """
-        self.elements = [
+        self._elements = tuple(
             (
                 replace(element, id=new_id, _minted=True)
                 if element.id == old_id
                 else element
             )
-            for element in self.elements
-        ]
+            for element in self._elements
+        )
         self._rename_references({old_id: new_id})
 
     def _rename_references(self, renamed: Mapping[str, str | None]) -> None:
         """Name the new ID of every renamed element or place; keep the others."""
         names = {old: new for old, new in renamed.items() if new is not None}
         if names:
-            self.elements = _canonical(
-                element._renamed(names) for element in self.elements
+            self._elements = _canonical(
+                element._renamed(names) for element in self._elements
             )
 
     def _absorb(self, other: FlowControlRegistry) -> None:
         """Add every element of *other* together."""
         self.add_all(other.elements)
 
-    def clear(self) -> None:
-        """Remove every element."""
-        self.elements = []
-
     def copy(self) -> FlowControlRegistry:
         """Return an independent registry with the same binding and content.
 
         The copy belongs to no timeline until one adopts it.
         """
-        owner = (self._admit, self._places)
-        self._admit = self._places = None
+        owner = (self._admit, self._places, self._length)
+        self._admit = self._places = self._length = None
         try:
             return deepcopy(self)
         finally:
-            self._admit, self._places = owner
+            self._admit, self._places, self._length = owner
 
     def to_dict(self, *, minimal: bool = True) -> list[dict[str, Any]]:
         """Return the elements as the ``flow_control`` array.
@@ -2077,14 +2301,7 @@ class FlowControlRegistry:
                 ``to``, ``by``, ``passes``, ``repeat_count``, ``after``) is
                 written only when stated.
         """
-        return [element.to_dict(minimal=minimal) for element in self.elements]
-
-    def __repr__(self) -> str:
-        counts = ", ".join(
-            f"{len(self._of(element_class))} {element_class.role}s"
-            for element_class in _ROLES.values()
-        )
-        return f"FlowControlRegistry({counts})"
+        return [element.to_dict(minimal=minimal) for element in self._elements]
 
 
 # endregion

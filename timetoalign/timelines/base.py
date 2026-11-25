@@ -750,8 +750,9 @@ class Timeline(
     def reach(self) -> Coordinate:
         """The farthest coordinate on this axis that the content reaches.
 
-        Content means the children's ends, region ends, break and marker
-        coordinates, both ends of every jump, and the end of the measure map.
+        Content means the children's ends, region ends, the coordinate of
+        every flow-control element, the place of every destination of a Jump
+        that states a distance (``by``), and the end of the measure map.
         A child of unknown length contributes its offset plus its own reach.
         Events are not part of it. A timeline without such content reaches
         ``0``. The reach is independent of the length, known or not; displays
@@ -865,10 +866,12 @@ class Timeline(
 
     def _adopt_flow_control(self, registry: FlowControlRegistry) -> None:
         """Make *registry* this timeline's: its ids are admitted into the
-        manifest, and its destinations may name the timeline's places."""
+        manifest, its destinations may name the timeline's places, and its
+        elements and places lie within the timeline's length."""
         self._flow_control = registry
         registry._admit = self._admit_flow_control
         registry._places = self._flow_places
+        registry._length = self._flow_length
 
     def _admit_flow_control(
         self, entries: Sequence[tuple[str, bool, str, str]], *, check_only: bool
@@ -886,6 +889,10 @@ class Timeline(
             ],
             check_only=check_only,
         )
+
+    def _flow_length(self) -> Coordinate | None:
+        """The length this timeline's flow control lies within, None when unknown."""
+        return self._length
 
     def _flow_places(self) -> dict[str, Coordinate]:
         """The places a destination of this timeline's flow control may name
@@ -1705,10 +1712,10 @@ class Timeline(
 
         Raises:
             ValueError: If a conversion map has no TimeToShare form or
-                cannot be written losslessly, a jump cannot name the marker
-                it lands on, a measure map's given id is held by another
-                measure map or by a timeline, group or the manifest, two
-                timelines or regions use one prefix for two namespaces, or
+                cannot be written losslessly, a measure map's given id is
+                held by another measure map or by a timeline, group or the
+                manifest, two timelines or regions use one prefix for two
+                namespaces, or
                 the statements written break a rule of the format, in
                 TimeToShare's words (``#/timelines/0/statements/dcterms:source/0/id:
                 '#ghost' names no element of this manifest``).

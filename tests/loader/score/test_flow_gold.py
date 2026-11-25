@@ -77,7 +77,7 @@ def test_the_source_plays_the_gold_flows(specimen: str) -> None:
 def test_a_piece_without_flow_control_is_one_section_played_once(specimen: str) -> None:
     timeline, gold = _timeline(specimen), gold_flows(specimen)
     registry = timeline.flow_control
-    assert registry.jumps == registry.breaks == registry.jump_targets == []
+    assert registry.jumps == registry.breaks == registry.jump_targets == ()
     last = SPECIMENS[specimen].folded_measures + 1
     assert gold["atomic"] == gold["default"] == (MeasureRange(1, last, ("A",)),)
     assert "single" not in gold

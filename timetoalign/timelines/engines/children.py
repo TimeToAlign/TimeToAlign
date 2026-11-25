@@ -281,15 +281,22 @@ class ChildrenMixin:
         """Set this timeline's length, which its parent must contain.
 
         The parent checks the new end (:meth:`_check_child_length`) before
-        anything changes; it never grows because a child grew. Then the
-        length is set and the parent's ``Segment`` row follows it.
+        anything changes; it never grows because a child grew. A length that
+        becomes known, or shorter, must leave every flow-control element and
+        every place a Jump goes on at within it. Then the length is set and
+        the parent's ``Segment`` row follows it.
 
         Raises:
-            ValueError: If the parent cannot contain the new end.
+            ValueError: If the parent cannot contain the new end, or a
+                flow-control element or a destination's place would lie
+                beyond it.
         """
         parent = self._parent
         if parent is not None:
             parent._check_child_length(self._id, length)
+        before = self._length
+        if length is not None and (before is None or length.value < before.value):
+            self._flow_control._check_length(length)
         self._length = length
         if parent is not None:
             parent._refresh_segment_row(self._id)

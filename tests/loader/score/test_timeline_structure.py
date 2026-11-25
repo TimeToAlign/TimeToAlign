@@ -82,8 +82,8 @@ def test_da_capo_leaves_measure_ends_for_the_piece_start() -> None:
 
 def test_break_and_marker_facts_are_read_from_the_tsv_columns() -> None:
     timeline = _rondeau_timeline()
-    assert timeline.flow_control.breaks == []
-    assert timeline.flow_control.section_breaks == []
+    assert timeline.flow_control.breaks == ()
+    assert timeline.flow_control.section_breaks == ()
     # The markers 1e, 2e and 3e are places; the segno of MC 9 is where both
     # D.C. play until, and no place.
     assert [

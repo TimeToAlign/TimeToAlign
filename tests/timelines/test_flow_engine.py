@@ -12,7 +12,13 @@ from typing import Any
 
 import pytest
 
-from timetoalign.core import Coordinate, FlowConvention, FlowFindingKind, TimeUnit
+from timetoalign.core import (
+    Coordinate,
+    FlowConvention,
+    FlowFindingKind,
+    IdCoordinate,
+    TimeUnit,
+)
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines.flow.engine import FlowResult, atomic_sections, play
 from timetoalign.timelines.flowcontrol import (
@@ -25,6 +31,7 @@ from timetoalign.timelines.flowcontrol import (
     Jump,
     JumpDestination,
     JumpTarget,
+    PassesFrom,
     SectionBreak,
 )
 
@@ -396,38 +403,151 @@ def test_a_rejected_element_is_not_played() -> None:
         )
 
 
-def test_a_to_naming_a_rejected_target_dangles() -> None:
+BELIEVED = {
+    "method": "imported",
+    "beliefs": [{"actor": EDITOR, "belief": "true", "date": "2026-11-25"}],
+}
+
+
+def test_a_to_naming_a_target_the_reading_leaves_out_dangles() -> None:
     registry = _registry(
-        T(4, "start"), T(6, "other"), J(8, D(to="start", repeat_count=1))
+        T(4, "start"),
+        Jump(_at(8), [D(to="start", repeat_count=1)], id="J8", provenance=BELIEVED),
     )
     assert _runs(play(registry, 12)) == [(0, 8), (4, 12)]
-    registry.with_belief("start", EDITOR, "false", date="2026-11-25")
+    assert _runs(play(registry, 12, believer=EDITOR)) == [(0, 8), (4, 12)]
     for call in (play, atomic_sections):
         with pytest.raises(ValueError) as error:
-            call(registry, 12)
+            call(registry, 12, believer=EDITOR, beliefs=["true"])
         assert str(error.value) == (
             "jump 'J8' goes on at 'start', which names no jump target of this "
-            "registry and no place of its timeline: jump_target 'start' is "
-            "rejected. Available jump targets: ['other']. Available places: []"
+            "registry and no place of its timeline: jump_target 'start' is left "
+            "out by the belief filter. Available jump targets: []. Available "
+            "places: []"
         )
-    assert _runs(play(registry, 12, believer=REVIEWER)) == [(0, 8), (4, 12)]
 
 
-def test_an_after_naming_a_rejected_jump_dangles() -> None:
+def test_an_after_naming_a_jump_the_reading_leaves_out_dangles() -> None:
     registry = _registry(
-        B(4, FlowCondition(after=after("J8"))),
+        Break(
+            _at(4), ends=FlowCondition(after=after("J8")), id="B4", provenance=BELIEVED
+        ),
         J(8, D(repeat_count=1, reset=False)),
     )
     assert _runs(play(registry, 8)) == [(0, 8), (0, 4)]
-    registry.with_belief("J8", EDITOR, "false", date="2026-11-25")
-    with pytest.raises(ValueError) as error:
-        play(registry, 8)
-    assert str(error.value) == (
-        "the `after` of break 'B4' names 'J8', which is no jump of this registry: "
-        "jump 'J8' is rejected. Available jumps: []"
+    for call in (play, atomic_sections):
+        with pytest.raises(ValueError) as error:
+            call(registry, 8, believer=EDITOR, beliefs=["true"])
+        assert str(error.value) == (
+            "the `after` of break 'B4' names 'J8', which is no jump of this "
+            "registry: jump 'J8' is left out by the belief filter. Available "
+            "jumps: []"
+        )
+
+
+# endregion
+
+# region A Break's passes
+
+
+def _arriving_twice(ends: FlowCondition) -> FlowControlRegistry:
+    """A piece that plays up to the Break at 4 twice without restoring it."""
+    return _registry(
+        T(0, "start"),
+        B(4, ends),
+        SectionBreak(_at(6), id="S6"),
+        J(8, D(to="start", repeat_count=1, reset=False)),
     )
-    registry.with_belief("B4", EDITOR, "false", date="2026-11-25")
-    assert _runs(play(registry, 8)) == [(0, 8)]
+
+
+def test_the_passes_a_break_lists_are_exactly_those_arrivals() -> None:
+    registry = _arriving_twice(FlowCondition(passes=[1]))
+    default = play(registry, 12)
+    assert _runs(default) == [(0, 4), (6, 8), (0, 12)]
+    assert default.findings == ()
+    assert _runs(play(registry, 12, convention="single")) == [(0, 4), (6, 12)]
+
+
+def test_a_break_ending_from_a_pass_on_ends_every_later_arrival() -> None:
+    registry = _arriving_twice(FlowCondition(passes=PassesFrom(2)))
+    default = play(registry, 12)
+    assert _runs(default) == [(0, 8), (0, 4), (6, 12)]
+    assert default.findings == ()
+    assert _runs(play(registry, 12, convention="single")) == [(0, 12)]
+
+
+def test_among_destinations_the_highest_pass_listed_holds_later_too() -> None:
+    registry = _registry(
+        J(4, D(to="on", passes=[1])),
+        T(8, "on"),
+        J(12, D(repeat_count=1, reset=False)),
+    )
+    result = play(registry, 16)
+    assert _runs(result) == [(0, 4), (8, 12), (0, 4), (8, 16)]
+    assert _findings(result) == [(K.never_played, 4, 8)]
+
+
+# endregion
+
+# region The axis
+
+OFF_THE_AXIS = {
+    "a distance beyond the length": (
+        (J(4, D(by=20, repeat_count=1)),),
+        "jump 'J4' at 4 ticks goes on by 20 ticks, at 24 ticks, beyond the length "
+        "12 ticks: a place lies from 0 to the length of the timeline",
+    ),
+    "an element beyond the length": (
+        (B(20),),
+        "break 'B20' lies at 20 ticks, beyond the length 12 ticks: a flow-control "
+        "element lies from 0 to the length of its timeline",
+    ),
+    "a jump target beyond the length": (
+        (J(4, D(to="far")), T(20, "far")),
+        "jump 'J4' at 4 ticks goes on at 'far', which lies at 20 ticks, beyond the "
+        "length 12 ticks: a place lies from 0 to the length of the timeline",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", OFF_THE_AXIS)
+def test_what_lies_beyond_the_length_is_not_played(case: str) -> None:
+    elements, message = OFF_THE_AXIS[case]
+    registry = _registry(*elements)
+    for call in (play, atomic_sections):
+        with pytest.raises(ValueError) as error:
+            call(registry, 12)
+        assert str(error.value) == message
+    for convention in ("single", "printed"):
+        with pytest.raises(ValueError) as error:
+            play(registry, 12, convention=convention)
+        assert str(error.value) == message
+
+
+def test_the_end_of_the_axis_is_a_place() -> None:
+    registry = _registry(J(4, D(by=20, repeat_count=1)))
+    result = play(registry, 24)
+    assert _runs(result) == [(0, 4)]
+    assert _findings(result) == [(K.never_played, 4, 24)]
+
+
+def test_a_rejected_element_beyond_the_length_is_not_read() -> None:
+    registry = _registry(Break(_at(20), id="B20", provenance=REJECTED))
+    assert _runs(play(registry, 12)) == [(0, 12)]
+    with pytest.raises(ValueError, match="break 'B20' lies at 20 ticks, beyond"):
+        play(registry, 12, believer=REVIEWER)
+
+
+def test_the_length_is_a_bare_value_a_coordinate_or_an_id_coordinate() -> None:
+    registry = _registry(J(8, D(repeat_count=1)))
+    for length in (12, _at(12), IdCoordinate(12, "ticks", "score")):
+        assert _runs(play(registry, length)) == [(0, 8), (0, 12)]
+        assert [
+            (section.start.value, section.end.value)
+            for section in atomic_sections(registry, length)
+        ] == [(0, 8), (8, 12)]
+    with pytest.raises(ValueError, match="unit seconds does not match registry unit"):
+        play(registry, Coordinate(12.0, "seconds"))
 
 
 # endregion

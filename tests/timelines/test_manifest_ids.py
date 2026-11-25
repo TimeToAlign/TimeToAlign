@@ -769,7 +769,7 @@ class TestLivingScopes:
         )
         assert second.list_regions() == ["region_2"]
         assert second.n_conversion_maps == 0
-        assert second.flow_control.breaks == []
+        assert second.flow_control.breaks == ()
         assert container is not None
 
     def test_a_removed_member_leaves_the_scope(self) -> None:
@@ -1140,7 +1140,7 @@ class TestKeyedById:
             "registry and no place of its timeline. Available jump targets: []. "
             "Available places: ['score']"
         )
-        assert timeline.flow_control.elements == []
+        assert timeline.flow_control.elements == ()
 
     def test_dal_segno_names_the_segno_s_id(self) -> None:
         timeline = (

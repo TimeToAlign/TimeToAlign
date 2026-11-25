@@ -72,6 +72,44 @@ def _refused(build: Any) -> str:
 # region The classes
 
 
+def test_flow_control_is_exported_where_a_user_looks_for_it() -> None:
+    import timetoalign
+    from timetoalign import timelines
+    from timetoalign.timelines import flow, flowcontrol
+    from timetoalign.timelines.flow import engine
+
+    homes = {
+        flowcontrol: (
+            "FlowControlRegistry",
+            "FlowControlElement",
+            "Jump",
+            "JumpTarget",
+            "Break",
+            "SectionBreak",
+            "Barline",
+            "JumpDestination",
+            "FlowCondition",
+            "DestinationReference",
+            "PassesFrom",
+        ),
+        engine: (
+            "play",
+            "atomic_sections",
+            "FlowResult",
+            "FlowFinding",
+            "AtomicSection",
+        ),
+        flow.flowmap: ("PlayedFlow",),
+    }
+    for home, names in homes.items():
+        for name in names:
+            for package in (flow, timelines, timetoalign):
+                assert name in package.__all__, (package.__name__, name)
+                assert getattr(package, name) is getattr(home, name)
+    assert flow.FlowControlDraft is flow.measures.FlowControlDraft
+    assert "FlowControlDraft" in flow.__all__
+
+
 def test_each_class_names_its_role_and_mints_its_id_from_it() -> None:
     made = [
         Jump(_q(8), [D(repeat_count=1)]),
@@ -234,7 +272,7 @@ def _registry(
 
 def test_a_second_jump_at_a_coordinate_is_refused() -> None:
     registry = _registry(Jump(_t(8), D(repeat_count=1), id="repeat"))
-    before = list(registry.elements)
+    before = registry.elements
     assert _refused(
         lambda: registry.add(Jump(_t(8), D(repeat_count=1, reset=False), id="ds"))
     ) == (
@@ -291,7 +329,7 @@ def test_an_after_names_exactly_one_destination_of_another_jump(
             _t(4), [D(to="segno", repeat_count=1), D(by=-1, repeat_count=1)], id="two"
         ),
     )
-    before = list(registry.elements)
+    before = registry.elements
     assert _refused(lambda: registry.add(Jump(_t(8), D(after=reference), id="j"))) == (
         message
     )
@@ -348,7 +386,7 @@ def test_elements_naming_one_another_are_added_together() -> None:
         "the `after` of break 'fine' names 'dc', which is no jump of this "
         "registry. Available jumps: []"
     )
-    assert registry.elements == []
+    assert registry.elements == ()
     stored = registry.add_all([fine, to_coda, dc, coda])
     assert [e.id for e in stored] == ["fine", "to_coda", "dc", "coda"]
     assert [e.id for e in registry.elements] == ["fine", "to_coda", "coda", "dc"]
@@ -617,10 +655,66 @@ def test_a_copy_is_equal_and_independent() -> None:
     assert duplicate.elements is not timeline.flow_control.elements
     duplicate.add(JumpTarget(_q(8), id="segno2"))
     assert [e.id for e in timeline.flow_control.elements] == ["segno"]
+    assert [e.id for e in duplicate.elements] == ["segno", "segno2"]
     assert timeline.flow_control.has_flow_control()
-    duplicate.clear()
-    assert not duplicate.has_flow_control()
-    assert timeline.flow_control.has_flow_control()
+    assert not FlowControlRegistry(unit="quarters").has_flow_control()
+    # The copy belongs to no timeline: the length 16 does not bound it.
+    duplicate.add(Break(_q(20), id="late"))
+    assert _refused(lambda: timeline.flow_control.add(Break(_q(20), id="late"))) == (
+        "break 'late' lies at 20 quarters, beyond the length 16 quarters: a "
+        "flow-control element lies from 0 to the length of its timeline"
+    )
+
+
+def test_the_collection_is_read_only() -> None:
+    registry = _registry(
+        Jump(_t(8), D(repeat_count=1), id="j"),
+        JumpTarget(_t(4), id="t"),
+        Break(_t(8), id="b"),
+        SectionBreak(_t(12), id="s"),
+        Barline(_t(12), id="l"),
+    )
+    assert type(registry.elements) is tuple
+    assert [e.id for e in registry.elements] == ["t", "b", "j", "l", "s"]
+    views = {
+        "jumps": ["j"],
+        "jump_targets": ["t"],
+        "breaks": ["b"],
+        "section_breaks": ["s"],
+        "barlines": ["l"],
+    }
+    for view, ids in views.items():
+        held = getattr(registry, view)
+        assert type(held) is tuple
+        assert [e.id for e in held] == ids
+        with pytest.raises(AttributeError):
+            setattr(registry, view, ())
+    with pytest.raises(AttributeError):
+        registry.elements = ()  # type: ignore[misc]
+    assert not hasattr(registry, "clear")
+    assert not hasattr(registry.elements, "append")
+    assert [e.id for e in registry.elements] == ["t", "b", "j", "l", "s"]
+
+
+def test_jump_at_takes_a_bare_value_a_coordinate_and_an_id_coordinate() -> None:
+    registry = FlowControlRegistry(unit="quarters")
+    jump = registry.add(Jump(_q(F(9, 2)), D(repeat_count=1), id="j"))
+    for position in (
+        4.5,
+        F(9, 2),
+        _q(4.5),
+        _q(F(9, 2)),
+        IdCoordinate(F(9, 2), "quarters", "score"),
+    ):
+        assert registry.jump_at(position) is jump
+    assert registry.jump_at(4) is None
+    assert registry.jump_at(_q(4)) is None
+    assert _refused(lambda: registry.jump_at(Coordinate(4.5, "seconds"))) == (
+        "Flow-control coordinate unit seconds does not match registry unit quarters"
+    )
+    with pytest.raises(TypeError) as bare:
+        Jump(4, D(repeat_count=1))  # type: ignore[arg-type]
+    assert str(bare.value) == "a jump lies at a Coordinate, not at int 4"
 
 
 @pytest.mark.parametrize(
@@ -649,7 +743,7 @@ def test_a_copy_is_equal_and_independent() -> None:
 def test_every_timeline_has_fresh_axis_bound_storage(timeline: Any) -> None:
     assert timeline.flow_control.unit is timeline.unit
     assert timeline.flow_control.number_type is timeline.number_type
-    assert timeline.flow_control.elements == []
+    assert timeline.flow_control.elements == ()
     assert timeline.measure_map is None
     assert timeline.metric_hierarchy is None
 
@@ -660,6 +754,134 @@ def test_reach_counts_every_element_and_every_distance() -> None:
     assert timeline.reach == _q(F(6))
     timeline.flow_control.add(Jump(_q(8), D(by=4)))
     assert timeline.reach == _q(F(12))
+
+
+# endregion
+
+# region The axis
+
+OFF_THE_AXIS = [
+    (
+        lambda: Jump(_q(4), D(by=-8, repeat_count=1), id="back"),
+        "jump 'back' at 4 quarters goes on by -8 quarters, at -4 quarters, before "
+        "0: a place lies from 0 to the length of the timeline",
+    ),
+    (
+        lambda: Jump(_q(4), D(by=20, repeat_count=1), id="far"),
+        "jump 'far' at 4 quarters goes on by 20 quarters, at 24 quarters, beyond "
+        "the length 12 quarters: a place lies from 0 to the length of the timeline",
+    ),
+    (
+        lambda: Break(_q(20), id="late"),
+        "break 'late' lies at 20 quarters, beyond the length 12 quarters: a "
+        "flow-control element lies from 0 to the length of its timeline",
+    ),
+    (
+        lambda: JumpTarget(_q(-1), id="early"),
+        "jump_target 'early' lies at -1 quarters, before 0: a flow-control "
+        "element lies from 0 to the length of its timeline",
+    ),
+    (
+        lambda: Jump(_q(4), D(to="beyond"), id="out"),
+        "jump 'out' at 4 quarters goes on at 'beyond', which lies at 14 quarters, "
+        "beyond the length 12 quarters: a place lies from 0 to the length of the "
+        "timeline",
+    ),
+]
+
+
+@pytest.mark.parametrize(("build", "message"), OFF_THE_AXIS)
+def test_an_element_or_a_place_outside_the_length_is_refused(
+    build: Any, message: str
+) -> None:
+    timeline = ContinuousLogicalTimeline(length=12, uid="score")
+    timeline.create_region(14, 16, id="beyond")
+    before = timeline.flow_control.elements
+    assert _refused(lambda: timeline.flow_control.add(build())) == message
+    assert _refused(lambda: timeline.flow_control.add_all([build()])) == message
+    assert timeline.flow_control.elements == before == ()
+    assert timeline.reach == _q(F(16))
+
+
+def test_the_bounds_of_the_axis_are_places_of_it() -> None:
+    timeline = ContinuousLogicalTimeline(length=12, uid="score")
+    registry = timeline.flow_control
+    registry.add_all(
+        [
+            JumpTarget(_q(0), id="start"),
+            Jump(_q(4), D(by=8), id="to_the_end"),
+            Jump(_q(12), D(by=-12, repeat_count=1), id="from_the_end"),
+            Break(_q(12), id="end"),
+        ]
+    )
+    assert [registry.place_of(j.targets[0], j) for j in registry.jumps] == [
+        _q(F(12)),
+        _q(F(0)),
+    ]
+    # What a rejected element states is not read, so it is not bounded either.
+    late = Break(
+        _q(20),
+        id="late",
+        provenance={
+            "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-25"}]
+        },
+    )
+    assert registry.add(late).is_rejected
+    assert _refused(
+        lambda: registry.with_belief("late", EDITOR, "true", date="2026-11-26")
+    ) == (
+        "break 'late' lies at 20 quarters, beyond the length 12 quarters: a "
+        "flow-control element lies from 0 to the length of its timeline"
+    )
+    assert registry.elements[-1].is_rejected
+
+
+def test_a_length_that_becomes_known_must_hold_the_flow_control() -> None:
+    timeline = ContinuousLogicalTimeline(length=None, uid="score")
+    registry = timeline.flow_control
+    registry.add(Break(_q(20), id="late"))
+    registry.add(Jump(_q(4), D(by=20, repeat_count=1), id="far"))
+    assert timeline.reach == _q(F(24))
+    assert _refused(
+        lambda: registry.add(Jump(_q(6), D(by=-8, repeat_count=1), id="back"))
+    ) == (
+        "jump 'back' at 6 quarters goes on by -8 quarters, at -2 quarters, before "
+        "0: a place lies from 0 to the length of the timeline"
+    )
+
+    def set_length(value: int) -> None:
+        timeline.length = value
+
+    assert _refused(lambda: set_length(12)) == (
+        "jump 'far' at 4 quarters goes on by 20 quarters, at 24 quarters, beyond "
+        "the length 12 quarters: a place lies from 0 to the length of the timeline"
+    )
+    assert timeline.length is None
+    set_length(24)
+    assert timeline.length == _q(F(24))
+    assert _refused(lambda: set_length(22)) == (
+        "jump 'far' at 4 quarters goes on by 20 quarters, at 24 quarters, beyond "
+        "the length 22 quarters: a place lies from 0 to the length of the timeline"
+    )
+    assert timeline.length == _q(F(24))
+    set_length(30)
+    assert timeline.length == _q(F(30))
+    assert [e.id for e in registry.elements] == ["far", "late"]
+
+
+def test_a_registry_of_no_timeline_is_bounded_at_0_only() -> None:
+    registry = FlowControlRegistry(unit="ticks")
+    assert registry.add(Break(_t(20), id="late")).coordinate == _t(20)
+    assert registry.add(Jump(_t(4), D(by=20), id="far")).id == "far"
+    assert _refused(lambda: registry.add(Jump(_t(6), D(by=-8), id="back"))) == (
+        "jump 'back' at 6 ticks goes on by -8 ticks, at -2 ticks, before 0: a place "
+        "lies from 0 to the length of the timeline"
+    )
+    assert _refused(lambda: registry.add(Barline(_t(-4), id="early"))) == (
+        "barline 'early' lies at -4 ticks, before 0: a flow-control element lies "
+        "from 0 to the length of its timeline"
+    )
+    assert [e.id for e in registry.elements] == ["far", "late"]
 
 
 # endregion
@@ -775,7 +997,7 @@ def test_a_rejected_element_is_out_of_every_rule() -> None:
             provenance=_believed((EDITOR, "false")),
         ),
     )
-    before = list(registry.elements)
+    before = registry.elements
     assert _refused(lambda: registry.add(Jump(_t(12), D(to="gone"), id="j"))) == (
         "jump 'j' goes on at 'gone', which names no jump target of this registry "
         "and no place of its timeline: jump_target 'gone' is rejected. Available "
@@ -894,7 +1116,7 @@ def test_a_belief_joins_the_entry_holding_the_actor_s_earlier_one() -> None:
 
 def test_recording_a_belief_refuses_what_it_cannot_record() -> None:
     registry = _registry(Barline(_t(4), id="b"))
-    before = list(registry.elements)
+    before = registry.elements
     with pytest.raises(KeyError) as unknown:
         registry.with_belief("x", EDITOR, "false")
     assert unknown.value.args[0] == (
@@ -910,26 +1132,121 @@ def test_recording_a_belief_refuses_what_it_cannot_record() -> None:
     assert registry.elements[0].provenance is None
 
 
-def test_a_repair_rejects_first_and_a_rejection_taken_back_is_checked() -> None:
-    registry = _registry(
+def _repeat_with_a_fine() -> FlowControlRegistry:
+    return _registry(
         JumpTarget(_t(4), id="start"),
+        Break(_t(6), id="fine", ends=FlowCondition(after=after("printed"))),
         Jump(_t(8), D(to="start", repeat_count=1), id="printed"),
     )
-    # Rejecting what a Jump names is accepted: the repair is not finished.
-    assert registry.with_belief("start", EDITOR, "false", date="2026-11-25").is_rejected
-    assert registry.with_belief("printed", EDITOR, "false", date="2026-11-25").id == (
-        "printed"
+
+
+NOT_ALONE = (
+    " it. Reject the elements naming it in the same step (with_beliefs), then add "
+    "their replacements"
+)
+
+
+def test_an_element_another_one_names_is_not_rejected_alone() -> None:
+    registry = _repeat_with_a_fine()
+    before = registry.elements
+
+    def reject(*ids: str) -> list[FlowControlElement]:
+        return registry.with_beliefs(ids, EDITOR, "false", date="2026-11-25")
+
+    assert _refused(
+        lambda: registry.with_belief("start", EDITOR, "false", date="2026-11-25")
+    ) == ("jump_target 'start' is not rejected alone: jump 'printed' names" + NOT_ALONE)
+    assert _refused(lambda: reject("printed")) == (
+        "jump 'printed' is not rejected alone: break 'fine' names" + NOT_ALONE
     )
-    registry.add(Jump(_t(8), D(repeat_count=1), id="repair"))
-    before = list(registry.elements)
+    assert _refused(lambda: reject("start", "printed")) == (
+        "jump 'printed' is not rejected alone: break 'fine' names" + NOT_ALONE
+    )
+    assert registry.elements == before
+    assert [e.id for e in registry.active_elements()] == ["start", "fine", "printed"]
+
+    rejected_now = reject("printed", "start", "fine")
+
+    assert [e.id for e in rejected_now] == ["printed", "start", "fine"]
+    assert all(e.is_rejected for e in rejected_now)
+    assert [e.id for e in registry.elements] == ["start", "fine", "printed"]
+    assert all(held is e for held, e in zip(registry.jumps, rejected_now[:1]))
+    assert registry.active_elements() == []
+    assert registry.to_dict()[0]["provenance"] == [
+        {"beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-25"}]}
+    ]
+
+
+def test_every_element_naming_the_rejected_one_is_named() -> None:
+    registry = _registry(
+        JumpTarget(_t(4), id="start"),
+        Jump(_t(8), D(to="start", repeat_count=1), id="a"),
+        Jump(_t(12), D(to="start", repeat_count=1), id="b"),
+    )
+    assert _refused(lambda: registry.with_belief("start", EDITOR, "false")) == (
+        "jump_target 'start' is not rejected alone: jump 'a', jump 'b' name" + NOT_ALONE
+    )
+    # What only a rejected element names is rejected alone.
+    registry.with_beliefs(["a", "b"], EDITOR, "false", date="2026-11-25")
+    assert registry.with_belief("start", EDITOR, "false").is_rejected
+
+
+def test_a_belief_recorded_in_several_elements_that_rejects_nothing() -> None:
+    registry = _repeat_with_a_fine()
+    doubted = registry.with_beliefs(
+        ["printed", "start"], REVIEWER, "unlikely", date="2026-11-25"
+    )
+    assert [(e.id, e.is_rejected) for e in doubted] == [
+        ("printed", False),
+        ("start", False),
+    ]
+    assert [e.provenance is None for e in registry.elements] == [False, True, False]
+    assert [e.id for e in registry.active_elements()] == ["start", "fine", "printed"]
+
+
+def test_a_repair_rejects_in_one_step_and_a_rejection_taken_back_is_checked() -> None:
+    registry = _repeat_with_a_fine()
+    registry.with_beliefs(["printed", "fine"], EDITOR, "false", date="2026-11-25")
+    registry.add_all(
+        [
+            Jump(_t(8), D(repeat_count=1), id="repair"),
+            Break(_t(6), id="fine2", ends=FlowCondition(after=after("repair"))),
+        ]
+    )
+    before = registry.elements
+    assert [e.id for e in registry.active_elements()] == ["start", "fine2", "repair"]
     assert _refused(
         lambda: registry.with_belief("printed", EDITOR, "true", date="2026-11-26")
     ) == (
         "jump 'printed' lies at 8 ticks, where jump 'repair' lies already: one jump "
         "lies at a coordinate, and several signs there are its destinations"
     )
+    assert _refused(
+        lambda: registry.with_belief("fine", EDITOR, "true", date="2026-11-26")
+    ) == (
+        "the `after` of break 'fine' names 'printed', which is no jump of this "
+        "registry: jump 'printed' is rejected. Available jumps: ['repair']"
+    )
     assert registry.elements == before
-    assert [e.id for e in registry.active_elements()] == ["repair"]
+
+
+def test_several_beliefs_are_recorded_together_or_not_at_all() -> None:
+    registry = _repeat_with_a_fine()
+    before = registry.elements
+    with pytest.raises(KeyError) as unknown:
+        registry.with_beliefs(["fine", "x"], EDITOR, "false")
+    assert unknown.value.args[0] == (
+        "'x' names no flow-control element. Available elements: "
+        "['start', 'fine', 'printed']"
+    )
+    with pytest.raises(TypeError) as one:
+        registry.with_beliefs("fine", EDITOR, "false")  # type: ignore[arg-type]
+    assert str(one.value) == (
+        "with_beliefs takes the IDs of several elements, not the string 'fine': "
+        "with_belief takes one"
+    )
+    assert registry.elements == before
+    assert registry.with_beliefs([], EDITOR, "false") == []
 
 
 # endregion

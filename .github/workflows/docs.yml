@@ -1,0 +1,124 @@
+# Builds the documentation site and publishes it as one folder per version on
+# the gh-pages branch (see docs/publish_site.py):
+#   push to main          -> dev/
+#   push of a tag vX.Y.Z  -> X.Y.Z/, and stable/ when it is the newest release
+#   manual run            -> the given ref (a tag vX.Y.Z publishes X.Y.Z/, any
+#                            other ref publishes dev/)
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag (vX.Y.Z) or branch to build; empty builds the selected branch"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+name: docs
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the sources to build
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+          path: src
+
+      - name: Check out the publishing script
+        uses: actions/checkout@v4
+        with:
+          path: tools
+          sparse-checkout: |
+            docs/publish_site.py
+            docs/versions.js
+          sparse-checkout-cone-mode: false
+
+      - name: Determine the version folder
+        id: target
+        working-directory: src
+        env:
+          REF: ${{ inputs.ref || github.ref }}
+        run: |
+          name="${REF#refs/tags/}"
+          name="${name#refs/heads/}"
+          if [[ "$name" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "message=docs: publish ${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+            echo "message=docs: publish dev at $(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The site renders the committed notebooks and API reference pages without
+      # executing anything, so it needs Jupyter (to read the notebooks) and
+      # jupytext (the notebook sync of the pre-render step), not the library.
+      - name: Install the site build tools
+        run: python -m pip install jupyter jupytext
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: "1.9.37"
+
+      # The pre-render step of the site re-executes every notebook whose source
+      # changed since its compiled .ipynb was committed. The site publishes the
+      # committed notebooks, so a stale one stops the build here instead.
+      - name: Check that the compiled notebooks match their sources
+        working-directory: src/docs/page
+        run: |
+          python sync_notebooks.py --dry-run 2>&1 | tee "$RUNNER_TEMP/sync.log"
+          if ! grep -q "Synced 0 notebook(s)." "$RUNNER_TEMP/sync.log"; then
+            echo "::error::Notebook sources changed since their compiled .ipynb was committed; run sync_notebooks.py and commit the result."
+            exit 1
+          fi
+
+      # The one step that runs the site generator; it leaves the built site in
+      # src/docs/page/_site for the publishing step below.
+      - name: Build the site
+        working-directory: src/docs/page
+        run: quarto render
+
+      - name: Check out gh-pages
+        working-directory: src
+        run: |
+          if git fetch origin gh-pages; then
+            git worktree add -B gh-pages ../pages FETCH_HEAD
+          else
+            git worktree add --orphan -b gh-pages ../pages
+          fi
+
+      - name: Publish the version folder
+        run: |
+          python tools/docs/publish_site.py src/docs/page/_site \
+            --version "${{ steps.target.outputs.version }}" --pages pages
+
+      - name: Commit and push gh-pages
+        working-directory: pages
+        env:
+          MESSAGE: ${{ steps.target.outputs.message }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898799+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+            exit 0
+          fi
+          git commit -m "$MESSAGE"
+          git push origin gh-pages

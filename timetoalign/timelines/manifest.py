@@ -64,7 +64,7 @@ from dataclasses import asdict, dataclass, field, replace
 from fractions import Fraction
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Self
+from typing import TYPE_CHECKING, Any, BinaryIO, ClassVar, Self
 from urllib.parse import unquote, urlsplit
 
 import pyarrow as pa
@@ -936,7 +936,7 @@ def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
 
 
 def read_projection_table(
-    path: str | PathLike[str], manifest: Mapping[str, Any]
+    path: str | PathLike[str] | pa.NativeFile | BinaryIO, manifest: Mapping[str, Any]
 ) -> dict[str, list[Projection]]:
     """Read a Projections table: the Projections of each timeline, in row order.
 
@@ -950,7 +950,8 @@ def read_projection_table(
     table, and a number not standing as that type says is refused.
 
     Args:
-        path: The file.
+        path: The file: its path, or a binary file object or Arrow file
+            Parquet reads it from.
         manifest: The manifest naming it, as the file holds it.
 
     Returns:

@@ -432,7 +432,7 @@ class DataField(ABC):
                 f"(empty DataField); this instance has live data"
             )
         out_name = name if name is not None else self.name
-        casted = pc.cast(source, self.pa_type)
+        casted = _cast_column(source, self.pa_type)
         return type(self)(casted, pa.field(out_name, self.pa_type))
 
     # -- abstract factory ----------------------------------------------------
@@ -669,6 +669,157 @@ def _member_fields(struct_type: pa.StructType) -> list[pa.Field[pa.DataType]]:
     return list(struct_type)
 
 
+# ---------------------------------------------------------------------------
+# PyArrow calls whose type stubs declare the wrong type
+#
+# The functions in this section exist only because the PyArrow type stubs
+# (pyarrow-stubs 20.0) declare the wrapped calls with types that differ from
+# what PyArrow (25.0) returns at runtime, or reject arguments PyArrow accepts.
+# Each one does nothing but make the PyArrow call and state the type PyArrow
+# really returns; it holds no logic of its own. tests/core/
+# test_arrow_stub_helpers.py checks every stated type against PyArrow.
+#
+# Each is to be deleted, and its callers switched back to the direct PyArrow
+# call, as soon as pyarrow-stubs types that call correctly. To check: inline
+# the call at the call sites, delete the helper, and run pyright; when no
+# finding appears at those sites, the helper is no longer needed.
+#
+# Nothing else belongs in this section.
+# ---------------------------------------------------------------------------
+
+
+def _struct_array_of(
+    rows: Sequence[Mapping[str, Any] | None], struct_type: pa.StructType
+) -> pa.StructArray:
+    """``pa.array(rows, type=struct_type)``.
+
+    pyarrow-stubs 20.0 declares ``pa.array`` with a ``StructType`` for
+    ``type=`` as returning ``Array[Scalar[StructType]]``; PyArrow returns a
+    ``pa.StructArray``. Remove once pyarrow-stubs declares ``pa.array`` with a
+    struct type as returning ``StructArray``; call ``pa.array`` directly then.
+    """
+    return cast(pa.StructArray, pa.array(rows, type=struct_type))
+
+
+def _valid_struct_cell(scalar: pa.StructScalar) -> dict[str, Any]:
+    """``scalar.as_py()`` for a valid (non-null) struct cell.
+
+    pyarrow-stubs 20.0 declares ``as_py()`` on a struct scalar as returning
+    ``list[dict[str, Any]]``; PyArrow returns a ``dict`` (and ``None`` for a
+    null cell, which callers do not pass). Remove once pyarrow-stubs declares
+    ``StructScalar.as_py`` as returning ``dict[str, Any] | None``; call
+    ``scalar.as_py()`` directly then.
+    """
+    return cast("dict[str, Any]", scalar.as_py())
+
+
+def _filled_mask(
+    mask: pa.BooleanArray, fill_value: pa.BooleanScalar
+) -> pa.BooleanArray:
+    """``pc.fill_null(mask, fill_value)``.
+
+    pyarrow-stubs 20.0 declares ``pc.fill_null`` as ``coalesce``, whose one
+    type variable joins the array and the scalar into
+    ``BooleanArray | BooleanScalar``; PyArrow returns a ``pa.BooleanArray``
+    for a boolean array. Remove once pyarrow-stubs declares ``pc.fill_null``
+    as returning the type of its first argument; call ``pc.fill_null``
+    directly then.
+    """
+    return cast(pa.BooleanArray, pc.fill_null(mask, fill_value))
+
+
+def _joined_strings(
+    left: pa.Array[Any], right: pa.Array[Any], separator: str
+) -> pa.StringArray:
+    """``pc.binary_join_element_wise(left, right, separator)``.
+
+    pyarrow-stubs 20.0 binds every argument of
+    ``pc.binary_join_element_wise``, the separator included, to one type
+    variable, so a ``str`` separator between two arrays matches no overload;
+    PyArrow accepts it and returns a ``pa.StringArray`` for string arrays.
+    Remove once pyarrow-stubs accepts a scalar separator between arrays; call
+    ``pc.binary_join_element_wise`` directly then.
+    """
+    return cast(
+        "Callable[[pa.Array[Any], pa.Array[Any], str], pa.StringArray]",
+        pc.binary_join_element_wise,
+    )(left, right, separator)
+
+
+def _struct_if_else(
+    cond: pa.Array[Any], left: pa.StructArray, right: pa.StructArray
+) -> pa.StructArray:
+    """``pc.if_else(cond, left, right)`` over two struct arrays.
+
+    pyarrow-stubs 20.0 declares ``pc.if_else`` as returning
+    ``ArrayLike | ScalarLike``; PyArrow returns an array of its operands'
+    kind, a ``pa.StructArray`` for struct arrays. Remove once pyarrow-stubs
+    declares ``pc.if_else`` as returning its operands' array type; call
+    ``pc.if_else`` directly then.
+    """
+    return cast(pa.StructArray, pc.if_else(cond, left, right))
+
+
+def _dictionary_chunked_array(
+    chunks: Sequence[pa.DictionaryArray[Any, Any]],
+    dictionary_type: pa.DictionaryType[Any, Any],
+) -> pa.ChunkedArray[Any]:
+    """``pa.chunked_array(chunks, type=dictionary_type)``.
+
+    pyarrow-stubs 20.0 has no ``pa.chunked_array`` overload taking a
+    ``DictionaryType`` for ``type=``, so the call matches none; PyArrow
+    accepts it and returns a ``pa.ChunkedArray`` of that type (also for zero
+    chunks). Remove once pyarrow-stubs declares ``pa.chunked_array`` with a
+    dictionary type; call ``pa.chunked_array`` directly then.
+    """
+    return cast(
+        "Callable[..., pa.ChunkedArray[Any]]",
+        pa.chunked_array,
+    )(chunks, type=dictionary_type)
+
+
+def _cast_column(
+    array: pa.Array[Any] | pa.ChunkedArray[Any], target_type: pa.DataType
+) -> pa.Array[Any] | pa.ChunkedArray[Any]:
+    """``pc.cast(array, target_type)``.
+
+    pyarrow-stubs 20.0 declares the ``pc.cast`` overloads with bare
+    ``Scalar`` / ``Array`` / ``ChunkedArray`` parameters, so the function's
+    type is partially unknown; PyArrow returns an array for an array and a
+    chunked array for a chunked array. Remove once pyarrow-stubs parametrises
+    those overloads; call ``pc.cast`` directly then.
+    """
+    return cast("pa.Array[Any] | pa.ChunkedArray[Any]", pc.cast(array, target_type))
+
+
+def _struct_child(array: pa.StructArray, name: str) -> pa.Array[Any]:
+    """``array.field(name)``.
+
+    The child array as stored, which ignores the struct's own validity.
+    pyarrow-stubs 20.0 declares ``StructArray.field`` as returning a bare
+    ``Array``, a partially unknown type; PyArrow returns the child's typed
+    array. Remove once pyarrow-stubs parametrises the return type of
+    ``StructArray.field``; call ``array.field(name)`` directly then.
+    """
+    return cast("pa.Array[Any]", array.field(name))
+
+
+def _struct_array_from(
+    arrays: Sequence[pa.Array[Any]],
+    fields: list[pa.Field[pa.DataType]],
+    mask: pa.Array[Any] | None = None,
+) -> pa.StructArray:
+    """``pa.StructArray.from_arrays(arrays, fields=fields, mask=mask)``.
+
+    pyarrow-stubs 20.0 declares ``StructArray.from_arrays`` with a bare
+    ``Iterable[Array]``, ``list[Field]`` and an unannotated ``mask``, so the
+    method's type is partially unknown; PyArrow returns a ``pa.StructArray``.
+    Remove once pyarrow-stubs parametrises those parameters; call
+    ``pa.StructArray.from_arrays`` directly then.
+    """
+    return pa.StructArray.from_arrays(arrays, fields=fields, mask=mask)
+
+
 class StructField(DataField):
     """A DataField backed by a struct array.
 
@@ -740,7 +891,7 @@ class StructField(DataField):
 
         sub_data: pa.Array[Any] | None = None
         if self._data is not None:
-            sub_data = _struct_array(self._data).field(name)
+            sub_data = _struct_child(_struct_array(self._data), name)
 
         if pa.types.is_integer(sub_pa_field.type) or pa.types.is_floating(
             sub_pa_field.type
@@ -1374,7 +1525,7 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
                 raise TypeError(
                     f"{cls.__name__}.from_array: unsupported sub-field type {sub_type!r}"
                 )
-            struct_arr = pa.StructArray.from_arrays([casted], fields=list(schema))
+            struct_arr = _struct_array_from([casted], fields=list(schema))
             pa_field = pa.field(out_name, schema)
             return cls.from_field((struct_arr, pa_field))
 
@@ -2008,7 +2159,7 @@ class StructArrayBuilder:
             null_mask.append(False)
 
         sub_arrays = self._emit_sub_arrays(objects)
-        return pa.StructArray.from_arrays(
+        return _struct_array_from(
             sub_arrays,
             fields=self._pa_fields,
             mask=pa.array(null_mask) if any(null_mask) else None,

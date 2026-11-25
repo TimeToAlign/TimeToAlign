@@ -38,7 +38,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 from timetoshare.statements import MATCHES, METHODS, expand_iri
 
-from .fields import SemanticField, data_shaped
+from .fields import SemanticField, _struct_array_of, data_shaped
 
 BeliefValue = Literal["true", "false", "unlikely"]
 """What an actor believes of an item."""
@@ -390,7 +390,7 @@ def provenance_array(values: Sequence[Provenance | None]) -> pa.StructArray:
         A struct array of ``ProvenanceField.pa_schema``.
     """
     rows = [None if value is None else _row(value) for value in values]
-    return pa.array(rows, type=ProvenanceField.pa_schema)
+    return _struct_array_of(rows, ProvenanceField.struct_schema())
 
 
 def _row(value: Provenance) -> dict[str, Any]:

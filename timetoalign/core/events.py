@@ -61,6 +61,9 @@ from .enums import NumberType, TimeUnit
 from .fields import (
     ScalarVocabulary,
     SemanticField,
+    _dictionary_chunked_array,
+    _joined_strings,
+    _struct_if_else,
     blob_metadata,
     build_struct_array,
     data_shaped,
@@ -362,7 +365,7 @@ def _respelled_dictionary(
                 ordered=dictionary_type.ordered,
             )
         )
-    respelled = pa.chunked_array(chunks, type=dictionary_type)
+    respelled = _dictionary_chunked_array(chunks, dictionary_type)
     return pd.Series(
         pd.arrays.ArrowExtensionArray(respelled), index=names.index, name=names.name
     )
@@ -1076,17 +1079,19 @@ class ShapeField(SharedAxisField[ShapeT]):
         """Per row the shape's largest x, a number struct (null on a null row)."""
         return self._extreme(self._x_columns()[1], "greater_equal")
 
-    def _x_columns(self) -> tuple[list[pa.Array], list[pa.Array]]:
+    def _x_columns(self) -> tuple[list[pa.StructArray], list[pa.StructArray]]:
         """The columns whose least is ``x_min`` and those whose greatest is
         ``x_max``."""
         raise NotImplementedError(type(self).__name__)
 
-    def _extreme(self, columns: list[pa.Array], comparison: str) -> pa.StructArray:
+    def _extreme(
+        self, columns: list[pa.StructArray], comparison: str
+    ) -> pa.StructArray:
         """Per row the cell of *columns* that *comparison* keeps, compared exactly."""
         result = columns[0]
         for column in columns[1:]:
             keep = compare_number_column(result, column, comparison, self.number_type)
-            result = pc.if_else(keep, result, column)
+            result = _struct_if_else(keep, result, column)
         return result
 
 
@@ -1290,7 +1295,7 @@ class BoundingBox(Shape):
 class BoundingBoxField(ShapeField[BoundingBox]):
     """Paired Field for :class:`BoundingBox`: ``{x, y, width, height}``."""
 
-    def _x_columns(self) -> tuple[list[pa.Array], list[pa.Array]]:
+    def _x_columns(self) -> tuple[list[pa.StructArray], list[pa.StructArray]]:
         array = self.to_pyarrow()
         left = pc.struct_field(array, "x")
         right = combine_number_columns(
@@ -1584,7 +1589,7 @@ def _point_numbers(indices: Sequence[int]) -> str:
 class QuadrilateralField(ShapeField[Quadrilateral]):
     """Paired Field for :class:`Quadrilateral`: four corners of ``{x, y}``."""
 
-    def _x_columns(self) -> tuple[list[pa.Array], list[pa.Array]]:
+    def _x_columns(self) -> tuple[list[pa.StructArray], list[pa.StructArray]]:
         array = self.to_pyarrow()
         if isinstance(array, pa.ChunkedArray):
             array = array.combine_chunks()
@@ -1930,7 +1935,7 @@ class GenericPitchField(SemanticField[GenericPitch]):
         lookup = pa.array(list(_GPC_NAMES), type=pa.string())
         step_str = pc.take(lookup, pc.cast(step, pa.int64()))
         octave_str = pc.cast(octave, pa.string())
-        return pc.binary_join_element_wise(step_str, octave_str, "")
+        return _joined_strings(step_str, octave_str, "")
 
 
 # ---------------------------------------------------------------------------
@@ -2320,7 +2325,7 @@ class EnharmonicPitchField(SemanticField[EnharmonicPitch]):
         labels = pa.array(list(_EP_LABELS), type=pa.string())
         label_str = pc.take(labels, pc.cast(pc_arr, pa.int64()))
         octave_str = pc.cast(self.octave, pa.string())
-        return pc.binary_join_element_wise(label_str, octave_str, "")
+        return _joined_strings(label_str, octave_str, "")
 
 
 # ---------------------------------------------------------------------------
@@ -2414,7 +2419,7 @@ class MidiPitchField(SemanticField[MidiPitch]):
         labels = pa.array(list(_EP_LABELS), type=pa.string())
         label_str = pc.take(labels, pc.cast(pc_arr, pa.int64()))
         octave_str = pc.cast(self.octave, pa.string())
-        return pc.binary_join_element_wise(label_str, octave_str, "")
+        return _joined_strings(label_str, octave_str, "")
 
 
 # ---------------------------------------------------------------------------

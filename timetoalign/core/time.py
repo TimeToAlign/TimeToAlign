@@ -93,8 +93,11 @@ from .fields import (
     ScalarVocabulary,
     SemanticField,
     StructField,
+    _filled_mask,
     _struct_array,
+    _struct_array_of,
     _struct_types_match,
+    _valid_struct_cell,
     build_struct_array,
     data_shaped,
     drop_from_schema,
@@ -831,7 +834,7 @@ def build_number_struct_array(
             if on_error == "raise":
                 raise
             rows.append(None)
-    return pa.array(rows, type=RATIONAL_STRUCT_TYPE)
+    return _struct_array_of(rows, RATIONAL_STRUCT_TYPE)
 
 
 def _numeric_source(values: Any) -> np.ndarray | None:
@@ -869,7 +872,7 @@ def _build_numeric_struct_array(
     if array is None:
         return None
     if len(array) == 0:
-        return pa.array([], type=RATIONAL_STRUCT_TYPE)
+        return _struct_array_of([], RATIONAL_STRUCT_TYPE)
 
     is_integer_dtype = np.issubdtype(array.dtype, np.integer)
     null_mask = (
@@ -1040,7 +1043,7 @@ def build_coordinate_struct_array(objects: Iterable[Any]) -> pa.StructArray:
     rows: list[dict[str, Any] | None] = []
     for obj in objects:
         rows.append(None if obj is None else number_cell(obj.value))
-    return pa.array(rows, type=RATIONAL_STRUCT_TYPE)
+    return _struct_array_of(rows, RATIONAL_STRUCT_TYPE)
 
 
 # ---------------------------------------------------------------------------
@@ -1429,9 +1432,13 @@ def _combine_exact_columns(
         values = _ratio_values(numerator, denominator)
 
     for position in np.flatnonzero(valid & ~fast).tolist():
-        left_value = struct_to_coordinate(left[position].as_py(), number_type)
+        left_value = struct_to_coordinate(
+            _valid_struct_cell(left[position]), number_type
+        )
         right_value = (
-            struct_to_coordinate(right_column[position].as_py(), number_type)
+            struct_to_coordinate(
+                _valid_struct_cell(right_column[position]), number_type
+            )
             if right_column is not None
             else right
         )
@@ -4333,7 +4340,7 @@ _EXACT_DOUBLE_INT = 2**53
 
 def _is(number_types: pa.Array, name: str) -> pa.BooleanArray:
     """Mask: the rows whose number type is *name* (a null type is no type)."""
-    return pc.fill_null(pc.equal(number_types, pa.scalar(name)), pa.scalar(False))
+    return _filled_mask(pc.equal(number_types, pa.scalar(name)), pa.scalar(False))
 
 
 def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
@@ -4446,7 +4453,7 @@ def numbers_from_package(
                 is_fraction,
                 pc.and_(
                     pc.and_(has_numerator, pc.invert(has_value)),
-                    pc.fill_null(
+                    _filled_mask(
                         pc.greater_equal(denominator, pa.scalar(1)), pa.scalar(False)
                     ),
                 ),
@@ -4455,7 +4462,7 @@ def numbers_from_package(
                 is_float,
                 pc.and_(
                     pc.invert(pc.or_(has_numerator, has_denominator)),
-                    pc.fill_null(pc.is_finite(value), pa.scalar(False)),
+                    _filled_mask(pc.is_finite(value), pa.scalar(False)),
                 ),
             ),
         ),
@@ -5017,7 +5024,7 @@ class IntervalField(SharedAxisField[Interval]):
                 pa.field("end", RATIONAL_STRUCT_TYPE),
             ]
         )
-        array = pa.array(rows, type=interval_type)
+        array = _struct_array_of(rows, interval_type)
         return cls._of_struct_array(array, name, resolved_unit, resolved_number_type)
 
     def __getitem__(self, i: int) -> Interval | None:

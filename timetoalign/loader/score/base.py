@@ -22,7 +22,7 @@ from .stores.notes import NoteEventData
 
 if TYPE_CHECKING:
     from timetoalign.timelines import MeasureMap, StatedFlow, Timeline
-    from timetoalign.timelines.flow.measures import _FlowControlDraft
+    from timetoalign.timelines.flow import FlowControlDraft
     from timetoalign.timelines.flowcontrol import FlowControlElement
 
 module_logger = logging.getLogger(__name__)
@@ -248,13 +248,15 @@ class ScoreLoader(EventLoader):
 
         measure_map = self._measure_map()
         timeline.add_measure_map(measure_map)
-
-        timeline.flow_control.add_all(self._flow_control_elements(measure_map))
+        elements = self._flow_control_elements(measure_map)
 
         notated_length = measure_map.total_actual_length
         if notated_length is not None:
             timeline.length = max(timeline.length.value, notated_length)
             timeline.lock()
+
+        # After the length: flow control lies within it, the end included.
+        timeline.flow_control.add_all(elements)
 
     # region Flow Control
 
@@ -271,14 +273,14 @@ class ScoreLoader(EventLoader):
         the loader fills from its source (:meth:`_write_signs`). Signs
         falling on one coordinate are the destinations of one Jump.
         """
-        from timetoalign.timelines.flow.measures import _FlowControlDraft
+        from timetoalign.timelines.flow import FlowControlDraft
 
-        draft = _FlowControlDraft()
+        draft = FlowControlDraft()
         draft.add_measures(measure_map)
         self._write_signs(draft, measure_map)
         return draft.elements()
 
-    def _write_signs(self, draft: _FlowControlDraft, measure_map: MeasureMap) -> None:
+    def _write_signs(self, draft: FlowControlDraft, measure_map: MeasureMap) -> None:
         """Write the signs the measure table states beside repeats and brackets.
 
         Read from the table's columns, in the meaning every score loader
@@ -309,6 +311,10 @@ class ScoreLoader(EventLoader):
         at a place another sign of its Jump goes on at, a ``play_until``
         marker in the measure of its own D.S. or D.C., and a ``jump_fwd`` on
         a row without ``jump_bwd``.
+
+        Raises:
+            ValueError: If a measure states no count, no ``qstamp`` or no
+                ``actual_length``.
         """
         from timetoalign.timelines.flowcontrol import (
             Barline,
@@ -322,8 +328,15 @@ class ScoreLoader(EventLoader):
 
         bounds: dict[int, tuple[Fraction, Fraction]] = {}
         for measure in measure_map:
-            assert measure.count is not None and measure.qstamp is not None
-            assert measure.actual_length is not None
+            if (
+                measure.count is None
+                or measure.qstamp is None
+                or measure.actual_length is None
+            ):
+                raise ValueError(
+                    f"measure {measure.count!r} states no count, no qstamp or no "
+                    "actual_length: flow control lies at positions"
+                )
             bounds[measure.count] = (
                 measure.qstamp,
                 measure.qstamp + measure.actual_length,

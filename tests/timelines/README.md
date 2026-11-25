@@ -962,6 +962,26 @@ literals of the format and never from what the writer happens to produce.
   `1.5`; `passes` empty, with 0, with a repeated number, `{from: 0}`; a
   destination with both `to` and `by`; a Jump without destination. After
   each refusal by the registry its elements are what they were.
+- **Nothing lies outside the axis.** A run of a flow is a stretch of the
+  axis, so an element or a place a Jump goes on at that lies before 0 or
+  beyond the timeline's length can only be an error; the format's
+  validator refuses both (`flow_coordinate`). What is proved is that such
+  flow control never comes to stand, by whichever way it arrives, each
+  refusal with its whole message and the registry unchanged after it. On a
+  timeline of length 12: a Jump at 4 going on `by: -8` (place −4), one
+  going on `by: 20` (place 24), a Break at 20, a JumpTarget at −1, and a
+  Jump whose `to` names a Region starting at 14 are each refused when
+  added; the bounds themselves are places (`by` landing on 0 and on 12, an
+  element at 12) and are accepted; a rejected Break at 20 is accepted,
+  since a rejected element is out of every rule. On a timeline of unknown
+  length only 0 bounds: the Break at 20 and the Jump reaching 24 are added
+  and `reach` is 24, the Jump reaching −4 is refused. The length then
+  becomes known: 12 is refused naming the first element off the axis and
+  the length stays unknown; 24 is accepted (20 and 24 lie within it); a
+  later 22 is refused and the length stays 24. A registry that belongs to
+  no timeline knows no length: it refuses what lies before 0 and accepts
+  the Break at 20, which the engine refuses when it is given a length
+  (`test_flow_engine.py`).
 - **Elements naming one another are added together.** A Fine naming a D.C.
   and a To Coda naming it are refused one by one in the wrong order and
   accepted by `add_all` in any order. Two elements arriving with the same
@@ -995,6 +1015,25 @@ literals of the format and never from what the writer happens to produce.
   `Fraction(1, 3)` on a float axis as `0.3333333333333333`, for the
   element's coordinate and for a destination's `by` alike. An unbound
   registry stores the identical object. A copy is equal and independent.
+- **Coordinates given to the registry.** `jump_at`, the one query by
+  position, answers the Jump at 9/2 of a fraction axis for the bare values
+  `4.5` and `Fraction(9, 2)`, for a `Coordinate` and for an `IdCoordinate`
+  in quarters, answers None at 4, and refuses a coordinate in seconds
+  naming both units. The element constructors take a `Coordinate` only: a
+  bare number states no unit, and `Jump(4, …)` raises `TypeError` saying
+  so.
+- **Exports.** The registry, the five element classes, the values a Jump
+  and a Break are built from, the engine's two functions and its result
+  types, and the flow `Timeline.get_flow` returns are each the same object
+  in `timetoalign.timelines.flow`, `timetoalign.timelines` and
+  `timetoalign`, and listed in the `__all__` of all three; the draft the
+  score loaders write through is public in `timetoalign.timelines.flow`.
+- **The collection is read-only.** A repair never deletes, and a rule
+  checked on adding must not be bypassed by writing into the list.
+  `elements` and the five views are tuples; assigning to `elements` raises
+  `AttributeError`; there is no method that removes (`clear` is gone). The
+  collection changes through `add`, `add_all`, `with_belief` and
+  `with_beliefs` only, which the other bullets prove one by one.
 - **Rejection.** An element is rejected when any entry of its provenance
   holds a belief `"false"`, whoever holds it and whichever entry: the same
   reading as the format's validators, which the test checks against
@@ -1030,10 +1069,28 @@ literals of the format and never from what the writer happens to produce.
   two entries, the entry already holding the actor's belief takes the new
   one. The date is the one given, as a string or a `datetime.date`, and an
   invalid belief or date is refused. An unknown ID raises `KeyError`
-  listing the IDs. Rejecting a jump target that a Jump names is accepted
-  (the repair is not finished); taking the rejection of a Jump back
-  (`true` after `false`) while its replacement lies at the coordinate is
-  refused, and the registry holds what it held.
+  listing the IDs.
+- **What an element names is not rejected under it.** A `to` or an `after`
+  naming a rejected element names nothing, and the format refuses such a
+  manifest; so the rejection itself is refused, at the call that would
+  cause it, naming every element that names the one to be rejected. The
+  case is a repeat with a Fine: a jump target `start`, a Jump `printed`
+  going on at it, a Break `fine` ending after `printed`. Rejecting `start`
+  alone is refused naming `printed`; rejecting `printed` alone is refused
+  naming `fine`; rejecting `start` and `printed` in one step is still
+  refused naming `fine`; the registry is unchanged each time. All three in
+  one step (`with_beliefs`) are rejected, returned in the order given, the
+  canonical order of the registry untouched. A target two Jumps go on at
+  is refused naming both. An element named only by a rejected element is
+  rejected alone. Beliefs that reject nothing (`unlikely` on several
+  elements in one step) are recorded without any check failing. Then the
+  repair is finished by adding the replacements, and taking a rejection
+  back is checked like an addition: `printed` believed `true` again while
+  its replacement lies at the coordinate is refused (a second Jump), and
+  `fine` believed `true` again is refused because the Jump it names is
+  still rejected; the registry holds what it held. An unknown ID among
+  several raises `KeyError` and records nothing; a single string given to
+  `with_beliefs` is refused as no list of IDs.
 - **Provenance entries as the format admits them.** The format's entry is
   an open object whose keys are all optional. Three entries that
   `timetoshare.validate` accepts and that a reader built for the known
@@ -1172,17 +1229,56 @@ for the first two:
    read from the file and turned into quarters by the measure starts
    above; nothing is copied from the engine.
 
+**A Break's passes are exactly those arrivals.** Among the destinations of
+a Jump the one naming the highest pass listed also holds at every later
+arrival; a Break has no such rule, or a Break ending the first arrival
+only could not be stated. The case that tells the two readings apart must
+bring the flow to the Break a second time without restoring it: a jump
+target at 0, a Break at 4 with `ends: {passes: [1]}`, a section break at
+6, a Jump at 8 going back to 0 once with `reset: false`; length 12.
+Arrival 1 ends the flow at 4, which begins again at the section break:
+[0,4) [6,8). The Jump goes back; arrival 2 is not listed, so the flow
+goes on across the Break to the end, the Jump being used up: [0,12). Runs
+[0,4) [6,8) [0,12), no finding (a Break with `ends` ended the flow, and
+[4,6) is played on the way back). Read with the Jump's rule the Break
+would hold again and the runs would be [0,4) [6,8) [0,4) [6,12). `single`
+arrives once: [0,4) [6,12). With `ends: {passes: {from: 2}}` in the same
+piece the first arrival goes on and the second ends: [0,8) [0,4) [6,12);
+`single` arrives once and goes on: [0,12). The Jump's rule is asserted
+beside it on the same list: a Jump at 4 going on at a target at 8 with
+`passes: [1]`, and a Jump at 12 going back to 0 once with `reset: false`;
+length 16. Arrival 1 jumps to 8, the flow goes back at 12, and arrival 2,
+beyond the highest pass listed, jumps again: [0,4) [8,12) [0,4) [8,16),
+`never_played` [4,8).
+
+**Nothing is played outside the axis.** The engine is given a length and
+refuses, before walking, an element read that lies beyond it and a
+destination whose place does, in the registry's words, the whole message
+asserted for `play` and for `atomic_sections`: on a registry that belongs
+to no timeline (which knows no length when elements are added), a Jump at
+4 going on `by: 20` with length 12, a Break at 20 with length 12, and a
+Jump going on at a jump target at 20 with length 12. With length 24 the
+first is played: [0,4), the place 24 being the end, `never_played`
+[4,24). A rejected Break at 20 is not read and does not stand in the way.
+
 **Rejected elements.** Without a believer the engine plays the elements no
 actor rejects: a rejected Jump once at 8 and its replacement twice at 8
 play [0,8) [0,8) [0,12), with or without naming the believer who rejected
 it. For a believer who rejects neither, both Jumps are read and the walk
-is refused in the registry's words for a second Jump at a coordinate. A
-`to` naming a rejected jump target and an `ends.after` naming a rejected
-Jump dangle: `play` and `atomic_sections` raise `ValueError` with the
-message the registry refuses such an element with when it is added, the
-whole message asserted, ending in the statement that the element named is
-rejected. Such flow control arises when a belief is recorded after the
-elements were added, which is how the tests build it.
+is refused in the registry's words for a second Jump at a coordinate. The
+registry never lets an element stand that names a rejected one, so a name
+can dangle only in a reading narrowed by a belief filter: read for the
+editor's `true` beliefs alone, a Jump the editor believes whose `to` names
+a jump target the editor has not decided on, and a Break the editor
+believes whose `ends.after` names such a Jump, name nothing. `play` and
+`atomic_sections` raise `ValueError` with the message the registry
+refuses such an element with when it is added, the whole message
+asserted, ending in the statement that the element named is left out by
+the belief filter; read without a believer both flows are played.
+
+**The length given.** `play` and `atomic_sections` take the length as a
+bare value, a `Coordinate` or an `IdCoordinate` on the registry's axis and
+play the same runs for each.
 
 ### The format's expected flows (`test_flow_expected.py`)
 
@@ -4716,8 +4812,8 @@ control with the engine and writes the result: the atomic sections as
 Regions and the computed flows as FlowMaps over them. `Timeline.get_flow()`
 computes one flow and writes nothing. The engine is proven in
 `test_flow_engine.py`; what is proven here is that its result is written as
-the format says, so the expected values are the ones the design states for
-the first movement of Beethoven's Op. 106, each checkable by hand.
+the format says, so the expected values are those of the first movement of
+Beethoven's Op. 106, each derived by hand below.
 
 **The Op. 106/i shape.** A quarters timeline of length 1644 (fraction axis)
 with four elements: a Jump at 953/2 with the destinations `{by: 0, passes:
@@ -4742,7 +4838,11 @@ brackets and the JumpTarget `jump_target_b` at 500.
 
 `Region.is_atomic_section` reads the type however the Region spells it
 (the absolute IRI, or any prefix declared for the format's namespace) and
-is false for a Region without it or with another type.
+is false for a Region without it or with another type. It is false, too,
+for a Region whose statement of the type holds a belief `false` of any
+actor, under either spelling, while a belief `unlikely` or `true` leaves
+it an atomic section: rejection is read as the format reads it on a
+flow-control element.
 
 The virtual timeline of `default` states the length 4241/2, quarters and
 `fraction`; its minted ID is of the timeline's kind (`clt_1`, the root
@@ -4751,6 +4851,21 @@ position given as an IdCoordinate of another timeline is refused, and so
 is a virtual timeline stating another length than its FlowMap gives.
 `get_flow` returns the same lengths and positions for the three
 conventions and leaves the timeline without Regions and FlowMaps.
+
+**Findings come back with what is computed.** A caller must be able to see
+that flow control is broken without reading a log, so both calls return
+the engine's findings as values. The timeline `Jump 4 {}` of length 8 goes
+round for ever: the engine stops at the second take with `endless_loop` at
+4 and `never_played` [4, 8) (the case "endless loop" of
+`test_flow_engine.py`). `get_flow()` of that timeline returns the two runs
+[0, 4) [0, 4) and, in `findings`, exactly those two findings by kind,
+coordinate and end; `get_flow("single")` and `get_flow("printed")` return
+none, since findings are a result of `default` alone;
+`create_flow_maps_from_flow_control()` returns the same two findings
+beside the sections and FlowMaps it writes. The flow returned is still a
+resolved flow (`unfold`, `fold`, `length` answer as before), and a
+timeline whose flow control plays through has `findings == ()` in both
+results.
 
 **`single` and `printed` are written only where they differ from
 `default`.** A timeline whose only element is a section break has two
@@ -4761,26 +4876,82 @@ timeline holds no Region and no FlowMap. On a child timeline the call is
 refused (a FlowMap names a root), on a timeline of unknown length it raises
 `UnknownLengthError`.
 
-**Written again.** With unchanged flow control the second call writes the
-same sections and FlowMaps under the same IDs (the Regions are minted anew,
-which gives the same IDs where the timeline holds no other minted Region).
-After a Break is added at
-10 to the timeline `|: 8 :| 12` (flow [0, 8) [0, 10), ending at the Break),
-the three old sections' Regions are gone, the new sections are A [0, 8),
-B [8, 10), C [10, 12), every FlowMap keeps the ID its convention had
-(`default` A A B, `single` A B, `printed` A B C), and the virtual timeline
-applying `default` states the new length 18 instead of 20.
+**Written again: nothing is taken away, and no ID comes to name another
+stretch.** Whatever names a Region (a FlowMap written by hand, a statement
+on another element, a Jump going on at it) must find the same stretch
+under that ID after the sections were computed again. The proof is
+therefore made on a timeline in which each of those three names a section
+that the change takes away, and every value below follows from the rule
+alone: a section whose stretch is still a section keeps its Region; a new
+stretch gets a new Region; a Region whose stretch is a section no longer
+stays as it is and its statement `type: tts:AtomicSection` takes the
+recomputing actor's belief `false`; the letters are those of the new
+sectioning.
 
-**Never over a FlowMap of another origin.** Where a FlowMap that was not
-computed from flow control names an atomic section, the call raises and
-changes nothing (Regions, FlowMaps and the manifest written are compared
-before and after). Three cases: a FlowMap written by hand (no `convention`)
-over a computed section; the fixture `flow/sonata_exposition`, whose
-FlowMaps name a convention but state no provenance; and a FlowMap stating
-`inferred` under a convention word of its own. A FlowMap written by hand
-over other Regions does not stand in the way. One refusal more keeps flow
-control whole: a section that a jump names as the place it lands at (`to`)
-is not replaced, since the jump would name nothing afterwards.
+The timeline is `|: 8 :| 12` (a repeat sign at 8, length 12). First call:
+`region_1` A [0, 8), `region_2` B [8, 12); `flow_map_1` `default`
+(1, 1, 2), `flow_map_2` `single` (1, 2), `flow_map_3` `printed` (1, 2).
+Then are added: a Region `theme` [2, 6) stating `dcterms:relation`
+`region_1`; a FlowMap by hand `backwards` (`region_2`, `region_1`); a
+virtual timeline `played` applying `flow_map_1` (length 8 + 12 = 20).
+Each row of the table is one change made to that state, on its own.
+
+| Change | Sections after | What happened to the old Regions | Computed FlowMaps |
+|---|---|---|---|
+| a JumpTarget at 4 | `region_3` A [0, 4), `region_4` B [4, 8), `region_2` C [8, 12) | `region_1` stays [0, 8), still named A, rejected; `region_2` kept and renamed from B to C | `flow_map_1` (3, 4, 3, 4, 2); `flow_map_2` and `flow_map_3` (3, 4, 2) |
+| a Break at 10 | `region_1` A [0, 8), `region_3` B [8, 10), `region_4` C [10, 12) | `region_2` stays [8, 12), named B, rejected; `region_1` kept | `flow_map_1` (1, 1, 3): the flow ends at the Break; `flow_map_2` (1, 3); `flow_map_3` (1, 3, 4) |
+
+The new IDs are `region_3` and `region_4` in both rows because the
+timeline holds `region_1` and `region_2` throughout: an ID is minted above
+the highest held and never again for another stretch. Asserted after the
+first row: `region_1` has its interval [0, 8) and is no atomic section any
+more (`is_atomic_section` false), and its provenance entry for the type
+holds the belief `{actor, belief: false, date}` with the actor and the
+date given to the call; `theme` still states `region_1`; `backwards`
+still resolves, to [8, 12) then [0, 8), length 12; `played` keeps its
+length 20, since the default flow is as long as before. After the second
+row `played` states 18 (8 + 8 + 2). The manifest written validates in both
+rows. A further call with nothing changed needs no actor and changes
+nothing: the rejected Region is no section and is not rejected a second
+time. A stretch that comes back is a new stretch: after the first row the
+JumpTarget at 4 is rejected and the sections are computed again by a
+second actor. [0, 8) is a section again and gets `region_5`, not the
+rejected `region_1`, which stays exactly as it was; `region_3` and
+`region_4` are rejected by the second actor; `region_2` is kept and named
+B again; the FlowMaps keep their IDs with (5, 5, 2), (5, 2) and (5, 2).
+
+**The actor is asked for only when something is rejected.** With unchanged
+flow control the second call writes the same sections and FlowMaps under
+the same IDs and returns the same result, without `actor`. Where a
+section's stretch is gone and no actor is given, the call raises naming
+the sections and `actor=`, and has changed nothing (Regions, FlowMaps,
+virtual timelines and the manifest written are compared before and after).
+An invalid date is refused the same way.
+
+**A FlowMap written before for `single` or `printed` stays** where its
+chunks come to equal `default`'s. In `|: 8 :| 12` the repeat is rejected
+and a section break added at 8: the sections are the same two (no actor
+needed), every flow is (1, 2), and `flow_map_2` and `flow_map_3` are
+still held, with those chunks, because a virtual timeline may apply them;
+`played` states 12.
+
+**FlowMaps of another origin stand untouched beside the computed ones.**
+Three cases: the FlowMap by hand above; a FlowMap stating `inferred` under
+a convention word of its own (`as recorded`), which is none of the three
+computed ones and keeps its chunks; and FlowMaps that name a convention
+but state no provenance, so that nothing says they were computed: the
+manifest of `|: 8 :| 12` with its flows written is read again with the
+`provenance` of its three FlowMaps removed; the two sections are kept as
+they are, those three FlowMaps are untouched, and the computed FlowMaps
+are written beside them as `flow_map_4` (1, 1, 2), `flow_map_5` (1, 2)
+and `flow_map_6` (1, 2). The format's own fixture `flow/sonata_exposition`
+states its sections and its FlowMaps as computed (`inferred`): computing
+them again from its flow control gives the same three sections ([0, 12),
+[12, 16), [16, 24)) and the same three FlowMaps under the same IDs
+((1, 2, 1, 3), (1, 3), (1, 2, 3)) and changes nothing in the timeline,
+which shows that what the library writes is the form the format states.
+A Jump going on at a section (`to: region_2`, added after the first call)
+keeps landing at 8 after the sections were computed again.
 
 ### FlowMaps and virtual timelines in a manifest (`test_manifest_flow_maps.py`)
 

@@ -47,7 +47,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self
 
 from timetoalign.core import Coordinate, Duration, Gap, IdCoordinate, Interval
 from timetoalign.core.enums import FlowConvention, NumberType, TimeUnit
@@ -69,6 +69,7 @@ from ..manifest import (
     read_name,
     require_object,
 )
+from .engine import FlowFinding
 
 if TYPE_CHECKING:
     from ..base import Timeline
@@ -416,8 +417,8 @@ class PlacedGap:
 class ResolvedFlowMap:
     """A played order as stretches of a root timeline's axis, placed in order.
 
-    What :meth:`FlowMap.resolve` returns, and what
-    :meth:`Timeline.get_flow <timetoalign.timelines.Timeline.get_flow>`
+    What :meth:`FlowMap.resolve` returns, and, as a :class:`PlayedFlow`,
+    what :meth:`Timeline.get_flow <timetoalign.timelines.Timeline.get_flow>`
     computes from flow control without writing anything. The virtual axis
     starts at 0 with the first stretch and has the root's unit and number
     type; every position in and out is a
@@ -444,7 +445,8 @@ class ResolvedFlowMap:
         *,
         unit: TimeUnit,
         number_type: NumberType,
-    ) -> ResolvedFlowMap:
+        **stated: Any,
+    ) -> Self:
         """Place stretches one after the other on a virtual axis.
 
         Args:
@@ -455,6 +457,8 @@ class ResolvedFlowMap:
                 :class:`~timetoalign.core.Duration` for a gap.
             unit: The timeline's unit.
             number_type: The timeline's number type.
+            **stated: What a subclass states beside the chunks (the
+                ``findings`` of a :class:`PlayedFlow`).
         """
         position = Coordinate(0, unit, number_type=number_type)
         placed: list[PlacedChunk | PlacedGap] = []
@@ -466,7 +470,7 @@ class ResolvedFlowMap:
             )
             placed.append(chunk)
             position = chunk.end
-        return cls(timeline, unit, number_type, tuple(placed))
+        return cls(timeline, unit, number_type, tuple(placed), **stated)
 
     @property
     def length(self) -> Coordinate:
@@ -567,6 +571,32 @@ class ResolvedFlowMap:
         return (
             f"ResolvedFlowMap(timeline={self.timeline!r}, {len(self.chunks)} chunks, "
             f"length={self.length})"
+        )
+
+
+@dataclass(frozen=True, repr=False)
+class PlayedFlow(ResolvedFlowMap):
+    """The flow a timeline's flow control plays, and what playing it found.
+
+    What :meth:`Timeline.get_flow <timetoalign.timelines.Timeline.get_flow>`
+    returns: the runs of the flow placed one after the other, through which
+    positions convert as through any :class:`ResolvedFlowMap`, together
+    with the findings of the engine.
+
+    Attributes:
+        findings: What playing the flow control found, in the order found:
+            a flow that never ends, a flow ending at a Break, two
+            destinations holding together, a stretch never played. Only
+            the ``default`` flow has findings.
+    """
+
+    findings: tuple[FlowFinding, ...] = ()
+
+    def __repr__(self) -> str:
+        count = len(self.findings)
+        return (
+            f"PlayedFlow(timeline={self.timeline!r}, {len(self.chunks)} chunks, "
+            f"length={self.length}, {count} finding{'' if count == 1 else 's'})"
         )
 
 
@@ -705,10 +735,13 @@ class ComputedFlows(NamedTuple):
             of its axis.
         flow_maps: The FlowMaps written: ``default``, then ``single`` and
             ``printed`` where their chunks differ from ``default``'s.
+        findings: What playing the flow control found: the findings of the
+            ``default`` flow, in the order found.
     """
 
     sections: tuple[Region, ...]
     flow_maps: tuple[FlowMap, ...]
+    findings: tuple[FlowFinding, ...] = ()
 
 
 class StatedFlow(NamedTuple):

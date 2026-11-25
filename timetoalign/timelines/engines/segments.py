@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import replace
 from fractions import Fraction
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from ..flow.flowmap import (
         ComputedFlows,
         FlowMap,
-        ResolvedFlowMap,
+        PlayedFlow,
         StatedFlow,
         VirtualTimeline,
     )
@@ -521,21 +522,24 @@ class SegmentsMixin:
         *,
         believer: str | None = None,
         beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
-    ) -> "ResolvedFlowMap":
+    ) -> "PlayedFlow":
         """Play this timeline's flow control and return the flow, writing nothing.
 
         Args:
             convention: ``default`` (every Jump and Break acts), ``single``
                 (once through) or ``printed`` (the axis as it stands).
             believer: The actor whose beliefs decide which flow-control
-                elements are read; None reads every element.
+                elements are read; None reads the elements no actor rejects.
             beliefs: The belief states read.
 
         Returns:
             The runs of the flow (:func:`~timetoalign.timelines.flow.engine.play`)
             placed one after the other: positions of this timeline's axis
-            and of the flow convert through it. A timeline without flow
-            control is played from its start to its end.
+            and of the flow convert through it. Its ``findings`` are what
+            playing found on the way (a flow that never ends, a flow ending
+            at a Break, a stretch never played); only the ``default`` flow
+            has any. A timeline without flow control is played from its
+            start to its end.
 
         Raises:
             UnknownLengthError: If the length is unknown.
@@ -553,9 +557,11 @@ class SegmentsMixin:
             (Coordinate(Fraction(20, 1), quarters), Coordinate(Fraction(12, 1), quarters))
             >>> score.get_flow().unfold(2)
             [Coordinate(Fraction(2, 1), quarters), Coordinate(Fraction(10, 1), quarters)]
+            >>> score.get_flow().findings
+            ()
         """
         from ..flow.engine import play
-        from ..flow.flowmap import ResolvedFlowMap
+        from ..flow.flowmap import PlayedFlow
 
         played = play(
             self._flow_control,
@@ -564,8 +570,12 @@ class SegmentsMixin:
             believer=believer,
             beliefs=beliefs,
         )
-        return ResolvedFlowMap.from_stretches(
-            self._id, played.runs, unit=self._unit, number_type=self._number_type
+        return PlayedFlow.from_stretches(
+            self._id,
+            played.runs,
+            unit=self._unit,
+            number_type=self._number_type,
+            findings=played.findings,
         )
 
     def create_flow_maps_from_flow_control(
@@ -573,6 +583,8 @@ class SegmentsMixin:
         *,
         believer: str | None = None,
         beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+        actor: str | None = None,
+        date: str | datetime.date | None = None,
     ) -> "ComputedFlows | None":
         """Write this root timeline's atomic sections and its computed FlowMaps.
 
@@ -587,33 +599,56 @@ class SegmentsMixin:
         FlowMap names its ``convention`` and the provenance method
         ``inferred``.
 
-        Atomic sections the timeline already holds are replaced, with the
-        computed FlowMaps naming them; a FlowMap of a convention written
-        before keeps its ID, and a virtual timeline applying it takes its new
-        length. They are never replaced under a FlowMap of another origin.
+        Called again after the flow control changed, the call takes nothing
+        away and never lets a Region's ID name another stretch:
+
+        - an atomic section whose stretch is still one keeps its Region; it
+          is renamed where the new sectioning gives it another letter;
+        - a stretch that is new gets a new Region, also one that was a
+          section before and whose Region has been rejected since;
+        - a Region whose stretch is an atomic section no longer stays, with
+          its ID, its interval and its name, and *actor*'s belief ``"false"``
+          is recorded in its statement ``type: tts:AtomicSection``
+          (:meth:`Region.with_belief <timetoalign.timelines.Region.with_belief>`),
+          so that it is no atomic section any more
+          (:attr:`Region.is_atomic_section
+          <timetoalign.timelines.Region.is_atomic_section>`). What names it
+          (a FlowMap written by hand, a statement, a Jump going on at it)
+          keeps naming the same stretch;
+        - the computed FlowMaps keep their IDs, names and canonical flags
+          and list the new sections; one written before for ``single`` or
+          ``printed`` stays, also where its chunks have come to equal
+          ``default``'s; a virtual timeline applying one takes its new
+          length.
 
         Args:
             believer: The actor whose beliefs decide which flow-control
-                elements are read; None reads every element.
+                elements are read; None reads the elements no actor rejects.
             beliefs: The belief states read.
+            actor: Who recomputes, an IRI: the actor whose belief rejects
+                the atomic sections that are none any more. Needed only
+                where there are such sections.
+            date: The day of that belief, ``YYYY-MM-DD`` or a
+                :class:`datetime.date`; today when None.
 
         Returns:
-            The Regions and FlowMaps written, or None for a timeline without
-            flow control, which writes nothing.
+            The atomic sections as they stand now (Regions kept and
+            written, in the order of the axis), the computed FlowMaps, and
+            the findings of the ``default`` flow; or None for a timeline
+            without flow control, which writes nothing.
 
         Raises:
             ValueError: If this timeline is a child; the flow control cannot
-                be played; or the timeline holds atomic sections that a
-                FlowMap names which was not computed from flow control (it
-                states none of the three conventions, or its provenance does
-                not say ``inferred``), or that a jump of the flow control
-                names as the place it lands at. Nothing has changed then.
+                be played; an atomic section the timeline holds is none any
+                more and no *actor* is given to reject it; or the date is
+                invalid. Nothing has changed then.
             UnknownLengthError: If the length is unknown.
 
         Examples:
             >>> from timetoalign.core import Coordinate
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
-            >>> from timetoalign.timelines.flowcontrol import Jump, JumpDestination
+            >>> from timetoalign.timelines.flowcontrol import (
+            ...     Jump, JumpDestination, JumpTarget)
             >>> score = ContinuousLogicalTimeline(length=12, uid="score")
             >>> _ = score.flow_control.add(
             ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
@@ -626,8 +661,27 @@ class SegmentsMixin:
             default ('region_1', 'region_1', 'region_2')
             single ('region_1', 'region_2')
             printed ('region_1', 'region_2')
+            >>> written.findings
+            ()
+
+            A sign added at 4 divides the first section. Its Region stays
+            and is rejected; the last section keeps its Region under a new
+            letter:
+
+            >>> _ = score.flow_control.add(JumpTarget(Coordinate(4, "quarters")))
+            >>> again = score.create_flow_maps_from_flow_control(
+            ...     actor="https://orcid.org/0000-0002-1825-0097", date="2026-11-25")
+            >>> [(section.id, section.name, str(section.as_interval))
+            ...  for section in again.sections]
+            [('region_3', 'A', '[0, 4) quarters'), ('region_4', 'B', '[4, 8) quarters'), \
+('region_2', 'C', '[8, 12) quarters')]
+            >>> first = score.get_region("region_1")
+            >>> str(first.as_interval), first.is_atomic_section
+            ('[0, 8) quarters', False)
+            >>> again.flow_maps[0].id, again.flow_maps[0].chunks
+            ('flow_map_1', ('region_3', 'region_4', 'region_3', 'region_4', 'region_2'))
         """
-        from ..flow.engine import atomic_sections, play
+        from ..flow.engine import FlowFinding, atomic_sections, play
         from ..flow.flowmap import ComputedFlows, FlowMap
 
         if self._parent is not None:
@@ -642,6 +696,7 @@ class SegmentsMixin:
         filtered = {"believer": believer, "beliefs": beliefs}
         sections = atomic_sections(self._flow_control, length, **filtered)
         orders: dict[FlowConvention, tuple[int, ...]] = {}
+        findings: tuple[FlowFinding, ...] = ()
         for convention in FlowConvention:
             played = play(self._flow_control, length, convention=convention, **filtered)
             orders[convention] = tuple(
@@ -650,64 +705,76 @@ class SegmentsMixin:
                 for index, section in enumerate(sections)
                 if run.start <= section.start and section.end <= run.end
             )
+            findings += played.findings
             for finding in played.findings:
                 self._logger.warning(
                     f"Timeline '{self._id}', {convention} flow: {finding.message}"
                 )
-        replaced = [
-            region for region in self._regions.values() if region.is_atomic_section
-        ]
-        gone = {region.id for region in replaced}
-        naming = [
-            flow_map
-            for flow_map in self._flow_maps.values()
-            if gone.intersection(c for c in flow_map.chunks if isinstance(c, str))
-        ]
-        foreign = [flow_map.id for flow_map in naming if not flow_map.is_computed]
-        if foreign:
-            raise ValueError(
-                f"timeline {quote_id(self._id)} holds atomic sections that the "
-                f"FlowMap(s) {foreign} name, which were not computed from its flow "
-                "control: the sections are not replaced"
-            )
-        landed_on = sorted(
-            gone.intersection(
-                destination.to
-                for jump in self._flow_control.jumps
-                for destination in jump.targets
-                if destination.to is not None
-            )
-        )
-        if landed_on:
+
+        # The sections held, by stretch; a second Region of one stretch is
+        # none of the new sectioning.
+        standing: dict[tuple[Any, Any], Region] = {}
+        held = [region for region in self._regions.values() if region.is_atomic_section]
+        for region in held:
+            standing.setdefault((region.start.value, region.end.value), region)
+        stretches = {(section.start.value, section.end.value) for section in sections}
+        kept = {
+            region.id for stretch, region in standing.items() if stretch in stretches
+        }
+        left = [region for region in held if region.id not in kept]
+        if left and actor is None:
             raise ValueError(
                 f"timeline {quote_id(self._id)} holds the atomic section(s) "
-                f"{landed_on} that a jump of its flow control names as a place: "
-                "the sections are not replaced"
+                f"{[region.id for region in left]}, whose stretches its flow "
+                "control does not give any more: they stay and are rejected as "
+                "atomic sections, which needs the actor who recomputes (actor=)"
             )
+        rejected = [
+            region.with_belief(
+                "type",
+                region._atomic_section_type(),
+                actor=actor,
+                belief="false",
+                date=date,
+            )
+            for region in left
+            if actor is not None
+        ]
 
-        kept = {flow_map.convention: flow_map for flow_map in naming}
-        for flow_map in naming:
-            del self._flow_maps[flow_map.id]
-        for region_id in gone:
-            del self._regions[region_id]
-        self._drop_references(gone)
+        for region in rejected:
+            self._regions[region.id] = region
         inferred = Provenance(method="inferred")
-        regions = tuple(
-            self.add_region(
-                Region(section.start, section.end, name=section.name)
-                .with_prefix(_FORMAT_PREFIX, timetoshare.NAMESPACE)
-                .with_statement("type", _ATOMIC_SECTION_TYPE, provenance=inferred)
-            )
-            for section in sections
-        )
+        regions: list[Region] = []
+        for section in sections:
+            region = standing.get((section.start.value, section.end.value))
+            if region is None:
+                region = self.add_region(
+                    Region(section.start, section.end, name=section.name)
+                    .with_prefix(_FORMAT_PREFIX, timetoshare.NAMESPACE)
+                    .with_statement("type", _ATOMIC_SECTION_TYPE, provenance=inferred)
+                )
+            elif region.name != section.name:
+                region = replace(region, name=section.name)
+                self._regions[region.id] = region
+            regions.append(region)
+
+        computed = {
+            flow_map.convention: flow_map
+            for flow_map in self._flow_maps.values()
+            if flow_map.is_computed
+        }
+        listed = list(self._flow_maps)
         written: list[FlowMap] = []
         for convention, order in orders.items():
+            before = computed.get(convention)
             if (
-                convention is not FlowConvention.default
+                before is None
+                and convention is not FlowConvention.default
                 and order == orders[FlowConvention.default]
             ):
                 continue
-            before = kept.get(convention)
+            if before is not None:
+                del self._flow_maps[before.id]
             written.append(
                 self.add_flow_map(
                     FlowMap(
@@ -723,6 +790,11 @@ class SegmentsMixin:
                 )
             )
         rewritten = {flow_map.id: flow_map for flow_map in written}
+        # A FlowMap written again keeps its place among the timeline's.
+        self._flow_maps = {
+            flow_map_id: self._flow_maps[flow_map_id]
+            for flow_map_id in dict.fromkeys([*listed, *self._flow_maps])
+        }
         for virtual_id, virtual in list(self._virtual_timelines.items()):
             if (
                 virtual.map in rewritten
@@ -733,7 +805,7 @@ class SegmentsMixin:
                     virtual,
                     length=rewritten[virtual.map].resolve(self).length,
                 )
-        return ComputedFlows(regions, tuple(written))
+        return ComputedFlows(tuple(regions), tuple(written), findings)
 
     def create_flow_map_from_measure_order(
         self,

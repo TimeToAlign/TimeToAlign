@@ -47,9 +47,19 @@ Flow:
 - StatedFlow: The Regions and the FlowMap written from an order a source states
 - Gap: A stretch of a FlowMap in which nothing of the timeline is played
 
-Flow control (the elements, their registry, the engine that plays them and
-their reading from measures) lives in ``timetoalign.timelines.flowcontrol``
-and ``timetoalign.timelines.flow``.
+Flow control:
+- FlowControlRegistry: The flow-control elements of one timeline
+- FlowControlElement: What the five kinds of element share
+- Jump, JumpTarget, Break, SectionBreak, Barline: The five kinds of element
+- JumpDestination: One place a Jump may go on at, and when it does
+- FlowCondition, DestinationReference, PassesFrom: The conditions of a
+  destination and of a Break
+- play, atomic_sections: The engine that plays flow control over a length
+- FlowResult, FlowFinding, AtomicSection: What the engine returns
+- PlayedFlow: The flow a timeline's flow control plays, with its findings
+
+The reading of flow control from measures lives in
+``timetoalign.timelines.flow``.
 
 Public API:
 - Timeline: Base class
@@ -71,13 +81,30 @@ from .base import Timeline, UnknownLengthError
 from .beatgrid import BeatGrid, BeatGridSegment, GridBeat
 from .factory import create_timeline
 from .flow import (
+    AtomicSection,
+    Barline,
+    Break,
     ComputedFlows,
+    DestinationReference,
+    FlowCondition,
+    FlowControlElement,
+    FlowControlRegistry,
+    FlowFinding,
     FlowMap,
+    FlowResult,
+    Jump,
+    JumpDestination,
+    JumpTarget,
+    PassesFrom,
     PlacedChunk,
     PlacedGap,
+    PlayedFlow,
     ResolvedFlowMap,
+    SectionBreak,
     StatedFlow,
     VirtualTimeline,
+    atomic_sections,
+    play,
 )
 from .groups import TimelineGroup
 from .manifest import Integrity, Resource
@@ -156,4 +183,22 @@ __all__ = [
     "StatedFlow",
     "VirtualTimeline",
     "Gap",
+    # Flow control
+    "FlowControlRegistry",
+    "FlowControlElement",
+    "Jump",
+    "JumpTarget",
+    "Break",
+    "SectionBreak",
+    "Barline",
+    "JumpDestination",
+    "FlowCondition",
+    "DestinationReference",
+    "PassesFrom",
+    "play",
+    "atomic_sections",
+    "FlowResult",
+    "FlowFinding",
+    "AtomicSection",
+    "PlayedFlow",
 ]

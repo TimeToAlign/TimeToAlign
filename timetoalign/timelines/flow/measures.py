@@ -183,13 +183,28 @@ def _quarters(value: Fraction) -> Coordinate:
     return Coordinate(value, TimeUnit.quarters)
 
 
-class _FlowControlDraft:
+class FlowControlDraft:
     """Flow control being written from a score, before it joins a registry.
 
     The signs at one coordinate are collected as the destinations of the
     one Jump there, and every element gets an ID of its own, minted in the
     order written, so that the elements can name one another before a
-    registry admits them together.
+    registry admits them together. Coordinates are quarters, exact.
+    :func:`flow_control_from_measures` and the score loaders write through
+    it.
+
+    Examples:
+        >>> from fractions import Fraction
+        >>> from timetoalign.timelines.flowcontrol import JumpDestination, JumpTarget
+        >>> draft = FlowControlDraft()
+        >>> segno = draft.add(JumpTarget, Fraction(4), manifestation="segno")
+        >>> draft.add_destination(Fraction(16), JumpDestination(to=segno.id, repeat_count=1))
+        'jump_1'
+        >>> draft.add_destination(Fraction(16), JumpDestination(repeat_count=1))
+        'jump_1'
+        >>> draft.elements()
+        [JumpTarget('jump_target_1', segno @ 4 quarters), \
+Jump('jump_1' @ 16 quarters, 2 destinations)]
     """
 
     def __init__(self) -> None:
@@ -361,7 +376,7 @@ def flow_control_from_measures(
         >>> repeat.targets[0].to_dict()
         {'to': 'jump_target_1', 'repeat_count': 1, 'manifestation': 'repeat_end'}
     """
-    draft = _FlowControlDraft()
+    draft = FlowControlDraft()
     draft.add_measures(measures)
     return draft.elements()
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any, ClassVar
 
-from timetoshare import ATOMIC_SECTION, Catalogue, expand_iri
+from timetoshare import ATOMIC_SECTION, Catalogue, expand_iri, same_pair
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _IdentifiedElement, quote_id
@@ -187,19 +187,40 @@ end=Coordinate(Fraction(32, 1), quarters))
 
     @property
     def is_atomic_section(self) -> bool:
-        """Whether the region states the type of an atomic section.
+        """Whether the region states the type of an atomic section, unrejected.
 
         An atomic section is a stretch that the timeline's flow control
         never divides. The type is the format's class ``AtomicSection``
         (``timetoshare.ATOMIC_SECTION``), however the region spells it: as
         the absolute IRI or under a prefix it declares
-        (``tts:AtomicSection``).
+        (``tts:AtomicSection``). A region whose statement of that type some
+        actor believes ``"false"`` is none: that is how a section is kept,
+        with its ID and its interval, once the flow control gives its
+        stretch no more
+        (:meth:`Timeline.create_flow_maps_from_flow_control
+        <timetoalign.timelines.Timeline.create_flow_maps_from_flow_control>`).
         """
+        stated = self._atomic_section_type()
+        if stated is None:
+            return False
         context = self._statement_context()
-        return any(
-            isinstance(value, str) and expand_iri(context, value) == ATOMIC_SECTION
-            for value in self.statements.get("type", ())
+        return not any(
+            belief.get("belief") == "false"
+            for entry in self.provenance
+            if same_pair(
+                context, ("type", stated), (entry.get("property"), entry.get("value"))
+            )
+            for belief in entry.get("beliefs", ())
         )
+
+    def _atomic_section_type(self) -> str | None:
+        """The value of ``type`` that names the format's ``AtomicSection``,
+        as the region spells it; None where it states none."""
+        context = self._statement_context()
+        for value in self.statements.get("type", ()):
+            if isinstance(value, str) and expand_iri(context, value) == ATOMIC_SECTION:
+                return value
+        return None
 
     def contains(
         self, coord: int | float | Fraction | Coordinate | IdCoordinate

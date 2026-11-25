@@ -50,7 +50,7 @@ import tempfile
 
 import pandas as pd
 
-from timetoalign import Ms3Loader, TimelineGroup, TimeUnit
+from timetoalign import ContinuousLogicalTimeline, Ms3Loader, TimelineGroup, TimeUnit
 from timetoalign.alignment import AlignmentBundle, MatchLine
 from timetoalign.alignment.match_format import MatchFileContext
 from timetoalign.alignment.matching import (
@@ -58,10 +58,8 @@ from timetoalign.alignment.matching import (
     prepare_abc_notes_for_matching,
     prepare_eep_notes_for_matching,
 )
-from timetoalign.core.enums import FlowMode
 from timetoalign.loader.physical.eep_notes import EepNotesLoader
 from timetoalign.testdata import ensure_data
-from timetoalign.timelines.flow import create_unfolded_timeline
 
 DATA_DIR = ensure_data("score") / "beethoven_op18-4iv_multimodal"
 NORMAL_DIR = DATA_DIR / "StringQuartetEEP_I_Normal"
@@ -72,10 +70,11 @@ ABC_DIR = DATA_DIR / "ABC"
 #
 # The performance notes come from `.notes` files (EEP format with timestamps
 # in seconds); the loader turns them into the performance timeline. The score
-# is the ABC edition played through: the loader reads the folded score with
-# its repeats, and `create_unfolded_timeline()` lays it out in playthrough
-# order. That is the axis on which the pre-unfolded TSV of score notes counts
-# its quarterbeats.
+# is the ABC edition played through. The loader reads the folded score with
+# its repeats, and `get_flow()` plays them: the played-through score is as
+# long as that flow. That is the axis on which the edition's unfolded TSV of
+# score notes counts its `quarterbeats_playthrough`; the matching below places
+# its score positions on a timeline of that length.
 
 # %%
 # Performance notes and timeline from the Normal recording
@@ -84,17 +83,16 @@ eep_loader.load(*sorted(NORMAL_DIR.glob("*_align_*.notes")))
 eep_df = eep_loader.events.to_dataframe()
 perf_tl = eep_loader.create_timeline(uid="cpt_1")
 
-# The score timeline, played through (quarterbeats)
+# The folded score, and the score played through (quarterbeats)
 score_loader = Ms3Loader.from_file(
     ABC_DIR / "n04op18-4_04.notes.tsv",
     ABC_DIR / "n04op18-4_04.measures.tsv",
 )
-flow_controller = score_loader.create_flow_controller()
-clt1 = create_unfolded_timeline(
-    score_loader.create_timeline(),
-    flow_controller.compute_flow(FlowMode.default),
-    flow_controller=flow_controller,
+folded_score = score_loader.create_timeline(uid="abc_folded")
+clt1 = ContinuousLogicalTimeline(
+    length=folded_score.get_flow().length,
     uid="clt_1",
+    name="ABC edition, played through",
 )
 
 # Score notes from the unfolded ABC edition
@@ -104,6 +102,7 @@ abc_df = pd.read_csv(ABC_DIR / "n04op18-4_04_unfolded.notes.tsv", sep="\t")
     "EEP notes": len(eep_df),
     "ABC notes": len(abc_df),
     "performance length": perf_tl.length,
+    "folded score length": folded_score.length,
     "played-through score length": clt1.length,
 }
 
@@ -204,11 +203,6 @@ match_result.match_claims[0]
 # Query from the score side: quarterbeat 78 (a matched note onset)
 stamp = bundle.get_matchstamp_at(78.0, "clt_1")
 stamp
-
-# %% [markdown]
-# The played-through score is assembled from the score's sections, each a
-# child of `clt_1` named after its region, so the stamp also gives the
-# position within the section it falls in (`A+B`).
 
 # %%
 # The stamp shows coordinates on both timelines
@@ -334,8 +328,8 @@ bundle.get_matchstamp_at(78.0, "clt_1")
 
 # %%
 # conversion_maps=True adds the enabled maps, each evaluated at its own
-# timeline's coordinate — ticks from the score loader's map, milliseconds
-# from the map just added.
+# timeline's coordinate: milliseconds from the map just added. The
+# played-through score was built by hand and holds no conversion map.
 bundle.get_matchstamp_at(78.0, "clt_1", conversion_maps=True)
 
 # %% [markdown]

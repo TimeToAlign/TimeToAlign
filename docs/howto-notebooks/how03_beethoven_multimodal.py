@@ -17,7 +17,8 @@
 # # How to Align Multimodal Data (Beethoven)
 #
 # **Figure 3 acid test** for TimeToAlign! — 16+ timelines across all 3 domains
-# (Physical, Logical, Graphical) in 5 `TimelineGroups` within one `AlignmentBundle`.
+# (Physical, Logical, Graphical) in 6 `TimelineGroups`, 5 of them within one
+# `AlignmentBundle`.
 #
 # **Structure:**
 # 1. **Part I**: Build 3 recording groups (Groups 1-3) — 15 DPTs
@@ -48,6 +49,7 @@ import pandas as pd
 from PIL import Image
 
 from timetoalign import (
+    ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
     Ms3Loader,
@@ -64,9 +66,7 @@ from timetoalign.alignment.matching import (
     prepare_abc_notes_for_matching,
     prepare_eep_notes_for_matching,
 )
-from timetoalign.core.enums import FlowMode
 from timetoalign.testdata import ensure_data
-from timetoalign.timelines.flow import create_unfolded_timeline
 from timetoalign.timelines.types import SegmentLine
 
 DATA_DIR = ensure_data("score") / "beethoven_op18-4iv_multimodal"
@@ -262,20 +262,25 @@ clt1
 # %% [markdown]
 # ### 6.1 ABC Flow Control: Repeat Structure
 #
-# The ABC score has repeats and volta brackets. The loader's
-# `create_flow_controller()` derives the repeat structure from the
-# measure data and computes the default flow (all repeats taken).
-# This is **the same** flow control machinery used later for CLT2
-# (the recordings edition) in Part III.
+# The ABC score has repeats and volta brackets. The loader writes them as
+# the timeline's flow control, and `get_flow()` plays it: the default flow
+# takes all repeats. It returns the stretches of the score in the order
+# played and what playing found. The same is done for CLT2 (the recordings
+# edition) in Part III.
 
 # %%
-abc_controller = abc_loader.create_flow_controller()
-abc_flow = abc_controller.compute_flow(FlowMode.default)
-abc_flow
+abc_flow = clt1.get_flow()
+{"flow": abc_flow, "findings": abc_flow.findings}
 
 # %% [markdown]
-# The flow controller and flow will be used in §9.2 to unfold the
-# **entire** score group at once — not just CLT1, but all timelines.
+# `create_flow_maps_from_flow_control()` writes the score's atomic sections,
+# the stretches its flow control never divides, as Regions named A to M, and
+# the flows as FlowMaps listing them. §9.1 and §14.4 locate the sections.
+
+# %%
+abc_sections = clt1.create_flow_maps_from_flow_control()
+section_names = {section.id: section.name for section in abc_sections.sections}
+"".join(section_names[chunk] for chunk in abc_sections.flow_maps[0].chunks)
 
 # %% [markdown]
 # ## 7. DGT1: OMR Ground Truth
@@ -372,9 +377,9 @@ dgt1.diagram(depth=True)
 # %% [markdown]
 # ## 8. OpenScore (4th Movement Only)
 #
-# The OpenScore edition covers all 4 movements. We use the flow controller
-# to identify section breaks (movement boundaries) and extract the 4th
-# movement as a child timeline.
+# The OpenScore edition covers all 4 movements. Its flow control marks the
+# movement boundaries as section breaks; we extract the 4th movement as a
+# child timeline.
 
 # %%
 OPENSCORE_DIR = DATA_DIR / "OpenScoreSQ"
@@ -386,14 +391,13 @@ os_full = os_loader.create_timeline(uid="openscore_full")
 os_full
 
 # %% [markdown]
-# The loader's `create_flow_controller()` derives section boundaries from
-# the score's flow control markup. Splitting at those coordinates creates
-# one region per movement, named `movement_1` to `movement_4`; the child is
-# taken from the fourth by its id.
+# The loader writes the score's section ends as section breaks of its flow
+# control. Splitting at those coordinates creates one region per movement,
+# named `movement_1` to `movement_4`; the child is taken from the fourth by
+# its id.
 
 # %%
-os_flow_controller = os_loader.create_flow_controller()
-boundaries = os_flow_controller.get_section_boundary_coordinates()
+boundaries = [brk.coordinate.value for brk in os_full.flow_control.section_breaks]
 movements = os_full.create_regions_from_boundaries(
     [0, *[float(b) for b in boundaries], float(os_full.length.value)], prefix="movement"
 )
@@ -423,7 +427,7 @@ score_group
 # %% [markdown]
 # ### 9.1 Cross-Domain Section Boundaries (Quarters → Pixels → Pages)
 #
-# The playthrough section boundaries (from §6.1) can now be mapped
+# The atomic sections' starts (from §6.1) can now be mapped
 # through the score group to DGT1 pixel coordinates. This demonstrates
 # cross-domain coordinate transfer within a `TimelineGroup`: every member
 # spans the whole group, so a position on CLT1 (quarters) converts to DGT1
@@ -440,8 +444,9 @@ for _seg_id in dgt1.list_segments():
     )
 
 _section_rows = []
-for _sid, _qb in abc_controller.get_atomic_section_coordinates(flow=abc_flow).items():
-    _ts = score_group.get_timestamp_at(float(_qb), "clt_1")
+for _section in abc_sections.sections:
+    _sid, _qb = _section.name, _section.start.value
+    _ts = score_group.get_timestamp_at(_qb, "clt_1")
     _px = (
         _ts.get_coordinate_for("dgt_1", format="int")
         if "dgt_1" in _ts.present_timelines
@@ -468,38 +473,33 @@ section_boundary_table
 # which score image to open.
 
 # %% [markdown]
-# ### 9.2 Unfolding the Entire Score Group
+# ### 9.2 The Score Played Through
 #
-# The score has repeats and volta brackets. Rather than unfolding each
-# timeline individually, `TimelineGroup.apply_flow()` does it in one call:
-# the flow controller's section boundaries are resolved via the group's
-# linear conversion, so every timeline — regardless of domain — is
-# sliced and reassembled in playthrough order.
+# The recordings play the score through, repeats and all, so their notes are
+# matched against the score's notes in the order played. A FlowMap states
+# that order over the folded score but holds no events: the played-through
+# score is a timeline of its own, `clt1_unfolded`, as long as the default
+# flow of §6.1. It forms the **played-through score group**; the folded score
+# group above, with the OMR pages and OpenScore, stays as it is.
+#
+# The notes come from the edition's unfolded notes table, which counts its
+# `quarterbeats_playthrough` along the same axis.
 
 # %%
-score_group_unfolded = score_group.apply_flow(
-    abc_flow, abc_controller, reference_timeline_id="clt_1"
+clt1_unfolded = ContinuousLogicalTimeline(
+    length=abc_flow.length, uid="clt1_unfolded", name="ABC v2.6, played through"
 )
-score_group_unfolded
-
-# %% [markdown]
-# The unfolded CLT1 carries all note events in playthrough order.
-# Extract them for note matching:
-
-# %%
-clt1_unfolded = score_group_unfolded.get_timeline("clt_1")
-abc_notes_df = clt1_unfolded.get_events(
-    event_type="Note", include_children=True
-).to_dataframe()
-
-# Cast types restored from string (EventData stores extra columns as strings)
-abc_notes_df["staff"] = pd.to_numeric(abc_notes_df["staff"], errors="coerce").astype(
-    "Int64"
+score_group_unfolded = TimelineGroup(
+    id="score_unfolded",
+    name="Score played through",
+    timelines=[clt1_unfolded],
 )
-abc_notes_df["quarterbeats_playthrough"] = abc_notes_df["start"]
-
+abc_notes_df = pd.read_csv(ABC_DIR / "n04op18-4_04_unfolded.notes.tsv", sep="\t")
 abc_prepared = prepare_abc_notes_for_matching(abc_notes_df)
-len(abc_prepared)  # sounding onsets: untied notes and tie starts
+{
+    "played-through length": clt1_unfolded.length,
+    "sounding onsets": len(abc_prepared),  # untied notes and tie starts
+}
 
 # %% [markdown]
 # ## 10. Aligning Recordings with the Score via Note Matching
@@ -507,13 +507,12 @@ len(abc_prepared)  # sounding onsets: untied notes and tie starts
 # Each EEP recording's note events (seconds, pitch, staff) are matched
 # against the ABC **unfolded** score notes (quarterbeats, pitch, staff)
 # prepared in §9.2 using greedy sequential matching. The result:
-# `MatchClaim` objects that connect recording positions to score
-# positions. No pre-computed TSV is needed — the unfolded CLT1 carries
-# all the notes.
+# `MatchClaim` objects that connect recording positions to positions of the
+# played-through score.
 
 # %% [markdown]
 # Match each recording against the score. The `source_timeline` and
-# `target_timeline` are the audio DPT and the unfolded CLT1 respectively —
+# `target_timeline` are the audio DPT and the played-through CLT1 respectively —
 # the two timelines of every resulting `MatchClaim`.
 #
 # A MatchClaim joins two events, but here neither side names its events
@@ -565,7 +564,7 @@ exaggerated_match = match_results["dpt_11"]
 #
 # The score group unites 3 score representations across 2 domains (Logical +
 # Graphical). Note matching produced MatchClaims connecting each recording
-# group's audio timeline to CLT1:
+# group's audio timeline to the played-through CLT1 of §9.2:
 #
 # | Recording | Matched | Unmatched EEP | Unmatched ABC |
 # |-----------|---------|---------------|---------------|
@@ -587,9 +586,10 @@ exaggerated_match = match_results["dpt_11"]
 # repeat structure.
 #
 # The central payoff of this notebook is **cascading alignment**: by
-# adding the recordings edition's unfolded score (CLT2) to the same
-# group as CLT1, coordinate transfer chains automatically from the EEP
-# recordings through both score editions to the Emerson recording.
+# adding the recordings edition's played-through score (CLT2) to the same
+# group as the played-through CLT1, coordinate transfer chains automatically
+# from the EEP recordings through both score editions to the Emerson
+# recording.
 #
 # - **CLT2**: ABC v1.0 ("recordings edition") score — `ContinuousLogicalTimeline`
 # - **DPT16**: Emerson String Quartet recording (DG 1997) — `ContinuousPhysicalTimeline`
@@ -601,8 +601,8 @@ exaggerated_match = match_results["dpt_11"]
 # ### 11.1 CLT2: Recordings Edition Score
 #
 # The recordings edition uses the same measure/repeat structure as CLT1 but
-# was encoded independently (ABC v1.0). We load it via Ms3Loader and use its
-# flow controller to compute the traversal map.
+# was encoded independently (ABC v1.0). We load it via Ms3Loader and play
+# its flow control.
 
 # %%
 REC_DIR = DATA_DIR / "recordings"
@@ -617,38 +617,34 @@ clt2
 # %% [markdown]
 # ### 11.2 Flow Control: Inspect the Score's Repeat Structure
 #
-# The loader's `create_flow_controller()` identifies atomic sections and
-# flow control events (repeats, voltas) from the measure data.
+# The loader writes the repeat signs and brackets of the measure data as the
+# timeline's flow control.
 
 # %%
-rec_controller = rec_loader.create_flow_controller()
-rec_controller
+clt2.flow_control
 
 # %% [markdown]
-# Compute the default flow (all repeats taken) and a single-pass flow
+# Play the default flow (all repeats taken) and a single-pass flow
 # (no repeats, last volta only) for comparison:
 
 # %%
-default_flow = rec_controller.compute_flow(FlowMode.default)
-default_flow
-
-# %%
-single_flow = rec_controller.compute_flow(FlowMode.single)
-single_flow
+default_flow = clt2.get_flow()
+single_flow = clt2.get_flow("single")
+{"default": default_flow, "single": single_flow}
 
 # %% [markdown]
-# ### 11.3 Unfolding CLT2
+# ### 11.3 CLT2 Played Through
 #
-# The recordings edition has the same repeat structure as CLT1.
-# We unfold it via the standalone `create_unfolded_timeline()` function,
-# passing the default flow (all repeats taken). The result is a flat
-# timeline with all sections concatenated in playthrough order —
-# coordinates in quarter-beats, suitable for matching against the
-# Emerson CSV's unfolded floating-measure boundaries.
+# The recordings edition has the same repeat structure as CLT1. Its
+# played-through timeline is as long as its default flow (all repeats
+# taken), with coordinates in quarter-beats, suitable for the Emerson CSV's
+# unfolded section boundaries.
 
 # %%
-clt2_unfolded = create_unfolded_timeline(
-    clt2, default_flow, flow_controller=rec_controller, uid="clt2_unfolded"
+clt2_unfolded = ContinuousLogicalTimeline(
+    length=default_flow.length,
+    uid="clt2_unfolded",
+    name="ABC v1.0, played through",
 )
 clt2_unfolded
 
@@ -719,21 +715,21 @@ len(emerson_pairs)
 # ## 12. Bridging the Two AlignmentBundles
 
 # %% [markdown]
-# ### 12.1 The Key Move: Adding CLT2\_unfolded to the Unfolded Score Group
+# ### 12.1 The Key Move: Adding CLT2\_unfolded to the Played-Through Score Group
 #
-# The Unfolded Score Group and the Emerson Group are currently independent:
+# The played-through score group and the Emerson Group are currently independent:
 # neither shares a timeline with the other, and no MatchClaims connect them.
 # The Emerson MatchClaims (§11.5) link CLT2\_unfolded to DPT16 — but
 # CLT2\_unfolded is not yet in any group that the bundle's existing WarpMaps
 # can reach.
 #
 # The insight: CLT1\_unfolded and CLT2\_unfolded encode the *same music*
-# from different editions. By adding CLT2\_unfolded to the Unfolded Score
-# Group, any coordinate on CLT1\_unfolded can be transferred to
+# from different editions. By adding CLT2\_unfolded to the played-through
+# score group, any coordinate on CLT1\_unfolded can be transferred to
 # CLT2\_unfolded via within-group interpolation, and from there to DPT16
 # via the Emerson MatchLine's WarpMap. The cascading path:
 #
-# **DPT1 -> (WarpMap) -> CLT1 -> (interpolation) -> CLT2\_unfolded -> (WarpMap) -> DPT16**
+# **DPT1 -> (WarpMap) -> CLT1\_unfolded -> (interpolation) -> CLT2\_unfolded -> (WarpMap) -> DPT16**
 #
 # A single additional group membership retroactively enriches every
 # timeline in both groups.
@@ -743,10 +739,9 @@ score_group_unfolded.add_timeline(clt2_unfolded)
 score_group_unfolded
 
 # %% [markdown]
-# CLT2\_unfolded now appears alongside CLT1, DGT1, and OpenScore in
-# the unfolded score group. Every member spans the whole group, so the group
-# links all four timelines pairwise, bridging quarter-beats and floating
-# measures.
+# CLT2\_unfolded now appears alongside CLT1\_unfolded in the played-through
+# score group. Every member spans the whole group, so the group links the two
+# editions' played-through timelines.
 
 # %% [markdown]
 # ### 12.2 The Emerson Group
@@ -805,7 +800,7 @@ pd.DataFrame(
         {
             "recording": name,
             "source": dpt_id,
-            "target": "clt_1",
+            "target": "clt1_unfolded",
             "matched": match_results[dpt_id].n_matched,
             "unmatched_source": match_results[dpt_id].n_unmatched_source,
             "unmatched_target": match_results[dpt_id].n_unmatched_target,
@@ -894,18 +889,26 @@ annotations_df[["start", "name"]].head(15)
 # ### 14.2 USE CASE A — Transfer a Harmony Across All Groups
 #
 # The `V7` at quarterbeat 79 (m. 20) is a dominant seventh — one of the
-# most recognisable sonorities. Where does this moment land across all
-# 5 groups, in every domain? The nested format groups results by
-# `TimelineGroup`:
+# most recognisable sonorities. Quarterbeat 79 is a position of the folded
+# score; the default flow of §6.1 gives where it is played. It lies in a
+# repeated passage and is played twice:
 
 # %%
-stamp = bundle.get_matchstamp_at(79.0, "clt_1")
+v7_played = abc_flow.unfold(79)
+v7_played
+
+# %% [markdown]
+# Where does the first of these moments land across all 5 groups, in every
+# domain? The nested format groups results by `TimelineGroup`:
+
+# %%
+v7 = v7_played[0].value
+stamp = bundle.get_matchstamp_at(v7, "clt1_unfolded")
 len(stamp.present_timelines)
 
 # %% [markdown]
 # The bundle answers for every nested timeline of its trees, here also the
-# children of the unfolded score's timelines and of each recording, so the
-# stamp holds 114 timelines. To keep the output readable, the cells below
+# children of each recording, so the stamp holds 102 timelines. To keep the output readable, the cells below
 # narrow it to the bundle's own members (`bundle.timeline_ids`) with the
 # getter's `within=` filter, which always keeps the queried timeline and
 # selects among the others; the children's coordinates are still there
@@ -913,7 +916,7 @@ len(stamp.present_timelines)
 
 # %%
 members = set(bundle.timeline_ids)
-stamp = bundle.get_matchstamp_at(79.0, "clt_1", within=members)
+stamp = bundle.get_matchstamp_at(v7, "clt1_unfolded", within=members)
 stamp
 
 # %% [markdown]
@@ -927,7 +930,7 @@ stamp
 
 # %%
 {
-    "CLT1 coordinate": stamp.get_coordinate("clt_1"),
+    "CLT1_unfolded coordinate": stamp.get_coordinate("clt1_unfolded"),
     "interpolated": stamp.is_interpolated,
 }
 
@@ -940,18 +943,18 @@ stamp
 # instead, ask for one with `get_coordinate_for(id, format="float")`.
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt_1", within=members).to_dict(format="nested")
+bundle.get_matchstamp_at(v7, "clt1_unfolded", within=members).to_dict(format="nested")
 
 # %% [markdown]
 # Note that the `emerson` group now appears in the output: the
-# cascading path CLT1 -> CLT2\_unfolded -> DPT16 connects the Emerson
+# cascading path CLT1\_unfolded -> CLT2\_unfolded -> DPT16 connects the Emerson
 # recording to the rest of the bundle.
 
 # %% [markdown]
 # The flat format is useful for programmatic access:
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt_1", within=members).to_dict(format="flat")
+bundle.get_matchstamp_at(v7, "clt1_unfolded", within=members).to_dict(format="flat")
 
 # %% [markdown]
 # ### 14.3 USE CASE B — Reverse Transfer: Emerson to All Groups
@@ -966,25 +969,29 @@ bundle.get_matchstamp_at(120.0, "dpt_16", within=members).to_dict(format="nested
 # %% [markdown]
 # A coordinate at 120 seconds into the Emerson recording is mapped
 # through the WarpMap to CLT2\_unfolded, then via interpolation to
-# CLT1, and from there via the per-note WarpMaps to DPT1, DPT6, and
+# CLT1\_unfolded, and from there via the per-note WarpMaps to DPT1, DPT6, and
 # DPT11 — all in a single call.
 
 # %% [markdown]
 # ### 14.4 USE CASE C — Section Boundaries Across All Groups
 #
 # The score's repeat structure defines atomic sections (A through M).
-# The flow controller (from §6.1) computes each section's **unfolded**
-# quarterbeat start coordinate. With the Emerson group now connected,
-# the boundary table includes DPT16:
+# Resolved against CLT1, the default FlowMap of §6.1 places every section
+# where it is played; the first time each section is played gives its
+# **unfolded** quarterbeat start coordinate, a position of CLT1\_unfolded.
+# With the Emerson group now connected, the boundary table includes DPT16:
 
 # %%
-section_coords = abc_controller.get_atomic_section_coordinates(flow=abc_flow)
+default_map = abc_sections.flow_maps[0]
+section_coords = {}
+for _chunk_id, _placed in zip(default_map.chunks, default_map.resolve(clt1).chunks):
+    section_coords.setdefault(section_names[_chunk_id], _placed.start.value)
 section_coords
 
 # %%
 boundary_rows = []
 for _qb in section_coords.values():
-    _stamp = bundle.get_matchstamp_at(float(_qb), "clt_1", within=members)
+    _stamp = bundle.get_matchstamp_at(_qb, "clt1_unfolded", within=members)
     _row = {}
     for _tl_id in _stamp.present_timelines:
         _coord = _stamp.get_coordinate_for(_tl_id)
@@ -1001,11 +1008,11 @@ boundary_df
 # Each row gives the exact coordinate of a section boundary in every
 # member timeline and domain — including the Emerson recording's `dpt_16`
 # column. Every column matches its own timeline's native type, and that is
-# the point worth pausing on: pixel and sample counts are integers because
-# those axes are discrete, seconds are floats, and quarterbeats are exact
-# fractions. One cross-section can therefore hold three different number
-# types at once without any of them being a compromise. Nothing here was
-# converted for display — each value is the canonical one its axis declares.
+# the point worth pausing on: sample counts are integers because those axes are
+# discrete, seconds are floats, and quarterbeats are exact fractions. One
+# cross-section can therefore hold three different number types at once without
+# any of them being a compromise. Nothing here was converted for display — each
+# value is the canonical one its axis declares.
 
 # %% [markdown]
 # ## 15. Summary & Key Takeaways
@@ -1019,10 +1026,10 @@ boundary_df
 #
 # The central demonstration of this notebook is that **a single additional
 # group membership retroactively enriches every timeline already present
-# in the bundle.** Adding CLT2\_unfolded to the Unfolded Score Group
+# in the bundle.** Adding CLT2\_unfolded to the played-through score group
 # bridges two independent alignment networks:
 #
-# - **EEP recordings** (per-note MatchClaims) connect DPT1-DPT15 to CLT1
+# - **EEP recordings** (per-note MatchClaims) connect DPT1-DPT15 to CLT1\_unfolded
 # - **Emerson recording** (section-boundary MatchClaims) connects DPT16 to
 #   CLT2\_unfolded
 # - **CLT2\_unfolded in the score group** bridges the two via within-group
@@ -1034,13 +1041,13 @@ boundary_df
 # |---------|---------|---------|
 # | `build_recording_group()` | Reusable factory for EEP recordings | 2-4 |
 # | `Ms3Loader.from_file()` | Load ABC score with notes, measures, annotations | 6 |
-# | `create_flow_controller()` | Repeat structure + default flow | 6.1 |
+# | `get_flow()` | The default flow of the score's flow control | 6.1 |
+# | `create_flow_maps_from_flow_control()` | Atomic sections as Regions, flows as FlowMaps | 6.1, 14.4 |
 # | `SegmentLine` nesting | OMR pages -> systems -> noteheads | 7 |
 # | Region extraction | OpenScore 4-movement -> movement 4 child | 8 |
 # | Cross-domain timestamps | Quarters -> pixels -> page number | 9.1 |
-# | `TimelineGroup.apply_flow()` | Unfold entire group via one flow | 9.2 |
-# | `match_notes_by_attributes()` | EEP <-> ABC note matching (from unfolded TL) | 10 |
-# | `create_unfolded_timeline()` | Unfold a single timeline | 11.3 |
+# | Played-through score | A timeline as long as the default flow | 9.2, 11.3 |
+# | `match_notes_by_attributes()` | EEP <-> ABC note matching (played-through notes) | 10 |
 # | `create_match_claims()` with positions | Section-boundary alignment through Projections (alpha-kappa) | 11.5, 13 |
 # | `add_timeline()` on a group | Bridge independent alignment networks | 12.1 |
 # | `MatchLine` + `WarpMap` | Explicit construction from MatchClaims | 13.1 |
@@ -1049,6 +1056,7 @@ boundary_df
 # | Reverse transfer | DPT16 -> all groups | 14.3 |
 # | Cascading alignment | EEP <-> Score <-> Emerson via shared group | 12-14 |
 #
-# **5 groups, 18+ timelines, 3 domains, 1 bundle.**
+# **5 groups and 18 timelines in one bundle; with the folded score group,
+# 3 domains.**
 
 # %%

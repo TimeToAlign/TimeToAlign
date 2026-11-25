@@ -19,11 +19,12 @@
 # %% [markdown]
 # ## What you will build
 #
-# You will build a folded {{< glossary Timeline >}}, describe its played order,
-# and obtain an unfolded timeline that preserves the route back to the page.
-# You will also build a {{< glossary BeatGrid >}} whose measures and beats can
-# be queried in either direction, survive a tempo change, and be exported for
-# annotation software.
+# You will build a folded {{< glossary Timeline >}}, describe its played order
+# as a {{< glossary FlowMap >}}, and convert positions between the page and the
+# performance. You will read the flow control a score loader writes, play it,
+# and check the result. You will also build a {{< glossary BeatGrid >}} whose
+# measures and beats can be queried in either direction, survive a tempo
+# change, and be exported for annotation software.
 
 # %% [markdown]
 # ## Before you start
@@ -47,7 +48,8 @@ from timetoalign import (
     Ms3Loader,
 )
 from timetoalign.testdata import ensure_data
-from timetoalign.timelines import Flow, FlowMap, ScoreFlowController
+from timetoalign.timelines import FlowMap
+from timetoalign.timelines.flow import measure_ranges
 
 score_data = ensure_data("score")
 
@@ -116,42 +118,43 @@ region_overview
 # %% [markdown]
 # ## Building the map
 #
-# A {{< glossary FlowMap >}} records how folded spans are placed in played
-# order. `create_flow_map(intervals)` accepts a region id, a Region, a `(start, end)`
-# pair, a Timeline, or an iterable mixing any of those shapes.
+# A {{< glossary FlowMap >}} lists the spans of one timeline in the order they
+# are played. `create_flow_map(chunks)` takes them as region ids or Region
+# objects, builds the map, attaches it to the timeline, and returns it. A
+# FlowMap you build yourself joins a timeline with `add_flow_map`.
 
 # %%
-flow_intervals = [played_order[0], opening_region, closing_region]
-performance_map = written_score.create_flow_map(
-    flow_intervals,
-    id="performance",
-)
-written_score.add_flow_map(performance_map, id="played")
-retrieved_map = written_score.get_flow_map("played")
+flow_chunks = [played_order[0], opening_region, closing_region]
+performance_map = written_score.create_flow_map(flow_chunks, id="performance")
+written_score.add_flow_map(FlowMap("written_score", written_order, id="as_written"))
+retrieved_map = written_score.get_flow_map("performance")
 available_maps = written_score.list_flow_maps()
 map_overview = {
-    "is a FlowMap": isinstance(retrieved_map, FlowMap),
-    "attached ids": available_maps,
     "selected map": retrieved_map,
+    "its chunks": retrieved_map.chunks,
+    "attached ids": available_maps,
 }
 map_overview
 
 # %% [markdown]
-# The single `flow_intervals` argument mixes a region name with Region objects.
-# `add_flow_map` attaches an existing map under another id; `get_flow_map` and
-# `list_flow_maps` retrieve and enumerate the attached maps.
+# The `flow_chunks` argument mixes a region id with Region objects; the map
+# holds them all as ids. `get_flow_map` retrieves an attached map by its id and
+# `list_flow_maps` enumerates them.
 
 # %% [markdown]
 # ## Unfolding one position
 #
-# `unfold_coordinate(coord)` takes one folded position and returns a list,
-# because repeated material can occur at several positions in performance.
+# `resolve()` reads a FlowMap against its timeline: each span becomes a stretch
+# of the page, placed where the one before it ends in the performance. Its
+# `unfold(coord)` takes one folded position and returns a list, because
+# repeated material can occur at several positions in performance.
 
 # %%
+performance = performance_map.resolve(written_score)
 repeated_folded = written_score.get_coordinate(Fraction(1))
 skipped_folded = written_score.get_coordinate(Fraction(5))
-repeated_unfolded = written_score.unfold_coordinate(repeated_folded, "played")
-skipped_unfolded = written_score.unfold_coordinate(skipped_folded, "played")
+repeated_unfolded = performance.unfold(repeated_folded)
+skipped_unfolded = performance.unfold(skipped_folded)
 unfold_report = {
     "folded position in A": repeated_folded,
     "played positions": repeated_unfolded,
@@ -161,10 +164,10 @@ unfold_report = {
 unfold_report
 
 # %% [markdown]
-# The position in A appears once in each rendition. The empty list for B is the
-# correct answer, not a failure: that written span is absent from this route.
-# This timeline convenience method returns plain numbers, so its played
-# positions do not carry the written timeline's quarter unit.
+# The position in A appears once in each rendition, at 1 and 5 quarters. The
+# empty list for B is the correct answer, not a failure: that written span is
+# absent from this route. The played positions are Coordinates in the written
+# timeline's unit, quarters.
 
 # %% [markdown]
 # ## Folding back
@@ -174,53 +177,44 @@ unfold_report
 
 # %%
 later_unfolded = repeated_unfolded[1]
-folded_position = written_score.fold(later_unfolded, "played")
+folded_position = performance.fold(later_unfolded)
 fold_report = {
     "later performance position": later_unfolded,
     "position on the page": folded_position,
-    "matches the original value": folded_position == repeated_folded.value,
+    "matches the original value": folded_position.value == repeated_folded.value,
 }
 fold_report
 
 # %% [markdown]
-# The second rendition folds back to the original written value. Like
-# `unfold_coordinate`, this convenience method returns a plain number rather
-# than a unit-bearing Coordinate. Keep the directions distinct: unfolding is
-# one-to-many; folding is many-to-one.
+# The second rendition folds back to the original written value. Keep the
+# directions distinct: unfolding is one-to-many; folding is many-to-one.
 
 # %% [markdown]
-# ## Assembling the whole unfolded timeline
+# ## The performance as a timeline of its own
 #
-# `apply_flow(id)` constructs the complete played timeline. It preserves the
-# source's concrete type and makes one {{< glossary Child >}} timeline for every
-# played span.
+# A virtual timeline states that a FlowMap was applied to its timeline. It has
+# an id, the written timeline's unit, and the performance's length, and holds
+# nothing else: no events and no children. Positions convert through it in
+# both directions, given the timeline it comes from.
 
 # %%
-unfolded_score = written_score.apply_flow("played")
-unfolded_children = unfolded_score.list_children()
-unfolded_regions = {region.id: region.name for region in unfolded_score.iter_regions()}
-reverse_map = unfolded_score.get_flow_map("source")
-unfolded_overview = {
-    "same concrete type": type(unfolded_score) is type(written_score),
-    "children": unfolded_children,
-    "regions": unfolded_regions,
-    "reverse map": reverse_map,
+performed = written_score.create_virtual_timeline(performance_map, id="performed")
+performed_overview = {
+    "virtual timeline": performed,
+    "played positions": performed.unfold(repeated_folded, written_score),
+    "virtual timelines": written_score.list_virtual_timelines(),
 }
-unfolded_overview
+performed_overview
 
 # %% [markdown]
-# Each child takes the id of the span it plays; the second visit to A is
-# `A-rend2`, and further visits would use `-rend3` and so on. Matching regions
-# cover the spans in unfolded coordinates: their ids are minted, and their names
-# repeat the children's. Those named intervals are what make the route
-# invertible through the `source` map.
+# The performance is twelve quarters long, as the page is: A twice and C once
+# take as long as A, B and C.
 
 # %% [markdown]
-# ## Inspecting repeat events
+# ## Inspecting repeat signs
 #
-# Score loaders retain repeat signs and non-sequential destinations as
-# flow-control {{< glossary Event >}}s. Inspecting those parsed records first
-# makes the controller's later route easier to understand.
+# A score's measure table records its repeat signs. Inspecting those rows first
+# makes the flow control a loader writes from them easier to read.
 
 # %%
 score_dir = score_data / "beethoven_woo71"
@@ -247,13 +241,19 @@ repeat_events
 # %% [markdown]
 # ## Ids and names of flow-control elements
 #
-# Every element of a timeline (a region, a break, a jump, a marker) has an `id`
-# that identifies it, unique across everything you save together in one
-# manifest (timelines, children, groups, maps and these elements alike), and a
-# name or label for display. A loader gives ids where the source has none, with one
-# prefix per kind of flow-control element: `flow_marker_1` for a break,
-# `jump_from_1` for a jump and `jump_to_1` for a marker a jump lands on. A short
-# score with a *Fine*, a segno and a coda shows all three kinds.
+# A loader writes these signs as the timeline's **flow control**: a list of
+# elements of five kinds. A jump is where the flow may leave the axis, with one
+# destination for every place it may go on at; a jump target is a place a
+# destination names (a repeat start, a segno, a coda, a bracket); a break is a
+# place the flow does not go on across (a *Fine*, the end of a first bracket);
+# a section break ends a section; a barline is a barline the source prints.
+#
+# Every element of a timeline (a region, a jump, a jump target, a break) has an
+# `id` that identifies it, unique across everything you save together in one
+# manifest, and may have a name for display. A loader gives ids where the
+# source has none, with one prefix per kind: `jump_1`, `jump_target_1`,
+# `break_1`, `section_break_1`, `barline_1`. A short score with a *Fine*, a
+# segno and a coda shows them.
 
 # %%
 flow_dir = score_data / "flow_control" / "flow_only"
@@ -264,73 +264,80 @@ flow_elements = flow_score.flow_control
 element_ids = {
     "regions": {region.id: region.name for region in written_score.iter_regions()},
     "breaks": {brk.id: brk.name for brk in flow_elements.breaks},
-    "jumps": {jump.id: jump.label for jump in flow_elements.jumps},
-    "markers": {marker.id: marker.name for marker in flow_elements.markers},
-    "jump targets": {jump.id: jump.target for jump in flow_elements.jumps},
+    "jump targets": {target.id: target.name for target in flow_elements.jump_targets},
+    "jump destinations": {
+        jump.id: [destination.to for destination in jump.targets]
+        for jump in flow_elements.jumps
+    },
 }
 element_ids
 
 # %% [markdown]
-# The written score's regions carry the ids you gave and no names. A jump
-# that lands on a marker names that marker's id as its `target`; these repeats
-# and the *Da Capo* land on no marker, so their targets are `None`, and each
-# jump still carries its destination coordinate.
+# The written score's regions carry the ids you gave and no names; the loader
+# names the *Fine*, the segno and the coda as the source names them. A
+# destination that goes on at a jump target names that target's id as its
+# `to`; a plain repeat and the *Da Capo* name none and go back to the start
+# of their section, and a bracket the flow simply goes on into states a
+# distance of 0 instead.
 
 # %% [markdown]
 # ## Computing and checking the route
 #
-# A `ScoreFlowController` turns the parsed measure records into a
-# {{< glossary Flow >}} and its FlowMap. Diagnostics check the default
-# unfolding route without interrupting the notebook.
+# `get_flow()` plays a timeline's flow control and writes nothing. Its result
+# lists the stretches of the score in the order played and converts positions
+# like a resolved FlowMap; its `findings` report what looks wrong. Stated in
+# measures, the route of WoO 71 is easy to compare with the score.
 
 # %%
-controller = score_loader.create_flow_controller()
-real_flow_map = controller.create_flow_map()
-real_flow = real_flow_map.flow
-diagnostics = controller.flow_diagnostics()
+score_timeline = score_loader.create_timeline(uid="woo71")
+route = score_timeline.get_flow()
+played_measures = measure_ranges(
+    [stretch.source for stretch in route.chunks], score_timeline.measure_map
+)
 flow_report = {
-    "controller type": isinstance(controller, ScoreFlowController),
-    "flow type": isinstance(real_flow, Flow),
-    "flow-map type": isinstance(real_flow_map, FlowMap),
-    "folded measures": real_flow.folded_length,
-    "played measures": real_flow.unfolded_length,
-    "diagnostics": [item.kind for item in diagnostics] or "none",
+    "folded measures": len(score_timeline.measure_map),
+    "played measures": sum(stretch.n_measures for stretch in played_measures),
+    "first stretches": played_measures[:3],
+    "findings": [finding.message for finding in route.findings] or "none",
 }
 flow_report
 
 # %% [markdown]
-# The default route visits 505 measures from a 397-measure folded score.
-# `flow_diagnostics()` would return records for traversal or repeat-resolution
-# problems; the displayed `none` means it found no such problem in this score.
+# The default route visits 505 measures from a 397-measure folded score, in
+# right-open ranges of measure counts, and finds nothing to report. The short
+# score above is another matter: its second of three brackets has no sign at
+# its end, so its flow stops there and never plays the rest.
+
+# %%
+[finding.message for finding in flow_score.get_flow().findings]
 
 # %% [markdown]
 # ## Segmenting the folded score
 #
-# Controller boundaries mark changes in the score's flow structure. A
-# {{< glossary SegmentLine >}} created from them turns the folded timeline into
-# adjacent, inspectable sections.
+# `create_flow_maps_from_flow_control()` writes the stretches flow control
+# never divides, its atomic sections, as Regions named by letters, and the
+# route as a FlowMap of them. Their starts divide the folded timeline into a
+# {{< glossary SegmentLine >}} of adjacent, inspectable sections.
 
 # %%
-score_timeline = score_loader.create_timeline(uid="woo71_folded")
-section_boundaries = controller.get_section_boundary_coordinates()
-boundary_coordinates = [
-    score_timeline.start,
-    *[score_timeline.make_coordinate(boundary) for boundary in section_boundaries],
-    score_timeline.length,
-]
+computed = score_timeline.create_flow_maps_from_flow_control()
+section_starts = [section.start for section in computed.sections]
+boundary_coordinates = [*section_starts, score_timeline.length]
 score_segments = score_timeline.create_segment_line(boundary_coordinates)
 segment_report = {
+    "first sections": [section.name for section in computed.sections[:4]],
     "first boundaries": boundary_coordinates[:4],
     "boundary count": len(boundary_coordinates),
     "segment count": score_segments.n_children,
-    "segment line": score_segments,
+    "route FlowMap": computed.flow_maps[0],
 }
 segment_report
 
 # %% [markdown]
-# The first boundary coordinates retain their quarter unit. Fourteen
-# boundaries divide the score into thirteen adjacent segments, and the
-# SegmentLine keeps those segments as children of one timeline.
+# The boundary coordinates retain their quarter unit. Twenty-seven boundaries
+# divide the score into twenty-six adjacent segments, one per atomic section,
+# and the SegmentLine keeps those segments as children of one timeline. The
+# route's FlowMap lists the sections in the order played.
 
 # %% [markdown]
 # ## Beats as a queryable grid
@@ -474,13 +481,13 @@ numbering_report
 #
 # - You can distinguish a folded page from its unfolded performance order.
 # - You can name written spans with regions.
-# - You can build, attach, retrieve, and list polymorphic flow maps.
+# - You can build, attach, retrieve, and list flow maps.
 # - You can unfold one written position to zero, one, or several played positions.
 # - You can fold a played position back to one place on the page.
-# - You can assemble and inspect a complete unfolded timeline.
-# - You can inspect repeat events retained by a score loader.
-# - You can compute a score route and obtain non-raising flow diagnostics.
-# - You can create a segment line from flow-section boundaries.
+# - You can state a performance as a virtual timeline and convert positions through it.
+# - You can inspect the repeat signs of a score and the flow control a loader writes from them.
+# - You can compute a score's route and read what playing it found.
+# - You can write a score's atomic sections and create a segment line from them.
 # - You can build a beat grid from one tempo statement and bound it with an extent.
 # - You can turn a measure and beat into an instant, and an instant back into a beat.
 # - You can render every beat as a table and export a real annotation CSV.

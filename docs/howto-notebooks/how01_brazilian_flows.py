@@ -16,43 +16,45 @@
 # %% [markdown]
 # # Inspect, Correct, and Re-Define Flows for Brazilian Choros
 #
-# For a full API tour, see `tut07_flow_and_grids.ipynb`. The condensed primer below covers
-# only what is needed to read the inspection cells in this notebook.
+# For the whole API, see [How to Encode and Play Flow Control](how01_flow_control.ipynb).
+# The condensed primer below covers only what is needed to read the inspection
+# cells in this notebook.
 #
-# A score is **folded** — repeated sections appear once on the page but play
-# multiple times in performance. A performance is **unfolded** — every event
-# occupies a unique time point. Two primitives encode this structure, both parsed
-# automatically from score files (you never construct them by hand):
+# A score is **folded**: repeated sections appear once on the page but play
+# multiple times in performance. A score loader writes the signs that say how
+# as the timeline's **flow control**, a list of elements of five classes:
 #
-# - **Break** — voids {{< glossary Contiguity >}} at a coordinate; no
-#   {{< glossary TimeInterval >}} may span it (`section_break`, `fine`).
-# - **Jump** — makes two non-adjacent coordinates contiguous (`repeat_end`,
-#   `da_capo`, `dal_segno`, `to_coda`, and their *al coda* / *al fine* variants).
+# - {{< glossary Jump >}}: where the flow may leave the axis, with one
+#   destination for every place it may go on at (a repeat end, a *D.C.*, a
+#   *D.S.*, a *To Coda*, the brackets of alternative endings);
+# - {{< glossary JumpTarget >}}: a place a destination names (a repeat start,
+#   a segno, a coda, a bracket);
+# - {{< glossary Break >}}: a place the flow does not go on across (a *Fine*,
+#   the end of a first bracket);
+# - {{< glossary SectionBreak >}}: the end of a section;
+# - {{< glossary Barline >}}: a barline the source prints.
 #
-# The `FlowControlElement` enum lists the full vocabulary; the predicates
-# `is_jump`, `is_break`, `is_target`, and `is_structural_marker` filter members.
-#
-# A **FlowMap** is the bidirectional coordinate transform derived from a chosen
-# `FlowMode`. `unfold_coordinate(coord)` returns a list of unfolded positions (≥1);
-# `fold(coord)` returns a single folded coordinate.
-# `FlowMap.from_qb_sections(flow, qb_sections)` is the entry point for manual
-# correction or non-standard interpretations.
+# `Timeline.get_flow(convention)` plays the flow control (`default`, `single`
+# or `printed`) and returns the flow with its {{< glossary Finding >}}s;
+# `Timeline.create_flow_maps_from_flow_control()` writes the
+# {{< glossary "Atomic section" >}}s as Regions and the flows as
+# {{< glossary FlowMap >}}s. A wrong element is corrected by rejecting it
+# (`flow_control.with_belief(id, actor, "false")`) and adding the right one.
 #
 # This notebook inspects three Choros scores. Each piece's section ends by
-# exporting all of its available flows to a CSV under the corpus `flows/` directory.
+# exporting its flows to a CSV under the corpus `flows/` directory.
 
 # %% [markdown]
 # ## Setup
 
 # %%
-from fractions import Fraction
 from pathlib import Path
 
 import pandas as pd
 
 from timetoalign import Ms3Loader, __version__
-from timetoalign.core.enums import FlowMode
-from timetoalign.timelines.flow import compute_qb_sections
+from timetoalign.core.enums import FlowConvention
+from timetoalign.timelines.flow import atomic_sections, measure_ranges
 
 DATA_DIR = Path("~/git/brazilian_flows").expanduser()
 
@@ -65,97 +67,79 @@ def make_paths(name: str, data_dir: Path = DATA_DIR) -> tuple[Path, Path]:
     )
 
 
-def load_controller(name: str):
-    """Build a ``ScoreFlowController`` from the score's measures TSV."""
+def load_timeline(name: str):
+    """Load a score's measures TSV as a timeline with its flow control."""
     _, measures = make_paths(name)
-    return Ms3Loader.from_file(measures).create_flow_controller()
+    return Ms3Loader.from_file(measures).create_timeline(uid=name)
 
 
-def boundaries_summary(controller) -> dict:
-    """Atomic-section count and break positions in QB."""
-    boundaries = controller.get_section_boundary_coordinates()
-    return {
-        "n_atomic_sections": len(boundaries) + 1,
-        "break_positions_qb": [float(b) for b in boundaries],
-    }
+def sections_table(timeline) -> pd.DataFrame:
+    """One row per atomic section: its letter and its stretch in QB."""
+    return pd.DataFrame(
+        {"section": section.name, "qb_start": section.start, "qb_end": section.end}
+        for section in atomic_sections(timeline.flow_control, timeline.length)
+    )
 
 
-SKIPPED_FLOW_MODES = {
-    FlowMode.atomic,  # subsumed by `printed` in this 3-column view; finer structure shown by qb_sections_table
-    FlowMode.music21,
-    FlowMode.custom,
-    FlowMode.partitura_minimal,
-    FlowMode.partitura_maximal,
-}
-
-
-def flow_modes_table(controller) -> pd.DataFrame:
-    """One row per ``FlowMode`` (excluding `SKIPPED_FLOW_MODES`): folded/unfolded length or raised exception."""
+def conventions_table(timeline) -> pd.DataFrame:
+    """One row per convention: played length and number of findings, or the error."""
     rows = []
-    for mode in FlowMode:
-        if mode in SKIPPED_FLOW_MODES:
-            continue
+    for convention in FlowConvention:
         try:
-            flow = controller.compute_flow(mode)
+            flow = timeline.get_flow(convention)
             rows.append(
                 {
-                    "mode": mode.value,
-                    "folded_qb": flow.folded_length,
-                    "unfolded_qb": flow.unfolded_length,
-                    "has_repeats": flow.has_repeats,
+                    "convention": str(convention),
+                    "folded_qb": timeline.length,
+                    "played_qb": flow.length,
+                    "findings": len(flow.findings),
                 }
             )
-        except Exception as exc:
-            rows.append({"mode": mode.value, "error": str(exc)})
+        except ValueError as exc:
+            rows.append({"convention": str(convention), "error": str(exc)})
     return pd.DataFrame(rows)
 
 
-def qb_sections_table(controller, mode: FlowMode = FlowMode.default) -> pd.DataFrame:
-    """QB section boundaries that ``create_flow_map_for_mode(mode)`` would use."""
-    flow = controller.compute_flow(mode)
-    sections = compute_qb_sections(flow, controller)
-    return pd.DataFrame(
-        [
-            {"section": i, "qb_start": float(s), "qb_end": float(e)}
-            for i, (s, e) in enumerate(sections)
-        ]
-    )
+def findings(timeline) -> list[str]:
+    """What playing the default flow found, one sentence per finding."""
+    return [finding.message for finding in timeline.get_flow().findings]
 
 
-def diagnostics_table(controller, mode: FlowMode = FlowMode.default) -> pd.DataFrame:
-    """One row per traversal diagnostic from ``flow_diagnostics(mode)``; empty when the flow traverses cleanly."""
-    diagnostics = controller.flow_diagnostics(mode)
-    if not diagnostics:
-        return pd.DataFrame(columns=["kind", "section_id", "mc", "message"])
-    return pd.DataFrame(
-        [
-            {
-                "kind": d.kind,
-                "section_id": d.section_id,
-                "mc": d.mc,
-                "message": d.message,
-            }
-            for d in diagnostics
-        ]
-    )
+def flow_rows(timeline, convention, source_file: str, software_version: str):
+    """The rows of one flow in ``.flow.csv`` form."""
+    sections = atomic_sections(timeline.flow_control, timeline.length)
+    divide_at = [brk.coordinate for brk in timeline.flow_control.section_breaks]
+    if convention == "atomic":
+        stretches = sections
+    else:
+        stretches = [chunk.source for chunk in timeline.get_flow(convention).chunks]
+    return [
+        {
+            "flow_mode": str(convention),
+            "source_file": source_file,
+            "software_version": software_version,
+            "mc_start": row.start,
+            "mc_end": row.end,
+            "atomic_segments": ";".join(row.sections),
+        }
+        for row in measure_ranges(
+            stretches, timeline.measure_map, sections=sections, divide_at=divide_at
+        )
+    ]
 
 
-def export_flows(controller, name: str) -> Path:
-    """Write every available flow to ``{DATA_DIR}/flows/{name}.csv`` in `.flow.csv` format.
+def export_flows(timeline, name: str) -> Path:
+    """Write the atomic sections and every flow to ``{DATA_DIR}/flows/{name}.csv``.
 
-    One block of rows per `FlowMode` not in `SKIPPED_FLOW_MODES`, using the
-    library's canonical `Flow.to_csv_rows()` serialisation (columns:
-    ``flow_mode``, ``source_file``, ``software_version``, ``mc_start``,
-    ``mc_end``, ``atomic_sections``).
+    One block of rows for the atomic sections, then one per convention, in
+    the columns of a ``.flow.csv`` file: ``flow_mode``, ``source_file``,
+    ``software_version``, ``mc_start``, ``mc_end``, ``atomic_segments``.
     """
     _, measures = make_paths(name)
     software_version = f"timetoalign {__version__}"
     rows = []
-    for mode in FlowMode:
-        if mode in SKIPPED_FLOW_MODES:
-            continue
-        flow = controller.compute_flow(mode)
-        rows.extend(flow.to_csv_rows(measures.name, software_version))
+    for convention in ("atomic", *FlowConvention):
+        rows.extend(flow_rows(timeline, convention, measures.name, software_version))
     out_path = DATA_DIR / "flows" / f"{name}.csv"
     pd.DataFrame(rows).to_csv(out_path, index=False)
     return out_path
@@ -168,30 +152,27 @@ def export_flows(controller, name: str) -> Path:
 
 # %%
 piece_name = "score_1988-Ciume_e_brincadeira"
-controller = load_controller(piece_name)
-controller
+timeline = load_timeline(piece_name)
+timeline.flow_control
 
 # %%
-boundaries_summary(controller)
+sections_table(timeline)
 
 # %%
-controller.breaks
+timeline.flow_control.breaks
 
 # %%
-controller.jumps
+timeline.flow_control.jumps
 
 # %%
-controller.markers
+timeline.flow_control.jump_targets
 
 # %%
-flow_modes_table(controller)
+conventions_table(timeline)
 
 # %%
-qb_sections_table(controller)
-
-# %%
-# Export all available flows for this piece to {DATA_DIR}/flows/{piece_name}.csv.
-export_flows(controller, piece_name)
+# Export all flows for this piece to {DATA_DIR}/flows/{piece_name}.csv.
+export_flows(timeline, piece_name)
 
 # %% [markdown]
 # ---
@@ -200,30 +181,27 @@ export_flows(controller, piece_name)
 
 # %%
 piece_name = "score_1361-Medrosa-Anacleto_de_Medeiros"
-controller = load_controller(piece_name)
-controller
+timeline = load_timeline(piece_name)
+timeline.flow_control
 
 # %%
-boundaries_summary(controller)
+sections_table(timeline)
 
 # %%
-controller.breaks
+timeline.flow_control.breaks
 
 # %%
-controller.jumps
+timeline.flow_control.jumps
 
 # %%
-controller.markers
+timeline.flow_control.jump_targets
 
 # %%
-flow_modes_table(controller)
+conventions_table(timeline)
 
 # %%
-qb_sections_table(controller)
-
-# %%
-# Export all available flows for this piece to {DATA_DIR}/flows/{piece_name}.csv.
-export_flows(controller, piece_name)
+# Export all flows for this piece to {DATA_DIR}/flows/{piece_name}.csv.
+export_flows(timeline, piece_name)
 
 # %% [markdown]
 # ---
@@ -232,152 +210,99 @@ export_flows(controller, piece_name)
 
 # %%
 piece_name = "score_133-Digitalis-Irineu_de_Almeida"
-controller = load_controller(piece_name)
-controller
+timeline = load_timeline(piece_name)
+timeline.flow_control
 
 # %%
-boundaries_summary(controller)
+sections_table(timeline)
 
 # %%
-controller.breaks
+timeline.flow_control.breaks
 
 # %%
-controller.jumps
+timeline.flow_control.jumps
 
 # %%
-controller.markers
+timeline.flow_control.jump_targets
 
 # %%
-flow_modes_table(controller)
+conventions_table(timeline)
 
 # %%
-qb_sections_table(controller)
-
-# %%
-# Export all available flows for this piece to {DATA_DIR}/flows/{piece_name}.csv.
-export_flows(controller, piece_name)
+# Export all flows for this piece to {DATA_DIR}/flows/{piece_name}.csv.
+export_flows(timeline, piece_name)
 
 # %% [markdown]
 # ---
 #
-# ## Traversal diagnostics
+# ## What playing found
 #
-# `check_invariants()` examines the folded atomic graph — the static section
-# partition and its `to` edges. `flow_diagnostics()` is its traversal-time
-# companion: it reports what surfaces only while the repeat-ends are resolved
-# and the default flow is walked — a `flow_cycle` where a guard-disabled edge
-# re-enters an already-visited MC and the walk would never terminate (the
-# re-entered MC is named), the defensive `flow_nonconvergence` ceiling, an
-# `ambiguous_repeat_end` where several open repeat scopes compete (the nearest
-# is chosen), or a `dangling_repeat_end` whose `repeats=end` has no supported
-# jump target. Like every diagnostic surface here, traversal reports rather than
-# raises on a defective source: a malformed score still yields a Flow and a
-# table of findings instead of an exception.
-#
-# The two surfaces are independent. A score whose folded graph satisfies every
-# invariant can still fail to traverse, and a graph-level violation need not be
-# what stops the walk — as the three scores below show.
+# Playing the default flow reports, without raising, what looks wrong: a flow
+# that never ends (`endless_loop`), a flow ending at a Break that states no
+# condition before the end (`flow_ends_at_break`), two destinations of one
+# Jump holding at once (`ambiguous_targets`), a destination nobody can check
+# (`undetermined_target`), and a stretch never played (`never_played`). Each
+# list below holds one sentence per finding; an empty list means the default
+# flow found nothing. Nothing is repaired: a reading that corrects the source
+# rejects the wrong elements and adds the right ones.
 
 # %%
-diagnostics_table(load_controller("score_1988-Ciume_e_brincadeira"))
+findings(load_timeline("score_1988-Ciume_e_brincadeira"))
 
 # %%
-diagnostics_table(load_controller("score_1361-Medrosa-Anacleto_de_Medeiros"))
+findings(load_timeline("score_1361-Medrosa-Anacleto_de_Medeiros"))
 
 # %%
-diagnostics_table(load_controller("score_133-Digitalis-Irineu_de_Almeida"))
-
-# %% [markdown]
-# `score_1361-Medrosa` traverses cleanly — its frame is empty. `score_1988-Ciume_e_brincadeira`
-# is the case where the two surfaces diverge: `check_invariants()` finds nothing
-# in the folded graph, yet the default flow reports a `flow_cycle`, because its
-# D.S./D.C. edge re-enters an earlier MC with its jump guard already spent.
-# `score_133-Digitalis` is the mislabeled-volta specimen: alongside the
-# `volta_follows_volta` violations that `check_invariants()` reports for its
-# folded graph, traversal adds a `dangling_repeat_end` — a `repeats=end` with no
-# open repeat-start scope and no encoded backward edge, so no back-jump is
-# produced and the resolution falls through. Neither surface repairs anything;
-# both expose the source's under-determined flow for a subsequent reading to
-# re-encode.
+findings(load_timeline("score_133-Digitalis-Irineu_de_Almeida"))
 
 # %% [markdown]
 # ---
 #
-# ## Demo: FlowMap and Timeline API
+# ## Demo: FlowMaps
 #
 # Swap `demo_name` to inspect any of the three pieces above. The cells below
-# build a controller, a `FlowMap`, and a timeline with multiple flow maps
-# attached, then exercise `unfold_coordinate` / `fold` / `inverse`.
+# write the piece's atomic sections and its flows as FlowMaps, then convert
+# positions through them with `unfold()` and `fold()`.
 
 # %%
 demo_name = "score_1988-Ciume_e_brincadeira"  # or score_1361-... / score_133-...
 
 notes_demo, measures_demo = make_paths(demo_name)
 loader_demo = Ms3Loader.from_file(notes_demo, measures_demo)
-controller_demo = loader_demo.create_flow_controller()
-flow_map = controller_demo.create_flow_map()  # DEFAULT mode
 score_tl = loader_demo.create_timeline()
-score_tl.add_flow_map(flow_map)
-for mode in [FlowMode.printed, FlowMode.single, FlowMode.atomic]:
-    score_tl.add_flow_map(controller_demo.create_flow_map_for_mode(mode), id=mode.value)
-
-boundaries_demo = controller_demo.get_section_boundary_coordinates()
+computed = score_tl.create_flow_maps_from_flow_control()
+default_map = computed.flow_maps[0]
+resolved = default_map.resolve(score_tl)
 {
     "demo_name": demo_name,
-    "n_sections": flow_map.n_sections,
-    "total_target_length_qb": float(flow_map.total_target_length),
+    "n_sections": len(computed.sections),
+    "played_length": resolved.length,
     "attached_maps": score_tl.list_flow_maps(),
 }
 
 # %%
-# A folded coord inside the first repeated section appears at multiple unfolded positions.
-coord = boundaries_demo[0] / 2 if boundaries_demo else Fraction(5)
-unfolded = flow_map.unfold_coordinate(coord)
+# A folded coord inside the first section appears at as many unfolded
+# positions as the section is played.
+first = computed.sections[0]
+coord = (first.start.value + first.end.value) / 2
+unfolded = resolved.unfold(coord)
 {
-    "source_coord": float(coord),
-    "unfolded_positions": [float(u) for u in unfolded],
+    "source_coord": coord,
+    "unfolded_positions": unfolded,
     "n_appearances": len(unfolded),
 }
 
 # %%
 # Every unfolded position folds back to the same source coord.
-for target in unfolded:
-    source = flow_map.fold(target)
-    print(f"  unfolded {float(target):.3f}  ->  folded {float(source):.3f}")
+[(position, resolved.fold(position)) for position in unfolded]
 
 # %%
-# A coord beyond all repeats appears exactly once.
-late_coord = flow_map.fold(flow_map.total_target_length - 1)
-{
-    "source_coord": float(late_coord),
-    "n_appearances": len(flow_map.unfold_coordinate(late_coord)),
-}
-
-# %%
-# Inverse map: swap source and target (useful for back-references into the score).
-inverse_map = flow_map.inverse()
-{
-    "original_n_sections": flow_map.n_sections,
-    "inverse_n_sections": inverse_map.n_sections,
-    "inverse_source_length": float(inverse_map.total_target_length),
-}
-
-# %%
-# The same folded coord behaves differently under each attached map.
-sample_coord = float(boundaries_demo[0]) / 2 if boundaries_demo else 5.0
+# The same folded coord behaves differently under each computed FlowMap.
 pd.DataFrame(
-    [
-        {
-            "map_id": map_id,
-            "n_appearances": len(score_tl.unfold_coordinate(sample_coord, id=map_id)),
-        }
-        for map_id in score_tl.list_flow_maps()
-    ]
+    {
+        "map_id": flow_map.id,
+        "convention": str(flow_map.convention),
+        "n_appearances": len(flow_map.resolve(score_tl).unfold(coord)),
+    }
+    for flow_map in computed.flow_maps
 )
-
-# %%
-# Fold a specific unfolded position back to the score.
-positions = score_tl.unfold_coordinate(sample_coord)
-if len(positions) > 1:
-    folded_back = score_tl.fold(positions[1])
-    {"second_unfolded": positions[1], "folded_back": folded_back}

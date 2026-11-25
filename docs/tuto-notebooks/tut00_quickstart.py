@@ -236,15 +236,13 @@ claim
 #
 # A {{< glossary FlowMap >}} can unfold a printed passage that is played more
 # than once. Here the written opening from quarter 0 up to, but not including,
-# quarter 4 is played twice.
+# quarter 4 is a {{< glossary Region >}}, and the FlowMap plays it twice.
 
 # %%
-opening_span = (Fraction(0), Fraction(4))
-played_spans = [opening_span, opening_span]
-repeat_map = score.create_flow_map(played_spans, id="quickstart-repeat")
+opening = score.create_region(Fraction(0), Fraction(4), id="opening")
+repeat_map = score.create_flow_map([opening, opening], id="quickstart-repeat")
 folded_coordinate = score.make_coordinate(Fraction(2))
-unfolded_values = repeat_map.unfold_coordinate(folded_coordinate.value)
-unfolded_coordinates = [score.make_coordinate(value) for value in unfolded_values]
+unfolded_coordinates = repeat_map.resolve(score).unfold(folded_coordinate)
 flow_preview = {"written": folded_coordinate, "played": unfolded_coordinates}
 flow_preview
 

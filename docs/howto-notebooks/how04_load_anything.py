@@ -333,11 +333,17 @@ mm_tl
 # %%
 mm_tl.get_events()
 
-# %%
-mm_loader.compute_default_traversal()[:20]  # first 20 measures of the traversal
+# %% [markdown]
+# The loader writes the repeat signs the measure map states as the timeline's
+# flow control; `get_flow()` plays them and returns the played length and what
+# playing found.
 
 # %%
-mm_loader.get_traversal_summary()
+mm_tl.flow_control
+
+# %%
+mm_flow = mm_tl.get_flow()
+{"played length": mm_flow.length, "findings": mm_flow.findings}
 
 
 # %% [markdown]

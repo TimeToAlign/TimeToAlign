@@ -237,7 +237,7 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
             name=data.get("name"),
         )
 
-    def _nested_maps(self) -> list[ConversionMap[Any]]:
+    def _nested_maps(self) -> Sequence[ConversionMap[Any]]:
         return [self._maps[name] for name in self._names]
 
     def __repr__(self) -> str:

@@ -20,6 +20,7 @@ from typing import (
     Protocol,
     TypeVar,
     Union,
+    overload,
 )
 
 import numpy as np
@@ -139,6 +140,7 @@ def _check_calibration(
         """
         return half_ulp(position) + gamma(value) * abs(t_of(value)) * width
 
+    ends: tuple[Fraction, Fraction] | None = None
     if not calibration.exact:
         width = (
             abs(Fraction(last_position) - Fraction(first_position))
@@ -150,7 +152,7 @@ def _check_calibration(
         on_law = reach(value)
         miss = abs(Fraction(position) - on_law)
         bound = Fraction(0)
-        if not calibration.exact:
+        if ends is not None:
             t = t_of(value)
             bound = error(position, value) + abs(1 - t) * ends[0] + abs(t) * ends[1]
         if miss > bound:
@@ -324,10 +326,11 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
                 if isinstance(number, Coordinate):
                     if role == "value" and units[role] is None:
                         units[role] = number.unit
-                    if units[role] is not None and number.unit != units[role]:
+                    unit = units[role]
+                    if unit is not None and number.unit != unit:
                         raise ValueError(
                             f"Calibration pair {index} has a {role} in "
-                            f"{number.unit.value}, not in {units[role].value}."
+                            f"{number.unit.value}, not in {unit.value}."
                         )
                     number = number.value
                 elif role == "value" and value_unit is None:
@@ -350,7 +353,10 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             for _, *numbers in points
             for number in numbers
         )
-        return _Calibration(points, units["value"], origin, exact)
+        # Every pair has a value: a Coordinate set the unit, or value_unit did.
+        read_value_unit = units["value"]
+        assert read_value_unit is not None
+        return _Calibration(points, read_value_unit, origin, exact)
 
     def __init__(
         self,
@@ -555,6 +561,12 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         return ()
 
     # region Conversion methods
+
+    @overload
+    def __call__(self, value: NDArray[Any], **kwargs: Any) -> NDArray[Any]: ...
+
+    @overload
+    def __call__(self, value: CoordinateValue | Coordinate, **kwargs: Any) -> T: ...
 
     def __call__(
         self,

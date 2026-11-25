@@ -27,12 +27,12 @@ from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import IO, TypeAlias
 
-#: What a loader reads: a filesystem path, as a ``Path`` or a ``str``, or a
-#: member of a ZIP archive, as a ``zipfile.Path`` (the archive is read in
-#: place, never extracted). A string always names a filesystem path:
-#: ``"corpus.zip/notes/x.tsv"`` is a file of that name, not a member of
-#: ``corpus.zip``.
 SourceLike: TypeAlias = Path | str | zipfile.Path
+"""What a loader reads: a filesystem path, as a ``Path`` or a ``str``, or a
+member of a ZIP archive, as a ``zipfile.Path`` (the archive is read in
+place, never extracted). A string always names a filesystem path:
+``"corpus.zip/notes/x.tsv"`` is a file of that name, not a member of
+``corpus.zip``."""
 
 #: A source as a loader holds it: a ``Path``, or a ``zipfile.Path`` member.
 Source: TypeAlias = Path | zipfile.Path

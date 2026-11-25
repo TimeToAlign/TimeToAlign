@@ -1898,3 +1898,36 @@ def test_rows_stating_numbers_only_carry_no_list_column() -> None:
 
 
 # endregion
+
+
+class TestPrefixIds:
+    """``prefix_ids`` prefixes every id once and keeps a null id null."""
+
+    IDS = [None, "a", "p:b", "pa"]
+
+    @staticmethod
+    def _table(ids: list[str | None], chunks: int = 1) -> pa.Table:
+        rows = EventData.from_dicts(
+            [{"id": f"x{i}", "start": float(i)} for i in range(len(ids))],
+            TimeUnit.seconds,
+        ).table
+        index = rows.schema.get_field_index("id")
+        table = rows.set_column(
+            index, rows.schema.field(index), pa.array(ids, pa.string())
+        )
+        if chunks == 1:
+            return table
+        return pa.Table.from_batches(table.to_batches(max_chunksize=len(ids) // chunks))
+
+    @pytest.mark.parametrize("chunks", [1, 2])
+    def test_null_id_stays_null(self, chunks: int) -> None:
+        data = EventData(self._table(self.IDS, chunks), TimeUnit.seconds)
+        column = data.prefix_ids("p").table.column("id")
+        assert column.type == pa.string()
+        assert column.to_pylist() == [None, "p:a", "p:b", "p:pa"]
+
+    def test_no_rows(self) -> None:
+        data = EventData(self._table([]), TimeUnit.seconds)
+        column = data.prefix_ids("p").table.column("id")
+        assert column.type == pa.string()
+        assert column.to_pylist() == []

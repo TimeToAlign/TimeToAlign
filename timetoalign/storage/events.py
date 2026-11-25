@@ -56,6 +56,7 @@ from timetoalign.core.fields import (
     ONE_OR_SEVERAL_SUFFIX,
     SemanticField,
     _filled_mask,
+    _joined_strings,
     _member_fields,
     _struct_array,
     _struct_array_from,
@@ -2293,15 +2294,11 @@ class EventData(SemanticFieldAccessMixin):
         Returns:
             A new EventData with prefixed IDs.
         """
-        id_arr = self._table.column("id")
+        ids = self._table.column("id").combine_chunks()
         prefix_str = f"{prefix}:"
-        new_ids = pa.array(
-            [
-                f"{prefix_str}{v}" if not v.startswith(prefix_str) else v
-                for v in id_arr.to_pylist()
-            ],
-            type=pa.string(),
-        )
+        # A null id stays null: its test and its prefixed form are both null.
+        prefixed = _joined_strings(pa.repeat(pa.scalar(prefix_str), len(ids)), ids, "")
+        new_ids = pc.if_else(pc.starts_with(ids, pattern=prefix_str), ids, prefixed)
         idx = self._table.schema.get_field_index("id")
         new_table = self._table.set_column(idx, self._table.schema.field(idx), new_ids)
         return self._derived(new_table)

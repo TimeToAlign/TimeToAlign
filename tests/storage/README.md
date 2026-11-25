@@ -244,6 +244,26 @@ by declaration rather than by the rows of one batch.
   holding a reference concatenates and the column reads `[None,
   {"timeline_id": "clt_6", "event_id": "x1azmn68"}]`.
 
+### `test_events.py` - `EventData.prefix_ids()` on every id, null included
+
+**Purpose:** `prefix_ids(prefix)` places events onto a timeline by writing
+`prefix:` before every event ID that does not already start with it. It reads
+the whole `id` column at once, so a table of any size costs one pass in
+PyArrow, and a null ID (which a table handed to the `EventData` constructor
+may hold; the `from_*` constructors mint one) stays null instead of failing.
+
+**Contract and what proves it** (`TestPrefixIds`), on the table built by the
+constructor from rows whose ids are `[None, "a", "p:b", "pa"]`:
+
+- `prefix_ids("p")` gives `[None, "p:a", "p:b", "p:pa"]`: the null row stays
+  null (it raised `AttributeError: 'NoneType' object has no attribute
+  'startswith'` before), `a` is prefixed, `p:b` already carries the prefix
+  with its colon and is kept, and `pa`, which starts with the letter but not
+  with `p:`, is prefixed. The column stays `string`.
+- The same rows split into two chunks give the same column, so the result
+  does not depend on how the table is laid out in memory.
+- A table without rows gives an empty `string` column.
+
 ### `test_events.py` - Boxes as rows and the declared shape columns
 
 **Purpose:** A `Box` stands for its event row as a Projection does, and its

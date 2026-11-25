@@ -705,7 +705,7 @@ class _OpenProvenance(Provenance):
         )
 
     @model_validator(mode="after")
-    def _check_stated(self) -> Provenance:
+    def _check_stated(self) -> Self:
         return self
 
     def to_dict(self) -> dict[str, Any]:

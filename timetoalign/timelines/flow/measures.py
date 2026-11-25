@@ -33,7 +33,7 @@ walks that statement into the one order of measures it gives.
 from __future__ import annotations
 
 import csv
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from timetoalign.core import Coordinate, Duration, Measure, TimeUnit
 from timetoalign.core.enums import FlowManifestation, MeasureFindingKind
+from timetoalign.core.time import TimeScalarValue
 
 from ..flowcontrol import (
     Barline,
@@ -106,13 +107,16 @@ def _rows(measures: MeasureMap | Iterable[Any]) -> list[_Row]:
     """
     rows: list[_Row] = []
     for position, measure in enumerate(measures, start=1):
+        read: Callable[[str], Any]
         if isinstance(measure, Mapping):
             read = measure.get
         else:
 
-            def read(key: str, measure: Any = measure) -> Any:
+            def read_attribute(key: str, measure: Any = measure) -> Any:
                 """Read attribute *key* of the measure object, ``None`` if it lacks one."""
                 return getattr(measure, key, None)
+
+            read = read_attribute
 
         count = read("count") or position
         qstamp, length = read("qstamp"), read("actual_length")
@@ -305,7 +309,9 @@ Jump('jump_1' @ 16 quarters, 2 destinations)]
     def elements(self) -> list[FlowControlElement]:
         """Return everything written, by coordinate and then by ID."""
         jumps = [
-            Jump(_quarters(at), destinations, id=self._jump_ids[at], _minted=True)
+            Jump(
+                _quarters(at), tuple(destinations), id=self._jump_ids[at], _minted=True
+            )
             for at, destinations in self._destinations.items()
         ]
         return sorted(
@@ -429,8 +435,14 @@ def measure_keys_from_flow_control(
     """
     rows = _rows(measures)
     held = list(elements)
-    starts = {row.start: index for index, row in enumerate(rows)}
-    ends = {row.end: index for index, row in enumerate(rows)}
+    # Keyed by exact positions, looked up by an element's coordinate value,
+    # which hashes and compares equal to them whatever its number type.
+    starts: dict[TimeScalarValue, int] = {
+        row.start: index for index, row in enumerate(rows)
+    }
+    ends: dict[TimeScalarValue, int] = {
+        row.end: index for index, row in enumerate(rows)
+    }
     keys: list[dict[str, Any]] = [
         {"count": row.count, "start_repeat": False, "end_repeat": False, "volta": None}
         for row in rows

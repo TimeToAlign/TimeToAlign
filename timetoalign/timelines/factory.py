@@ -12,6 +12,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
 from timetoalign.core import Domain, NumberType, TimeUnit
@@ -403,7 +404,7 @@ def create_timeline_from_bundle(
     else:
         # Multiple data: create parent with children at offset 0
         # Parent length = max of all child lengths
-        max_length: float = 0.0
+        max_length: float | Fraction = 0.0
         for _, data in data_to_use:
             coord_range = data.coordinate_range()
             if coord_range:

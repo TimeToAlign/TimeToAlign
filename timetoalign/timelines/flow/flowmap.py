@@ -280,20 +280,20 @@ class FlowMap(_IdentifiedElement):
         Raises:
             ValueError: If a gap's length is no value of that number type.
         """
-        lengths = {
-            index: _gap_length(chunk, root, self).value
+        gaps = {
+            index: chunk
             for index, chunk in enumerate(self.chunks)
             if isinstance(chunk, Gap)
         }
-        if all(
-            type(length) is type(self.chunks[index].length)
-            for index, length in lengths.items()
-        ):
+        lengths = {
+            index: _gap_length(gap, root, self).value for index, gap in gaps.items()
+        }
+        if all(type(lengths[index]) is type(gap.length) for index, gap in gaps.items()):
             return self
         return replace(
             self,
             chunks=tuple(
-                replace(chunk, length=lengths[index]) if index in lengths else chunk
+                replace(gaps[index], length=lengths[index]) if index in gaps else chunk
                 for index, chunk in enumerate(self.chunks)
             ),
         )

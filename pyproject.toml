@@ -174,7 +174,7 @@ ignore_imports = [
 # Static type checking, run by hand with `pyright` from this directory after
 # `pip install --group typing`. It covers the core package only; a subpackage is
 # added to `include` once it passes.
-include = ["timetoalign/core", "timetoalign/display", "timetoalign/maps", "timetoalign/testdata", "timetoalign/storage", "timetoalign/alignment"]
+include = ["timetoalign/core", "timetoalign/display", "timetoalign/maps", "timetoalign/testdata", "timetoalign/storage", "timetoalign/alignment", "timetoalign/timelines"]
 typeCheckingMode = "standard"
 pythonVersion = "3.11"
 # Modules held to strict mode; the list grows module by module.

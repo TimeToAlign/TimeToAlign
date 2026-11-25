@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -1752,8 +1752,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="building-locally" class="level3">
 <h3 class="anchored" data-anchor-id="building-locally">6.1 Building Locally</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> docs/page</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">quartodoc</span> build           <span class="co"># regenerate the API reference pages from docstrings</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render             <span class="co"># build the full site into _site/</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render             <span class="co"># build the full site into _site/ (not tracked)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The committed API reference pages (<code>reference/*.qmd</code>) are regenerated with <code>quartodoc build</code> only when the public API or its docstrings change, because it is slow. The site is published per version (<code>X.Y.Z/</code>, <code>dev/</code> from <code>main</code>, <code>stable/</code> for the newest release) on the <code>gh-pages</code> branch by the docs workflow (<code>.github/workflows/docs.yml</code>).</p>
 <p>The Quarto pre-render hook automatically runs <code>sync_notebooks.py</code> (see §6.3) to refresh tutorial and how-to notebooks before rendering.</p>
 </section>
 <section id="site-structure-diátaxis" class="level3">

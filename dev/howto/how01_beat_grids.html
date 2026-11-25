@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-dd755a99c6cc9ca4e4754bbc744f4c8a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -708,7 +708,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="counting-the-bar-differently" class="level2">
 <h2 class="anchored" data-anchor-id="counting-the-bar-differently">Counting the bar differently</h2>
-<p>The grid counts in its own lattice. Pass a <button class="glossary" title="">BeatPolicy</button> to read the same instant under another counting: the beat index becomes a quarter-note offset from the downbeat, converted back through the segments’ tempi. The measure numbering is unaffected.</p>
+<p>The grid counts in its own lattice. Pass a <button class="glossary" title="How one bar is counted in beats: a grouping cycle over one counted note value. A 4/4 bar is four beats of a quarter, a compound 6/8 bar two beats of three eighths, an uneven (3+2+3)/8 bar three beats of unequal length. Beat lengths are derived from the grouping and the division, never stored. One signature admits more than one counting: a BeatGrid’s lattice reads 6/8 as six beats of an eighth, because its beat-in-bar index counts the notated value rather than the felt pulse.">BeatPolicy</button> to read the same instant under another counting: the beat index becomes a quarter-note offset from the downbeat, converted back through the segments’ tempi. The measure numbering is unaffected.</p>
 <p>A 4/4 lattice beat is one quarter, so the grid’s beat 3 sits two quarters after the downbeat — which a counting in eighths calls beat 5. Both spellings name the same instant.</p>
 <p><code>BeatPolicy.uniform(division, count)</code> counts <code>count</code> beats of <code>division</code> quarters each; the name is for display.</p>
 <div id="66bcfb2f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-21T03:15:26.443651Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-21T03:15:26.443517Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-21T03:15:26.448299Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-21T03:15:26.447585Z&quot;}}" data-execution_count="12">

@@ -1,5 +1,20 @@
 [
   {
+    "listing": "/tutorials.html",
+    "items": [
+      "/tutorials/tut00_quickstart.html",
+      "/tutorials/tut01_timelines_and_coordinates.html",
+      "/tutorials/tut02_nesting_and_timestamps.html",
+      "/tutorials/tut03_events.html",
+      "/tutorials/tut04_loading_data.html",
+      "/tutorials/tut05_timeline_groups.html",
+      "/tutorials/tut06_alignment_bundles.html",
+      "/tutorials/tut07_flow_and_grids.html",
+      "/tutorials/tut08_data_model.html",
+      "/tutorials/tut09_pitch_and_harmony.html"
+    ]
+  },
+  {
     "listing": "/howto.html",
     "items": [
       "/howto/how01_advanced_cmaps.html",
@@ -29,21 +44,6 @@
       "/howto/how04_hendrix_song_genesis.html",
       "/howto/how04_load_anything.html",
       "/howto/how04_loading_csv.html"
-    ]
-  },
-  {
-    "listing": "/tutorials.html",
-    "items": [
-      "/tutorials/tut00_quickstart.html",
-      "/tutorials/tut01_timelines_and_coordinates.html",
-      "/tutorials/tut02_nesting_and_timestamps.html",
-      "/tutorials/tut03_events.html",
-      "/tutorials/tut04_loading_data.html",
-      "/tutorials/tut05_timeline_groups.html",
-      "/tutorials/tut06_alignment_bundles.html",
-      "/tutorials/tut07_flow_and_grids.html",
-      "/tutorials/tut08_data_model.html",
-      "/tutorials/tut09_pitch_and_harmony.html"
     ]
   }
 ]

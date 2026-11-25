@@ -2003,7 +2003,7 @@ class MetricHierarchy:
     ) -> _MetricLevels:
         rods = policy.rods
         uniform_beat = rods[0] if all(rod == rods[0] for rod in rods) else None
-        division = Fraction(policy.division)
+        division = policy.counted_division
         bar = policy.span
         distinct_division = uniform_beat is not None and division != uniform_beat
         if beat_unit == bar:
@@ -2103,7 +2103,7 @@ class MetricHierarchy:
                 axis_start = start + clipped_start - window_start
                 axis_end = start + clipped_end - window_start
                 division_nodes: list[MetricNode] = []
-                division = Fraction(policy.division)
+                division = policy.counted_division
                 if group_size > 1:
                     for index in range(group_size):
                         div_start = beat_start + index * division

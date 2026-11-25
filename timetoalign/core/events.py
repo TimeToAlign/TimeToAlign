@@ -63,6 +63,7 @@ from .fields import (
     SemanticField,
     _dictionary_chunked_array,
     _joined_strings,
+    _struct_array_from,
     _struct_if_else,
     blob_metadata,
     build_struct_array,
@@ -96,7 +97,7 @@ if TYPE_CHECKING:
 _PositionOrExtentT = TypeVar("_PositionOrExtentT", Coordinate, Duration)
 
 
-def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
+def _pc_mod(arr: pa.Array[Any], n: int) -> pa.Array[Any]:
     """Vectorized Python-semantics integer modulo (``a mod n``, n > 0).
 
     PyArrow does not expose a ``compute.mod`` function as of v23, and
@@ -118,7 +119,7 @@ def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
     return pc.if_else(pc.less(r, pa.scalar(0)), pc.add(r, n), r)
 
 
-def _member(field: SemanticField[Any], name: str) -> pa.Array:
+def _member(field: SemanticField[Any], name: str) -> pa.Array[Any]:
     """The struct member *name* of *field*, null on every null row.
 
     ``StructArray.field`` hands back the child array as stored, and a null
@@ -128,7 +129,7 @@ def _member(field: SemanticField[Any], name: str) -> pa.Array:
     return pc.struct_field(field.to_pyarrow(), name)
 
 
-def _step_lookup(steps: pa.Array, table: dict[str, int]) -> pa.Array:
+def _step_lookup(steps: pa.Array[Any], table: dict[str, int]) -> pa.Array[Any]:
     """Vectorized ``step name -> table[step]`` (int64); a null step stays null."""
     names = pa.array(list(table), type=pa.string())
     values = pa.array(list(table.values()), type=pa.int64())
@@ -136,12 +137,12 @@ def _step_lookup(steps: pa.Array, table: dict[str, int]) -> pa.Array:
 
 
 def _struct_like(
-    field: SemanticField[Any], arrays: list[pa.Array], fields: list[pa.Field]
+    field: SemanticField[Any],
+    arrays: list[pa.Array[Any]],
+    fields: list[pa.Field[pa.DataType]],
 ) -> pa.StructArray:
     """A struct of *arrays* holding a null row wherever *field* holds one."""
-    return pa.StructArray.from_arrays(
-        arrays, fields=fields, mask=pc.is_null(field.to_pyarrow())
-    )
+    return _struct_array_from(arrays, fields, mask=field.to_pyarrow().is_null())
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -240,7 +241,7 @@ def _parse_pitch_label(label: str) -> tuple[_StepLiteral, int, int | None]:
     return step, alter, octave
 
 
-def canonical_pitch_name(name: str) -> str:
+def canonical_pitch_name(name: object) -> str:
     """Respell the accidentals of a pitch name with ``♯`` and ``♭``.
 
     ``"Bb3"`` becomes ``"B♭3"``, ``"F##4"`` ``"F♯♯4"`` and ``"C#"`` ``"C♯"``,
@@ -346,22 +347,30 @@ def _respelled_categorical(names: pd.Series, sep: str | None) -> pd.Series:
 
 
 def _respelled_dictionary(
-    names: pd.Series, dictionary_type: pa.DictionaryType, sep: str | None
+    names: pd.Series, dictionary_type: pa.DictionaryType[Any, Any], sep: str | None
 ) -> pd.Series:
     """Respell the dictionary of an Arrow dictionary column, merging equal results."""
     import pandas as pd
 
-    column = pa.array(names.array)
-    chunks = []
-    for chunk in getattr(column, "chunks", [column]):
+    arrow: pd.arrays.ArrowExtensionArray = names.array
+    column = arrow.__arrow_array__()
+    source = column.chunks
+    if not _are_dictionary_chunks(source, column.type):
+        raise TypeError(f"Expected a dictionary column, got {column.type}")
+    value_type: pa.DataType = dictionary_type.value_type
+    chunks: list[pa.DictionaryArray[Any, Any]] = []
+    for chunk in source:
         new = [_respelled_cell(value, sep) for value in chunk.dictionary.to_pylist()]
         merged = list(dict.fromkeys(new))
         position = {value: i for i, value in enumerate(merged)}
-        lookup = pa.array([position[value] for value in new], type=chunk.indices.type)
+        index_type: pa.DataType = chunk.indices.type
+        lookup: pa.Array[Any] = pa.array(
+            [position[value] for value in new], type=index_type
+        )
         chunks.append(
             pa.DictionaryArray.from_arrays(
                 pc.take(lookup, chunk.indices),
-                pa.array(merged, type=dictionary_type.value_type),
+                pa.array(merged, type=value_type),
                 ordered=dictionary_type.ordered,
             )
         )
@@ -369,6 +378,15 @@ def _respelled_dictionary(
     return pd.Series(
         pd.arrays.ArrowExtensionArray(respelled), index=names.index, name=names.name
     )
+
+
+def _are_dictionary_chunks(
+    chunks: list[pa.Array[Any]], column_type: pa.DataType
+) -> TypeGuard[list[pa.DictionaryArray[Any, Any]]]:
+    """Whether *chunks*, the chunks of a column of *column_type*, are
+    dictionary arrays: they are exactly when the column's type is a
+    dictionary type. No chunk is inspected."""
+    return pa.types.is_dictionary(column_type)
 
 
 def _parse_octave_from_sp(sp: str | None, step: str) -> int:
@@ -1147,12 +1165,15 @@ class BoundingBox(Shape):
                 negative, or a value is one the axis cannot hold exactly
                 (``1.5`` on ``pixels``: never rounded).
         """
-        axis = {"unit": unit, "number_type": number_type}
         return cls._built(
-            x=_on_axis(x, Coordinate, what="x", **axis),
-            y=_on_axis(y, Coordinate, what="y", **axis),
-            width=_on_axis(width, Duration, what="width", **axis),
-            height=_on_axis(height, Duration, what="height", **axis),
+            x=_on_axis(x, Coordinate, what="x", unit=unit, number_type=number_type),
+            y=_on_axis(y, Coordinate, what="y", unit=unit, number_type=number_type),
+            width=_on_axis(
+                width, Duration, what="width", unit=unit, number_type=number_type
+            ),
+            height=_on_axis(
+                height, Duration, what="height", unit=unit, number_type=number_type
+            ),
         )
 
     @classmethod
@@ -1177,11 +1198,14 @@ class BoundingBox(Shape):
                 coordinate lies before its upper-left one, or a value is one
                 the axis cannot hold exactly (never rounded).
         """
-        axis = {"unit": unit, "number_type": number_type}
-        left = _on_axis(ulx, Coordinate, what="ulx", **axis)
-        top = _on_axis(uly, Coordinate, what="uly", **axis)
-        right = _on_axis(lrx, Coordinate, what="lrx", **axis)
-        bottom = _on_axis(lry, Coordinate, what="lry", **axis)
+        left = _on_axis(ulx, Coordinate, what="ulx", unit=unit, number_type=number_type)
+        top = _on_axis(uly, Coordinate, what="uly", unit=unit, number_type=number_type)
+        right = _on_axis(
+            lrx, Coordinate, what="lrx", unit=unit, number_type=number_type
+        )
+        bottom = _on_axis(
+            lry, Coordinate, what="lry", unit=unit, number_type=number_type
+        )
         return cls._built(x=left, y=top, width=right - left, height=bottom - top)
 
     @classmethod
@@ -1479,7 +1503,7 @@ class Quadrilateral(Shape):
     def _from_dict_values(
         cls, data: dict[str, Any], unit: TimeUnit, number_type: NumberType
     ) -> Quadrilateral:
-        points = []
+        points: list[tuple[int | float | Fraction, int | float | Fraction]] = []
         for name in cls.CORNER_ORDER:
             corner = data[name]
             if set(corner) != {"x", "y"}:
@@ -1548,7 +1572,7 @@ class Quadrilateral(Shape):
         }
 
     @staticmethod
-    def _turns(corners: Sequence[Point]) -> list[Any]:
+    def _turns(corners: Sequence[Point]) -> list[int | float | Fraction]:
         """At each corner, the turn of the outline drawn through *corners*.
 
         The cross product of the side arriving at the corner and the side
@@ -1556,7 +1580,7 @@ class Quadrilateral(Shape):
         clockwise (y down), negative where it turns counter-clockwise, zero
         where it runs straight on.
         """
-        turns = []
+        turns: list[int | float | Fraction] = []
         for index, here in enumerate(corners):
             before, after = corners[index - 1], corners[(index + 1) % len(corners)]
             turns.append(

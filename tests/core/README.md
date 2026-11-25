@@ -2732,9 +2732,9 @@ helper's annotation is false and its test fails.
   stored, ignoring the struct's validity, as `StructArray.field` does).
 - **Struct member.** Unlike the struct child, the member read through
   `pc.struct_field` applies the struct's validity, so the timestamp-table
-  reader sees a null wherever the struct row is null. Its callers pass
-  plain struct columns; the helper's stated union also names the chunked
-  case. A three-row struct array whose second row is masked: a
+  reader and the belief filter see a null wherever the struct row is null.
+  Its callers pass plain struct columns; the helper states an array for an
+  array and a chunked column for a chunked one. A three-row struct array whose second row is masked: a
   `pa.Int64Array` `[1, None, None]` (the masked row null although its child
   holds `2`, the third row null from its own member). The same rows as a
   chunked column of two chunks: a `pa.ChunkedArray` of the member's type,

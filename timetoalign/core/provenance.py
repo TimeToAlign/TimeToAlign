@@ -50,6 +50,7 @@ from .fields import (
     _compared,
     _filled_mask,
     _struct_array_of,
+    _struct_member,
     data_shaped,
 )
 
@@ -483,7 +484,7 @@ def belief_mask(
     if provenance is None or n == 0:
         return pa.array([], type=pa.bool_())
     # ``struct_field`` carries a null entry over to its beliefs.
-    held = pc.struct_field(provenance, "beliefs")
+    held = _struct_member(provenance, "beliefs")
     stated = pc.list_flatten(held)
     owners = _cast_column(pc.list_parent_indices(held), pa.int64())
     # Each row's state is the believer's belief where the row holds one,
@@ -492,10 +493,10 @@ def belief_mask(
     # expands to) name one believer only under *context*: the row then
     # takes the most critical of them, in :data:`_CRITICAL_FIRST` order.
     own = _filled_mask(
-        _names_actor(pc.struct_field(stated, "actor"), believer, context),
+        _names_actor(_struct_member(stated, "actor"), believer, context),
         pa.scalar(False),
     )
-    beliefs_held = pc.struct_field(stated, "belief").filter(own)
+    beliefs_held = _struct_member(stated, "belief").filter(own)
     # One rank per row, the most critical belief held; a row holding none
     # keeps the rank past the last belief, which reads as "undecided".
     rank = np.full(n, len(_CRITICAL_FIRST), dtype=np.int64)

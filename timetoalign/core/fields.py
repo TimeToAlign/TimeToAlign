@@ -46,6 +46,7 @@ from typing import (
     cast,
     get_args,
     get_origin,
+    overload,
 )
 
 import numpy as np
@@ -827,6 +828,14 @@ def _struct_child(array: pa.StructArray, name: str) -> pa.Array[Any]:
     ``StructArray.field``; call ``array.field(name)`` directly then.
     """
     return cast("pa.Array[Any]", array.field(name))
+
+
+@overload
+def _struct_member(array: pa.Array[Any], name: str) -> pa.Array[Any]: ...
+
+
+@overload
+def _struct_member(array: pa.ChunkedArray[Any], name: str) -> pa.ChunkedArray[Any]: ...
 
 
 def _struct_member(

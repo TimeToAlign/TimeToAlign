@@ -2825,6 +2825,15 @@ helper's annotation is false and its test fails.
   `pa.NullArray`; a dictionary type a `pa.DictionaryArray` of that type.
   This proves the stated array for every type class a caller names, with
   or without rows.
+- **Inferred array.** `pa.array` without a type over Python numbers of
+  mixed kinds, as the MatchClaim number columns pass them, and their
+  caller's fallback. Ints and `None`: a `pa.Int64Array` `[1, None, 3]`;
+  ints, a float and `None`: a `pa.DoubleArray` `[1.0, 2.5, None]`; no
+  values and only `None`: a `pa.NullArray`; a tuple of ints: a
+  `pa.Int64Array`. A `Fraction` among them raises `pa.ArrowInvalid`, the
+  error on which the caller keeps the numbers as objects instead. This
+  proves the stated array for each mix a caller passes, and that the
+  refusal the caller relies on is unchanged.
 - **Dictionary chunked array.** Two dictionary chunks and zero chunks: a
   `pa.ChunkedArray` of the given dictionary type, its chunk count and values
   as given.

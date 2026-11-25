@@ -775,6 +775,21 @@ def _null_column(size: int, type: pa.DataType) -> pa.Array[Any]:
     return cast("Callable[[int, pa.DataType], pa.Array[Any]]", pa.nulls)(size, type)
 
 
+def _inferred_array(values: Sequence[object]) -> pa.Array[Any]:
+    """``pa.array(values)``, its type inferred from the values.
+
+    pyarrow-stubs 20.0 declares ``pa.array`` without ``type=`` only for a
+    collection of one Python scalar type, so numbers of mixed kinds (ints,
+    floats and ``None`` together) match no overload; PyArrow infers one
+    type for them and returns an array of that type's class (a
+    ``pa.DoubleArray`` for ints and floats, a ``pa.NullArray`` for no
+    values or only ``None``), or raises where it infers none (a
+    ``Fraction``). Remove once pyarrow-stubs declares ``pa.array`` for any
+    collection; call ``pa.array`` directly then.
+    """
+    return cast("Callable[[Sequence[object]], pa.Array[Any]]", pa.array)(values)
+
+
 def _joined_strings(
     left: pa.Array[Any], right: pa.Array[Any], separator: str
 ) -> pa.StringArray:

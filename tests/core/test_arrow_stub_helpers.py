@@ -6,6 +6,8 @@ differently; these tests check every stated type against PyArrow itself.
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -18,6 +20,7 @@ from timetoalign.core.fields import (
     _dictionary_chunked_array,
     _filled,
     _if_else,
+    _inferred_array,
     _joined_strings,
     _null_column,
     _struct_array_from,
@@ -142,6 +145,27 @@ def test_null_column_is_an_array_of_the_type() -> None:
     assert type(labels) is pa.DictionaryArray
     assert labels.type == dictionary_type
     assert labels.to_pylist() == [None, None]
+
+
+def test_inferred_array_of_numbers_is_typed_by_inference() -> None:
+    ints = _inferred_array([1, None, 3])
+    assert type(ints) is pa.Int64Array
+    assert ints.to_pylist() == [1, None, 3]
+    mixed = _inferred_array([1, 2.5, None])
+    assert type(mixed) is pa.DoubleArray
+    assert mixed.to_pylist() == [1.0, 2.5, None]
+    as_tuple = _inferred_array((1, 2))
+    assert type(as_tuple) is pa.Int64Array
+    assert as_tuple.to_pylist() == [1, 2]
+    for nothing in ([], [None, None]):
+        result = _inferred_array(nothing)
+        assert type(result) is pa.NullArray
+        assert len(result) == len(nothing)
+
+
+def test_inferred_array_refuses_a_fraction() -> None:
+    with pytest.raises(pa.ArrowInvalid):
+        _inferred_array([Fraction(1, 2), 1])
 
 
 def test_dictionary_chunked_array_is_a_chunked_array_of_the_type() -> None:

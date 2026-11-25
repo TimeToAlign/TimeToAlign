@@ -4413,10 +4413,21 @@ class BeatPolicy(BaseModel):
         return self
 
     @property
+    def counted_division(self) -> Fraction:
+        """The counted note value, in quarters.
+
+        :attr:`division` as validation completes it: given directly or
+        through :attr:`beat_size`, it is never ``None`` on a validated
+        policy.
+        """
+        assert self.division is not None
+        return self.division
+
+    @property
     def rods(self) -> tuple[Fraction, ...]:
         """Length of every beat in this bar, in quarters."""
-        assert self.division is not None
-        return tuple(entry * self.division for entry in self.grouping)
+        division = self.counted_division
+        return tuple(entry * division for entry in self.grouping)
 
     @property
     def n_beats(self) -> int:
@@ -4435,10 +4446,9 @@ class BeatPolicy(BaseModel):
             A policy whose grouping contains one entry for every counted
             division, with the original division and name preserved.
         """
-        assert self.division is not None
         return type(self)(
             grouping=(1,) * sum(self.grouping),
-            division=self.division,
+            division=self.counted_division,
             name=self.name,
         )
 

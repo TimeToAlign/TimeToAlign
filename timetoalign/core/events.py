@@ -63,12 +63,12 @@ from .fields import (
     SemanticField,
     _compared,
     _dictionary_chunked_array,
+    _if_else,
     _is_dict,
     _joined_strings,
     _member_fields,
     _struct_array,
     _struct_array_from,
-    _struct_if_else,
     _struct_member,
     blob_metadata,
     build_struct_array,
@@ -1127,7 +1127,7 @@ class ShapeField(SharedAxisField[ShapeT]):
         result = columns[0]
         for column in columns[1:]:
             keep = compare_number_column(result, column, comparison, self.number_type)
-            result = _struct_if_else(keep, result, column)
+            result = _if_else(keep, result, column)
         return result
 
 

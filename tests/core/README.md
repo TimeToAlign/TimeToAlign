@@ -2802,11 +2802,16 @@ helper's annotation is false and its test fails.
   value type and shape a caller fills.
 - **Joined strings.** `["C", None]` and `["4", "5"]` joined by `""`: a
   `pa.StringArray` `["C4", None]`.
-- **Struct if-else.** Choosing between two struct arrays by `[True, False]`:
-  a `pa.StructArray` holding the first array's first row and the second's
-  second row.
+- **If-else.** Choosing between two arrays of one type by an array
+  condition gives an array of the operands' class. Its callers choose
+  between two struct arrays and between two boolean masks. Between two
+  struct arrays by `[True, False]`: a `pa.StructArray` holding the first
+  array's first row and the second's second row. Between `[True, True,
+  True]` and `[False, False, None]` by `[True, None, False]`: a
+  `pa.BooleanArray` `[True, None, None]` (a null condition gives a null
+  row, a chosen null stays null).
 - **No rows for the row-wise helpers.** The library calls the filled
-  helper, the joined strings and the struct if-else on fields without rows (a
+  helper, the joined strings and the if-else on fields without rows (a
   number-type mask of an empty column, `x_min` / `x_max` of a shape field
   without rows, the pitch names of a pitch field without rows). With
   zero-length inputs each still returns the class it states, of length 0:

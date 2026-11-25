@@ -17,12 +17,12 @@ from timetoalign.core.fields import (
     _ComparisonKernel,
     _dictionary_chunked_array,
     _filled,
+    _if_else,
     _joined_strings,
     _null_column,
     _struct_array_from,
     _struct_array_of,
     _struct_child,
-    _struct_if_else,
     _struct_member,
     _struct_members,
     _valid_struct_cell,
@@ -92,13 +92,23 @@ def test_joined_strings_is_a_string_array() -> None:
     assert result.to_pylist() == ["C4", None]
 
 
-def test_struct_if_else_is_a_struct_array() -> None:
+def test_if_else_of_struct_arrays_is_a_struct_array() -> None:
     left = pa.array([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}], type=PAIR)
     right = pa.array([{"a": 3, "b": "z"}, None], type=PAIR)
-    result = _struct_if_else(pa.array([True, False]), left, right)
+    result = _if_else(pa.array([True, False]), left, right)
     assert type(result) is pa.StructArray
     assert result.type == PAIR
     assert result.to_pylist() == [{"a": 1, "b": "x"}, None]
+
+
+def test_if_else_of_boolean_arrays_is_a_boolean_array() -> None:
+    result = _if_else(
+        pa.array([True, None, False]),
+        pa.array([True, True, True]),
+        pa.array([False, False, None]),
+    )
+    assert type(result) is pa.BooleanArray
+    assert result.to_pylist() == [True, None, None]
 
 
 def test_row_wise_helpers_on_no_rows_keep_their_class() -> None:
@@ -109,7 +119,7 @@ def test_row_wise_helpers_on_no_rows_keep_their_class() -> None:
     assert type(joined) is pa.StringArray
     assert len(joined) == 0
     empty = pa.array([], type=PAIR)
-    chosen = _struct_if_else(pa.array([], pa.bool_()), empty, empty)
+    chosen = _if_else(pa.array([], pa.bool_()), empty, empty)
     assert type(chosen) is pa.StructArray
     assert chosen.type == PAIR
     assert len(chosen) == 0

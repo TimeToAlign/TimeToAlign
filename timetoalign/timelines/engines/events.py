@@ -27,8 +27,8 @@ from timetoalign.core import (
 )
 from timetoalign.core.fields import (
     _filled,
+    _if_else,
     _struct_array,
-    _struct_if_else,
     _struct_members,
     _valid_struct_cell,
 )
@@ -568,8 +568,8 @@ class EventsMixin:
             data = boxes.column(name).combine_chunks()
             n_shapes = pc.add(n_shapes, pc.cast(data.is_valid(), pa.int64()))
             field = field_class.from_field((data, boxes.schema.field(name)))
-            x_min = _struct_if_else(data.is_valid(), field.x_min(), x_min)
-            x_max = _struct_if_else(data.is_valid(), field.x_max(), x_max)
+            x_min = _if_else(data.is_valid(), field.x_min(), x_min)
+            x_max = _if_else(data.is_valid(), field.x_max(), x_max)
         refuse_as_the_box(pc.not_equal(n_shapes, pa.scalar(1)))
         duration = boxes.column("duration").combine_chunks()
         refuse_as_the_box(duration.is_null())

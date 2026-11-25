@@ -793,18 +793,21 @@ def _joined_strings(
     )(left, right, separator)
 
 
-def _struct_if_else(
-    cond: pa.Array[Any], left: pa.StructArray, right: pa.StructArray
-) -> pa.StructArray:
-    """``pc.if_else(cond, left, right)`` over two struct arrays.
+_ArrayT = TypeVar("_ArrayT", bound="pa.Array[Any]")
+"""The class of the two arrays :func:`_if_else` chooses between."""
+
+
+def _if_else(cond: pa.Array[Any], left: _ArrayT, right: _ArrayT) -> _ArrayT:
+    """``pc.if_else(cond, left, right)`` over two arrays.
 
     pyarrow-stubs 20.0 declares ``pc.if_else`` as returning
     ``ArrayLike | ScalarLike``; PyArrow returns an array of its operands'
-    kind, a ``pa.StructArray`` for struct arrays. Remove once pyarrow-stubs
-    declares ``pc.if_else`` as returning its operands' array type; call
-    ``pc.if_else`` directly then.
+    class for an array condition and two arrays of one type (a
+    ``pa.StructArray`` for struct arrays, a ``pa.BooleanArray`` for boolean
+    arrays). Remove once pyarrow-stubs declares ``pc.if_else`` as returning
+    its operands' array type; call ``pc.if_else`` directly then.
     """
-    return cast(pa.StructArray, pc.if_else(cond, left, right))
+    return cast(_ArrayT, pc.if_else(cond, left, right))
 
 
 def _dictionary_chunked_array(

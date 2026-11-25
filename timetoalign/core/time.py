@@ -3155,7 +3155,7 @@ class TimeScalarField(_AxisField[TimeScalarT]):
                     f"Multiple candidate fields found: {candidates}; "
                     "pass field= explicitly"
                 )
-        pa_field = table.schema.field(field)
+        pa_field = table.field(field)
         data = table.column(field)
         return cls.from_field((data, pa_field), unit=unit, number_type=number_type)
 
@@ -4425,7 +4425,7 @@ def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
     is_float = _is(number_types, "float")
     typeless = pc.and_(valid, pc.invert(pc.or_(is_int, pc.or_(is_fraction, is_float))))
     if pc.any(typeless).as_py():
-        row = pc.index(typeless, True).as_py()
+        row = typeless.index(True).as_py()
         raise ValueError(
             f"Row {row} holds a number of the number type "
             f"{number_types[row].as_py()!r}, not 'int', 'fraction' or 'float'"
@@ -4517,7 +4517,7 @@ def numbers_from_package(
     )
     wrong = pc.and_(valid, pc.invert(held))
     if pc.any(wrong).as_py():
-        row = pc.index(wrong, True).as_py()
+        row = wrong.index(True).as_py()
         number_type = number_types[row].as_py()
         cell = (numerator[row].as_py(), denominator[row].as_py(), value[row].as_py())
         spelled = "(" + ", ".join("null" if x is None else repr(x) for x in cell) + ")"
@@ -4613,7 +4613,7 @@ def cells_from_package(
     unitless = pc.and_(valid, members["unit"].is_null())
     if pc.any(unitless).as_py():
         raise ValueError(
-            f"{where} row {pc.index(unitless, True).as_py()}: it names no unit"
+            f"{where} row {unitless.index(True).as_py()}: it names no unit"
         )
     numbers = _struct_array_from(
         [members[name] for name in _NUMBER_MEMBERS],

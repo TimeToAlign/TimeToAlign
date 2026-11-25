@@ -30,10 +30,12 @@ from typing import (
     ClassVar,
     Generic,
     Iterator,
+    Literal,
     NamedTuple,
     Protocol,
     Sequence,
     TypeVar,
+    overload,
     runtime_checkable,
 )
 
@@ -395,6 +397,33 @@ class Stamp(ABC, Generic[_SourceT]):
     def present_timelines(self) -> list[str]:
         """Return stored timeline IDs in deterministic insertion order."""
         return list(self.coordinates)
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["id_coordinate"] = ...,
+        rounding: Rounding = ...,
+    ) -> IdCoordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: Literal["coordinate"],
+        rounding: Rounding = ...,
+    ) -> Coordinate: ...
+
+    @overload
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: CoordinateFormat,
+        rounding: Rounding = ...,
+    ) -> CoordinateResult | pd.Series: ...
 
     def get_coordinate_for(
         self,

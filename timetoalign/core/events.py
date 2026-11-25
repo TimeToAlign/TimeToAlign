@@ -1675,9 +1675,11 @@ class EnharmonicPitchClass(TwelveTETPitchMixin, BaseModel):
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"EnharmonicPitchClass"``."""
         return "EnharmonicPitchClass"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``pitch_type`` ``"epc"``."""
         return {
             **super().metadata_dict(),
             "pitch_type": "epc",
@@ -1686,6 +1688,21 @@ class EnharmonicPitchClass(TwelveTETPitchMixin, BaseModel):
     def to(
         self, target_type: type, *, format: str | None = None
     ) -> "EnharmonicPitchClass":
+        """Convert to another pitch type.
+
+        Only ``EnharmonicPitchClass`` itself is reachable: a pitch class
+        carries neither octave nor spelling.
+
+        Args:
+            target_type: The pitch type to convert to.
+            format: Unused.
+
+        Returns:
+            The converted pitch.
+
+        Raises:
+            TypeError: If *target_type* is any other type.
+        """
         if target_type is EnharmonicPitchClass or target_type is type(self):
             return self
         raise TypeError(
@@ -1695,16 +1712,30 @@ class EnharmonicPitchClass(TwelveTETPitchMixin, BaseModel):
 
     @data_shaped
     def get(self, *, format: str | None = None) -> str:
+        """Return the pitch class as the string of its number, such as ``"1"``.
+
+        Args:
+            format: Unused.
+        """
         return str(self.pitch_class)
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> EnharmonicPitchClass | None:
+        """Read a pitch class from a storage row.
+
+        Args:
+            row: The row, holding ``pitch_class``.
+
+        Returns:
+            The pitch class, or ``None`` when ``pitch_class`` is absent or null.
+        """
         pc = row.get("pitch_class")
         if pc is None:
             return None
         return cls(pitch_class=int(pc))
 
     def to_dict(self) -> dict[str, object]:
+        """Return the stored field, ``{"pitch_class": int}``."""
         return self.model_dump()
 
     def __eq__(self, other: object) -> bool:
@@ -1779,13 +1810,16 @@ class GenericPitchClass(TwelveTETPitchMixin, BaseModel):
 
     @property
     def pitch_class(self) -> int:  # type: ignore[override]
+        """The diatonic step, 0 (C) to 6 (B): the pitch class in step space."""
         return self.step
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"GenericPitchClass"``."""
         return "GenericPitchClass"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``pitch_type`` ``"gpc"``."""
         return {
             **super().metadata_dict(),
             "pitch_type": "gpc",
@@ -1794,6 +1828,21 @@ class GenericPitchClass(TwelveTETPitchMixin, BaseModel):
     def to(
         self, target_type: type, *, format: str | None = None
     ) -> "GenericPitchClass":
+        """Convert to another pitch type.
+
+        Only ``GenericPitchClass`` itself is reachable: a diatonic step
+        carries neither octave nor accidental.
+
+        Args:
+            target_type: The pitch type to convert to.
+            format: Unused.
+
+        Returns:
+            The converted pitch.
+
+        Raises:
+            TypeError: If *target_type* is any other type.
+        """
         if target_type is GenericPitchClass or target_type is type(self):
             return self
         raise TypeError(
@@ -1803,15 +1852,32 @@ class GenericPitchClass(TwelveTETPitchMixin, BaseModel):
 
     @data_shaped
     def get(self, *, format: str | None = None) -> str:
+        """Return the step's letter, ``"C"`` to ``"B"``.
+
+        A step outside 0 to 6 is returned as its number.
+
+        Args:
+            format: Unused.
+        """
         if 0 <= self.step < 7:
             return _GPC_NAMES[self.step]
         return str(self.step)
 
     def to_dict(self) -> dict[str, object]:
+        """Return the step under the key ``pitch_class``, ``{"pitch_class": int}``."""
         return {"pitch_class": self.step}
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> GenericPitchClass | None:
+        """Read a generic pitch class from a storage row.
+
+        Args:
+            row: The row, holding the step under ``pitch_class`` or, failing that,
+                ``step``.
+
+        Returns:
+            The pitch class, or ``None`` when the row holds no step.
+        """
         pc = row.get("pitch_class")
         if pc is None:
             pc = row.get("step")
@@ -1881,13 +1947,16 @@ class GenericPitch(TwelveTETPitchMixin, BaseModel):
 
     @property
     def pitch_class(self) -> int:  # type: ignore[override]
+        """The diatonic step without the octave, 0 (C) to 6 (B)."""
         return self.step
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"GenericPitch"``."""
         return "GenericPitch"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``pitch_type`` ``"gp"``."""
         return {
             **super().metadata_dict(),
             "pitch_type": "gp",
@@ -1897,6 +1966,21 @@ class GenericPitch(TwelveTETPitchMixin, BaseModel):
     def to(
         self, target_type: type, *, format: str | None = None
     ) -> "TwelveTETPitchMixin":
+        """Convert to another pitch type.
+
+        Reachable are ``GenericPitch`` itself and :class:`GenericPitchClass`,
+        which drops the octave.
+
+        Args:
+            target_type: The pitch type to convert to.
+            format: Unused.
+
+        Returns:
+            The converted pitch.
+
+        Raises:
+            TypeError: For any other target: a generic pitch carries no accidental.
+        """
         if target_type is GenericPitch or target_type is type(self):
             return self
         if target_type is GenericPitchClass:
@@ -1908,15 +1992,33 @@ class GenericPitch(TwelveTETPitchMixin, BaseModel):
 
     @data_shaped
     def get(self, *, format: str | None = None) -> str:
+        """Return the step's letter followed by the octave, such as ``"D4"``.
+
+        A step outside 0 to 6 is returned as ``"step=…, oct=…"``.
+
+        Args:
+            format: Unused.
+        """
         if 0 <= self.step < 7:
             return f"{_GPC_NAMES[self.step]}{self.octave}"
         return f"step={self.step}, oct={self.octave}"
 
     def to_dict(self) -> dict[str, object]:
+        """Return ``{"pitch_class": step, "octave": octave}``."""
         return {"pitch_class": self.step, "octave": self.octave}
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> GenericPitch | None:
+        """Read a generic pitch from a storage row.
+
+        Args:
+            row: The row, holding the step under ``pitch_class`` or, failing that,
+                ``step``, and the ``octave``; a row without an ``octave`` key reads
+                as octave 4.
+
+        Returns:
+            The pitch, or ``None`` when the row holds no step.
+        """
         pc = row.get("pitch_class")
         if pc is None:
             pc = row.get("step")
@@ -2036,14 +2138,17 @@ class SpecificPitchClass(TwelveTETPitchMixin, BaseModel):
     @property
     @data_shaped
     def pitch_class(self) -> int:  # type: ignore[override]
+        """The chromatic pitch class, 0 to 11 (C♯ and D♭ are both 1)."""
         base = _STEP_TO_SEMITONE.get(self.step, 0)
         return (base + self.alter) % 12
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"SpecificPitchClass"``."""
         return "SpecificPitchClass"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``pitch_type`` ``"spc"``."""
         return {
             **super().metadata_dict(),
             "pitch_type": "spc",
@@ -2053,6 +2158,21 @@ class SpecificPitchClass(TwelveTETPitchMixin, BaseModel):
     def to(
         self, target_type: type, *, format: str | None = None
     ) -> "SpecificPitchClass | EnharmonicPitchClass":
+        """Convert to another pitch type.
+
+        Reachable are ``SpecificPitchClass`` itself and
+        :class:`EnharmonicPitchClass`, which forgets the spelling.
+
+        Args:
+            target_type: The pitch type to convert to.
+            format: Unused.
+
+        Returns:
+            The converted pitch.
+
+        Raises:
+            TypeError: For any other target: a pitch class carries no octave.
+        """
         if target_type is SpecificPitchClass or target_type is type(self):
             return self
         if target_type is EnharmonicPitchClass:
@@ -2064,6 +2184,14 @@ class SpecificPitchClass(TwelveTETPitchMixin, BaseModel):
 
     @data_shaped
     def get(self, *, format: str | None = None) -> str:
+        """Return the spelling, such as ``"C♯"`` or ``"B♭♭"``.
+
+        The letter is followed by one ♯ per chromatic raise or one ♭ per
+        chromatic lowering.
+
+        Args:
+            format: Unused.
+        """
         alter_str = ""
         if self.alter > 0:
             alter_str = "♯" * self.alter
@@ -2072,6 +2200,9 @@ class SpecificPitchClass(TwelveTETPitchMixin, BaseModel):
         return f"{self.step}{alter_str}"
 
     def to_dict(self) -> dict[str, object]:
+        """Return the stored fields with the derived ``pitch_class``, ``fifths``
+        and ``label`` (the :meth:`get` string).
+        """
         return {
             "step": self.step,
             "alter": self.alter,
@@ -2095,6 +2226,16 @@ class SpecificPitchClass(TwelveTETPitchMixin, BaseModel):
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> SpecificPitchClass | None:
+        """Read a spelled pitch class from a storage row.
+
+        Args:
+            row: The row, holding the letter under ``step`` (or ``gpc_str``)
+                and the alteration under ``alter`` (or ``acc``); a missing or null
+                alteration reads as 0.
+
+        Returns:
+            The pitch class, or ``None`` when the row holds no letter.
+        """
         step = row.get("step") or row.get("gpc_str")
         if step is None:
             return None
@@ -2246,18 +2387,22 @@ class EnharmonicPitch(TwelveTETPitchMixin, BaseModel):
     @property
     @data_shaped
     def pitch_class(self) -> int:  # type: ignore[override]
+        """The chromatic pitch class, ``midi_number`` mod 12."""
         return self.midi_number % 12
 
     @property
     @data_shaped
     def octave(self) -> int:
+        """The octave, counted so that MIDI pitch 60 lies in octave 4."""
         return (self.midi_number // 12) - 1
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"EnharmonicPitch"``."""
         return "EnharmonicPitch"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``pitch_type`` ``"ep"``."""
         return {
             **super().metadata_dict(),
             "pitch_type": "ep",
@@ -2267,6 +2412,22 @@ class EnharmonicPitch(TwelveTETPitchMixin, BaseModel):
     def to(
         self, target_type: type, *, format: str | None = None
     ) -> "TwelveTETPitchMixin":
+        """Convert to another pitch type.
+
+        Reachable are the pitch's own type, :class:`MidiPitch` and
+        :class:`EnharmonicPitchClass`.
+
+        Args:
+            target_type: The pitch type to convert to.
+            format: Unused.
+
+        Returns:
+            The converted pitch.
+
+        Raises:
+            TypeError: For any other target: a spelled type needs spelling the MIDI
+                pitch does not carry.
+        """
         if target_type is EnharmonicPitch or target_type is type(self):
             return self
         if target_type is MidiPitch:
@@ -2280,15 +2441,32 @@ class EnharmonicPitch(TwelveTETPitchMixin, BaseModel):
 
     @data_shaped
     def get(self, *, format: str | None = None) -> str:
+        """Return the pitch name and octave, such as ``"F♯4"``, or the MIDI pitch.
+
+        Each black key has one fixed spelling: C♯, E♭, F♯, A♭, B♭.
+
+        Args:
+            format: ``"midi"`` for the MIDI pitch as a string, anything else for
+                the pitch name.
+        """
         if format == "midi":
             return str(self.midi_number)
         return f"{_EP_LABELS[self.pitch_class]}{self.octave}"
 
     def to_dict(self) -> dict[str, object]:
+        """Return the stored field, ``{"midi_number": int}``."""
         return self.model_dump()
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> EnharmonicPitch | None:
+        """Read a pitch from a storage row.
+
+        Args:
+            row: The row, holding ``midi_number``.
+
+        Returns:
+            The pitch, or ``None`` when ``midi_number`` is absent or null.
+        """
         if "midi_number" in row and row.get("midi_number") is not None:
             return cls(midi_number=int(row["midi_number"]))
         return None
@@ -2401,9 +2579,13 @@ class MidiPitch(EnharmonicPitch):
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"MidiPitch"``."""
         return "MidiPitch"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``pitch_type`` ``"ep"``, as for
+        :class:`EnharmonicPitch`.
+        """
         return {
             **super().metadata_dict(),
             "pitch_type": "ep",
@@ -2411,6 +2593,12 @@ class MidiPitch(EnharmonicPitch):
 
     @data_shaped
     def get(self, *, format: str | None = None) -> str:
+        """Return the MIDI pitch as a string, such as ``"60"``.
+
+        Args:
+            format: ``None`` or ``"midi"`` for the MIDI pitch; any other value
+                for the pitch name and octave of :meth:`EnharmonicPitch.get`.
+        """
         if format is None or format == "midi":
             return str(self.midi_number)
         return super().get(format=format)
@@ -2441,11 +2629,13 @@ class MidiPitchField(SemanticField[MidiPitch]):
 
     @property
     def pitch_class(self) -> pa.Array[Any]:
+        """Vectorized ``midi_number mod 12``, one pitch class per row."""
         _require_rows(self)
         return self._pitch_classes()
 
     @property
     def octave(self) -> pa.Array[Any]:
+        """Vectorized ``(midi_number // 12) - 1``, one octave per row."""
         _require_rows(self)
         return self._octaves()
 
@@ -2522,25 +2712,30 @@ class SpecificPitch(TwelveTETPitchMixin, BaseModel):
     @property
     @data_shaped
     def fifths(self) -> int:
+        """Position on the line of fifths: C is 0, G 1, F -1, C♯ 7."""
         return _step_alter_to_fifths(self.step, self.alter)
 
     @property
     @data_shaped
     def midi_number(self) -> int:
+        """The MIDI pitch (C4 is 60); the ``cents`` deviation is not included."""
         base = _STEP_TO_SEMITONE.get(self.step, 0)
         return (self.octave + 1) * 12 + base + self.alter
 
     @property
     @data_shaped
     def pitch_class(self) -> int:  # type: ignore[override]
+        """The chromatic pitch class, 0 to 11 (C♯ and D♭ are both 1)."""
         base = _STEP_TO_SEMITONE.get(self.step, 0)
         return (base + self.alter) % 12
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"SpecificPitch"``."""
         return "SpecificPitch"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``pitch_type`` ``"sp"``."""
         return {
             **super().metadata_dict(),
             "pitch_type": "sp",
@@ -2550,6 +2745,23 @@ class SpecificPitch(TwelveTETPitchMixin, BaseModel):
     def to(
         self, target_type: type, *, format: str | None = None
     ) -> "TwelveTETPitchMixin":
+        """Convert to a less specific pitch type.
+
+        Reachable are ``SpecificPitch`` itself, :class:`MidiPitch`,
+        :class:`SpecificPitchClass` (drops the octave) and
+        :class:`EnharmonicPitchClass` (drops octave and spelling).  Every
+        conversion to another type drops the ``cents`` deviation.
+
+        Args:
+            target_type: The pitch type to convert to.
+            format: Unused.
+
+        Returns:
+            The converted pitch.
+
+        Raises:
+            TypeError: For any other target, :class:`EnharmonicPitch` included.
+        """
         if target_type is SpecificPitch or target_type is type(self):
             return self
         if target_type is MidiPitch:
@@ -2562,6 +2774,14 @@ class SpecificPitch(TwelveTETPitchMixin, BaseModel):
 
     @data_shaped
     def get(self, *, format: str | None = None) -> str:
+        """Return the spelling and octave, such as ``"C♯4"``, or the MIDI pitch.
+
+        The ``cents`` deviation is not shown.
+
+        Args:
+            format: ``"midi"`` for the MIDI pitch as a string, anything else for
+                the spelling.
+        """
         if format == "midi":
             return str(self.midi_number)
         alter_str = ""
@@ -2924,19 +3144,31 @@ class HarmonyLabel(ScalarVocabulary, BaseModel):
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"HarmonyLabel"``."""
         return "HarmonyLabel"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with the annotation ``standard``."""
         return {
             **super().metadata_dict(),
             "standard": self.standard,
         }
 
     def to_dict(self) -> dict[str, object]:
+        """Return the stored fields, ``label`` and ``standard``."""
         return self.model_dump()
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> HarmonyLabel | None:
+        """Read a harmony label from a storage row.
+
+        Args:
+            row: The row, holding ``label`` and ``standard``; an absent or
+                null standard reads as ``""``.
+
+        Returns:
+            The label, or ``None`` when the row has no ``label``.
+        """
         label = row.get("label")
         if label is None:
             return None
@@ -2965,19 +3197,34 @@ class PitchBasedHarmony(ScalarVocabulary, BaseModel):
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"PitchBasedHarmony"``."""
         return "PitchBasedHarmony"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with the annotation ``standard``."""
         return {
             **super().metadata_dict(),
             "standard": self.standard,
         }
 
     def to_dict(self) -> dict[str, object]:
+        """Return the stored fields: ``label``, ``standard``, ``root``, ``bass``."""
         return self.model_dump()
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> PitchBasedHarmony | None:
+        """Read a pitch-based harmony from a storage row.
+
+        Absent or null text fields read as ``""``; ``root`` and ``bass`` are
+        read as the integers the row holds.
+
+        Args:
+            row: The row, holding ``label``, ``standard``, ``root`` and ``bass``
+                (else ``bass_note``).
+
+        Returns:
+            The harmony, or ``None`` when the row has no ``label``.
+        """
         label = row.get("label")
         if label is None:
             return None
@@ -3015,19 +3262,38 @@ class WesternTertianHarmony(ScalarVocabulary, BaseModel):
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"WesternTertianHarmony"``."""
         return "WesternTertianHarmony"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with the annotation ``standard``."""
         return {
             **super().metadata_dict(),
             "standard": self.standard,
         }
 
     def to_dict(self) -> dict[str, object]:
+        """Return the stored fields: ``label``, ``standard``, ``root``, ``bass``,
+        ``chord_type`` and ``inversion``.
+        """
         return self.model_dump()
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> WesternTertianHarmony | None:
+        """Read a tertian chord from a storage row.
+
+        Absent or null text fields read as ``""``; ``root`` and ``bass`` are
+        read as the integers the row holds.
+        When ``inversion`` is absent or null and the row has a ``figbass``
+        key, the inversion is derived from the figured bass.
+
+        Args:
+            row: The row, holding ``label``, ``standard``, ``root``, ``bass`` (else
+                ``bass_note``), ``chord_type`` and ``inversion``.
+
+        Returns:
+            The harmony, or ``None`` when the row has no ``label``.
+        """
         label = row.get("label")
         if label is None:
             return None
@@ -3077,19 +3343,36 @@ class RomanNumeralHarmony(ScalarVocabulary, BaseModel):
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"RomanNumeralHarmony"``."""
         return "RomanNumeralHarmony"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with the annotation ``standard``."""
         return {
             **super().metadata_dict(),
             "standard": self.standard,
         }
 
     def to_dict(self) -> dict[str, object]:
+        """Return the stored fields, from ``label`` to ``globalkey``."""
         return self.model_dump()
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> RomanNumeralHarmony | None:
+        """Read a Roman-numeral harmony from a storage row.
+
+        Absent or null text fields read as ``""``; ``root`` and ``bass`` are
+        read as the integers the row holds.
+        When ``inversion`` is absent or null and the row has a ``figbass``
+        key, the inversion is derived from the figured bass.
+
+        Args:
+            row: The row, holding the stored fields by name, ``bass`` else
+                ``bass_note``.
+
+        Returns:
+            The harmony, or ``None`` when the row has no ``label``.
+        """
         label = row.get("label")
         if label is None:
             return None
@@ -3144,9 +3427,11 @@ class DcmlHarmony(ScalarVocabulary, BaseModel):
 
     @property
     def semantic_type(self) -> str:
+        """The semantic type name, ``"DcmlHarmony"``."""
         return "DcmlHarmony"
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``standard`` ``"dcml"``."""
         return {
             **super().metadata_dict(),
             "standard": "dcml",
@@ -3349,13 +3634,18 @@ class Note(ScalarVocabulary, BaseModel):
     @property
     @data_shaped
     def is_rest(self) -> bool:
+        """Whether the note has no pitch, that is, is a rest."""
         return self.pitch is None
 
     @property
     def semantic_type(self) -> str:
+        """The name of the concrete class, such as ``"Note"`` or ``"ScoreNote"``."""
         return type(self).__name__
 
     def metadata_dict(self) -> dict[str, str]:
+        """Return the scalar's metadata with ``has_pitch`` (``"true"`` or
+        ``"false"``).
+        """
         return {
             **super().metadata_dict(),
             "has_pitch": str(self.pitch is not None).lower(),
@@ -3674,6 +3964,7 @@ class Measure(ScalarVocabulary, BaseModel):
         """
 
         def descendants(parent: type[Measure]) -> list[type[Measure]]:
+            """Every subclass of *parent*, at any depth."""
             children: list[type[Measure]] = []
             for child in parent.__subclasses__():
                 children.append(child)
@@ -4817,6 +5108,11 @@ class Id(BaseModel):
 
     @classmethod
     def from_row(cls, row: object) -> Id | None:
+        """Rebuild an :class:`Id` from a storage row.
+
+        Returns:
+            The id, or ``None`` when the row is not a dict or holds no ``value``.
+        """
         if not _is_dict(row):
             return None
         v = row.get("value")

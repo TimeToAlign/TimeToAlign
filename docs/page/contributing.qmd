@@ -448,9 +448,14 @@ The docs site is built with **Quarto** + **quartodoc** and lives at
 
 ```bash
 cd docs/page
-quartodoc build           # regenerate the API reference pages from docstrings
-quarto render             # build the full site into _site/
+quarto render             # build the full site into _site/ (not tracked)
 ```
+
+The committed API reference pages (`reference/*.qmd`) are regenerated with
+`quartodoc build` only when the public API or its docstrings change, because
+it is slow. The site is published per version (`X.Y.Z/`, `dev/` from `main`,
+`stable/` for the newest release) on the `gh-pages` branch by the docs
+workflow (`.github/workflows/docs.yml`).
 
 The Quarto pre-render hook automatically runs `sync_notebooks.py` (see §6.3)
 to refresh tutorial and how-to notebooks before rendering.

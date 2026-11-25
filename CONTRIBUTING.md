@@ -42,10 +42,14 @@ To preview the developers' reference locally:
 
 ```bash
 cd docs/page
-quartodoc build
 quarto render
 # open _site/contributing.html
 ```
+
+The committed API reference pages (`docs/page/reference/*.qmd`) are
+regenerated with `quartodoc build` only when the public API or its
+docstrings change, because it is slow. The site is published per version on
+the `gh-pages` branch by the docs workflow (`.github/workflows/docs.yml`).
 
 Or read the rendered version on the public site:
 <https://timetoalign.github.io/contributing.html>.

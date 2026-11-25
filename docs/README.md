@@ -14,7 +14,10 @@ pip install -e ".[tutorial]"
 
 ## Documentation homepage
 
-Open `docs/page/_site/index.html` in a browser. The homepage includes the
+The site is built with `quarto render` (run in `docs/page/`) into
+`docs/page/_site/`, which is not tracked; open its `index.html` in a
+browser. The published site, one folder per version, is at
+<https://timetoalign.github.io/TimeToAlign/stable/>. The homepage includes the
 full conceptual specification, a glossary, API reference, and HTML
 renderings of every notebook listed below.
 

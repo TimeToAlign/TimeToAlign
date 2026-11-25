@@ -23,6 +23,7 @@ Reference:
 from __future__ import annotations
 
 import logging
+from collections.abc import Hashable
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Sequence
@@ -253,7 +254,7 @@ def match_notes_by_attributes(
     target_records = target_df.reset_index(drop=True).to_dict(orient="records")
 
     matched_records: list[dict[str, Any]] = []
-    unmatched_source_records: list[dict[str, Any]] = []
+    unmatched_source_records: list[dict[Hashable, Any]] = []
 
     for _, source_row in source_df.iterrows():
         source_dict = source_row.to_dict()

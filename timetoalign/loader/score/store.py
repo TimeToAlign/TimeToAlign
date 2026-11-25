@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from timetoalign.core.time import number_from_json, number_to_json
 from timetoalign.loader.score.stores.annotations import AnnotationEventData
@@ -26,6 +26,17 @@ module_logger = logging.getLogger(__name__)
 
 # Store names in canonical order
 STORE_NAMES: tuple[str, ...] = ("notes", "measures", "controls", "annotations")
+
+_FacetT = TypeVar(
+    "_FacetT", NoteEventData, MeasureData, ControlEventData, AnnotationEventData
+)
+
+
+def _read_facet(path: Path, klass: type[_FacetT]) -> _FacetT:
+    """Read one facet from *path*, or return it empty when the file is absent."""
+    if path.exists():
+        return klass.from_parquet(path)
+    return klass.empty()
 
 
 @dataclass
@@ -160,20 +171,12 @@ class ScoreStore(EventStore):
                 f"Expected a directory for ScoreStore deserialization: {directory}"
             )
 
-        facet_classes: dict[str, type[EventData]] = {
-            "notes": NoteEventData,
-            "measures": MeasureData,
-            "controls": ControlEventData,
-            "annotations": AnnotationEventData,
-        }
-
-        facets: dict[str, EventData] = {}
-        for name, klass in facet_classes.items():
-            parquet_path = directory / f"{name}.parquet"
-            if parquet_path.exists():
-                facets[name] = klass.from_parquet(parquet_path)
-            else:
-                facets[name] = klass.empty()
+        notes = _read_facet(directory / "notes.parquet", NoteEventData)
+        measures = _read_facet(directory / "measures.parquet", MeasureData)
+        controls = _read_facet(directory / "controls.parquet", ControlEventData)
+        annotations = _read_facet(
+            directory / "annotations.parquet", AnnotationEventData
+        )
 
         # Load metadata
         meta_path = directory / "metadata.json"
@@ -186,10 +189,10 @@ class ScoreStore(EventStore):
             )
 
         return cls(
-            notes=facets["notes"],
-            measures=facets["measures"],
-            controls=facets["controls"],
-            annotations=facets["annotations"],
+            notes=notes,
+            measures=measures,
+            controls=controls,
+            annotations=annotations,
             metadata=metadata,
         )
 
@@ -359,7 +362,7 @@ class ScoreStore(EventStore):
                 bpm = event.get("value")
                 if start is not None and bpm is not None:
                     # Handle Fraction or dict representation of start
-                    if isinstance(start, dict) and "value" in start:
+                    if isinstance(start, dict):
                         start = start["value"]
                     tempo_events.append((float(start), float(bpm)))
 

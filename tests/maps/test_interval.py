@@ -524,4 +524,3 @@ class TestScoreStoreIntegration:
         cmaps = store.get_cmaps()
 
         assert "measures" not in cmaps
-        assert "ticks" in cmaps  # But ticks should always be present

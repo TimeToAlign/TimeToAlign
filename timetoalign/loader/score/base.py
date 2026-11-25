@@ -192,9 +192,53 @@ class ScoreLoader(EventLoader):
         super().clear()
         self._store = ScoreStore.empty()
 
-    def create_timeline(self, uid: str | None = None, **kwargs: Any) -> Timeline:
-        """Create a score timeline with measure and flow-control structure."""
-        timeline = super().create_timeline(uid=uid, **kwargs)
+    def create_timeline(
+        self,
+        uid: str | None = None,
+        store_filters: dict[str, dict[str, Any]] | None = None,
+        include_stores: list[str] | None = None,
+        exclude_stores: list[str] | None = None,
+        flatten: bool = False,
+        *,
+        ppq: int | None = None,
+        attach_cmaps: bool = True,
+    ) -> Timeline:
+        """Create a score timeline with measure and flow-control structure.
+
+        Args:
+            uid: Unique ID for the parent timeline. Auto-generated if None.
+            store_filters: Per-data filter kwargs to apply before timeline
+                creation.
+            include_stores: Only include these data (default: all non-empty).
+            exclude_stores: Exclude these data from the timeline.
+            flatten: If True, merge all events into a single parent timeline.
+            ppq: Pulses per quarter note. Given, a quarters → ticks C-Map at
+                this resolution is attached; ``None`` (default) attaches none,
+                because a score states no tick resolution.
+            attach_cmaps: If True (default), attach the C-Maps the score
+                states (:meth:`ScoreStore.get_cmaps`) and the anacrusis
+                ShiftMap; if False, attach none.
+
+        Returns:
+            The score timeline.
+        """
+        from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
+
+        minted = uid is None
+        if minted:
+            uid = _mint_timeline_id(self, self._unit)
+        timeline = _flag_minted(
+            self.store.create_timeline(
+                uid=uid,
+                store_filters=store_filters,
+                include_stores=include_stores,
+                exclude_stores=exclude_stores,
+                flatten=flatten,
+                ppq=ppq,
+                attach_cmaps=attach_cmaps,
+            ),
+            minted,
+        )
         self._populate_timeline_structure(timeline)
         return timeline
 

@@ -292,6 +292,15 @@ class ScoreStore(EventStore):
         therefore derived from the score; a caller who wants ticks names the
         resolution.
 
+        The floating-measure conversion reads the measure structure (see
+        :meth:`QuartersToFloatingMeasures.from_measure_map
+        <timetoalign.maps.interval.QuartersToFloatingMeasures.from_measure_map>`):
+        the records of a split bar join into one floating measure. Only
+        measures that cannot be joined and share a nominal downbeat leave
+        the ``"measures"`` entry absent; no approximate lattice is built in
+        its place, since an fm reading those measures do not support is
+        worse than no fm reading.
+
         Args:
             ppq: Pulses per quarter note. Given, the result holds a
                 quarters -> ticks ``ScalarMap`` at this resolution; ``None``
@@ -341,11 +350,9 @@ class ScoreStore(EventStore):
                     measure_map
                 )
             except ValueError:
-                # A structure the fm lattice cannot express — split bars
-                # share one notated downbeat and cannot anchor two
-                # ordinals. Leave the conversion absent (documented above):
-                # an fm reading these measures do not support is worse than
-                # no fm reading.
+                # Measures that cannot be joined share a nominal downbeat:
+                # the lattice cannot anchor two ordinals there, and the
+                # conversion stays absent, as the docstring says.
                 pass
 
         return cmaps

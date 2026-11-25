@@ -774,13 +774,31 @@ class Ms3Loader(ScoreLoader):
         name: str | None = None,
         *,
         flatten: bool = False,
+        ppq: int | None = None,
+        attach_cmaps: bool = True,
         **kwargs: Any,
     ) -> Timeline:
         """Create a score timeline carrying the parsed measure structure.
 
         The timeline carries the C-Maps the tables state (floating measures
-        from the measure table, seconds from tempo markings); no ticks map,
-        since a DCML table states no tick resolution.
+        from the measure table, seconds from tempo markings); a ticks map
+        only at the ``ppq`` the caller names, since a DCML table states no
+        tick resolution. Only measures that cannot be joined into one
+        floating measure and share a nominal downbeat leave the
+        floating-measure conversion absent.
+
+        Args:
+            uid: Unique ID for the timeline. Auto-generated if None.
+            name: Display name of the timeline.
+            flatten: If True, merge all events into a single parent timeline.
+            ppq: Pulses per quarter note. Given, a quarters → ticks C-Map at
+                this resolution is attached; ``None`` (default) attaches none.
+            attach_cmaps: If True (default), attach the C-Maps the tables
+                state; if False, attach none.
+            **kwargs: Further arguments of :meth:`ScoreLoader.create_timeline`.
+
+        Returns:
+            The score timeline.
         """
         from timetoalign.timelines import ContinuousLogicalTimeline
 
@@ -797,8 +815,9 @@ class Ms3Loader(ScoreLoader):
                 name=name,
             )
             self._populate_timeline_structure(timeline)
-            for cmap in self.store.get_cmaps().values():
-                timeline.add_conversion_map(cmap)
+            if attach_cmaps:
+                for cmap in self.store.get_cmaps(ppq=ppq).values():
+                    timeline.add_conversion_map(cmap)
         else:
             excluded = list(kwargs.pop("exclude_stores", []) or [])
             if "measures" not in excluded:
@@ -807,6 +826,8 @@ class Ms3Loader(ScoreLoader):
                 uid=uid,
                 exclude_stores=excluded,
                 flatten=flatten,
+                ppq=ppq,
+                attach_cmaps=attach_cmaps,
                 **kwargs,
             )
             if name is not None:

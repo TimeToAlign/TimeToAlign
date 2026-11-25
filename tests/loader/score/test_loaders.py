@@ -605,6 +605,27 @@ class TestTicksResolution:
         assert (two_quarters, a_third) == (1920, 320)
         assert type(two_quarters) is int and type(a_third) is int
 
+    @pytest.mark.parametrize("source", ["measures", "notes"])
+    def test_the_loader_passes_ppq_on(self, source, chopin_tsv_notes):
+        """Both branches of ``Ms3Loader.create_timeline`` honour ``ppq``."""
+        path = WOO71_MEASURES if source == "measures" else chopin_tsv_notes
+        timeline = Ms3Loader.from_file(path).create_timeline(ppq=960)
+        maps = timeline._get_unit_maps(TimeUnit.ticks)
+        assert len(maps) == 1
+        ticks = maps[0]
+        assert type(ticks) is ScalarMap
+        assert (ticks.scalar, ticks.source_unit) == (960, TimeUnit.quarters)
+
+    @pytest.mark.parametrize("source", ["measures", "notes"])
+    def test_the_loader_passes_attach_cmaps_on(self, source, chopin_tsv_notes):
+        """``attach_cmaps=False`` attaches no map, even with a resolution named."""
+        path = WOO71_MEASURES if source == "measures" else chopin_tsv_notes
+        loader = Ms3Loader.from_file(path)
+        timeline = loader.create_timeline(ppq=960, attach_cmaps=False)
+        assert timeline.n_conversion_maps == 0
+        if source == "measures":
+            assert Ms3Loader.from_file(path).create_timeline().n_conversion_maps == 1
+
 
 class TestScoreStoreParquet:
     """Round-trip tests for ScoreStore parquet serialisation."""

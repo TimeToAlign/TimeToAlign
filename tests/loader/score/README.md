@@ -297,6 +297,16 @@ both sides:
   (an exact third of a quarter at 960 PPQ is a whole tick, so a float or a Fraction here
   would show the map is not the exact scalar). `ScoreStore.empty().get_cmaps(ppq=960)` holds
   exactly the key `"ticks"`.
+- **The loader passes the resolution on.** A caller holds a loader, not its store, so `ppq`
+  and `attach_cmaps` must reach the store from `create_timeline()` in both of `Ms3Loader`'s
+  branches; a keyword swallowed on the way would look exactly like "no ticks unless asked".
+  `Ms3Loader.from_file(WoO71.measures.tsv).create_timeline(ppq=960)` (measures only) and
+  `Ms3Loader.from_file(chopin_op10_no3.notes.tsv).create_timeline(ppq=960)` (notes, the
+  store's branch through `ScoreLoader.create_timeline`) each register exactly one map for
+  `TimeUnit.ticks`, a `ScalarMap` with `scalar == 960` from `quarters`. With
+  `attach_cmaps=False` (and `ppq=960`, so that a dropped flag would show as an attached map)
+  both timelines hold no conversion map at all (`n_conversion_maps == 0`), although the WoO 71
+  table states a floating-measure conversion and the default attaches it.
 
 ## MS3 facet discovery
 

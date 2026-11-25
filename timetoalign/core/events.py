@@ -2228,10 +2228,13 @@ class SpecificPitchClass(TwelveTETPitchMixin, BaseModel):
     def from_row(cls, row: dict[str, Any]) -> SpecificPitchClass | None:
         """Read a spelled pitch class from a storage row.
 
+        The row spells the pitch class by letter and accidental count;
+        :attr:`fifths` gives its position on the line of fifths.
+
         Args:
-            row: The row, holding the letter under ``step`` (or ``gpc_str``)
-                and the alteration under ``alter`` (or ``acc``); a missing or null
-                alteration reads as 0.
+            row: The row, with the letter under ``step`` (or ``gpc_str``) and
+                the accidental count under ``alter`` (or ``acc``); a missing or
+                null count reads as 0.
 
         Returns:
             The pitch class, or ``None`` when the row holds no letter.
@@ -2425,8 +2428,8 @@ class EnharmonicPitch(TwelveTETPitchMixin, BaseModel):
             The converted pitch.
 
         Raises:
-            TypeError: For any other target: a spelled type needs spelling the MIDI
-                pitch does not carry.
+            TypeError: For any other target: the spelled and the generic pitch
+                types need a letter the MIDI pitch does not carry.
         """
         if target_type is EnharmonicPitch or target_type is type(self):
             return self
@@ -2823,9 +2826,14 @@ class SpecificPitch(TwelveTETPitchMixin, BaseModel):
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "SpecificPitch | None":
-        """Construct from a PyArrow struct row dict (trust-boundary regime).
+        """Read a spelled pitch from a storage row.
 
-        Accepts the canonical struct ``{step, alter, octave, cents}``.
+        The row spells the pitch by letter, accidental count and octave, under
+        ``step``, ``alter``, ``octave`` and an optional ``cents``; :attr:`fifths`
+        gives its position on the line of fifths.
+
+        Returns:
+            The pitch, or ``None`` when the row has no ``step`` or it is null.
         """
         if "step" in row and row.get("step") is not None:
             cents_raw = row.get("cents")
@@ -3219,8 +3227,8 @@ class PitchBasedHarmony(ScalarVocabulary, BaseModel):
         read as the integers the row holds.
 
         Args:
-            row: The row, holding ``label``, ``standard``, ``root`` and ``bass``
-                (else ``bass_note``).
+            row: The row, holding ``label``, ``standard``, ``root`` and ``bass``;
+                ``bass_note`` is read only when the row has no ``bass`` key.
 
         Returns:
             The harmony, or ``None`` when the row has no ``label``.
@@ -3288,8 +3296,9 @@ class WesternTertianHarmony(ScalarVocabulary, BaseModel):
         key, the inversion is derived from the figured bass.
 
         Args:
-            row: The row, holding ``label``, ``standard``, ``root``, ``bass`` (else
-                ``bass_note``), ``chord_type`` and ``inversion``.
+            row: The row, holding ``label``, ``standard``, ``root``, ``bass``,
+                ``chord_type`` and ``inversion``; ``bass_note`` is read only when
+                the row has no ``bass`` key.
 
         Returns:
             The harmony, or ``None`` when the row has no ``label``.
@@ -3367,8 +3376,8 @@ class RomanNumeralHarmony(ScalarVocabulary, BaseModel):
         key, the inversion is derived from the figured bass.
 
         Args:
-            row: The row, holding the stored fields by name, ``bass`` else
-                ``bass_note``.
+            row: The row, holding the stored fields by name; ``bass_note`` is
+                read only when the row has no ``bass`` key.
 
         Returns:
             The harmony, or ``None`` when the row has no ``label``.

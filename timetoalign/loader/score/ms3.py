@@ -37,7 +37,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
+    import pandas
+
+    from timetoalign.timelines import MeasureMap, Timeline
 
 
 class Ms3Loader(ScoreLoader):
@@ -357,6 +359,7 @@ class Ms3Loader(ScoreLoader):
         if isinstance(val, Integral):
             return Fraction(int(val))
         if isinstance(val, Real):
+            numeric = float(val)
             if numeric.is_integer():
                 return Fraction(int(numeric))
             numerator, denominator = numeric.as_integer_ratio()
@@ -397,7 +400,7 @@ class Ms3Loader(ScoreLoader):
         return True
 
     def _resolve_duration(
-        self, row: "pd.Series", exact_column: str
+        self, row: pandas.Series, exact_column: str
     ) -> Fraction | float | None:
         """Resolve a quarter-beat duration from symbolic and derived columns.
 
@@ -416,7 +419,11 @@ class Ms3Loader(ScoreLoader):
 
         if exact_source is not None:
             exact_duration = exact_source * 4
-            if has_duration_qb and self._has_value(duration_qb):
+            if (
+                has_duration_qb
+                and duration_qb is not None
+                and self._has_value(duration_qb)
+            ):
                 derived_float = float(duration_qb)
                 if abs(float(exact_duration) - derived_float) > 1e-6:
                     return self._coordinate_value(duration_qb)
@@ -512,7 +519,7 @@ class Ms3Loader(ScoreLoader):
                 spans.append(None)
         return spans
 
-    def _resolve_quarterbeats(self, row: "pd.Series") -> Fraction | float | None:
+    def _resolve_quarterbeats(self, row: pandas.Series) -> Fraction | float | None:
         """Resolve the quarterbeats coordinate from a TSV row.
 
         Prefers ``quarterbeats_all_endings`` when the column is present
@@ -541,7 +548,7 @@ class Ms3Loader(ScoreLoader):
         # Fallback: plain quarterbeats
         return self._coordinate_value(row.get("quarterbeats"))
 
-    def _load_notes(self, df: pd.DataFrame, source: Path) -> ScoreStore:
+    def _load_notes(self, df: pandas.DataFrame, source: Path) -> ScoreStore:
         """Load notes TSV into NoteEventData."""
         import pandas as pd
 
@@ -713,7 +720,7 @@ class Ms3Loader(ScoreLoader):
         *,
         flatten: bool = False,
         **kwargs: Any,
-    ) -> ContinuousLogicalTimeline:
+    ) -> Timeline:
         """Create a score timeline carrying the parsed measure structure.
 
         Known limitation: a score whose measures are **split** — two
@@ -757,7 +764,7 @@ class Ms3Loader(ScoreLoader):
 
         return timeline
 
-    def _load_measures(self, df: pd.DataFrame, source: Path) -> ScoreStore:
+    def _load_measures(self, df: pandas.DataFrame, source: Path) -> ScoreStore:
         """Parse a measures TSV as an immutable measure map.
 
         Parses ms3/DCML measures.tsv format with columns:
@@ -996,7 +1003,7 @@ class Ms3Loader(ScoreLoader):
         )
 
     def _load_annotations(
-        self, df: "pd.DataFrame", source: Path, subtype: str
+        self, df: pandas.DataFrame, source: Path, subtype: str
     ) -> ScoreStore:
         """Load annotations from TSV (harmonies).
 
@@ -1112,7 +1119,7 @@ class Ms3Loader(ScoreLoader):
         )
 
     def _load_controls(
-        self, df: "pd.DataFrame", source: Path, subtype: str
+        self, df: pandas.DataFrame, source: Path, subtype: str
     ) -> ScoreStore:
         """Load control events from TSV (chords).
 

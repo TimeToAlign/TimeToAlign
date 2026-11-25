@@ -335,10 +335,24 @@ flows = {
 #
 # `single` plays measures 1 to 4, skips the first bracket, and plays the rest
 # once. The default flow ends only where the *Fine* says so and plays every
-# stretch of the axis, so it has no findings:
+# stretch of the axis, so it has no findings. Each flow carries its own:
+# `single` reports the first bracket it leaves out, with the cause
+# `single_playback` (going through once took the last bracket, while the
+# default flow plays it); `printed` plays everything and finds nothing.
 
 # %%
-flows["default"].findings
+{
+    convention: [
+        (
+            str(finding.kind),
+            str(finding.coordinate),
+            str(finding.end),
+            str(finding.cause),
+        )
+        for finding in flow.findings
+    ]
+    for convention, flow in flows.items()
+}
 
 # %% [markdown]
 # A flow converts positions both ways. `unfold()` gives every position of
@@ -416,8 +430,8 @@ broken = draft.get_flow()
 
 # %% [markdown]
 # The flow ends at the Break at 20, begins again at the section break, and
-# never plays quarters 20 to 32. Both are findings of the `default` flow; the
-# other conventions return none.
+# never plays quarters 20 to 32. Both are findings of the `default` flow and
+# have no cause: the encoding, not a convention, leaves the stretch out.
 
 # %% [markdown]
 # ## Repairing it

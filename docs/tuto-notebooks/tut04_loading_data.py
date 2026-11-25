@@ -24,7 +24,7 @@
 # guide](../howto/how01_loading_data.ipynb) compares its `Ms3Loader` with the
 # MusicXML loaders. You will finish with the same kind of
 # {{< glossary Timeline >}} you previously built by hand, including
-# {{< glossary Child >}} timelines and an exact {{< glossary Coordinate >}}
+# {{< glossary Child >}} timelines and a {{< glossary Coordinate >}}
 # conversion derived from the file.
 #
 # ## Before you start
@@ -205,7 +205,9 @@ timeline_identity
 # ## What you got for free
 #
 # The loader has already separated each event category into a child timeline and
-# attached a quarters-to-ticks {{< glossary ConversionMap >}}.
+# attached the {{< glossary ConversionMap >}}s its source states: a reading in
+# floating measures from the measure table and, where the score carries tempo
+# markings, one in seconds.
 
 # %%
 child_names = {
@@ -213,26 +215,31 @@ child_names = {
     for child_id in score_timeline.list_children()
 }
 stored_categories = tuple(store_inventory["category"])
-quarters_to_ticks = score_timeline.get_conversion_map(TimeUnit.ticks)
+quarters_to_measures = score_timeline.get_conversion_map(TimeUnit.floating_measures)
 
 quarter_position = score_timeline.make_coordinate(Fraction(13, 2))
-tick_position = score_timeline.convert_to(quarter_position, TimeUnit.ticks)
+measure_position = score_timeline.convert_to(
+    quarter_position, TimeUnit.floating_measures
+)
 loader_payoff = {
     "children": child_names,
     "stored categories": stored_categories,
-    "quarters-to-ticks map": quarters_to_ticks,
+    "quarters-to-measures map": quarters_to_measures,
     "quarter position": quarter_position,
-    "tick position": tick_position,
+    "floating-measure position": measure_position,
 }
 loader_payoff
 
 # %% [markdown]
 # Each child is named after one of the four stored categories; its id is minted
 # like any other timeline's (`clt_2`, …), because a category is a label, not an
-# identity. The map converts the library's
-# `Coordinate(Fraction(13, 2), quarters)` directly to `Coordinate(3120, ticks)`;
-# no rational value is reconstructed for display. Measures are available as the
-# child named `measures`, but this score loader does not also materialize them as
+# identity. The map reads `Coordinate(Fraction(13, 2), quarters)` as
+# `Coordinate(5.0, floating_measures)`, the first beat of the fifth measure the
+# file records. The loader reads no metronome value from this file, so no
+# seconds map is attached. Nor is a ticks map: a score counts in quarters and
+# states no tick resolution, so ticks are a reading you ask for by passing `ppq`
+# to `create_timeline()`. Measures are available as the child named `measures`,
+# but this score loader does not also materialize them as
 # {{< glossary Region >}} objects.
 
 # %% [markdown]

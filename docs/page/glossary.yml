@@ -270,7 +270,7 @@ element id: |
   number once given is never given again. The prefix names the kind: clt,
   dlt, cpt, dpt, cgt or dgt for a timeline (continuous or discrete, logical,
   physical or graphical), group for a group, measuremap for a MeasureMap,
-  cmap, lmap, tmap or pmap for a conversion map, region for a Region,
+  cmap for a conversion map, region for a Region,
   resource for a Resource, jump, jump_target, break, section_break or
   barline for a flow-control element and flow_map for a FlowMap; a virtual
   timeline is minted as a timeline of its unit; a loader role leads it

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Publish a built documentation site as one version folder of the gh-pages tree.
+r"""Publish a built documentation site as one version folder of the gh-pages tree.
 
 The documentation is served from the root of the ``gh-pages`` branch, which
 holds one folder per version:
@@ -9,9 +9,9 @@ holds one folder per version:
 - ``stable/`` a copy of the newest release's folder,
 
 and, at the root, ``index.html`` (redirects to ``stable/``, or to ``dev/``
-while no release is published), ``404.html`` (forwards the addresses of the
-former unversioned site, ``page/_site/<path>``, and version-less paths to
-``stable/<path>``), ``versions.json`` (the version list, rebuilt from the
+while no release is published), ``404.html`` (forwards version-less paths,
+and the addresses of a former unversioned site below ``--forward-from``, to
+the same page in the folder ``index.html`` redirects to), ``versions.json`` (the version list, rebuilt from the
 folders present), ``versions.js`` (the version menu and banner, see
 ``versions.js`` next to this script) and ``.nojekyll``.
 
@@ -21,10 +21,17 @@ adds the ``versions.js`` script tag to every HTML page of the folders it
 touched. The script tag is added once: pages that already carry it are left
 as they are.
 
+The script serves any project: ``--base-path`` names the URL path of the
+gh-pages root, ``--title`` the documentation in the root pages, and
+``--forward-from`` the folder of a former unversioned site (an empty value
+forwards none). The defaults are those of the TimeToAlign! site.
+
 Usage::
 
     python docs/publish_site.py docs/page/_site --version dev --pages ../gh-pages
     python docs/publish_site.py docs/page/_site --version 1.2.0 --pages ../gh-pages
+    python docs/publish_site.py docs/_build/html --version dev --pages ../gh-pages \
+        --base-path /TimeToShare/ --title "TimeToShare! documentation" --forward-from ""
 """
 
 from __future__ import annotations
@@ -40,6 +47,8 @@ from pathlib import Path
 DEV = "dev"
 STABLE = "stable"
 DEFAULT_BASE_PATH = "/TimeToAlign/"
+DEFAULT_TITLE = "TimeToAlign! documentation"
+DEFAULT_FORWARD_FROM = "page/_site/"
 VERSIONS_JS = Path(__file__).resolve().parent / "versions.js"
 
 _RELEASE_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -119,13 +128,14 @@ def versions_list(pages: Path) -> list[dict[str, object]]:
     return entries
 
 
-def redirect_page(target: str) -> str:
+def redirect_page(target: str, title: str = DEFAULT_TITLE) -> str:
     """Return the root ``index.html`` that forwards to a version folder.
 
     The query string and the fragment of the requested URL are kept.
 
     Args:
         target: The folder to forward to, with a trailing slash (``stable/``).
+        title: The name of the documentation, the page's title.
 
     Returns:
         The HTML text of the page.
@@ -137,7 +147,7 @@ def redirect_page(target: str) -> str:
         '<html lang="en">\n'
         "<head>\n"
         '<meta charset="utf-8">\n'
-        "<title>TimeToAlign! documentation</title>\n"
+        f"<title>{html.escape(title)}</title>\n"
         f'<link rel="canonical" href="{quoted}">\n'
         "<script>\n"
         f"location.replace({script_target} + location.search + location.hash);\n"
@@ -151,51 +161,62 @@ def redirect_page(target: str) -> str:
     )
 
 
-def not_found_page(base_path: str) -> str:
+def not_found_page(
+    base_path: str,
+    title: str = DEFAULT_TITLE,
+    forward_from: str = DEFAULT_FORWARD_FROM,
+    target: str = f"{STABLE}/",
+) -> str:
     """Return the root ``404.html`` that forwards former and version-less URLs.
 
     GitHub Pages serves this page for every missing path below the base path.
-    A path below ``page/_site/`` (where the site was served before it was
+    A path below ``forward_from`` (where the site was served before it was
     published per version) or a path outside every version folder is
-    forwarded to the same page in ``stable/``, keeping the query string and
+    forwarded to the same page in ``target``, keeping the query string and
     the fragment. A missing page inside a version folder is not forwarded, so
     a forward never loops.
 
     Args:
         base_path: The URL path the gh-pages root is served at, starting and
             ending with ``/``.
+        title: The name of the documentation, in the page's title.
+        forward_from: The folder of a former unversioned site, relative to
+            the base path and ending with ``/``; empty when there was none.
+        target: The folder to forward to, with a trailing slash: ``stable/``,
+            or ``dev/`` while no release is published.
 
     Returns:
         The HTML text of the page.
     """
-    stable = html.escape(f"{base_path}{STABLE}/", quote=True)
+    start = html.escape(f"{base_path}{target}", quote=True)
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en">\n'
         "<head>\n"
         '<meta charset="utf-8">\n'
-        "<title>Page not found · TimeToAlign! documentation</title>\n"
+        f"<title>Page not found · {html.escape(title)}</title>\n"
         "<script>\n"
         "(function () {\n"
         f"  var base = {json.dumps(base_path)};\n"
         "  var path = window.location.pathname;\n"
         "  if (path.indexOf(base) !== 0) { return; }\n"
         "  var rest = path.slice(base.length);\n"
-        '  var former = "page/_site/";\n'
-        "  if (rest.indexOf(former) === 0) {\n"
+        f"  var former = {json.dumps(forward_from)};\n"
+        "  if (former && rest.indexOf(former) === 0) {\n"
         "    rest = rest.slice(former.length);\n"
         "  } else if (/^(dev|stable|\\d+\\.\\d+\\.\\d+)(\\/|$)/.test(rest)) {\n"
         "    return;\n"
         "  }\n"
         "  window.location.replace(\n"
-        f'    base + "{STABLE}/" + rest + window.location.search + window.location.hash\n'
+        f"    base + {json.dumps(target)} + rest + window.location.search"
+        " + window.location.hash\n"
         "  );\n"
         "})();\n"
         "</script>\n"
         "</head>\n"
         "<body>\n"
         "<p>This page does not exist. The documentation is at\n"
-        f'<a href="{stable}">{stable}</a>.</p>\n'
+        f'<a href="{start}">{start}</a>.</p>\n'
         "</body>\n"
         "</html>\n"
     )
@@ -256,7 +277,12 @@ def replace_folder(source: Path, target: Path) -> None:
 
 
 def publish(
-    site: Path, version: str, pages: Path, base_path: str = DEFAULT_BASE_PATH
+    site: Path,
+    version: str,
+    pages: Path,
+    base_path: str = DEFAULT_BASE_PATH,
+    title: str = DEFAULT_TITLE,
+    forward_from: str = DEFAULT_FORWARD_FROM,
 ) -> list[str]:
     """Publish a built site as one version folder of a gh-pages tree.
 
@@ -265,6 +291,9 @@ def publish(
         version: ``dev`` or a release number ``X.Y.Z``.
         pages: Root of the gh-pages tree (a checkout of the branch).
         base_path: The URL path the gh-pages root is served at.
+        title: The name of the documentation, in the titles of the root pages.
+        forward_from: The folder of a former unversioned site whose addresses
+            ``404.html`` forwards, relative to the base path; empty for none.
 
     Returns:
         The folders written, in the order they were written.
@@ -272,8 +301,9 @@ def publish(
     Raises:
         ValueError: If ``version`` is neither ``dev`` nor ``X.Y.Z``, if
             ``site`` holds no ``index.html`` or lies inside the folder it
-            would replace, or if ``base_path`` does not start and end with
-            ``/``.
+            would replace, if ``base_path`` does not start and end with
+            ``/``, or if a non-empty ``forward_from`` starts with ``/`` or
+            does not end with it.
     """
     if version != DEV and release_key(version) is None:
         raise ValueError(f"Version must be 'dev' or X.Y.Z, not {version!r}.")
@@ -284,6 +314,13 @@ def publish(
     if not base_path.startswith("/") or not base_path.endswith("/"):
         raise ValueError(
             f"The base path must start and end with '/', not {base_path!r}."
+        )
+    if forward_from and (
+        forward_from.startswith("/") or not forward_from.endswith("/")
+    ):
+        raise ValueError(
+            f"The folder to forward from must be relative and end with '/', "
+            f"not {forward_from!r}."
         )
 
     tag = (
@@ -303,8 +340,10 @@ def publish(
         json.dumps(entries, indent=2) + "\n", encoding="utf-8"
     )
     redirect = f"{STABLE}/" if (pages / STABLE).is_dir() else f"{DEV}/"
-    (pages / "index.html").write_text(redirect_page(redirect), encoding="utf-8")
-    (pages / "404.html").write_text(not_found_page(base_path), encoding="utf-8")
+    (pages / "index.html").write_text(redirect_page(redirect, title), encoding="utf-8")
+    (pages / "404.html").write_text(
+        not_found_page(base_path, title, forward_from, redirect), encoding="utf-8"
+    )
     shutil.copyfile(VERSIONS_JS, pages / "versions.js")
     (pages / ".nojekyll").touch()
     return written
@@ -337,9 +376,27 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_BASE_PATH,
         help="URL path the gh-pages root is served at (default: %(default)s)",
     )
+    parser.add_argument(
+        "--title",
+        default=DEFAULT_TITLE,
+        help="name of the documentation in the root pages (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--forward-from",
+        default=DEFAULT_FORWARD_FROM,
+        help="folder of a former unversioned site whose addresses 404.html "
+        "forwards; empty for none (default: %(default)s)",
+    )
     args = parser.parse_args(argv)
     try:
-        written = publish(args.site, args.version, args.pages, args.base_path)
+        written = publish(
+            args.site,
+            args.version,
+            args.pages,
+            args.base_path,
+            args.title,
+            args.forward_from,
+        )
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

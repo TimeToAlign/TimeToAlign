@@ -1,5 +1,5 @@
 /*
- * Version menu and outdated-version banner for the TimeToAlign! documentation.
+ * Version menu and outdated-version banner of a documentation site.
  *
  * The site is published as one folder per version beside this script:
  * `<X.Y.Z>/` per release, `dev/` for the main branch and `stable/` for a
@@ -17,7 +17,7 @@
   "use strict";
 
   var script = document.currentScript;
-  if (!script || document.getElementById("tta-version-menu")) {
+  if (!script || document.getElementById("docs-version-menu")) {
     return;
   }
   var rootUrl = new URL(".", script.src);
@@ -101,21 +101,21 @@
       : { background: "#fff3cd", text: "#664d03", border: "#ffe69c" };
     var scheme = colors.dark ? "dark" : "light";
     var css =
-      "#tta-version-menu{position:fixed;right:12px;bottom:12px;z-index:1050;" +
+      "#docs-version-menu{position:fixed;right:12px;bottom:12px;z-index:1050;" +
       "display:flex;align-items:center;gap:6px;margin:0;padding:4px 8px;" +
       "border-radius:6px;font:13px/1.4 system-ui,sans-serif;opacity:.85;" +
       "border:1px solid currentColor;color-scheme:" + scheme + ";" +
       "background:" + colors.background + ";color:" + colors.text + "}" +
-      "#tta-version-menu:hover,#tta-version-menu:focus-within{opacity:1}" +
-      "#tta-version-menu select,#tta-version-menu button{font:inherit;" +
+      "#docs-version-menu:hover,#docs-version-menu:focus-within{opacity:1}" +
+      "#docs-version-menu select,#docs-version-menu button{font:inherit;" +
       "color:inherit;background:inherit;border:1px solid currentColor;" +
       "border-radius:4px;padding:1px 4px;margin:0}" +
-      "#tta-version-menu button{cursor:pointer}" +
-      "#tta-version-banner{padding:8px 16px;text-align:center;" +
+      "#docs-version-menu button{cursor:pointer}" +
+      "#docs-version-banner{padding:8px 16px;text-align:center;" +
       "font:14px/1.5 system-ui,sans-serif;color-scheme:" + scheme + ";" +
       "background:" + banner.background + ";color:" + banner.text + ";" +
       "border-bottom:1px solid " + banner.border + "}" +
-      "#tta-version-banner a{color:inherit;font-weight:600;text-decoration:underline}";
+      "#docs-version-banner a{color:inherit;font-weight:600;text-decoration:underline}";
     var element = document.createElement("style");
     element.textContent = css;
     document.head.appendChild(element);
@@ -125,13 +125,13 @@
   // instance) navigates only once the reader activates "Go".
   function addMenu(versions, here) {
     var menu = document.createElement("form");
-    menu.id = "tta-version-menu";
+    menu.id = "docs-version-menu";
     menu.setAttribute("aria-label", "Documentation version");
     var label = document.createElement("label");
-    label.htmlFor = "tta-version-select";
+    label.htmlFor = "docs-version-select";
     label.textContent = "Version";
     var select = document.createElement("select");
-    select.id = "tta-version-select";
+    select.id = "docs-version-select";
     versions.forEach(function (entry, index) {
       var option = document.createElement("option");
       option.value = String(index);
@@ -154,7 +154,7 @@
 
   function addBanner(message, stable) {
     var banner = document.createElement("div");
-    banner.id = "tta-version-banner";
+    banner.id = "docs-version-banner";
     banner.setAttribute("role", "note");
     banner.appendChild(document.createTextNode(message + " "));
     var link = document.createElement("a");

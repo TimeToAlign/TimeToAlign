@@ -242,7 +242,8 @@ class LinearMap(ConversionMap[CoordinateValue]):
 
     def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
         """Optimized array conversion."""
-        return self._scalar * values + self._offset
+        scaled: NDArray[Any] = self._scalar * values
+        return scaled + self._offset
 
     def inverse(self) -> Self:
         """Return the inverse map: y = (x - b) / a."""

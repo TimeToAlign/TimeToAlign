@@ -14,7 +14,7 @@ from __future__ import annotations
 import bisect
 import math
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Generic, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Sequence, TypeGuard, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -46,6 +46,11 @@ def _as_exact(value: CoordinateValue) -> Fraction:
 
 # Type variable for IntervalToConstantMap output type
 T = TypeVar("T")
+
+
+def _are_numbers(values: Sequence[object]) -> TypeGuard[Sequence[CoordinateValue]]:
+    """Whether every one of *values* is an int, a float or a Fraction."""
+    return all(isinstance(v, (int, float, Fraction)) for v in values)
 
 
 # region IntervalToConstantMap
@@ -238,7 +243,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             "IntervalToConstantMap is not invertible: many coordinates map to same value"
         )
 
-    def _nested_maps(self) -> list[ConversionMap[Any]]:
+    def _nested_maps(self) -> list[ConstantMap]:
         return self._pieces
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
@@ -304,14 +309,15 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         Raises:
             TypeError: If values are not numeric.
         """
-        if not all(isinstance(v, (int, float, Fraction)) for v in self._values):
+        values = self._values
+        if not _are_numbers(values):
             raise TypeError("to_table_map() requires numeric values")
 
         # The numbers as given: a float anchor would make the table map
         # compute in doubles where this map's numbers are exact. A table map
         # needs two anchors, so the last interval is extended by one unit.
         x_values = [*self._boundaries_original, self._boundaries_original[-1] + 1]
-        y_values = [*self._values, self._values[-1]]
+        y_values = [*values, values[-1]]
 
         return TableMap(
             x_values=x_values,
@@ -391,7 +397,7 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
         *,
         boundaries: Sequence[CoordinateValue],
         mns: Sequence[str],
-        source_unit: TimeUnit | str = TimeUnit.quarters,
+        source_unit: TimeUnit | str | None = TimeUnit.quarters,
         uid: str | None = None,
         name: str | None = None,
     ) -> None:

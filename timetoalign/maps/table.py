@@ -367,7 +367,7 @@ class TableMap(ConversionMap[CoordinateValue]):
 
         return result
 
-    def _handle_out_of_bounds(self, x: float) -> float:
+    def _handle_out_of_bounds(self, x: float) -> CoordinateValue:
         """Handle a single out-of-bounds value."""
         if self._extrapolate == ExtrapolationPolicy.error:
             raise ValueError(

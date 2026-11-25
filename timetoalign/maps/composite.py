@@ -309,7 +309,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             ValueError: If *value* lies outside ``[breaks[0], breaks[-1])``.
         """
         if isinstance(value, (int, Fraction)):
-            breaks: Sequence[Any] = self._breaks_orig
+            breaks: Sequence[CoordinateValue] | NDArray[np.float64] = self._breaks_orig
         else:
             breaks, value = self._breaks, float(value)
         if allow_upper_bound and value == breaks[-1]:

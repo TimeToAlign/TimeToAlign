@@ -104,7 +104,8 @@ class Target:
             self.holder._with_statement_state(state)
             return
         assert isinstance(self.holder, Timeline)
-        self.holder.replace_region(self.view()._with_statement_state(state))
+        region = self.holder.get_region(self.region)
+        self.holder.replace_region(region._with_statement_state(state))
 
 
 class _Scratch(MutableStatementsMixin):

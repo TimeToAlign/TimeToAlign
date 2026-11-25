@@ -2310,6 +2310,24 @@ so the null row must come back `None`, not a struct of nulls. A slice
 starting on the null row (`[1:]`) repeats the `SpecificPitchField` case to
 show the null is read at the row's own offset.
 
+#### A field over plain data converts like one over an Arrow column
+
+`from_field((data, pa_field))` keeps `data` as given, so a field may hold a
+Python list, a tuple or a NumPy object array of row dicts instead of an Arrow
+column. Every accessor packs such data into Arrow first (`pc.struct_field`
+does), and so must the null mask of the struct a conversion builds: a mask
+read through a method of the stored object exists only on an Arrow array and
+fails on plain data with `AttributeError`. The proof converts each pitch field
+whose conversion builds a new struct (`GenericPitchField` → `GenericPitchClass`;
+`SpecificPitchClassField`, `EnharmonicPitchField`, `MidiPitchField` →
+`EnharmonicPitchClass`; `SpecificPitchField` → `EnharmonicPitchClass`,
+`SpecificPitchClass`, `MidiPitch`) from each of the three containers, through
+both `convert_to` and `to`, and compares the result as a Python list. The rows
+are the pitches of the table above with a `None` row between them (B♭3, null,
+F♯♯4; B♭, null, F♯♯; MIDI 58, null, 67; step 6 octave 3, null, step 0 octave
+4), so the expected answers are that table's (pitch class 10, 7; MIDI 58, 67;
+generic step 6, 0) and the middle row must come back `None`.
+
 ---
 
 ### `test_scalar_repr.py` - Uniform scalar `repr()` / `str()`

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -208,3 +209,57 @@ def test_the_scalars_agree_with_the_fields() -> None:
     ]
     assert [p.fifths for p in (field[0], field[2], field[3])] == [-2, 13, 0]
     assert [p.midi_number for p in (field[0], field[2], field[3])] == [58, 67, 0]
+
+
+_SPELLED = [
+    {"step": "B", "alter": -1, "octave": 3},
+    None,
+    {"step": "F", "alter": 2, "octave": 4},
+]
+_MIDI = [{"midi_number": 58}, None, {"midi_number": 67}]
+_PITCH_CLASSES = [{"pitch_class": 10}, None, {"pitch_class": 7}]
+
+
+@pytest.mark.parametrize(
+    ("field_cls", "rows", "target", "expected"),
+    [
+        (
+            GenericPitchField,
+            [{"step": 6, "octave": 3}, None, {"step": 0, "octave": 4}],
+            GenericPitchClass,
+            [{"step": 6}, None, {"step": 0}],
+        ),
+        (
+            SpecificPitchClassField,
+            [{"step": "B", "alter": -1}, None, {"step": "F", "alter": 2}],
+            EnharmonicPitchClass,
+            _PITCH_CLASSES,
+        ),
+        (EnharmonicPitchField, _MIDI, EnharmonicPitchClass, _PITCH_CLASSES),
+        (MidiPitchField, _MIDI, EnharmonicPitchClass, _PITCH_CLASSES),
+        (SpecificPitchField, _SPELLED, EnharmonicPitchClass, _PITCH_CLASSES),
+        (
+            SpecificPitchField,
+            _SPELLED,
+            SpecificPitchClass,
+            [{"step": "B", "alter": -1}, None, {"step": "F", "alter": 2}],
+        ),
+        (SpecificPitchField, _SPELLED, MidiPitch, _MIDI),
+    ],
+)
+@pytest.mark.parametrize("container", [list, tuple, "ndarray"])
+@pytest.mark.parametrize("method", ["convert_to", "to"])
+def test_a_field_over_plain_data_converts(
+    field_cls: type[SemanticField[Any]],
+    rows: list[Any],
+    target: type,
+    expected: list[Any],
+    container: Any,
+    method: str,
+) -> None:
+    data = np.array(rows, dtype=object) if container == "ndarray" else container(rows)
+    field = field_cls.from_field((data, pa.field("pitch", field_cls.pa_schema)))
+
+    converted = getattr(field, method)(target)
+
+    assert converted.to_pyarrow().to_pylist() == expected

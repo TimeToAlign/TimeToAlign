@@ -143,8 +143,12 @@ def _struct_like(
     arrays: list[pa.Array[Any]],
     fields: list[pa.Field[pa.DataType]],
 ) -> pa.StructArray:
-    """A struct of *arrays* holding a null row wherever *field* holds one."""
-    return _struct_array_from(arrays, fields, mask=field.to_pyarrow().is_null())
+    """A struct of *arrays* holding a null row wherever *field* holds one.
+
+    ``pc.is_null`` packs a field holding plain data (a list, a tuple, a NumPy
+    array) into Arrow first, as ``pc.struct_field`` does in :func:`_member`.
+    """
+    return _struct_array_from(arrays, fields, mask=pc.is_null(field.to_pyarrow()))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

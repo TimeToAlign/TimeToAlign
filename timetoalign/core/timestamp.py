@@ -194,21 +194,6 @@ def _format_coordinate(coordinate: Coordinate) -> str:
 # endregion
 
 
-def _as_float_lane(value: Any) -> Any:
-    """Coerce a numeric value to the float lane, passing anything else through.
-
-    Typed retrieval and conversion paths preserve the coordinate's declared
-    representation. Internal tabular and interpolation lanes use floats where
-    their storage or numerical algorithms require them. Non-numeric conversion
-    outputs -- labels and mappings -- pass through untouched.
-    """
-    if isinstance(value, bool) or value is None:
-        return value
-    if isinstance(value, Fraction):
-        return float(value)
-    return value
-
-
 def ambiguous_unit_maps(
     timeline_id: str, unit: "TimeUnit", candidates: "Sequence[ConversionMap[Any]]"
 ) -> ValueError:

@@ -489,6 +489,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlView.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlView</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowConvention</span></a>
   </div>
@@ -497,6 +503,12 @@ ul.task-list li input[type="checkbox"] {
   <div class="sidebar-item-container"> 
   <a href="../reference/FlowFinding.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFindingCause.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingCause</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1501,116 +1513,124 @@ ul.task-list li input[type="checkbox"] {
 <table class="caption-top table">
 <tbody>
 <tr class="odd">
+<td><a href="../reference/FlowControlView.html#timetoalign.timelines.FlowControlView">FlowControlView</a></td>
+<td>Flow-control elements on one axis, read only, in canonical order.</td>
+</tr>
+<tr class="even">
 <td><a href="../reference/FlowControlRegistry.html#timetoalign.timelines.FlowControlRegistry">FlowControlRegistry</a></td>
 <td>The flow control of one timeline: its elements in canonical order.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/FlowControlElement.html#timetoalign.timelines.FlowControlElement">FlowControlElement</a></td>
 <td>What the five kinds of flow-control element share.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/Jump.html#timetoalign.timelines.Jump">Jump</a></td>
 <td>Where the flow may leave the axis, and every place it may go on at.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/JumpDestination.html#timetoalign.timelines.JumpDestination">JumpDestination</a></td>
 <td>One place a Jump may go on at, and when it does.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/JumpTarget.html#timetoalign.timelines.JumpTarget">JumpTarget</a></td>
 <td>A place a destination names: a repeat start, a segno, a coda, a bracket.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/Break.html#timetoalign.timelines.Break">Break</a></td>
 <td>A place the flow never goes on across.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/SectionBreak.html#timetoalign.timelines.SectionBreak">SectionBreak</a></td>
 <td>Where a section ends: a movement boundary, a section of a piece.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/Barline.html#timetoalign.timelines.Barline">Barline</a></td>
 <td>A barline the source prints: a double or a final barline.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/FlowCondition.html#timetoalign.timelines.FlowCondition">FlowCondition</a></td>
 <td>When a destination is taken, or a Break ends the flow.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/DestinationReference.html#timetoalign.timelines.DestinationReference">DestinationReference</a></td>
 <td>One destination of a Jump, named by that Jump and its place.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/PassesFrom.html#timetoalign.timelines.PassesFrom">PassesFrom</a></td>
 <td>The passes from the <em>first</em> on: <code>{from: n}</code> in a manifest.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/play.html#timetoalign.timelines.play">play</a></td>
 <td>Play flow control over an axis of <em>length</em>.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/atomic_sections.html#timetoalign.timelines.atomic_sections">atomic_sections</a></td>
 <td>Return the stretches of the axis that flow control never divides.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/FlowResult.html#timetoalign.timelines.FlowResult">FlowResult</a></td>
 <td>A flow: what is played, in order.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/FlowFinding.html#timetoalign.timelines.FlowFinding">FlowFinding</a></td>
 <td>Something playing flow control found.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/AtomicSection.html#timetoalign.timelines.AtomicSection">AtomicSection</a></td>
 <td>A stretch of the axis that flow control never divides.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/PlayedFlow.html#timetoalign.timelines.PlayedFlow">PlayedFlow</a></td>
 <td>The flow a timeline’s flow control plays, and what playing it found.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/FlowMap.html#timetoalign.timelines.FlowMap">FlowMap</a></td>
 <td>One order in which stretches of one root timeline are played.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/ResolvedFlowMap.html#timetoalign.timelines.ResolvedFlowMap">ResolvedFlowMap</a></td>
 <td>A played order as stretches of a root timeline’s axis, placed in order.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/PlacedChunk.html#timetoalign.timelines.PlacedChunk">PlacedChunk</a></td>
 <td>A stretch of the root timeline, placed on the virtual axis.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/PlacedGap.html#timetoalign.timelines.PlacedGap">PlacedGap</a></td>
 <td>A stretch of the virtual axis that nothing of the root fills.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/VirtualTimeline.html#timetoalign.timelines.VirtualTimeline">VirtualTimeline</a></td>
 <td>The statement that a map was applied to a timeline, giving a timeline.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/ComputedFlows.html#timetoalign.timelines.ComputedFlows">ComputedFlows</a></td>
 <td>What computing a timeline’s flows from its flow control wrote.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/StatedFlow.html#timetoalign.timelines.StatedFlow">StatedFlow</a></td>
 <td>What writing the order of measures a source states wrote.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/Gap.html#timetoalign.core.Gap">Gap</a></td>
 <td>A stretch of a played order that nothing of the timeline fills.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/FlowManifestation.html#timetoalign.core.FlowManifestation">FlowManifestation</a></td>
 <td>What a flow-control element looks like in the score.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><a href="../reference/FlowConvention.html#timetoalign.core.FlowConvention">FlowConvention</a></td>
 <td>How flow control is played into a flow.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><a href="../reference/FlowFindingKind.html#timetoalign.core.FlowFindingKind">FlowFindingKind</a></td>
 <td>What playing flow control found.</td>
+</tr>
+<tr class="even">
+<td><a href="../reference/FlowFindingCause.html#timetoalign.core.FlowFindingCause">FlowFindingCause</a></td>
+<td>Why a convention other than <code>default</code> found what it found.</td>
 </tr>
 <tr class="odd">
 <td><a href="../reference/MeasureFindingKind.html#timetoalign.core.MeasureFindingKind">MeasureFindingKind</a></td>

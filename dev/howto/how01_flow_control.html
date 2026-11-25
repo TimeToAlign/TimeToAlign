@@ -412,6 +412,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#conditions-nobody-can-check" id="toc-conditions-nobody-can-check" class="nav-link" data-scroll-target="#conditions-nobody-can-check">Conditions nobody can check</a></li>
   <li><a href="#a-broken-encoding" id="toc-a-broken-encoding" class="nav-link" data-scroll-target="#a-broken-encoding">A broken encoding</a></li>
   <li><a href="#repairing-it" id="toc-repairing-it" class="nav-link" data-scroll-target="#repairing-it">Repairing it</a></li>
+  <li><a href="#a-work-and-its-movements" id="toc-a-work-and-its-movements" class="nav-link" data-scroll-target="#a-work-and-its-movements">A work and its movements</a></li>
   <li><a href="#a-loaded-score" id="toc-a-loaded-score" class="nav-link" data-scroll-target="#a-loaded-score">A loaded score</a></li>
   <li><a href="#writing-the-flows" id="toc-writing-the-flows" class="nav-link" data-scroll-target="#writing-the-flows">Writing the flows</a></li>
   <li><a href="#a-flowmap-written-by-hand" id="toc-a-flowmap-written-by-hand" class="nav-link" data-scroll-target="#a-flowmap-written-by-hand">A FlowMap written by hand</a></li>
@@ -477,22 +478,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>the flow does not go on across it</td>
 </tr>
 <tr class="even">
-<td><p><button class="glossary" title="">SectionBreak</button></p></td>
+<td><p><button class="glossary" title="A flow-control element where a section ends (a movement, a section of a piece); the flow goes on across it. A destination without place goes on at the nearest SectionBreak before its Jump, and a flow ended by a Break begins again at the next one.">SectionBreak</button></p></td>
 <td>the flow goes on; a section ends</td>
 </tr>
 <tr class="odd">
-<td><p><button class="glossary" title="A flow-control element recording a barline the source prints (a double or a final barline). It changes nothing in the flow.">Barline</button></p></td>
+<td><p><button class="glossary" title="">Barline</button></p></td>
 <td>nothing: a barline the source prints</td>
 </tr>
 </tbody>
 </table>
 <p>The library plays the flow control into a <strong>flow</strong>, the stretches of the axis in the order played, and reports what it finds on the way. It writes flows as <button class="glossary" title="One order in which stretches of one root timeline are played: an ordered list of chunks, each the ID of a Region, a child timeline or a virtual timeline of that timeline’s tree, or a Gap in which nothing of the timeline is played. A FlowMap holds no interval; resolved against its timeline it places each stretch where the one before it ends and converts positions both ways (unfold: a position of the timeline to every position it is played at; fold: a position of the flow to the position it plays, or None in a gap). Timeline.create_flow_map(chunks) creates and attaches one; Timeline.create_flow_maps_from_flow_control() writes the flows of the flow control (default, single, printed) as FlowMaps over the atomic sections.">FlowMap</button>s, which name stretches of the timeline in the order played, and converts positions between the timeline and a <button class="glossary" title="The statement that a map was applied to a timeline, giving a timeline with an element id, a unit, a number type and a length of its own and nothing else: no events, no children, no flow control. Applied, a FlowMap gives its root’s played order as a virtual timeline, and positions convert through it in both directions (unfold, fold). Timeline.create_virtual_timeline() states one; a manifest lists them in virtual_timelines.">Virtual timeline</button>, the axis of a FlowMap.</p>
-<p>This guide encodes a short piece by hand, plays it, breaks it and repairs it, loads a real score, writes its flows, writes a FlowMap of its own, and saves everything in a manifest.</p>
+<p>This guide encodes a short piece by hand, plays it, breaks it and repairs it, plays a work whose movement states its own repeat, loads a real score, writes its flows, writes a FlowMap of its own, and saves everything in a manifest.</p>
 <p><strong>Prerequisites:</strong> <a href="../howto/how01_manual_timeline_construction.html">How to Construct Timelines Manually</a> and <a href="../howto/how02_group_and_bundle_files.html">How to Save and Load Timelines, Groups and Bundles</a>.</p>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
 <p><code>q()</code> writes a position in quarters. <code>elements()</code> shows a timeline’s flow control as a table: each element’s ID, class (<code>role</code>), coordinate and what else it states, as a manifest writes it (a Fraction as <code>[numerator, denominator]</code>), and whether it is rejected. <code>in_measures()</code> states a flow as right-open ranges of measure counts, <code>placed()</code> shows where each stretch of a FlowMap lies on its virtual axis.</p>
-<div id="424cd23a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:15.334074Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:15.333778Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.352305Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.351046Z&quot;}}" data-execution_count="1">
+<div id="24472b7b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:06.755757Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:06.754957Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.006773Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.005872Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -621,7 +622,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<div id="01bb2ece" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.355834Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.355258Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.378692Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.377758Z&quot;}}" data-execution_count="2">
+<div id="85b0991c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.009028Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.008614Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.023870Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.023117Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span><span class="dv">48</span>, uid<span class="op">=</span><span class="st">"piece"</span>, name<span class="op">=</span><span class="st">"Piece"</span>)</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>score</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
@@ -633,7 +634,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-places-a-destination-names" class="level2">
 <h2 class="anchored" data-anchor-id="the-places-a-destination-names">The places a destination names</h2>
 <p>A <button class="glossary" title="">JumpTarget</button> is a place: nothing happens when the flow plays up to it. Its <code>manifestation</code> says what it looks like in the source and decides nothing. A given <code>id</code> is kept; the IDs here make the destinations below readable.</p>
-<div id="64b4853c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.381723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.381394Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.386836Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.385843Z&quot;}}" data-execution_count="3">
+<div id="59f07676" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.025684Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.025474Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.029211Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.028509Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>places <span class="op">=</span> [</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    JumpTarget(q(<span class="dv">4</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"segno"</span>, manifestation<span class="op">=</span><span class="st">"segno"</span>),</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    JumpTarget(q(<span class="dv">12</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"repeat_start"</span>, manifestation<span class="op">=</span><span class="st">"repeat_start"</span>),</span>
@@ -650,7 +651,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>to="second_bracket", passes=[2]</code>: on the second arrival it goes on at the second bracket.</li>
 </ul>
 <p>A <button class="glossary" title="A flow-control element at which the flow does not go on: when the flow plays up to it, a Jump at the same coordinate with a destination that holds is taken, otherwise the flow ends there and begins again at the next SectionBreak, if any. With ends (a condition: passes, after) it ends the flow only while that condition holds, as a Fine does after a D.C. or D.S. A Break lies between two brackets of alternative endings.">Break</button> between the brackets keeps the flow from running from the first bracket into the second. At the end of the first bracket a second Jump holds the repeat end: back to the repeat start, once (<code>repeat_count=1</code>).</p>
-<div id="745ddcd1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.389684Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.389369Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.395529Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.394520Z&quot;}}" data-execution_count="4">
+<div id="fe92861a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.031054Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.030877Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.034924Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.034044Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>brackets <span class="op">=</span> [</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    Jump(</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        q(<span class="dv">16</span>),</span>
@@ -677,7 +678,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="several-signs-on-one-barline-and-a-fine">Several signs on one barline, and a <em>Fine</em></h2>
 <p>The barline at the end of measure 8 holds a repeat end and a <em>D.S. al Fine</em>: one Jump with two destinations. Both lie before the Jump. A destination that goes back with <code>reset=True</code> (the default, a repeat) is taken before one that goes back without it (a leap), so the repeat is taken first; once it is used up the <em>D.S.</em> holds. <code>reset=False</code> says that the leap restores nothing it goes back over: the repeats inside are not played again.</p>
 <p>The <em>Fine</em> is a Break with <code>ends</code>: it ends the flow only after the <em>D.S.</em> has been taken. <code>after</code> names that destination by its Jump and its place.</p>
-<div id="ad700c00" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.398665Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.398327Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.408305Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.407135Z&quot;}}" data-execution_count="5">
+<div id="0e259a23" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.036677Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.036516Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.041828Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.041114Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>end_of_first_section <span class="op">=</span> Jump(</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    q(<span class="dv">32</span>),</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    [</span>
@@ -721,8 +722,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="sections" class="level2">
 <h2 class="anchored" data-anchor-id="sections">Sections</h2>
-<p>A <button class="glossary" title="">SectionBreak</button> ends a section and lets the flow go on. A destination without a place goes on at the nearest section break before its Jump, so the repeat end at measure 12 repeats the second section only. A flow ended by a Break begins again at the next section break: after the <em>Fine</em>, the second section is played. A <button class="glossary" title="A flow-control element recording a barline the source prints (a double or a final barline). It changes nothing in the flow.">Barline</button> records the final barline and changes nothing.</p>
-<div id="974126a0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.410956Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.410634Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.415628Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.414642Z&quot;}}" data-execution_count="6">
+<p>A <button class="glossary" title="A flow-control element where a section ends (a movement, a section of a piece); the flow goes on across it. A destination without place goes on at the nearest SectionBreak before its Jump, and a flow ended by a Break begins again at the next one.">SectionBreak</button> ends a section and lets the flow go on. A destination without a place goes on at the nearest section break before its Jump, never before the start of the timeline stating the Jump (here the score’s 0), so the repeat end at measure 12 repeats the second section only. A flow ended by a Break begins again at the next section break: after the <em>Fine</em>, the second section is played. A <button class="glossary" title="">Barline</button> records the final barline and changes nothing.</p>
+<div id="56f607ab" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.043899Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.043681Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.047365Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.046645Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>second_section <span class="op">=</span> [</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    SectionBreak(q(<span class="dv">32</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"first_section_end"</span>),</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    Jump(</span>
@@ -736,8 +737,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="adding-the-elements" class="level2">
 <h2 class="anchored" data-anchor-id="adding-the-elements">Adding the elements</h2>
-<p><code>flow_control.add_all()</code> adds elements that name one another together, or none of them. The registry refuses what cannot be played: a <code>to</code> naming nothing, a second Jump at one coordinate, an element outside the axis. It holds the elements in canonical order, by coordinate and then by ID; the Barline, given no ID, gets a minted one.</p>
-<div id="4110be45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.418203Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.417881Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.454958Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.453791Z&quot;}}" data-execution_count="7">
+<p><code>flow_control.add_all()</code> adds elements that name one another together, or none of them. The registry refuses what cannot be played: a <code>to</code> naming nothing, a second Jump at one coordinate (of the timeline, and of its root’s axis over the root’s whole tree), an element outside the axis. It holds the elements in canonical order, by coordinate and then by ID; the Barline, given no ID, gets a minted one.</p>
+<div id="edb54c08" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.049216Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.049023Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.067422Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.066952Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>score.flow_control.add_all(</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    [<span class="op">*</span>places, <span class="op">*</span>brackets, end_of_first_section, fine, <span class="op">*</span>second_section]</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -863,7 +864,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>single</code>: once through, nothing goes back, each Jump arrived at on the pass it would have after the repeats around it;</li>
 <li><code>printed</code>: the axis from 0 to its end.</li>
 </ul>
-<div id="0997d86f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.457923Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.457544Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.472073Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.471127Z&quot;}}" data-execution_count="8">
+<div id="9a9962f6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.069135Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.068955Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.162787Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.161967Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>flows <span class="op">=</span> {</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    convention: score.get_flow(convention)</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> convention <span class="kw">in</span> (<span class="st">"default"</span>, <span class="st">"single"</span>, <span class="st">"printed"</span>)</span>
@@ -892,15 +893,28 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Read the <code>default</code> flow sign by sign. The flow plays up to the brackets’ Jump, goes on into the first bracket and at its end takes the repeat end back to quarter 12. On the second arrival at the brackets it goes on at the second bracket, then through measures 7 and 8. At quarter 32 the repeat end is taken back to 24, then the <em>D.S.</em> back to the segno. The leap restored nothing, so the brackets’ Jump is arrived at a third time: beyond the highest pass any of its destinations lists, the destination listing it holds, and the second bracket is played again. At the <em>Fine</em> the flow ends, and begins again at the section break at 32, where the second section is played twice.</p>
-<p><code>single</code> plays measures 1 to 4, skips the first bracket, and plays the rest once. The default flow ends only where the <em>Fine</em> says so and plays every stretch of the axis, so it has no findings:</p>
-<div id="b19e17ba" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.475572Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.475237Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.480444Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.479537Z&quot;}}" data-execution_count="9">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>flows[<span class="st">"default"</span>].findings</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>single</code> plays measures 1 to 4, skips the first bracket, and plays the rest once. The default flow ends only where the <em>Fine</em> says so and plays every stretch of the axis, so it has no findings. Each flow carries its own: <code>single</code> reports the first bracket it leaves out, with the cause <code>single_playback</code> (going through once took the last bracket, while the default flow plays it); <code>printed</code> plays everything and finds nothing.</p>
+<div id="639909c7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.164638Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.164443Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.169105Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.168341Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    convention: [</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>        (</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>            <span class="bu">str</span>(finding.kind),</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>            <span class="bu">str</span>(finding.coordinate),</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>            <span class="bu">str</span>(finding.end),</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>            <span class="bu">str</span>(finding.cause),</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> finding <span class="kw">in</span> flow.findings</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> convention, flow <span class="kw">in</span> flows.items()</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
-<pre><code>()</code></pre>
+<pre><code>{'default': [],
+ 'single': [('never_played', '16 quarters', '20 quarters', 'single_playback')],
+ 'printed': []}</code></pre>
 </div>
 </div>
 <p>A flow converts positions both ways. <code>unfold()</code> gives every position of the flow at which a position of the score is played; quarter 14 (measure 4) is played three times. <code>fold()</code> gives the position of the score played at a position of the flow.</p>
-<div id="d0f6646d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.483075Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.482757Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.488457Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.487662Z&quot;}}" data-execution_count="10">
+<div id="fb98b157" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.171964Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.171554Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.177565Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.176647Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>default <span class="op">=</span> flows[<span class="st">"default"</span>]</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>{<span class="st">"14 is played at"</span>: default.unfold(<span class="dv">14</span>), <span class="st">"54 plays"</span>: default.fold(<span class="dv">54</span>)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
@@ -913,8 +927,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="atomic-sections" class="level2">
 <h2 class="anchored" data-anchor-id="atomic-sections">Atomic sections</h2>
-<p>The <button class="glossary" title="">Atomic section</button>s are the stretches flow control never divides: between consecutive coordinates of Jumps, JumpTargets, Breaks and SectionBreaks and the places their destinations go on at, named by letters in the order of the axis. The engine functions <code>atomic_sections()</code> and <code>play()</code> take a registry and a length and need no timeline.</p>
-<div id="d539348d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.491294Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.491062Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.496799Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.495951Z&quot;}}" data-execution_count="11">
+<p>The <button class="glossary" title="A stretch of a timeline’s axis that its flow control never divides: an interval between consecutive coordinates of its Jumps, JumpTargets, Breaks and SectionBreaks and the places their destinations go on at, named by a letter (A, B, …, Z, AA, …) in the order of the axis. Every flow is a sequence of atomic sections. Timeline.create_flow_maps_from_flow_control() writes them as Regions stating the type tts:AtomicSection, and the computed FlowMaps list them.">Atomic section</button>s are the stretches flow control never divides: between consecutive coordinates of Jumps, JumpTargets, Breaks and SectionBreaks and the places their destinations go on at, named by letters in the order of the axis. The engine functions <code>atomic_sections()</code> and <code>play()</code> take a registry and a length and need no timeline.</p>
+<div id="8c440f51" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.179634Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.179376Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.185532Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.184706Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>[</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    (section.name, <span class="bu">str</span>(section.start), <span class="bu">str</span>(section.end))</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> section <span class="kw">in</span> atomic_sections(score.flow_control, score.length)</span>
@@ -932,8 +946,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="conditions-nobody-can-check" class="level2">
 <h2 class="anchored" data-anchor-id="conditions-nobody-can-check">Conditions nobody can check</h2>
-<p><code>determined=False</code> marks a destination nobody can check, such as an ossia: it is never taken, and passing it is a <button class="glossary" title="What playing flow control found, without raising: a flow that never ends (endless_loop), a flow ending at a Break that states no condition before the end (flow_ends_at_break), two destinations of one Jump holding at once (ambiguous_targets), a destination nobody can check (undetermined_target), and a stretch never played (never_played). Only the default flow has findings; Timeline.get_flow() returns them with the flow.">Finding</button>. Here an ossia is added to a copy of the registry; the copy belongs to no timeline, so <code>play()</code> gets the length.</p>
-<div id="47f19870" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.499711Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.499439Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.510121Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.509082Z&quot;}}" data-execution_count="12">
+<p><code>determined=False</code> marks a destination nobody can check, such as an ossia: it is never taken, and passing it is a <button class="glossary" title="What playing flow control found, without raising: a flow that never ends (endless_loop), a flow ending at a Break that states no condition before the end (flow_ends_at_break), two destinations of one Jump holding at once (ambiguous_targets), a destination nobody can check (undetermined_target), and a stretch never played (never_played). The default and single flows have findings, the printed flow none; Timeline.get_flow(convention) returns them with the flow. A finding may name its cause: a stretch the single flow leaves out that the default flow plays has the cause single_playback (going through once takes the last volta ending).">Finding</button>. Here an ossia is added to a copy of the registry; the copy belongs to no timeline, so <code>play()</code> gets the length.</p>
+<div id="1796e227" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.187651Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.187400Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.199450Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.198508Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>with_ossia <span class="op">=</span> score.flow_control.copy()</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>with_ossia.add(</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    Jump(q(<span class="dv">40</span>), [JumpDestination(by<span class="op">=</span><span class="dv">4</span>, determined<span class="op">=</span><span class="va">False</span>, manifestation<span class="op">=</span><span class="st">"ossia"</span>)])</span>
@@ -953,7 +967,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="a-broken-encoding" class="level2">
 <h2 class="anchored" data-anchor-id="a-broken-encoding">A broken encoding</h2>
 <p>An encoder put the repeat end of the first bracket at the end of the second bracket (quarter 24). The first bracket now ends at the Break between the brackets without a sign that leads anywhere.</p>
-<div id="0b78f72a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.512523Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.512199Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.524316Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.523379Z&quot;}}" data-execution_count="13">
+<div id="a2658745" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.202105Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.201748Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.210833Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.210016Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>draft <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span><span class="dv">48</span>, uid<span class="op">=</span><span class="st">"draft"</span>, name<span class="op">=</span><span class="st">"Draft"</span>)</span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>misplaced <span class="op">=</span> Jump(</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    q(<span class="dv">24</span>),</span>
@@ -980,12 +994,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   'The stretch [20, 32) quarters is never played.']}</code></pre>
 </div>
 </div>
-<p>The flow ends at the Break at 20, begins again at the section break, and never plays quarters 20 to 32. Both are findings of the <code>default</code> flow; the other conventions return none.</p>
+<p>The flow ends at the Break at 20, begins again at the section break, and never plays quarters 20 to 32. Both are findings of the <code>default</code> flow and have no cause: the encoding, not a convention, leaves the stretch out.</p>
 </section>
 <section id="repairing-it" class="level2">
 <h2 class="anchored" data-anchor-id="repairing-it">Repairing it</h2>
 <p>An element is never changed or deleted to repair flow control: the wrong one is rejected by an actor’s belief <code>"false"</code>, and the right one is added. The rejected Jump stays in the registry and is written, but is not played. The added Jump states who made it in its provenance.</p>
-<div id="526b2153" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.527061Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.526752Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.558330Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.557380Z&quot;}}" data-execution_count="14">
+<div id="616a4491" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.213926Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.213642Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.244721Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.243758Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>draft.flow_control.with_belief(</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    misplaced.<span class="bu">id</span>,</span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    EDITOR,</span>
@@ -1125,7 +1139,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The rejected Jump keeps its belief in its provenance:</p>
-<div id="a88cd0a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.561361Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.561016Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.566856Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.565785Z&quot;}}" data-execution_count="15">
+<div id="9b4911d6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.247066Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.246786Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.252925Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.251816Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>draft.flow_control.jump_at(<span class="dv">24</span>).to_dict()[<span class="st">"provenance"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="15">
 <pre><code>[{'beliefs': [{'actor': 'https://example.org/people/editor',
@@ -1135,7 +1149,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The repaired draft plays the score’s flow:</p>
-<div id="5d99b137" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.569413Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.569199Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.577516Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.576415Z&quot;}}" data-execution_count="16">
+<div id="94d2fef7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.256275Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.255921Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.264289Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.263044Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>repaired <span class="op">=</span> draft.get_flow()</span>
 <span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same stretches as the score"</span>: [chunk.source <span class="cf">for</span> chunk <span class="kw">in</span> repaired.chunks]</span>
@@ -1147,7 +1161,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A rejection is the belief of the actor who records it. Without a believer, every element some actor rejects is left out. Named as <code>believer</code>, one actor’s beliefs alone decide: a reader who has not decided on the editor’s repair reads both Jumps and gets another flow.</p>
-<div id="1646ef84" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.579869Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.579656Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.597531Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.596492Z&quot;}}" data-execution_count="17">
+<div id="3c7d0a41" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.265844Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.265666Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.285996Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.285031Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"no believer"</span>: draft.get_flow().length,</span>
 <span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"the editor"</span>: draft.get_flow(believer<span class="op">=</span>EDITOR).length,</span>
@@ -1160,24 +1174,70 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </section>
+<section id="a-work-and-its-movements" class="level2">
+<h2 class="anchored" data-anchor-id="a-work-and-its-movements">A work and its movements</h2>
+<p>Flow control holds across descendants: a movement states its own repeat signs, the work states what concerns the whole, and the work is played with both. A sonata of two movements of 16 quarters each; the second, at offset 16, states a repeat end without a place at its quarter 8:</p>
+<div id="97fe905f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.289527Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.289232Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.305617Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.303977Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>sonata <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span><span class="dv">32</span>, uid<span class="op">=</span><span class="st">"sonata"</span>, name<span class="op">=</span><span class="st">"Sonata"</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>first <span class="op">=</span> sonata.create_child(<span class="dv">16</span>, <span class="dv">0</span>, uid<span class="op">=</span><span class="st">"first"</span>, name<span class="op">=</span><span class="st">"First movement"</span>)</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>second <span class="op">=</span> sonata.create_child(<span class="dv">16</span>, <span class="dv">16</span>, uid<span class="op">=</span><span class="st">"second"</span>, name<span class="op">=</span><span class="st">"Second movement"</span>)</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>second.flow_control.add(</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    Jump(</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>        q(<span class="dv">8</span>),</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>        [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>, manifestation<span class="op">=</span><span class="st">"repeat_end"</span>)],</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">id</span><span class="op">=</span><span class="st">"second_repeat"</span>,</span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"stated by the sonata"</span>: sonata.flow_control.elements,</span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"played on the sonata"</span>: sonata.tree_flow_control.elements,</span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>{'stated by the sonata': (),
+ 'played on the sonata': (Jump('second_repeat' @ 24 quarters, 1 destination),)}</code></pre>
+</div>
+</div>
+<p><code>tree_flow_control</code> is a <code>FlowControlView</code>: the elements of the timeline and of every descendant, each at its position on the timeline’s axis (its coordinate plus the offsets down to it), read only and under their IDs. The elements stay stored on the timeline stating them. <code>get_flow()</code> plays this view: the sonata its whole tree, a movement its own subtree.</p>
+<p>The repeat end has no place, so it goes back to the nearest section break before it on the played axis, stated by any timeline of the tree, but never before the start of the timeline stating it. No section break lies between 16 and 24, so the sonata goes back to the start of the second movement, not to its own 0, as the movement played alone goes back to its own 0:</p>
+<div id="1e7baec7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.307857Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.307576Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.315355Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.314602Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"the sonata"</span>: [<span class="bu">str</span>(chunk.source) <span class="cf">for</span> chunk <span class="kw">in</span> sonata.get_flow().chunks],</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"the second movement"</span>: [<span class="bu">str</span>(chunk.source) <span class="cf">for</span> chunk <span class="kw">in</span> second.get_flow().chunks],</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>{'the sonata': ['[0, 24) quarters', '[16, 32) quarters'],
+ 'the second movement': ['[0, 8) quarters', '[0, 16) quarters']}</code></pre>
+</div>
+</div>
+<p>One Jump lies at a position of the root’s axis over the root’s whole tree. The sonata cannot state a second Jump at 24, where the movement’s repeat end lies; several signs at one place are destinations of one Jump:</p>
+<div id="ce76e614" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.317404Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.317155Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.322587Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.321511Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>    sonata.flow_control.add(Jump(q(<span class="dv">24</span>), [JumpDestination(by<span class="op">=</span><span class="dv">4</span>)], <span class="bu">id</span><span class="op">=</span><span class="st">"skip"</span>))</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"ValueError: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>ValueError: jump 'skip' is a second jump at 24 quarters of timeline 'sonata', after jump 'second_repeat' of timeline 'second' at the same position on their root's axis: several signs at one place are destinations of one jump</code></pre>
+</div>
+</div>
+</section>
 <section id="a-loaded-score" class="level2">
 <h2 class="anchored" data-anchor-id="a-loaded-score">A loaded score</h2>
 <p>A score loader writes the signs of its source as flow control. Beethoven’s String Quartet Op. 18 no. 4, fourth movement, from its measure table:</p>
-<div id="0e6a3c88" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.599910Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.599654Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.836338Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.835373Z&quot;}}" data-execution_count="18">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>op18_dir <span class="op">=</span> ensure_data(<span class="st">"score"</span>) <span class="op">/</span> <span class="st">"beethoven_op18-4iv_multimodal"</span> <span class="op">/</span> <span class="st">"op18_no4_mov4_flow"</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> Ms3Loader.from_file(op18_dir <span class="op">/</span> <span class="st">"op18_no4_mov4_flow.measures.tsv"</span>)</span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>rondo <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"op18_4_iv"</span>)</span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>rondo.flow_control</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="18">
+<div id="31b26ead" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.324519Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.324258Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.543625Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.542855Z&quot;}}" data-execution_count="21">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>op18_dir <span class="op">=</span> ensure_data(<span class="st">"score"</span>) <span class="op">/</span> <span class="st">"beethoven_op18-4iv_multimodal"</span> <span class="op">/</span> <span class="st">"op18_no4_mov4_flow"</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> Ms3Loader.from_file(op18_dir <span class="op">/</span> <span class="st">"op18_no4_mov4_flow.measures.tsv"</span>)</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>rondo <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"op18_4_iv"</span>)</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>rondo.flow_control</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
 <pre><code>FlowControlRegistry(10 jumps, 9 jump_targets, 3 breaks, 0 section_breaks, 1 barlines)</code></pre>
 </div>
 </div>
 <p>The loader mints the IDs, <code>jump_N</code>, <code>jump_target_N</code>, <code>break_N</code> and so on. The movement’s first brackets, with the repeat start their repeat end goes back to:</p>
-<div id="965bf505" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.838823Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.838494Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.861284Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.860504Z&quot;}}" data-execution_count="19">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>elements(rondo.flow_control).loc[</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"jump_target_3"</span>, <span class="st">"jump_4"</span>, <span class="st">"break_1"</span>, <span class="st">"jump_5"</span>, <span class="st">"jump_target_4"</span>]</span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="19">
+<div id="a63d913c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.545873Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.545625Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.565398Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.564639Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>elements(rondo.flow_control).loc[</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"jump_target_3"</span>, <span class="st">"jump_4"</span>, <span class="st">"break_1"</span>, <span class="st">"jump_5"</span>, <span class="st">"jump_target_4"</span>]</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
 <div>
 
 
@@ -1241,13 +1301,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The default flow, in measure counts, and its findings:</p>
-<div id="e0bdc0d9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.863889Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.863682Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.873478Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.872617Z&quot;}}" data-execution_count="20">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>rondo_flow <span class="op">=</span> rondo.get_flow()</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measures played"</span>: in_measures(rondo_flow, rondo),</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"findings"</span>: rondo_flow.findings,</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="20">
+<div id="ad93dd45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.567601Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.567428Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.576637Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.575803Z&quot;}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>rondo_flow <span class="op">=</span> rondo.get_flow()</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measures played"</span>: in_measures(rondo_flow, rondo),</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"findings"</span>: rondo_flow.findings,</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
 <pre><code>{'measures played': ['[1, 10)',
   '[1, 19)',
   '[10, 28)',
@@ -1263,14 +1323,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The measure table also states the order in which its measures are played (its <code>next</code> column). <code>create_stated_flow_map()</code> writes that order as a FlowMap over Regions of the timeline and compares it with the default flow: <code>differs_at</code> is None where the two agree throughout.</p>
-<div id="37b1ea49" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.876310Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.876101Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:19.896304Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:19.895245Z&quot;}}" data-execution_count="21">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>stated <span class="op">=</span> loader.create_stated_flow_map(rondo)</span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"FlowMap"</span>: stated.flow_map,</span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Regions"</span>: <span class="bu">len</span>(stated.regions),</span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"differs_at"</span>: stated.differs_at,</span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="21">
+<div id="9025cd74" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.578973Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.578762Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.595818Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.594856Z&quot;}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>stated <span class="op">=</span> loader.create_stated_flow_map(rondo)</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"FlowMap"</span>: stated.flow_map,</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Regions"</span>: <span class="bu">len</span>(stated.regions),</span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"differs_at"</span>: stated.differs_at,</span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
 <pre><code>{'FlowMap': FlowMap('flow_map_1', timeline='op18_4_iv', 11 chunks),
  'Regions': 11,
  'differs_at': None}</code></pre>
@@ -1280,19 +1340,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="writing-the-flows" class="level2">
 <h2 class="anchored" data-anchor-id="writing-the-flows">Writing the flows</h2>
 <p><code>create_flow_maps_from_flow_control()</code> writes the atomic sections as Regions of the timeline, each named by its letter, and the flows as FlowMaps listing them: <code>default</code>, then <code>single</code> and <code>printed</code> where they differ from it. Each FlowMap names its convention and is computed: written again from the flow control whenever this is called.</p>
-<div id="e3db4696" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:19.898862Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:19.898554Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.490292Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.488114Z&quot;}}" data-execution_count="22">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>written <span class="op">=</span> score.create_flow_maps_from_flow_control()</span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>section_names <span class="op">=</span> {section.<span class="bu">id</span>: section.name <span class="cf">for</span> section <span class="kw">in</span> written.sections}</span>
-<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>pd.DataFrame(</span>
-<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>    {</span>
-<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"FlowMap"</span>: flow_map.<span class="bu">id</span>,</span>
-<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"convention"</span>: <span class="bu">str</span>(flow_map.convention),</span>
-<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">"sections played"</span>: <span class="st">""</span>.join(section_names[chunk] <span class="cf">for</span> chunk <span class="kw">in</span> flow_map.chunks),</span>
-<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">"computed"</span>: flow_map.is_computed,</span>
-<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>    }</span>
-<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> flow_map <span class="kw">in</span> written.flow_maps</span>
-<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="22">
+<div id="73c6c108" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.597882Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.597639Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:10.993747Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:10.992323Z&quot;}}" data-execution_count="25">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>written <span class="op">=</span> score.create_flow_maps_from_flow_control()</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>section_names <span class="op">=</span> {section.<span class="bu">id</span>: section.name <span class="cf">for</span> section <span class="kw">in</span> written.sections}</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>pd.DataFrame(</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"FlowMap"</span>: flow_map.<span class="bu">id</span>,</span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"convention"</span>: <span class="bu">str</span>(flow_map.convention),</span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">"sections played"</span>: <span class="st">""</span>.join(section_names[chunk] <span class="cf">for</span> chunk <span class="kw">in</span> flow_map.chunks),</span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">"computed"</span>: flow_map.is_computed,</span>
+<span id="cb41-9"><a href="#cb41-9" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb41-10"><a href="#cb41-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> flow_map <span class="kw">in</span> written.flow_maps</span>
+<span id="cb41-11"><a href="#cb41-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
 <div>
 
 
@@ -1335,12 +1395,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The Regions are ordinary Regions, which carry the statement that they are atomic sections:</p>
-<div id="e2e2dfbf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.495571Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.495058Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.512220Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.509627Z&quot;}}" data-execution_count="23">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>[</span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    (section.<span class="bu">id</span>, section.name, <span class="bu">str</span>(section.as_interval), section.is_atomic_section)</span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> section <span class="kw">in</span> written.sections</span>
-<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="23">
+<div id="a41313a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:10.997119Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:10.996560Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.005491Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.003464Z&quot;}}" data-execution_count="26">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>[</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    (section.<span class="bu">id</span>, section.name, <span class="bu">str</span>(section.as_interval), section.is_atomic_section)</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> section <span class="kw">in</span> written.sections</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
 <pre><code>[('region_1', 'A', '[0, 4) quarters', True),
  ('region_2', 'B', '[4, 12) quarters', True),
  ('region_3', 'C', '[12, 16) quarters', True),
@@ -1351,14 +1411,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The loaded movement has thirteen atomic sections:</p>
-<div id="af8d9eb0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.518943Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.518626Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.656677Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.646367Z&quot;}}" data-execution_count="24">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>rondo_written <span class="op">=</span> rondo.create_flow_maps_from_flow_control()</span>
-<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>rondo_names <span class="op">=</span> {section.<span class="bu">id</span>: section.name <span class="cf">for</span> section <span class="kw">in</span> rondo_written.sections}</span>
-<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">str</span>(flow_map.convention): <span class="st">""</span>.join(rondo_names[chunk] <span class="cf">for</span> chunk <span class="kw">in</span> flow_map.chunks)</span>
-<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> flow_map <span class="kw">in</span> rondo_written.flow_maps</span>
-<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="24">
+<div id="99a29f66" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.008816Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.007914Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.082335Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.081245Z&quot;}}" data-execution_count="27">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>rondo_written <span class="op">=</span> rondo.create_flow_maps_from_flow_control()</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>rondo_names <span class="op">=</span> {section.<span class="bu">id</span>: section.name <span class="cf">for</span> section <span class="kw">in</span> rondo_written.sections}</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">str</span>(flow_map.convention): <span class="st">""</span>.join(rondo_names[chunk] <span class="cf">for</span> chunk <span class="kw">in</span> flow_map.chunks)</span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> flow_map <span class="kw">in</span> rondo_written.flow_maps</span>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
 <pre><code>{'default': 'AABBCCDEDFGGHIHJKLKM',
  'single': 'ABCDFGHJKM',
  'printed': 'ABCDEFGHIJKLM'}</code></pre>
@@ -1368,22 +1428,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="a-flowmap-written-by-hand" class="level2">
 <h2 class="anchored" data-anchor-id="a-flowmap-written-by-hand">A FlowMap written by hand</h2>
 <p>A FlowMap names stretches of a root timeline in the order played: Regions, child timelines and virtual timelines by ID or as objects, and <button class="glossary" title="">Gap</button>s, stretches in which nothing of the timeline is played. An encore of the second section, four quarters of silence, and the first four measures:</p>
-<div id="ddca997a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.661578Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.661224Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.693700Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.688933Z&quot;}}" data-execution_count="25">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>score.create_region(<span class="dv">32</span>, <span class="dv">48</span>, <span class="bu">id</span><span class="op">=</span><span class="st">"second_section"</span>, name<span class="op">=</span><span class="st">"Second section"</span>)</span>
-<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>score.create_region(<span class="dv">0</span>, <span class="dv">16</span>, <span class="bu">id</span><span class="op">=</span><span class="st">"opening"</span>, name<span class="op">=</span><span class="st">"Opening"</span>)</span>
-<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>encore <span class="op">=</span> score.create_flow_map(</span>
-<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"second_section"</span>, Gap(<span class="dv">4</span>), <span class="st">"opening"</span>], <span class="bu">id</span><span class="op">=</span><span class="st">"encore"</span>, name<span class="op">=</span><span class="st">"Encore"</span></span>
-<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>encore</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="25">
+<div id="ae384c38" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.091925Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.090405Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.101534Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.099437Z&quot;}}" data-execution_count="28">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>score.create_region(<span class="dv">32</span>, <span class="dv">48</span>, <span class="bu">id</span><span class="op">=</span><span class="st">"second_section"</span>, name<span class="op">=</span><span class="st">"Second section"</span>)</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>score.create_region(<span class="dv">0</span>, <span class="dv">16</span>, <span class="bu">id</span><span class="op">=</span><span class="st">"opening"</span>, name<span class="op">=</span><span class="st">"Opening"</span>)</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>encore <span class="op">=</span> score.create_flow_map(</span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"second_section"</span>, Gap(<span class="dv">4</span>), <span class="st">"opening"</span>], <span class="bu">id</span><span class="op">=</span><span class="st">"encore"</span>, name<span class="op">=</span><span class="st">"Encore"</span></span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a>encore</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
 <pre><code>FlowMap('encore', timeline='piece', 3 chunks, name='Encore')</code></pre>
 </div>
 </div>
 <p><code>resolve()</code> reads the FlowMap against its timeline and places each stretch where the one before it ends:</p>
-<div id="884b9eb0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.711554Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.711144Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.757639Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.735157Z&quot;}}" data-execution_count="26">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>resolved <span class="op">=</span> encore.resolve(score)</span>
-<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>placed(resolved)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="26">
+<div id="8bf8d20c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.109956Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.109610Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.125748Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.124357Z&quot;}}" data-execution_count="29">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>resolved <span class="op">=</span> encore.resolve(score)</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>placed(resolved)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="29">
 <div>
 
 
@@ -1422,14 +1482,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A position of the score that the FlowMap does not play unfolds to no position; a position inside the gap folds to None.</p>
-<div id="dd2b530b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.796754Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.796395Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.810740Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.809054Z&quot;}}" data-execution_count="27">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"2 is played at"</span>: resolved.unfold(<span class="dv">2</span>),</span>
-<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"20 is played at"</span>: resolved.unfold(<span class="dv">20</span>),</span>
-<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"18 plays"</span>: resolved.fold(<span class="dv">18</span>),</span>
-<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"22 plays"</span>: resolved.fold(<span class="dv">22</span>),</span>
-<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="27">
+<div id="9ed12bbf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.129479Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.129066Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.137738Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.136551Z&quot;}}" data-execution_count="30">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"2 is played at"</span>: resolved.unfold(<span class="dv">2</span>),</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"20 is played at"</span>: resolved.unfold(<span class="dv">20</span>),</span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"18 plays"</span>: resolved.fold(<span class="dv">18</span>),</span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"22 plays"</span>: resolved.fold(<span class="dv">22</span>),</span>
+<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="30">
 <pre><code>{'2 is played at': [Coordinate(Fraction(22, 1), quarters)],
  '20 is played at': [],
  '18 plays': None,
@@ -1440,18 +1500,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="virtual-timelines" class="level2">
 <h2 class="anchored" data-anchor-id="virtual-timelines">Virtual timelines</h2>
 <p>A <button class="glossary" title="The statement that a map was applied to a timeline, giving a timeline with an element id, a unit, a number type and a length of its own and nothing else: no events, no children, no flow control. Applied, a FlowMap gives its root’s played order as a virtual timeline, and positions convert through it in both directions (unfold, fold). Timeline.create_virtual_timeline() states one; a manifest lists them in virtual_timelines.">Virtual timeline</button> states that a FlowMap was applied to its timeline. It has an ID, the timeline’s unit and number type, and the FlowMap’s length, and holds nothing else: no events, no children. Positions convert through it in both directions, given the timeline it comes from.</p>
-<div id="40ac8599" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.824051Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.818582Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.876927Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.860062Z&quot;}}" data-execution_count="28">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>as_played <span class="op">=</span> score.create_virtual_timeline(</span>
-<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>    written.flow_maps[<span class="dv">0</span>], <span class="bu">id</span><span class="op">=</span><span class="st">"as_played"</span>, name<span class="op">=</span><span class="st">"As played"</span></span>
-<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>encore_as_played <span class="op">=</span> score.create_virtual_timeline(encore, <span class="bu">id</span><span class="op">=</span><span class="st">"encore_as_played"</span>)</span>
-<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"as played"</span>: as_played,</span>
-<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"14 is played at"</span>: as_played.unfold(<span class="dv">14</span>, score),</span>
-<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"60 plays"</span>: as_played.fold(<span class="dv">60</span>, score),</span>
-<span id="cb45-9"><a href="#cb45-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"the encore"</span>: encore_as_played,</span>
-<span id="cb45-10"><a href="#cb45-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="28">
+<div id="1451b029" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.140895Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.140471Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.159757Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.158414Z&quot;}}" data-execution_count="31">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>as_played <span class="op">=</span> score.create_virtual_timeline(</span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>    written.flow_maps[<span class="dv">0</span>], <span class="bu">id</span><span class="op">=</span><span class="st">"as_played"</span>, name<span class="op">=</span><span class="st">"As played"</span></span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb51-4"><a href="#cb51-4" aria-hidden="true" tabindex="-1"></a>encore_as_played <span class="op">=</span> score.create_virtual_timeline(encore, <span class="bu">id</span><span class="op">=</span><span class="st">"encore_as_played"</span>)</span>
+<span id="cb51-5"><a href="#cb51-5" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb51-6"><a href="#cb51-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"as played"</span>: as_played,</span>
+<span id="cb51-7"><a href="#cb51-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"14 is played at"</span>: as_played.unfold(<span class="dv">14</span>, score),</span>
+<span id="cb51-8"><a href="#cb51-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"60 plays"</span>: as_played.fold(<span class="dv">60</span>, score),</span>
+<span id="cb51-9"><a href="#cb51-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"the encore"</span>: encore_as_played,</span>
+<span id="cb51-10"><a href="#cb51-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="31">
 <pre><code>{'as played': VirtualTimeline('as_played', map='flow_map_1', timeline='piece', length=92 quarters, name='As played'),
  '14 is played at': [Coordinate(Fraction(14, 1), quarters),
   Coordinate(Fraction(22, 1), quarters),
@@ -1464,20 +1524,20 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="saving-and-reading-the-manifest" class="level2">
 <h2 class="anchored" data-anchor-id="saving-and-reading-the-manifest">Saving and reading the manifest</h2>
 <p>A manifest writes the flow control in the timeline’s <code>flow_control</code>, and the FlowMaps and virtual timelines at its top level. The first section’s last barline, as written:</p>
-<div id="01c2fbfd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.911272Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.910422Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.960841Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.944916Z&quot;}}" data-execution_count="29">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> score.to_file(FILES <span class="op">/</span> <span class="st">"piece.yaml"</span>)</span>
-<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>manifest <span class="op">=</span> score.to_dict()</span>
-<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>timeline_entry <span class="op">=</span> manifest[<span class="st">"timelines"</span>][<span class="dv">0</span>]</span>
-<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
-<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>    dumps(</span>
-<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>        [</span>
-<span id="cb47-7"><a href="#cb47-7" aria-hidden="true" tabindex="-1"></a>            element</span>
-<span id="cb47-8"><a href="#cb47-8" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> element <span class="kw">in</span> timeline_entry[<span class="st">"flow_control"</span>]</span>
-<span id="cb47-9"><a href="#cb47-9" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> element[<span class="st">"coordinate"</span>] <span class="op">==</span> [<span class="dv">32</span>, <span class="dv">1</span>]</span>
-<span id="cb47-10"><a href="#cb47-10" aria-hidden="true" tabindex="-1"></a>        ]</span>
-<span id="cb47-11"><a href="#cb47-11" aria-hidden="true" tabindex="-1"></a>    ),</span>
-<span id="cb47-12"><a href="#cb47-12" aria-hidden="true" tabindex="-1"></a>    end<span class="op">=</span><span class="st">""</span>,</span>
-<span id="cb47-13"><a href="#cb47-13" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="2c0890a7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.163482Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.163274Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.186390Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.184796Z&quot;}}" data-execution_count="32">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> score.to_file(FILES <span class="op">/</span> <span class="st">"piece.yaml"</span>)</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>manifest <span class="op">=</span> score.to_dict()</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>timeline_entry <span class="op">=</span> manifest[<span class="st">"timelines"</span>][<span class="dv">0</span>]</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>    dumps(</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>        [</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>            element</span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> element <span class="kw">in</span> timeline_entry[<span class="st">"flow_control"</span>]</span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> element[<span class="st">"coordinate"</span>] <span class="op">==</span> [<span class="dv">32</span>, <span class="dv">1</span>]</span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a>    end<span class="op">=</span><span class="st">""</span>,</span>
+<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>-
   coordinate: [32, 1]
@@ -1500,16 +1560,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A FlowMap lists its chunks; the IDs in a file begin with <code>#</code>.</p>
-<div id="d4d308a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.964474Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.964099Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:20.972276Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:20.970614Z&quot;}}" data-execution_count="30">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
-<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    dumps(</span>
-<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>        {</span>
-<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>            <span class="st">"flow_maps"</span>: [m <span class="cf">for</span> m <span class="kw">in</span> manifest[<span class="st">"flow_maps"</span>] <span class="cf">if</span> m[<span class="st">"id"</span>] <span class="op">==</span> <span class="st">"#encore"</span>],</span>
-<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">"virtual_timelines"</span>: manifest[<span class="st">"virtual_timelines"</span>],</span>
-<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>        }</span>
-<span id="cb49-7"><a href="#cb49-7" aria-hidden="true" tabindex="-1"></a>    ),</span>
-<span id="cb49-8"><a href="#cb49-8" aria-hidden="true" tabindex="-1"></a>    end<span class="op">=</span><span class="st">""</span>,</span>
-<span id="cb49-9"><a href="#cb49-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="d33031bc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.189222Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.189013Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.193927Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.192509Z&quot;}}" data-execution_count="33">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>    dumps(</span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a>            <span class="st">"flow_maps"</span>: [m <span class="cf">for</span> m <span class="kw">in</span> manifest[<span class="st">"flow_maps"</span>] <span class="cf">if</span> m[<span class="st">"id"</span>] <span class="op">==</span> <span class="st">"#encore"</span>],</span>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">"virtual_timelines"</span>: manifest[<span class="st">"virtual_timelines"</span>],</span>
+<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a>        }</span>
+<span id="cb55-7"><a href="#cb55-7" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb55-8"><a href="#cb55-8" aria-hidden="true" tabindex="-1"></a>    end<span class="op">=</span><span class="st">""</span>,</span>
+<span id="cb55-9"><a href="#cb55-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>flow_maps:
   -
@@ -1540,15 +1600,15 @@ virtual_timelines:
 </div>
 </div>
 <p>The timeline read from the file holds the same flow control, FlowMaps and virtual timelines, and answers the same:</p>
-<div id="40c09b27" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:20.975596Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:20.974798Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:21.108512Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:21.106623Z&quot;}}" data-execution_count="31">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> Timeline.from_file(path)</span>
-<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same flow control"</span>: read.flow_control <span class="op">==</span> score.flow_control,</span>
-<span id="cb51-4"><a href="#cb51-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"FlowMaps"</span>: read.list_flow_maps(),</span>
-<span id="cb51-5"><a href="#cb51-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"virtual timelines"</span>: read.list_virtual_timelines(),</span>
-<span id="cb51-6"><a href="#cb51-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"14 is played at"</span>: read.get_virtual_timeline(<span class="st">"as_played"</span>).unfold(<span class="dv">14</span>, read),</span>
-<span id="cb51-7"><a href="#cb51-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="31">
+<div id="be6164dd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T19:22:11.197417Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T19:22:11.197164Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T19:22:11.268608Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T19:22:11.267524Z&quot;}}" data-execution_count="34">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> Timeline.from_file(path)</span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same flow control"</span>: read.flow_control <span class="op">==</span> score.flow_control,</span>
+<span id="cb57-4"><a href="#cb57-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"FlowMaps"</span>: read.list_flow_maps(),</span>
+<span id="cb57-5"><a href="#cb57-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"virtual timelines"</span>: read.list_virtual_timelines(),</span>
+<span id="cb57-6"><a href="#cb57-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"14 is played at"</span>: read.get_virtual_timeline(<span class="st">"as_played"</span>).unfold(<span class="dv">14</span>, read),</span>
+<span id="cb57-7"><a href="#cb57-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="34">
 <pre><code>{'same flow control': True,
  'FlowMaps': ['encore', 'flow_map_1', 'flow_map_2', 'flow_map_3'],
  'virtual timelines': ['as_played', 'encore_as_played'],
@@ -1593,26 +1653,30 @@ virtual_timelines:
 <td><code>timeline.get_flow(convention, believer=)</code> → stretches, <code>findings</code>, <code>unfold()</code>, <code>fold()</code></td>
 </tr>
 <tr class="even">
+<td>Flow control with the descendants’</td>
+<td><code>timeline.tree_flow_control</code>, which <code>get_flow()</code> plays</td>
+</tr>
+<tr class="odd">
 <td>Play a registry</td>
 <td><code>play(registry, length)</code>, <code>atomic_sections(registry, length)</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Reject an element</td>
 <td><code>flow_control.with_belief(id, actor, "false")</code>, several at once with <code>with_beliefs()</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>The order a source states</td>
 <td><code>loader.create_stated_flow_map(timeline)</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Write the flows</td>
 <td><code>timeline.create_flow_maps_from_flow_control()</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Write a FlowMap by hand</td>
 <td><code>timeline.create_flow_map([region, Gap(length), ...])</code>, then <code>resolve(timeline)</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>A virtual timeline</td>
 <td><code>timeline.create_virtual_timeline(flow_map)</code>, <code>unfold(x, timeline)</code>, <code>fold(x, timeline)</code></td>
 </tr>

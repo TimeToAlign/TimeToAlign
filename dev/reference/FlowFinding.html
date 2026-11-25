@@ -524,6 +524,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlView.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlView</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowConvention</span></a>
   </div>
@@ -532,6 +538,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/FlowFinding.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFindingCause.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingCause</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1287,7 +1299,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="timetoalign.timelines.FlowFinding" class="level1">
 <h1>FlowFinding</h1>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>timelines.FlowFinding(kind, coordinate, end, message)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>timelines.FlowFinding(kind, coordinate, end, message, cause<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Something playing flow control found.</p>
 <section id="attributes" class="level2 doc-section doc-section-attributes">
 <h2 class="doc-section doc-section-attributes anchored" data-anchor-id="attributes">Attributes</h2>
@@ -1319,6 +1331,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>message</td>
 <td><code>str</code></td>
 <td>The finding as a sentence.</td>
+</tr>
+<tr class="odd">
+<td>cause</td>
+<td><a href="../reference/FlowFindingCause.html#timetoalign.core.FlowFindingCause">FlowFindingCause</a> | None</td>
+<td>Why the convention played found it: <code>single_playback</code> for a stretch the <code>single</code> flow leaves out and the <code>default</code> flow plays; None for every other finding.</td>
 </tr>
 </tbody>
 </table>

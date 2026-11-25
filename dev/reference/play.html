@@ -524,6 +524,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlView.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlView</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowConvention</span></a>
   </div>
@@ -532,6 +538,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/FlowFinding.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFindingCause.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingCause</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1313,7 +1325,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>registry</td>
-<td><a href="../reference/FlowControlRegistry.html#timetoalign.timelines.FlowControlRegistry">FlowControlRegistry</a></td>
+<td><a href="../reference/FlowControlView.html#timetoalign.timelines.FlowControlView">FlowControlView</a></td>
 <td>The flow control.</td>
 <td><em>required</em></td>
 </tr>
@@ -1332,7 +1344,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td>believer</td>
 <td><code>str</code> | None</td>
-<td>The actor whose beliefs alone decide which elements are read (:meth:<code>FlowControlRegistry.active_elements &lt;timetoalign.timelines.flowcontrol.FlowControlRegistry.active_elements&gt;</code>); None reads the elements no actor rejects.</td>
+<td>The actor whose beliefs alone decide which elements are read (:meth:<code>FlowControlView.active_elements &lt;timetoalign.timelines.flowcontrol.FlowControlView.active_elements&gt;</code>); None reads the elements no actor rejects.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
@@ -1358,27 +1370,32 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><a href="../reference/FlowResult.html#timetoalign.timelines.FlowResult">FlowResult</a></td>
-<td>The runs in the order played and the findings. Findings are a</td>
+<td>The runs in the order played and the findings. <code>default</code> and</td>
 </tr>
 <tr class="even">
 <td></td>
 <td><a href="../reference/FlowResult.html#timetoalign.timelines.FlowResult">FlowResult</a></td>
-<td>result of <code>default</code> alone: <code>single</code> and <code>printed</code> return</td>
+<td><code>single</code> find a flow that never ends, a flow ending at a Break,</td>
 </tr>
 <tr class="odd">
 <td></td>
 <td><a href="../reference/FlowResult.html#timetoalign.timelines.FlowResult">FlowResult</a></td>
-<td>none, also where going through once ends at a Break before the</td>
+<td>destinations not determined or holding together, and the</td>
 </tr>
 <tr class="even">
 <td></td>
 <td><a href="../reference/FlowResult.html#timetoalign.timelines.FlowResult">FlowResult</a></td>
-<td>length or leaves a stretch unplayed. What is wrong with flow</td>
+<td>stretches never played; <code>printed</code> finds nothing. A stretch</td>
 </tr>
 <tr class="odd">
 <td></td>
 <td><a href="../reference/FlowResult.html#timetoalign.timelines.FlowResult">FlowResult</a></td>
-<td>control shows in its <code>default</code> flow.</td>
+<td><code>single</code> never plays that the <code>default</code> flow plays has the</td>
+</tr>
+<tr class="even">
+<td></td>
+<td><a href="../reference/FlowResult.html#timetoalign.timelines.FlowResult">FlowResult</a></td>
+<td>cause <code>single_playback</code>; every other finding has none.</td>
 </tr>
 </tbody>
 </table>
@@ -1419,6 +1436,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>[<span class="st">'[0, 8) quarters'</span>, <span class="st">'[0, 12) quarters'</span>]</span>
 <span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [<span class="bu">str</span>(run) <span class="cf">for</span> run <span class="kw">in</span> play(registry, <span class="dv">12</span>, convention<span class="op">=</span><span class="st">"single"</span>).runs]</span>
 <span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>[<span class="st">'[0, 12) quarters'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Going through once takes the second of two brackets at once:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.timelines.flowcontrol <span class="im">import</span> JumpTarget</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> brackets <span class="op">=</span> FlowControlRegistry(unit<span class="op">=</span><span class="st">"quarters"</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> brackets.add_all([</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>...     Jump(Coordinate(<span class="dv">4</span>, <span class="st">"quarters"</span>), [</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>...         JumpDestination(by<span class="op">=</span><span class="dv">0</span>, passes<span class="op">=</span>[<span class="dv">1</span>]),</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>...         JumpDestination(to<span class="op">=</span><span class="st">"second"</span>, passes<span class="op">=</span>[<span class="dv">2</span>])]),</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>...     JumpTarget(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"second"</span>),</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>...     Jump(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)])])</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [(<span class="bu">str</span>(f.kind), <span class="bu">str</span>(f.coordinate), <span class="bu">str</span>(f.end), <span class="bu">str</span>(f.cause))</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>...  <span class="cf">for</span> f <span class="kw">in</span> play(brackets, <span class="dv">12</span>, convention<span class="op">=</span><span class="st">"single"</span>).findings]</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>[(<span class="st">'never_played'</span>, <span class="st">'4 quarters'</span>, <span class="st">'8 quarters'</span>, <span class="st">'single_playback'</span>)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>

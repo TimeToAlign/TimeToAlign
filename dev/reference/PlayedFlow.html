@@ -524,6 +524,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlView.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlView</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowConvention</span></a>
   </div>
@@ -532,6 +538,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/FlowFinding.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFindingCause.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingCause</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1304,7 +1316,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>findings</td>
 <td><code>tuple</code>[<a href="../reference/FlowFinding.html#timetoalign.timelines.FlowFinding">FlowFinding</a>, …]</td>
-<td>What playing the flow control found, in the order found: a flow that never ends, a flow ending at a Break, two destinations holding together, a stretch never played. Only the <code>default</code> flow has findings.</td>
+<td>What playing the flow control found, in the order found: a flow that never ends, a flow ending at a Break, two destinations holding together, a stretch never played (with the cause <code>single_playback</code> where the <code>single</code> flow leaves out what the <code>default</code> flow plays). The <code>printed</code> flow has none.</td>
 </tr>
 </tbody>
 </table>

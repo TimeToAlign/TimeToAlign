@@ -524,6 +524,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/FlowControlView.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowControlView</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/FlowConvention.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowConvention</span></a>
   </div>
@@ -532,6 +538,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/FlowFinding.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FlowFinding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/FlowFindingCause.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FlowFindingCause</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -2034,7 +2046,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td><a href="#timetoalign.timelines.Timeline.create_flow_maps_from_flow_control">create_flow_maps_from_flow_control</a></td>
-<td>Write this root timeline’s atomic sections and its computed FlowMaps.</td>
+<td>Write this timeline’s atomic sections and its computed FlowMaps.</td>
 </tr>
 <tr class="odd">
 <td><a href="#timetoalign.timelines.Timeline.create_region">create_region</a></td>
@@ -2588,9 +2600,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-2">Raises</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 1%">
+<col style="width: 0%">
 <col style="width: 3%">
-<col style="width: 95%">
+<col style="width: 96%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2608,7 +2620,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If units don’t match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, <code>locked=True</code> asks to lock a plain segment, <code>locked=False</code> asks to leave a segment line unlocked, an id given in the child’s subtree is already held in this manifest, or this timeline is locked and the child would end beyond its length without <code>allow_expansion</code>. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor’s offset.</td>
+<td>If units don’t match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, <code>locked=True</code> asks to lock a plain segment, <code>locked=False</code> asks to leave a segment line unlocked, an id given in the child’s subtree is already held in this manifest, a Jump of the child’s subtree that is not rejected lies at a position of the root’s axis where one of this timeline’s tree lies (one Jump lies at a position of a root’s axis), or this timeline is locked and the child would end beyond its length without <code>allow_expansion</code>. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor’s offset.</td>
 </tr>
 </tbody>
 </table>
@@ -4731,8 +4743,9 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>    actor<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>    date<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Write this root timeline’s atomic sections and its computed FlowMaps.</p>
-<p>The flow control is played with the three conventions (:func:<code>~timetoalign.timelines.flow.engine.play</code>). The atomic sections (:func:<code>~timetoalign.timelines.flow.engine.atomic_sections</code>) become Regions of the timeline, each named by its letter and stating the type <code>tts:AtomicSection</code> with the provenance method <code>inferred</code>. The <code>default</code> flow becomes a FlowMap listing those Regions in the order played; <code>single</code> and <code>printed</code> become FlowMaps only where their chunks differ from <code>default</code>’s. Each FlowMap names its <code>convention</code> and the provenance method <code>inferred</code>.</p>
+<p>Write this timeline’s atomic sections and its computed FlowMaps.</p>
+<p>The flow control of the timeline and of its descendants of its unit (:attr:<code>tree_flow_control &lt;timetoalign.timelines.Timeline.tree_flow_control&gt;</code>) is played on the timeline’s axis with the three conventions (:func:<code>~timetoalign.timelines.flow.engine.play</code>): a root plays its whole tree, a child its own subtree. The atomic sections (:func:<code>~timetoalign.timelines.flow.engine.atomic_sections</code>) become Regions of the timeline, each named by its letter and stating the type <code>tts:AtomicSection</code> with the provenance method <code>inferred</code>. The <code>default</code> flow becomes a FlowMap listing those Regions in the order played; <code>single</code> and <code>printed</code> become FlowMaps only where their chunks differ from <code>default</code>’s. Each FlowMap names its <code>convention</code> and the provenance method <code>inferred</code>.</p>
+<p>A FlowMap names a root timeline. On a root, the Regions are the root’s, also where its flow control lies only in descendants. On a child, the Regions are the child’s and the FlowMaps are stored on the root of its tree, listing the child’s Regions; a FlowMap written there anew is named after the child and its convention (<code>"Allegro, default"</code>). The computed FlowMaps of a timeline are those of its root that list its Regions only, so the flows of several children of one root stand side by side, and a virtual timeline applying one to the root takes its new length when it is written again.</p>
 <p>Called again after the flow control changed, the call takes nothing away and never lets a Region’s ID name another stretch:</p>
 <ul>
 <li>an atomic section whose stretch is still one keeps its Region; it is renamed where the new sectioning gives it another letter;</li>
@@ -4814,12 +4827,17 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="odd">
 <td></td>
 <td>'ComputedFlows | None'</td>
-<td>the findings of the <code>default</code> flow; or None for a timeline</td>
+<td>the findings of the <code>default</code> flow (those of <code>single</code> are</td>
 </tr>
 <tr class="even">
 <td></td>
 <td>'ComputedFlows | None'</td>
-<td>without flow control, which writes nothing.</td>
+<td>meth:<code>get_flow</code>’s); or None for a timeline whose tree holds no</td>
+</tr>
+<tr class="odd">
+<td></td>
+<td>'ComputedFlows | None'</td>
+<td>flow control, which writes nothing.</td>
 </tr>
 </tbody>
 </table>
@@ -4838,7 +4856,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If this timeline is a child; the flow control cannot be played; an atomic section the timeline holds is none any more and no <em>actor</em> is given to reject it; or the date is invalid. Nothing has changed then.</td>
+<td>If the flow control cannot be played; an atomic section the timeline holds is none any more and no <em>actor</em> is given to reject it; or the date is invalid. Nothing has changed then.</td>
 </tr>
 <tr class="even">
 <td></td>
@@ -7774,6 +7792,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb100-5"><a href="#cb100-5" aria-hidden="true" tabindex="-1"></a>    beliefs<span class="op">=</span>DEFAULT_BELIEFS,</span>
 <span id="cb100-6"><a href="#cb100-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Play this timeline’s flow control and return the flow, writing nothing.</p>
+<p>What is played is the flow control of the timeline and of its descendants of its unit, on its axis (:attr:<code>tree_flow_control &lt;timetoalign.timelines.Timeline.tree_flow_control&gt;</code>): a root plays its whole tree, a child its own subtree.</p>
 <section id="parameters-55" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-55">Parameters</h4>
 <table class="caption-top table">
@@ -7811,9 +7830,9 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-47">Returns</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 8%">
-<col style="width: 16%">
-<col style="width: 75%">
+<col style="width: 7%">
+<col style="width: 15%">
+<col style="width: 76%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -7846,14 +7865,19 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="odd">
 <td></td>
 <td>'PlayedFlow'</td>
-<td>at a Break, a stretch never played); only the <code>default</code> flow</td>
+<td>at a Break, a stretch never played, with its cause where</td>
 </tr>
 <tr class="even">
 <td></td>
 <td>'PlayedFlow'</td>
-<td>has any. A timeline without flow control is played from its</td>
+<td><code>single</code> leaves out what <code>default</code> plays); the <code>printed</code></td>
 </tr>
 <tr class="odd">
+<td></td>
+<td>'PlayedFlow'</td>
+<td>flow has none. A timeline whose tree holds no flow control is played from its</td>
+</tr>
+<tr class="even">
 <td></td>
 <td>'PlayedFlow'</td>
 <td>start to its end.</td>
@@ -7880,7 +7904,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="even">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If the convention is unknown, or the flow control cannot be played.</td>
+<td>If the convention is unknown, or the flow control cannot be played (two Jumps of the tree at one position of this axis among them).</td>
 </tr>
 </tbody>
 </table>

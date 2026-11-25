@@ -94,6 +94,18 @@ naming it) and drop the cached loader module, both restored by `monkeypatch`.
 `AudioLoader` reads through a chain of backends, so a missing one is not an error by itself;
 its message naming `timetoalign[audio]` is pinned in `physical/test_audio.py`.
 
+## Table metadata of the score stores
+
+A table states its number type in its metadata, and that statement must be the number type its
+cells are in. The four score stores (`NoteEventData`, `AnnotationEventData`, `ControlEventData`,
+`MeasureData`) built by `from_dicts` without a number type used to write `number_type: "None"`
+into the metadata while the store itself resolved the unit's default (`.number_type` was
+`fraction` on quarters), so the table stated nothing a reader could use. `test_schema.py`
+builds each store from one row on quarters, ticks and seconds without a number type and asserts
+that `parse_table_metadata(table.schema)["number_type"]` is the unit's default (`fraction`,
+`int`, `float`) and equals the store's `.number_type`; with `NumberType.float` on quarters it
+is `float`, so an explicit choice is stated as given.
+
 ## Categories
 
 | File / Subdirectory | What it validates |

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fractions import Fraction
 
 import pyarrow as pa
+import pytest
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.fields import field_metadata
@@ -282,6 +283,38 @@ class TestParseTableMetadata:
         schema = pa.schema([pa.field("id", pa.string())])
         parsed = parse_table_metadata(schema)
         assert parsed == {}
+
+
+class TestScoreStoreMetadata:
+    """A score store's table states the number type its cells are in."""
+
+    @staticmethod
+    def _stores() -> list[type]:
+        from timetoalign.loader.score.stores.annotations import AnnotationEventData
+        from timetoalign.loader.score.stores.controls import ControlEventData
+        from timetoalign.loader.score.stores.measures import MeasureData
+        from timetoalign.loader.score.stores.notes import NoteEventData
+
+        return [NoteEventData, AnnotationEventData, ControlEventData, MeasureData]
+
+    @pytest.mark.parametrize(
+        ("unit", "number_type", "stated"),
+        [
+            (TimeUnit.quarters, None, "fraction"),
+            (TimeUnit.ticks, None, "int"),
+            (TimeUnit.seconds, None, "float"),
+            (TimeUnit.quarters, NumberType.float, "float"),
+        ],
+    )
+    def test_from_dicts_states_the_resolved_number_type(
+        self, unit: TimeUnit, number_type: NumberType | None, stated: str
+    ) -> None:
+        for store in self._stores():
+            data = store.from_dicts(
+                [{"event_type": "X", "start": 0, "duration": 1}], unit, number_type
+            )
+            assert parse_table_metadata(data.table.schema)["number_type"] == stated
+            assert str(data.number_type) == stated
 
 
 class TestTemporalTypeConstants:

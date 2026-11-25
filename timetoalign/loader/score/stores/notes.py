@@ -177,7 +177,9 @@ class NoteEventData(EventData):
         from timetoalign.storage.schema import make_table_metadata
 
         schema = cls.get_schema(unit)
-        metadata = make_table_metadata(unit, number_type, loader_class=cls.__name__)
+        metadata = make_table_metadata(
+            unit, unit.resolve_number_type(number_type), loader_class=cls.__name__
+        )
         schema = schema.with_metadata(metadata)
 
         # Ensure all required fields exist with proper defaults

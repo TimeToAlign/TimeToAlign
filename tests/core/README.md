@@ -2330,6 +2330,49 @@ generic step 6, 0) and the middle row must come back `None`.
 
 ---
 
+### `test_pitch_protocol_discovery.py` - A pitch field without data has no pitch columns
+
+**Claim:** a pitch field that holds no data (a blueprint naming its
+column, `cls(source_fields=...)`, or a schema-only field,
+`cls.from_field(pa_field)`) has none of the columns it computes from its
+rows: `SpecificPitchClassField.pitch_class`, `.fifths`;
+`EnharmonicPitchField.pitch_class`, `.octave`; `MidiPitchField.pitch_class`,
+`.octave`; `SpecificPitchField.pitch_class`, `.midi_number`, `.fifths`. Each
+raises `AttributeError`, so `hasattr` answers `False`, and every runtime
+protocol check of such a field answers, the same under every hash seed. A
+field with rows keeps all nine.
+
+**Why it matters:** the storage layer scans every registered field with
+`isinstance(field, <runtime protocol>)`, and Python checks a protocol's
+members with `hasattr` in an order that follows the process's hash seed.
+`hasattr` swallows only `AttributeError`; these properties used to raise the
+`TypeError` of `to_pyarrow()` ("Cannot convert schema-only field 'p' to
+PyArrow array"), so `isinstance(MidiPitchField(source_fields="p"),
+GenericPitchLike)` answered `False` under one seed (a member the field lacks
+was checked first) and crashed under another. Seed `0` checks a missing
+member first for every protocol and every class here; seed `3` reaches the
+raising property first in all 32 checks of the four classes against
+`GenericPitchLike`, `EnharmonicPitchLike`, `SpecificPitchClassLike` and
+`SpecificPitchLike`, so the two together prove the order no longer matters.
+
+**Proof:** in process, for each class, the blueprint and the schema-only
+field answer `hasattr` `False` for each of its names, and reading one raises
+`AttributeError`. Python answers a property's `AttributeError` by asking the
+class's `__getattr__`, which delegates to the raw struct field, so the
+message the caller sees is the raw field's (`'StructField' object has no
+attribute 'octave'`); the test pins it. The methods of such a field are
+unchanged: `get()` and `convert_to(EnharmonicPitchClass)` still raise the
+`TypeError` of `to_pyarrow()` with its message, since an `AttributeError`
+from a method call would name an attribute the caller never asked for. A
+field over one row (B♭3, MIDI 58, B♭) answers `hasattr` `True` for every
+name. In fresh interpreters under
+`PYTHONHASHSEED` `0` and `3`, the blueprint and the schema-only field of
+each class print the runtime protocols of `core/protocols.py` they satisfy;
+the two outputs are identical, and every list is empty (a field holding no
+data is none of the pitch, event or harmony protocols).
+
+---
+
 ### `test_scalar_repr.py` - Uniform scalar `repr()` / `str()`
 
 **Purpose:** Pins the one uniform representation rule across every scalar:

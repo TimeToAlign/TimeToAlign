@@ -4876,9 +4876,41 @@ results.
 atomic sections and one flow: one FlowMap, `default`.
 
 **Nothing is written without flow control**: the call returns None and the
-timeline holds no Region and no FlowMap. On a child timeline the call is
-refused (a FlowMap names a root), on a timeline of unknown length it raises
-`UnknownLengthError`.
+timeline holds no Region and no FlowMap. On a timeline of unknown length
+it raises `UnknownLengthError`.
+
+**A child's flows are written on its root.** A FlowMap names one root
+timeline and lists anything giving an interval inside that root's tree, a
+child's Regions included; so the movements of a work, each a child with
+its own flow control, have their sections as Regions of the child and
+their FlowMaps on the root, side by side. The proof must show that the
+Regions lie on the child's axis (a FlowMap of the root resolves them at
+the child's offset), that two children's FlowMaps do not take each other
+for their own when written again, and that the format accepts the result.
+The root `sonata` (length 40) holds `movement` ("Allegro", length 12 at
+offset 4, a repeat sign at 8) and `finale` ("Finale", length 12 at offset
+20, a repeat sign at 6). Written for `movement`: `region_1` A [0, 8) and
+`region_2` B [8, 12) on `movement`, none on the root; on the root
+`flow_map_1` `default` (1, 1, 2) named "Allegro, default",
+`flow_map_2` `single` (1, 2) and `flow_map_3` `printed` (1, 2), each with
+`timeline` `sonata`. `flow_map_1` resolved on the root places [4, 12),
+[4, 12), [12, 16): length 20; a virtual timeline of the root applying it
+has length 20. Then written for `finale`: `region_3` A [0, 6), `region_4`
+B [6, 12) on `finale`; `flow_map_4` `default` (3, 3, 4) "Finale,
+default", `flow_map_5`, `flow_map_6`; the movement's three FlowMaps are
+unchanged. The manifest written (`to_dict`, which the format's validator
+checks) and read back holds the same Regions and FlowMaps.
+
+Written again on the child, the guarantees of a root hold. A repeat sign
+added at 12 (a repeat end without place goes back to the start of the
+timeline, restoring the repeat inside) adds no boundary: the Regions are
+kept, `flow_map_1` keeps its ID and name and lists (1, 1, 2, 1, 1, 2),
+and the virtual timeline takes the new length 40. A JumpTarget added at 4
+in `movement` instead divides A: `region_1` stays and is rejected by the
+actor, `region_5` A [0, 4), `region_6` B [4, 8), `region_2` C [8, 12);
+`flow_map_1` keeps its ID and lists (5, 6, 5, 6, 2); the finale's
+FlowMaps are unchanged. Without an actor that call raises and changes
+nothing.
 
 **Written again: nothing is taken away, and no ID comes to name another
 stretch.** Whatever names a Region (a FlowMap written by hand, a statement

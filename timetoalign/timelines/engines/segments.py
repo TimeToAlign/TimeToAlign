@@ -586,7 +586,7 @@ class SegmentsMixin:
         actor: str | None = None,
         date: str | datetime.date | None = None,
     ) -> "ComputedFlows | None":
-        """Write this root timeline's atomic sections and its computed FlowMaps.
+        """Write this timeline's atomic sections and its computed FlowMaps.
 
         The flow control is played with the three conventions
         (:func:`~timetoalign.timelines.flow.engine.play`). The atomic
@@ -598,6 +598,15 @@ class SegmentsMixin:
         FlowMaps only where their chunks differ from ``default``'s. Each
         FlowMap names its ``convention`` and the provenance method
         ``inferred``.
+
+        A FlowMap names a root timeline. On a child, the Regions are the
+        child's and the FlowMaps are stored on the root of its tree, listing
+        the child's Regions; a FlowMap written there anew is named after the
+        child and its convention (``"Allegro, default"``). The computed
+        FlowMaps of a timeline are those of its root that list its Regions
+        only, so the flows of several children of one root stand side by
+        side, and a virtual timeline applying one to the root takes its new
+        length when it is written again.
 
         Called again after the flow control changed, the call takes nothing
         away and never lets a Region's ID name another stretch:
@@ -638,10 +647,10 @@ class SegmentsMixin:
             without flow control, which writes nothing.
 
         Raises:
-            ValueError: If this timeline is a child; the flow control cannot
-                be played; an atomic section the timeline holds is none any
-                more and no *actor* is given to reject it; or the date is
-                invalid. Nothing has changed then.
+            ValueError: If the flow control cannot be played; an atomic
+                section the timeline holds is none any more and no *actor* is
+                given to reject it; or the date is invalid. Nothing has
+                changed then.
             UnknownLengthError: If the length is unknown.
 
         Examples:
@@ -684,12 +693,9 @@ class SegmentsMixin:
         from ..flow.engine import FlowFinding, atomic_sections, play
         from ..flow.flowmap import ComputedFlows, FlowMap
 
-        if self._parent is not None:
-            raise ValueError(
-                f"timeline {quote_id(self._id)} is a child of "
-                f"{quote_id(self._parent.id)}: a FlowMap names a root timeline, and "
-                "the flows of a child's flow control are not written yet"
-            )
+        owner = self
+        while owner._parent is not None:
+            owner = owner._parent
         if not self._flow_control.elements:
             return None
         length = self._require_length("play its flow control")
@@ -758,12 +764,18 @@ class SegmentsMixin:
                 self._regions[region.id] = region
             regions.append(region)
 
+        # The computed FlowMaps of this timeline's flow control are those of
+        # its root listing Regions of this timeline.
         computed = {
             flow_map.convention: flow_map
-            for flow_map in self._flow_maps.values()
+            for flow_map in owner._flow_maps.values()
             if flow_map.is_computed
+            and all(
+                isinstance(chunk, str) and chunk in self._regions
+                for chunk in flow_map.chunks
+            )
         }
-        listed = list(self._flow_maps)
+        listed = list(owner._flow_maps)
         written: list[FlowMap] = []
         for convention, order in orders.items():
             before = computed.get(convention)
@@ -774,36 +786,42 @@ class SegmentsMixin:
             ):
                 continue
             if before is not None:
-                del self._flow_maps[before.id]
+                del owner._flow_maps[before.id]
+            if before is not None:
+                name = before.name
+            elif owner is not self:
+                name = f"{self.name}, {convention.value}"
+            else:
+                name = None
             written.append(
-                self.add_flow_map(
+                owner.add_flow_map(
                     FlowMap(
-                        self._id,
+                        owner._id,
                         tuple(regions[index].id for index in order),
                         convention=convention,
                         provenance=(inferred,),
                         id=None if before is None else before.id,
                         _minted=before is not None and before._minted,
                         canonical=before is not None and before.canonical,
-                        name=None if before is None else before.name,
+                        name=name,
                     )
                 )
             )
         rewritten = {flow_map.id: flow_map for flow_map in written}
         # A FlowMap written again keeps its place among the timeline's.
-        self._flow_maps = {
-            flow_map_id: self._flow_maps[flow_map_id]
-            for flow_map_id in dict.fromkeys([*listed, *self._flow_maps])
+        owner._flow_maps = {
+            flow_map_id: owner._flow_maps[flow_map_id]
+            for flow_map_id in dict.fromkeys([*listed, *owner._flow_maps])
         }
-        for virtual_id, virtual in list(self._virtual_timelines.items()):
+        for virtual_id, virtual in list(owner._virtual_timelines.items()):
             if (
                 virtual.map in rewritten
-                and virtual.timeline == self._id
+                and virtual.timeline == owner._id
                 and virtual.through is None
             ):
-                self._virtual_timelines[virtual_id] = replace(
+                owner._virtual_timelines[virtual_id] = replace(
                     virtual,
-                    length=rewritten[virtual.map].resolve(self).length,
+                    length=rewritten[virtual.map].resolve(owner).length,
                 )
         return ComputedFlows(tuple(regions), tuple(written), findings)
 

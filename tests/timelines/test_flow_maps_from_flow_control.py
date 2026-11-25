@@ -451,21 +451,6 @@ class TestWhatIsWritten:
         assert (plain.list_regions(), plain.list_flow_maps()) == ([], [])
         assert "flow_maps" not in plain.to_dict()
 
-    def test_a_child_timeline_is_refused(self) -> None:
-        root = ContinuousLogicalTimeline(length=24, uid="root")
-        movement = root.create_child(12, 0, uid="movement")
-        movement.flow_control.add(Jump(q(8), [JumpDestination(repeat_count=1)]))
-        before = _state(root)
-        with pytest.raises(ValueError) as raised:
-            movement.create_flow_maps_from_flow_control()
-        assert str(raised.value) == (
-            "timeline 'movement' is a child of 'root': a FlowMap names a root "
-            "timeline, and the flows of a child's flow control are not written yet"
-        )
-        assert _state(root) == before
-        # The flow itself is computed on the child's own axis.
-        assert movement.get_flow().length == q(20)
-
     def test_an_unknown_length_is_refused(self) -> None:
         score = ContinuousLogicalTimeline(length=None, uid="score")
         score.flow_control.add(Jump(q(8), [JumpDestination(repeat_count=1)]))
@@ -857,3 +842,144 @@ class TestAnotherOrigin:
             "flow_map_3",
         ]
         assert score.get_flow_map("twice") is by_hand
+
+
+def _sonata() -> tuple[ContinuousLogicalTimeline, Timeline, Timeline]:
+    """A root holding two children, each with a repeat sign of its own."""
+    root = ContinuousLogicalTimeline(length=40, uid="sonata")
+    movement = root.create_child(12, 4, uid="movement", name="Allegro")
+    finale = root.create_child(12, 20, uid="finale", name="Finale")
+    movement.flow_control.add(Jump(q(8), [JumpDestination(repeat_count=1)]))
+    finale.flow_control.add(Jump(q(6), [JumpDestination(repeat_count=1)]))
+    return root, movement, finale
+
+
+def _maps(root: Timeline) -> list[tuple[str, Any, Any, tuple[Any, ...]]]:
+    return [
+        (flow_map.id, flow_map.convention, flow_map.name, flow_map.chunks)
+        for flow_map in (root.get_flow_map(i) for i in root.list_flow_maps())
+    ]
+
+
+MOVEMENT_MAPS = [
+    (
+        "flow_map_1",
+        FlowConvention.default,
+        "Allegro, default",
+        ("region_1", "region_1", "region_2"),
+    ),
+    ("flow_map_2", FlowConvention.single, "Allegro, single", ("region_1", "region_2")),
+    (
+        "flow_map_3",
+        FlowConvention.printed,
+        "Allegro, printed",
+        ("region_1", "region_2"),
+    ),
+]
+FINALE_MAPS = [
+    (
+        "flow_map_4",
+        FlowConvention.default,
+        "Finale, default",
+        ("region_3", "region_3", "region_4"),
+    ),
+    ("flow_map_5", FlowConvention.single, "Finale, single", ("region_3", "region_4")),
+    ("flow_map_6", FlowConvention.printed, "Finale, printed", ("region_3", "region_4")),
+]
+
+
+class TestChild:
+    """A child's sections on the child, its FlowMaps on the root."""
+
+    def test_the_sections_are_the_childs_and_the_flow_maps_the_roots(self) -> None:
+        root, movement, _ = _sonata()
+        written = movement.create_flow_maps_from_flow_control()
+        assert written is not None and written.findings == ()
+        assert [(r.id, r.name, str(r.as_interval)) for r in written.sections] == [
+            ("region_1", "A", "[0, 8) quarters"),
+            ("region_2", "B", "[8, 12) quarters"),
+        ]
+        assert movement.list_regions() == ["region_1", "region_2"]
+        assert root.list_regions() == []
+        assert movement.list_flow_maps() == []
+        assert _maps(root) == MOVEMENT_MAPS
+        assert {flow_map.timeline for flow_map in written.flow_maps} == {"sonata"}
+        assert all(flow_map.provenance == INFERRED for flow_map in written.flow_maps)
+
+    def test_the_flow_map_resolves_at_the_childs_offset(self) -> None:
+        root, movement, _ = _sonata()
+        movement.create_flow_maps_from_flow_control()
+        resolved = root.get_flow_map("flow_map_1").resolve(root)
+        assert [
+            (chunk.source.start, chunk.source.end) for chunk in resolved.chunks
+        ] == [
+            (q(4), q(12)),
+            (q(4), q(12)),
+            (q(12), q(16)),
+        ]
+        assert resolved.length == q(20)
+        virtual = root.create_virtual_timeline("flow_map_1", id="allegro_played")
+        assert (virtual.timeline, virtual.map, virtual.length) == (
+            "sonata",
+            "flow_map_1",
+            q(20),
+        )
+
+    def test_two_children_stand_side_by_side_and_survive_a_manifest(self) -> None:
+        root, movement, finale = _sonata()
+        movement.create_flow_maps_from_flow_control()
+        finale.create_flow_maps_from_flow_control()
+        assert finale.list_regions() == ["region_3", "region_4"]
+        assert [
+            str(finale.get_region(i).as_interval) for i in finale.list_regions()
+        ] == [
+            "[0, 6) quarters",
+            "[6, 12) quarters",
+        ]
+        assert _maps(root) == MOVEMENT_MAPS + FINALE_MAPS
+        read = Timeline.from_dict(root.to_dict())
+        assert _maps(read) == MOVEMENT_MAPS + FINALE_MAPS
+        assert read.get_child("movement").list_regions() == ["region_1", "region_2"]
+        assert read.get_child("finale").list_regions() == ["region_3", "region_4"]
+
+    def test_written_again_the_virtual_timeline_takes_the_new_length(self) -> None:
+        root, movement, _ = _sonata()
+        movement.create_flow_maps_from_flow_control()
+        root.create_virtual_timeline("flow_map_1", id="allegro_played")
+        movement.flow_control.add(Jump(q(12), [JumpDestination(repeat_count=1)]))
+        again = movement.create_flow_maps_from_flow_control()
+        assert again is not None
+        assert [r.id for r in again.sections] == ["region_1", "region_2"]
+        default = root.get_flow_map("flow_map_1")
+        assert (default.name, default.chunks) == (
+            "Allegro, default",
+            ("region_1", "region_1", "region_2", "region_1", "region_1", "region_2"),
+        )
+        assert root.get_virtual_timeline("allegro_played").length == q(40)
+
+    def test_written_again_a_divided_section_is_rejected(self) -> None:
+        root, movement, finale = _sonata()
+        movement.create_flow_maps_from_flow_control()
+        finale.create_flow_maps_from_flow_control()
+        movement.flow_control.add(JumpTarget(q(4)))
+        before = _state(root)
+        with pytest.raises(ValueError):
+            movement.create_flow_maps_from_flow_control()
+        assert _state(root) == before
+        again = movement.create_flow_maps_from_flow_control(
+            actor=EDITOR, date="2026-11-25"
+        )
+        assert again is not None
+        assert [(r.id, r.name, str(r.as_interval)) for r in again.sections] == [
+            ("region_5", "A", "[0, 4) quarters"),
+            ("region_6", "B", "[4, 8) quarters"),
+            ("region_2", "C", "[8, 12) quarters"),
+        ]
+        assert movement.get_region("region_1").is_atomic_section is False
+        assert _maps(root)[0] == (
+            "flow_map_1",
+            FlowConvention.default,
+            "Allegro, default",
+            ("region_5", "region_6", "region_5", "region_6", "region_2"),
+        )
+        assert _maps(root)[3:] == FINALE_MAPS

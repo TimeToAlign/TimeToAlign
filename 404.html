@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Page not found · TimeToAlign! documentation</title>
+<script>
+(function () {
+  var base = "/TimeToAlign/";
+  var path = window.location.pathname;
+  if (path.indexOf(base) !== 0) { return; }
+  var rest = path.slice(base.length);
+  var former = "page/_site/";
+  if (rest.indexOf(former) === 0) {
+    rest = rest.slice(former.length);
+  } else if (/^(dev|stable|\d+\.\d+\.\d+)(\/|$)/.test(rest)) {
+    return;
+  }
+  window.location.replace(
+    base + "stable/" + rest + window.location.search + window.location.hash
+  );
+})();
+</script>
+</head>
+<body>
+<p>This page does not exist. The documentation is at
+<a href="/TimeToAlign/stable/">/TimeToAlign/stable/</a>.</p>
+</body>
+</html>

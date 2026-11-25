@@ -65,7 +65,7 @@ import math
 import operator
 import re
 from abc import abstractmethod
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from decimal import Decimal
 from fractions import Fraction
 from typing import (
@@ -75,12 +75,14 @@ from typing import (
     NamedTuple,
     Protocol,
     Self,
+    TypeGuard,
     TypeVar,
     Union,
     overload,
 )
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -94,8 +96,14 @@ from .fields import (
     SemanticField,
     StructField,
     _filled_mask,
+    _is_arrow_column,
+    _is_dict,
+    _is_list,
+    _member_fields,
     _struct_array,
+    _struct_array_from,
     _struct_array_of,
+    _struct_child,
     _struct_types_match,
     _valid_struct_cell,
     build_struct_array,
@@ -168,6 +176,34 @@ Python's own :func:`round`, and PyArrow's ``half_to_even`` — so that a column
 of ``.5`` values does not drift upwards.  ``"floor"`` and ``"ceil"`` go to
 −∞ and +∞; ``"truncate"`` goes towards zero.
 """
+
+
+# Type guards for values of unchecked type: each is one ``isinstance`` on the
+# container and claims nothing about its elements.
+
+
+def _is_chunked(value: object) -> TypeGuard[pa.ChunkedArray[Any]]:
+    return isinstance(value, pa.ChunkedArray)
+
+
+def _is_array(value: object) -> TypeGuard[pa.Array[Any]]:
+    return isinstance(value, pa.Array)
+
+
+def _is_ndarray(value: object) -> TypeGuard[npt.NDArray[Any]]:
+    return isinstance(value, np.ndarray)
+
+
+def _is_series(value: object) -> TypeGuard[pd.Series[Any]]:
+    return isinstance(value, pd.Series)
+
+
+def _is_numpy_integer(value: object) -> TypeGuard[np.integer[Any]]:
+    return isinstance(value, np.integer)
+
+
+def _is_numpy_floating(value: object) -> TypeGuard[np.floating[Any]]:
+    return isinstance(value, np.floating)
 
 
 def _fits_int64(n: int) -> bool:
@@ -244,7 +280,7 @@ def _pair_from_exact(value: int | Fraction) -> tuple[int, int]:
     )
 
 
-def parse_number(value: Any) -> int | float | Fraction:
+def parse_number(value: object) -> int | float | Fraction:
     """Read one source value as the Python number it represents.
 
     Accepts ``int``, ``float``, ``Fraction``, and strings — either
@@ -262,9 +298,9 @@ def parse_number(value: Any) -> int | float | Fraction:
         raise TypeError("Boolean values are not valid number cells")
     if isinstance(value, (int, float, Fraction)):
         return value
-    if isinstance(value, np.integer):
+    if _is_numpy_integer(value):
         return int(value)
-    if isinstance(value, np.floating):
+    if _is_numpy_floating(value):
         return float(value)
     if isinstance(value, str):
         match = _FRACTION_RE.match(value)
@@ -387,7 +423,7 @@ def number_cell(
         A dict with the ``value`` / ``numerator`` / ``denominator`` keys of
         :data:`RATIONAL_STRUCT_TYPE`.
     """
-    if isinstance(value, dict):
+    if _is_dict(value):
         return _normalise_cell(value)
     number = parse_number(value)
     if number_type is None:
@@ -439,7 +475,7 @@ def _coerce_ratio_component(component: Any, label: str) -> int:
     """Return one ratio component as an integer."""
     if isinstance(component, bool):
         raise ValueError(f"rational struct {label} must be an integer, got a bool")
-    if isinstance(component, (int, np.integer)):
+    if isinstance(component, int) or _is_numpy_integer(component):
         return int(component)
     if isinstance(component, float):
         if component.is_integer():
@@ -541,7 +577,7 @@ def rational_to_struct(value: Any) -> dict[str, Any]:
 # -- JSON number form -------------------------------------------------------
 
 
-def number_to_json(value: int | float | Fraction) -> int | float | list[int]:
+def number_to_json(value: object) -> int | float | list[int]:
     """Encode a Python number using the TimeToShare JSON representation.
 
     Integers and floats retain their JSON scalar forms. Exact fractions use
@@ -597,7 +633,7 @@ def is_fraction_json(value: object) -> bool:
     Both members denote integers (an integral float such as ``8.0`` counts),
     and the denominator is strictly positive.
     """
-    if not isinstance(value, list) or len(value) != 2:
+    if not _is_list(value) or len(value) != 2:
         return False
     numerator, denominator = (_integral_member(component) for component in value)
     return numerator is not None and denominator is not None and denominator > 0
@@ -641,7 +677,7 @@ def number_from_json(
         if not math.isfinite(data):
             raise ValueError(f"invalid JSON number {data!r}")
         value = data
-    elif isinstance(data, list):
+    elif _is_list(data):
         if len(data) != 2:
             raise ValueError(f"invalid JSON Fraction {data!r}: expected two items")
         numerator, denominator = (_integral_member(component) for component in data)
@@ -738,13 +774,13 @@ def _pairs_from_float_array(
 
 def _as_object_list(values: Any) -> list[Any]:
     """Flatten any supported source column into a list of Python values."""
-    if isinstance(values, pa.ChunkedArray):
+    if _is_chunked(values):
         values = values.combine_chunks()
-    if isinstance(values, (pa.Array, pa.ChunkedArray)):
+    if _is_arrow_column(values):
         return values.to_pylist()
-    if isinstance(values, pd.Series):
+    if _is_series(values):
         return values.tolist()
-    if isinstance(values, np.ndarray):
+    if _is_ndarray(values):
         return values.tolist()
     return list(values)
 
@@ -837,19 +873,19 @@ def build_number_struct_array(
     return _struct_array_of(rows, RATIONAL_STRUCT_TYPE)
 
 
-def _numeric_source(values: Any) -> np.ndarray | None:
+def _numeric_source(values: Any) -> npt.NDArray[Any] | None:
     """Return *values* as a plain float64/int64 numpy array, else ``None``."""
-    if isinstance(values, pa.ChunkedArray):
+    if _is_chunked(values):
         values = values.combine_chunks()
-    if isinstance(values, pa.Array):
+    if _is_array(values):
         if not (pa.types.is_integer(values.type) or pa.types.is_floating(values.type)):
             return None
         values = values.to_numpy(zero_copy_only=False)
-    elif isinstance(values, pd.Series):
+    elif _is_series(values):
         values = values.to_numpy()
-    elif isinstance(values, list):
+    elif _is_list(values):
         values = np.asarray(values)
-    if not isinstance(values, np.ndarray):
+    if not _is_ndarray(values):
         return None
     if values.ndim != 1:
         raise ValueError(f"Expected 1D array, got shape {values.shape}")
@@ -906,22 +942,22 @@ def _build_numeric_struct_array(
         raise ValueError(f"Unknown NumberType: {number_type!r}")
 
     if null_mask.any():
-        return pa.StructArray.from_arrays(
+        return _struct_array_from(
             [
                 pa.array(value, type=pa.float64(), mask=null_mask),
                 pa.array(numerator, type=pa.int64(), mask=null_mask),
                 pa.array(denominator, type=pa.int64(), mask=null_mask),
             ],
-            fields=list(RATIONAL_STRUCT_TYPE),
+            fields=_member_fields(RATIONAL_STRUCT_TYPE),
             mask=pa.array(null_mask),
         )
-    return pa.StructArray.from_arrays(
+    return _struct_array_from(
         [
             pa.array(value, type=pa.float64()),
             pa.array(numerator, type=pa.int64()),
             pa.array(denominator, type=pa.int64()),
         ],
-        fields=list(RATIONAL_STRUCT_TYPE),
+        fields=_member_fields(RATIONAL_STRUCT_TYPE),
     )
 
 
@@ -935,21 +971,21 @@ def _pass_number_struct_array(values: Any) -> pa.StructArray | None:
     null numerator or denominator, is left to the per-row reader, which
     knows what such a cell means.
     """
-    if isinstance(values, pa.ChunkedArray):
+    if _is_chunked(values):
         values = values.combine_chunks()
     if not isinstance(values, pa.StructArray) or [
-        (field.name, field.type) for field in values.type
-    ] != [(field.name, field.type) for field in RATIONAL_STRUCT_TYPE]:
+        (field.name, field.type) for field in _member_fields(values.type)
+    ] != [(field.name, field.type) for field in _member_fields(RATIONAL_STRUCT_TYPE)]:
         return None
     valid = values.is_valid()
     # flatten() applies the slice offset and nulls every side of a null cell.
-    sides = values.flatten()
+    sides: list[pa.Array[Any]] = list(values.flatten())
     incomplete = pc.and_(valid, pc.or_(sides[1].is_null(), sides[2].is_null()))
     if pc.any(incomplete).as_py():
         return None
     return in_lowest_terms(
-        pa.StructArray.from_arrays(
-            sides, fields=list(RATIONAL_STRUCT_TYPE), mask=pc.invert(valid)
+        _struct_array_from(
+            sides, fields=_member_fields(RATIONAL_STRUCT_TYPE), mask=pc.invert(valid)
         )
     )
 
@@ -995,13 +1031,14 @@ def in_lowest_terms(numbers: Any) -> pa.StructArray:
         >>> in_lowest_terms(numbers).to_pylist()
         [{'value': 0.5, 'numerator': 1, 'denominator': 2}]
     """
-    if isinstance(numbers, pa.ChunkedArray):
+    if _is_chunked(numbers):
         numbers = numbers.combine_chunks()
     names = numbers.type.names
     # flatten() applies the slice offset and nulls every member of a null cell.
     members = numbers.flatten()
     at_n, at_d = names.index("numerator"), names.index("denominator")
-    numerator, denominator = members[at_n], members[at_d]
+    numerator: pa.Array[Any] = members[at_n]
+    denominator: pa.Array[Any] = members[at_d]
     complete = pc.and_(numerator.is_valid(), denominator.is_valid())
     n, d = _lowest_terms(
         numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64),
@@ -1009,8 +1046,8 @@ def in_lowest_terms(numbers: Any) -> pa.StructArray:
     )
     members[at_n] = pc.if_else(complete, pa.array(n, pa.int64()), numerator)
     members[at_d] = pc.if_else(complete, pa.array(d, pa.int64()), denominator)
-    return pa.StructArray.from_arrays(
-        members, fields=list(numbers.type), mask=numbers.is_null()
+    return _struct_array_from(
+        members, fields=_member_fields(numbers.type), mask=numbers.is_null()
     )
 
 
@@ -1053,12 +1090,14 @@ def build_coordinate_struct_array(objects: Iterable[Any]) -> pa.StructArray:
 
 _ADDITIVE_OPERATIONS: frozenset[str] = frozenset({"add", "subtract"})
 
-_OPERATIONS: dict[str, Any] = {
+_OPERATIONS: dict[str, Callable[[Any, Any], Any]] = {
     "add": operator.add,
     "subtract": operator.sub,
     "multiply": operator.mul,
-    "divide": operator.truediv,
-    "floor_divide": operator.floordiv,
+    # ``a / b`` and ``a // b`` are what ``operator.truediv`` and
+    # ``operator.floordiv`` compute; typeshed leaves those two unannotated.
+    "divide": lambda a, b: a / b,
+    "floor_divide": lambda a, b: a // b,
 }
 
 
@@ -1223,7 +1262,7 @@ def combine_number_columns(
     )
 
 
-_COLUMN_KERNELS: dict[str, Any] = {
+_COLUMN_KERNELS: dict[str, Callable[[Any, Any], Any]] = {
     "add": pc.add,
     "subtract": pc.subtract,
     "multiply": pc.multiply,
@@ -1240,7 +1279,7 @@ _OPERATION_SYMBOLS: dict[str, str] = {
 }
 
 
-_COMPARISON_KERNELS: dict[str, Any] = {
+_COMPARISON_KERNELS: dict[str, Callable[[Any, Any], Any]] = {
     "equal": pc.equal,
     "less": pc.less,
     "less_equal": pc.less_equal,
@@ -1253,11 +1292,11 @@ _CROSS_MULTIPLICATION_TYPE = pa.decimal256(37, 0)
 
 
 def compare_number_column(
-    column: pa.Array,
-    number: int | float | Fraction | pa.Array,
+    column: pa.Array[Any],
+    number: int | float | Fraction | pa.Array[Any],
     comparison: str,
     number_type: NumberType,
-) -> pa.Array:
+) -> pa.BooleanArray:
     """Compare a column of storage cells with a number, as the column reads.
 
     An ``int`` or ``fraction`` column is compared exactly with an exact
@@ -1293,8 +1332,8 @@ def compare_number_column(
     if isinstance(number, (pa.Array, pa.ChunkedArray)):
         number = _struct_array(number)
         valid = pc.and_(valid, number.is_valid())
-        float_side: Any = number.field("value")
-        ratio = number.field("numerator"), number.field("denominator")
+        float_side: Any = _struct_child(number, "value")
+        ratio = _struct_child(number, "numerator"), _struct_child(number, "denominator")
     elif isinstance(number, float):
         if math.isnan(number):
             raise ValueError("NaN names no position: it compares with no cell")
@@ -1308,15 +1347,15 @@ def compare_number_column(
             pa.scalar(Decimal(exact.denominator), _CROSS_MULTIPLICATION_TYPE),
         )
     if ratio is None or number_type is NumberType.float:
-        compared = kernel(column.field("value"), float_side)
+        compared = kernel(_struct_child(column, "value"), float_side)
     else:
         numerator, denominator = ratio
         wide = _CROSS_MULTIPLICATION_TYPE
         left = pc.multiply(
-            pc.cast(column.field("numerator"), wide), pc.cast(denominator, wide)
+            _struct_child(column, "numerator").cast(wide), denominator.cast(wide)
         )
         right = pc.multiply(
-            pc.cast(column.field("denominator"), wide), pc.cast(numerator, wide)
+            _struct_child(column, "denominator").cast(wide), numerator.cast(wide)
         )
         compared = kernel(left, right)
     # A struct's own nulls do not reach its members; carry them over.
@@ -1338,12 +1377,12 @@ def _combine_float_columns(
     return build_number_struct_array(result, number_type=NumberType.float)
 
 
-def _float_side(array: pa.Array | pa.ChunkedArray) -> pa.Array:
+def _float_side(array: pa.Array[Any] | pa.ChunkedArray[Any]) -> pa.Array[Any]:
     """The float side of a storage column, null where a cell is null."""
-    array = _struct_array(array)
+    column = _struct_array(array)
     return pc.if_else(
-        array.is_valid(),
-        pc.cast(array.field("value"), pa.float64()),
+        column.is_valid(),
+        _struct_child(column, "value").cast(pa.float64()),
         pa.scalar(None, type=pa.float64()),
     )
 
@@ -1464,13 +1503,13 @@ def _combine_exact_columns(
         values[position] = float(result)
 
     null = ~valid
-    return pa.StructArray.from_arrays(
+    return _struct_array_from(
         [
             pa.array(values, pa.float64(), mask=null),
             pa.array(numerator, pa.int64(), mask=null),
             pa.array(denominator, pa.int64(), mask=null),
         ],
-        fields=list(RATIONAL_STRUCT_TYPE),
+        fields=_member_fields(RATIONAL_STRUCT_TYPE),
         mask=pa.array(null),
     )
 
@@ -1485,7 +1524,9 @@ def _ratio_sides(
     number :func:`struct_to_coordinate` reads. The members of other rows are
     placeholders.
     """
-    members = dict(zip(column.type.names, column.flatten(), strict=True))
+    members: dict[str, pa.Array[Any]] = dict(
+        zip(column.type.names, column.flatten(), strict=True)
+    )
     numerator, denominator = members["numerator"], members["denominator"]
     complete = pc.and_(numerator.is_valid(), denominator.is_valid()).to_numpy(
         zero_copy_only=False
@@ -1583,14 +1624,14 @@ def infer_number_type(values: Any) -> NumberType:
     takes the most expressive kind present, so nothing is flattened on the
     way in.
     """
-    if isinstance(values, pa.ChunkedArray):
+    if _is_chunked(values):
         values = values.combine_chunks()
-    if isinstance(values, pa.Array):
+    if _is_array(values):
         if pa.types.is_integer(values.type):
             return NumberType.int
         if pa.types.is_floating(values.type):
             return NumberType.float
-    elif isinstance(values, np.ndarray):
+    elif _is_ndarray(values):
         if np.issubdtype(values.dtype, np.integer):
             return NumberType.int
         if np.issubdtype(values.dtype, np.floating):

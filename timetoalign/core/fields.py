@@ -48,7 +48,9 @@ from typing import (
     get_origin,
 )
 
+import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel
@@ -169,6 +171,16 @@ def _is_arrow_field(value: object) -> TypeGuard[pa.Field[pa.DataType]]:
 def _is_arrow_column(value: object) -> TypeGuard[pa.Array[Any] | pa.ChunkedArray[Any]]:
     """Whether *value* is a PyArrow array, chunked or not, of any value type."""
     return isinstance(value, (pa.Array, pa.ChunkedArray))
+
+
+def _is_ndarray(value: object) -> TypeGuard[npt.NDArray[Any]]:
+    """Whether *value* is a NumPy array, of any shape and dtype."""
+    return isinstance(value, np.ndarray)
+
+
+def _is_series(value: object) -> TypeGuard[pd.Series[Any]]:
+    """Whether *value* is a pandas Series, of any dtype."""
+    return isinstance(value, pd.Series)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

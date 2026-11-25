@@ -11,6 +11,7 @@ import pandas as pd
 
 from .enums import NumberType, TimeUnit
 from .events import Address
+from .fields import _is_ndarray, _is_series
 from .time import Coordinate, IdCoordinate, TimeScalar, number_from_json, number_to_json
 
 CoordinateInput: TypeAlias = (
@@ -174,19 +175,9 @@ def _unsupported_collection(value: object) -> TypeError:
     )
 
 
-def _is_series(value: object) -> TypeGuard[pd.Series[Any]]:
-    """Whether *value* is a pandas Series, of any dtype."""
-    return isinstance(value, pd.Series)
-
-
 def _is_index(value: object) -> TypeGuard[pd.Index[Any]]:
     """Whether *value* is a pandas Index, of any dtype."""
     return isinstance(value, pd.Index)
-
-
-def _is_ndarray(value: object) -> TypeGuard[np.ndarray[Any, np.dtype[Any]]]:
-    """Whether *value* is a NumPy array, of any shape and dtype."""
-    return isinstance(value, np.ndarray)
 
 
 def _is_sequence(value: object) -> TypeGuard[Sequence[object]]:

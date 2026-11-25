@@ -100,6 +100,8 @@ from .fields import (
     _is_arrow_field,
     _is_dict,
     _is_list,
+    _is_ndarray,
+    _is_series,
     _is_tuple,
     _member_fields,
     _struct_array,
@@ -190,14 +192,6 @@ def _is_chunked(value: object) -> TypeGuard[pa.ChunkedArray[Any]]:
 
 def _is_array(value: object) -> TypeGuard[pa.Array[Any]]:
     return isinstance(value, pa.Array)
-
-
-def _is_ndarray(value: object) -> TypeGuard[npt.NDArray[Any]]:
-    return isinstance(value, np.ndarray)
-
-
-def _is_series(value: object) -> TypeGuard[pd.Series[Any]]:
-    return isinstance(value, pd.Series)
 
 
 def _is_numpy_integer(value: object) -> TypeGuard[np.integer[Any]]:

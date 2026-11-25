@@ -540,6 +540,14 @@ class ComputedField:
 
         if not operands:
             raise ValueError(f"Invalid formula: {formula}")
+        # Operands and operators alternate, an operand first and last; a
+        # character that is neither (such as "%") is no token, so a formula
+        # holding one fails here instead of dropping an operand.
+        kinds = ["operator" if op else "operand" for _, _, op in tokens]
+        if kinds != ["operand", "operator"] * (len(kinds) // 2) + ["operand"]:
+            raise ValueError(
+                f"A formula alternates operands and the operators + - * /: {formula!r}"
+            )
         if not names_a_column:
             raise ValueError(f"A formula names at least one column: {formula!r}")
 

@@ -210,6 +210,16 @@ class TestComputedFieldNumbers:
         assert result.type == arrow_type
         assert result.to_pylist() == values
 
+    @pytest.mark.parametrize(
+        "formula", ["n % 2", "n % n", "n 2", "- n", "n * * 2", "n +"]
+    )
+    def test_formula_not_alternating_is_refused(self, formula):
+        with pytest.raises(ValueError) as caught:
+            ComputedField("c", formula=formula).compute(_number_table())
+        assert str(caught.value) == (
+            f"A formula alternates operands and the operators + - * /: {formula!r}"
+        )
+
     @pytest.mark.parametrize("formula", ["2", "2 * 3"])
     def test_formula_without_a_column_is_refused(self, formula):
         with pytest.raises(ValueError) as caught:

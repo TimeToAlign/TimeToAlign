@@ -11,7 +11,7 @@ This directory contains comprehensive tests for the `timetoalign.loader.tabular`
 | `test_lab_loader.py` | 30 | `LabLoader` (.lab audio-region files) — see §LabLoader below |
 | `test_correctness.py` | 11 | ZERO TOLERANCE validation with real specimens |
 | `test_error_handling.py` | 15 | Graceful degradation and error message clarity |
-| `test_struct_columns.py` | 20 | `Field`, `ComputedField`, `ConvertedField` unit tests and JSON-to-struct parsing helper |
+| `test_struct_columns.py` | 21 | `Field`, `ComputedField`, `ConvertedField` unit tests and JSON-to-struct parsing helper |
 | `test_solo_loader.py` | `SoloLoader` round-trip against the Chopin Nocturne ``.solo`` specimen — see §SoloLoader below |
 | `profile_vectorized.py` | - | Performance profiling script (not a test file) |
 
@@ -122,6 +122,13 @@ and never a column name, on the table `n = [3, 4]` (int64), `x = [1.0, 2.0]`
 - The column references are read as before: `n * n` gives `[9, 16]`,
   `n + x` `[4.0, 6.0]`, and a column whose name starts with a digit
   (`2nd = [5, 6]`) is still a column: `2nd + n` gives `[8, 10]`.
+- Operands and operators alternate, starting and ending with an operand.
+  `n % 2`, `n % n`, `n 2`, `- n`, `n * * 2` and `n +` are refused with a
+  `ValueError` naming the formula. `%` is no operator, and the tokenizer
+  skips a character it does not know, so without this check `n % 2` would
+  answer `n` itself, silently dropping the `2`; `n % n` did answer `n`
+  before, and `- n`, `n +` and `n * * 2` failed with an `IndexError`. No
+  formula of the documented syntax is affected.
 - A formula without any column reference (`2`, `2 * 3`) names nothing to
   compute over and is refused with a `ValueError` naming the formula; it
   raised a `KeyError` (`Column '2' not found`) before, so no formula that

@@ -1294,8 +1294,8 @@ _CROSS_MULTIPLICATION_TYPE = pa.decimal256(37, 0)
 
 
 def compare_number_column(
-    column: pa.Array[Any],
-    number: int | float | Fraction | pa.Array[Any],
+    column: pa.Array[Any] | pa.ChunkedArray[Any],
+    number: int | float | Fraction | pa.Array[Any] | pa.ChunkedArray[Any],
     comparison: str,
     number_type: NumberType,
 ) -> pa.BooleanArray:

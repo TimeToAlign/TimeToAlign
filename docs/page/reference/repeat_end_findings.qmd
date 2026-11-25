@@ -1,0 +1,34 @@
+# repeat_end_findings { #timetoalign.timelines.flow.repeat_end_findings }
+
+```python
+timelines.flow.repeat_end_findings(measures)
+```
+
+Find the repeat ends whose repeat would begin right behind a last bracket.
+
+A repeat end without a printed start is played from the start of its
+section. Where the last sign before it that closes anything (a repeat
+end, or the last bracket of alternative endings) is a last bracket, the
+passage it repeats begins, as a reader takes it, right behind that
+bracket, and playing it from the start of the section goes back over the
+brackets. Each such repeat end is returned with the count of its
+measure; nothing is added to the measures or their flow control.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                                                                        | Description                                              | Default    |
+|----------|-----------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|------------|
+| measures | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) \| [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\] | The measures, as for :func:`flow_control_from_measures`. | _required_ |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                   | Description                                                        |
+|--------|------------------------------------------------------------------------|--------------------------------------------------------------------|
+|        | [MeasureFinding](`timetoalign.timelines.flow.measures.MeasureFinding`) | One finding of kind ``repeat_end_behind_brackets`` per such repeat |
+|        | ...                                                                    | end, in printed order.                                             |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                            |
+|--------|----------------------------|----------------------------------------|
+|        | [ValueError](`ValueError`) | As :func:`flow_control_from_measures`. |

@@ -1,0 +1,14 @@
+# PlacedGap { #timetoalign.timelines.PlacedGap }
+
+```python
+timelines.PlacedGap(length, start)
+```
+
+A stretch of the virtual axis that nothing of the root fills.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                        | Description                          |
+|--------|---------------------------------------------|--------------------------------------|
+| length | [Duration](`timetoalign.core.Duration`)     | How long the gap is.                 |
+| start  | [Coordinate](`timetoalign.core.Coordinate`) | Where it begins on the virtual axis. |

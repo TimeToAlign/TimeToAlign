@@ -1,0 +1,55 @@
+# play { #timetoalign.timelines.play }
+
+```python
+timelines.play(
+    registry,
+    length,
+    *,
+    convention=FlowConvention.default,
+    believer=None,
+    beliefs=DEFAULT_BELIEFS,
+)
+```
+
+Play flow control over an axis of *length*.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                                                  | Description                                                                                                                                                                                                                   | Default                  |
+|------------|-------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------|
+| registry   | [FlowControlRegistry](`timetoalign.timelines.flowcontrol.FlowControlRegistry`)                        | The flow control.                                                                                                                                                                                                             | _required_               |
+| length     | [_Number](`timetoalign.timelines.flow.engine._Number`) \| [Coordinate](`timetoalign.core.Coordinate`) | The length of the axis: a coordinate on the registry's axis, or a bare number on a bound registry.                                                                                                                            | _required_               |
+| convention | [FlowConvention](`timetoalign.core.enums.FlowConvention`) \| [str](`str`)                             | ``default`` (every Jump and Break acts), ``single`` (once through) or ``printed`` (the axis as it stands).                                                                                                                    | `FlowConvention.default` |
+| believer   | [str](`str`) \| None                                                                                  | The actor whose beliefs alone decide which elements are read (:meth:`FlowControlRegistry.active_elements <timetoalign.timelines.flowcontrol.FlowControlRegistry.active_elements>`); None reads the elements no actor rejects. | `None`                   |
+| beliefs    | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                | With a believer, the belief states read; every state but ``"false"`` by default.                                                                                                                                              | `DEFAULT_BELIEFS`        |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                         | Description                                                    |
+|--------|--------------------------------------------------------------|----------------------------------------------------------------|
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | The runs in the order played and the findings. Findings are a  |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | result of ``default`` alone: ``single`` and ``printed`` return |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | none, also where going through once ends at a Break before the |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | length or leaves a stretch unplayed. What is wrong with flow   |
+|        | [FlowResult](`timetoalign.timelines.flow.engine.FlowResult`) | control shows in its ``default`` flow.                         |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the length is negative or not on the registry's axis, or the elements read cannot be played, in the words the registry refuses an element with: a ``to`` or an ``after`` names an element that is not read (a rejected one names nothing), two of the Jumps read lie at one coordinate (a rejected Jump and its replacement, read for a believer who rejects neither), or an element, or the place a destination goes on at, lies before 0 or beyond the length. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> from timetoalign.timelines.flowcontrol import (
+...     FlowControlRegistry, Jump, JumpDestination)
+>>> registry = FlowControlRegistry(unit="quarters")
+>>> _ = registry.add(
+...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+>>> [str(run) for run in play(registry, 12).runs]
+['[0, 8) quarters', '[0, 12) quarters']
+>>> [str(run) for run in play(registry, 12, convention="single").runs]
+['[0, 12) quarters']
+```

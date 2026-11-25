@@ -1,0 +1,72 @@
+# flow_control_from_measures { #timetoalign.timelines.flow.flow_control_from_measures }
+
+```python
+timelines.flow.flow_control_from_measures(measures)
+```
+
+Return the flow control a measure map states.
+
+Coordinates are the measures' ``qstamp`` values: quarters, exact.
+
+- A row with ``start_repeat`` gives a :class:`JumpTarget`
+  (``repeat_start``) at its start.
+- A row with ``end_repeat`` gives a destination (``repeat_end``,
+  ``repeat_count: 1``) of the Jump at its end, ``to`` the nearest repeat
+  start before it that no earlier repeat end has closed, and without
+  place where there is none: nothing is added that the rows do not
+  state, a repeat start least of all.
+- Rows with ``volta`` are brackets of alternative endings; adjacent rows
+  stating the same passes are one bracket, and adjacent brackets naming
+  different passes are one run. A run gives ONE Jump at the start of its
+  first bracket with a destination per bracket (``volta``, ``passes``
+  the row's value): the first ``by: 0``, every other ``to`` a
+  :class:`JumpTarget` (``volta``) at that bracket's first row, where a
+  :class:`Break` (``volta``) lies as well.
+- The repeat ends closing the brackets of one run go back to one place,
+  the one the first of them closes. One closing another bracket than
+  the first is written ``reset: false``: it must not start the Jump
+  before the brackets again, whose passes it counts.
+
+Signs falling on one coordinate are destinations of one Jump. No row
+key says where a bracket ends, so no element does.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                                                                        | Description                                                                                                                                                                                                         | Default    |
+|----------|-----------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| measures | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) \| [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\] | A :class:`~timetoalign.timelines.MeasureMap`, or full rows as :meth:`MeasureMap.expand_rows <timetoalign.timelines.MeasureMap.expand_rows>` returns them. In either, ``volta`` is a pass number or several of them. | _required_ |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                           | Description                                                          |
+|--------|------------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The elements by coordinate and then by ID, each with an ID of its    |
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | own (``jump_1``, ``jump_target_1``, ...) that a registry mints again |
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | where it is taken.                                                   |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                 |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a measure states no ``qstamp`` or no ``actual_length``, or a ``volta`` that is neither a pass number nor a list of them. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.timelines import MeasureMap
+>>> bars = MeasureMap.from_rows(
+...     [
+...         {"count": 1, "time_signature": "4/4"},
+...         {"count": 2, "start_repeat": True},
+...         {"count": 3, "end_repeat": True},
+...         {"count": 4},
+...     ]
+... )
+>>> start, repeat = flow_control_from_measures(bars)
+>>> start
+JumpTarget('jump_target_1', repeat_start @ 4 quarters)
+>>> repeat
+Jump('jump_1' @ 12 quarters, 1 destination)
+>>> repeat.targets[0].to_dict()
+{'to': 'jump_target_1', 'repeat_count': 1, 'manifestation': 'repeat_end'}
+```

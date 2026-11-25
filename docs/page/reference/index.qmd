@@ -76,21 +76,48 @@ Tempo segments that generate a labelled lattice of beats on a seconds axis.
 
 ## Flow Control
 
-Score flow-graph traversal, atomic-section labelling, and structural diagnostics.
+The elements of a timeline's flow control, the engine that plays them, FlowMaps over the stretches of a root timeline, and virtual timelines.
 
 | | |
 | --- | --- |
-| [Flow](Flow.qmd#timetoalign.timelines.Flow) | A computed flow (sequence of measure visitations). |
-| [FlowMap](FlowMap.qmd#timetoalign.timelines.FlowMap) | Coordinate transformation map for flow control. |
-| [FlowMapSection](FlowMapSection.qmd#timetoalign.timelines.FlowMapSection) | A section mapping in a FlowMap. |
-| [FlowControllerBase](FlowControllerBase.qmd#timetoalign.timelines.FlowControllerBase) | Abstract base class for computing flow control transformations. |
-| [ScoreFlowController](ScoreFlowController.qmd#timetoalign.timelines.ScoreFlowController) | Score flow controller specialized for score data (MeasureData). |
-| [SegmentNameGenerator](SegmentNameGenerator.qmd#timetoalign.timelines.SegmentNameGenerator) | Assign display labels to a run of atomic sections. |
-| [AtomicSection](AtomicSection.qmd#timetoalign.timelines.AtomicSection) | Smallest indivisible traversal unit (similar to partitura's segment model). |
-| [PlaythroughSection](PlaythroughSection.qmd#timetoalign.timelines.PlaythroughSection) | A contiguous group of atomic sections in a specific traversal. |
-| [FlowDiagnostic](FlowDiagnostic.qmd#timetoalign.timelines.FlowDiagnostic) | A structural-invariant violation found in an atomic flow graph. |
-| [load_valid_flows](load_valid_flows.qmd#timetoalign.timelines.load_valid_flows) | Load all valid flows from a .flow.csv file, grouped by flow_mode. |
-| [create_unfolded_timeline](create_unfolded_timeline.qmd#timetoalign.timelines.create_unfolded_timeline) | Create an unfolded timeline from a folded source via structural slicing. |
+| [FlowControlRegistry](FlowControlRegistry.qmd#timetoalign.timelines.FlowControlRegistry) | The flow control of one timeline: its elements in canonical order. |
+| [FlowControlElement](FlowControlElement.qmd#timetoalign.timelines.FlowControlElement) | What the five kinds of flow-control element share. |
+| [Jump](Jump.qmd#timetoalign.timelines.Jump) | Where the flow may leave the axis, and every place it may go on at. |
+| [JumpDestination](JumpDestination.qmd#timetoalign.timelines.JumpDestination) | One place a Jump may go on at, and when it does. |
+| [JumpTarget](JumpTarget.qmd#timetoalign.timelines.JumpTarget) | A place a destination names: a repeat start, a segno, a coda, a bracket. |
+| [Break](Break.qmd#timetoalign.timelines.Break) | A place the flow never goes on across. |
+| [SectionBreak](SectionBreak.qmd#timetoalign.timelines.SectionBreak) | Where a section ends: a movement boundary, a section of a piece. |
+| [Barline](Barline.qmd#timetoalign.timelines.Barline) | A barline the source prints: a double or a final barline. |
+| [FlowCondition](FlowCondition.qmd#timetoalign.timelines.FlowCondition) | When a destination is taken, or a Break ends the flow. |
+| [DestinationReference](DestinationReference.qmd#timetoalign.timelines.DestinationReference) | One destination of a Jump, named by that Jump and its place. |
+| [PassesFrom](PassesFrom.qmd#timetoalign.timelines.PassesFrom) | The passes from the *first* on: ``{from: n}`` in a manifest. |
+| [play](play.qmd#timetoalign.timelines.play) | Play flow control over an axis of *length*. |
+| [atomic_sections](atomic_sections.qmd#timetoalign.timelines.atomic_sections) | Return the stretches of the axis that flow control never divides. |
+| [FlowResult](FlowResult.qmd#timetoalign.timelines.FlowResult) | A flow: what is played, in order. |
+| [FlowFinding](FlowFinding.qmd#timetoalign.timelines.FlowFinding) | Something playing flow control found. |
+| [AtomicSection](AtomicSection.qmd#timetoalign.timelines.AtomicSection) | A stretch of the axis that flow control never divides. |
+| [PlayedFlow](PlayedFlow.qmd#timetoalign.timelines.PlayedFlow) | The flow a timeline's flow control plays, and what playing it found. |
+| [FlowMap](FlowMap.qmd#timetoalign.timelines.FlowMap) | One order in which stretches of one root timeline are played. |
+| [ResolvedFlowMap](ResolvedFlowMap.qmd#timetoalign.timelines.ResolvedFlowMap) | A played order as stretches of a root timeline's axis, placed in order. |
+| [PlacedChunk](PlacedChunk.qmd#timetoalign.timelines.PlacedChunk) | A stretch of the root timeline, placed on the virtual axis. |
+| [PlacedGap](PlacedGap.qmd#timetoalign.timelines.PlacedGap) | A stretch of the virtual axis that nothing of the root fills. |
+| [VirtualTimeline](VirtualTimeline.qmd#timetoalign.timelines.VirtualTimeline) | The statement that a map was applied to a timeline, giving a timeline. |
+| [ComputedFlows](ComputedFlows.qmd#timetoalign.timelines.ComputedFlows) | What computing a timeline's flows from its flow control wrote. |
+| [StatedFlow](StatedFlow.qmd#timetoalign.timelines.StatedFlow) | What writing the order of measures a source states wrote. |
+| [Gap](Gap.qmd#timetoalign.core.Gap) | A stretch of a played order that nothing of the timeline fills. |
+| [FlowManifestation](FlowManifestation.qmd#timetoalign.core.FlowManifestation) | What a flow-control element looks like in the score. |
+| [FlowConvention](FlowConvention.qmd#timetoalign.core.FlowConvention) | How flow control is played into a flow. |
+| [FlowFindingKind](FlowFindingKind.qmd#timetoalign.core.FlowFindingKind) | What playing flow control found. |
+| [MeasureFindingKind](MeasureFindingKind.qmd#timetoalign.core.MeasureFindingKind) | What a look at a score's measures found about their flow control. |
+| [FlowControlDraft](FlowControlDraft.qmd#timetoalign.timelines.flow.FlowControlDraft) | Flow control being written from a score, before it joins a registry. |
+| [MeasureRange](MeasureRange.qmd#timetoalign.timelines.flow.MeasureRange) | A right-open range of measure counts, as a ``.flow.csv`` row states one. |
+| [MeasureFinding](MeasureFinding.qmd#timetoalign.timelines.flow.MeasureFinding) | Something a look at the measures found about their flow control. |
+| [flow_control_from_measures](flow_control_from_measures.qmd#timetoalign.timelines.flow.flow_control_from_measures) | Return the flow control a measure map states. |
+| [measure_keys_from_flow_control](measure_keys_from_flow_control.qmd#timetoalign.timelines.flow.measure_keys_from_flow_control) | Return the row keys that flow control states, one object per measure. |
+| [measure_order_from_successors](measure_order_from_successors.qmd#timetoalign.timelines.flow.measure_order_from_successors) | Walk the successors a source states into the order of measures they give. |
+| [measure_ranges](measure_ranges.qmd#timetoalign.timelines.flow.measure_ranges) | State stretches of the axis as right-open ranges of measure counts. |
+| [read_flow_csv](read_flow_csv.qmd#timetoalign.timelines.flow.read_flow_csv) | Read a ``.flow.csv`` file: the measure-count ranges of each flow. |
+| [repeat_end_findings](repeat_end_findings.qmd#timetoalign.timelines.flow.repeat_end_findings) | Find the repeat ends whose repeat would begin right behind a last bracket. |
 
 ## Conversion Maps
 

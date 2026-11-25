@@ -19,8 +19,8 @@ The loader handles:
   :meth:`_apply_anacrusis_convention`)
 - ``-1`` in ``next``, the measure-table spelling of the end of the piece:
   the rows are read without it (it names no row) and the measure map
-  leaves it out, while ``expanded_data``, the measure table and
-  :meth:`compute_default_traversal` keep it where the file states it
+  leaves it out, while ``expanded_data`` and the measure table keep it
+  where the file states it
 
 Known limitation: a ``.mm.json`` file states no offset for the parts of
 an inner split bar, so they load as ``IrregularMeasure``s, whereas an
@@ -55,45 +55,3 @@ The measure data also summarises the flow control it carries:
 >>> summary['repeat_starts'], summary['repeat_ends']
 (2, 3)
 ```
-
-## Methods
-
-| Name | Description |
-| --- | --- |
-| [compute_default_traversal](#timetoalign.loader.score.MeasureMapLoader.compute_default_traversal) | Compute the default traversal sequence from the expanded data. |
-| [get_traversal_summary](#timetoalign.loader.score.MeasureMapLoader.get_traversal_summary) | Get summary of the default traversal. |
-
-### compute_default_traversal { #timetoalign.loader.score.MeasureMapLoader.compute_default_traversal }
-
-```python
-loader.score.MeasureMapLoader.compute_default_traversal()
-```
-
-Compute the default traversal sequence from the expanded data.
-
-The walk starts at MC 1 and follows the 'next' field, using visit
-counts to choose which branch to take at repeat points: the n-th
-visit of a measure takes its n-th ``next`` entry, or its last one
-once the entries are used up. It stops at ``-1`` (the end of the
-piece), at a measure without ``next`` entries or not in the data,
-and after ten times as many steps as there are measures.
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                           | Description                                                |
-|--------|--------------------------------|------------------------------------------------------------|
-|        | [list](`list`)\[[int](`int`)\] | List of MC values in traversal order (empty without data). |
-
-### get_traversal_summary { #timetoalign.loader.score.MeasureMapLoader.get_traversal_summary }
-
-```python
-loader.score.MeasureMapLoader.get_traversal_summary()
-```
-
-Get summary of the default traversal.
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                | Description                     |
-|--------|-----------------------------------------------------|---------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dict with traversal statistics. |

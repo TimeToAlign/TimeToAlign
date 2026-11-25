@@ -65,7 +65,6 @@ Coordinate(Fraction(1, 3), quarters)
 | Name | Description |
 | --- | --- |
 | [add_timeline](#timetoalign.timelines.TimelineGroup.add_timeline) | Add a member; its whole extent ``[0, length]`` spans the group. |
-| [apply_flow](#timetoalign.timelines.TimelineGroup.apply_flow) | Unfold ALL timelines in this group via a single flow. |
 | [diagram](#timetoalign.timelines.TimelineGroup.diagram) | Generate ASCII diagram for this group. |
 | [from_dict](#timetoalign.timelines.TimelineGroup.from_dict) | Read a group from a TimeToShare manifest. |
 | [from_file](#timetoalign.timelines.TimelineGroup.from_file) | Read a manifest file in any serialization, as ``from_dict`` reads a manifest. |
@@ -145,78 +144,6 @@ A segment line is locked when it joins, as when it becomes a child.
 IdCoordinate(2.0, seconds, 'cpt_1')
 >>> group.get_timestamp_at(2.0, "cpt_1").get_coordinate_for("dgt_2", format="int")
 500
-```
-
-### apply_flow { #timetoalign.timelines.TimelineGroup.apply_flow }
-
-```python
-timelines.TimelineGroup.apply_flow(
-    flow,
-    flow_controller,
-    reference_timeline_id,
-    *,
-    include_children=True,
-    name=None,
-)
-```
-
-Unfold ALL timelines in this group via a single flow.
-
-Uses the flow controller's repeat structure to compute section
-boundaries in the reference timeline's coordinate space, then
-resolves those boundaries into every other timeline's coordinates
-via the group's linear conversion. Each member is unfolded along its
-own resolved played spans: a new timeline of the member's **same
-concrete type** with one appended child (plus a matching named Region)
-per section, in unfolded coordinates.
-
-This is the group-level equivalent of
-`timetoalign.timelines.flow.create_unfolded_timeline`, but
-applied to every member at once. It shares the append-children
-assembly via `unfold_via_flowmap`, so each member's children and
-Regions carry the same per-section names as the single-timeline path
-(repeats suffixed ``-rend2``, ``-rend3`` …).
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name                  | Type                   | Description                                                                                                                                                                  | Default    |
-|-----------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| flow                  | \'Flow\'               | The computed ``Flow`` (from ``controller.compute_flow()``).                                                                                                                  | _required_ |
-| flow_controller       | \'FlowControllerBase\' | The ``FlowControllerBase`` that produced the flow. Required to convert flow sections to quarter-beat coordinates.                                                            | _required_ |
-| reference_timeline_id | [str](`str`)           | ID of the timeline whose coordinate space the flow is defined in (typically the score CLT).  Section boundaries are resolved here first, then mapped to all other timelines. | _required_ |
-| include_children      | [bool](`bool`)         | Whether to recursively slice child timelines within each section.                                                                                                            | `True`     |
-| name                  | [str](`str`) \| None   | Name for the returned group.  Defaults to ``f"{self.name} (unfolded)"``.                                                                                                     | `None`     |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type              | Description                                                            |
-|--------|-------------------|------------------------------------------------------------------------|
-|        | \'TimelineGroup\' | A new ``TimelineGroup`` containing the unfolded timelines. Each        |
-|        | \'TimelineGroup\' | member keeps its original timeline ID, is the same concrete type as    |
-|        | \'TimelineGroup\' | its source, and carries one appended child and Region per section.     |
-|        | \'TimelineGroup\' | A section child is named after its section; its id is minted           |
-|        | \'TimelineGroup\' | (``clt_2``, ...), so that timeline ids stay unique across the          |
-|        | \'TimelineGroup\' | group.                                                                 |
-|        | \'TimelineGroup\' | The reference timeline additionally carries a reverse FlowMap          |
-|        | \'TimelineGroup\' | (id ``"source"``) and a forward FlowMap (id ``f"forward_{flow.id}"``). |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type                       | Description                                        |
-|--------|----------------------------|----------------------------------------------------|
-|        | [KeyError](`KeyError`)     | If ``reference_timeline_id`` is not in the group.  |
-|        | [ValueError](`ValueError`) | If the flow controller cannot compute QB sections. |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> loader = Ms3Loader.from_file("notes.tsv", "measures.tsv")
->>> controller = loader.create_flow_controller()
->>> flow = controller.compute_flow(FlowMode.default)
->>> score_group = TimelineGroup(
-...     id="score", timelines=[clt_1, dgt_1, openscore]
-... )
->>> unfolded = score_group.apply_flow(flow, controller, "clt_1")
 ```
 
 ### diagram { #timetoalign.timelines.TimelineGroup.diagram }
@@ -823,15 +750,15 @@ Get the group's timestamps as a table, one row per cross-section.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                                                                                                                                                                | Description                                                                                                                                                                                                                                                      | Default   |
-|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) \| None | Positions or event IDs to tabulate, one row each in input order. If None, the rows are the group's two stored timestamps: the common start and the common end, each member at ``0`` and at its length, exact in its declared number type.                        | `None`    |
-| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                                | Which timeline the positions refer to. Required for entries without an embedded timeline ID.                                                                                                                                                                     | `None`    |
-| within          | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                                | Only these timelines' coordinates in the table, one column each; ``None`` keeps every timeline.                                                                                                                                                                  | `None`    |
-| conversion_maps | [ConversionMapsSpec](`timetoalign.core.timestamp.ConversionMapsSpec`)                                                                                                                                                               | Whether to include C-Map fields from member timelines. - True (default): Include all attached C-Maps from all timelines - False/None: No C-Map fields                                                                                                            | `True`    |
-| format          | [TableFormat](`timetoalign.core.retrieval.TableFormat`)                                                                                                                                                                             | ``"table"`` (default) for a PyArrow table, ``"dataframe"`` for a pandas DataFrame.                                                                                                                                                                               | `'table'` |
-| fields          | \'ColumnNaming \| Callable\[\[str, dict\], str\] \| list\[str\] \| None\'                                                                                                                                                           | How to name the DataFrame fields (``format="dataframe"``): - None or ColumnNaming.name (default): Use timeline/cmap name - ColumnNaming.id: Use timeline/cmap id - Callable: Function taking (name, metadata_dict) -> new_name - list[str]: Explicit field names | `None`    |
-| units           | [bool](`bool`) \| None                                                                                                                                                                                                              | If True (the DataFrame default), append units to field names like "name (unit)".                                                                                                                                                                                 | `None`    |
+| Name            | Type                                                                                                                                                                                                                                | Description                                                                                                                                                                                                                                                       | Default   |
+|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) \| None | Positions or event IDs to tabulate, one row each in input order. If None, the rows are the group's two stored timestamps: the common start and the common end, each member at ``0`` and at its length, exact in its declared number type.                         | `None`    |
+| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                                | Which timeline the positions refer to. Required for entries without an embedded timeline ID.                                                                                                                                                                      | `None`    |
+| within          | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                                | Only these timelines' coordinates in the table, one column each; ``None`` keeps every timeline.                                                                                                                                                                   | `None`    |
+| conversion_maps | [ConversionMapsSpec](`timetoalign.core.timestamp.ConversionMapsSpec`)                                                                                                                                                               | Whether to include C-Map fields from member timelines. - True (default): Include all attached C-Maps from all timelines - False/None: No C-Map fields                                                                                                             | `True`    |
+| format          | [TableFormat](`timetoalign.core.retrieval.TableFormat`)                                                                                                                                                                             | ``"table"`` (default) for a PyArrow table, ``"dataframe"`` for a pandas DataFrame.                                                                                                                                                                                | `'table'` |
+| fields          | \'ColumnNaming \| Callable\[\[str, dict\], str\] \| list\[str\] \| None\'                                                                                                                                                           | How to name the DataFrame fields (``format="dataframe"``): - None or ColumnNaming.label (default): Use timeline/cmap name - ColumnNaming.id: Use timeline/cmap id - Callable: Function taking (name, metadata_dict) -> new_name - list[str]: Explicit field names | `None`    |
+| units           | [bool](`bool`) \| None                                                                                                                                                                                                              | If True (the DataFrame default), append units to field names like "name (unit)".                                                                                                                                                                                  | `None`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1130,8 +1057,10 @@ canonical YAML, without event rows or external references. An
 or Projections writes its tables beside the manifest and names them
 in its ``resources``: its manifest is written (validated and
 serialized) once before any table, and once more naming the tables
-written. The manifest is validated with its styling even where
-``styling=False`` leaves the styling out of the file.
+written. The manifest validated is the one the file holds: without
+its styling where ``styling=False`` leaves the styling out, so a
+manifest whose styling the format refuses (a named timestamp beyond
+the length its timeline was given since) is written without it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

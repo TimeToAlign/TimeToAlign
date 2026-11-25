@@ -9,7 +9,7 @@ timelines.Region(
     *,
     id=None,
     _minted=False,
-    _unknown_keys=dict(),
+    _unknown_keys=dict[str, Any](),
     _statement_state=dict(),
     _prefixes=dict(),
 )

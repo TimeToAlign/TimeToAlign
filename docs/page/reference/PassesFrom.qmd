@@ -1,0 +1,13 @@
+# PassesFrom { #timetoalign.timelines.PassesFrom }
+
+```python
+timelines.PassesFrom(first)
+```
+
+The passes from the *first* on: ``{from: n}`` in a manifest.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type         | Description                             |
+|--------|--------------|-----------------------------------------|
+| first  | [int](`int`) | The first pass that counts, at least 1. |

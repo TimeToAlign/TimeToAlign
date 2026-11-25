@@ -1,0 +1,49 @@
+# measure_keys_from_flow_control { #timetoalign.timelines.flow.measure_keys_from_flow_control }
+
+```python
+timelines.flow.measure_keys_from_flow_control(elements, measures)
+```
+
+Return the row keys that flow control states, one object per measure.
+
+The reverse of :func:`flow_control_from_measures` for the three keys it
+covers, read from what the elements look like (their manifestations):
+
+- ``start_repeat``: a :class:`JumpTarget` (``repeat_start``) lies at the
+  measure's start;
+- ``end_repeat``: the Jump at the measure's end has a ``repeat_end``
+  destination;
+- ``volta``: the measure lies under a bracket, whose passes are the
+  value (one pass as an integer, several as a list). A bracket begins
+  where a ``volta`` destination goes on (``by: 0`` at its Jump, ``to``
+  at its jump target) and ends where the next bracket of that Jump
+  begins.
+
+**Where the last bracket of a run ends is no fact of flow control.** It
+stays with the rows: the last bracket is given its first measure, and
+the measures following it for as long as *measures* state these very
+passes as their ``volta``.
+
+An element lying inside a measure, a bracket stating its passes as
+``{from: n}`` and a ``to`` naming no jump target among *elements* state
+no row key.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                                                                        | Description                                                                                                                             | Default    |
+|----------|-----------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|------------|
+| elements | [Iterable](`collections.abc.Iterable`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\]      | The flow control elements read.                                                                                                         | _required_ |
+| measures | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) \| [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\] | The measures whose positions (and ``volta`` values, for the last bracket of a run) are read, as for :func:`flow_control_from_measures`. | _required_ |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                  | Description                                                          |
+|--------|-----------------------------------------------------------------------|----------------------------------------------------------------------|
+|        | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] | ``{"count", "start_repeat", "end_repeat", "volta"}`` per measure, in |
+|        | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] | printed order; ``volta`` is None outside a bracket.                  |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                            |
+|--------|----------------------------|----------------------------------------|
+|        | [ValueError](`ValueError`) | As :func:`flow_control_from_measures`. |

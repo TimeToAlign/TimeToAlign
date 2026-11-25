@@ -1,0 +1,46 @@
+# atomic_sections { #timetoalign.timelines.atomic_sections }
+
+```python
+timelines.atomic_sections(
+    registry,
+    length,
+    *,
+    believer=None,
+    beliefs=DEFAULT_BELIEFS,
+)
+```
+
+Return the stretches of the axis that flow control never divides.
+
+The intervals between consecutive boundaries: 0, the length, the
+coordinates of Jumps, JumpTargets, Breaks and SectionBreaks, and the
+places of every destination other than ``by: 0``. They are lettered in
+the order of the axis; a run of a flow is the atomic sections it covers.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                                                  | Description                                                                                             | Default           |
+|----------|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|-------------------|
+| registry | [FlowControlRegistry](`timetoalign.timelines.flowcontrol.FlowControlRegistry`)                        | The flow control.                                                                                       | _required_        |
+| length   | [_Number](`timetoalign.timelines.flow.engine._Number`) \| [Coordinate](`timetoalign.core.Coordinate`) | The length of the axis, as for :func:`play`.                                                            | _required_        |
+| believer | [str](`str`) \| None                                                                                  | The actor whose beliefs alone decide which elements are read; None reads the elements no actor rejects. | `None`            |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                | With a believer, the belief states read.                                                                | `DEFAULT_BELIEFS` |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description      |
+|--------|----------------------------|------------------|
+|        | [ValueError](`ValueError`) | As :func:`play`. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> from timetoalign.timelines.flowcontrol import (
+...     FlowControlRegistry, Jump, JumpDestination)
+>>> registry = FlowControlRegistry(unit="quarters")
+>>> _ = registry.add(
+...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+>>> [(s.name, s.start.value, s.end.value) for s in atomic_sections(registry, 12)]
+[('A', Fraction(0, 1), Fraction(8, 1)), ('B', Fraction(8, 1), Fraction(12, 1))]
+```

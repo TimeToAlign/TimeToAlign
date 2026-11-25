@@ -54,6 +54,18 @@ to the relevant section of the conceptual model.
     set is held in a {{< glossary MatchClaimField >}}.
     See [Alignment](concepts.qmd#alignment).
 
+**Atomic section**
+:   A stretch of a {{< glossary Timeline >}}'s axis that its flow control
+    never divides: an interval between consecutive coordinates of its
+    {{< glossary Jump >}}s, {{< glossary JumpTarget >}}s,
+    {{< glossary Break >}}s and {{< glossary SectionBreak >}}s and the places
+    their {{< glossary Destination >}}s go on at, named by a letter (`A`, `B`,
+    ..., `Z`, `AA`, ...) in the order of the axis. Every flow is a sequence of
+    atomic sections. `Timeline.create_flow_maps_from_flow_control()` writes
+    them as {{< glossary Region >}}s stating the type `tts:AtomicSection`, and
+    the computed {{< glossary FlowMap >}}s list them.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
+
 ## B
 
 **BeatGrid**
@@ -111,11 +123,21 @@ to the relevant section of the conceptual model.
     (see {{< glossary Resource >}}), and `from_file()` reads them back.
     See [How to Represent Areas of Page Images as Boxes](howto/how01_graphical_boxes.ipynb).
 
+**Barline**
+:   A {{< glossary "Flow control element" >}} recording a barline the source
+    prints (a double or a final barline). It changes nothing in the flow.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
+
 **Break**
-:   A {{< glossary ControlEvent >}} that voids {{< glossary Contiguity >}}
-    at its {{< glossary Instant >}}. TimeIntervals cannot span a Break,
-    and Breaks cannot be inserted into existing TimeIntervals.
-    See [Flow control](concepts.qmd#flow-control).
+:   A {{< glossary "Flow control element" >}} at which the flow does not go
+    on: when the flow plays up to it, a {{< glossary Jump >}} at the same
+    coordinate with a {{< glossary Destination >}} that holds is taken,
+    otherwise the flow ends there and begins again at the next
+    {{< glossary SectionBreak >}}, if any. With `ends` (a condition:
+    `passes`, `after`) it ends the flow only while that condition holds, as a
+    *Fine* does after a *D.C.* or *D.S.* A Break lies between two brackets of
+    alternative endings.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 ## C
 
@@ -211,12 +233,6 @@ to the relevant section of the conceptual model.
     synchronous with its {{< glossary EndInstant >}}.
     See [Flow control](concepts.qmd#flow-control).
 
-**ControlEvent**
-:   An event affecting flow control: either a {{< glossary Break >}}
-    (voiding contiguity) or a {{< glossary Jump >}} (creating new
-    contiguity).
-    See [Flow control](concepts.qmd#flow-control).
-
 **ConversionMap**
 :   A typed function attached to a {{< glossary Timeline >}} that maps each
     coordinate to exactly one value (coordinate, label, or filename); also
@@ -239,6 +255,21 @@ to the relevant section of the conceptual model.
     See [Foundations](concepts.qmd#foundations).
 
 ## D
+
+**Destination**
+:   One place a {{< glossary Jump >}} may go on at, and when: a
+    `JumpDestination`. Its place is `to` (the {{< glossary "element id" >}}
+    of a {{< glossary JumpTarget >}}, a {{< glossary Region >}}, a child
+    timeline or the timeline itself), `by` (a signed distance from the Jump;
+    `by: 0` is going on and is never taken) or neither (the start of its
+    section). Its conditions all must hold: `passes` (the arrivals at the
+    Jump that count), `repeat_count` (taken at most that often), `after`
+    (another Jump's destination must have been taken) and `determined`
+    (false for a choice nobody can check, such as an ossia, which is never
+    taken). `reset` says whether going back restores the Jumps and Breaks
+    gone back over, as a repeat does; a *D.C.* or *D.S.* played without
+    repeats states `reset: false`.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 **DictStore**
 :   A generic `EventStore` subclass holding a `dict[str, EventData]` with
@@ -267,8 +298,9 @@ to the relevant section of the conceptual model.
     {{< glossary Timeline >}} (root or descendant),
     {{< glossary TimelineGroup >}}, MeasureMap,
     {{< glossary ConversionMap >}} at any nesting depth,
-    {{< glossary Region >}}, Break, {{< glossary Jump >}},
-    {{< glossary Marker >}} or {{< glossary Resource >}}. It is unique across
+    {{< glossary Region >}}, {{< glossary "Flow control element" >}},
+    {{< glossary FlowMap >}}, {{< glossary "Virtual timeline" >}} or
+    {{< glossary Resource >}}. It is unique across
     the whole manifest and every kind, so the id alone names the element. An
     id is free: whatever was given is kept verbatim, any non-empty string
     without a control character; spaces, colons, slashes and URIs are
@@ -279,9 +311,10 @@ to the relevant section of the conceptual model.
     `cpt`, `dpt`, `cgt` or `dgt` for a timeline (continuous or discrete,
     logical, physical or graphical), `group` for a group, `measuremap` for
     a MeasureMap, `cmap`, `lmap`, `tmap` or `pmap` for a conversion map,
-    `region` for a Region, `resource` for a Resource, and `flow_marker` (a
-    Break), `jump_from` (a Jump) or `jump_to` (a Marker); a loader role leads
-    it (`score:clt_1`). When trees are joined into a group or bundle, a
+    `region` for a Region, `resource` for a Resource, `jump`, `jump_target`,
+    `break`, `section_break` or `barline` for a flow-control element and
+    `flow_map` for a FlowMap; a virtual timeline is minted as a timeline of
+    its unit; a loader role leads it (`score:clt_1`). When trees are joined into a group or bundle, a
     minted id that collides is re-minted and a given id that collides raises,
     for every kind of element. The id identifies, the `name` displays: a name
     may be absent or repeat, and an id is never derived from it.
@@ -301,30 +334,44 @@ to the relevant section of the conceptual model.
 
 ## F
 
-**Flow**
-:   One computed path through a score's control structure — the ordered
-    sequence of measure visitations that results from following its repeats,
-    {{< glossary Jump >}}s and voltas. A `ScoreFlowController` computes one
-    from the parsed measure records, or one can be loaded from a `.flow.csv`
-    ground truth and compared with `is_equivalent()`. A Flow is section-based;
-    measure-count ranges follow the library's right-open `[start, end)`
-    convention. It is the input a {{< glossary FlowMap >}} is built from, not
-    itself a mapping between coordinates.
-    See [Flow control](concepts.qmd#flow-control).
+**Finding**
+:   What playing flow control found, without raising: a flow that never ends
+    (`endless_loop`), a flow ending at a {{< glossary Break >}} that states no
+    condition before the end (`flow_ends_at_break`), two
+    {{< glossary Destination >}}s of one Jump holding at once
+    (`ambiguous_targets`), a destination nobody can check
+    (`undetermined_target`), and a stretch never played (`never_played`).
+    Only the `default` flow has findings; `Timeline.get_flow()` returns them
+    with the flow.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
+
+**Flow control element**
+:   One of the elements a {{< glossary Timeline >}} holds as its flow control
+    (a manifest's `flow_control` array): a {{< glossary Jump >}}, a
+    {{< glossary JumpTarget >}}, a {{< glossary Break >}}, a
+    {{< glossary SectionBreak >}} or a {{< glossary Barline >}}. Each lies at
+    one coordinate and has an {{< glossary "element id" >}}; how it looks in
+    the source is its `manifestation`, which decides nothing. An element is
+    never changed or deleted to repair flow control: an actor's belief
+    `"false"` rejects it (`flow_control.with_belief()`), and the right one is
+    added. `Timeline.get_flow()` plays the elements no actor rejects.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 **FlowMap**
-:   A path through a score's control structure (repeats, jumps), expressed as an
-    ordered sequence of {{< glossary TimeInterval >}}s; not itself a
-    {{< glossary Timeline >}}. Used for unfolding a score into performance
-    order. A FlowMap is built from one uniform argument --- a single
-    interval-like value (a {{< glossary Region >}}, a coordinate pair, a
-    {{< glossary Timeline >}}, or an interval event) or an iterable of them,
-    which concatenate in performance order --- or from a score's computed flow
-    of {{< glossary Break >}}s and {{< glossary Jump >}}s.
-    `Timeline.create_flow_map(intervals)` resolves region names against the
-    timeline's own {{< glossary Region >}}s, attaches the FlowMap, and returns
-    it.
-    See [Derivative timelines](concepts.qmd#derivative-timelines).
+:   One order in which stretches of one root {{< glossary Timeline >}} are
+    played: an ordered list of chunks, each the ID of a
+    {{< glossary Region >}}, a child timeline or a
+    {{< glossary "Virtual timeline" >}} of that timeline's tree, or a `Gap` in
+    which nothing of the timeline is played. A FlowMap holds no interval;
+    resolved against its timeline (`resolve()`) it places each stretch where
+    the one before it ends and converts positions both ways: `unfold()` takes
+    a position of the timeline to every position it is played at, `fold()` a
+    position of the flow to the position it plays, or None in a gap.
+    `Timeline.create_flow_map(chunks)` creates and attaches one;
+    `Timeline.create_flow_maps_from_flow_control()` writes the flows of the
+    flow control (`default`, `single`, `printed`) as FlowMaps over the
+    {{< glossary "Atomic section" >}}s.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 ## G
 
@@ -382,14 +429,21 @@ to the relevant section of the conceptual model.
 ## J
 
 **Jump**
-:   A {{< glossary ControlEvent >}} with **JumpFrom** and **JumpTo**
-    {{< glossary Instant >}}s. When active, makes events at JumpTo
-    contiguous with those ending at JumpFrom (e.g., repeats, *dal segno*).
-    Its `target` is the {{< glossary "element id" >}} of a
-    {{< glossary Marker >}} of the same timeline (a segno, a coda), or `None`
-    when it lands on no marker (to the start, a plain repeat); JumpTo carries
-    the destination coordinate either way.
-    See [Flow control](concepts.qmd#flow-control).
+:   A {{< glossary "Flow control element" >}} where the flow may leave the
+    axis, holding one {{< glossary Destination >}} for every place it may go
+    on at: a repeat end, a *D.C.*, a *D.S.*, a *To Coda* and the brackets of
+    alternative endings at one coordinate are destinations of one Jump. When
+    the flow plays up to it, of the destinations that hold one is taken (one
+    going back with `reset` first, then one going back without, then one
+    ahead, the nearest first); when none holds, the flow goes on.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
+
+**JumpTarget**
+:   A {{< glossary "Flow control element" >}} marking a place a
+    {{< glossary Destination >}} names by its {{< glossary "element id" >}}:
+    a repeat start, a segno, a coda, a bracket. Nothing happens when the
+    flow plays up to it.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 ## L
 
@@ -425,13 +479,6 @@ to the relevant section of the conceptual model.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 ## M
-
-**Marker**
-:   A named position in a timeline's flow control that a
-    {{< glossary Jump >}} can target, such as a segno or a coda sign. A Marker
-    carries an {{< glossary "element id" >}}, an optional `name`, and a
-    coordinate; a Jump refers to it by its id, never by its name.
-    See [Flow control](concepts.qmd#flow-control).
 
 **Match**
 :   See {{< glossary MatchClaim >}}.
@@ -789,9 +836,10 @@ to the relevant section of the conceptual model.
 :   The farthest coordinate on a {{< glossary Timeline >}}'s own axis that its
     content reaches: the ends of its children (a {{< glossary Child >}} of
     {{< glossary "Unknown length" >}} contributing its offset plus its own
-    reach), {{< glossary Region >}} ends, {{< glossary Break >}} and
-    {{< glossary Marker >}} coordinates, both ends of every
-    {{< glossary Jump >}}, and the end of the measure map. Events are not part
+    reach), {{< glossary Region >}} ends, the coordinate of every
+    {{< glossary "Flow control element" >}}, the place of every
+    {{< glossary Destination >}} stating a distance (`by`), and the end of the
+    measure map. Events are not part
     of it. A timeline without such content reaches 0. The reach is independent
     of the length; displays use it as the extent of a timeline of unknown
     length. Read it as `Timeline.reach`.
@@ -854,6 +902,14 @@ to the relevant section of the conceptual model.
     ScoreNotes where the table states an integer `staff` and `voice`, and
     `get_field(Note)` reads the same rows as Notes.
     See [Foundations](concepts.qmd#foundations).
+
+**SectionBreak**
+:   A {{< glossary "Flow control element" >}} where a section ends (a
+    movement, a section of a piece); the flow goes on across it. A
+    {{< glossary Destination >}} without place goes on at the nearest
+    SectionBreak before its {{< glossary Jump >}}, and a flow ended by a
+    {{< glossary Break >}} begins again at the next one.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 **Segment**
 :   A {{< glossary Child >}} timeline that is contiguous with its
@@ -1052,6 +1108,19 @@ to the relevant section of the conceptual model.
     whose length is unknown, before it changes anything. Its message names the
     operation and the timeline; group conversion to or from such a member and
     appending a child at such a parent's end are examples.
+
+## V
+
+**Virtual timeline**
+:   The statement that a map was applied to a {{< glossary Timeline >}},
+    giving a timeline with an {{< glossary "element id" >}}, a unit, a
+    number type and a length of its own and nothing else: no events, no
+    children, no flow control. Applied, a {{< glossary FlowMap >}} gives its
+    root's played order as a virtual timeline, and positions convert through
+    it in both directions (`unfold()`, `fold()`).
+    `Timeline.create_virtual_timeline()` states one; a manifest lists them in
+    `virtual_timelines`.
+    See [How to Encode and Play Flow Control](howto/how01_flow_control.ipynb).
 
 ## W
 

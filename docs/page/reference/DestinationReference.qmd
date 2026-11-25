@@ -1,0 +1,52 @@
+# DestinationReference { #timetoalign.timelines.DestinationReference }
+
+```python
+timelines.DestinationReference(
+    jump,
+    to=None,
+    by=None,
+    _unknown_keys=dict[str, Any](),
+)
+```
+
+One destination of a Jump, named by that Jump and its place.
+
+The value of ``after``. The place keys are left out for the destination
+without place, or when the Jump has one destination only.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                                                                                      | Description                                         |
+|--------|-----------------------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| jump   | [str](`str`)                                                                                              | The ID of the Jump.                                 |
+| to     | [str](`str`) \| None                                                                                      | The ``to`` of the destination meant, if it has one. |
+| by     | [Duration](`timetoalign.core.Duration`) \| [_Number](`timetoalign.timelines.flowcontrol._Number`) \| None | The ``by`` of the destination meant, if it has one. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_dict](#timetoalign.timelines.DestinationReference.from_dict) | Read an ``after`` object. |
+| [to_dict](#timetoalign.timelines.DestinationReference.to_dict) | Return the reference as its JSON object, absent keys left out. |
+
+### from_dict { #timetoalign.timelines.DestinationReference.from_dict }
+
+```python
+timelines.DestinationReference.from_dict(data, what, *, unit, number_type)
+```
+
+Read an ``after`` object.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description         |
+|--------|----------------------------|---------------------|
+|        | [ValueError](`ValueError`) | If it is malformed. |
+
+### to_dict { #timetoalign.timelines.DestinationReference.to_dict }
+
+```python
+timelines.DestinationReference.to_dict()
+```
+
+Return the reference as its JSON object, absent keys left out.

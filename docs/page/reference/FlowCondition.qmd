@@ -1,0 +1,52 @@
+# FlowCondition { #timetoalign.timelines.FlowCondition }
+
+```python
+timelines.FlowCondition(passes=None, after=None, _unknown_keys=dict[str, Any]())
+```
+
+When a destination is taken, or a Break ends the flow.
+
+The value of a Break's ``ends``, and the part a :class:`JumpDestination`
+shares with it. Every condition stated must hold.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                                                                                          | Description                                                                                                                                                                                                                                                                                                                                                           |
+|--------|---------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| passes | [tuple](`tuple`)\[[int](`int`), ...\] \| [PassesFrom](`timetoalign.timelines.flowcontrol.PassesFrom`) \| None | The arrivals of the flow at the element that count: distinct positive integers (the n-th arrival is pass n), or :class:`PassesFrom`. On a Break the passes listed are exactly those arrivals. Among the destinations of a Jump, the one naming the highest number any of them lists also holds at every later arrival (the last ending is played again after a D.C.). |
+| after  | [DestinationReference](`timetoalign.timelines.flowcontrol.DestinationReference`) \| None                      | A destination of another Jump: the condition holds once that destination has been taken, and is used up when it has served.                                                                                                                                                                                                                                           |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_dict](#timetoalign.timelines.FlowCondition.from_dict) | Read a condition object. |
+| [to_dict](#timetoalign.timelines.FlowCondition.to_dict) | Return the condition as its JSON object. |
+
+### from_dict { #timetoalign.timelines.FlowCondition.from_dict }
+
+```python
+timelines.FlowCondition.from_dict(data, what, *, unit, number_type)
+```
+
+Read a condition object.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description         |
+|--------|----------------------------|---------------------|
+|        | [ValueError](`ValueError`) | If it is malformed. |
+
+### to_dict { #timetoalign.timelines.FlowCondition.to_dict }
+
+```python
+timelines.FlowCondition.to_dict(minimal=True)
+```
+
+Return the condition as its JSON object.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type           | Description                                                                                                                                                                                                                                                                                | Default   |
+|---------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| minimal | [bool](`bool`) | Write the minimal form (the default): every key at its default value left out. With False, the complete form: the keys that have a default (``determined``, ``reset`` and ``label`` of a destination) are written whatever they hold. A key without a default is written only when stated. | `True`    |

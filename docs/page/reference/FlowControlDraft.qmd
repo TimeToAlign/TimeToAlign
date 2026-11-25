@@ -1,0 +1,88 @@
+# FlowControlDraft { #timetoalign.timelines.flow.FlowControlDraft }
+
+```python
+timelines.flow.FlowControlDraft()
+```
+
+Flow control being written from a score, before it joins a registry.
+
+The signs at one coordinate are collected as the destinations of the
+one Jump there, and every element gets an ID of its own, minted in the
+order written, so that the elements can name one another before a
+registry admits them together. Coordinates are quarters, exact.
+:func:`flow_control_from_measures` and the score loaders write through
+it.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from fractions import Fraction
+>>> from timetoalign.timelines.flowcontrol import JumpDestination, JumpTarget
+>>> draft = FlowControlDraft()
+>>> segno = draft.add(JumpTarget, Fraction(4), manifestation="segno")
+>>> draft.add_destination(Fraction(16), JumpDestination(to=segno.id, repeat_count=1))
+'jump_1'
+>>> draft.add_destination(Fraction(16), JumpDestination(repeat_count=1))
+'jump_1'
+>>> draft.elements()
+[JumpTarget('jump_target_1', segno @ 4 quarters), Jump('jump_1' @ 16 quarters, 2 destinations)]
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [add](#timetoalign.timelines.flow.FlowControlDraft.add) | Write a jump target, a break, a section break or a barline at *at*. |
+| [add_destination](#timetoalign.timelines.flow.FlowControlDraft.add_destination) | Write *destination* on the Jump at *at*; return that Jump's ID. |
+| [add_measures](#timetoalign.timelines.flow.FlowControlDraft.add_measures) | Write what the rows of *measures* state: repeats and brackets. |
+| [destinations_at](#timetoalign.timelines.flow.FlowControlDraft.destinations_at) | Return the destinations written so far for the Jump at *at*. |
+| [elements](#timetoalign.timelines.flow.FlowControlDraft.elements) | Return everything written, by coordinate and then by ID. |
+| [jump_at](#timetoalign.timelines.flow.FlowControlDraft.jump_at) | Return the ID of the Jump at *at*, minted when first asked for. |
+
+### add { #timetoalign.timelines.flow.FlowControlDraft.add }
+
+```python
+timelines.flow.FlowControlDraft.add(element_class, at, **keys)
+```
+
+Write a jump target, a break, a section break or a barline at *at*.
+
+### add_destination { #timetoalign.timelines.flow.FlowControlDraft.add_destination }
+
+```python
+timelines.flow.FlowControlDraft.add_destination(at, destination)
+```
+
+Write *destination* on the Jump at *at*; return that Jump's ID.
+
+### add_measures { #timetoalign.timelines.flow.FlowControlDraft.add_measures }
+
+```python
+timelines.flow.FlowControlDraft.add_measures(measures)
+```
+
+Write what the rows of *measures* state: repeats and brackets.
+
+### destinations_at { #timetoalign.timelines.flow.FlowControlDraft.destinations_at }
+
+```python
+timelines.flow.FlowControlDraft.destinations_at(at)
+```
+
+Return the destinations written so far for the Jump at *at*.
+
+### elements { #timetoalign.timelines.flow.FlowControlDraft.elements }
+
+```python
+timelines.flow.FlowControlDraft.elements()
+```
+
+Return everything written, by coordinate and then by ID.
+
+### jump_at { #timetoalign.timelines.flow.FlowControlDraft.jump_at }
+
+```python
+timelines.flow.FlowControlDraft.jump_at(at)
+```
+
+Return the ID of the Jump at *at*, minted when first asked for.

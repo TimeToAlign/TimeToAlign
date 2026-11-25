@@ -1,71 +1,15 @@
 # AtomicSection { #timetoalign.timelines.AtomicSection }
 
 ```python
-timelines.AtomicSection(
-    id,
-    mc_start,
-    mc_end,
-    to=(),
-    section_type='default',
-    typed_measures=None,
-    groups=None,
-    measure_map=None,
-    name=None,
-)
+timelines.AtomicSection(name, start, end)
 ```
 
-Smallest indivisible traversal unit (similar to partitura's segment model).
-
-Atomic sections are derived from:
-- partitura's add_segments()/get_segments() for MusicXML/MEI
-- next[] array analysis for TSV/MeasureMap
-
-Section IDs (A, B, C, ...) form a canonical reference for mapping all
-flow modes. The atomic flow mode defines these canonical sections.
-
-## Note {.doc-section .doc-section-note}
-
-MC ranges use the **right-open interval convention** [mc_start, mc_end),
-consistent with partitura and TimeToAlign's TimeInterval model. For
-example, mc_start=1 and mc_end=5 means measures 1, 2, 3, 4 (four
-measures total).
+A stretch of the axis that flow control never divides.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name         | Type                                  | Description                                                 |
-|--------------|---------------------------------------|-------------------------------------------------------------|
-| id           | [str](`str`)                          | Letter identifier (A, B, C...) from partitura or generated. |
-| mc_start     | [int](`int`)                          | First MC of this section (inclusive).                       |
-| mc_end       | [int](`int`)                          | First MC AFTER this section (exclusive, right-open).        |
-| to           | [tuple](`tuple`)\[[str](`str`), ...\] | List of possible next section IDs.                          |
-| section_type | [str](`str`)                          | "default", "leap_end", or "leap_start".                     |
-
-## Examples {.doc-section .doc-section-examples}
-
-```python
->>> sec = AtomicSection(
-...     id="A",
-...     mc_start=1,
-...     mc_end=5,  # Right-open: includes MCs 1,2,3,4
-...     to=("A", "B"),
-...     section_type="leap_end",
-... )
->>> sec.mc_range
-(1, 5)
->>> sec.mc_count
-4
-```
-
-## Methods
-
-| Name | Description |
-| --- | --- |
-| [to_dict](#timetoalign.timelines.AtomicSection.to_dict) | Convert to dictionary for serialization. |
-
-### to_dict { #timetoalign.timelines.AtomicSection.to_dict }
-
-```python
-timelines.AtomicSection.to_dict()
-```
-
-Convert to dictionary for serialization.
+| Name   | Type                                        | Description                                                                |
+|--------|---------------------------------------------|----------------------------------------------------------------------------|
+| name   | [str](`str`)                                | Its letter: ``A``, ``B``, ... ``Z``, ``AA``, ... in the order of the axis. |
+| start  | [Coordinate](`timetoalign.core.Coordinate`) | Where it begins.                                                           |
+| end    | [Coordinate](`timetoalign.core.Coordinate`) | Where it ends, exclusive.                                                  |

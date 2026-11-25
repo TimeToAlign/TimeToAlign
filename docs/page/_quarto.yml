@@ -76,6 +76,8 @@ website:
               href: howto/how01_graphical_boxes.ipynb
             - text: "How to Build Beat Grids"
               href: howto/how01_beat_grids.ipynb
+            - text: "How to Encode and Play Flow Control"
+              href: howto/how01_flow_control.ipynb
         - section: "TimelineGroups"
           contents:
             - text: "How to Align a Piano Roll (SUPRA)"
@@ -253,30 +255,84 @@ quartodoc:
           package: timetoalign.core
 
     - title: Flow Control
-      desc: Score flow-graph traversal, atomic-section labelling, and structural diagnostics.
+      desc: The elements of a timeline's flow control, the engine that plays them, FlowMaps over the stretches of a root timeline, and virtual timelines.
       contents:
-        - name: Flow
+        - name: FlowControlRegistry
           package: timetoalign.timelines
-        - name: FlowMap
+        - name: FlowControlElement
           package: timetoalign.timelines
-        - name: FlowMapSection
+        - name: Jump
           package: timetoalign.timelines
-        - name: FlowControllerBase
+        - name: JumpDestination
           package: timetoalign.timelines
-        - name: ScoreFlowController
+        - name: JumpTarget
           package: timetoalign.timelines
-        - name: SegmentNameGenerator
+        - name: Break
+          package: timetoalign.timelines
+        - name: SectionBreak
+          package: timetoalign.timelines
+        - name: Barline
+          package: timetoalign.timelines
+        - name: FlowCondition
+          package: timetoalign.timelines
+        - name: DestinationReference
+          package: timetoalign.timelines
+        - name: PassesFrom
+          package: timetoalign.timelines
+        - name: play
+          package: timetoalign.timelines
+        - name: atomic_sections
+          package: timetoalign.timelines
+        - name: FlowResult
+          package: timetoalign.timelines
+        - name: FlowFinding
           package: timetoalign.timelines
         - name: AtomicSection
           package: timetoalign.timelines
-        - name: PlaythroughSection
+        - name: PlayedFlow
           package: timetoalign.timelines
-        - name: FlowDiagnostic
+        - name: FlowMap
           package: timetoalign.timelines
-        - name: load_valid_flows
+        - name: ResolvedFlowMap
           package: timetoalign.timelines
-        - name: create_unfolded_timeline
+        - name: PlacedChunk
           package: timetoalign.timelines
+        - name: PlacedGap
+          package: timetoalign.timelines
+        - name: VirtualTimeline
+          package: timetoalign.timelines
+        - name: ComputedFlows
+          package: timetoalign.timelines
+        - name: StatedFlow
+          package: timetoalign.timelines
+        - name: Gap
+          package: timetoalign.core
+        - name: FlowManifestation
+          package: timetoalign.core
+        - name: FlowConvention
+          package: timetoalign.core
+        - name: FlowFindingKind
+          package: timetoalign.core
+        - name: MeasureFindingKind
+          package: timetoalign.core
+        - name: FlowControlDraft
+          package: timetoalign.timelines.flow
+        - name: MeasureRange
+          package: timetoalign.timelines.flow
+        - name: MeasureFinding
+          package: timetoalign.timelines.flow
+        - name: flow_control_from_measures
+          package: timetoalign.timelines.flow
+        - name: measure_keys_from_flow_control
+          package: timetoalign.timelines.flow
+        - name: measure_order_from_successors
+          package: timetoalign.timelines.flow
+        - name: measure_ranges
+          package: timetoalign.timelines.flow
+        - name: read_flow_csv
+          package: timetoalign.timelines.flow
+        - name: repeat_end_findings
+          package: timetoalign.timelines.flow
 
     - title: Conversion Maps
       desc: Functions for transforming coordinates between units.
@@ -399,14 +455,18 @@ quartodoc:
           include_inherited: true
         - name: Music21Loader
           package: timetoalign.loader.score
+          dynamic: true
         - name: PartituraLoader
           package: timetoalign.loader.score
+          dynamic: true
         - name: Ms3Loader
           package: timetoalign.loader.score
+          dynamic: true
         - name: MeasureMapLoader
           package: timetoalign.loader.score
         - name: VerovioLoader
           package: timetoalign.loader.score
+          dynamic: true
         - name: MidiLoader
           package: timetoalign.loader.midi
         - name: PerformanceMidiLoader

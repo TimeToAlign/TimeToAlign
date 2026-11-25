@@ -1,0 +1,182 @@
+# VirtualTimeline { #timetoalign.timelines.VirtualTimeline }
+
+```python
+timelines.VirtualTimeline(
+    map,
+    timeline,
+    length,
+    *,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    through=None,
+    name=None,
+)
+```
+
+The statement that a map was applied to a timeline, giving a timeline.
+
+A virtual timeline exists only by applying the map: it has an ID, a
+unit, a number type and a length of its own, and nothing else of it is
+written. It holds no events, no children and no flow control. Its
+positions and those of the timeline it comes from convert through the
+map, in both directions (:meth:`unfold`, :meth:`fold`).
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name     | Type                                        | Description                                                                                                   |
+|----------|---------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| map      | [str](`str`)                                | The ID of the map applied: a FlowMap, or a conversion map.                                                    |
+| timeline | [str](`str`)                                | The ID of the timeline the map is applied to, or of another virtual timeline.                                 |
+| length   | [Coordinate](`timetoalign.core.Coordinate`) | The end of the virtual timeline on its own axis, which states its unit and number type too.                   |
+| through  | [str](`str`) \| None                        | The ID of the group or conversion map that carries the map to ``timeline``; kept as read and never evaluated. |
+| name     | [str](`str`) \| None                        | Optional display name.                                                                                        |
+| id       | [str](`str`)                                | The virtual timeline's ID; minted in the ID kind of its unit (``clt_{N}`` on quarters), as a timeline's is.   |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.timelines import ContinuousLogicalTimeline
+>>> score = ContinuousLogicalTimeline(length=24, uid="score")
+>>> a = score.create_region(0, 16, id="a")
+>>> b = score.create_region(16, 24, id="b")
+>>> played = score.create_virtual_timeline(score.create_flow_map([a, a, b]))
+>>> played.id, played.length
+('clt_1', Coordinate(Fraction(40, 1), quarters))
+>>> played.unfold(4, score)
+[Coordinate(Fraction(4, 1), quarters), Coordinate(Fraction(20, 1), quarters)]
+>>> played.fold(20, score)
+Coordinate(Fraction(4, 1), quarters)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [fold](#timetoalign.timelines.VirtualTimeline.fold) | Return the root position played at a position of this virtual timeline. |
+| [from_dict](#timetoalign.timelines.VirtualTimeline.from_dict) | Restore a virtual timeline from its object in ``virtual_timelines``. |
+| [from_flow_map](#timetoalign.timelines.VirtualTimeline.from_flow_map) | State that *flow_map* was applied to its root timeline. |
+| [resolve](#timetoalign.timelines.VirtualTimeline.resolve) | Return the played order this virtual timeline is the axis of. |
+| [unfold](#timetoalign.timelines.VirtualTimeline.unfold) | Return every position of this virtual timeline a root position is played at. |
+
+### fold { #timetoalign.timelines.VirtualTimeline.fold }
+
+```python
+timelines.VirtualTimeline.fold(coordinate, root)
+```
+
+Return the root position played at a position of this virtual timeline.
+
+See :meth:`ResolvedFlowMap.fold`.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                    | Description                                                                                                              | Default    |
+|------------|-------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|------------|
+| coordinate | [CoordinateInput](`timetoalign.timelines.flow.flowmap.CoordinateInput`) | A position on this virtual timeline's axis: a bare value, a Coordinate, or an IdCoordinate naming this virtual timeline. | _required_ |
+| root       | [Timeline](`timetoalign.timelines.base.Timeline`)                       | The root timeline holding the virtual timeline.                                                                          | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                | Description                                            |
+|--------|-----------------------------------------------------|--------------------------------------------------------|
+|        | [Coordinate](`timetoalign.core.Coordinate`) \| None | The position on the root's axis, or None inside a gap. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | As :meth:`resolve` and :meth:`ResolvedFlowMap.fold`, or if an IdCoordinate names another timeline. |
+
+### from_dict { #timetoalign.timelines.VirtualTimeline.from_dict }
+
+```python
+timelines.VirtualTimeline.from_dict(data)
+```
+
+Restore a virtual timeline from its object in ``virtual_timelines``.
+
+IDs are bare. ``length`` is a bare value read as ``number_type``
+decides; ``through`` and ``name`` may be left out. Keys the library
+does not know are kept and written back.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                | Description                  | Default    |
+|--------|-----------------------------------------------------|------------------------------|------------|
+| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | The virtual timeline object. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                     |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the object is malformed or its length is represented otherwise than its number type selects. |
+
+### from_flow_map { #timetoalign.timelines.VirtualTimeline.from_flow_map }
+
+```python
+timelines.VirtualTimeline.from_flow_map(flow_map, root, *, id=None, name=None)
+```
+
+State that *flow_map* was applied to its root timeline.
+
+The length is the FlowMap's virtual length, the unit and number type
+are the root's.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                    | Description                                  | Default    |
+|----------|---------------------------------------------------------|----------------------------------------------|------------|
+| flow_map | [FlowMap](`timetoalign.timelines.flow.flowmap.FlowMap`) | The FlowMap applied.                         | _required_ |
+| root     | [Timeline](`timetoalign.timelines.base.Timeline`)       | The root timeline it names.                  | _required_ |
+| id       | [str](`str`) \| None                                    | The virtual timeline's ID; minted when None. | `None`     |
+| name     | [str](`str`) \| None                                    | Optional display name.                       | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                             |
+|--------|----------------------------|-------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the FlowMap cannot be read against *root* (:meth:`FlowMap.resolve`). |
+
+### resolve { #timetoalign.timelines.VirtualTimeline.resolve }
+
+```python
+timelines.VirtualTimeline.resolve(root)
+```
+
+Return the played order this virtual timeline is the axis of.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                              | Description                                     | Default    |
+|--------|---------------------------------------------------|-------------------------------------------------|------------|
+| root   | [Timeline](`timetoalign.timelines.base.Timeline`) | The root timeline holding the virtual timeline. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                       |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the virtual timeline is not the FlowMap of *root* applied to *root*: it applies another map (a conversion map), is applied to another timeline, or goes ``through`` a group or conversion map. Such a statement is kept and written back, but its positions are not converted. |
+
+### unfold { #timetoalign.timelines.VirtualTimeline.unfold }
+
+```python
+timelines.VirtualTimeline.unfold(coordinate, root)
+```
+
+Return every position of this virtual timeline a root position is played at.
+
+See :meth:`ResolvedFlowMap.unfold`.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                    | Description                                     | Default    |
+|------------|-------------------------------------------------------------------------|-------------------------------------------------|------------|
+| coordinate | [CoordinateInput](`timetoalign.timelines.flow.flowmap.CoordinateInput`) | A position on the root's axis.                  | _required_ |
+| root       | [Timeline](`timetoalign.timelines.base.Timeline`)                       | The root timeline holding the virtual timeline. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                            |
+|--------|----------------------------|--------------------------------------------------------|
+|        | [ValueError](`ValueError`) | As :meth:`resolve` and :meth:`ResolvedFlowMap.unfold`. |

@@ -1,0 +1,34 @@
+# read_flow_csv { #timetoalign.timelines.flow.read_flow_csv }
+
+```python
+timelines.flow.read_flow_csv(path)
+```
+
+Read a ``.flow.csv`` file: the measure-count ranges of each flow.
+
+The file has the columns ``flow_mode``, ``source_file``,
+``software_version``, ``mc_start``, ``mc_end`` and ``atomic_segments``
+(section names joined by ``;``), and any further ones. ``atomic`` rows
+are the atomic sections; ``default`` and ``single`` rows are the flows
+of those conventions; rows of another mode (``ms3``, ``music21``, ...)
+state how another tool unfolds the score and are read like them. A row
+whose ``mc_start`` is ``ERROR`` records that a tool failed and is left
+out.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                   | Description   | Default    |
+|--------|----------------------------------------|---------------|------------|
+| path   | [Path](`pathlib.Path`) \| [str](`str`) | The file.     | _required_ |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                                                        | Description                                            |
+|--------|-----------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [tuple](`tuple`)\[[MeasureRange](`timetoalign.timelines.flow.measures.MeasureRange`), ...\]\] | The rows of each ``flow_mode`` in file order, by mode. |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                           |
+|--------|----------------------------|---------------------------------------|
+|        | [ValueError](`ValueError`) | If the file lacks one of the columns. |

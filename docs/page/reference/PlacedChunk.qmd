@@ -1,0 +1,14 @@
+# PlacedChunk { #timetoalign.timelines.PlacedChunk }
+
+```python
+timelines.PlacedChunk(source, start)
+```
+
+A stretch of the root timeline, placed on the virtual axis.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                        | Description                                                  |
+|--------|---------------------------------------------|--------------------------------------------------------------|
+| source | [Interval](`timetoalign.core.Interval`)     | The stretch played, a half-open interval of the root's axis. |
+| start  | [Coordinate](`timetoalign.core.Coordinate`) | Where it begins on the virtual axis.                         |

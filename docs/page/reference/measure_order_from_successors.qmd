@@ -1,0 +1,45 @@
+# measure_order_from_successors { #timetoalign.timelines.flow.measure_order_from_successors }
+
+```python
+timelines.flow.measure_order_from_successors(successors, first)
+```
+
+Walk the successors a source states into the order of measures they give.
+
+A measure table may list, for each measure count, the counts of the
+measures that can follow it, in the order of the times the measure is
+reached (the ``next`` of a Measure Map row or of an ms3 measures table).
+The walk begins at *first*; on its n-th arrival at a measure it goes on
+to that measure's n-th successor, and to the last one once they are used
+up. It ends at a measure without successors and where the successor is
+no measure of *successors* (``-1`` is the customary spelling of the end
+of the piece).
+
+Nothing is derived here: the order is what the source's successors say,
+read as their format defines them.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                                                         | Description                                            | Default    |
+|------------|--------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|------------|
+| successors | [Mapping](`collections.abc.Mapping`)\[[int](`int`), [Sequence](`collections.abc.Sequence`)\[[int](`int`)\]\] | For each measure count, the counts that can follow it. | _required_ |
+| first      | [int](`int`)                                                                                                 | The count the walk begins at.                          | _required_ |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                  | Description                             |
+|--------|---------------------------------------|-----------------------------------------|
+|        | [tuple](`tuple`)\[[int](`int`), ...\] | The measure counts in the order stated. |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                    |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *first* is no measure of *successors*, or the walk never ends (it comes back to a measure whose successors are used up without any other measure having used one up since). |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> measure_order_from_successors({1: [2], 2: [1, 3], 3: [-1]}, 1)
+(1, 2, 1, 2, 3)
+```

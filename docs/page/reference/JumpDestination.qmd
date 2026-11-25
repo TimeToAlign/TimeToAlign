@@ -1,0 +1,48 @@
+# JumpDestination { #timetoalign.timelines.JumpDestination }
+
+```python
+timelines.JumpDestination(
+    passes=None,
+    after=None,
+    _unknown_keys=dict[str, Any](),
+    to=None,
+    by=None,
+    repeat_count=None,
+    determined=True,
+    reset=True,
+    manifestation=None,
+    label=None,
+)
+```
+
+One place a Jump may go on at, and when it does.
+
+The place is ``to``, ``by`` or neither. The conditions are ``passes``,
+``repeat_count``, ``after`` and ``determined``; a destination stating
+none is taken at every arrival.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name          | Type                                                                                                          | Description                                                                                                                                                                                            |
+|---------------|---------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| to            | [str](`str`) \| None                                                                                          | The ID of the place: a :class:`JumpTarget` of the timeline, a Region of it, a child timeline of it (its start) or the timeline itself (its start).                                                     |
+| by            | [Duration](`timetoalign.core.Duration`) \| [_Number](`timetoalign.timelines.flowcontrol._Number`) \| None     | A signed distance from the Jump on its axis. ``by: 0`` is going on: it is written where the source prints it (the first bracket's numbers) and is never taken.                                         |
+| passes        | [tuple](`tuple`)\[[int](`int`), ...\] \| [PassesFrom](`timetoalign.timelines.flowcontrol.PassesFrom`) \| None | See :class:`FlowCondition`.                                                                                                                                                                            |
+| repeat_count  | [int](`int`) \| None                                                                                          | The destination is taken at most that many times.                                                                                                                                                      |
+| after         | [DestinationReference](`timetoalign.timelines.flowcontrol.DestinationReference`) \| None                      | See :class:`FlowCondition`.                                                                                                                                                                            |
+| determined    | [bool](`bool`)                                                                                                | False where nobody can check the choice (an ossia): the destination is never taken.                                                                                                                    |
+| reset         | [bool](`bool`)                                                                                                | Whether taking a destination lying before its Jump restores every Jump and Break lying wholly inside the stretch gone back over, as a repeat does. False on a D.C. or D.S. played without its repeats. |
+| manifestation | [FlowManifestation](`timetoalign.core.enums.FlowManifestation`) \| [str](`str`) \| None                       | What the destination looks like in the source.                                                                                                                                                         |
+| label         | [str](`str`) \| None                                                                                          | A human-readable label.                                                                                                                                                                                |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> leap = JumpDestination(to="segno", repeat_count=1, reset=False)
+>>> leap.to_dict()
+{'to': 'segno', 'repeat_count': 1, 'reset': False}
+>>> leap.to_dict(minimal=False)
+{'to': 'segno', 'repeat_count': 1, 'determined': True, 'reset': False, 'label': None}
+>>> JumpDestination(by=0, passes=[1, 3], manifestation="volta").passes
+(1, 3)
+```

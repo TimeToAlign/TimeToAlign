@@ -1,0 +1,17 @@
+# MeasureFinding { #timetoalign.timelines.flow.MeasureFinding }
+
+```python
+timelines.flow.MeasureFinding(kind, count)
+```
+
+Something a look at the measures found about their flow control.
+
+A finding is a value handed to whoever corrects the score; nothing is
+changed because of it.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                                              | Description                               |
+|--------|-------------------------------------------------------------------|-------------------------------------------|
+| kind   | [MeasureFindingKind](`timetoalign.core.enums.MeasureFindingKind`) | What was found.                           |
+| count  | [int](`int`)                                                      | The count of the measure it was found at. |

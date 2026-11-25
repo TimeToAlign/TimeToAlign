@@ -1,0 +1,47 @@
+# measure_ranges { #timetoalign.timelines.flow.measure_ranges }
+
+```python
+timelines.flow.measure_ranges(intervals, measures, *, sections=(), divide_at=())
+```
+
+State stretches of the axis as right-open ranges of measure counts.
+
+The form of a ``.flow.csv`` file: a flow is the runs
+:func:`~timetoalign.timelines.flow.engine.play` returns, one range per
+run, and the atomic sections are one range each. The rows of such a
+file never span a section break, where the flow goes on without a jump:
+*divide_at* names the coordinates at which a run is divided.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                                                                        | Description                                                                                                                                     | Default    |
+|-----------|-----------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| intervals | [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\]                                                               | The stretches in order, each with a ``start`` and an ``end`` on the measures' axis (an :class:`~timetoalign.core.Interval`, an atomic section). | _required_ |
+| measures  | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) \| [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\] | The measures counted, as for :func:`flow_control_from_measures`.                                                                                | _required_ |
+| sections  | [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\]                                                               | The atomic sections, each with ``name``, ``start`` and ``end``; a range lists those lying inside it.                                            | `()`       |
+| divide_at | [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\]                                                               | Coordinates at which a stretch crossing them is divided, the section breaks' for the form of a ``.flow.csv`` file.                              | `()`       |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                        | Description                                          |
+|--------|---------------------------------------------------------------------------------------------|------------------------------------------------------|
+|        | [tuple](`tuple`)\[[MeasureRange](`timetoalign.timelines.flow.measures.MeasureRange`), ...\] | One range per stretch, or per part of a divided one. |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                          |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a stretch begins or ends inside a measure or outside the measures: it has no measure counts then. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Interval
+>>> from timetoalign.timelines import MeasureMap
+>>> bars = MeasureMap.from_rows(
+...     [{"count": 1, "time_signature": "3/4"}, {"count": 8}]
+... )
+>>> run = Interval(start=Coordinate(3, "quarters"), end=Coordinate(12, "quarters"))
+>>> measure_ranges([run], bars)
+(MeasureRange(start=2, end=5, sections=()),)
+```

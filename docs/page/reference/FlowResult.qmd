@@ -1,0 +1,14 @@
+# FlowResult { #timetoalign.timelines.FlowResult }
+
+```python
+timelines.FlowResult(runs, findings=())
+```
+
+A flow: what is played, in order.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name     | Type                                                                                    | Description                                                                                                                                                                        |
+|----------|-----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| runs     | [tuple](`tuple`)\[[Interval](`timetoalign.core.Interval`), ...\]                        | The stretches of the axis in the order played, each a half-open :class:`~timetoalign.core.Interval`; stretches played one after the other without a jump between them are one run. |
+| findings | [tuple](`tuple`)\[[FlowFinding](`timetoalign.timelines.flow.engine.FlowFinding`), ...\] | What was found on the way, in the order found, the stretches never played last. Only the ``default`` flow has findings.                                                            |

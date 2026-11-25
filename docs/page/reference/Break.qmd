@@ -1,0 +1,51 @@
+# Break { #timetoalign.timelines.Break }
+
+```python
+timelines.Break(
+    coordinate,
+    *,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    name=None,
+    label=None,
+    meta=dict[str, Any](),
+    provenance=None,
+    manifestation=None,
+    ends=None,
+)
+```
+
+A place the flow never goes on across.
+
+When the flow plays up to a Break, a Jump at the same coordinate with a
+destination that holds is taken; otherwise the flow ends there. With
+``ends`` it is a Break only while that condition holds: a Fine ends the
+flow after the D.C. A Break lies between two brackets of alternative
+endings.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name          | Type                                                                                    | Description                                                                                |
+|---------------|-----------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| coordinate    | [Coordinate](`timetoalign.core.Coordinate`)                                             | Where the flow ends.                                                                       |
+| manifestation | [FlowManifestation](`timetoalign.core.enums.FlowManifestation`) \| [str](`str`) \| None | ``fine``, ``volta`` or a word outside the vocabulary.                                      |
+| ends          | [FlowCondition](`timetoalign.timelines.flowcontrol.FlowCondition`) \| None              | When the Break ends the flow; None for always. A condition that states nothing is refused. |
+| name          | [str](`str`) \| None                                                                    | A display name.                                                                            |
+| label         | [str](`str`) \| None                                                                    | A human-readable label.                                                                    |
+| meta          | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                     | Additional metadata.                                                                       |
+| provenance    | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None | How the element was made and who believes it: provenance entries, or None.                 |
+| id            | [str](`str`)                                                                            | The element's ID; minted as ``break_{N}`` when not given.                                  |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> fine = Break(
+...     Coordinate(32, TimeUnit.quarters),
+...     manifestation="fine",
+...     ends=FlowCondition(after=DestinationReference(jump="jump_1")),
+... )
+>>> fine.to_dict()["ends"]
+{'after': {'jump': 'jump_1'}}
+```

@@ -1,0 +1,16 @@
+# FlowFinding { #timetoalign.timelines.FlowFinding }
+
+```python
+timelines.FlowFinding(kind, coordinate, end, message)
+```
+
+Something playing flow control found.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name       | Type                                                        | Description                                                              |
+|------------|-------------------------------------------------------------|--------------------------------------------------------------------------|
+| kind       | [FlowFindingKind](`timetoalign.core.enums.FlowFindingKind`) | What was found.                                                          |
+| coordinate | [Coordinate](`timetoalign.core.Coordinate`)                 | Where: the element's coordinate, or the start of a stretch never played. |
+| end        | [Coordinate](`timetoalign.core.Coordinate`) \| None         | The end of a stretch never played; None otherwise.                       |
+| message    | [str](`str`)                                                | The finding as a sentence.                                               |

@@ -1,0 +1,34 @@
+# SectionBreak { #timetoalign.timelines.SectionBreak }
+
+```python
+timelines.SectionBreak(
+    coordinate,
+    *,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    name=None,
+    label=None,
+    meta=dict[str, Any](),
+    provenance=None,
+    manifestation=None,
+)
+```
+
+Where a section ends: a movement boundary, a section of a piece.
+
+The flow goes on across it. A destination without place lands at the
+nearest section break before its Jump, and a flow ended by a Break
+begins again at the next section break.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name          | Type                                                                                    | Description                                                                |
+|---------------|-----------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| coordinate    | [Coordinate](`timetoalign.core.Coordinate`)                                             | Where the section ends.                                                    |
+| manifestation | [FlowManifestation](`timetoalign.core.enums.FlowManifestation`) \| [str](`str`) \| None | A word outside the vocabulary, which defines none for a section break.     |
+| name          | [str](`str`) \| None                                                                    | A display name.                                                            |
+| label         | [str](`str`) \| None                                                                    | A human-readable label.                                                    |
+| meta          | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                     | Additional metadata.                                                       |
+| provenance    | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None | How the element was made and who believes it: provenance entries, or None. |
+| id            | [str](`str`)                                                                            | The element's ID; minted as ``section_break_{N}`` when not given.          |

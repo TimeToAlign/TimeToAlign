@@ -1,0 +1,40 @@
+# JumpTarget { #timetoalign.timelines.JumpTarget }
+
+```python
+timelines.JumpTarget(
+    coordinate,
+    *,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    name=None,
+    label=None,
+    meta=dict[str, Any](),
+    provenance=None,
+    manifestation=None,
+)
+```
+
+A place a destination names: a repeat start, a segno, a coda, a bracket.
+
+Nothing happens when the flow plays up to it.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name          | Type                                                                                    | Description                                                                                   |
+|---------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| coordinate    | [Coordinate](`timetoalign.core.Coordinate`)                                             | The place.                                                                                    |
+| manifestation | [FlowManifestation](`timetoalign.core.enums.FlowManifestation`) \| [str](`str`) \| None | ``repeat_start``, ``segno``, ``coda``, ``volta``, ``ossia`` or a word outside the vocabulary. |
+| name          | [str](`str`) \| None                                                                    | A display name, such as the source's name of the sign.                                        |
+| label         | [str](`str`) \| None                                                                    | A human-readable label.                                                                       |
+| meta          | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                     | Additional metadata.                                                                          |
+| provenance    | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None | How the element was made and who believes it: provenance entries, or None.                    |
+| id            | [str](`str`)                                                                            | The element's ID; minted as ``jump_target_{N}`` when not given.                               |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> JumpTarget(Coordinate(16, TimeUnit.quarters), manifestation="segno")
+JumpTarget('jump_target_1', segno @ 16 quarters)
+```

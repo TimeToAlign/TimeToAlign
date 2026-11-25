@@ -1,0 +1,37 @@
+# Gap { #timetoalign.core.Gap }
+
+```python
+core.Gap(length, *, _unknown_keys=dict[str, Any]())
+```
+
+A stretch of a played order that nothing of the timeline fills.
+
+A gap is an entry among the chunks of a FlowMap: the virtual axis goes
+on for *length* while no position of the timeline is played. The length
+is a bare number on the timeline's axis and strictly positive; it is
+kept as given and read in the timeline's number type when the FlowMap
+joins its timeline. In a manifest it is the object ``{gap: length}``,
+whose unknown keys are kept and written back.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                                                 | Description            |
+|--------|----------------------------------------------------------------------|------------------------|
+| length | [int](`int`) \| [float](`float`) \| [Fraction](`fractions.Fraction`) | The length of the gap. |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                            |
+|--------|----------------------------|--------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the length is no finite number, or is not positive. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> Gap(4)
+Gap(4)
+>>> Gap(0)
+Traceback (most recent call last):
+...
+ValueError: the length of a gap is positive, got 0
+```

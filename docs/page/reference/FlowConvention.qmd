@@ -1,0 +1,12 @@
+# FlowConvention { #timetoalign.core.FlowConvention }
+
+```python
+core.FlowConvention()
+```
+
+How flow control is played into a flow.
+
+- default: every Jump and Break acts as its conditions say.
+- single: once through: nothing goes back, and every Jump is arrived at
+  on the pass it would have after the repeats around it.
+- printed: the axis from its start to its end, flow control ignored.

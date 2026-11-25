@@ -2,297 +2,116 @@
 
 ```python
 timelines.FlowMap(
-    source=None,
+    timeline,
+    chunks,
     *,
-    id='',
-    resolve=None,
-    at=None,
-    source_length=None,
-    target_length=None,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    convention=None,
+    canonical=False,
+    name=None,
+    provenance=(),
 )
 ```
 
-Coordinate transformation map for flow control.
+One order in which stretches of one root timeline are played.
 
-A FlowMap enables bidirectional coordinate conversion between a source
-timeline (with flow control) and a target (linearized) timeline:
-
-- Source -> Target conversion (1:N, since repeats duplicate coordinates)
-- Target -> Source lookup (N:1, always unique)
-
-The single positional argument, *source*, is polymorphic:
-
-- ``None`` — an empty map (no sections). Used by internal construction
-  such as :meth:`inverse`, which fills the section tables afterwards.
-- a :class:`Flow` — sections are derived from the flow's measure-count
-  ranges (integer MC space); *id* defaults to the flow's mode value.
-- a single interval-like descriptor **or** an iterable of them — sections
-  are built directly from the resulting ``(start, end)`` ranges with a
-  cumulative target position, so the played spans concatenate in the
-  target axis and any gaps between them map to nothing. *id* defaults to
-  ``"default"``. Accepted descriptors are region names (resolved through
-  *resolve*), ``Region`` objects, ``(start, end)`` coordinate pairs,
-  ``Timeline`` objects, and interval events — see
-  :func:`~timetoalign.timelines.flow.sections._coerce_intervals`.
-
-Concatenation is only the default. Three interchangeable mechanisms
-**place** the played spans on the target axis instead, so the assembled
-timeline can hold holes — which is what an inverted cut needs:
-
-- :class:`~timetoalign.timelines.flow.sections.Gap` entries mixed into
-  *source*, each pushing everything after it later by its own duration.
-- The *at* argument, giving the target coordinate of each played span
-  outright.
-- A ``{target coordinate -> span}`` mapping as *source*, which pairs the
-  two directly; see :meth:`from_dict`.
-
-All three agree on the result, and no two may be combined in one call. See
-:meth:`_build_from_entries` for the placement rules.
-
-FlowMap stores sections for efficient lookup:
-
-- ``_sections``: List of FlowMapSection objects
-- ``_target_boundaries``: Sorted list of target section starts for
-  binary search
+The FlowMap as it is written: it names its chunks and holds no
+interval. :meth:`resolve` reads it against its root timeline.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name          | Type                                                       | Description                                                                                                                                                                                                            |
-|---------------|------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| flow          | [Flow](`timetoalign.timelines.flow.sections.Flow`) \| None | The computed Flow, or ``None`` for interval-built maps.                                                                                                                                                                |
-| id            | [str](`str`)                                               | Identifier for this FlowMap.                                                                                                                                                                                           |
-| source_length | [Fraction](`fractions.Fraction`) \| None                   | Total extent of the source axis, when known. Recorded so that :meth:`inverse` can restore a target axis whose final stretch is a gap — material the flow drops off the end leaves no section to infer the length from. |
-| target_length | [Fraction](`fractions.Fraction`) \| None                   | Total extent of the target axis, when known.                                                                                                                                                                           |
+| Name       | Type                                                                              | Description                                                                                                                                                                                                                                                                  |
+|------------|-----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| timeline   | [str](`str`)                                                                      | The ID of the ONE root timeline whose stretches are played.                                                                                                                                                                                                                  |
+| chunks     | [tuple](`tuple`)\[[str](`str`) \| [Gap](`timetoalign.core.Gap`), ...\]            | The chunks in the order played. Each is the ID of a Region of the root or of a descendant, of a child timeline at any depth, or of a virtual timeline of that tree, or a :class:`~timetoalign.core.Gap`. A chunk may occur any number of times; the root itself is no chunk. |
+| convention | [FlowConvention](`timetoalign.core.enums.FlowConvention`) \| [str](`str`) \| None | Which flow of the timeline's flow control the FlowMap states: ``default``, ``single`` or ``printed`` (:class:`~timetoalign.core.enums.FlowConvention`); any other word is kept as given. None on a FlowMap that follows none, such as one written by hand.                   |
+| canonical  | [bool](`bool`)                                                                    | Whether this is the canonical FlowMap of its timeline.                                                                                                                                                                                                                       |
+| name       | [str](`str`) \| None                                                              | Optional display name.                                                                                                                                                                                                                                                       |
+| provenance | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\]   | How the FlowMap was made and who believes it: any number of :class:`~timetoalign.core.provenance.Provenance` entries, as the manifest lists them.                                                                                                                            |
+| id         | [str](`str`)                                                                      | The FlowMap's ID; minted as ``flow_map_{N}`` when not given.                                                                                                                                                                                                                 |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                   |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline or a chunk is no valid ID, a chunk names the timeline itself or is neither an ID nor a gap, or a provenance entry is invalid. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Gap
+>>> reading = FlowMap("score", ["region_2", Gap(4), "region_1"])
+>>> reading.id, reading.convention, reading.canonical
+('flow_map_1', None, False)
+>>> FlowMap.from_dict(reading.to_dict()) == reading
+True
+```
 
 ## Methods
 
 | Name | Description |
 | --- | --- |
-| [fold](#timetoalign.timelines.FlowMap.fold) | Map target coordinate back to source coordinate. |
-| [from_dict](#timetoalign.timelines.FlowMap.from_dict) | Build a FlowMap from a ``{target coordinate -> span}`` mapping. |
-| [from_qb_sections](#timetoalign.timelines.FlowMap.from_qb_sections) | Create a FlowMap with QB-space source coordinates. |
-| [inverse](#timetoalign.timelines.FlowMap.inverse) | Create the inverse FlowMap (target -> source becomes source -> target). |
-| [iter_gaps](#timetoalign.timelines.FlowMap.iter_gaps) | Report every stretch of target time that no source material fills. |
-| [unfold_coordinate](#timetoalign.timelines.FlowMap.unfold_coordinate) | Map source coordinate to target coordinates. |
-
-### fold { #timetoalign.timelines.FlowMap.fold }
-
-```python
-timelines.FlowMap.fold(coord)
-```
-
-Map target coordinate back to source coordinate.
-
-The target timeline has unique coordinates, so this always returns
-a single value.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                                                 | Description                    | Default    |
-|--------|----------------------------------------------------------------------|--------------------------------|------------|
-| coord  | [Fraction](`fractions.Fraction`) \| [float](`float`) \| [int](`int`) | Coordinate in target timeline. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                             | Description                    |
-|--------|----------------------------------|--------------------------------|
-|        | [Fraction](`fractions.Fraction`) | Coordinate in source timeline. |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type                       | Description                              |
-|--------|----------------------------|------------------------------------------|
-|        | [ValueError](`ValueError`) | If coordinate is outside the flow range. |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> # Target coord 6 maps back to source coord 3
->>> flow_map.fold(6)
-Fraction(3)
-```
+| [from_dict](#timetoalign.timelines.FlowMap.from_dict) | Restore a FlowMap from its object in a manifest's ``flow_maps``. |
+| [resolve](#timetoalign.timelines.FlowMap.resolve) | Read the FlowMap against its root timeline. |
 
 ### from_dict { #timetoalign.timelines.FlowMap.from_dict }
 
 ```python
-timelines.FlowMap.from_dict(
-    placements,
-    *,
-    id='default',
-    resolve=None,
-    source_length=None,
-    target_length=None,
-)
+timelines.FlowMap.from_dict(data)
 ```
 
-Build a FlowMap from a ``{target coordinate -> span}`` mapping.
+Restore a FlowMap from its object in a manifest's ``flow_maps``.
 
-The third way to state a placement, and the most direct: each key is
-the target coordinate at which its span begins. Where ``Gap`` entries
-describe the holes and ``at`` parallels the span list, a mapping puts
-coordinate and span side by side, which reads well when the placement
-comes from a table, a file, or an analysis::
-
-    FlowMap.from_dict({0: "A8_1", 129: "A8_2"}, resolve=tl.get_region)
-
-Keys are sorted, so the mapping need not be written in target order.
-A value may also be a *collection* of spans, which are laid end to end
-from that coordinate on.
+IDs are bare, as every object of the library holds them. A chunk is
+an ID or the object ``{gap: length}``, the length read as its JSON
+form says (an integer, a float, a Fraction pair). ``convention``,
+``canonical``, ``name`` and ``provenance`` may be left out. Keys the
+library does not know are kept, a gap's too, and written back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name          | Type                                                                                   | Description                                                                                                                                                                                                                              | Default     |
-|---------------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
-| placements    | \'Mapping\[Fraction \| float \| int, object\]\'                                        | Mapping from target coordinate to one interval-like descriptor — or a collection of them — in the same shapes the constructor accepts (region names, ``Region`` objects, ``(start, end)`` pairs, ``Timeline`` objects, interval events). | _required_  |
-| id            | [str](`str`)                                                                           | Identifier for this FlowMap.                                                                                                                                                                                                             | `'default'` |
-| resolve       | [Callable](`collections.abc.Callable`)\[\[[str](`str`)\], [object](`object`)\] \| None | Callable mapping a region name to an interval-like object, needed only when the values carry region-name strings.                                                                                                                        | `None`      |
-| source_length | [Fraction](`fractions.Fraction`) \| [float](`float`) \| [int](`int`) \| None           | Total extent of the source axis, when known.                                                                                                                                                                                             | `None`      |
-| target_length | [Fraction](`fractions.Fraction`) \| [float](`float`) \| [int](`int`) \| None           | Total extent of the target axis, when known.                                                                                                                                                                                             | `None`      |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type        | Description                                                        |
-|--------|-------------|--------------------------------------------------------------------|
-|        | \'FlowMap\' | The constructed FlowMap, its spans placed at the given coordinates |
-|        | \'FlowMap\' | and the space between them recorded as gaps.                       |
+| Name   | Type                                                | Description         | Default    |
+|--------|-----------------------------------------------------|---------------------|------------|
+| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | The FlowMap object. | _required_ |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                    |
-|--------|----------------------------|------------------------------------------------|
-|        | [ValueError](`ValueError`) | If two spans would overlap on the target axis. |
+| Name   | Type                       | Description                 |
+|--------|----------------------------|-----------------------------|
+|        | [ValueError](`ValueError`) | If the object is malformed. |
 
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> FlowMap.from_dict({0: (0, 123), 129: (123, 228)}, id="restored")
-FlowMap(restored: 2 sections, 1 gap)
-```
-
-### from_qb_sections { #timetoalign.timelines.FlowMap.from_qb_sections }
+### resolve { #timetoalign.timelines.FlowMap.resolve }
 
 ```python
-timelines.FlowMap.from_qb_sections(flow, qb_sections, *, id='')
+timelines.FlowMap.resolve(root)
 ```
 
-Create a FlowMap with QB-space source coordinates.
+Read the FlowMap against its root timeline.
 
-Unlike the default constructor which derives source coordinates from
-MC numbers (integers), this factory accepts pre-computed quarterbeat
-boundaries.  This is the correct approach for scores with non-uniform
-measure durations, where MC-number space != QB-coordinate space.
+Each chunk becomes its interval on the ROOT's axis: a Region its
+extent, a child timeline its whole length, each carried up to the
+root by the offsets of the timelines between (exact offset
+arithmetic); a virtual timeline of the tree the stretches of the
+FlowMap it applies, in their order. A gap keeps its length. The
+stretches are placed one after the other on the virtual axis.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                                                     | Description                                                                                                                                                                 | Default    |
-|-------------|----------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| flow        | [Flow](`timetoalign.timelines.flow.sections.Flow`)                                                       | The computed Flow (retained for metadata and inverse ops).                                                                                                                  | _required_ |
-| qb_sections | [list](`list`)\[[tuple](`tuple`)\[[Fraction](`fractions.Fraction`), [Fraction](`fractions.Fraction`)\]\] | List of ``(qb_start, qb_end)`` tuples giving the quarterbeat boundaries of each section in the **folded** source timeline.  Must have the same length as ``flow.sections``. | _required_ |
-| id          | [str](`str`)                                                                                             | Optional identifier.  Defaults to ``flow.mode.value``.                                                                                                                      | `''`       |
+| Name   | Type                                              | Description                     | Default    |
+|--------|---------------------------------------------------|---------------------------------|------------|
+| root   | [Timeline](`timetoalign.timelines.base.Timeline`) | The timeline the FlowMap names. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type        | Description                        |
-|--------|-------------|------------------------------------|
-|        | \'FlowMap\' | FlowMap with sections in QB-space. |
+| Name   | Type                                                                    | Description                      |
+|--------|-------------------------------------------------------------------------|----------------------------------|
+|        | [ResolvedFlowMap](`timetoalign.timelines.flow.flowmap.ResolvedFlowMap`) | The FlowMap as placed stretches. |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                    |
-|--------|----------------------------|------------------------------------------------|
-|        | [ValueError](`ValueError`) | If ``len(qb_sections) != len(flow.sections)``. |
-
-#### See Also {.doc-section .doc-section-see-also}
-
-`compute_qb_sections`: Computes QB boundaries from a Flow and
-    ScoreFlowController.
-
-### inverse { #timetoalign.timelines.FlowMap.inverse }
-
-```python
-timelines.FlowMap.inverse()
-```
-
-Create the inverse FlowMap (target -> source becomes source -> target).
-
-The inverse FlowMap swaps the source and target coordinate systems.
-This is useful for attaching to a target timeline to enable
-tracing back to the original source.
-
-Because each section carries both ranges outright, inverting is a plain
-swap of the two. That is what makes an inverse **placing** rather than
-concatenating: a flow that drops material leaves its spans at their
-original source coordinates, so the inverse puts them back where they
-came from and the dropped stretch reappears as a gap. Applying the
-inverse with :meth:`~timetoalign.timelines.Timeline.apply_flow`
-therefore rebuilds a timeline laid out like the original.
-
-#### Note {.doc-section .doc-section-note}
-
-The inverse FlowMap's unfold_coordinate() returns coordinates in
-the original source space, which may yield multiple results if the
-source coord is visited multiple times.
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type        | Description                           |
-|--------|-------------|---------------------------------------|
-|        | \'FlowMap\' | A new FlowMap with inverted sections. |
-
-### iter_gaps { #timetoalign.timelines.FlowMap.iter_gaps }
-
-```python
-timelines.FlowMap.iter_gaps()
-```
-
-Report every stretch of target time that no source material fills.
-
-A hole reaches the map two ways, and both are reported here:
-
-- **Recorded** — an insertion section, built from a
-  :class:`~timetoalign.timelines.flow.sections.Gap` entry or from an
-  ``at`` placement, which may carry a label.
-- **Implied** — the space left between two placed sections, or between
-  the last section and a longer recorded ``target_length``. Inverting a
-  FlowMap produces holes this way, since the inverse simply puts each
-  span back at its source coordinates.
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                                                                                           | Description                                                        |
-|--------|--------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
-|        | [list](`list`)\[[tuple](`tuple`)\[[Fraction](`fractions.Fraction`), [Fraction](`fractions.Fraction`), [str](`str`) \| None\]\] | The ``(start, end, label)`` of each hole, in target order.         |
-|        | [list](`list`)\[[tuple](`tuple`)\[[Fraction](`fractions.Fraction`), [Fraction](`fractions.Fraction`), [str](`str`) \| None\]\] | Adjacent holes are merged, and *label* is the recorded gap's label |
-|        | [list](`list`)\[[tuple](`tuple`)\[[Fraction](`fractions.Fraction`), [Fraction](`fractions.Fraction`), [str](`str`) \| None\]\] | or ``None``.                                                       |
-
-### unfold_coordinate { #timetoalign.timelines.FlowMap.unfold_coordinate }
-
-```python
-timelines.FlowMap.unfold_coordinate(coord)
-```
-
-Map source coordinate to target coordinates.
-
-Since a source coordinate may be visited multiple times (due to repeats),
-this returns a list of all corresponding target coordinates.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                                                 | Description                    | Default    |
-|--------|----------------------------------------------------------------------|--------------------------------|------------|
-| coord  | [Fraction](`fractions.Fraction`) \| [float](`float`) \| [int](`int`) | Coordinate in source timeline. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                               | Description                                                 |
-|--------|----------------------------------------------------|-------------------------------------------------------------|
-|        | [list](`list`)\[[Fraction](`fractions.Fraction`)\] | List of coordinates in target timeline. Empty list if coord |
-|        | [list](`list`)\[[Fraction](`fractions.Fraction`)\] | is not within any section.                                  |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> # Source coord 3 appears twice due to repeat
->>> flow_map.unfold_coordinate(3)
-[Fraction(2), Fraction(6)]
-```
+| Name   | Type                                                                  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+|--------|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`)                                            | If *root* is a child timeline or not the timeline named; a chunk names nothing in the root's tree; a chunk is a virtual timeline whose unit is not the root's (every region and child of a tree is in the root's unit), or one that cannot be read (it applies no FlowMap of the root, another timeline than the root's, or goes ``through`` something); a gap's length is no value of the root's number type; or the chunks name one another in a circle. |
+|        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If a child timeline named has no known length.                                                                                                                                                                                                                                                                                                                                                                                                             |

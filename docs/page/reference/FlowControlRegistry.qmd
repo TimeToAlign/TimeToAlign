@@ -1,0 +1,469 @@
+# FlowControlRegistry { #timetoalign.timelines.FlowControlRegistry }
+
+```python
+timelines.FlowControlRegistry(elements=(), *, unit=None, number_type=None)
+```
+
+The flow control of one timeline: its elements in canonical order.
+
+One collection holds every :class:`FlowControlElement`, ordered by
+coordinate and then by ID; ``jumps``, ``jump_targets``, ``breaks``,
+``section_breaks`` and ``barlines`` are views of it by class. All of
+them are tuples: the collection changes through :meth:`add`,
+:meth:`add_all`, :meth:`with_belief` and :meth:`with_beliefs` alone,
+and no element ever leaves it. Every element carries an ID unique
+within the registry and, once the registry belongs to a timeline,
+within that timeline's whole manifest: an element whose minted ID is
+taken is stored under a freshly minted ID, and one whose given ID is
+taken is refused. A manifest writes the registry as the timeline's
+``flow_control`` array.
+
+The registry refuses what cannot be played: a second Jump at a
+coordinate, a ``to`` naming neither a :class:`JumpTarget` of the
+registry nor a place of its timeline, an ``after`` that does not name
+exactly one destination of another Jump of the registry, and an element
+or a destination's place lying outside the axis, which runs from 0 to
+the timeline's length (from 0 on while that length is unknown, and for
+a registry that belongs to no timeline).
+
+An element that some actor believes ``"false"`` is rejected
+(:attr:`FlowControlElement.is_rejected`, :meth:`with_belief`): it stays
+in the registry and is written, but it is out of every rule, as what is
+checked and as what is named. A rejected Jump and its replacement may
+therefore share a coordinate. An element that another element not
+rejected names (by ``to`` or ``after``) is not rejected alone: the
+elements naming it are rejected in the same step
+(:meth:`with_beliefs`).
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                   | Description                                            | Default   |
+|-------------|------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|-----------|
+| elements    | [Iterable](`collections.abc.Iterable`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The elements the registry starts with, added together. | `()`      |
+| unit        | [TimeUnit](`timetoalign.core.TimeUnit`) \| [str](`str`) \| None                                                        | The unit of the axis the registry is bound to, if any. | `None`    |
+| number_type | [NumberType](`timetoalign.core.NumberType`) \| [str](`str`) \| None                                                    | The number type of that axis, if any.                  | `None`    |
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name        | Type                                                | Description                                            |
+|-------------|-----------------------------------------------------|--------------------------------------------------------|
+| unit        | [TimeUnit](`timetoalign.core.TimeUnit`) \| None     | The unit of the axis the registry is bound to, if any. |
+| number_type | [NumberType](`timetoalign.core.NumberType`) \| None | The number type of that axis, if any.                  |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> registry = FlowControlRegistry(unit=TimeUnit.quarters)
+>>> registry.add(JumpTarget(Coordinate(16, "quarters"), id="segno"))
+JumpTarget('segno' @ 16 quarters)
+>>> registry.add(
+...     Jump(
+...         Coordinate(64, "quarters"),
+...         [JumpDestination(to="segno", repeat_count=1, reset=False)],
+...     )
+... ).id
+'jump_1'
+>>> [element.role for element in registry.elements]
+['jump_target', 'jump']
+>>> registry.place_of(registry.jumps[0].targets[0], registry.jumps[0])
+Coordinate(Fraction(16, 1), quarters)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [active_elements](#timetoalign.timelines.FlowControlRegistry.active_elements) | Return the elements that are read as flow control, in canonical order. |
+| [add](#timetoalign.timelines.FlowControlRegistry.add) | Add one element. |
+| [add_all](#timetoalign.timelines.FlowControlRegistry.add_all) | Add several elements together, or none of them. |
+| [copy](#timetoalign.timelines.FlowControlRegistry.copy) | Return an independent registry with the same binding and content. |
+| [destination_of](#timetoalign.timelines.FlowControlRegistry.destination_of) | Return the Jump an ``after`` names and the index of the destination. |
+| [from_dict](#timetoalign.timelines.FlowControlRegistry.from_dict) | Restore a registry bound to a timeline's axis from its ``flow_control``. |
+| [has_flow_control](#timetoalign.timelines.FlowControlRegistry.has_flow_control) | Whether the registry holds any element. |
+| [jump_at](#timetoalign.timelines.FlowControlRegistry.jump_at) | Return the Jump at *coordinate*, if one lies there. |
+| [place_of](#timetoalign.timelines.FlowControlRegistry.place_of) | Return where *destination* of *jump* goes on. |
+| [to_dict](#timetoalign.timelines.FlowControlRegistry.to_dict) | Return the elements as the ``flow_control`` array. |
+| [with_belief](#timetoalign.timelines.FlowControlRegistry.with_belief) | Record *actor*'s belief in the element *element_id*. |
+| [with_beliefs](#timetoalign.timelines.FlowControlRegistry.with_beliefs) | Record *actor*'s belief in several elements in one step, or in none. |
+
+### active_elements { #timetoalign.timelines.FlowControlRegistry.active_elements }
+
+```python
+timelines.FlowControlRegistry.active_elements(
+    believer=None,
+    beliefs=DEFAULT_BELIEFS,
+    context=None,
+)
+```
+
+Return the elements that are read as flow control, in canonical order.
+
+Without a believer these are the elements not rejected: every
+element but those some actor believes ``"false"``
+(:attr:`FlowControlElement.is_rejected`). A believer narrows the
+reading to that actor's beliefs: the belief filter of
+:func:`~timetoalign.core.provenance.belief_mask`, read on each
+element's provenance, where an element without provenance, or
+without a belief of the believer's, is one the believer has not
+decided on, and one the believer holds two beliefs in (in two
+entries) is read as the more critical of them.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                                   | Description                                                                      | Default           |
+|----------|----------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|-------------------|
+| believer | [str](`str`) \| None                                                                   | The actor whose beliefs alone decide; None leaves out what any actor rejects.    | `None`            |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | With a believer, the belief states kept; every state but ``"false"`` by default. | `DEFAULT_BELIEFS` |
+| context  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None      | The JSON-LD context under which actors compare as IRIs.                          | `None`            |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                     |
+|--------|----------------------------|-------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *beliefs* is no collection of belief states. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> registry = FlowControlRegistry(unit="quarters")
+>>> barline = registry.add(Barline(Coordinate(8, "quarters")))
+>>> _ = registry.with_belief(barline.id, "ana", "false", date="2026-11-25")
+>>> registry.elements, registry.active_elements()
+((Barline('barline_1' @ 8 quarters),), [])
+>>> registry.active_elements(believer="bea")
+[Barline('barline_1' @ 8 quarters)]
+```
+
+### add { #timetoalign.timelines.FlowControlRegistry.add }
+
+```python
+timelines.FlowControlRegistry.add(element)
+```
+
+Add one element.
+
+An element another one names (a :class:`JumpTarget` named by a
+``to``, a :class:`Jump` named by an ``after``) is added before the
+one naming it; :meth:`add_all` adds elements naming one another
+together.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type                                                                         | Description   | Default    |
+|---------|------------------------------------------------------------------------------|---------------|------------|
+| element | [FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`) | The element.  | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                         | Description                                                    |
+|--------|------------------------------------------------------------------------------|----------------------------------------------------------------|
+|        | [FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`) | The stored element, with its coordinate on the registry's axis |
+|        | [FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`) | and its ID as admitted.                                        |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description         |
+|--------|----------------------------|---------------------|
+|        | [ValueError](`ValueError`) | As :meth:`add_all`. |
+
+### add_all { #timetoalign.timelines.FlowControlRegistry.add_all }
+
+```python
+timelines.FlowControlRegistry.add_all(elements)
+```
+
+Add several elements together, or none of them.
+
+The elements may name one another in any order. An element whose
+minted ID is taken is stored under a freshly minted ID, and the
+elements added with it name it by that ID.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                                                                   | Description   | Default    |
+|----------|------------------------------------------------------------------------------------------------------------------------|---------------|------------|
+| elements | [Iterable](`collections.abc.Iterable`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The elements. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                           | Description                                               |
+|--------|------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The stored elements in the order given, each with its     |
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | coordinate on the registry's axis and its ID as admitted. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an element's given ID is already taken, its unit is not the registry's, or an element that is not rejected cannot be played among those not rejected: a coordinate holds a second Jump, a ``to`` names neither a JumpTarget of the registry nor a place of its timeline, an ``after`` does not name exactly one destination of another Jump of the registry, or the element's coordinate or the place of one of its destinations lies before 0 or beyond the known length of the registry's timeline. Nothing has changed then. |
+
+### copy { #timetoalign.timelines.FlowControlRegistry.copy }
+
+```python
+timelines.FlowControlRegistry.copy()
+```
+
+Return an independent registry with the same binding and content.
+
+The copy belongs to no timeline until one adopts it.
+
+### destination_of { #timetoalign.timelines.FlowControlRegistry.destination_of }
+
+```python
+timelines.FlowControlRegistry.destination_of(reference)
+```
+
+Return the Jump an ``after`` names and the index of the destination.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                     |
+|--------|----------------------------|---------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *reference* does not name exactly one destination of a Jump of the registry. |
+
+### from_dict { #timetoalign.timelines.FlowControlRegistry.from_dict }
+
+```python
+timelines.FlowControlRegistry.from_dict(
+    data,
+    *,
+    unit,
+    number_type=None,
+    places=None,
+)
+```
+
+Restore a registry bound to a timeline's axis from its ``flow_control``.
+
+Each element of the array states its ``role`` (``jump``,
+``jump_target``, ``break``, ``section_break`` or ``barline``), its
+coordinate a bare value on the axis that *unit* and *number_type*
+(the unit's own when None) describe. The elements are added
+together, in any order the array lists them. Keys the library does
+not know are kept on each element and written back.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                      | Description                                                                                                                                                 | Default    |
+|-------------|-----------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| data        | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\]                                     | The ``flow_control`` array.                                                                                                                                 | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.TimeUnit`) \| [str](`str`)                                                   | The axis's unit.                                                                                                                                            | _required_ |
+| number_type | [NumberType](`timetoalign.core.NumberType`) \| [str](`str`) \| None                                       | The axis's number type, or None for the unit's own.                                                                                                         | `None`     |
+| places      | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Coordinate](`timetoalign.core.Coordinate`)\] \| None | The places of the timeline a destination may name beside the array's jump targets: the starts of its Regions and of its child timelines and its own, by ID. | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                    |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the array or an element is malformed, an element is written in the form with ``type`` and ``target``, or the registry refuses the elements. |
+
+### has_flow_control { #timetoalign.timelines.FlowControlRegistry.has_flow_control }
+
+```python
+timelines.FlowControlRegistry.has_flow_control()
+```
+
+Whether the registry holds any element.
+
+### jump_at { #timetoalign.timelines.FlowControlRegistry.jump_at }
+
+```python
+timelines.FlowControlRegistry.jump_at(coordinate)
+```
+
+Return the Jump at *coordinate*, if one lies there.
+
+Where a rejected Jump and its replacement lie together, the one not
+rejected is returned; a rejected one where no other lies.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                                                                                                     | Description                                                                                                                                                                                    | Default    |
+|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| coordinate | [_Number](`timetoalign.timelines.flowcontrol._Number`) \| [Coordinate](`timetoalign.core.Coordinate`) \| [IdCoordinate](`timetoalign.core.IdCoordinate`) | A position on the registry's axis: a bare value, a :class:`~timetoalign.core.Coordinate` or an :class:`~timetoalign.core.IdCoordinate` in the registry's unit, read in the axis's number type. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                          |
+|--------|----------------------------|------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a coordinate object's unit is not the registry's. |
+
+### place_of { #timetoalign.timelines.FlowControlRegistry.place_of }
+
+```python
+timelines.FlowControlRegistry.place_of(destination, jump, *, elements=None)
+```
+
+Return where *destination* of *jump* goes on.
+
+``by`` is added to the Jump's coordinate. ``to`` is the coordinate
+of the JumpTarget of that ID, else the place of that ID the
+registry's timeline gives (the start of a Region or of a child
+timeline, or the timeline's own start). A destination without place
+goes on at the nearest section break before the Jump, or at 0.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                           | Description                                                                                                                | Default    |
+|-------------|--------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|------------|
+| destination | [JumpDestination](`timetoalign.timelines.flowcontrol.JumpDestination`)                                                         | The destination.                                                                                                           | _required_ |
+| jump        | [Jump](`timetoalign.timelines.flowcontrol.Jump`)                                                                               | The Jump holding it.                                                                                                       | _required_ |
+| elements    | [Sequence](`collections.abc.Sequence`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] \| None | The elements to find jump targets and section breaks among; the elements not rejected (:meth:`active_elements`) when None. | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                   | Description                                         |
+|--------|------------------------|-----------------------------------------------------|
+|        | [KeyError](`KeyError`) | If ``to`` names nothing, or a rejected jump target. |
+
+### to_dict { #timetoalign.timelines.FlowControlRegistry.to_dict }
+
+```python
+timelines.FlowControlRegistry.to_dict(minimal=True)
+```
+
+Return the elements as the ``flow_control`` array.
+
+Each element is written as its own object, in canonical order
+whatever order the elements were added in: by coordinate, then by
+ID, values compared exactly and IDs by Unicode code point. Nothing
+is written that the registry does not hold.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Default   |
+|---------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| minimal | [bool](`bool`) | Write each element in the minimal form (the default): every key at its default value left out, in the destinations of a Jump too. With False, the complete form: ``name``, ``label`` and ``meta`` of every element and ``determined``, ``reset`` and ``label`` of every destination are written whatever they hold. A key without a default (``manifestation``, ``ends``, ``provenance``, ``to``, ``by``, ``passes``, ``repeat_count``, ``after``) is written only when stated. | `True`    |
+
+### with_belief { #timetoalign.timelines.FlowControlRegistry.with_belief }
+
+```python
+timelines.FlowControlRegistry.with_belief(
+    element_id,
+    actor,
+    belief,
+    *,
+    date=None,
+    note=None,
+    context=None,
+)
+```
+
+Record *actor*'s belief in the element *element_id*.
+
+The registry holds the element's copy whose provenance records the
+belief (:meth:`FlowControlElement.with_belief`) in its place; the
+element's ID, coordinate and every other key stay. The belief
+``"false"`` rejects the element, which is how flow control is
+repaired: the wrong element is rejected and another one added,
+never changed or removed.
+
+What names a rejected element would name nothing. An element that
+another element not rejected names, by a ``to`` or an ``after``, is
+therefore not rejected alone: :meth:`with_beliefs` rejects it
+together with the elements naming it, and their replacements are
+added afterwards.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                              | Description                                                                      | Default    |
+|------------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------|------------|
+| element_id | [str](`str`)                                                                      | The element's ID.                                                                | _required_ |
+| actor      | [str](`str`)                                                                      | Who holds the belief, an IRI.                                                    | _required_ |
+| belief     | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)                          | ``"true"``, ``"false"`` or ``"unlikely"``.                                       | _required_ |
+| date       | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None            | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.            | `None`     |
+| note       | [str](`str`) \| None                                                              | A remark.                                                                        | `None`     |
+| context    | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs; None declares no prefix. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                         | Description                               |
+|--------|------------------------------------------------------------------------------|-------------------------------------------|
+|        | [FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`) | The element as the registry holds it now. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                        |
+|--------|----------------------------|----------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If the registry holds no element *element_id*.     |
+|        | [ValueError](`ValueError`) | As :meth:`with_beliefs`. Nothing has changed then. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> registry = FlowControlRegistry(unit="quarters")
+>>> wrong = registry.add(
+...     Jump(Coordinate(16, "quarters"), [JumpDestination(repeat_count=1)]))
+>>> registry.with_belief(wrong.id, "ana", "false").is_rejected
+True
+>>> registry.add(
+...     Jump(Coordinate(16, "quarters"), [JumpDestination(by=-8, repeat_count=1)])
+... ).id
+'jump_2'
+>>> registry.jump_at(16).id
+'jump_2'
+```
+
+### with_beliefs { #timetoalign.timelines.FlowControlRegistry.with_beliefs }
+
+```python
+timelines.FlowControlRegistry.with_beliefs(
+    element_ids,
+    actor,
+    belief,
+    *,
+    date=None,
+    note=None,
+    context=None,
+)
+```
+
+Record *actor*'s belief in several elements in one step, or in none.
+
+As :meth:`with_belief` for each element, the result checked as a
+whole: with the belief ``"false"``, an element and the elements
+naming it are rejected together, which neither could be alone.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                              | Description                                                                      | Default    |
+|-------------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------|------------|
+| element_ids | [Iterable](`collections.abc.Iterable`)\[[str](`str`)\]                            | The elements' IDs.                                                               | _required_ |
+| actor       | [str](`str`)                                                                      | Who holds the belief, an IRI.                                                    | _required_ |
+| belief      | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)                          | ``"true"``, ``"false"`` or ``"unlikely"``.                                       | _required_ |
+| date        | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None            | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.            | `None`     |
+| note        | [str](`str`) \| None                                                              | A remark.                                                                        | `None`     |
+| context     | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs; None declares no prefix. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                                           | Description                                                      |
+|--------|------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The elements as the registry holds them now, in the order given. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                          |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If the registry holds no element of one of the IDs.                                                                                                                                                                                                                                                  |
+|        | [ValueError](`ValueError`) | If the belief or the date is invalid; an element rejected by the step is named, by a ``to`` or an ``after``, by an element that is not rejected after it; or an element no longer rejected by the step cannot be played among the elements not rejected (:meth:`add_all`). Nothing has changed then. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> registry = FlowControlRegistry(unit="quarters")
+>>> segno, leap = registry.add_all([
+...     JumpTarget(Coordinate(4, "quarters"), id="segno"),
+...     Jump(Coordinate(16, "quarters"), [JumpDestination(to="segno")], id="ds"),
+... ])
+>>> registry.with_belief("segno", "ana", "false")
+Traceback (most recent call last):
+...
+ValueError: jump_target 'segno' is not rejected alone: jump 'ds' names it. Reject the elements naming it in the same step (with_beliefs), then add their replacements
+>>> [e.is_rejected for e in registry.with_beliefs(["segno", "ds"], "ana", "false")]
+[True, True]
+```

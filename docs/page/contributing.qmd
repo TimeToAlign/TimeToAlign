@@ -220,23 +220,6 @@ pydantic scalar `T` and a struct-shaped raw field; it pins the inner
 raw type via the `_raw_cls` ClassVar (default `StructField`, refined
 to `DenominateNumberField` by `TimeScalarField`).
 
-**Two-step typing/grouping algorithm.**
-`FlowController` converts raw `MeasureUnit`s into typed measures and
-groups via two passes:
-
-1. **Typing step.** Each `MeasureUnit` is classified as
-   `IncompleteMeasure` / `CompleteMeasure` / `OverlengthMeasure` by
-   comparing its actual duration to the expected time-signature
-   duration, with local context (first/last measure) refining the
-   incomplete position.
-2. **Grouping step.** Typed measures are consolidated into
-   `MeasureGroup` subclasses (`CompleteMeasureGroup`, `SplitMeasure`,
-   `VoltaGroup`, `IncompleteGroup`, `OverlengthGroup`) so every
-   measure belongs to exactly one group.
-
-Do not use the word "Phase" to refer to these passes in shipped code
-or docs — say "Typing step" / "Grouping step".
-
 **Unified `TimeStamp` architecture.**
 `TimeStamp` is the canonical result of coordinate resolution for timelines
 and groups, `MatchStamp` for bundles. They

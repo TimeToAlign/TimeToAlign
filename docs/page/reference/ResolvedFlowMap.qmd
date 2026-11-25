@@ -1,0 +1,110 @@
+# ResolvedFlowMap { #timetoalign.timelines.ResolvedFlowMap }
+
+```python
+timelines.ResolvedFlowMap(timeline, unit, number_type, chunks)
+```
+
+A played order as stretches of a root timeline's axis, placed in order.
+
+What :meth:`FlowMap.resolve` returns, and, as a :class:`PlayedFlow`,
+what :meth:`Timeline.get_flow <timetoalign.timelines.Timeline.get_flow>`
+computes from flow control without writing anything. The virtual axis
+starts at 0 with the first stretch and has the root's unit and number
+type; every position in and out is a
+:class:`~timetoalign.core.Coordinate` in that number type.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name        | Type                                                                                                                                                    | Description                                                                  |
+|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
+| timeline    | [str](`str`)                                                                                                                                            | The ID of the timeline whose stretches are played.                           |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`)                                                                                                           | The unit of both axes.                                                       |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`)                                                                                                       | The number type of both axes.                                                |
+| chunks      | [tuple](`tuple`)\[[PlacedChunk](`timetoalign.timelines.flow.flowmap.PlacedChunk`) \| [PlacedGap](`timetoalign.timelines.flow.flowmap.PlacedGap`), ...\] | The stretches in the order played, each placed where the one before it ends. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [fold](#timetoalign.timelines.ResolvedFlowMap.fold) | Return the root position played at a position of the virtual axis. |
+| [from_stretches](#timetoalign.timelines.ResolvedFlowMap.from_stretches) | Place stretches one after the other on a virtual axis. |
+| [unfold](#timetoalign.timelines.ResolvedFlowMap.unfold) | Return every position of the virtual axis a root position is played at. |
+
+### fold { #timetoalign.timelines.ResolvedFlowMap.fold }
+
+```python
+timelines.ResolvedFlowMap.fold(coordinate)
+```
+
+Return the root position played at a position of the virtual axis.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                    | Description                                                               | Default    |
+|------------|-------------------------------------------------------------------------|---------------------------------------------------------------------------|------------|
+| coordinate | [CoordinateInput](`timetoalign.timelines.flow.flowmap.CoordinateInput`) | A position on the virtual axis: a bare value or a Coordinate in its unit. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                | Description                                            |
+|--------|-----------------------------------------------------|--------------------------------------------------------|
+|        | [Coordinate](`timetoalign.core.Coordinate`) \| None | The position on the root's axis, or None inside a gap. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                  |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the position lies outside the virtual axis, which is half-open (``[0, length)``), a Coordinate is in another unit, or an IdCoordinate names the root timeline, whose positions are not virtual positions. |
+
+### from_stretches { #timetoalign.timelines.ResolvedFlowMap.from_stretches }
+
+```python
+timelines.ResolvedFlowMap.from_stretches(
+    timeline,
+    stretches,
+    *,
+    unit,
+    number_type,
+    **stated,
+)
+```
+
+Place stretches one after the other on a virtual axis.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                         | Description                                                                                                                                                  | Default    |
+|-------------|------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| timeline    | [str](`str`)                                                                                                                 | The ID of the timeline the intervals lie on.                                                                                                                 | _required_ |
+| stretches   | [Iterable](`collections.abc.Iterable`)\[[Interval](`timetoalign.core.Interval`) \| [Duration](`timetoalign.core.Duration`)\] | In the order played, an :class:`~timetoalign.core.Interval` of the timeline's axis for a stretch played and a :class:`~timetoalign.core.Duration` for a gap. | _required_ |
+| unit        | [TimeUnit](`timetoalign.core.enums.TimeUnit`)                                                                                | The timeline's unit.                                                                                                                                         | _required_ |
+| number_type | [NumberType](`timetoalign.core.enums.NumberType`)                                                                            | The timeline's number type.                                                                                                                                  | _required_ |
+| **stated    | [Any](`typing.Any`)                                                                                                          | What a subclass states beside the chunks (the ``findings`` of a :class:`PlayedFlow`).                                                                        | `{}`       |
+
+### unfold { #timetoalign.timelines.ResolvedFlowMap.unfold }
+
+```python
+timelines.ResolvedFlowMap.unfold(coordinate)
+```
+
+Return every position of the virtual axis a root position is played at.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                    | Description                                                                                                       | Default    |
+|------------|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|------------|
+| coordinate | [CoordinateInput](`timetoalign.timelines.flow.flowmap.CoordinateInput`) | A position on the root's axis: a bare value, a Coordinate in the root's unit, or an IdCoordinate naming the root. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                          | Description                                                       |
+|--------|---------------------------------------------------------------|-------------------------------------------------------------------|
+|        | [list](`list`)\[[Coordinate](`timetoalign.core.Coordinate`)\] | The virtual positions in the order played: one per stretch        |
+|        | [list](`list`)\[[Coordinate](`timetoalign.core.Coordinate`)\] | covering the position (a stretch is half-open, its end excluded), |
+|        | [list](`list`)\[[Coordinate](`timetoalign.core.Coordinate`)\] | none where it is never played.                                    |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                    |
+|--------|----------------------------|--------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a Coordinate is in another unit, or an IdCoordinate names another timeline. |

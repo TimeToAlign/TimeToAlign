@@ -37,6 +37,19 @@ AlignmentMatrix: |
   score-to-performance correspondence. Read by ListenHereLoader, with the
   complete pairwise claim set held in a MatchClaimField.
 
+Atomic section: |
+  A stretch of a timeline's axis that its flow control never divides: an
+  interval between consecutive coordinates of its Jumps, JumpTargets, Breaks
+  and SectionBreaks and the places their destinations go on at, named by a
+  letter (A, B, ..., Z, AA, ...) in the order of the axis. Every flow is a
+  sequence of atomic sections. Timeline.create_flow_maps_from_flow_control()
+  writes them as Regions stating the type tts:AtomicSection, and the computed
+  FlowMaps list them.
+
+Barline: |
+  A flow-control element recording a barline the source prints (a double or a
+  final barline). It changes nothing in the flow.
+
 BeatGrid: |
   An ordered set of BeatGridSegments and the beats they generate on a seconds
   axis. Each segment states one stretch of a recording — an anchor instant, a
@@ -83,8 +96,12 @@ Box: |
   in its resources with the type Box, and from_file() reads them back.
 
 Break: |
-  A control event that voids contiguity at its Instant. TimeIntervals cannot span
-  a Break, and Breaks cannot be inserted into existing TimeIntervals.
+  A flow-control element at which the flow does not go on: when the flow
+  plays up to it, a Jump at the same coordinate with a destination that holds
+  is taken, otherwise the flow ends there and begins again at the next
+  SectionBreak, if any. With ends (a condition: passes, after) it ends the
+  flow only while that condition holds, as a Fine does after a D.C. or D.S.
+  A Break lies between two brackets of alternative endings.
 
 Catalogue: |
   Data shipped with the TimeToShare package that guides the writing of
@@ -155,10 +172,6 @@ Contiguity: |
   its start and end. An Instant is contiguous with a TimeInterval if it is
   synchronous with its EndInstant.
 
-ControlEvent: |
-  An event affecting flow control: either a Break (voiding contiguity) or a Jump
-  (creating new contiguity).
-
 ConversionMap: |
   A typed function attached to a timeline that maps each coordinate to exactly
   one value (coordinate, label, or filename); also permits inverse conversion
@@ -175,24 +188,46 @@ Coordinate: |
   yields Fractions and a float-canonical axis always yields floats. An explicit
   number_type= overrides the default, and exact input is never degraded.
 
-Flow: |
-  One computed path through a score's control structure — the ordered sequence
-  of measure visitations that results from following its repeats, jumps and
-  voltas. A ScoreFlowController computes one from the parsed measure records,
-  or one can be loaded from a .flow.csv ground truth and compared with
-  is_equivalent(). A Flow is section-based; measure-count ranges follow the
-  library's right-open [start, end) convention. It is the input a FlowMap is
-  built from, not itself a mapping between coordinates.
+Finding: |
+  What playing flow control found, without raising: a flow that never ends
+  (endless_loop), a flow ending at a Break that states no condition before
+  the end (flow_ends_at_break), two destinations of one Jump holding at once
+  (ambiguous_targets), a destination nobody can check (undetermined_target),
+  and a stretch never played (never_played). Only the default flow has
+  findings; Timeline.get_flow() returns them with the flow.
+
+Flow control element: |
+  One of the elements a timeline holds as its flow control (written as its
+  flow_control array): a Jump, a JumpTarget, a Break, a SectionBreak or a
+  Barline. Each lies at one coordinate and has an element id; how it looks in
+  the source is its manifestation, which decides nothing. An element is never
+  changed or deleted to repair flow control: an actor's belief "false" rejects
+  it, and the right one is added. Timeline.get_flow() plays the elements no
+  actor rejects.
 
 FlowMap: |
-  A path through a score's control structure (repeats, jumps), expressed as an
-  ordered sequence of TimeIntervals; not itself a timeline. Used for unfolding a
-  score into performance order. A FlowMap is built from one uniform argument —
-  a single interval-like value (a Region, a coordinate pair, a Timeline, or an
-  interval event) or an iterable of them, which concatenate in performance
-  order — or from a score's computed flow of Breaks and Jumps.
-  Timeline.create_flow_map(intervals) resolves region names against the
-  timeline's own Regions, attaches the FlowMap, and returns it.
+  One order in which stretches of one root timeline are played: an ordered
+  list of chunks, each the ID of a Region, a child timeline or a virtual
+  timeline of that timeline's tree, or a Gap in which nothing of the timeline
+  is played. A FlowMap holds no interval; resolved against its timeline it
+  places each stretch where the one before it ends and converts positions both
+  ways (unfold: a position of the timeline to every position it is played at;
+  fold: a position of the flow to the position it plays, or None in a gap).
+  Timeline.create_flow_map(chunks) creates and attaches one;
+  Timeline.create_flow_maps_from_flow_control() writes the flows of the flow
+  control (default, single, printed) as FlowMaps over the atomic sections.
+
+Destination: |
+  One place a Jump may go on at, and when: a JumpDestination. Its place is
+  to (the ID of a JumpTarget, a Region, a child timeline or the timeline
+  itself), by (a signed distance from the Jump; by 0 is going on and is never
+  taken) or neither (the start of its section). Its conditions all must hold:
+  passes (the arrivals at the Jump that count), repeat_count (taken at most
+  that often), after (another Jump's destination must have been taken) and
+  determined (false for a choice nobody can check, such as an ossia, which is
+  never taken). reset says whether going back restores the Jumps and Breaks
+  gone back over, as a repeat does; a D.C. or D.S. played without repeats
+  states reset false.
 
 DictStore: |
   A generic EventStore subclass holding a dict[str, EventData] with arbitrary
@@ -213,7 +248,8 @@ Domain: |
 element id: |
   The id that identifies an element of a manifest: the manifest's own, a
   timeline (root or descendant), TimelineGroup, MeasureMap, ConversionMap at
-  any nesting depth, Region, Break, Jump, Marker or Resource. It is unique
+  any nesting depth, Region, flow-control element, FlowMap, virtual timeline
+  or Resource. It is unique
   across the whole manifest and every kind, so the id alone names the element.
   An id is free: whatever was given is kept verbatim, any non-empty string
   without a control character; spaces, colons, slashes and URIs are allowed,
@@ -223,8 +259,10 @@ element id: |
   dlt, cpt, dpt, cgt or dgt for a timeline (continuous or discrete, logical,
   physical or graphical), group for a group, measuremap for a MeasureMap,
   cmap, lmap, tmap or pmap for a conversion map, region for a Region,
-  resource for a Resource, and flow_marker (a Break), jump_from (a Jump) or
-  jump_to (a Marker); a loader role leads it (score:clt_1). When trees are
+  resource for a Resource, jump, jump_target, break, section_break or
+  barline for a flow-control element and flow_map for a FlowMap; a virtual
+  timeline is minted as a timeline of its unit; a loader role leads it
+  (score:clt_1). When trees are
   joined into a group or bundle, a minted id that collides is re-minted and a
   given id that collides raises, for every kind of element. The id
   identifies, the name displays: a name may be absent or repeat, and an id is
@@ -280,15 +318,18 @@ IntervalField: |
 InverseMap: "The reverse transformation of a bijective ConversionMap."
 
 Jump: |
-  A control event with JumpFrom and JumpTo Instants. When active, makes events
-  at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, dal segno).
-  Its target is the element id of a Marker of the same timeline (a segno, a
-  coda), or None when it lands on no marker (to the start, a plain repeat);
-  JumpTo carries the destination coordinate either way.
+  A flow-control element where the flow may leave the axis, holding one
+  Destination for every place it may go on at: a repeat end, a D.C., a D.S.,
+  a To Coda and the brackets of alternative endings at one coordinate are
+  destinations of one Jump. When the flow plays up to it, of the destinations
+  that hold one is taken (one going back with reset first, then one going
+  back without, then one ahead, the nearest first); when none holds, the flow
+  goes on.
 
-JumpFrom: "The originating Instant of a Jump control event."
-
-JumpTo: "The destination Instant of a Jump control event."
+JumpTarget: |
+  A flow-control element marking a place a destination names by its element
+  id: a repeat start, a segno, a coda, a bracket. Nothing happens when the
+  flow plays up to it.
 
 Length: |
   The distance between a timeline's origin and its last Instant, or None when
@@ -312,11 +353,6 @@ Locked: |
   length: AudioLoader a recording at the file's length, a score loader a score
   whose measures all state their length, at the end of its last measure or of
   its last event, whichever is later.
-
-Marker: |
-  A named position in a timeline's flow control that a Jump can target, such
-  as a segno or a coda sign. A Marker carries an element id, an optional
-  name, and a coordinate; a Jump refers to it by its id, never by its name.
 
 MatchfileLoader: |
   Loader for Vienna Match (.match) alignment files. Uses the standard two-step
@@ -574,8 +610,9 @@ Quadrilateral: |
 Reach: |
   The farthest coordinate on a timeline's own axis that its content reaches:
   the ends of its children (a child of unknown length contributing its offset
-  plus its own reach), region ends, break and marker coordinates, both ends of
-  every jump, and the end of the measure map. Events are not part of it. A
+  plus its own reach), region ends, the coordinate of every flow-control
+  element, the place of every destination stating a distance (by), and the
+  end of the measure map. Events are not part of it. A
   timeline without such content reaches 0. The reach is independent of the
   length; displays use it as the extent of a timeline of unknown length.
 
@@ -630,6 +667,12 @@ ScoreNote: |
   loaders write their notes as rows of event type Note; get_field(ScoreNote)
   on such rows reads them back as ScoreNotes where the table states an
   integer staff and voice, and get_field(Note) reads the same rows as Notes.
+
+SectionBreak: |
+  A flow-control element where a section ends (a movement, a section of a
+  piece); the flow goes on across it. A destination without place goes on at
+  the nearest SectionBreak before its Jump, and a flow ended by a Break begins
+  again at the next one.
 
 Segment: |
   A Child timeline that is contiguous with its siblings. Segments enable
@@ -773,6 +816,14 @@ UnknownLengthError: |
   length is unknown, before it changes anything. Its message names the
   operation and the timeline; group conversion to or from such a member and
   appending a child at such a parent's end are examples.
+
+Virtual timeline: |
+  The statement that a map was applied to a timeline, giving a timeline with
+  an element id, a unit, a number type and a length of its own and nothing
+  else: no events, no children, no flow control. Applied, a FlowMap gives its
+  root's played order as a virtual timeline, and positions convert through it
+  in both directions (unfold, fold). Timeline.create_virtual_timeline() states
+  one; a manifest lists them in virtual_timelines.
 
 WarpMap: |
   An interpolation-based coordinate mapping derived from a MatchLine; enables

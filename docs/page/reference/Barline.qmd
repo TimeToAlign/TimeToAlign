@@ -1,0 +1,32 @@
+# Barline { #timetoalign.timelines.Barline }
+
+```python
+timelines.Barline(
+    coordinate,
+    *,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    name=None,
+    label=None,
+    meta=dict[str, Any](),
+    provenance=None,
+    manifestation=None,
+)
+```
+
+A barline the source prints: a double or a final barline.
+
+It changes nothing in the flow.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name          | Type                                                                                    | Description                                                                |
+|---------------|-----------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| coordinate    | [Coordinate](`timetoalign.core.Coordinate`)                                             | Where the barline lies.                                                    |
+| manifestation | [FlowManifestation](`timetoalign.core.enums.FlowManifestation`) \| [str](`str`) \| None | ``double_barline``, ``final_barline`` or a word outside the vocabulary.    |
+| name          | [str](`str`) \| None                                                                    | A display name.                                                            |
+| label         | [str](`str`) \| None                                                                    | A human-readable label.                                                    |
+| meta          | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                     | Additional metadata.                                                       |
+| provenance    | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None | How the element was made and who believes it: provenance entries, or None. |
+| id            | [str](`str`)                                                                            | The element's ID; minted as ``barline_{N}`` when not given.                |

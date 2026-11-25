@@ -1,0 +1,22 @@
+# MeasureRange { #timetoalign.timelines.flow.MeasureRange }
+
+```python
+timelines.flow.MeasureRange(start, end, sections=())
+```
+
+A right-open range of measure counts, as a ``.flow.csv`` row states one.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name     | Type                                  | Description                                                                  |
+|----------|---------------------------------------|------------------------------------------------------------------------------|
+| start    | [int](`int`)                          | The count of the first measure.                                              |
+| end      | [int](`int`)                          | The count of the measure behind the last one.                                |
+| sections | [tuple](`tuple`)\[[str](`str`), ...\] | The names of the atomic sections the range covers, in the order of the axis. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> MeasureRange(1, 5, ("A",)).n_measures
+4
+```

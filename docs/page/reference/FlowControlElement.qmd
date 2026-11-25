@@ -1,0 +1,101 @@
+# FlowControlElement { #timetoalign.timelines.FlowControlElement }
+
+```python
+timelines.FlowControlElement(
+    coordinate,
+    *,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    name=None,
+    label=None,
+    meta=dict[str, Any](),
+    provenance=None,
+)
+```
+
+What the five kinds of flow-control element share.
+
+An element lies at one coordinate of its timeline's axis and is written
+in a manifest as one object of the timeline's ``flow_control``, its
+``role`` naming its class. Keys the library does not know are kept and
+written back.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name       | Type                                                                                    | Description                                                                                                                                                                                                                                                                            |
+|------------|-----------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| coordinate | [Coordinate](`timetoalign.core.Coordinate`)                                             | Where the element lies.                                                                                                                                                                                                                                                                |
+| name       | [str](`str`) \| None                                                                    | A display name.                                                                                                                                                                                                                                                                        |
+| label      | [str](`str`) \| None                                                                    | A human-readable label.                                                                                                                                                                                                                                                                |
+| meta       | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                     | Additional metadata.                                                                                                                                                                                                                                                                   |
+| provenance | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None | How the element was made and who believes it: one or more provenance entries, or None. A single entry given is held as the list of that entry. An element is never changed or deleted to repair flow control: it is rejected by a belief (:meth:`with_belief`), and another one added. |
+| id         | [str](`str`)                                                                            | The element's ID; minted from its role when not given.                                                                                                                                                                                                                                 |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_dict](#timetoalign.timelines.FlowControlElement.from_dict) | Restore an element from its object in a ``flow_control`` array. |
+| [with_belief](#timetoalign.timelines.FlowControlElement.with_belief) | A copy of the element whose provenance holds *belief*. |
+
+### from_dict { #timetoalign.timelines.FlowControlElement.from_dict }
+
+```python
+timelines.FlowControlElement.from_dict(data, *, unit, number_type)
+```
+
+Restore an element from its object in a ``flow_control`` array.
+
+Called on :class:`FlowControlElement`, the element's ``role`` picks
+the class; called on one of the five classes, the role must be that
+class's. ``coordinate`` and every ``by`` are bare values on the
+timeline's axis, which *unit* and *number_type* describe. ``name``,
+``label``, ``meta`` and ``provenance`` (a list of provenance
+entries) may be left out; keys the library does not know are kept
+and written back.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                              |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the element is malformed, is written in the form with ``type`` and ``target``, has another role than the class's, or a value is no value of the axis. |
+
+### with_belief { #timetoalign.timelines.FlowControlElement.with_belief }
+
+```python
+timelines.FlowControlElement.with_belief(belief, *, context=None)
+```
+
+A copy of the element whose provenance holds *belief*.
+
+Only the provenance changes. The belief replaces its actor's earlier
+one in every entry holding one
+(:meth:`Provenance.with_belief
+<timetoalign.core.provenance.Provenance.with_belief>`); where the
+actor holds none, the first entry records it, and an element
+without provenance gets one entry holding the belief alone. Every
+other actor's belief stands. A registry records a belief in an
+element it holds with :meth:`FlowControlRegistry.with_belief`.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type                                                                              | Description                                                                      | Default    |
+|---------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------|------------|
+| belief  | [Belief](`timetoalign.core.provenance.Belief`)                                    | The belief; ``"false"`` rejects the element.                                     | _required_ |
+| context | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs; None declares no prefix. | `None`     |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> from timetoalign.core.provenance import Belief
+>>> barline = Barline(Coordinate(8, TimeUnit.quarters))
+>>> rejected = barline.with_belief(
+...     Belief(actor="ana", belief="false", date="2026-11-25")
+... )
+>>> barline.is_rejected, rejected.is_rejected
+(False, True)
+>>> rejected.to_dict()["provenance"]
+[{'beliefs': [{'actor': 'ana', 'belief': 'false', 'date': '2026-11-25'}]}]
+```

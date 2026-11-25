@@ -1,0 +1,18 @@
+# PlayedFlow { #timetoalign.timelines.PlayedFlow }
+
+```python
+timelines.PlayedFlow(timeline, unit, number_type, chunks, findings=())
+```
+
+The flow a timeline's flow control plays, and what playing it found.
+
+What :meth:`Timeline.get_flow <timetoalign.timelines.Timeline.get_flow>`
+returns: the runs of the flow placed one after the other, through which
+positions convert as through any :class:`ResolvedFlowMap`, together
+with the findings of the engine.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name     | Type                                                                                    | Description                                                                                                                                                                                                   |
+|----------|-----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| findings | [tuple](`tuple`)\[[FlowFinding](`timetoalign.timelines.flow.engine.FlowFinding`), ...\] | What playing the flow control found, in the order found: a flow that never ends, a flow ending at a Break, two destinations holding together, a stretch never played. Only the ``default`` flow has findings. |

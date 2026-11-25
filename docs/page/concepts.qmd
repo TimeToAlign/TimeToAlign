@@ -226,19 +226,18 @@ phenomena override this default.
 ::: {.definition-header}
 Definition: Break
 :::
-A **break** is a control event that voids the contiguity at the Instant where
-it is located.
+A **break** is a flow-control element that voids the contiguity at the
+coordinate where it lies: unless a jump there is taken, the flow ends at it.
 :::
 
 Events that would normally be contiguous at a break's coordinate become
-discontiguous. Two constraints follow:
-
-- A TimeInterval cannot be added if it would span a break's coordinate.
-- A break cannot be placed at a coordinate already spanned by a TimeInterval.
+discontiguous. A break may state the condition under which alone it ends the
+flow: a *fine* ends it only after a *da capo* or *dal segno* has been taken.
+A flow ended by a break begins again at the next **section break**, which ends
+a section (a movement) without interrupting the flow.
 
 Breaks encode phenomena such as the boundary between a *prima volta* and a
-*seconda volta* ending, or the boundary at a *coda* sign where the default
-sequential flow is interrupted.
+*seconda volta* ending, or the *fine* where a piece ends after its *da capo*.
 
 ::: {.visualisation}
 ::: {.vis-header}
@@ -254,31 +253,43 @@ Breaks are represented as **red lines orthogonal to the timeline axis**.
 ::: {.definition-header}
 Definition: Jump
 :::
-A **jump** is a control event defined by two Instants: a **JumpFrom** and a
-**JumpTo** Instant. When active, it makes any event located or starting at
-JumpTo contiguous with any event ending at JumpFrom.
+A **jump** is a flow-control element where the flow may leave the axis. It
+holds one **destination** for every place the flow may go on at: a **jump
+target** it names, a distance from the jump, or the start of its section.
+When the flow plays up to the jump and a destination holds, the destination
+is taken: it makes what lies at its place contiguous with what ends at the
+jump.
 :::
 
 Jumps encode repeat signs, *dal segno al coda*, *da capo al fine*, and
-analogous structures. Additional event properties define conditions under
-which a control event is active (e.g., a *fine* is effective only after a
-*da capo al fine*; *prima* and *seconda volta* brackets are conditionally
-active depending on the traversal count).
+analogous structures; the signs at one barline (a repeat end and a *dal
+segno*, the brackets of alternative endings) are destinations of one jump.
+Each destination states the conditions under which it is taken: the passes
+that count (*prima* and *seconda volta* depend on the traversal count), how
+often it is taken, and a destination of another jump that must have been
+taken first (a *to coda* acts only after the *dal segno al coda*). Jump
+targets mark the places destinations name (a repeat start, a segno, a coda),
+and **barlines** record the barlines the source prints.
 
 ::: {.visualisation}
 ::: {.vis-header}
 Visualisation: Jump
 :::
-Jumps are represented as **dotted arrows** from the JumpFrom Instant to the
-JumpTo Instant. The curvature of the arrow reflects the distance between the
+Jumps are represented as **dotted arrows** from the jump to the place of each
+destination. The curvature of the arrow reflects the distance between the
 two coordinates.
 :::
 
-Together, breaks and jumps form the **flow-control apparatus** of the model.
-They determine how a timeline is traversed---which sections are played in what
-order---without altering the underlying coordinate system. The traversal
-itself is captured by a {{< glossary FlowMap >}} (see
-[Derivative timelines](#derivative-timelines)).
+Together, breaks and jumps, with jump targets, section breaks and barlines,
+form the **flow-control apparatus** of the model: the
+{{< glossary "Flow control element" >}}s of a timeline. They determine how a
+timeline is traversed---which sections are played in what order---without
+altering the underlying coordinate system. Playing them gives a flow, a
+sequence of the {{< glossary "Atomic section" >}}s the elements never divide,
+captured by a {{< glossary FlowMap >}} (see
+[Derivative timelines](#derivative-timelines)). What looks wrong on the way
+(a flow ending at a break, a stretch never played) is reported as a
+{{< glossary Finding >}}.
 
 
 ## Conversion Maps {#conversion-maps}
@@ -536,24 +547,22 @@ TimeInterval.
 
 Three kinds of derived timelines play a central role in alignment:
 
-**FlowMap**
-:   A sequence of {{< glossary TimeInterval >}}s (often corresponding to
-    previously defined {{< glossary Region >}}s) specifying a particular
-    path through the timeline's control structure (repeats, jumps). A
-    {{< glossary FlowMap >}} is computed from flow-control events
-    ({{< glossary Break >}}s and {{< glossary Jump >}}s), or assembled directly
-    from any interval descriptions---{{< glossary Region >}}s, coordinate pairs,
-    {{< glossary Timeline >}}s, or interval events, given singly or as a
-    collection. Its intervals can be partitioned and concatenated, **unfolding**
-    the score into performance order: this materialises a new timeline of the
-    source's own type whose played spans are appended as named children, each
-    recorded as a {{< glossary Region >}} in performance coordinates.
+**FlowMap and virtual timeline**
+:   A {{< glossary FlowMap >}} lists stretches of a root timeline---
+    {{< glossary Region >}}s, child timelines, virtual timelines---in the
+    order they are played, with gaps between them where nothing of the
+    timeline is played. It is computed from the timeline's flow control
+    ({{< glossary Break >}}s, {{< glossary Jump >}}s and the other
+    elements), or written by hand for a cut, an order of movements or a set
+    list. Applied, it gives a {{< glossary "Virtual timeline" >}}: the
+    played order as a timeline with an ID, a unit and a length of its own
+    and nothing else, through which positions convert in both directions.
+    **Unfolding** a position of the score gives every position where it is
+    played; folding a played position gives the one position of the score.
 
     For example, a score with a repeat and a *dal segno al coda* has a
-    FlowMap like [A, B, A, B, C, D] where some regions appear more than
-    once. The unfolded timeline replays those spans as children in that order,
-    a span played twice appearing as two children (the second suffixed
-    `-rend2`, following the Verovio rendering-order convention).
+    FlowMap like [A, B, A, B, C, D] where some sections appear more than
+    once: a position in A unfolds to two positions of the virtual timeline.
 
 **Converted timeline**
 :   A timeline whose coordinates have been transformed to another unit via

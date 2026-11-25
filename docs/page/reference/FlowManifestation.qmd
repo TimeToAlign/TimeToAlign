@@ -1,0 +1,52 @@
+# FlowManifestation { #timetoalign.core.FlowManifestation }
+
+```python
+core.FlowManifestation()
+```
+
+What a flow-control element looks like in the score.
+
+A manifestation names the sign a source prints for an element or for a
+destination of a Jump. It is optional everywhere and nothing computes
+with it: the flow follows from the elements' classes, places and
+conditions alone. A word outside this vocabulary is kept as given.
+
+Which words each class of
+:mod:`timetoalign.timelines.flowcontrol` admits:
+
+- a destination of a ``Jump``: ``repeat_end``, ``da_capo``,
+  ``da_capo_al_fine``, ``da_capo_al_coda``, ``dal_segno``,
+  ``dal_segno_al_fine``, ``dal_segno_al_coda``, ``to_coda``, ``volta``,
+  ``ossia``;
+- a ``JumpTarget``: ``repeat_start``, ``segno``, ``coda``, ``volta``,
+  ``ossia``;
+- a ``Break``: ``fine``, ``volta``;
+- a ``Barline``: ``double_barline``, ``final_barline``;
+- a ``SectionBreak``: none.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [coda](#timetoalign.core.FlowManifestation.coda) | The coda sign at the start of the coda, the place a To Coda goes on at. |
+| [da_capo](#timetoalign.core.FlowManifestation.da_capo) | Back to the beginning (D.C.). |
+| [da_capo_al_coda](#timetoalign.core.FlowManifestation.da_capo_al_coda) | Back to the beginning, then from the To Coda sign to the coda (D.C. al Coda). |
+| [da_capo_al_fine](#timetoalign.core.FlowManifestation.da_capo_al_fine) | Back to the beginning, then up to the Fine (D.C. al Fine). |
+| [dal_segno](#timetoalign.core.FlowManifestation.dal_segno) | Back to the segno (D.S.). |
+| [dal_segno_al_coda](#timetoalign.core.FlowManifestation.dal_segno_al_coda) | Back to the segno, then from the To Coda sign to the coda (D.S. al Coda). |
+| [dal_segno_al_fine](#timetoalign.core.FlowManifestation.dal_segno_al_fine) | Back to the segno, then up to the Fine (D.S. al Fine). |
+| [dc](#timetoalign.core.FlowManifestation.dc) | Alias for da_capo |
+| [dcac](#timetoalign.core.FlowManifestation.dcac) | Alias for da_capo_al_coda |
+| [dcaf](#timetoalign.core.FlowManifestation.dcaf) | Alias for da_capo_al_fine |
+| [double_barline](#timetoalign.core.FlowManifestation.double_barline) | A double bar line. |
+| [ds](#timetoalign.core.FlowManifestation.ds) | Alias for dal_segno |
+| [dsac](#timetoalign.core.FlowManifestation.dsac) | Alias for dal_segno_al_coda |
+| [dsaf](#timetoalign.core.FlowManifestation.dsaf) | Alias for dal_segno_al_fine |
+| [final_barline](#timetoalign.core.FlowManifestation.final_barline) | A final bar line. |
+| [fine](#timetoalign.core.FlowManifestation.fine) | The Fine, where the flow ends after a leap. |
+| [ossia](#timetoalign.core.FlowManifestation.ossia) | An alternative text nobody can choose by rule: its Jump's destination |
+| [repeat_end](#timetoalign.core.FlowManifestation.repeat_end) | A repeat end sign (``:\|``). |
+| [repeat_start](#timetoalign.core.FlowManifestation.repeat_start) | A repeat start sign (``\|:``), the place a repeat end goes back to. |
+| [segno](#timetoalign.core.FlowManifestation.segno) | The segno sign, the place a dal segno goes back to. |
+| [to_coda](#timetoalign.core.FlowManifestation.to_coda) | The To Coda sign, from which the flow goes on at the coda after a leap. |
+| [volta](#timetoalign.core.FlowManifestation.volta) | A bracket of alternative endings: its Jump's destination, the place |

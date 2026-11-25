@@ -8,7 +8,8 @@ Load an engraved score through the Verovio toolkit.
 
 Any format Verovio reads (MEI, MusicXML, Humdrum, ABC, PAE, …) yields
 one score as Verovio renders it: its timemap is taken verbatim, and
-nothing is computed from the notated rhythm.
+nothing is computed from the notated rhythm. A measure that holds only
+``<mSpace>`` is timed by Verovio as a measure rest (see Known issues).
 
 * :meth:`create_timeline` gives the logical timeline: one
   ``ContinuousLogicalTimeline`` in quarters, positions the timemap's exact
@@ -49,14 +50,15 @@ field ``notated_id`` is the element's id in the notated score (equal to
 for ids the notated tree does not hold. The store's measure table is the
 printed one (one row per ``<measure>`` in document order, lengths as
 rendered, positions on the folded axis), carrying the repeat barlines,
-endings and ``<repeatMark>``s (segno, coda, Fine, D.S., D.C.), from which
-:meth:`create_flow_controller` derives the repeat structure. Without an
-expansion the timeline carries that table as its ``MeasureMap`` and its
-flow control. With an expansion the
+endings and ``<repeatMark>``s (segno, coda, Fine, D.S., D.C.) and the
+barline ``@right`` states. Without an expansion the timeline carries
+that table as its ``MeasureMap`` and what it states as its flow control
+(a ``dbl`` and an ``end`` barline as barlines). With an expansion the
 timeline is already unfolded: its ``MeasureMap`` lists the rendered
-measures (row id = rendered id, name = ``@n``) without flow control, and
-two FlowMaps state the playback order of the printed measures:
-``"forward_verovio"`` (printed → rendered) and ``"source"`` (its inverse).
+measures (row id = rendered id, name = ``@n``) without flow control. The
+order in which the expansion plays the printed measures is a FlowMap of
+the printed score: :meth:`create_stated_flow_map` writes it onto the
+timeline that a loader of the same file with ``expandNever`` creates.
 
 **Ids.** Every event keeps its element's ``xml:id`` verbatim. Verovio
 generates ids only where the source has none, from a random seed unless
@@ -108,8 +110,16 @@ leaving an excerpt) is logged and listed in the store metadata under
 ``"dangling_ties"``; its start note keeps ``tie = "i"`` and nothing
 is invented for the missing end. Verovio prints its own warning to
 the process's standard error; ``getLog()`` stays empty.
-A measure without content has no length in Verovio's timemap and no
-entry of its own; such a score raises, naming the measures.
+A measure without timed content has no length in Verovio's timemap
+and no entry of its own: the next measure starts where the one
+before it ends. Where such a measure holds an ``<mSpace>`` (a
+measure-long space) and a meter is in force, the loader renders
+Verovio's MEI output once more with each of its ``<mSpace>``s read
+as an ``<mRest>`` of the same ``xml:id``: Verovio then times the
+measure itself, at its meter's length and the tempo in force there
+(a tempo written in it, else the one before it), in every pass of
+an expansion. The rests are no events. Any other measure without
+content raises, naming the measures.
 Verovio 6.4.1's expansion leaves out the measures of ``<ending>``s
 it cannot place (both endings, and no repeat of their passage, after
 another repeat). Their lengths are read from a second rendering
@@ -122,6 +132,13 @@ printed measure table states them.
 no longer states the printed score; it raises.
 Verovio 6.4.1 crashes the process in ``renderToTimemap`` when it
 expands the repeats of some files; ``expandNever`` reads them.
+An MEI file whose ``<music>`` holds no ``<measure>`` and no
+``<staff>`` (a header describing a work, ``<music/>`` empty) can give
+no timeline: the loader reads the file before Verovio does and
+raises, naming the element that is missing or empty. Verovio's
+Python binding writes its reasons to standard error, not to
+``getLog()``; where Verovio declines another file, the message says
+that it gave no reason.
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -138,6 +155,7 @@ expands the repeats of some files; ``expandNever`` reads them.
 | [clear](#timetoalign.loader.score.VerovioLoader.clear) | Clear the loaded score. |
 | [create_physical_timeline](#timetoalign.loader.score.VerovioLoader.create_physical_timeline) | Create the score's timeline in Verovio's rendered seconds. |
 | [create_quarters_to_seconds_map](#timetoalign.loader.score.VerovioLoader.create_quarters_to_seconds_map) | Create the C-Map from Verovio's quarters to its rendered seconds. |
+| [create_stated_flow_map](#timetoalign.loader.score.VerovioLoader.create_stated_flow_map) | Write the order of Verovio's expansion as a FlowMap of the printed score. |
 | [create_timeline](#timetoalign.loader.score.VerovioLoader.create_timeline) | Create the score's logical timeline in quarters. |
 
 ### clear { #timetoalign.loader.score.VerovioLoader.clear }
@@ -213,6 +231,39 @@ the map is exact both ways.
 |--------|----------------------------|------------------------------|
 |        | [ValueError](`ValueError`) | If no score has been loaded. |
 
+### create_stated_flow_map { #timetoalign.loader.score.VerovioLoader.create_stated_flow_map }
+
+```python
+loader.score.VerovioLoader.create_stated_flow_map(
+    timeline,
+    *,
+    id=None,
+    name=None,
+)
+```
+
+Write the order of Verovio's expansion as a FlowMap of the printed score.
+
+An expanded rendering states the order in which the printed measures
+are played. It is an order of the printed score, so *timeline* is
+the printed score's timeline: the one a loader of the same file
+creates with the option ``expandNever``. The timeline of an expanded
+rendering is unfolded already and takes no FlowMap. See
+:meth:`ScoreLoader.create_stated_flow_map
+<timetoalign.loader.score.ScoreLoader.create_stated_flow_map>`.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                     | Description                                                     |
+|--------|----------------------------------------------------------|-----------------------------------------------------------------|
+|        | [StatedFlow](`timetoalign.timelines.StatedFlow`) \| None | What was written, or None for a rendering that expands nothing. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                        |
+|--------|----------------------------|------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the measures of *timeline* are not the printed measures of this loader's score. |
+
 ### create_timeline { #timetoalign.loader.score.VerovioLoader.create_timeline }
 
 ```python
@@ -226,7 +277,8 @@ loader.score.VerovioLoader.create_timeline(
 Create the score's logical timeline in quarters.
 
 The root carries the measures as its ``MeasureMap``, the flow
-control (or, for an expanded rendering, the FlowMaps) and the C-Map;
+control (none for an expanded rendering, which is unfolded) and the
+C-Map;
 each loaded named ``<mdiv>`` is a child holding its events, and the
 root holds those of no named ``<mdiv>``.
 

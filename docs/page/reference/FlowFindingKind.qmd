@@ -1,0 +1,17 @@
+# FlowFindingKind { #timetoalign.core.FlowFindingKind }
+
+```python
+core.FlowFindingKind()
+```
+
+What playing flow control found.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [ambiguous_targets](#timetoalign.core.FlowFindingKind.ambiguous_targets) | Two destinations of one Jump, of the same kind, held at once. |
+| [endless_loop](#timetoalign.core.FlowFindingKind.endless_loop) | A Jump was taken in a state the flow had been in before. |
+| [flow_ends_at_break](#timetoalign.core.FlowFindingKind.flow_ends_at_break) | The flow ended at a Break that states no condition, before the end. |
+| [never_played](#timetoalign.core.FlowFindingKind.never_played) | A stretch of the axis lies in no run. |
+| [undetermined_target](#timetoalign.core.FlowFindingKind.undetermined_target) | A destination nobody can check was passed and not taken. |

@@ -1,0 +1,13 @@
+# MeasureFindingKind { #timetoalign.core.MeasureFindingKind }
+
+```python
+core.MeasureFindingKind()
+```
+
+What a look at a score's measures found about their flow control.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [repeat_end_behind_brackets](#timetoalign.core.MeasureFindingKind.repeat_end_behind_brackets) | A repeat end without a printed start, where the last sign before it |

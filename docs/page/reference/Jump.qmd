@@ -1,0 +1,50 @@
+# Jump { #timetoalign.timelines.Jump }
+
+```python
+timelines.Jump(
+    coordinate,
+    targets,
+    *,
+    id=None,
+    _minted=False,
+    _unknown_keys=dict[str, Any](),
+    name=None,
+    label=None,
+    meta=dict[str, Any](),
+    provenance=None,
+)
+```
+
+Where the flow may leave the axis, and every place it may go on at.
+
+One Jump lies at a coordinate; several signs at one place (a repeat end
+and a D.S. on one barline, the brackets of alternative endings) are the
+destinations of that Jump. When the flow plays up to the Jump, the
+destinations that hold are found and one of them is taken; when none
+holds, the flow goes on.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name       | Type                                                                                            | Description                                                                                                                                                                                                                                                                                                                             |
+|------------|-------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| coordinate | [Coordinate](`timetoalign.core.Coordinate`)                                                     | Where the flow leaves: the end of the measure before.                                                                                                                                                                                                                                                                                   |
+| targets    | [tuple](`tuple`)\[[JumpDestination](`timetoalign.timelines.flowcontrol.JumpDestination`), ...\] | The destinations, at least one, each with a place of its own: no two with the same ``to``, the same ``by``, or both without place. They carry no order and are held and written in the canonical one, whatever order they are given in: the destination without place, then those with ``by``, by value, then those with ``to``, by ID. |
+| name       | [str](`str`) \| None                                                                            | A display name.                                                                                                                                                                                                                                                                                                                         |
+| label      | [str](`str`) \| None                                                                            | A human-readable label.                                                                                                                                                                                                                                                                                                                 |
+| meta       | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                             | Additional metadata.                                                                                                                                                                                                                                                                                                                    |
+| provenance | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None         | How the Jump was made and who believes it: provenance entries, or None.                                                                                                                                                                                                                                                                 |
+| id         | [str](`str`)                                                                                    | The Jump's ID; minted as ``jump_{N}`` when not given.                                                                                                                                                                                                                                                                                   |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> repeat = Jump(
+...     Coordinate(64, TimeUnit.quarters),
+...     [JumpDestination(repeat_count=1, manifestation="repeat_end")],
+... )
+>>> repeat.id, repeat.manifestations
+('jump_1', ("repeat_end",))
+>>> repeat.to_dict()["targets"]
+[{'repeat_count': 1, 'manifestation': 'repeat_end'}]
+```

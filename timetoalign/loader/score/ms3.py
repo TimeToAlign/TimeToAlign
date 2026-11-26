@@ -784,9 +784,14 @@ class Ms3Loader(ScoreLoader):
         The timeline carries the C-Maps the tables state (floating measures
         from the measure table, seconds from tempo markings); a ticks map
         only at the ``ppq`` the caller names, since a DCML table states no
-        tick resolution. Only measures that cannot be joined into one
-        floating measure and share a nominal downbeat leave the
-        floating-measure conversion absent.
+        tick resolution. Records of one number join into one floating
+        measure, and so does a record numbered apart that completes, at the
+        offset where it begins, the bar the record before it leaves
+        incomplete. Only measures that cannot be joined and share a nominal
+        downbeat leave the floating-measure conversion absent; measures
+        that do not add up to their bars are listed in one ``UserWarning``
+        (see :meth:`QuartersToFloatingMeasures.from_measure_map
+        <timetoalign.maps.interval.QuartersToFloatingMeasures.from_measure_map>`).
 
         Args:
             uid: Unique ID for the timeline. Auto-generated if None.

@@ -311,11 +311,15 @@ class ScoreStore(EventStore):
         The floating-measure conversion reads the measure structure (see
         :meth:`QuartersToFloatingMeasures.from_measure_map
         <timetoalign.maps.interval.QuartersToFloatingMeasures.from_measure_map>`):
-        the records of a split bar join into one floating measure. Only
-        measures that cannot be joined and share a nominal downbeat leave
-        the ``"measures"`` entry absent; no approximate lattice is built in
-        its place, since an fm reading those measures do not support is
-        worse than no fm reading.
+        the records of a split bar join into one floating measure, whether
+        they carry one number or the second, numbered apart, completes the
+        bar at the offset where the first ends. Only measures that cannot be
+        joined and share a nominal downbeat leave the ``"measures"`` entry
+        absent; no approximate lattice is built in its place, since an fm
+        reading those measures do not support is worse than no fm reading.
+        Measures that do not add up to their bars (a doubtful split, an
+        overlength or a short bar) keep their lattice and are listed in one
+        ``UserWarning``.
 
         Args:
             ppq: Pulses per quarter note. Given, the result holds a

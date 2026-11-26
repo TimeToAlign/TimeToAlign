@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import bisect
 import math
+import warnings
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Generic, Sequence, TypeGuard, TypeVar
 
@@ -561,6 +562,158 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
 # region QuartersToFloatingMeasures
 
 
+def _offset(record: Measure) -> Fraction:
+    """Where *record*'s content begins inside its notated bar, in quarters."""
+    return getattr(record, "offset_within_measure", Fraction(0))
+
+
+def _different_voltas(record: Measure, following: Measure) -> bool:
+    """Whether two records both state a volta bracket, naming different passes."""
+    return (
+        record.volta is not None
+        and following.volta is not None
+        and record.volta_numbers != following.volta_numbers
+    )
+
+
+def _run_end(run: Sequence[Measure]) -> Fraction:
+    """How far into its notated bar a run of records reaches, in quarters.
+
+    The first record's offset plus the actual lengths of all records: the
+    point of the bar where the run's last record ends, if the records follow
+    one another inside one bar.
+    """
+    return _offset(run[0]) + sum(
+        (record.actual_length or Fraction(0) for record in run), Fraction(0)
+    )
+
+
+def _numbered_apart(record: Measure, following: Measure) -> bool:
+    """Whether two records carry different numbers and no different volta brackets."""
+    return (
+        record.number is not None
+        and following.number is not None
+        and record.number != following.number
+        and not _different_voltas(record, following)
+    )
+
+
+def _makes_up(record: Measure, nominal: Fraction, end: Fraction) -> bool:
+    """Whether *record*, of nominal length *nominal*, makes up its bar from *end* on."""
+    return (
+        record.nominal_length == nominal
+        and record.actual_length is not None
+        and end + record.actual_length == nominal
+    )
+
+
+def _fills_split_bar(run: Sequence[Measure], record: Measure) -> bool:
+    """Whether *record*, numbered apart, completes the bar *run* leaves incomplete.
+
+    *record* follows the run's last record, both carry a number (different
+    ones), and the two state no different volta brackets; the run ends short
+    of its last record's nominal length; *record* has that nominal length,
+    its offset is exactly where the run ends, and its actual length
+    completes the bar exactly. A bar split in two whose parts were numbered
+    as two measures.
+    """
+    last = run[-1]
+    nominal = last.nominal_length
+    if nominal is None or not _numbered_apart(last, record):
+        return False
+    end = _run_end(run)
+    return end < nominal and _offset(record) == end and _makes_up(record, nominal, end)
+
+
+def _measures_label(records: Sequence[Measure]) -> str:
+    """Name records by ID, each group of one number followed by that number."""
+    groups: list[tuple[int | None, list[str]]] = []
+    for record in records:
+        if groups and groups[-1][0] == record.number:
+            groups[-1][1].append(repr(record.id))
+        else:
+            groups.append((record.number, [repr(record.id)]))
+    parts = [
+        f"{', '.join(ids)} ({'no number' if number is None else f'number {number}'})"
+        for number, ids in groups
+    ]
+    return f"{'measure' if len(records) == 1 else 'measures'} {', '.join(parts)}"
+
+
+def _quarters(value: Fraction) -> str:
+    """A length in quarters, in words."""
+    return f"{value} quarter{'' if value == 1 else 's'}"
+
+
+def _lattice_doubts(compounds: Sequence[Sequence[Measure]]) -> list[str]:
+    """Describe the floating measures of *compounds* that do not add up to bars.
+
+    Three kinds, each measured against the nominal length of a run's last
+    record, the bar the run ends in:
+
+    * **doubtful split**: a run that ends short of its bar, followed by a
+      record numbered apart with the same nominal length whose actual length
+      would complete the bar exactly, but whose offset is not where the run
+      ends (so it did not join);
+    * **overlength**: a run that reaches past its bar;
+    * **short**: a run that ends short of its bar, is neither the first run
+      (an anacrusis) nor the last, is no part of a doubtful split, and none
+      of whose last record's successors (its ``next``, by default the
+      following record) completes the bar: a successor completes it when it
+      has the bar's nominal length, its offset is where the run ends and its
+      actual length makes up the rest, as the second part of a split bar
+      does when the first part ends a first ending or a repeat.
+    """
+    records = [record for run in compounds for record in run]
+    by_id = {record.id: record for record in records}
+    in_split: set[int] = set()
+    doubts: list[str] = []
+    after = 0
+    for index, run in enumerate(compounds):
+        after += len(run)
+        last = run[-1]
+        nominal = last.nominal_length
+        if nominal is None:
+            continue
+        end = _run_end(run)
+        if index + 1 < len(compounds):
+            record = compounds[index + 1][0]
+            if (
+                end < nominal
+                and _numbered_apart(last, record)
+                and _makes_up(record, nominal, end)
+                and _offset(record) != end
+            ):
+                in_split.update((index, index + 1))
+                doubts.append(
+                    f"doubtful split, not joined: {_measures_label([last])} and "
+                    f"{_measures_label([record])} together fill a bar of "
+                    f"{_quarters(nominal)}, but {record.id!r} states offset "
+                    f"{_offset(record)}, not {end} where {last.id!r} ends"
+                )
+        if end > nominal:
+            doubts.append(
+                f"overlength: {_measures_label(run)} "
+                f"{'reaches' if len(run) == 1 else 'reach'} {_quarters(end)} into a bar "
+                f"of {nominal}"
+            )
+        elif end < nominal and 0 < index < len(compounds) - 1 and index not in in_split:
+            if last.next is None:
+                successors = [records[after]] if after < len(records) else []
+            else:
+                successors = [by_id[name] for name in last.next if name in by_id]
+            if not any(
+                _offset(successor) == end and _makes_up(successor, nominal, end)
+                for successor in successors
+            ):
+                doubts.append(
+                    f"short: {_measures_label(run)} {'ends' if len(run) == 1 else 'end'} "
+                    f"{_quarters(end)} into a bar of {nominal}, and nothing "
+                    f"{'it leads' if len(run) == 1 else 'they lead'} to completes the bar"
+                )
+    return doubts
+
+
 class QuartersToFloatingMeasures(TableMap):
     """Map quarters to floating measures.
 
@@ -650,15 +803,38 @@ class QuartersToFloatingMeasures(TableMap):
         """Build the floating-measure lattice of a measure map.
 
         A floating measure is a **compound measure**: a maximal run of
-        adjacent measure records that share one ``number``.  A record joins
-        the compound before it when it carries the same number as the
-        compound's last record and the two do not state different
-        ``volta`` brackets; neither ``next``, nor the nominal length, nor
-        the offset is consulted, so the records of a bar split at a repeat
-        sign or across a metre change read as the one bar they are
-        notated as.  A record without a number joins nothing, and the
-        endings under different volta brackets count through as separate
-        floating measures.  A record on its own is a compound of one.
+        adjacent measure records that make one notated bar.  A record joins
+        the compound before it when the two state no different ``volta``
+        brackets and either
+
+        * it carries the same number as the compound's last record; neither
+          ``next``, nor the nominal length, nor the offset is consulted, so
+          the records of a bar split at a repeat sign or across a metre
+          change read as the one bar they are notated as; or
+        * both carry a number, though different ones, and it completes the
+          bar the compound leaves incomplete: the compound's first offset
+          plus its actual lengths lies below the last record's nominal
+          length, and the record has that nominal length, its offset is
+          exactly where the compound ends and its actual length makes up
+          the rest of the bar.  This is a split bar whose parts were
+          numbered as two measures.
+
+        A record without a number joins nothing, and the endings under
+        different volta brackets count through as separate floating
+        measures.  A record on its own is a compound of one.
+
+        Building the lattice emits one ``UserWarning`` per measure map
+        listing, by measure ID and number, the places where the measures do
+        not add up to their bars, each measured against the nominal length
+        of the compound's last record: a *doubtful split* (two incomplete
+        records numbered apart, of one nominal length, that would complete
+        one bar exactly, but the second's offset is not where the first
+        ends, so they stay apart); an *overlength* compound, which reaches
+        past its bar; and a *short* compound, which ends inside its bar, is
+        neither the first nor the last, and is not completed by any record
+        it leads to (``next``, by default the following record) at the
+        offset where it ends, as the second part of a split bar completes a
+        first ending or a part that ends a repeat.
 
         One knot per compound measure, placed at its first record's
         **virtual nominal downbeat** — its sounding start minus the
@@ -690,6 +866,10 @@ class QuartersToFloatingMeasures(TableMap):
                 its qstamp or actual length, or the knots do not increase:
                 two compound measures share a virtual nominal downbeat, or a
                 later one starts before an earlier one.
+
+        Warns:
+            UserWarning: Once, listing every doubtful split, overlength and
+                short compound measure, where there is any.
         """
         from timetoalign.maps.measures import FloatingMeasureMap
 
@@ -699,34 +879,43 @@ class QuartersToFloatingMeasures(TableMap):
     def _compound_measures(measure_map: MeasureMap) -> list[list[Measure]]:
         """Group a measure map's records into compound measures, in order.
 
-        A record joins the compound before it when it carries the same
-        non-null ``number`` as the compound's last record and the two do
-        not state different ``volta`` brackets.
+        A record joins the compound before it when the two do not state
+        different ``volta`` brackets and it either carries the same non-null
+        ``number`` as the compound's last record or completes, numbered
+        apart, the bar the compound leaves incomplete (see
+        :meth:`from_measure_map`).
         """
         compounds: list[list[Measure]] = []
         for record in measure_map.measures:
-            last = compounds[-1][-1] if compounds else None
-            if (
-                last is not None
-                and last.number is not None
-                and last.number == record.number
-                and (
-                    last.volta is None
-                    or record.volta is None
-                    or last.volta_numbers == record.volta_numbers
+            if compounds:
+                run = compounds[-1]
+                last = run[-1]
+                same_number = (
+                    last.number is not None
+                    and last.number == record.number
+                    and not _different_voltas(last, record)
                 )
-            ):
-                compounds[-1].append(record)
-            else:
-                compounds.append([record])
+                if same_number or _fills_split_bar(run, record):
+                    run.append(record)
+                    continue
+            compounds.append([record])
         return compounds
 
     @staticmethod
-    def _lattice(measure_map: MeasureMap) -> tuple[list[Fraction], list[float]]:
+    def _lattice(
+        measure_map: MeasureMap, *, warn: bool = True
+    ) -> tuple[list[Fraction], list[float]]:
         """Return the knots and ordinals of a measure map's lattice.
+
+        Args:
+            measure_map: Measures whose exact starts and lengths define the lattice.
+            warn: Whether to warn about measures that do not add up to bars.
 
         Raises:
             ValueError: As :meth:`from_measure_map`.
+
+        Warns:
+            UserWarning: As :meth:`from_measure_map`, when *warn* is true.
         """
         records = measure_map.measures
         if not records:
@@ -740,16 +929,24 @@ class QuartersToFloatingMeasures(TableMap):
         def downbeat(record: Measure) -> Fraction:
             """The record's virtual nominal downbeat."""
             assert record.qstamp is not None
-            return record.qstamp - getattr(record, "offset_within_measure", Fraction(0))
+            return record.qstamp - _offset(record)
 
         compounds = QuartersToFloatingMeasures._compound_measures(measure_map)
+        doubts = _lattice_doubts(compounds) if warn else []
+        if doubts:
+            lines = ";\n".join(f"  {doubt}" for doubt in doubts)
+            warnings.warn(
+                f"Floating measures that do not add up to their bars:\n{lines}",
+                UserWarning,
+                stacklevel=3,
+            )
         head = compounds[0][0]
         extent = sum(
             (record.actual_length or Fraction(0) for record in compounds[0]),
             Fraction(0),
         )
         is_anacrusis = (
-            getattr(head, "offset_within_measure", Fraction(0)) > 0
+            _offset(head) > 0
             and head.nominal_length is not None
             and extent < head.nominal_length
         )
@@ -768,7 +965,8 @@ class QuartersToFloatingMeasures(TableMap):
                     f"The floating measures starting with measures {labels[index]} and "
                     f"{labels[index + 1]} have nominal downbeats {previous} and {current}, "
                     "which do not increase; adjacent measures form one floating measure "
-                    "only when they share a number, and endings under different volta "
+                    "only when they share a number or the second completes the bar the "
+                    "first leaves incomplete, and endings under different volta "
                     "brackets count through as separate floating measures"
                 )
 
@@ -923,7 +1121,7 @@ class QuartersToFloatingMeasures(TableMap):
     def _is_lattice_of(self, measure_map: MeasureMap) -> bool:
         """Whether *measure_map*'s lattice has this map's knots and ordinals."""
         try:
-            x_values, y_values = self._lattice(measure_map)
+            x_values, y_values = self._lattice(measure_map, warn=False)
         except ValueError:
             return False
         return (

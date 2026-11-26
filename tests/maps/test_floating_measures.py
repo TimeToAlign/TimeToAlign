@@ -6,6 +6,7 @@ section "test_floating_measures.py".
 
 from __future__ import annotations
 
+import re
 import warnings
 from fractions import Fraction
 from pathlib import Path
@@ -237,13 +238,15 @@ def _two_records_at_one_downbeat(
     *,
     second_time_signature: str = "2/4",
     second_offset: Fraction = Fraction(1, 2),
+    second_actual: Fraction = Fraction(3, 2),
     voltas: tuple[int | None, int | None] = (None, None),
 ) -> MeasureMap:
     """``a`` (1/2 of a 2/4 bar) and ``b`` at offset 1/2: both downbeats are 0.
 
     ``b`` is a 2/4 bar (``nominal_length`` 2) unless *second_time_signature*
-    says 3/4 (``nominal_length`` 3). With *second_offset* 0, ``b``'s
-    downbeat is its sounding start ``1/2``.
+    says 3/4 (``nominal_length`` 3), and sounds *second_actual* (3/2, the
+    rest of the bar). With *second_offset* 0, ``b``'s downbeat is its
+    sounding start ``1/2``.
     """
     second_nominal = {"2/4": Fraction(2), "3/4": Fraction(3)}[second_time_signature]
     return MeasureMap(
@@ -261,12 +264,101 @@ def _two_records_at_one_downbeat(
                 number=second_number,
                 time_signature=second_time_signature,
                 nominal_length=second_nominal,
-                actual_length=Fraction(3, 2),
+                actual_length=second_actual,
                 offset_within_measure=second_offset,
                 volta=voltas[1],
             ),
         ),
     )
+
+
+def _four_four_bars(*, short: str, actual: Fraction) -> list[Measure]:
+    """Full 4/4 bars ``m1``-``m5`` numbered 1-5; the *short* one sounds *actual*."""
+    return [
+        Measure(
+            id=f"m{count}",
+            number=count,
+            time_signature="4/4",
+            nominal_length=Fraction(4),
+            actual_length=actual if f"m{count}" == short else Fraction(4),
+        )
+        for count in range(1, 6)
+    ]
+
+
+def _first_ending(*, jump_back: bool) -> MeasureMap:
+    """An anacrusis, a bar, a 3-quarter first ending, a second ending, a bar.
+
+    ``m0`` is the pickup (offset 3, one quarter); ``m2`` (volta 1) sounds 3
+    quarters and, with *jump_back*, its ``next`` names ``m0``; ``m3`` (volta 2)
+    carries ``m2``'s number.
+    """
+    pickup = MeasureConstituent(
+        id="m0",
+        number=0,
+        time_signature="4/4",
+        nominal_length=Fraction(4),
+        actual_length=Fraction(1),
+        offset_within_measure=Fraction(3),
+    )
+
+    def bar(id_: str, number: int, actual: int = 4, **values: object) -> Measure:
+        return Measure(
+            id=id_,
+            number=number,
+            time_signature="4/4",
+            nominal_length=Fraction(4),
+            actual_length=Fraction(actual),
+            **values,
+        )
+
+    return MeasureMap(
+        [
+            pickup,
+            bar("m1", 1),
+            bar(
+                "m2",
+                2,
+                3,
+                volta=1,
+                end_repeat=True,
+                next=("m0",) if jump_back else None,
+            ),
+            bar("m3", 2, volta=2),
+            bar("m4", 3),
+        ]
+    )
+
+
+def _warns_exactly(*lines: str) -> pytest.WarningsChecker:
+    """Expect the one floating-measure warning, with exactly these *lines*."""
+    text = "Floating measures that do not add up to their bars:\n" + ";\n".join(
+        f"  {line}" for line in lines
+    )
+    return pytest.warns(UserWarning, match=f"^{re.escape(text)}$")
+
+
+WOO71_DOUBTS = (
+    "short: measures '42', '43' (number 38) end 3/2 quarters into a bar of 2, "
+    "and nothing they lead to completes the bar",
+    "overlength: measures '261', '262' (number 237) reach 11/2 quarters into a bar of 3",
+    "overlength: measures '371', '372' (number 346) reach 9/2 quarters into a bar of 3",
+)
+SQ8913219_DOUBTS = (
+    "overlength: measures '77', '78' (number 76) reach 8 quarters into a bar of 4",
+    "short: measure '221' (number 219) ends 3 quarters into a bar of 4, "
+    "and nothing it leads to completes the bar",
+    "short: measures '482', '483' (number 480) end 5/2 quarters into a bar of 3, "
+    "and nothing they lead to completes the bar",
+    "overlength: measures '533', '534' (number 529) reach 5 quarters into a bar of 3",
+    "overlength: measures '626', '627' (number 617) reach 7 quarters into a bar of 4",
+    "overlength: measures '675', '676' (number 663) reach 15/2 quarters into a bar of 4",
+    "overlength: measures '684', '685' (number 671) reach 8 quarters into a bar of 4",
+)
+OP106_IV_DOUBTS = (
+    "overlength: measures '1', '2' (number 1) reach 35/4 quarters into a bar of 4",
+    "overlength: measures '3', '4', '5' (number 2) reach 10 quarters into a bar of 4",
+)
 
 
 class TestAnacrusisIsAnchoredOnTheNominalBar:
@@ -367,7 +459,8 @@ class TestCompoundMeasures:
 
     def test_a_three_part_compound_longer_than_its_bar(self) -> None:
         """Op. 106/IV: bar 2 is three records, ten quarters, one ordinal."""
-        cmap = QuartersToFloatingMeasures.from_measure_map(_op106_iv_opening())
+        with _warns_exactly(*OP106_IV_DOUBTS):
+            cmap = QuartersToFloatingMeasures.from_measure_map(_op106_iv_opening())
 
         quarters = [
             0,
@@ -382,9 +475,10 @@ class TestCompoundMeasures:
 
     def test_the_inverse_follows_the_compound_knots(self) -> None:
         """fm 2.0 is bar 2's downbeat, 3.0 bar 3's."""
-        inverse = QuartersToFloatingMeasures.from_measure_map(
-            _op106_iv_opening()
-        ).inverse()
+        with _warns_exactly(*OP106_IV_DOUBTS):
+            inverse = QuartersToFloatingMeasures.from_measure_map(
+                _op106_iv_opening()
+            ).inverse()
 
         assert inverse(2.0) == 8.75
         assert inverse(2.5) == 13.75
@@ -401,7 +495,8 @@ class TestCompoundMeasures:
         """WoO 71 splits bars at repeat signs; each pair reads as its one bar."""
         loader = Ms3Loader.from_file(WOO71_MEASURES)
         measure_map = MeasureMap.from_measure_data(loader.store["measures"])
-        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+        with _warns_exactly(*WOO71_DOUBTS):
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
 
         assert cmap(0) == 0.5
         assert cmap(19) == 10.0
@@ -420,7 +515,8 @@ class TestCompoundMeasures:
         """
         loader = Ms3Loader.from_file(WOO71_MEASURES)
         measure_map = MeasureMap.from_measure_data(loader.store["measures"])
-        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+        with _warns_exactly(*WOO71_DOUBTS):
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
 
         first, second, rest = measure_map.measures[259:262]
         assert (first.number, second.number, rest.number) == (237, 237, 237)
@@ -466,7 +562,10 @@ class TestCompoundMeasures:
     def test_couperin_rondeau_bar_split_at_a_repeat_sign_is_one_bar(self) -> None:
         """mc 18 jumps back, mc 19 continues it at offset 1: bar 16, slope 2/3."""
         measure_map = _loaded_measure_map(RONDEAU_MEASURES)
-        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+        with _warns_exactly(
+            "overlength: measures '27', '28' (number 24) reach 3 quarters into a bar of 3/2"
+        ):
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
 
         first, second = measure_map.measures[17:19]
         assert (first.number, first.qstamp, first.next) == (
@@ -539,7 +638,8 @@ class TestCompoundMeasures:
         ]
         assert all(len(compound) == 2 for compound in joined)
 
-        cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+        with _warns_exactly(*SQ8913219_DOUBTS):
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
         quarters = [
             Fraction(1270),
             Fraction(2543, 2),
@@ -680,11 +780,18 @@ class TestRefusals:
             QuartersToFloatingMeasures.from_measure_map(measure_map)
 
     def test_different_numbers_at_one_downbeat_raise(self) -> None:
-        """Only one measure number joins records; 5 and 6 at one downbeat do not."""
-        with pytest.raises(ValueError, match="do not increase"):
-            QuartersToFloatingMeasures.from_measure_map(
-                _two_records_at_one_downbeat(5, 6)
-            )
+        """5 and 6 at one downbeat, b sounding 1 quarter: 1/2 + 1 fills no bar.
+
+        No fit, so no join; the knots coincide, and nothing is warned first.
+        """
+        measure_map = _two_records_at_one_downbeat(5, 6, second_actual=Fraction(1))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(
+                ValueError, match="'a' and 'b' have nominal downbeats 0 and 0"
+            ):
+                QuartersToFloatingMeasures.from_measure_map(measure_map)
 
     def test_records_without_numbers_never_join(self) -> None:
         with pytest.raises(ValueError, match="do not increase"):
@@ -697,27 +804,6 @@ class TestRefusals:
         measure_map = _two_records_at_one_downbeat(5, 5, voltas=(1, 2))
 
         with pytest.raises(ValueError, match="do not increase"):
-            QuartersToFloatingMeasures.from_measure_map(measure_map)
-
-    def test_op18_flow_skeleton_different_numbers_at_one_downbeat_raise(self) -> None:
-        """mc 9 (mn 9, three quarters) and mc 10 (mn 10 at offset 3/4) share 29."""
-        measure_map = _loaded_measure_map(OP18_FLOW_MEASURES)
-        records = {record.id: record for record in measure_map.measures}
-        bar, pickup = records["9"], records["10"]
-        assert (bar.number, bar.qstamp, bar.actual_length) == (
-            9,
-            Fraction(29),
-            Fraction(3),
-        )
-        assert (pickup.number, pickup.qstamp, pickup.offset_within_measure) == (
-            10,
-            Fraction(32),
-            Fraction(3),
-        )
-
-        with pytest.raises(
-            ValueError, match="'9' and '10' have nominal downbeats 29 and 29"
-        ):
             QuartersToFloatingMeasures.from_measure_map(measure_map)
 
 
@@ -753,6 +839,174 @@ class TestAdjacentRecordsOfOneNumber:
         assert [cmap(0), cmap(Fraction(1, 2)), cmap(2)] == [1.0, 1.25, 2.0]
 
 
+class TestSplitBarNumberedAsTwo:
+    """Records numbered apart join where they complete one bar exactly."""
+
+    def test_two_numbers_that_fill_one_bar_are_one_measure(self) -> None:
+        """5 and 6, b at offset 1/2 sounding 3/2: 1/2 + 3/2 = 2, one 2/4 bar."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cmap = QuartersToFloatingMeasures.from_measure_map(
+                _two_records_at_one_downbeat(5, 6)
+            )
+
+        assert cmap.x_values.tolist() == [0.0, 2.0]
+        assert [cmap(0), cmap(1), cmap(2)] == [1.0, 1.5, 2.0]
+
+    def test_op18_flow_skeleton_joins_its_split_bars(self) -> None:
+        """Numbers by count: mc 9/10, 18/19, 27/28, 77/78 and 84/85 each fill a bar.
+
+        221 floating measures, ordinals 0-220, no warning: the first endings
+        mc 44 and 93 are completed by the pickups they jump back to.
+        """
+        measure_map = _loaded_measure_map(OP18_FLOW_MEASURES)
+        records = {record.id: record for record in measure_map.measures}
+        bar, pickup = records["9"], records["10"]
+        assert (bar.number, bar.qstamp, bar.actual_length, bar.next) == (
+            9,
+            Fraction(29),
+            Fraction(3),
+            ("1", "10"),
+        )
+        assert (pickup.number, pickup.qstamp, pickup.offset_within_measure) == (
+            10,
+            Fraction(32),
+            Fraction(3),
+        )
+        first, rest = records["77"], records["78"]
+        assert (first.number, first.qstamp, first.actual_length) == (
+            77,
+            Fraction(288),
+            Fraction(7, 2),
+        )
+        assert (rest.number, rest.qstamp, rest.offset_within_measure) == (
+            78,
+            Fraction(583, 2),
+            Fraction(7, 2),
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        joined = [
+            [record.id for record in compound]
+            for compound in QuartersToFloatingMeasures._compound_measures(measure_map)
+            if len(compound) > 1
+        ]
+        assert joined == [
+            ["9", "10"],
+            ["18", "19"],
+            ["27", "28"],
+            ["77", "78"],
+            ["84", "85"],
+        ]
+        assert len(measure_map) == 226
+        assert (len(cmap.x_values), cmap.y_values.tolist()[-1]) == (222, 221.0)
+        assert cmap(0) == 0.75
+        quarters = [29, 30, 32, 33, 288, Fraction(583, 2), 292]
+        assert [cmap(q) for q in quarters] == [8.0, 8.25, 8.75, 9.0, 73.0, 73.875, 74.0]
+
+
+class TestMeasuresThatDoNotAddUp:
+    """One warning per measure map lists every place that does not add up."""
+
+    @pytest.mark.parametrize(
+        ("offset", "knots", "readings"),
+        [
+            (Fraction(0), [0.0, 0.5, 2.0], [1.5, 2.0, 3.0]),
+            (Fraction(1, 4), [0.0, 0.25, 2.0], [2.0, 2.142, 3.0]),
+        ],
+    )
+    def test_a_doubtful_split_warns_and_stays_apart(
+        self, offset: Fraction, knots: list[float], readings: list[float]
+    ) -> None:
+        """5 and 6 would fill the bar, but b's offset is not 1/2: two measures.
+
+        Offset 0 is the fit case that must not join because the offset is
+        missing.
+        """
+        measure_map = _two_records_at_one_downbeat(5, 6, second_offset=offset)
+
+        with _warns_exactly(
+            "doubtful split, not joined: measure 'a' (number 5) and measure 'b' "
+            f"(number 6) together fill a bar of 2 quarters, but 'b' states offset "
+            f"{offset}, not 1/2 where 'a' ends"
+        ):
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        assert cmap.x_values.tolist() == knots
+        assert cmap.y_values.tolist() == [1.0, 2.0, 3.0]
+        assert [cmap(q) for q in (Fraction(1, 4), Fraction(1, 2), 2)] == readings
+
+    def test_an_overlength_compound_warns(self) -> None:
+        """Op. 106/IV: bars 1 and 2 run past their 4/4 bar, bar 3 fills its own."""
+        with _warns_exactly(*OP106_IV_DOUBTS):
+            cmap = QuartersToFloatingMeasures.from_measure_map(_op106_iv_opening())
+
+        assert cmap.x_values.tolist() == [0.0, 8.75, 18.75, 22.75]
+
+    def test_a_short_bar_in_the_middle_warns(self) -> None:
+        """m3 sounds 3 of 4 quarters and m4 starts a bar: short, warned."""
+        measure_map = MeasureMap(_four_four_bars(short="m3", actual=Fraction(3)))
+
+        with _warns_exactly(
+            "short: measure 'm3' (number 3) ends 3 quarters into a bar of 4, "
+            "and nothing it leads to completes the bar"
+        ):
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        assert cmap.x_values.tolist() == [0.0, 4.0, 8.0, 11.0, 15.0, 19.0]
+        assert [cmap(10), cmap(11)] == [3.666, 4.0]
+
+    def test_short_first_and_last_bars_do_not_warn(self) -> None:
+        """An anacrusis and a closing bar shorter than their bars are no doubt."""
+        records = _four_four_bars(short="m5", actual=Fraction(3))
+        records[0] = MeasureConstituent(
+            id="m1",
+            number=1,
+            time_signature="4/4",
+            nominal_length=Fraction(4),
+            actual_length=Fraction(1),
+            offset_within_measure=Fraction(3),
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cmap = QuartersToFloatingMeasures.from_measure_map(MeasureMap(records))
+
+        assert cmap.y_values.tolist()[0] == 0.0
+
+    def test_a_first_ending_completed_across_the_jump_does_not_warn(self) -> None:
+        """m2 (volta 1) sounds 3 quarters and jumps back to the pickup m0."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cmap = QuartersToFloatingMeasures.from_measure_map(
+                _first_ending(jump_back=True)
+            )
+
+        assert cmap.x_values.tolist() == [-3.0, 1.0, 5.0, 8.0, 12.0, 16.0]
+        assert cmap.y_values.tolist() == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+        assert [cmap(5), cmap(7), cmap(8)] == [2.0, 2.666, 3.0]
+
+    def test_a_first_ending_without_the_jump_warns(self) -> None:
+        """The same m2 with the default next: m3 starts at offset 0, not 3."""
+        with _warns_exactly(
+            "short: measure 'm2' (number 2) ends 3 quarters into a bar of 4, "
+            "and nothing it leads to completes the bar"
+        ):
+            QuartersToFloatingMeasures.from_measure_map(_first_ending(jump_back=False))
+
+    def test_writing_a_lattice_does_not_warn_again(self) -> None:
+        """The manifest view re-reads the measure map silently."""
+        with _warns_exactly(*OP106_IV_DOUBTS):
+            cmap = QuartersToFloatingMeasures.from_measure_map(_op106_iv_opening())
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert cmap._is_lattice_of(cmap.measure_map)
+
+
 class TestScoreFloatingMeasures:
     """What a loaded score reads on the fm axis, and when it reads nothing."""
 
@@ -772,9 +1026,8 @@ class TestScoreFloatingMeasures:
         assert reading.unit is TimeUnit.floating_measures
 
     def test_a_split_bar_score_reads_its_compound_measures(self) -> None:
-        """WoO 71 splits bars, and loads with its fm conversion and no warning."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
+        """WoO 71 splits bars, and loads with its fm conversion and one warning."""
+        with _warns_exactly(*WOO71_DOUBTS):
             timeline = Ms3Loader.from_file(WOO71_MEASURES).create_timeline()
 
         assert TimeUnit.floating_measures in timeline._get_available_units()

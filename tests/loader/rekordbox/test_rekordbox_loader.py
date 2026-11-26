@@ -1,6 +1,7 @@
 """Exact validation for Rekordbox collection loading."""
 
 import json
+import warnings
 from fractions import Fraction
 from pathlib import Path
 from urllib.parse import unquote
@@ -632,3 +633,16 @@ def test_real_specimen_timeline_ids_are_minted(rekordbox_specimen: Path) -> None
     assert set(bundle.timelines).isdisjoint(
         stems | {timeline.name for timeline in timelines}
     )
+
+
+def test_real_specimen_loads_without_notation_warnings(
+    rekordbox_specimen: Path,
+) -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        loader = RekordboxLoader.from_file(rekordbox_specimen)
+        loader.create_bundle()
+        loader.create_measure_maps()
+        loader.create_beatgrids()
+
+    assert [warning for warning in caught if warning.category is UserWarning] == []

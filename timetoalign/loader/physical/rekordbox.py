@@ -356,7 +356,14 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         for index, instant in enumerate(downbeat_instants, start=1):
             anchors[instant] = Fraction(index)
 
-        canonical = QuartersToFloatingMeasures.from_measure_map(measure_map)
+        # The bars come from a beat grid, not from notation: a tempo change
+        # inside a bar leaves it a few thousandths over or under its
+        # nominal length, which is no doubt about the source, so the lattice
+        # is built without the warning that lists such bars.
+        x_values, y_values = QuartersToFloatingMeasures._lattice(
+            measure_map, warn=False
+        )
+        canonical = QuartersToFloatingMeasures(x_values=x_values, y_values=y_values)
         total_quarters = measure_map.total_actual_length
         assert total_quarters is not None
         anchors[track.total_time] = Fraction(str(canonical(total_quarters)))

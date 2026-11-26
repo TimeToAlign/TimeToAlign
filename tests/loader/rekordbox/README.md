@@ -56,6 +56,16 @@ anchors need the map) both raise ``grids state no measures``, while
 ``create_beatgrid()`` still returns the grid, which is a true statement of the
 source.
 
+**A beat grid raises no notation warnings.** Building a floating-measure
+lattice from a score warns about bars that do not add up to their nominal
+length. A Rekordbox track's bars are cut from a DJ beat grid: where a grid
+changes tempo inside a bar, that bar is a few thousandths of a quarter over
+or under four quarters (the specimen's mix holds such bars, e.g. `3001/750`
+quarters in a 4/4 bar), which says nothing doubtful about the source. Loading
+the specimen and building its bundle, measure maps and beat grids therefore
+records no `UserWarning` at all; a loader that built its `fm` anchors through
+the public, warning lattice constructor lists those bars and fails.
+
 ## Ground-truth data files
 
 **`rekordbox.xml`** — a Rekordbox library export.

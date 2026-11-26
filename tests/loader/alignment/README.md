@@ -15,7 +15,7 @@ module level so the corpus is materialised once, before collection.
 |------|-------------------|
 | `test_ieee1599.py` | `Ieee1599Loader` against all six IEEE 1599 specimens — spine delta accumulation, the four projection layers, verbatim media references, and the spine-hub claim topology. Zero-tolerance counts and coordinates (see below). |
 | `test_ieee1599_structural.py` | The `<structural>` layer of the gymnopédie specimen — the segment ↔ Petri-net-place resolution and the `external_references` rows it produces on the spine. Exact row counts and exact resolutions (see below). |
-| `test_mtd.py` | `MtdLoader` on the `mtd` corpus (four themes of the Musical Theme Dataset in an archive of MTD's layout), completed with stand-ins for the files it lacks: one timeline per file and its length, the groups by encoding and the children through which a longer member takes part, the items, derivations and statements, the notes, one MatchClaim per aligned onset, the selection, the archive and an extracted folder alike, the package round trip, and every refusal (see below). |
+| `test_mtd.py` | `MtdLoader` on the `mtd` corpus (four themes of the Musical Theme Dataset, all sixteen files each, in an archive of MTD's layout): one timeline per file and its length, the groups by encoding and the children through which a longer member takes part, the items, derivations and statements, the notes, one MatchClaim per aligned onset, the selection, the archive and an extracted folder alike, the package round trip, and every refusal (see below). |
 | `test_trompa_maps.py` | `MapsLoader` on a MEI score and a MAPS file the tests write — one claim per listed `xml:id`, both sides of every claim, retrieval through a bundle on a samples and on a seconds performance, and every refusal (see below). |
 
 Fast lane: gymnopédie, animals, khomus.  The three large specimens
@@ -600,10 +600,11 @@ in an otherwise valid fixture, so the refusal can only come from that change.
 ## `MtdLoader` validation logic
 
 Corpus: `mtd` — `MTD_sample.zip`, four themes of the Musical Theme Dataset
-in the archive's own layout. It holds four of the sixteen files MTD ships
-per theme (`MTD/data_META`, `MTD/data_ALIGNMENT`, `MTD/data_SCORE_MID`,
-`MTD/data_EDM-corr_MID`; the corpus README says why the last folder holds
-the files of the third):
+in the archive's own layout, all sixteen files MTD ships per theme. MTD's
+licensed files are copied byte for byte (`data_ALIGNMENT`, `data_META`,
+`data_SCORE_CSV`, `data_SCORE_IMG`, `data_SCORE_MID`, `data_SCORE_SIB`); the
+others are stand-ins written from them, shaped like MTD's own files (the
+corpus README says how each is made and how it compares with MTD's file):
 
 | theme | movement | recording | excerpt | rows | notes | `MidiTransposition` |
 |---|---|---|---|---|---|---|
@@ -612,43 +613,41 @@ the files of the third):
 | `MTD1044` (B926) | `Beethoven_Op055-02` (orchestra) | Abbado, CD 007, Track06 | `04:07.1`–`04:15` | 11 | 10 | `0` |
 | `MTD1080` (B962) | `Beethoven_Op067-04` (orchestra) | Abbado, CD 009, Track04 | `01:00.75`–`01:06.3` | 29 | 28 | `5` |
 
-Every expected value below is read off these files by hand (the MIDI files
-at 480 ticks per quarter, each note ending one tick before the next onset,
-the track one tick after the last note), or chosen by the test that writes
-a file, never computed by the code under test.
+Every expected value below is read off these files by hand, or chosen by
+the test that changes a file, never computed by the code under test. What
+the files hold, per folder:
 
-### The twelve files the corpus lacks, written per test
+* `data_SCORE_MID` (Sibelius's export): 480 ticks per quarter, velocity
+  80, each note ending one tick before the next onset, the track one tick
+  after the last note: MTD0807 3840, MTD0808 7680, MTD1044 2400, MTD1080
+  7680 ticks.
+* `data_EDM-orig_MID`: the same notes, velocity 60, type 0 at tempo
+  500,000 µs per quarter, the track ending at the last note's end: 3839,
+  7679, 2399, 7679 ticks.
+* `data_EDM-corr_MID`: the same notes, velocity 60, type 1 (a meta track:
+  tempo 1,000,000 µs per quarter, time and key signature; a note track),
+  the track one tick after the last note: 3840, 7680, 2400, 7680 ticks.
+* `data_EDM-alig_MID`: shaped as EDM-corr, the same pitches, each onset
+  and end mapped through the alignment rows (linearly between rows) to the
+  excerpt's second, a quarter per second, rounded to the tick: MTD0807's
+  onsets at ticks 62, 218, 361, 512, 667, 822, 1027, 1058, 1098, 1130 (the
+  rows' seconds × 480), the last note ending at 1368 (`2.85 s`), the track
+  at 1369; MTD0808 2185, MTD1044 3817, MTD1080 2689 ticks — 0.05 seconds
+  and a tick past the excerpt.
+* `data_SCORE_XML`: the notes in whole bars of the theme's meter, a pickup
+  bar at its own length, the last bar filled with a rest: MTD0807 a
+  quarter's pickup and two 2/2 bars (9 quarters), MTD0808 a pickup and four
+  2/2 bars (17), MTD1044 three 2/4 bars (6), MTD1080 a pickup and four 4/4
+  bars (17); each ends after its SCORE MIDI's end of track, as MTD's own
+  files of these themes do.
+* the CSV note lists, the PDFs, the Sibelius file and the WAV: never parsed
+  by the loader; it names these files and reads their bytes only into the
+  ID seed.
 
-The loader refuses a theme missing any of its sixteen files, so the tests
-complete the sample: a module fixture extracts it once and writes, per
-theme, stand-ins with properties the tests choose. Nothing of MTD's own
-unlicensed files enters the repository.
-
-* `data_EDM-orig_MID`: the theme's notes (those of its `data_SCORE_MID`
-  file) as MTD's EDM-orig files hold them: type 0, tempo 500,000 µs per
-  quarter, the track ending at the last note's end. End of track: MTD0807
-  3839, MTD0808 7679, MTD1044 2399, MTD1080 7679 ticks.
-* `data_EDM-alig_MID`: as MTD's EDM-alig files are written: type 1, a meta
-  track (tempo 1,000,000 µs per quarter, so a quarter is a second) and a
-  note track, one note per alignment row but the last, from the row's
-  second to the next row's, in ticks (`round(seconds · 480)`), the last
-  ending at the last row's second, the track one tick later: MTD0807
-  `2.85 s` → 1368 + 1 = 1369, MTD0808 2185, MTD1044 3817, MTD1080 2689
-  ticks — the ends of MTD's own files, 0.05 seconds and a tick past the
-  excerpt.
-* `data_SCORE_XML`: a minimal MusicXML file (one part, divisions 12, a
-  whole-measure rest per measure) whose measures the test chooses:
-  MTD0807 three 3/4 measures (9 quarters, past its SCORE MIDI's 8),
-  MTD0808 four 4/4 (16, equal to its MIDI), MTD1044 three 3/8 (9/2, short
-  of its MIDI's 5), MTD1080 four 4/4 (16, equal).
-* the five CSVs, the three PDFs, the Sibelius file and the WAV: a few
-  bytes each, never parsed (a PDF stand-in is no PDF, the WAV no RIFF
-  file): the loader names these files and must not read them beyond the
-  bytes of the ID seed.
-
-A copy of the completed folder is zipped into an archive of MTD's layout,
-which most tests read; tests that change a file change a copy of the
-folder.
+Most tests read the corpus archive as it is. A test that needs what the
+corpus does not hold (a missing file, an edited row or time, an excerpt
+longer than its MIDI, a MusicXML shorter than its MIDI, MIDI and excerpt of
+equal length) changes one file in a copy of the extracted archive.
 
 ### What would prove the loader right
 
@@ -663,7 +662,7 @@ folder.
 * **Each timeline is as long as its file states.** MIDI: the end of track
   in exact quarters (MTD0807: EDM-orig `3839/480`, EDM-corr and SCORE `8`,
   EDM-alig `1369/480`; the other themes as listed above over 480); the
-  MusicXML: the end of its last measure (`9`, `16`, `9/2`, `16`); the
+  MusicXML: the end of its last measure (`9`, `17`, `6`, `17`); the
   excerpt `EndTime − StartTime` from the decimal strings (`2.8`, `4.5`,
   `7.9`, `5.55`, the last the float of `"5.55"`); every CSV, PDF and the
   Sibelius file `None`. A length that is the last note's end and not the
@@ -676,11 +675,16 @@ folder.
   long as the excerpt in quarters: the excerpt's exact length as META's
   decimals write it, `EndTime − StartTime` (`14/5`, `9/2`, `79/10`,
   `111/20`), never the float of it rebuilt into a ratio (`Fraction(2.8)`
-  would be a dyadic the file never states). MTD0807's MusicXML (9) takes part through its child
-  `…, SCORE MusicXML, span of the SCORE MIDI` of length 8; MTD1044's SCORE
-  MIDI (5) through its child `…, SCORE MIDI, span of the SCORE MusicXML`
-  of length `9/2`; MTD0808 and MTD1080 (equal) have no child. Two cases
-  are made by editing a copy: MTD0807's `EndTime` `00:03` → `00:04` makes
+  would be a dyadic the file never states). In all four themes the
+  MusicXML ends after the SCORE MIDI (9 against 8, 17 against 16, 6
+  against 5, 17 against 16) and takes part through its child `…, SCORE
+  MusicXML, span of the SCORE MIDI` as long as the MIDI (8, 16, 5, 16).
+  Three cases are made by editing a copy: MTD1044's MusicXML without its
+  last bar (4 quarters, against the MIDI's 5) makes the SCORE MIDI the
+  longer, taking part through its child `B926 (MTD 1044), SCORE MIDI, span
+  of the SCORE MusicXML` of length 4 (the SCORE group then holds the
+  MusicXML whole and the MIDI's child); MTD0807's `EndTime` `00:03` →
+  `00:04` makes
   the excerpt (3.8 s) the longer, and its child `Theme B689 (MTD 0807),
   span of the EDM-alig MIDI` is `float(1369/480)` = `2.8520833333333333`
   seconds long, the EDM-alig MIDI taking part whole; an EDM-alig MIDI
@@ -740,17 +744,16 @@ folder.
 * **The notes are the MIDI file's, in exact quarters.** MTD0807's EDM-corr
   MIDI timeline holds 10 notes, onsets `0, 1, 2, 3, 4, 5, 13/2, 20/3,
   41/6, 7` (ticks `0 … 3360` over 480), pitches `60, 65, 68, 72, 77, 80,
-  79, 77, 76, 77`, the first ending at `479/480`, the last at `3839/480`.
-  A triplet onset that a float could not hold (`20/3`) is the test that no
-  float passed between file and timeline. Every MIDI timeline holds its
-  file's notes (EDM-orig's the same ten, EDM-alig's ten at the rows'
-  ticks); `to_file(..., events=False)` writes none of them.
-* **The default encoding is read in the shape MTD's EDM files have.** A
-  test writes MTD0807's notes into `data_EDM-corr_MID` as MTD's own EDM
-  files are (type 1 with a meta track: tempo, time and key signature;
-  note-offs as note-ons of velocity 0, velocity 60) and expects the same
-  onsets, ends and pitches, velocity 60, and the same ten claims at the
-  same quarters and seconds.
+  79, 77, 76, 77`, velocity 60, the ends `479/480 … 3839/480` (each a tick
+  before the next onset), the timeline `3840/480` long; the ten claims
+  name these notes in this order, at these onsets. A triplet onset that a
+  float could not hold (`20/3`) is the test that no float passed between
+  file and timeline. Every MIDI timeline holds its file's notes, with the
+  same pitches (EDM-orig's and SCORE's at the same onsets, EDM-alig's at
+  the rows' ticks); `to_file(..., events=False)` writes none of them. The
+  EDM-corr file is in the shape of MTD's EDM files (type 1 with a meta
+  track; note-offs as note-ons of velocity 0), which is what the default
+  encoding meets in the full archive.
 * **Each alignment row but the last is one claim, at the exact onset.**
   Claims per theme = rows − 1 (10, 16, 10, 28; 64 in all), because every
   onset of these themes holds one note. MTD0807's row `6.66667;2.20401` is
@@ -758,7 +761,8 @@ folder.
   timeline to CHUNK on the excerpt, anchored at exactly `Fraction(20, 3)`
   quarters and `2.20401` seconds. MTD1044's `3.16667` is `19/6`. With
   `theme_midi="data_SCORE_MID"` the claims name the notes of the SCORE
-  MIDI timeline instead. Provenance `imported`, basis the DOI. A row
+  MIDI timeline instead (the same onsets, velocity 80, which tells the
+  two files apart). Provenance `imported`, basis the DOI. A row
   meeting no onset within half a tick is refused.
 * **The last row is checked, not kept.** A row moved by one tick's worth
   (`7.99792` → `8.00000`) is refused.
@@ -827,7 +831,7 @@ without the groups:
 
 ### Refusals
 
-Each refusal changes one thing in a copy of the completed folder: an
+Each refusal changes one thing in a copy of the extracted corpus: an
 alignment row moved off its onset (`6.66667` → `6.70000`; the message
 says that the alignment counts the quarters of `data_EDM-corr_MID` and
 names the folder matched against, also when

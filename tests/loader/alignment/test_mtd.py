@@ -1,11 +1,12 @@
 """Tests for MtdLoader: themes of the Musical Theme Dataset as an AlignmentBundle.
 
 The corpus ``mtd`` holds ``MTD_sample.zip``: four themes in the layout of
-the MTD archive, four of the sixteen files per theme. A module fixture
-completes it with stand-ins for the other twelve. Every expected value is
-read off the files by hand or chosen by the stand-in that writes it; the
-validation logic is written down in ``tests/loader/alignment/README.md``
-("``MtdLoader`` validation logic").
+the MTD archive, all sixteen files per theme, MTD's licensed files copied
+and documented stand-ins for the others (the corpus README). Most tests read
+it as it is; a test that needs a file MTD does not have changes a copy of
+it. Every expected value is read off the corpus files by hand or chosen by
+the test that changes a file; the validation logic is written down in
+``tests/loader/alignment/README.md`` ("``MtdLoader`` validation logic").
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from __future__ import annotations
 import json
 import shutil
 import zipfile
-from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -38,7 +38,7 @@ from timetoalign.timelines import (
     UnknownLengthError,
 )
 
-#: The sample archive: four of the sixteen files per theme.
+#: The corpus: four themes, all sixteen files each.
 SAMPLE = ensure_data("mtd") / "MTD_sample.zip"
 
 PIANO = "Beethoven_Op002No1-01"
@@ -48,35 +48,23 @@ TRACK_BRENDEL = (RELEASE_BRENDEL, "049", "Track01")
 DOI = "https://doi.org/10.5334/tismir.68"
 ZIP_URL = "https://www.audiolabs-erlangen.de/resources/MIR/MTD/MTD_1.0.0.zip"
 STEM_0807 = "MTD0807_Beethoven_Op002No1-01"
+STEM_1044 = "MTD1044_Beethoven_Op055-02"
 ALIGNMENT_0807 = f"data_ALIGNMENT/{STEM_0807}.csv"
-STEMS = {
-    "MTD0807": STEM_0807,
-    "MTD0808": "MTD0808_Beethoven_Op002No1-01",
-    "MTD1044": "MTD1044_Beethoven_Op055-02",
-    "MTD1080": "MTD1080_Beethoven_Op067-04",
-}
 
-#: MTD0807's notes as ticks at 480 per quarter: (onset, end, MIDI pitch).
-NOTES_0807 = [
-    (0, 479, 60),
-    (480, 959, 65),
-    (960, 1439, 68),
-    (1440, 1919, 72),
-    (1920, 2399, 77),
-    (2400, 3119, 80),
-    (3120, 3199, 79),
-    (3200, 3279, 77),
-    (3280, 3359, 76),
-    (3360, 3839, 77),
+#: MTD0807's onsets in quarters and MIDI pitches, as its MIDI files hold them.
+ONSETS_0807 = [
+    Fraction(0),
+    Fraction(1),
+    Fraction(2),
+    Fraction(3),
+    Fraction(4),
+    Fraction(5),
+    Fraction(13, 2),
+    Fraction(20, 3),
+    Fraction(41, 6),
+    Fraction(7),
 ]
-
-#: The measures of each stand-in MusicXML file: (beats, beat type) each.
-SCORE_MEASURES = {
-    "MTD0807": [(3, 4)] * 3,
-    "MTD0808": [(4, 4)] * 4,
-    "MTD1044": [(3, 8)] * 3,
-    "MTD1080": [(4, 4)] * 4,
-}
+PITCHES_0807 = [60, 65, 68, 72, 77, 80, 79, 77, 76, 77]
 
 #: The labels of a theme's file timelines, in the order of create_timelines.
 LABELS = [
@@ -113,7 +101,7 @@ MEMBERS_0807 = {
 }
 
 
-# region Stand-ins
+# region The corpus and copies of it
 
 
 def notes_of(path: Path) -> list[tuple[int, int, int]]:
@@ -131,16 +119,13 @@ def notes_of(path: Path) -> list[tuple[int, int, int]]:
     return sorted(notes)
 
 
-def write_edm_shaped(
-    path: Path, notes: list[tuple[int, int, int]], *, tail: int = 1
-) -> None:
-    """Write *notes* as MTD's EDM-corr and EDM-alig files are written.
+def write_edm_shaped(path: Path, notes: list[tuple[int, int, int]]) -> None:
+    """Write *notes* as MTD writes EDM-alig files, the track ending a tick after the last.
 
-    Type 1, 480 ticks per quarter; the meta track holds tempo 1,000,000 µs
-    per quarter, a 2/2 time signature and the key of A♭ major and ends at
-    tick 1; the note track a program change and note-ons, each note ended by
-    a note-on of velocity 0, velocity 60, and ends *tail* ticks after the
-    last note.
+    Type 1, 480 ticks per quarter; a meta track (tempo 1,000,000 µs per
+    quarter, MTD0807's 2/2 and A♭ major, ending at tick 1) and a note track
+    (a program change, the notes at velocity 60 each ended by a note-on of
+    velocity 0).
     """
     meta = mido.MidiTrack(
         [
@@ -156,111 +141,30 @@ def write_edm_shaped(
         track.append(mido.Message("note_on", note=pitch, velocity=60, time=start - now))
         track.append(mido.Message("note_on", note=pitch, velocity=0, time=end - start))
         now = end
-    track.append(mido.MetaMessage("end_of_track", time=tail))
+    track.append(mido.MetaMessage("end_of_track", time=1))
     midi = mido.MidiFile(type=1, ticks_per_beat=480)
     midi.tracks += [meta, track]
     midi.save(path)
 
 
-def write_edm_orig(path: Path, notes: list[tuple[int, int, int]]) -> None:
-    """Write *notes* as MTD's EDM-orig files are: type 0, ending at the last note's end."""
-    track = mido.MidiTrack([mido.MetaMessage("set_tempo", tempo=500_000, time=0)])
-    now = 0
-    for start, end, pitch in notes:
-        track.append(mido.Message("note_on", note=pitch, velocity=80, time=start - now))
-        track.append(mido.Message("note_off", note=pitch, velocity=0, time=end - start))
-        now = end
-    track.append(mido.MetaMessage("end_of_track", time=0))
-    midi = mido.MidiFile(type=0, ticks_per_beat=480)
-    midi.tracks.append(track)
-    midi.save(path)
-
-
-def tick(seconds: str) -> int:
-    """A second of the alignment at a quarter per second, in ticks at 480."""
-    return int((Decimal(seconds) * 480).to_integral_value())
-
-
-def write_edm_alig(path: Path, alignment: Path) -> None:
-    """One note per alignment row but the last, at the rows' seconds as quarters."""
-    rows = [line.split(";") for line in alignment.read_text().splitlines()[1:] if line]
-    ticks = [tick(wav) for _, wav in rows]
-    notes = [(ticks[i], ticks[i + 1], 60 + i % 12) for i in range(len(ticks) - 1)]
-    write_edm_shaped(path, notes)
-
-
-def musicxml(measures: list[tuple[int, int]]) -> str:
-    """A MusicXML file of whole-measure rests, one per measure given."""
-    bars = []
-    for number, (beats, beat_type) in enumerate(measures, start=1):
-        divisions = "<divisions>12</divisions>" if number == 1 else ""
-        time = f"<time><beats>{beats}</beats><beat-type>{beat_type}</beat-type></time>"
-        duration = Fraction(4 * beats, beat_type) * 12
-        bars.append(
-            f'<measure number="{number}"><attributes>{divisions}{time}</attributes>'
-            f"<note><rest/><duration>{duration}</duration></note></measure>"
-        )
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n<score-partwise version="3.0">'
-        '<part-list><score-part id="P1"><part-name>Theme</part-name></score-part>'
-        '</part-list><part id="P1">' + "".join(bars) + "</part></score-partwise>\n"
-    )
-
-
-def complete(root: Path) -> None:
-    """Write the twelve files per theme the sample lacks into ``root/MTD``."""
-    mtd = root / "MTD"
-    for mtd_id, stem in STEMS.items():
-        score_notes = notes_of(mtd / f"data_SCORE_MID/{stem}.mid")
-        for folder in ("data_EDM-orig_MID", "data_EDM-alig_MID", "data_SCORE_XML"):
-            (mtd / folder).mkdir(exist_ok=True)
-        write_edm_orig(mtd / f"data_EDM-orig_MID/{stem}.mid", score_notes)
-        write_edm_alig(
-            mtd / f"data_EDM-alig_MID/{stem}.mid", mtd / f"data_ALIGNMENT/{stem}.csv"
-        )
-        (mtd / f"data_SCORE_XML/{stem}.xml").write_text(
-            musicxml(SCORE_MEASURES[mtd_id]), encoding="utf-8"
-        )
-        stand_ins = {
-            "data_EDM-orig_CSV": ("csv", b'"Start";"Duration";"Pitch"\n0.0;0.5;60\n'),
-            "data_EDM-corr_CSV": ("csv", b'"Start";"Duration";"Pitch"\n0.0;0.5;60\n'),
-            "data_SCORE_CSV": ("csv", b'"Start";"Duration";"Pitch"\n0.0;0.5;60\n'),
-            "data_EDM-alig_CSV": ("csv", b"Start;Duration;Pitch\n0.1;0.3;60\n"),
-            "data_EDM-orig_IMG": ("pdf", b"stand-in, not a PDF\n"),
-            "data_EDM-corr_IMG": ("pdf", b"stand-in, not a PDF\n"),
-            "data_SCORE_IMG": ("pdf", b"stand-in, not a PDF\n"),
-            "data_SCORE_SIB": ("sib", b"stand-in, not a Sibelius file\n"),
-            "data_AUDIO": ("wav", b"stand-in, not a WAV file\n"),
-        }
-        for folder, (extension, data) in stand_ins.items():
-            (mtd / folder).mkdir(exist_ok=True)
-            (mtd / f"{folder}/{stem}.{extension}").write_bytes(data + stem.encode())
+@pytest.fixture(scope="module")
+def archive() -> Path:
+    """The corpus archive, read in place."""
+    return SAMPLE
 
 
 @pytest.fixture(scope="module")
 def complete_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The sample extracted and completed: the folder holding ``MTD/``. Read only."""
-    root = tmp_path_factory.mktemp("mtd") / "complete"
-    with zipfile.ZipFile(SAMPLE) as archive:
-        archive.extractall(root)
-    complete(root)
+    """The corpus archive extracted: the folder holding ``MTD/``. Read only."""
+    root = tmp_path_factory.mktemp("mtd") / "extracted"
+    with zipfile.ZipFile(SAMPLE) as zipped:
+        zipped.extractall(root)
     return root
-
-
-@pytest.fixture(scope="module")
-def archive(complete_folder: Path) -> Path:
-    """The completed folder as an archive of MTD's layout."""
-    path = complete_folder.parent / "MTD_complete.zip"
-    with zipfile.ZipFile(path, "w") as zipped:
-        for file in sorted(complete_folder.rglob("*")):
-            if file.is_file():
-                zipped.write(file, file.relative_to(complete_folder).as_posix())
-    return path
 
 
 @pytest.fixture
 def folder(complete_folder: Path, tmp_path: Path) -> Path:
-    """A copy of the completed folder, to change one file in."""
+    """A copy of the extracted corpus, to change one file in."""
     copy = tmp_path / "extracted"
     shutil.copytree(complete_folder, copy)
     return copy
@@ -385,9 +289,9 @@ class TestFileTimelines:
         assert len(timelines) == 3 + 4 * 13
         expected = {
             "B689 (MTD 0807)": (3839, 3840, 3840, 1369, Fraction(9), 2.8),
-            "B690 (MTD 0808)": (7679, 7680, 7680, 2185, Fraction(16), 4.5),
-            "B926 (MTD 1044)": (2399, 2400, 2400, 3817, Fraction(9, 2), 7.9),
-            "B962 (MTD 1080)": (7679, 7680, 7680, 2689, Fraction(16), 5.55),
+            "B690 (MTD 0808)": (7679, 7680, 7680, 2185, Fraction(17), 4.5),
+            "B926 (MTD 1044)": (2399, 2400, 2400, 3817, Fraction(6), 7.9),
+            "B962 (MTD 1080)": (7679, 7680, 7680, 2689, Fraction(17), 5.55),
         }
         for theme, (orig, corr, score, alig, xml, excerpt) in expected.items():
             found = by_label(timelines, theme)
@@ -413,9 +317,14 @@ class TestFileTimelines:
     def test_every_midi_timeline_holds_its_notes(self, archive: Path) -> None:
         timelines = MtdLoader.from_file(archive, themes=["MTD0807"]).create_timelines()
         found = by_label(timelines)
-        quarters = [Fraction(start, 480) for start, _, _ in NOTES_0807]
+        for label in ("EDM-orig MIDI", "EDM-corr MIDI", "SCORE MIDI", "EDM-alig MIDI"):
+            table = found[label].get_events().table
+            assert pc.struct_field(
+                table.column("pitch"), "midi_number"
+            ).to_pylist() == (PITCHES_0807), label
         for label in ("EDM-orig MIDI", "EDM-corr MIDI", "SCORE MIDI"):
-            assert exact(found[label].get_events().table.column("start")) == quarters
+            table = found[label].get_events().table
+            assert exact(table.column("start")) == ONSETS_0807, label
         alig = found["EDM-alig MIDI"].get_events().table
         assert exact(alig.column("start")) == [
             Fraction(n, 480)
@@ -487,6 +396,13 @@ class TestParticipation:
                     NumberType.fraction,
                 )
             ],
+            ("B690 (MTD 0808)", "SCORE MusicXML"): [
+                (
+                    "B690 (MTD 0808), SCORE MusicXML, span of the SCORE MIDI",
+                    Fraction(16),
+                    NumberType.fraction,
+                )
+            ],
             ("B926 (MTD 1044)", "EDM-alig MIDI"): [
                 (
                     "B926 (MTD 1044), EDM-alig MIDI, span of the excerpt",
@@ -494,10 +410,10 @@ class TestParticipation:
                     NumberType.fraction,
                 )
             ],
-            ("B926 (MTD 1044)", "SCORE MIDI"): [
+            ("B926 (MTD 1044)", "SCORE MusicXML"): [
                 (
-                    "B926 (MTD 1044), SCORE MIDI, span of the SCORE MusicXML",
-                    Fraction(9, 2),
+                    "B926 (MTD 1044), SCORE MusicXML, span of the SCORE MIDI",
+                    Fraction(5),
                     NumberType.fraction,
                 )
             ],
@@ -505,6 +421,13 @@ class TestParticipation:
                 (
                     "B962 (MTD 1080), EDM-alig MIDI, span of the excerpt",
                     Fraction(111, 20),
+                    NumberType.fraction,
+                )
+            ],
+            ("B962 (MTD 1080)", "SCORE MusicXML"): [
+                (
+                    "B962 (MTD 1080), SCORE MusicXML, span of the SCORE MIDI",
+                    Fraction(16),
                     NumberType.fraction,
                 )
             ],
@@ -531,6 +454,32 @@ class TestParticipation:
         assert child.number_type == NumberType.float
         assert found["excerpt"].get_child_offset(child.id).value == 0.0
         assert children(found["EDM-alig MIDI"]) == []
+
+    def test_a_midi_longer_than_its_musicxml(self, folder: Path) -> None:
+        path = folder / f"MTD/data_SCORE_XML/{STEM_1044}.xml"
+        text = path.read_text(encoding="utf-8")
+        start = text.index('<measure number="3">')
+        end = text.index("</measure>", start) + len("</measure>")
+        path.write_text(text[:start] + text[end:], encoding="utf-8")
+        loader = MtdLoader.from_file(folder, themes=["MTD1044"])
+        timelines = loader.create_timelines()
+        found = by_label(timelines, "B926 (MTD 1044)")
+        assert length(found["SCORE MusicXML"]) == Fraction(4)
+        assert length(found["SCORE MIDI"]) == Fraction(5)
+        assert children(found["SCORE MusicXML"]) == []
+        (child,) = children(found["SCORE MIDI"])
+        assert child.name == "B926 (MTD 1044), SCORE MIDI, span of the SCORE MusicXML"
+        assert length(child) == Fraction(4)
+        assert child.number_type == NumberType.fraction
+        assert found["SCORE MIDI"].get_child_offset(child.id).value == 0
+        score = loader.create_groups(timelines)[2]
+        assert score.timeline_ids == [
+            found["SCORE Sibelius"].id,
+            found["SCORE MusicXML"].id,
+            child.id,
+            found["SCORE CSV"].id,
+            found["SCORE PDF"].id,
+        ]
 
     def test_equal_lengths_take_part_whole(self, folder: Path) -> None:
         notes = notes_of(folder / f"MTD/data_EDM-alig_MID/{STEM_0807}.mid")
@@ -845,55 +794,9 @@ class TestNotes:
     def test_notes_of_mtd0807(self, archive: Path) -> None:
         loader = MtdLoader.from_file(archive, themes=["MTD0807"])
         score = by_label(loader.create_timelines())["EDM-corr MIDI"]
-        table = score.get_events().table
-        assert exact(table.column("start")) == [
-            Fraction(0),
-            Fraction(1),
-            Fraction(2),
-            Fraction(3),
-            Fraction(4),
-            Fraction(5),
-            Fraction(13, 2),
-            Fraction(20, 3),
-            Fraction(41, 6),
-            Fraction(7),
-        ]
-        ends = exact(table.column("end"))
-        assert ends[0] == Fraction(479, 480)
-        assert ends[-1] == Fraction(3839, 480)
-        assert pc.struct_field(table.column("pitch"), "midi_number").to_pylist() == [
-            60,
-            65,
-            68,
-            72,
-            77,
-            80,
-            79,
-            77,
-            76,
-            77,
-        ]
-        assert table.column("velocity").to_pylist() == [80] * 10
-        assert table.column("event_type").to_pylist() == ["Note"] * 10
-
-    def test_an_edm_shaped_file(self, folder: Path) -> None:
-        write_edm_shaped(folder / f"MTD/data_EDM-corr_MID/{STEM_0807}.mid", NOTES_0807)
-        loader = MtdLoader.from_file(folder, themes=["MTD0807"])
-        score = by_label(loader.create_timelines())["EDM-corr MIDI"]
         assert length(score) == Fraction(3840, 480)
         table = score.get_events().table
-        assert exact(table.column("start")) == [
-            Fraction(0),
-            Fraction(1),
-            Fraction(2),
-            Fraction(3),
-            Fraction(4),
-            Fraction(5),
-            Fraction(13, 2),
-            Fraction(20, 3),
-            Fraction(41, 6),
-            Fraction(7),
-        ]
+        assert exact(table.column("start")) == ONSETS_0807
         assert exact(table.column("end")) == [
             Fraction(479, 480),
             Fraction(959, 480),
@@ -906,36 +809,16 @@ class TestNotes:
             Fraction(3359, 480),
             Fraction(3839, 480),
         ]
-        assert pc.struct_field(table.column("pitch"), "midi_number").to_pylist() == [
-            60,
-            65,
-            68,
-            72,
-            77,
-            80,
-            79,
-            77,
-            76,
-            77,
-        ]
+        assert pc.struct_field(table.column("pitch"), "midi_number").to_pylist() == (
+            PITCHES_0807
+        )
         assert table.column("velocity").to_pylist() == [60] * 10
+        assert table.column("event_type").to_pylist() == ["Note"] * 10
         rows = claims_of(loader)
         assert [row["event_a_id"] for row in rows] == table.column("id").to_pylist()
         assert exact(
             pa.array([row["start_anchor"]["coordinate_a"] for row in rows])
         ) == exact(table.column("start"))
-        assert [row["start_anchor"]["coordinate_b"]["value"] for row in rows] == [
-            0.12855,
-            0.45519,
-            0.75268,
-            1.06608,
-            1.38863,
-            1.713,
-            2.13951,
-            2.20401,
-            2.2885,
-            2.35321,
-        ]
 
     def test_sixths_of_mtd1044(self, archive: Path) -> None:
         loader = MtdLoader.from_file(archive, themes=["MTD1044"])
@@ -1098,18 +981,7 @@ class TestClaims:
             for row in rows
         ]
         seconds = [row["start_anchor"]["coordinate_b"]["value"] for row in rows]
-        assert quarters == [
-            Fraction(0),
-            Fraction(1),
-            Fraction(2),
-            Fraction(3),
-            Fraction(4),
-            Fraction(5),
-            Fraction(13, 2),
-            Fraction(20, 3),
-            Fraction(41, 6),
-            Fraction(7),
-        ]
+        assert quarters == ONSETS_0807
         assert seconds == [
             0.12855,
             0.45519,
@@ -1136,9 +1008,10 @@ class TestClaims:
         score = by_label(loader.create_timelines())["SCORE MIDI"]
         rows = claims_of(loader)
         assert [row["timeline_a_id"] for row in rows] == [score.id] * 10
-        assert [row["event_a_id"] for row in rows] == (
-            score.get_events().table.column("id").to_pylist()
-        )
+        notes = score.get_events().table
+        assert [row["event_a_id"] for row in rows] == notes.column("id").to_pylist()
+        assert exact(notes.column("start")) == ONSETS_0807
+        assert notes.column("velocity").to_pylist() == [80] * 10
 
     def test_provenance(self, archive: Path) -> None:
         field = MtdLoader.from_file(archive, themes=["MTD1044"]).get_field(MatchClaim)
@@ -1454,10 +1327,6 @@ class TestRefusals:
         assert f"data_SCORE_IMG/{STEM_0807}.pdf" in str(missing.value)
         assert f"data_AUDIO/{STEM_0807}.wav" in str(missing.value)
         assert MtdLoader.from_file(folder, themes=["MTD1044"]).themes == ["MTD1044"]
-
-    def test_the_sample_alone_lacks_files(self) -> None:
-        with pytest.raises(FileNotFoundError, match="data_EDM-orig_MID"):
-            MtdLoader.from_file(SAMPLE, themes=["MTD0807"])
 
     def test_no_encoding_folder(self, archive: Path) -> None:
         with pytest.raises(ValueError, match="data_EDM-orig_MID"):

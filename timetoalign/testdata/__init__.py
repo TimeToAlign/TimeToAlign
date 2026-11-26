@@ -111,7 +111,7 @@ except ImportError as exc:  # pragma: no cover - tested via integration
 # ---------------------------------------------------------------------------
 
 #: GitHub release tag in the ``tta_test_data`` repository.
-RELEASE_TAG = "testdata-v6"
+RELEASE_TAG = "testdata-v7"
 
 #: Base URL where the release assets are hosted.
 BASE_URL = (
@@ -134,7 +134,7 @@ REGISTRY = {
     "layerit_clair_de_lune.tar.gz": "sha256:7b6509343f3f1c7e0b23258ff984638b956dfa1896827b757f2bfd13782eb019",
     "midi.tar.gz": "sha256:7904384430b3bc6faa86a1788f3347f6ba02a8059d263d21630a96de233e96d2",
     "mpm_toolbox.tar.gz": "sha256:5940bd3eb8680746bfde89ac57239dfca8343400e711f6922447470979d5fb83",
-    "mtd.tar.gz": "sha256:e833c43eb471315870be6145daefe6f0dbb657ece151da90fccf1749ca6f295d",
+    "mtd.tar.gz": "sha256:d241337e92a557257d2fdb7a36feb7a3c24ed12f6d4544ab767e46c0373dbc3b",
     "parangonar.tar.gz": "sha256:c4c30c929324b2901b1d754b5b38dda9859b2d8fd05e824fcf489c38d5a4595e",
     "performance_precision.tar.gz": "sha256:cae96b2111af21fdbcf4fbf79c24b77492ff6c280169a533487faf30ed8ece43",
     "score.tar.gz": "sha256:74c347e3eca9a0a6441e1945a232957c2c7744964e009d1e6197bcd50b9009f6",

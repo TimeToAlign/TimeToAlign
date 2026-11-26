@@ -61,7 +61,7 @@ another basis fails.
 * Each **manifestation** becomes a new graphical timeline in millimetres of
   unknown length, named by its first title, its ID minted from the loader's
   minter (`cgt_…`; the tests load with `seed=0` and name the IDs a fresh
-  `IdMinter(0)` mints), so a value naming it (`{"id": "#cgt_…"}`) carries its
+  `IdMinter(0)` mints after the new bundle's), so a value naming it (`{"id": "#cgt_…"}`) carries its
   final ID.
 * An **item** is a value node under its manifestation's
   `lrmoo:R7i_is_exemplified_by`, its pairs stated inside the node; a
@@ -109,8 +109,11 @@ date is not tested here: it is the statement API's.
   entry keeps the import's members and gains the editor's belief `true`).
 * `base` sets the address against which relative targets resolve and from
   which every basis and IRI is built; the default is the file name,
-  percent-encoded, and the bundle's default ID is the file's stem with every
-  character outside `[A-Za-z0-9_.-]` replaced by `_`.
+  percent-encoded. A new bundle's ID is `id` when given, else the first ID
+  the loader's minter mints (`bundle_…`, before the new timelines'); the
+  manifest writes it either way, since a manifest holding statements without
+  an ID warns (`bundle_blank`). The file's stem (`cnw0133`) is the bundle's
+  `name`, never its ID.
 
 ## Refusals
 

@@ -15,6 +15,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from timetoalign.core.ids import CMAP_PREFIX, IdMinter
 from timetoalign.loader.midi.events import MidiEventData
 from timetoalign.storage.store import EventStore
 
@@ -151,12 +152,17 @@ class MidiStore(EventStore):
         result["facts"].update(self.metadata)
         return result
 
-    def get_cmaps(self) -> dict[str, ConversionMap]:
+    def get_cmaps(self, *, minter: IdMinter | None = None) -> dict[str, ConversionMap]:
         """Get ConversionMaps derivable from MIDI store metadata.
 
         Returns C-Maps based on available metadata:
         - "quarters": ticks -> quarters (if ticks_per_beat available)
         - "seconds": ticks -> seconds (if tempo events available)
+
+        Args:
+            minter: The minter of the ticks -> quarters map's ID (a
+                loader's); without one, the map mints its own. The
+                ticks -> seconds map mints its own.
 
         Returns:
             Dict mapping target unit name to ConversionMap.
@@ -179,7 +185,9 @@ class MidiStore(EventStore):
             return cmaps
 
         # Always available if we have PPQ: ticks -> quarters, exact
-        cmaps["quarters"] = TicksToQuarters(ppq=ppq)
+        cmaps["quarters"] = TicksToQuarters(
+            ppq=ppq, uid=None if minter is None else minter.mint(CMAP_PREFIX)
+        )
 
         # Check for tempo events to build ticks -> seconds map
         # Tempo events would be stored in controls as TempoChange events

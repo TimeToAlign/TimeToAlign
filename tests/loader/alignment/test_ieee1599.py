@@ -320,8 +320,8 @@ class TestTimelineIdentity:
         bundle = ieee1599_bundle("gymnopedie")
 
         assert list(bundle.timelines) == loader.timeline_uids
-        group_ids = [f"group_{n}" for n in range(1, len(loader.timeline_uids) + 1)]
-        assert bundle.group_ids == group_ids
+        group_ids = bundle.group_ids
+        assert shapes(group_ids) == ["group"] * len(loader.timeline_uids)
         assert [group.name for group in bundle.groups.values()] == loader.timeline_uids
         assert all(group.n_timelines == 1 for group in bundle.groups.values())
         assert bundle.timeline_to_groups == {
@@ -1108,6 +1108,35 @@ class TestLoaderContract:
             "animals_eng:cpt",
             "animals_ita:cpt",
         ]
+
+    def test_layers_of_one_label_get_distinct_roles(self) -> None:
+        """Layers sharing a label take roles from more of what the source states."""
+        loader = Ieee1599Loader().load_string(
+            "<ieee1599><logic><spine /></logic><notational>"
+            '<graphic_instance_group description="Score">'
+            '<graphic_instance file_name="p1.png" /></graphic_instance_group>'
+            '<graphic_instance_group description="Score">'
+            '<graphic_instance file_name="q1.png" /></graphic_instance_group>'
+            "</notational><audio>"
+            '<track file_name="a/take.mp3" /><track file_name="b/take.mp3" />'
+            '<track file_name="spine.wav" /></audio></ieee1599>'
+        )
+
+        roles = [
+            "score_p1_png",
+            "score_q1_png",
+            "a_take_mp3",
+            "b_take_mp3",
+            "spine_wav",
+        ]
+        assert shapes(loader.timeline_uids) == [
+            "spine:dlt",
+            "los:dlt",
+            *(f"{role}:dgt" for role in roles[:2]),
+            *(f"{role}:cpt" for role in roles[2:]),
+        ]
+        for role in roles:
+            assert shape(loader.create_timeline(f"{role}:.*").id).startswith(f"{role}:")
 
     def test_string_ingest_accepts_a_first_document(self, ieee1599_path) -> None:
         """The guard refuses a second document, not the first one."""

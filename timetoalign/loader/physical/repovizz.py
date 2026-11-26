@@ -203,18 +203,42 @@ class RepoVizzLoader(ManifestLoader):
             ValueError: If any source is invalid.
         """
         held = [as_source(source) for source in sources]
-        self._start_minter(*held)
+        # The minter is seeded from every file read: a manifest and the data
+        # files its catalogue names that exist, in catalogue order, or a CSV.
+        read: list[Source] = []
         for path in held:
             if path.suffix.lower() == ".xml":
                 self._load_xml(path)
+                read.append(path)
+                read.extend(self._catalogue_files())
             else:
                 # Legacy CSV mode
                 manifest = self._load_source(path)
                 manifest.source_path = path
                 self._sources.append(path)
                 self._manifests.append(manifest)
+                read.append(path)
+        self._start_minter(*read)
 
         return self
+
+    def _catalogue_files(self) -> list[Source]:
+        """The data files the catalogue of the manifest just read names, in its order.
+
+        Each file counts once; a file the catalogue names but the folder
+        lacks counts not at all (its name would tie the seed to the place).
+        """
+        if self._xml_root_path is None:
+            return []
+        root = self._xml_root_path
+        names = dict.fromkeys(
+            entry.filename for entry in self._store.catalogue.values() if entry.filename
+        )
+        return [
+            path
+            for path in (join_source(root, name) for name in names)
+            if path.exists()
+        ]
 
     def _load_source(self, source: Source) -> ManifestData:
         """Parse a RepoVizz CSV file (legacy mode).

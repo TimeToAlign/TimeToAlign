@@ -10,13 +10,12 @@ from typing_extensions import Self
 from timetoalign.core import IntervalPolicy, NumberType, TimeUnit
 from timetoalign.core.events import EnharmonicPitchField, SpecificPitchField
 from timetoalign.core.fields import SemanticField
-from timetoalign.core.ids import IdMinter, given_minter
-from timetoalign.loader._ids import give_event_ids
-from timetoalign.storage.events import EventData
+from timetoalign.core.ids import IdMinter
+from timetoalign.loader.score.stores.base import ScoreEventData
 from timetoalign.storage.schema import make_rational_field
 
 
-class NoteEventData(EventData):
+class NoteEventData(ScoreEventData):
     """EventData for note, rest, and chord events.
 
     Rich temporal schema following TSV gold standard:
@@ -84,6 +83,15 @@ class NoteEventData(EventData):
     _afforded_fields: dict[str, type[SemanticField[Any]]] = {
         "midi": EnharmonicPitchField,
     }
+
+    _dropped_keys: ClassVar[tuple[str, ...]] = (
+        "quarterbeats_float",
+        "duration_qb_float",
+        "nominal_duration",
+        "scalar",
+        "timesig",
+        "instant",
+    )
 
     def __init__(
         self,
@@ -171,63 +179,21 @@ class NoteEventData(EventData):
         seed: int | None = None,
         minter: IdMinter | None = None,
     ) -> Self:
-        """Create from dicts with has_rests metadata.
+        """Create from a score loader's rows, stating whether the source has rests.
 
-        Builds PyArrow table directly using NoteEventData schema.
+        Rows and IDs as :meth:`ScoreEventData.from_dicts
+        <timetoalign.loader.score.stores.base.ScoreEventData.from_dicts>`.
 
-        A row without an ``id`` gets one minted from *minter* (a loader's),
-        else from ``IdMinter(seed)``, else from the content minter of the
-        event types (:func:`~timetoalign.storage.mint_event_ids`); a stated
-        ``id`` is kept. Giving both *seed* and *minter* raises ``TypeError``.
+        Raises:
+            TypeError: If both *seed* and *minter* are given.
         """
-        if not rows:
-            return cls.empty(unit, number_type, has_rests)
-
-        from timetoalign.storage.schema import make_table_metadata
-
-        schema = cls.get_schema(unit)
-        metadata = make_table_metadata(
-            unit, unit.resolve_number_type(number_type), loader_class=cls.__name__
+        store = super().from_dicts(
+            rows,
+            unit,
+            number_type,
+            interval_policy=interval_policy,
+            seed=seed,
+            minter=minter,
         )
-        schema = schema.with_metadata(metadata)
-
-        # Ensure all required fields exist with proper defaults
-        processed_rows = []
-        for row in rows:
-            processed = dict(row)
-
-            # Ensure name field exists
-            if "name" not in processed:
-                processed["name"] = None
-
-            # Map legacy temporal fields to base
-            if "quarterbeats" in processed:
-                processed["start"] = processed.pop("quarterbeats")
-            if "duration_qb" in processed:
-                processed["duration"] = processed.pop("duration_qb")
-            # Remove unused/redundant fields
-            for k in [
-                "quarterbeats_float",
-                "duration_qb_float",
-                "nominal_duration",
-                "scalar",
-                "timesig",
-                "instant",
-            ]:
-                processed.pop(k, None)
-
-            # Unified interval normalisation: converts coordinate fields
-            # to struct format, fills missing end/duration, and infers
-            # temporal_type.  Delegates to the base EventData method.
-            EventData._normalize_intervals_row(
-                processed,
-                policy=interval_policy,
-                number_type=unit.resolve_number_type(number_type),
-            )
-
-            processed_rows.append(processed)
-
-        give_event_ids(processed_rows, given_minter(seed, minter))
-        table = pa.Table.from_pylist(processed_rows, schema=schema)
-        store = cls(table, unit, number_type, has_rests)
+        store._has_rests = has_rests
         return store

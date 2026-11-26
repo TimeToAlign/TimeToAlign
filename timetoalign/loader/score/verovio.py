@@ -615,6 +615,13 @@ class VerovioLoader(ScoreLoader):
         self._options = dict(options or {})
         self._rendering: _Rendering | None = None
 
+    def _seed_config(self) -> dict[str, object]:
+        """The Verovio options, which shape the events, for the seed."""
+        return {
+            **super()._seed_config(),
+            "options": self._options,
+        }
+
     def _toolkit_options(self) -> dict[str, Any]:
         """Return the user's options with the loader's own defaults."""
         options = dict(self._options)

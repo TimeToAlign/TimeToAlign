@@ -201,6 +201,14 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     # region Loading
 
+    def _seed_config(self) -> dict[str, object]:
+        """The score and media units the timelines are built in, for the seed."""
+        return {
+            **super()._seed_config(),
+            "score_unit": self._score_unit,
+            "media_unit": self._media_unit,
+        }
+
     def load(self, specimen_dir: SourceLike) -> Self:
         """Ingest a whole Performance Precision specimen directory.
 

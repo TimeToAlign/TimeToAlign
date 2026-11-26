@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from timetoalign.core.ids import IdMinter
 from timetoalign.storage.store import EventStore
 
 from .paths import Number
@@ -211,18 +212,26 @@ class GraphicalStore(EventStore):
         self,
         uid: str | None = None,
         name: str | None = None,
+        *,
+        minter: IdMinter | None = None,
     ) -> "DiscreteGraphicalTimeline":
         """Create DiscreteGraphicalTimeline from this bundle.
 
         Args:
             uid: Optional timeline ID.
             name: Optional timeline name.
+            minter: The minter of the timeline's ID when no *uid* is given
+                (a loader's); without either, the timeline mints its own.
 
         Returns:
             A DiscreteGraphicalTimeline with length = total_length.
         """
+        from timetoalign.core import TimeUnit
         from timetoalign.timelines import DiscreteGraphicalTimeline
+        from timetoalign.timelines.factory import mint_timeline_id
 
+        if uid is None and minter is not None:
+            uid = mint_timeline_id(TimeUnit.pixels, minter)
         return DiscreteGraphicalTimeline(
             length=int(self.total_length),
             unit="pixels",

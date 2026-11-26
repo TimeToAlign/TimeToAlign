@@ -120,8 +120,10 @@ consecutive notes agree in onset, pitch and duration. It asserts:
   equals the `mido` reading (the file is read whole, only the velocities are left out);
 - exactly one warning is raised, of class `UserWarning`, with the exact text naming the count
   (`111 of 111 notes`), the file's path and Partitura's first note `'n0'` (onset 0, pitch 24,
-  duration 106); the loaded row `n0` is asserted to have these three values, so the literal is
-  tied to the file and not to the loader's message alone.
+  duration 106); the first loaded row, Partitura's `n0` (rows keep Partitura's order), is
+  asserted to have these three values, so the literal is tied to the file and not to the
+  loader's message alone. Every row's ID is minted (`note_…`): a MIDI file states no note IDs,
+  and Partitura's numbering serves the velocity join only, whichever parser reads the file.
 
 ## Score loader and stores
 

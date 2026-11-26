@@ -361,6 +361,16 @@ class XmlLoader(NormalisedTablesLoader):
         self._raw_root: ET.Element | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
+    def _seed_config(self) -> dict[str, object]:
+        """The normalisation options, which shape the tables, for the seed."""
+        return {
+            **super()._seed_config(),
+            "principal_tags": self._principal_tags,
+            "sep": self._sep,
+            "include_text": self._include_text,
+            "propagate_ancestors": self._propagate_ancestors,
+        }
+
     # region Properties
 
     @property

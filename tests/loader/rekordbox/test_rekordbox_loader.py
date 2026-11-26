@@ -3,10 +3,13 @@
 import json
 from fractions import Fraction
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 
+from tests.loader.minting import minted, shapes
 from timetoalign import Coordinate, GridBeat, Interval, NumberType, TimeUnit
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import BeatPolicy
 from timetoalign.core.events import IrregularMeasure, MeasureConstituent
 from timetoalign.loader import RekordboxLoader
@@ -75,6 +78,15 @@ def _fm_at_downbeats(timeline: Timeline, grid: BeatGrid) -> dict[int, float]:
     }
 
 
+def _timeline_of(bundle: AlignmentBundle, track_id: str) -> Timeline:
+    """The bundle's timeline of the collection track *track_id*."""
+    return next(
+        timeline
+        for timeline in bundle.timelines.values()
+        if timeline.meta["TrackID"] == track_id
+    )
+
+
 def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> None:
     path = _write_collection(
         tmp_path,
@@ -128,12 +140,13 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
     }
     payload = timeline.to_dict(minimal=False)
     assert payload["measure_maps"] == []
-    # Maps are written in id order: the grid's TableMap is added first (cmap_1),
-    # the seconds-to-samples LinearMap second (cmap_2).
-    assert [cmap["type"] for cmap in payload["timelines"][0]["conversion_maps"]] == [
-        "TableMap",
-        "LinearMap",
-    ]
+    # Maps are written in ID order (the canonical serialization).
+    samples_map = timeline.get_conversion_map(TimeUnit.samples)
+    assert samples_map is not None
+    written = payload["timelines"][0]["conversion_maps"]
+    assert [(cmap["id"], cmap["type"]) for cmap in written] == sorted(
+        [(f"#{floating_measures.id}", "TableMap"), (f"#{samples_map.id}", "LinearMap")]
+    )
     restored = Timeline.from_dict(json.loads(json.dumps(payload)))
     assert restored.to_dict(minimal=False) == payload
 
@@ -348,26 +361,26 @@ def test_grids_that_state_no_downbeat_are_refused(tmp_path: Path) -> None:
     assert grid.extent == Fraction(3, 10)
 
 
-def test_timeline_id_is_decoded_location_stem(tmp_path: Path) -> None:
+def test_timeline_id_is_minted_and_names_are_kept(tmp_path: Path) -> None:
+    location = "file://localhost/~/music/02.%20Tonight%20(Remix).mp3"
     path = _write_collection(
         tmp_path,
-        _track_xml(
-            "1",
-            "Habstrakt - Tonight FREE DL",
-            location="file://localhost/~/music/02.%20Tonight%20(Remix).mp3",
-        ),
+        _track_xml("1", "Habstrakt - Tonight FREE DL", location=location),
     )
-    timeline = RekordboxLoader.from_file(path).create_timeline()
+    timeline = RekordboxLoader.from_file(path, seed=7).create_timeline()
 
-    assert timeline.id == "02. Tonight (Remix)"
+    # The timeline's ID is minted first, before its conversion maps.
+    assert timeline.id == minted(7, "cpt")[0]
     assert timeline.name == "Habstrakt - Tonight FREE DL"
+    assert timeline.meta["Location"] == location
+    assert timeline.meta["TrackID"] == "1"
 
 
-def test_timeline_id_falls_back_to_name_without_location(tmp_path: Path) -> None:
+def test_timeline_id_is_minted_without_location(tmp_path: Path) -> None:
     path = _write_collection(tmp_path, _track_xml("1", "Display Only", location=None))
-    timeline = RekordboxLoader.from_file(path).create_timeline()
+    timeline = RekordboxLoader.from_file(path, seed=7).create_timeline()
 
-    assert timeline.id == "Display Only"
+    assert timeline.id == minted(7, "cpt")[0]
     assert timeline.name == "Display Only"
     assert timeline.meta["Location"] is None
 
@@ -385,7 +398,7 @@ def test_sample_rate_affords_exact_seconds_to_samples_conversion(
         TimeUnit.samples
     )
     assert isinstance(converted, Coordinate)
-    assert converted.timeline_id == "Sampled"
+    assert converted.timeline_id == timeline.id
     assert converted.unit is TimeUnit.samples
     assert converted.number_type is NumberType.int
     assert isinstance(converted.value, int)
@@ -421,7 +434,12 @@ def test_collection_scope_and_bundle(tmp_path: Path) -> None:
     bundle = loader.create_bundle()
 
     assert bundle.n_timelines == 2
-    assert list(bundle.timelines) == ["Mix", "Source"]
+    # One timeline per collection track, in XML order.
+    assert [timeline.name for timeline in bundle.timelines.values()] == [
+        "Mix",
+        "Source",
+    ]
+    assert shapes(bundle.timelines) == ["cpt", "cpt"]
 
 
 def test_nothing_loaded_creates_nothing() -> None:
@@ -506,7 +524,7 @@ def test_real_specimen_collection_and_mix_grids_are_exact(
 
     bundle = loader.create_bundle()
     assert bundle.n_timelines == 38
-    mix_timeline = bundle.get_timeline(mix.name)
+    mix_timeline = _timeline_of(bundle, mix.track_id)
     # The structures pair with the tracks and the timelines by XML order.
     mix_index = loader.tracks.index(mix)
     assert list(bundle.timelines)[mix_index] == mix_timeline.id
@@ -584,7 +602,8 @@ def test_real_specimen_collection_and_mix_grids_are_exact(
         measure: float(measure) for measure in range(1, 3519)
     }
 
-    brace = bundle.get_timeline("40. Brace For Impact")
+    # Brace For Impact, the file "40. Brace For Impact.mp3".
+    brace = _timeline_of(bundle, "266705391")
     brace_grid = grids[list(bundle.timelines).index(brace.id)]
     brace_fm = brace.get_conversion_map(TimeUnit.floating_measures)
     # Battito 2 needs three 0.4 s beats: 0.145 + 3 * (60/150) = 1.345.
@@ -594,18 +613,21 @@ def test_real_specimen_collection_and_mix_grids_are_exact(
     assert brace_fm(first_downbeat) == 1.0
 
 
-def test_real_specimen_timeline_ids_are_decoded_file_stems(
-    rekordbox_specimen: Path,
-) -> None:
-    bundle = RekordboxLoader.from_file(rekordbox_specimen).create_bundle()
-    ids = set(bundle.timelines)
+def test_real_specimen_timeline_ids_are_minted(rekordbox_specimen: Path) -> None:
+    loader = RekordboxLoader.from_file(rekordbox_specimen)
+    bundle = loader.create_bundle()
+    timelines = list(bundle.timelines.values())
 
-    assert len(ids) == 38
-    assert {
-        "01. See Me Coming",
-        "05. HUMBLE (Samuel Moriero REMIX)",
-        "41b. Vielleicht Vielleicht",
-        "001-samuel_moriero-impact_halloween_xxl_2025_full_set",
-    } <= ids
-    # The csv placeholder labels have no audio file in the collection.
-    assert ids.isdisjoint({"04. ID", "06. ID", "16. ID", "17. ID", "36. ID", "41a. ID"})
+    assert shapes(bundle.timelines) == ["cpt"] * 38
+    assert [timeline.meta["TrackID"] for timeline in timelines] == [
+        track.track_id for track in loader.tracks
+    ]
+    # Neither the file names nor the display names are IDs.
+    stems = {"01. See Me Coming", "40. Brace For Impact"}
+    assert stems <= {
+        unquote(timeline.meta["Location"]).rsplit("/", 1)[1].rsplit(".", 1)[0]
+        for timeline in timelines
+    }
+    assert set(bundle.timelines).isdisjoint(
+        stems | {timeline.name for timeline in timelines}
+    )

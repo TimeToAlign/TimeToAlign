@@ -378,6 +378,15 @@ class JsonLoader(NormalisedTablesLoader):
         self._raw_data: dict[str, Any] | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
+    def _seed_config(self) -> dict[str, object]:
+        """The normalisation options, which shape the tables, for the seed."""
+        return {
+            **super()._seed_config(),
+            "principal_keys": self._principal_keys,
+            "sep": self._sep,
+            "resolve_lookups": self._resolve_lookups,
+        }
+
     # region Properties
 
     @property

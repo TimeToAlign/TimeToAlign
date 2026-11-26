@@ -90,9 +90,17 @@ bytes), so a uid is its role and prefix followed by 13 random base-36
 characters. The tests compare a uid's *shape*, the uid without its suffix
 (`spine:dlt`), after checking the suffix is 13 base-36 characters, and look a
 timeline up by a regular expression matching its whole uid
-(`create_timeline("spine:dlt_.*")`, which the loader resolves). Two layers of
-one label share a role; the random suffix tells them apart (there is no
-numeric disambiguation). Roles are asserted exactly, because they encode the sanitisation rule
+(`create_timeline("spine:dlt_.*")`, which the loader resolves). A role is the
+layer's label (an edition's `description`, a track's file stem); where layers
+would share one, with each other or with `spine` and `los`, each takes a role
+from more of what the source states (a track its whole `file_name`, an
+edition its description and the `file_name` of its first
+`<graphic_instance>`), so a lookup by role finds one timeline; there is no
+counter. The test is a document with two tracks `a/take.mp3` and
+`b/take.mp3`, a track `spine.wav` and two editions described `Score`, each
+with its own first image: the roles are exactly `a_take_mp3`, `b_take_mp3`,
+`spine_wav`, `score_p1_png`, `score_q1_png`, and `create_timeline` of each
+`<role>:.*` returns one timeline. Roles are asserted exactly, because they encode the sanitisation rule
 (accent folding, lowercasing, every run outside `[a-z0-9_]` collapsing to one
 `_`): the gymnopédie edition `"eng:Montréal: Les Éditions Outremontaises
 (2006)"` becomes `eng_montreal_les_editions_outremontaises_2006`, and the track

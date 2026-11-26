@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 import timetoshare
 
-from tests.loader.minting import minted
+from tests.loader.minting import minted, shape
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.loader import MeiHeadLoader
@@ -24,7 +24,10 @@ from timetoalign.timelines import (
 )
 
 #: The timeline IDs an import by a loader of seed 0 mints first.
-NEW = minted(0, "cgt", "cgt")
+# A new bundle's ID is minted first, then its two timelines'; an import
+# into a bundle given mints the timelines' only.
+BUNDLE, *NEW = minted(0, "bundle", "cgt", "cgt")
+INTO = minted(0, "cgt", "cgt")
 
 DATE = "2026-11-19"
 AGENT = "https://timetoalign.github.io/"
@@ -419,8 +422,10 @@ class TestNewBundle:
 
     def test_bundle(self, cnw0133: Path) -> None:
         bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(date=DATE)
-        assert bundle.id == "cnw0133"
-        assert bundle.name is None
+        # The ID is minted and written (the statements need a subject).
+        assert bundle.id == BUNDLE
+        assert bundle.to_dict()["id"] == f"#{BUNDLE}"
+        assert bundle.name == "cnw0133"
         assert bundle.timeline_ids == [NEW[0], NEW[1]]
         assert bundle.groups == {}
         assert bundle.statements == {
@@ -431,6 +436,13 @@ class TestNewBundle:
             stated("schema:about", {"id": WORK}, "work_1"),
             stated("rdfs:seeAlso", {"id": "cnw0133.xml"}, None),
         ]
+
+    def test_given_bundle_id_is_written(self, cnw0133: Path) -> None:
+        loader = MeiHeadLoader.from_file(cnw0133, seed=0)
+        bundle = loader.create_bundle(id="nielsen", date=DATE)
+        assert bundle.id == "nielsen"
+        assert bundle.name == "cnw0133"
+        assert bundle.to_dict()["id"] == "#nielsen"
 
     def test_manifestations(self, cnw0133: Path) -> None:
         bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(date=DATE)
@@ -574,7 +586,8 @@ class TestSecondHeader:
             title("Andante", None, None),
             title("Little Andante", None, "OtherTitle"),
         ]
-        assert bundle.id == "andante"
+        assert shape(bundle.id) == "bundle"
+        assert bundle.name == "andante"
         assert bundle.statements == {
             "rdfs:seeAlso": [{"id": "andante.xml"}],
             "schema:about": [
@@ -676,7 +689,7 @@ class TestInto:
             into=bundle, subjects={"source_1": "cgt_6"}, date=DATE
         )
         assert result is bundle
-        assert bundle.timeline_ids == ["clt_6", "cgt_6", NEW[0]]
+        assert bundle.timeline_ids == ["clt_6", "cgt_6", INTO[0]]
         assert bundle.statements == {
             "rdfs:seeAlso": [{"id": "cnw0133.xml"}],
             "schema:about": [work_node()],
@@ -686,12 +699,12 @@ class TestInto:
         assert scan.statements == print_statements()
         assert scan.provenance == print_provenance()
         assert scan.get_region("region_1").statements == {}
-        autograph = bundle.get_timeline(NEW[0])
+        autograph = bundle.get_timeline(INTO[0])
         assert autograph.name == "Score, autograph"
         assert autograph.statements == AUTOGRAPH_STATEMENTS
         written = assert_written(bundle)
 
-        again = {"source_1": "cgt_6", "source_2": NEW[0]}
+        again = {"source_1": "cgt_6", "source_2": INTO[0]}
         loader.create_bundle(into=bundle, subjects=again, date="2026-11-20")
         assert bundle.to_dict() == written
 
@@ -712,7 +725,7 @@ class TestInto:
             stated("melod:hasShelfmark", "CNS 342e", "identifier_3"),
             candidate(KEEPER, {"label": "DK-Kk"}, "corpName_1"),
         ]
-        autograph = bundle.get_timeline(NEW[0])
+        autograph = bundle.get_timeline(INTO[0])
         assert autograph.statements["lrmoo:R7i_is_exemplified_by"] == [
             {"id": "#region_1"}
         ]
@@ -850,7 +863,8 @@ class TestBase:
         path = tmp_path / "clair-de-lune M6-basic.mei"
         path.write_text(CNW0133, encoding="utf-8")
         bundle = MeiHeadLoader.from_file(path, seed=0).create_bundle(date=DATE)
-        assert bundle.id == "clair-de-lune_M6-basic"
+        assert bundle.id == BUNDLE
+        assert bundle.name == "clair-de-lune M6-basic"
         assert bundle.statements["rdfs:seeAlso"] == [
             {"id": "clair-de-lune%20M6-basic.mei"}
         ]

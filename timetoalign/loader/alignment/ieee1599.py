@@ -120,6 +120,7 @@ import logging
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -292,15 +293,46 @@ def _prune_columns(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _role(label: str) -> str:
-    """The role leading the timeline ids of an edition or a track: its label.
+    """A label as a role: the text leading the timeline ids of a layer.
 
     Accents are folded to their base letters, the result is lowercased and
-    every run of characters outside ``[a-z0-9_]`` becomes a single ``_``. Two
-    layers of one label share the role; their minted ids tell them apart.
+    every run of characters outside ``[a-z0-9_]`` becomes a single ``_``.
     """
     normalised = unicodedata.normalize("NFKD", label)
     folded = "".join(ch for ch in normalised if not unicodedata.combining(ch))
     return re.sub(r"[^a-z0-9_]+", "_", folded.lower()).strip("_") or "unnamed"
+
+
+def _layer_roles(root: ET.Element) -> dict[ET.Element, str]:
+    """The role of every edition (``<graphic_instance_group>``) and track.
+
+    A layer's role is its label: an edition's ``description``, a track's
+    file stem. Where several layers would share a role, with each other or
+    with ``spine`` and ``los``, each of them takes a role from more of
+    what the source states about it: a track its whole ``file_name``
+    (``audio_files/take.mp3`` becomes ``audio_files_take_mp3``), an edition
+    its description and the ``file_name`` of its first
+    ``<graphic_instance>``. Layers that state the same even then share
+    their role.
+    """
+    short: dict[ET.Element, str] = {}
+    full: dict[ET.Element, str] = {}
+    for group in root.findall("./notational/graphic_instance_group"):
+        description = group.get("description") or "edition"
+        first = group.find("graphic_instance")
+        short[group] = _role(description)
+        full[group] = _role(
+            description if first is None else f"{description} {first.get('file_name')}"
+        )
+    for track in root.findall("./audio/track"):
+        file_name = track.get("file_name") or "track"
+        short[track] = _role(Path(file_name).stem)
+        full[track] = _role(file_name)
+    counts = Counter([*short.values(), "spine", "los"])
+    return {
+        layer: role if counts[role] == 1 else full[layer]
+        for layer, role in short.items()
+    }
 
 
 def _table_from_rows(rows: list[dict[str, Any]]) -> pa.Table:
@@ -817,11 +849,12 @@ class Ieee1599Loader(XmlLoader):
         another accolade. This follows the engraved systems rather than the
         interleaved part order within one system.
         """
+        roles = _layer_roles(root)
         for group in root.findall("./notational/graphic_instance_group"):
             description = group.get("description") or "edition"
             spec = _EditionSpec(
                 uid=mint_timeline_id(
-                    TimeUnit.pixels, self._id_minter, role=_role(description)
+                    TimeUnit.pixels, self._id_minter, role=roles[group]
                 ),
                 description=description,
                 pages=[],
@@ -943,9 +976,10 @@ class Ieee1599Loader(XmlLoader):
         the file exists and whether or not the declared ``file_format``
         matches the extension.
         """
+        roles = _layer_roles(root)
         for track in root.findall("./audio/track"):
             file_name = track.get("file_name") or "track"
-            role = _role(Path(file_name).stem)
+            role = roles[track]
             general = track.find("track_general")
             notes = None if general is None else general.find("notes")
             spec = _TrackSpec(

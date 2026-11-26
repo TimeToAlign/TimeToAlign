@@ -53,6 +53,16 @@ class PerformanceMidiLoader(MidiLoader):
         self._include_program_changes = include_program_changes
         self._ticks_per_beat: int | None = None
 
+    def _seed_config(self) -> dict[str, object]:
+        """The message options, which shape the events, for the seed."""
+        return {
+            **super()._seed_config(),
+            "parse_durations": self._parse_durations,
+            "on0_means_off": self._on0_means_off,
+            "include_controls": self._include_controls,
+            "include_program_changes": self._include_program_changes,
+        }
+
     @property
     def ticks_per_beat(self) -> int | None:
         """Return the ticks per beat (PPQ) of the loaded file."""

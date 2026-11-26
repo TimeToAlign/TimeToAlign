@@ -617,16 +617,17 @@ class ScoreLoader(EventLoader):
         self._store.to_parquet(path)
 
     @classmethod
-    def from_parquet(cls, path: Path | str) -> Self:
+    def from_parquet(cls, path: Path | str, *, seed: int | None = None) -> Self:
         """Load a ScoreLoader from a directory of Parquet files.
 
         Reconstructs the internal ``ScoreStore`` from the facet files
         produced by :meth:`to_parquet`. The events keep their IDs; the
-        loader's minter, for the IDs it mints later, is seeded from the
-        directory's files.
+        loader's minter, for the IDs it mints later, is ``IdMinter(seed)``,
+        else seeded from the class name and the directory's files.
 
         Args:
             path: Directory containing the facet Parquet files.
+            seed: The seed of the loader's ID minter.
 
         Returns:
             A new ScoreLoader with events loaded from the files.
@@ -636,14 +637,9 @@ class ScoreLoader(EventLoader):
         # Set attributes that __init__ would normally create
         loader._unit = cls._default_unit
         loader._number_type = loader._unit.default_number_type
-        loader._sources = []
-        loader._source_metadata = []
         loader._events = cls._event_data_class.empty(loader._unit, loader._number_type)
         loader._store = store
-        loader._seed = None
-        loader._minter = None
-        loader._minter_parts = None
-        loader._start_minter(Path(path))
+        loader._read_back(path, seed)
         return loader
 
     # endregion

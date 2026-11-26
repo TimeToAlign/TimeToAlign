@@ -10,6 +10,7 @@ import mido
 import pytest
 
 import timetoalign.loader.midi.score as score_module
+from tests.loader.minting import shape
 from timetoalign.loader.midi import (
     MidiEventData,
     MidiEventType,
@@ -280,7 +281,10 @@ class TestScoreMidiVelocities:
             (start, pitch, duration)
             for start, pitch, duration, _ in _notes_in_the_file(path).elements()
         )
-        first = next(row for row in rows if row["id"] == "n0")
+        # Partitura's note n0 is the first row: rows keep Partitura's order,
+        # and their IDs are minted, never Partitura's numbering.
+        first = rows[0]
+        assert all(shape(row["id"]) == "note" for row in rows)
         assert (
             first["start"]["numerator"],
             first["pitch"],

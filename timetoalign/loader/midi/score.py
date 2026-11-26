@@ -111,6 +111,9 @@ class ScoreMidiLoader(MidiLoader):
     cannot be joined that way (a partitura release numbering its notes
     otherwise) keeps an empty velocity, and one ``UserWarning`` per file names
     the first such note; ``parser="mido"`` reads every velocity.
+
+    A MIDI file states no note IDs, so every event ID is minted by the
+    loader's minter (``note_…``), whichever parser reads the file.
     """
 
     _event_data_class = ScoreMidiEventData
@@ -135,7 +138,10 @@ class ScoreMidiLoader(MidiLoader):
             quantization_unit: Quantize times to multiples of this unit.
             estimate_voice_info: Use Chew & Wu algorithm for voice separation.
             estimate_key: Use Krumhansl algorithm for key estimation.
-            assign_note_ids: Ensure unique note IDs.
+            assign_note_ids: Let Partitura number its notes, which joins each
+                note to the velocity the file states (without it, no
+                velocity is read). The event IDs are minted either way: a
+                MIDI file states none.
             parser: MIDI parser, either ``"partitura"`` or ``"mido"``.
             unit: Time unit for coordinates.
             number_type: Number type for coordinates. Defaults to the
@@ -165,6 +171,18 @@ class ScoreMidiLoader(MidiLoader):
         self._assign_note_ids = assign_note_ids
         self._parser = parser
         self._ticks_per_beat: int | None = None
+
+    def _seed_config(self) -> dict[str, object]:
+        """The parser and Partitura's options, which shape the events, for the seed."""
+        return {
+            **super()._seed_config(),
+            "parser": self._parser,
+            "part_voice_assign_mode": self._part_voice_assign_mode,
+            "quantization_unit": self._quantization_unit,
+            "estimate_voice_info": self._estimate_voice_info,
+            "estimate_key": self._estimate_key,
+            "assign_note_ids": self._assign_note_ids,
+        }
 
     @property
     def ticks_per_beat(self) -> int | None:
@@ -317,8 +335,9 @@ class ScoreMidiLoader(MidiLoader):
             if "divs_pq" in row.dtype.names and self._ticks_per_beat is None:
                 self._ticks_per_beat = int(row["divs_pq"])
 
+            # No "id": a MIDI file states no note IDs. Partitura's numbering
+            # serves the velocity join only; the loader mints the IDs.
             event = {
-                "id": str(row["id"]),
                 "temporal_type": "interval",
                 "event_type": MidiEventType.NOTE,
                 "start": int(row["onset_div"]),

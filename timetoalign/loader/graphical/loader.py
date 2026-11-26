@@ -12,10 +12,12 @@ belongs in test fixtures, not production code.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from timetoalign.loader._sources import Source, SourceLike, describe_source
+from timetoalign.loader._sources import Source, SourceLike, as_source, describe_source
 from timetoalign.loader.base import Loader
 
 from .paths import HorizontalLinePath, TimeAxisPath, VerticalLinePath
@@ -26,6 +28,8 @@ from .store import GraphicalStore
 if TYPE_CHECKING:
     import pymupdf
 
+    from timetoalign.timelines import DiscreteGraphicalTimeline
+
 module_logger = logging.getLogger(__name__)
 
 
@@ -34,6 +38,12 @@ class GraphicalLoader(Loader[GraphicalStore]):
 
     The loader accumulates sources and segments, then builds a store.
     This provides a fluent interface for constructing graphical timelines.
+
+    Every addition is a door into the loader, like a ``load`` call: it seeds
+    the loader's ID minter afresh from the previous seed and what it adds
+    (an image file's bytes, an image's pixels, a segment's source, offset,
+    name and geometry), so :meth:`create_timeline` mints an
+    ID that follows the content (see ``Loader.load``).
 
     Examples:
         >>> loader = GraphicalLoader()
@@ -89,6 +99,7 @@ class GraphicalLoader(Loader[GraphicalStore]):
             ValueError: If format is not supported.
         """
         source = ImageSource.from_image_file(path)
+        self._start_minter(as_source(path))
         idx = len(self._sources)
         self._sources.append(source)
         self._logger.debug(f"Added image source {idx}: {describe_source(path)}")
@@ -111,6 +122,7 @@ class GraphicalLoader(Loader[GraphicalStore]):
             Index of the added source.
         """
         source = ImageSource.from_pdf_page(doc, page_index, dpi=dpi)
+        self._start_minter(_pixels(source))
         idx = len(self._sources)
         self._sources.append(source)
         self._logger.debug(f"Added PDF page source {idx}: page {page_index}")
@@ -131,6 +143,7 @@ class GraphicalLoader(Loader[GraphicalStore]):
             Index of the added source.
         """
         source = ImageSource.from_pdf_embedded_image(doc, xref)
+        self._start_minter(_pixels(source))
         idx = len(self._sources)
         self._sources.append(source)
         self._logger.debug(f"Added PDF embedded image source {idx}: xref {xref}")
@@ -145,6 +158,7 @@ class GraphicalLoader(Loader[GraphicalStore]):
         Returns:
             Index of the added source.
         """
+        self._start_minter(_pixels(source))
         idx = len(self._sources)
         self._sources.append(source)
         self._logger.debug(f"Added pre-constructed source {idx}")
@@ -189,6 +203,7 @@ class GraphicalLoader(Loader[GraphicalStore]):
         )
 
         self._segments.append(segment)
+        self._start_minter(_segment_part(segment))
 
         # Update current offset for contiguous addition
         if offset is None:
@@ -307,9 +322,26 @@ class GraphicalLoader(Loader[GraphicalStore]):
         """
         return self.store
 
+    def create_timeline(
+        self, uid: str | None = None, name: str | None = None, **kwargs: Any
+    ) -> "DiscreteGraphicalTimeline":
+        """Create the timeline of the store the loader builds (:attr:`store`).
+
+        Args:
+            uid: The timeline's ID; without one, it is minted by the
+                loader's minter, seeded from what was added (see
+                :meth:`add_image`).
+            name: Optional timeline name.
+            **kwargs: Not used; named so the loader's signature is the base's.
+
+        Returns:
+            A DiscreteGraphicalTimeline with length = total_length.
+        """
+        return self.store.create_timeline(uid=uid, name=name, minter=self._id_minter)
+
     def clear(self) -> None:
-        """Clear all sources and segments."""
-        self._sources.clear()
+        """Clear all sources and segments; the next addition seeds a new minter."""
+        super().clear()
         self._segments.clear()
         self._current_offset = 0.0
         self._logger.debug("Cleared loader state")
@@ -320,3 +352,30 @@ class GraphicalLoader(Loader[GraphicalStore]):
             f"segments={len(self._segments)}, "
             f"offset={self._current_offset:.1f})"
         )
+
+
+def _pixels(source: ImageSource) -> bytes:
+    """What an image contributes to the loader's seed: the SHA-256 digest of its pixels."""
+    return hashlib.sha256(source.pixmap.samples).digest()
+
+
+def _segment_part(segment: GraphicalSegment) -> str:
+    """What a segment contributes to the loader's seed.
+
+    Its source, offset and name, its path's class and length, and the image
+    points at five evenly spaced positions along the path, which stand for
+    the geometry of every path class alike.
+    """
+    path = segment.path
+    length = path.length
+    points = [path.to_2d(length * step / 4) for step in range(5)]
+    return json.dumps(
+        [
+            segment.source_index,
+            str(segment.timeline_offset),
+            segment.name,
+            type(path).__name__,
+            str(length),
+            [[str(x), str(y)] for x, y in points],
+        ]
+    )

@@ -26,24 +26,17 @@ Key concepts (from MeasureMap paper):
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar
 
 import pyarrow as pa
-from typing_extensions import Self
 
-from timetoalign.core import IntervalPolicy, NumberType, TimeUnit
 from timetoalign.core.fields import ONE_OR_SEVERAL_SUFFIX, split_row_member
-from timetoalign.core.ids import IdMinter, given_minter
-from timetoalign.loader._ids import give_event_ids
-from timetoalign.storage.events import EventData
-
-if TYPE_CHECKING:
-    pass
+from timetoalign.loader.score.stores.base import ScoreEventData
 
 module_logger = logging.getLogger(__name__)
 
 
-class MeasureData(EventData):
+class MeasureData(ScoreEventData):
     """EventData for measure boundary events.
 
     This schema supports both MeasureMap JSON and measures.tsv formats,
@@ -228,139 +221,61 @@ class MeasureData(EventData):
     ]
 
     @classmethod
-    def empty(
-        cls,
-        unit: TimeUnit = TimeUnit.quarters,
-        number_type: NumberType | None = None,
-    ) -> Self:
-        """Create empty MeasureData."""
-        return super().empty(unit, number_type)
+    def _source_row(cls, row: dict[str, Any]) -> dict[str, Any]:
+        """*row* with the keys of MeasureMap JSON and measures.tsv mapped, in place."""
+        # ===== Map MeasureMap JSON fields to schema =====
+        # MeasureMap uses "count" for MC, "number" for MN as int
+        if "count" in row and "mc" not in row:
+            row["mc"] = row.pop("count")
+        if "number" in row:
+            row["mn_int"] = row.pop("number")
+        if "name" in row and "mn" not in row:
+            row["mn"] = row.get("name")  # Keep name, also set mn
+        if "ID" in row:
+            row["mm_id"] = row.pop("ID")
+        if "qstamp" in row and "start" not in row:
+            row["start"] = row.pop("qstamp")
+        if "time_signature" in row and "timesig" not in row:
+            row["timesig"] = row.pop("time_signature")
 
-    @classmethod
-    def from_dicts(
-        cls,
-        rows: list[dict[str, Any]],
-        unit: TimeUnit = TimeUnit.quarters,
-        number_type: NumberType | None = None,
-        *,
-        interval_policy: IntervalPolicy = IntervalPolicy.warn,
-        seed: int | None = None,
-        minter: IdMinter | None = None,
-    ) -> Self:
-        """Create from dicts.
+        # ===== Map measures.tsv fields to schema =====
+        if "quarterbeats" in row and "start" not in row:
+            row["start"] = row.pop("quarterbeats")
+        if "duration_qb" in row and "duration" not in row:
+            row["duration"] = row.pop("duration_qb")
+        if "act_dur" in row and "actual_length" not in row:
+            # act_dur is typically a fraction string like "1/2"
+            row["actual_length"] = row.pop("act_dur")
 
-        Handles field mapping from both MeasureMap JSON and measures.tsv formats.
+        # ===== Handle 'next' field (array in JSON, string in TSV) =====
+        if "next" in row:
+            next_val = row["next"]
+            if isinstance(next_val, list):
+                # Convert array to comma-separated string
+                row["next"] = ", ".join(str(x) for x in next_val)
+            # else: already a string from TSV
 
-        Args:
-            rows: List of measure dictionaries.
-            unit: Time unit (default: quarters).
-            number_type: Number type for coordinates.
-            interval_policy: How to handle end/duration inconsistencies.
-            seed: The seed of a fresh minter for the IDs of rows without one.
-            minter: The minter of those IDs (a loader's); with neither, the
-                content minter of the event types
-                (:func:`~timetoalign.storage.mint_event_ids`). A stated
-                ``id`` is kept.
+        # ===== Keep 'volta' as stated: a number, or a list beside it =====
+        split_row_member(row, "volta")
 
-        Returns:
-            MeasureData instance.
+        # ===== Parse timesig into components =====
+        if "timesig" in row and row["timesig"]:
+            ts = str(row["timesig"])
+            if "/" in ts:
+                parts = ts.split("/")
+                try:
+                    row.setdefault("timesig_num", int(parts[0]))
+                    row.setdefault("timesig_den", int(parts[1]))
+                except (ValueError, IndexError):
+                    pass
 
-        Raises:
-            TypeError: If both *seed* and *minter* are given.
-        """
-        if not rows:
-            return cls.empty(unit, number_type)
-
-        from timetoalign.storage.schema import make_table_metadata
-
-        schema = cls.get_schema(unit)
-        metadata = make_table_metadata(
-            unit, unit.resolve_number_type(number_type), loader_class=cls.__name__
-        )
-        schema = schema.with_metadata(metadata)
-
-        processed_rows = []
-        for row in rows:
-            processed = dict(row)
-
-            # ===== Map MeasureMap JSON fields to schema =====
-            # MeasureMap uses "count" for MC, "number" for MN as int
-            if "count" in processed and "mc" not in processed:
-                processed["mc"] = processed.pop("count")
-            if "number" in processed:
-                processed["mn_int"] = processed.pop("number")
-            if "name" in processed and "mn" not in processed:
-                processed["mn"] = processed.get("name")  # Keep name, also set mn
-            if "ID" in processed:
-                processed["mm_id"] = processed.pop("ID")
-            if "qstamp" in processed and "start" not in processed:
-                processed["start"] = processed.pop("qstamp")
-            if "time_signature" in processed and "timesig" not in processed:
-                processed["timesig"] = processed.pop("time_signature")
-
-            # ===== Map measures.tsv fields to schema =====
-            if "quarterbeats" in processed and "start" not in processed:
-                processed["start"] = processed.pop("quarterbeats")
-            if "duration_qb" in processed and "duration" not in processed:
-                processed["duration"] = processed.pop("duration_qb")
-            processed.pop("duration_qb_float", None)
-            if "act_dur" in processed and "actual_length" not in processed:
-                # act_dur is typically a fraction string like "1/2"
-                processed["actual_length"] = processed.pop("act_dur")
-
-            # ===== Handle 'next' field (array in JSON, string in TSV) =====
-            if "next" in processed:
-                next_val = processed["next"]
-                if isinstance(next_val, list):
-                    # Convert array to comma-separated string
-                    processed["next"] = ", ".join(str(x) for x in next_val)
-                # else: already a string from TSV
-
-            # ===== Keep 'volta' as stated: a number, or a list beside it =====
-            split_row_member(processed, "volta")
-
-            # ===== Parse timesig into components =====
-            if "timesig" in processed and processed["timesig"]:
-                ts = str(processed["timesig"])
-                if "/" in ts:
-                    parts = ts.split("/")
-                    try:
-                        processed.setdefault("timesig_num", int(parts[0]))
-                        processed.setdefault("timesig_den", int(parts[1]))
-                    except (ValueError, IndexError):
-                        pass
-
-            # ===== Compute nominal_length from timesig if not provided =====
-            if processed.get("timesig_num") and processed.get("timesig_den"):
-                if (
-                    "nominal_length" not in processed
-                    or processed["nominal_length"] is None
-                ):
-                    # quarters_per_measure = (timesig_num / timesig_den) * 4
-                    # e.g., 2/4 = 2 quarters, 6/8 = 3 quarters
-                    processed["nominal_length"] = (
-                        processed["timesig_num"] / processed["timesig_den"] * 4
-                    )
-
-            # Remove unused legacy fields
-            processed.pop("quarterbeats_float", None)
-            # Keep 'name' field - it's part of the base schema and should be preserved
-            # (e.g., "M1", "M2" for measure labels)
-
-            # Unified interval normalisation: converts coordinate fields
-            # to struct format, fills missing end/duration, and infers
-            # temporal_type.
-            EventData._normalize_intervals_row(
-                processed,
-                policy=interval_policy,
-                number_type=unit.resolve_number_type(number_type),
-            )
-
-            processed_rows.append(processed)
-
-        give_event_ids(processed_rows, given_minter(seed, minter))
-        table = pa.Table.from_pylist(processed_rows, schema=schema)
-        return cls(table, unit, number_type)
+        # ===== Compute nominal_length from timesig if not provided =====
+        if row.get("timesig_num") and row.get("timesig_den"):
+            if "nominal_length" not in row or row["nominal_length"] is None:
+                # quarters_per_measure = (timesig_num / timesig_den) * 4
+                # e.g., 2/4 = 2 quarters, 6/8 = 3 quarters
+                row["nominal_length"] = row["timesig_num"] / row["timesig_den"] * 4
+        return row
 
     # ===== Flow Control Helpers =====
 

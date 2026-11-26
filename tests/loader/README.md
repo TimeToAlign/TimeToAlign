@@ -16,13 +16,18 @@ storage constructor tests, but are intentionally not accepted by
 ## IDs a loader mints (`test_loader_ids.py`)
 
 Every ID a loader mints (events, timelines, C-Maps, groups, MatchClaims)
-comes from one `IdMinter` per load: seeded with the constructor's `seed=`
-when given (`from_file(..., seed=)` reaches it), else with `seed_from` of the
-loader's class name and the SHA-256 digests of the first `load` call's
-sources, in order; later `load` calls go on minting from it, `clear()` starts
-afresh. An ID the source states is kept. What proves it, on a CSV without an
-`id` column (`CsvLoader`, two `Event` rows and one `Note` row) and on a DCML
-notes table (`Ms3Loader`):
+comes from its `IdMinter`, and every `load` call (every door into the parse:
+`load`, `load_string`, `load_element`, `load_dict`, a directory loader's
+`load`, a `GraphicalLoader` addition) seeds a new one. The first call after
+the loader is made or cleared is seeded with the constructor's `seed=` when
+given (`from_file(..., seed=)` reaches it), else with `seed_from` of the
+loader's class name, its configuration (the constructor arguments that shape
+the events, enum members by name) and the SHA-256 digests of the call's
+sources, in order; every later call with `seed_from` of the previous call's
+seed and its own sources' digests. An ID the source states is kept. What
+proves it, on a CSV without an `id` column (`CsvLoader`, two `Event` rows
+and one `Note` row), on a DCML notes table (`Ms3Loader`) and on one loader
+per seed kind:
 
 1. *`seed=` gives the minter's IDs in build order.* With `seed=7` the CSV's
    events are the first three IDs a fresh `IdMinter(7)` mints, one batch per
@@ -35,13 +40,38 @@ notes table (`Ms3Loader`):
    `0.5` for `0.25`) gives other event IDs.
 4. *Stated IDs are kept*: the same CSV with an `id` column keeps `a`, `b`,
    `c`, and mints only the timeline.
-5. *One minter per load*: with `seed=7`, `load(first); load(second)` and
-   `load(first, second)` both mint the first six IDs of `IdMinter(7)`, each
-   source one batch per event type (the second call goes on minting, it
-   does not start again); the Ms3 notes of `seed=0` are the first IDs of
-   `IdMinter(0)` (`note_…` in row order).
+5. *Every call seeds anew, so later sources count*: with `seed=7`,
+   `load(first, second)` mints the first six IDs of `IdMinter(7)`, each
+   source one batch per event type; `load(first); load(second)` mints the
+   first source's from `IdMinter(7)` and the second's from
+   `IdMinter(seed_from(7, <digest of second>))`. Two loaders loading the
+   same first source and different second sources therefore mint different
+   IDs for the second, while their first sources' IDs agree. The Ms3 notes
+   of `seed=0` are the first IDs of `IdMinter(0)` (`note_…` in row order).
 6. *The seed is the bytes', not the path's*: the same CSV copied under
    another name mints the same IDs.
+7. *The configuration counts*: `ScoreMidiLoader(parser="mido")` and
+   `parser="partitura"` on one MIDI file, and `CsvLoader` with two units,
+   mint disjoint event IDs, so their timelines can join one bundle.
+8. *One reload-equality check per seed kind*: two fresh loaders give equal
+   IDs, and a changed input other IDs, for an IEEE 1599 document as a
+   string (`load_string`; a comment added changes it) and as an element
+   (`load_element`), a TiLiA export as a dict (`load_dict`; another title
+   changes it), a folder (MPM's three files copied, the recordings linked;
+   the `.mpm` one byte longer gives other IDs), and
+   `from_parquet` (a parquet file read back twice mints equal timeline IDs;
+   with `seed=` the timeline is `IdMinter(seed)`'s first `cpt_…`).
+9. *Maps and graphical timelines come from the loader's minter*:
+   `create_cmap` with `seed=7` after the events takes the minter's next ID
+   (`cmap_…`); a `GraphicalLoader` given one image and one segment mints
+   equal timeline IDs in two fresh loaders and another ID for a segment of
+   equal length at another height (the seed holds the path's geometry).
+10. *Score stores fill missing IDs after the table is built*: the four
+    category tables (`NoteEventData`, `MeasureData`, `ControlEventData`,
+    `AnnotationEventData`) keep a stated `id`, mint the others from the
+    given minter, and, without one, from the content of every column but
+    `id`: two note tables of equal length and event types but different
+    pitches mint different IDs in a fresh run.
 
 ## Single-source loaders
 
@@ -1078,8 +1108,8 @@ bundle previously left unanswered, all with exact values:
 | `test_bundle_get_match_claims` | 15 claims, all synchronous |
 | `test_bundle_get_match_claims_filtered` | `timeline_id=` the `rec-a` timeline → 10; `between=` `rec-a` and `rec-b` → 5 |
 | `test_bundle_get_claim_field` | the vectorized accessor `get_claim_field` selects 15 / 10 rows, and 0 for an unknown UID |
-| `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, exactly two filled cells per row |
-| `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, exact coordinates, ordered by the `rec-a` coordinate |
+| `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, the columns exactly the recordings in the bundle's registration order (`rec-a`, `rec-b`, `rec-ref`, as the loader adds them), exactly two filled cells per row |
+| `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, the columns in registration order, exact coordinates, ordered by the `rec-a` coordinate |
 | `test_bundle_are_commensurable` | all recording pairs commensurable; an absent ID is not |
 | `test_bundle_transfer` | `transfer(882, <rec-a>, <rec-b>) == 441` — the `MatchLine` → `WarpMap` path over the columnar store |
 | `test_bundle_diagram_reports_claim_count` | `diagram()` reports `MatchClaims: 15` |

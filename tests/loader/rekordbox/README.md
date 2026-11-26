@@ -271,10 +271,10 @@ instant is an interpolation anchor, including grid changes that occur mid-bar.
 **Ground truth.** 96 data rows. The ``track`` column carries the source file's
 name stem — ``"NN. "`` prefix included (a number, an optional letter for split
 entries such as ``41a.``/``41b.``, a dot, a space) — which per (g) is exactly
-the collection timeline id.
+the decoded ``Location`` stem a collection timeline carries in its ``meta``.
 
-**Name resolution.** A csv label resolves iff it **equals a timeline id** (the
-URL-decoded ``Location`` stem): plain string equality, no prefix stripping, no
+**Name resolution.** A csv label resolves iff it **equals a timeline's
+URL-decoded ``Location`` stem** (``meta["Location"]``): plain string equality, no prefix stripping, no
 substring matching, no curated equivalences. Display-``Name`` matching is
 forbidden — labels such as ``02. Tonight (Samuel Moriero Remix)`` differ from
 their XML ``Name`` (``Habstrakt & Samplifire - Tonight (Samuel Moriero Remix)
@@ -382,32 +382,34 @@ loop expansion must preserve the shared track interval across all N copies.
 
 ## (g) Timeline identity and conversion axes
 
-### Identity comes from the file name, not the display name
+### The ID is minted; the file name and the display name are kept
 
 **Ground truth.** The csv (and every artifact that cross-references the
 collection) names tracks by their **file name** — ``"NN. "`` prefix included —
 while the XML ``Name`` attribute is display metadata that often differs (artist
-prefixes, label suffixes, remix tags). The stable identity of a track is
-therefore the URL-decoded stem of its ``Location`` attribute:
-``file://localhost/~/git/djmix-analysis/data/moriero/01.%20See%20Me%20Coming.mp3``
-identifies the track ``01. See Me Coming``.
+prefixes, label suffixes, remix tags). Neither is an ID the source states:
+Rekordbox states ``TrackID``. A timeline's ID is therefore minted by the
+loader's minter (``cpt_…``), like every ID a loader does not read from its
+source; the file name stays reachable as ``meta["Location"]``
+(``file://localhost/~/git/djmix-analysis/data/moriero/01.%20See%20Me%20Coming.mp3``
+for the track ``01. See Me Coming``), the display name as ``name``, the
+Rekordbox key as ``meta["TrackID"]``.
 
 **Validation logic.** A synthetic track whose ``Location`` basename **differs**
-from its ``Name`` separates the two lanes: the created timeline's **id** must be
-the decoded ``Location`` stem and its **name** must remain the XML ``Name``. A
-track carrying **no** ``Location`` cannot derive a file identity, so its id must
-fall back to ``Name`` — never to an invented value. The proof requires the two
-values to be observably different in the first case and identical in the second.
+from its ``Name`` separates the lanes: the created timeline's **id** is the
+first ID the loader's minter gives (``seed=`` fixes it: a ``cpt`` ID, minted
+before the track's conversion maps), its **name** remains the XML ``Name`` and
+its ``meta["Location"]`` the attribute as written. A track carrying **no**
+``Location`` gets a minted ID as well — never its ``Name`` — and
+``meta["Location"]`` is ``None``. The proof requires the ``Name`` and the
+``Location`` stem to be observably different, and the ID to be neither.
 
-**Specimen anchors (exact).** All 38 collection tracks carry a ``Location``, so
-the bundle's timeline ids are exactly the 38 decoded file stems. Pinned members:
-``01. See Me Coming``, ``05. HUMBLE (Samuel Moriero REMIX)``,
-``41b. Vielleicht Vielleicht``, and the mix
-``001-samuel_moriero-impact_halloween_xxl_2025_full_set``. The six csv
-placeholder labels (``04. ID``, ``06. ID``, ``16. ID``, ``17. ID``, ``36. ID``,
-``41a. ID``) have **no** audio file in the collection and therefore must NOT
-appear as timeline ids — a loader that minted ids from csv labels or ``Name``
-collisions would fail this disjointness.
+**Specimen anchors (exact).** All 38 collection tracks carry a ``Location``;
+the bundle holds 38 timelines whose IDs are 38 distinct minted ``cpt`` IDs,
+none of them a stem or a ``Name``, and whose ``meta["TrackID"]`` are the 38
+``TrackID`` values in XML order. Tests find a track's timeline through its
+``TrackID`` (the mix ``147337955``; ``Brace For Impact``, the file
+``40. Brace For Impact.mp3``, ``266705391``), never through a spelled ID.
 
 ### SampleRate affords a seconds → samples axis; its absence affords nothing
 

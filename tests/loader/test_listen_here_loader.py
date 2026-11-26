@@ -413,9 +413,12 @@ def test_bundle_get_claim_field(loader: ListenHereLoader) -> None:
 
 
 def test_bundle_matchstamp_table_per_claim(loader: ListenHereLoader) -> None:
-    table = loader.create_bundle().get_matchstamp_table()
+    bundle = loader.create_bundle()
+    table = bundle.get_matchstamp_table()
     assert table.num_rows == 15
-    assert sorted(table.column_names) == sorted(REC.values())
+    # The columns follow the bundle's registration order, the loader's.
+    assert list(bundle.timelines) == list(REC.values())
+    assert table.column_names == list(REC.values())
     # Every row is one pairwise claim: exactly two filled cells.
     for row in table.to_pylist():
         assert sum(value is not None for value in row.values()) == 2
@@ -423,9 +426,11 @@ def test_bundle_matchstamp_table_per_claim(loader: ListenHereLoader) -> None:
 
 def test_bundle_matchstamp_table_from_graph(loader: ListenHereLoader) -> None:
     # The 15 pairwise rows collapse into the 5 reference-grid cross-sections.
-    table = loader.create_bundle().get_matchstamp_table(from_graph=True)
+    bundle = loader.create_bundle()
+    table = bundle.get_matchstamp_table(from_graph=True)
     assert table.num_rows == 5
-    assert sorted(table.column_names) == sorted(REC.values())
+    assert list(bundle.timelines) == list(REC.values())
+    assert table.column_names == list(REC.values())
     semantic_rows = [
         {
             name: (

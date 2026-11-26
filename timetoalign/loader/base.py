@@ -23,8 +23,10 @@ import html
 import logging
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
@@ -42,6 +44,7 @@ from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
 from timetoalign.core.ids import IdMinter, seed_from
 from timetoalign.core.time import struct_to_coordinate
 from timetoalign.display.html import affordance_html, code
+from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.storage import EventData
 
 from ._sources import (
@@ -76,6 +79,30 @@ def _source_part(source: Source) -> bytes | str:
     return source_digest(source) if source.exists() else describe_source(source)
 
 
+def _seed_part(part: Source | bytes | str) -> bytes | str:
+    """What one thing a loader read contributes to its seed."""
+    return part if isinstance(part, (bytes, str)) else _source_part(part)
+
+
+def _canonical(value: object) -> object:
+    """*value* as JSON can hold it, for a seed: enum members by name, the rest as is.
+
+    Mappings and sequences are converted member by member; a ``Fraction``
+    becomes ``[numerator, denominator]``, a path its string.
+    """
+    if isinstance(value, Enum):
+        return value.name
+    if isinstance(value, Fraction):
+        return [value.numerator, value.denominator]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _canonical(member) for key, member in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_canonical(member) for member in value]
+    return value
+
+
 class Loader(ABC, Generic[PayloadT]):
     """Shared lifecycle for all loader families.
 
@@ -98,9 +125,7 @@ class Loader(ABC, Generic[PayloadT]):
         """
         self._sources: list[Source] = []
         self._source_metadata: list[dict[str, Any]] = []
-        self._seed = seed
-        self._minter: IdMinter | None = None
-        self._minter_parts: tuple[Source | bytes | str, ...] | None = None
+        self._reset_minter(seed)
 
     @abstractmethod
     def _load_source(self, source: Source) -> PayloadT:
@@ -176,15 +201,17 @@ class Loader(ABC, Generic[PayloadT]):
         member's path inside it) and ``loaded_at``.
 
         Every ID the loader mints (events, timelines, maps, MatchClaims,
-        Projections) comes from one :class:`~timetoalign.core.ids.IdMinter`,
-        in the order the loader builds them. It is seeded with the
-        loader's ``seed`` when one was given, else with
-        :func:`~timetoalign.core.ids.seed_from` of the loader's class name
-        and the SHA-256 digests of the sources of the first ``load`` after
-        the loader is made or cleared, in order; later ``load`` calls go on
-        minting from it. A fresh loader loading unchanged sources in the
-        same calls mints the same IDs, in any process; IDs the source
-        states are kept as they are.
+        Projections) comes from its :class:`~timetoalign.core.ids.IdMinter`,
+        in the order the loader builds them. Every ``load`` call seeds a
+        new one: the first call after the loader is made or cleared from
+        the loader's ``seed`` when one was given, else from
+        :func:`~timetoalign.core.ids.seed_from` of the loader's class name,
+        its configuration (the constructor arguments that shape the
+        events) and the SHA-256 digests of the call's sources, in order;
+        every later call from ``seed_from`` of the previous call's seed and
+        its own sources' digests, so later sources count too. A fresh
+        loader loading unchanged sources in the same calls mints the same
+        IDs, in any process; IDs the source states are kept as they are.
 
         Raises:
             FileNotFoundError: If a ``zipfile.Path`` names a member its
@@ -203,37 +230,69 @@ class Loader(ABC, Generic[PayloadT]):
             self._accept_source(held, source_meta, payload)
         return self
 
-    def _start_minter(self, *parts: Source | bytes | str) -> None:
-        """Name what the loader's ID minter is seeded from, unless it has a seed.
+    def _reset_minter(self, seed: int | None = None) -> None:
+        """Forget every seed: the next ID comes from a minter seeded afresh.
 
-        The first call after the loader is made or cleared counts; the
-        minter itself is made when the first ID is minted
-        (:attr:`_id_minter`), so a loader that mints nothing reads nothing
-        twice. Its seed is the loader's ``seed`` when one was given, else
-        :func:`~timetoalign.core.ids.seed_from` of the class name and
-        *parts*: a source stands for the SHA-256 digest of its bytes (a
-        folder for its files', a source that does not exist for its name,
-        so that its parser reports it), bytes and text for themselves. A
-        loader reading in-memory content passes a canonical serialization
-        of it.
+        With *seed*, the minter of the first ``load`` call (or of a loader
+        that loads nothing) is ``IdMinter(seed)``.
         """
-        if self._minter is None and self._minter_parts is None:
-            self._minter_parts = parts
+        self._seed = seed
+        self._seed_calls: list[tuple[Source | bytes | str, ...]] = []
+        self._call_seeds: list[int] = []
+        self._minter: IdMinter | None = None
+        self._minter_calls = 0
+
+    def _start_minter(self, *parts: Source | bytes | str) -> None:
+        """Seed the loader's ID minter for one ``load`` call reading *parts*.
+
+        Every door into a loader's parse calls this once, before minting
+        anything. The seed (see :meth:`load`) is computed when the first ID
+        is minted (:attr:`_id_minter`), so a loader that mints nothing
+        reads nothing twice: a source stands for the SHA-256 digest of its
+        bytes (a folder for its files', a source that does not exist for
+        its name, so that its parser reports it), bytes and text for
+        themselves. A loader reading in-memory content passes a canonical
+        serialization of it.
+        """
+        self._seed_calls.append(parts)
+
+    def _seed_config(self) -> dict[str, object]:
+        """The configuration that shapes the events a loader builds, for its seed.
+
+        A loader taking constructor arguments that change what it reads
+        extends this with them (through ``super()``), so two loaders of one
+        class configured differently mint different IDs from one source.
+        Values are enum members, numbers, strings, paths, fractions and
+        mappings or sequences of them.
+        """
+        return {}
+
+    def _seed_of_call(self, calls: int) -> int:
+        """The seed of the minter after *calls* ``load`` calls (see :meth:`load`)."""
+        while len(self._call_seeds) < calls:
+            parts = tuple(
+                _seed_part(part) for part in self._seed_calls[len(self._call_seeds)]
+            )
+            if self._call_seeds:
+                seed = seed_from(self._call_seeds[-1], *parts)
+            else:
+                seed = self._first_seed(*parts)
+            self._call_seeds.append(seed)
+        return self._call_seeds[calls - 1] if calls else self._first_seed()
+
+    def _first_seed(self, *parts: bytes | str) -> int:
+        """The seed of the first ``load`` call reading *parts*: ``seed``, else from the content."""
+        if self._seed is not None:
+            return self._seed
+        return seed_from(type(self).__name__, _canonical(self._seed_config()), *parts)
 
     @property
     def _id_minter(self) -> IdMinter:
-        """The loader's ID minter, made from what :meth:`_start_minter` named."""
-        if self._minter is None:
-            seed = self._seed
-            if seed is None:
-                seed = seed_from(
-                    type(self).__name__,
-                    *(
-                        part if isinstance(part, (bytes, str)) else _source_part(part)
-                        for part in self._minter_parts or ()
-                    ),
-                )
-            self._minter = IdMinter(seed)
+        """The loader's ID minter for its latest ``load`` call (see :meth:`load`)."""
+        calls = len(self._seed_calls)
+        if self._minter is None or self._minter_calls != calls:
+            self._minter = IdMinter(self._seed_of_call(calls))
+            self._minter_calls = calls
         return self._minter
 
     @classmethod
@@ -269,12 +328,25 @@ class Loader(ABC, Generic[PayloadT]):
             "sources": self._source_metadata,
         }
 
+    def _read_back(self, path: Path | str, seed: int | None) -> None:
+        """Set the shared state of a loader made from its own saved events at *path*.
+
+        The loader holds no sources. The IDs it mints later come from
+        ``IdMinter(seed)``, else from a minter seeded with
+        :func:`~timetoalign.core.ids.seed_from` of the class name and the
+        digest of *path* (a folder's files).
+        """
+        self._sources = []
+        self._source_metadata = []
+        if seed is None:
+            seed = seed_from(type(self).__name__, _source_part(Path(path)))
+        self._reset_minter(seed)
+
     def clear(self) -> None:
-        """Clear shared source state; the next ``load`` makes a new minter."""
+        """Clear shared source state; the next ``load`` seeds as the first did."""
         self._sources.clear()
         self._source_metadata.clear()
-        self._minter = None
-        self._minter_parts = None
+        self._reset_minter(self._seed)
 
     def create_timeline(self, uid: str | None = None, **kwargs: Any) -> "Timeline":
         """Create a timeline from the loaded payload.
@@ -374,6 +446,15 @@ class EventLoader(Loader[LoadSourceResult]):
         self._events: EventData = self._event_data_class.empty(
             self._unit, self._number_type
         )
+
+    def _seed_config(self) -> dict[str, object]:
+        """The unit, number type and interval policy the events are built in, for the seed."""
+        return {
+            **super()._seed_config(),
+            "unit": self._unit,
+            "number_type": self._number_type,
+            "interval_policy": self._interval_policy,
+        }
 
     # region Abstract Methods
 
@@ -765,6 +846,8 @@ class EventLoader(Loader[LoadSourceResult]):
             **kwargs: Additional arguments passed to the map constructor.
                 For TableMap: kind, extrapolate
                 For LinearMap: (computed automatically from data)
+                Without ``uid``, the map's ID is minted by the loader's
+                minter.
 
         Returns:
             A ConversionMap instance.
@@ -791,6 +874,11 @@ class EventLoader(Loader[LoadSourceResult]):
         # Default to TableMap
         if map_type is None:
             map_type = TableMap
+        if map_type not in (TableMap, LinearMap, ScalarMap):
+            raise ValueError(
+                f"Unsupported map_type: {map_type}. "
+                f"Supported: TableMap, LinearMap, ScalarMap"
+            )
 
         # Extract coordinate values from fields
         source_values = self._extract_coordinate_values(source_field)
@@ -810,6 +898,8 @@ class EventLoader(Loader[LoadSourceResult]):
         # Get units from field metadata
         source_unit = self._get_field_unit(source_field)
         target_unit = self._get_field_unit(target_field)
+        if kwargs.get("uid") is None:
+            kwargs["uid"] = self._id_minter.mint(CMAP_PREFIX)
 
         # Create the appropriate map type
         if map_type is TableMap:
@@ -834,7 +924,7 @@ class EventLoader(Loader[LoadSourceResult]):
                 target_unit=target_unit,
                 **kwargs,
             )
-        elif map_type is ScalarMap:
+        else:
             # Fit pure scaling: y = ax (no offset)
             x = np.array(source_values, dtype=np.float64)
             y = np.array(target_values, dtype=np.float64)
@@ -845,11 +935,6 @@ class EventLoader(Loader[LoadSourceResult]):
                 source_unit=source_unit,
                 target_unit=target_unit,
                 **kwargs,
-            )
-        else:
-            raise ValueError(
-                f"Unsupported map_type: {map_type}. "
-                f"Supported: TableMap, LinearMap, ScalarMap"
             )
 
     def _extract_coordinate_values(
@@ -1029,16 +1114,18 @@ class EventLoader(Loader[LoadSourceResult]):
         self.events.to_parquet(path)
 
     @classmethod
-    def from_parquet(cls, path: Path | str) -> Self:
+    def from_parquet(cls, path: Path | str, *, seed: int | None = None) -> Self:
         """Load a Loader from a Parquet file.
 
         Note: This creates a new Loader with the EventData loaded,
         but source paths may not be accessible for re-loading. The events
         keep their IDs; the loader's minter, for the timeline IDs it mints
-        later, is seeded from the file's bytes.
+        later, is ``IdMinter(seed)``, else seeded from the class name and
+        the file's bytes.
 
         Args:
             path: Path to the Parquet file.
+            seed: The seed of the loader's ID minter.
 
         Returns:
             A new Loader with events loaded from the file.
@@ -1048,12 +1135,7 @@ class EventLoader(Loader[LoadSourceResult]):
         loader._unit = events.unit
         loader._number_type = events.number_type
         loader._events = events
-        loader._sources = []
-        loader._source_metadata = []
-        loader._seed = None
-        loader._minter = None
-        loader._minter_parts = None
-        loader._start_minter(Path(path))
+        loader._read_back(path, seed)
         return loader
 
     # endregion

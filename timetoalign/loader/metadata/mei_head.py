@@ -359,9 +359,11 @@ class MeiHeadLoader(Loader[MeiHead]):
                 the ID of a timeline (at any depth) or region of *into*,
                 which then takes that entity's statements in place of a new
                 timeline or value node.
-            id: The ID of the new bundle; the file's stem when None, with
-                every character outside ``[A-Za-z0-9_.-]`` replaced by
-                ``_``.
+            id: The ID of the new bundle; when None, one minted by the
+                loader's minter (``bundle_…``), which the manifest writes:
+                the bundle's statements need a subject that is not a blank
+                node. The new bundle's ``name`` is the file's stem either
+                way.
             base: The MEI file's address: relative targets resolve against
                 it, and every basis and IRI built from an ``xml:id`` begins
                 with it. The file name, percent-encoded, when None.
@@ -394,17 +396,17 @@ class MeiHeadLoader(Loader[MeiHead]):
             stated_by=[stated_by] if isinstance(stated_by, str) else list(stated_by),
             day=day(date),
         )
-        bundle = into if into is not None else AlignmentBundle(id=id or _stem_id(path))
+        if into is None:
+            bundle = AlignmentBundle(
+                id=self._id_minter.mint("bundle") if id is None else id, name=path.stem
+            )
+        else:
+            bundle = into
         plan = Plan(bundle, self._id_minter)
         mapped = run.check(plan, dict(subjects or {}))
         run.plan(plan, mapped)
         plan.commit()
         return bundle
-
-
-def _stem_id(path: Source) -> str:
-    """The file's stem with every character outside ``[A-Za-z0-9_.-]`` replaced."""
-    return re.sub(r"[^A-Za-z0-9_.-]", "_", path.stem)
 
 
 class _Import:

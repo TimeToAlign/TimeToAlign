@@ -29,6 +29,11 @@ from .stores import (
 _GPC_MAP = {"C": 0, "D": 1, "E": 2, "F": 3, "G": 4, "A": 5, "B": 6}
 _BASE_FIFTHS = {"F": -1, "C": 0, "G": 1, "D": 2, "A": 3, "E": 4, "B": 5}
 
+# The formats whose files state note IDs (MusicXML's ``id``, MEI's
+# ``xml:id``, a match file's score-note IDs). Partitura numbers the notes of
+# every other format itself (kern, MIDI, MuseScore's conversions).
+_STATED_NOTE_ID_SUFFIXES = frozenset({".xml", ".musicxml", ".mxl", ".mei", ".match"})
+
 # Flow control marker types (constant tuple, defined once)
 _FLOW_MARKER_TYPES = (
     pts.Ending,
@@ -56,6 +61,12 @@ class PartituraLoader(ScoreLoader):
     Supports MusicXML (fully typed) and MIDI (quantized).
     Returns ScoreStore with category-specific data.
 
+    A note keeps the ID its file states (MusicXML ``id``, MEI ``xml:id``, a
+    match file's score-note ID); a note without one, and every note of a
+    format that states none (kern, MIDI), gets an ID minted by the
+    loader's minter. Partitura's own numbering (``n0``, ``P1-s1-v1-el3``)
+    is never an ID.
+
     All TTA timelines start at coordinate 0.  When partitura reports negative
     quarter-beat onsets (anacrusis notes that precede the first full measure),
     this loader shifts every event coordinate so that the earliest onset maps
@@ -71,20 +82,13 @@ class PartituraLoader(ScoreLoader):
     to raw partitura space when needed.
     """
 
-    def __init__(
-        self,
-        *,
-        force_note_ids: bool = True,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize PartituraLoader.
 
         Args:
-            force_note_ids: If True, force note IDs from partitura.
             **kwargs: Additional arguments passed to parent ScoreLoader.
         """
         super().__init__(**kwargs)
-        self._force_note_ids = force_note_ids
         self._anacrusis_offset: Fraction | float = Fraction(0)
 
     @property
@@ -115,7 +119,10 @@ class PartituraLoader(ScoreLoader):
         Partitura raises then names the archive and the member.
         """
         with suppressed_backend_warnings(), on_disk(source) as path:
-            score = pt.load_score(str(path), force_note_ids=self._force_note_ids)
+            # Without forcing, Partitura keeps the IDs a file states and
+            # leaves the other notes without one.
+            score = pt.load_score(str(path), force_note_ids=False)
+        stated_ids = source.suffix.lower() in _STATED_NOTE_ID_SUFFIXES
 
         # Flatten parts
         parts = []
@@ -606,7 +613,8 @@ class PartituraLoader(ScoreLoader):
 
                 note_rows.append(
                     {
-                        # ID auto-generated from event_type (Note or Rest)
+                        # Minted by NoteEventData.from_dicts when None.
+                        "id": getattr(obj, "id", None) if stated_ids else None,
                         "name": note_name,
                         "temporal_type": "interval" if dur_qb > 0 else "instant",
                         "event_type": "Rest" if is_rest else "Note",

@@ -6,9 +6,7 @@ import xml.etree.ElementTree as ET
 from bisect import bisect_right
 from dataclasses import dataclass
 from fractions import Fraction
-from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
-from urllib.parse import unquote, urlparse
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core.ids import CMAP_PREFIX, MEASURE_MAP_PREFIX
@@ -228,6 +226,7 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         from timetoalign.core import NumberType, TimeUnit
         from timetoalign.maps import SecondsToSamples, TableMap
         from timetoalign.timelines import ContinuousPhysicalTimeline
+        from timetoalign.timelines.factory import mint_timeline_id
 
         grid, measure_map, downbeats = self._track_measures(track)
         seconds, floating_measures = self._conversion_anchors(
@@ -238,7 +237,7 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
             length=float(track.total_time),
             unit=TimeUnit.seconds,
             number_type=NumberType.float,
-            uid=self._track_uid(track),
+            uid=mint_timeline_id(TimeUnit.seconds, self._id_minter),
             name=track.name,
             meta={
                 "TrackID": track.track_id,
@@ -266,20 +265,6 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
                 )
             )
         return timeline
-
-    @staticmethod
-    def _track_uid(track: RekordboxTrack) -> str:
-        """Return the track's stable identity: the decoded file-name stem.
-
-        Collection artifacts cross-reference tracks by file name, while the
-        XML ``Name`` is display metadata; a track without a ``Location``
-        (or with one that decodes to an empty stem) falls back to that
-        display name. URL paths are POSIX regardless of platform.
-        """
-        if track.location is None:
-            return track.name
-        stem = PurePosixPath(unquote(urlparse(track.location).path)).stem
-        return stem or track.name
 
     @staticmethod
     def _beat_grid(track: RekordboxTrack) -> BeatGrid:

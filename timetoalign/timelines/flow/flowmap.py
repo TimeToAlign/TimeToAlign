@@ -31,14 +31,16 @@ Examples:
     >>> concert = ContinuousLogicalTimeline(length=20, uid="set")
     >>> _ = concert.create_child(8, 0, uid="first")
     >>> _ = concert.create_child(12, 8, uid="second")
-    >>> encore = concert.create_flow_map(["second", Gap(4), "first"], name="Encore order")
+    >>> encore = concert.create_flow_map(
+    ...     ["second", Gap(4), "first"], id="encore", name="Encore order"
+    ... )
     >>> played = encore.resolve(concert)
     >>> played.length
     Coordinate(Fraction(24, 1), quarters)
     >>> played.unfold(2), played.fold(2), played.fold(13)
     ([Coordinate(Fraction(18, 1), quarters)], Coordinate(Fraction(10, 1), quarters), None)
     >>> encore.to_dict()
-    {'id': 'flow_map_1', 'timeline': 'set', 'chunks': ['second', {'gap': [4, 1]}, 'first'], \
+    {'id': 'encore', 'timeline': 'set', 'chunks': ['second', {'gap': [4, 1]}, 'first'], \
 'name': 'Encore order'}
 """
 
@@ -53,7 +55,6 @@ from timetoalign.core import Coordinate, Duration, Gap, IdCoordinate, Interval
 from timetoalign.core.enums import FlowConvention, NumberType, TimeUnit
 from timetoalign.core.ids import (
     _IdentifiedElement,
-    mint_id,
     quote_id,
     timeline_id_prefix,
     validate_id,
@@ -109,7 +110,7 @@ class FlowMap(_IdentifiedElement):
         provenance: How the FlowMap was made and who believes it: any
             number of :class:`~timetoalign.core.provenance.Provenance`
             entries, as the manifest lists them.
-        id: The FlowMap's ID; minted as ``flow_map_{N}`` when not given.
+        id: The FlowMap's ID; minted with the prefix ``flow`` when not given.
 
     Raises:
         ValueError: If the timeline or a chunk is no valid ID, a chunk names
@@ -118,14 +119,14 @@ class FlowMap(_IdentifiedElement):
 
     Examples:
         >>> from timetoalign.core import Gap
-        >>> reading = FlowMap("score", ["region_2", Gap(4), "region_1"])
+        >>> reading = FlowMap("score", ["b", Gap(4), "a"], seed=7)
         >>> reading.id, reading.convention, reading.canonical
-        ('flow_map_1', None, False)
+        ('flow_1hvif5xc2r1fv', None, False)
         >>> FlowMap.from_dict(reading.to_dict()) == reading
         True
     """
 
-    _id_prefix: ClassVar[str] = "flow_map"
+    _id_prefix: ClassVar[str] = "flow"
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
         "timeline",
@@ -184,10 +185,9 @@ class FlowMap(_IdentifiedElement):
         flow_map._keep_unknown_keys(data)
         return flow_map
 
-    def __post_init__(self) -> None:
-        """Mint or validate the ID, then validate and settle the members."""
-        super().__post_init__()
-        what = f"FlowMap {quote_id(self.id)}"
+    def _complete(self) -> None:
+        """Validate and settle the members."""
+        what = f"FlowMap {self._named}"
         validate_id(self.timeline)
         chunks = tuple(self.chunks)
         for chunk in chunks:
@@ -794,17 +794,18 @@ class VirtualTimeline(_IdentifiedElement):
         through: The ID of the group or conversion map that carries the map
             to ``timeline``; kept as read and never evaluated.
         name: Optional display name.
-        id: The virtual timeline's ID; minted in the ID kind of its unit
-            (``clt_{N}`` on quarters), as a timeline's is.
+        id: The virtual timeline's ID; minted with the prefix of its unit
+            (``clt`` on quarters), as a timeline's is.
 
     Examples:
         >>> from timetoalign.timelines import ContinuousLogicalTimeline
         >>> score = ContinuousLogicalTimeline(length=24, uid="score")
         >>> a = score.create_region(0, 16, id="a")
         >>> b = score.create_region(16, 24, id="b")
-        >>> played = score.create_virtual_timeline(score.create_flow_map([a, a, b]))
+        >>> twice = score.create_flow_map([a, a, b], id="twice")
+        >>> played = score.create_virtual_timeline(twice, seed=7)
         >>> played.id, played.length
-        ('clt_1', Coordinate(Fraction(40, 1), quarters))
+        ('clt_1hvif5xc2r1fv', Coordinate(Fraction(40, 1), quarters))
         >>> played.unfold(4, score)
         [Coordinate(Fraction(4, 1), quarters), Coordinate(Fraction(20, 1), quarters)]
         >>> played.fold(20, score)
@@ -894,17 +895,13 @@ class VirtualTimeline(_IdentifiedElement):
         virtual._keep_unknown_keys(data)
         return virtual
 
-    def __post_init__(self) -> None:
-        """Mint the ID in the ID kind of the unit, or validate the one given."""
+    def _complete(self) -> None:
+        """Check the length and the references."""
         if not isinstance(self.length, Coordinate) or self.length.value < 0:
             raise ValueError(
                 f"the length of a virtual timeline is a coordinate from 0 on, got "
                 f"{self.length!r}"
             )
-        if self.id is None:
-            object.__setattr__(self, "id", mint_id(self._id_prefix, ()))
-            object.__setattr__(self, "_minted", True)
-        super().__post_init__()
         for reference in (self.map, self.timeline, self.through):
             if reference is not None:
                 validate_id(reference)

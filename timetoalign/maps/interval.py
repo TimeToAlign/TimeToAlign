@@ -106,6 +106,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize an IntervalToConstantMap.
 
@@ -118,6 +119,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             target_unit: The unit of output values (optional). Use None for
                 non-coordinate outputs like string labels.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map.
 
         Raises:
@@ -161,6 +163,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
         )
         self._admit_ids()
@@ -393,6 +396,9 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
         >>> cmap = QuartersToMeasureNumber.from_metric_map(meter)
     """
 
+    # It may write a measure map of its own, under an id held from construction.
+    _names_own_measure_map = True
+
     def __init__(
         self,
         *,
@@ -401,6 +407,7 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
         source_unit: TimeUnit | str | None = TimeUnit.quarters,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a QuartersToMeasureNumber map.
 
@@ -409,6 +416,7 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
             mns: Measure Number labels for each measure.
             source_unit: Source unit (default: quarters).
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name (default: "quarters_to_mn").
         """
         super().__init__(
@@ -417,6 +425,7 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
             source_unit=source_unit,
             target_unit=None,  # Not a coordinate map - returns labels
             uid=uid,
+            seed=seed,
             name=name or "quarters_to_mn",
         )
         # The default name is derived for display; only a given one is written.
@@ -428,25 +437,31 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
         return self._values
 
     @classmethod
-    def from_metric_map(cls, meter: MetricMap) -> QuartersToMeasureNumber:
+    def from_metric_map(
+        cls, meter: MetricMap, *, seed: int | None = None
+    ) -> QuartersToMeasureNumber:
         """Create from a MetricMap.
 
         Args:
             meter: MetricMap with measure boundary information.
+            seed: The seed of the minter of the map's id; not stored.
 
         Returns:
             QuartersToMeasureNumber map.
         """
         boundaries = list(meter._starts_frac)
         mns = list(meter._mns)
-        return cls(boundaries=boundaries, mns=mns)
+        return cls(boundaries=boundaries, mns=mns, seed=seed)
 
     @classmethod
-    def from_measure_data(cls, measures: MeasureData) -> QuartersToMeasureNumber:
+    def from_measure_data(
+        cls, measures: MeasureData, *, seed: int | None = None
+    ) -> QuartersToMeasureNumber:
         """Create from MeasureData (loaded from TSV/JSON).
 
         Args:
             measures: MeasureData with measure events.
+            seed: The seed of the minter of the map's id; not stored.
 
         Returns:
             QuartersToMeasureNumber map.
@@ -478,7 +493,7 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
             boundaries.append(start_val)
             mns.append(mn_str)
 
-        return cls(boundaries=boundaries, mns=mns)
+        return cls(boundaries=boundaries, mns=mns, seed=seed)
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
         """Write the ``MeasureNumberMap`` of the measures these labels number.
@@ -520,7 +535,7 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
                 if index < len(starts):
                     row["actual_length"] = number_to_json(starts[index] - start)
                 rows.append(row)
-            measure_map_id = entries.id_of_rows(rows)
+            measure_map_id = entries.id_of_rows(rows, self._own_measure_map_id)
         return self._map_object(
             "MeasureNumberMap", {"measure_map": measure_map_id}, minimal=minimal
         )
@@ -574,6 +589,9 @@ class QuartersToFloatingMeasures(TableMap):
         2.0
     """
 
+    # It may write a measure map of its own, under an id held from construction.
+    _names_own_measure_map = True
+
     #: Fractional resolution of a floating measure: one thousandth of a bar.
     RESOLUTION: int = 1000
 
@@ -586,6 +604,7 @@ class QuartersToFloatingMeasures(TableMap):
         target_unit: TimeUnit | str = TimeUnit.floating_measures,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a QuartersToFloatingMeasures map.
 
@@ -596,6 +615,7 @@ class QuartersToFloatingMeasures(TableMap):
             source_unit: Source unit (default: quarters).
             target_unit: Target unit (default: floating measures).
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name (default: "quarters_to_measures").
         """
         super().__init__(
@@ -606,6 +626,7 @@ class QuartersToFloatingMeasures(TableMap):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
         )
         self._name = name or "quarters_to_measures"
         self._name_given = name is not None
@@ -613,7 +634,9 @@ class QuartersToFloatingMeasures(TableMap):
         self._y_exact = [_as_exact(v) for v in self._y_original]
 
     @classmethod
-    def from_measure_map(cls, measure_map: MeasureMap) -> FloatingMeasureMap:
+    def from_measure_map(
+        cls, measure_map: MeasureMap, *, seed: int | None = None
+    ) -> FloatingMeasureMap:
         """Build the floating-measure lattice of a measure map.
 
         A floating measure is a **compound measure**: a maximal run of
@@ -651,6 +674,7 @@ class QuartersToFloatingMeasures(TableMap):
 
         Args:
             measure_map: Measures whose exact starts and lengths define the lattice.
+            seed: The seed of the minter of the map's id; not stored.
 
         Returns:
             The fm map for those measures: a :class:`FloatingMeasureMap`,
@@ -664,7 +688,7 @@ class QuartersToFloatingMeasures(TableMap):
         """
         from timetoalign.maps.measures import FloatingMeasureMap
 
-        return FloatingMeasureMap(measure_map)
+        return FloatingMeasureMap(measure_map, seed=seed)
 
     @staticmethod
     def _compound_measures(measure_map: MeasureMap) -> list[list[Measure]]:
@@ -904,7 +928,9 @@ class QuartersToFloatingMeasures(TableMap):
         if own is not None and self._is_lattice_of(own):
             measure_map_id = entries.id_of(own)
         else:
-            measure_map_id = entries.id_of_rows(self._lattice_rows())
+            measure_map_id = entries.id_of_rows(
+                self._lattice_rows(), self._own_measure_map_id
+            )
         return self._map_object(
             "FloatingMeasureMap", {"measure_map": measure_map_id}, minimal=minimal
         )

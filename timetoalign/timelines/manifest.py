@@ -77,7 +77,13 @@ from timetoshare.tables import TableError, projection_problems
 
 from timetoalign.core import Coordinate, Event, NumberType, Projection, TimeUnit
 from timetoalign.core.fields import _null_column, derive_arrow_schema
-from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
+from timetoalign.core.ids import (
+    IdMinter,
+    _OpenObject,
+    content_minter,
+    quote_id,
+    validate_id,
+)
 from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
     PACKAGE_NUMBER_TYPE,
@@ -89,7 +95,6 @@ from timetoalign.core.time import (
     numbers_from_package,
     package_numbers,
 )
-from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 from timetoalign.storage.events import refuse_shared_projection_ids
 
 from .statements import (
@@ -275,7 +280,7 @@ def _manifest_ids_of(timelines: Iterable[Timeline]) -> dict[str, str]:
     """Map every id of the manifests *timelines* belong to, to its holder's description.
 
     A timeline's manifest is its tree and, while the tree is held by groups
-    or bundles, every tree those hold, with each group's and bundle's given
+    or bundles, every tree those hold, with each group's and bundle's
     id (``Timeline._manifest_ids``, which asks this for one timeline). Each
     tree and each group or bundle is read once however many of *timelines*
     it holds, so the roots of one bundle cost one pass over the bundle. An
@@ -412,6 +417,10 @@ class Integrity(_OpenObject):
         )
 
 
+RESOURCE_ID_PREFIX = "resource"
+"""The prefix of a minted resource ID."""
+
+
 @dataclass(frozen=True)
 class Resource(_OpenObject):
     """A file the manifest names: one entry of its ``resources``.
@@ -426,7 +435,7 @@ class Resource(_OpenObject):
 
     Attributes:
         id: The resource's ID, held by no other element of the manifest
-            (a new entry's is minted).
+            (:meth:`of_file` mints one for a new entry).
         type: What the file's rows are.
         timelines: The IDs of the timelines the file holds data for.
         url: Its location, relative to the manifest's own.
@@ -501,27 +510,41 @@ class Resource(_OpenObject):
         cls,
         path: str | PathLike[str],
         *,
-        id: str,  # noqa: A002 - the key's name
+        id: str | None = None,  # noqa: A002 - the key's name
         type: str,  # noqa: A002 - the key's name
         timelines: Iterable[str],
         url: str,
         media_type: str | None = PARQUET_MEDIA_TYPE,
+        seed: int | None = None,
     ) -> Resource:
         """Describe the file *path*: its size and SHA-256 digest from its bytes.
 
         Args:
             path: The file.
-            id: The resource's ID.
+            id: The resource's ID, kept verbatim. When None, an ID with the
+                prefix ``resource`` is minted: from ``IdMinter(seed)`` with
+                *seed*, else from the content minter of *type*, *timelines*
+                and *url*.
             type: What its rows are.
             timelines: The timelines it holds data for.
             url: Its location relative to the manifest.
             media_type: Its media type, Parquet's by default.
+            seed: The seed of the minter of the ID when *id* is None; not
+                stored.
         """
         data = Path(path).read_bytes()
+        timelines = tuple(timelines)
+        if id is None:
+            minter = (
+                IdMinter(seed)
+                if seed is not None
+                else content_minter(RESOURCE_ID_PREFIX, type, list(timelines), url)
+            )
+            id = minter.mint(RESOURCE_ID_PREFIX)
         return cls(
             id,
             type,
-            tuple(timelines),
+            timelines,
             url,
             media_type,
             len(data),
@@ -824,7 +847,7 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     joined one bundle) are refused, naming both, and the message says how
     to obtain a writable bundle: create the MatchClaims once the timelines
     share the bundle, so that their Projection IDs are minted unique. No ID
-    is minted again, since a MatchClaim may name it.
+    is renamed, since a MatchClaim may name it.
 
     Args:
         timelines: The timelines, each once.
@@ -1453,17 +1476,17 @@ class Manifest(_OpenObject):
 
 
 class MeasureMapEntries:
-    """The measure maps a manifest being written holds, each under one id.
+    """The measure maps a manifest being written holds, each under its id.
 
     Every id of the manifest is unique: :attr:`taken` holds every id the
-    manifest written holds besides its measure maps, mapped to its holder,
-    and grows with every id minted while it is written.
-    A given measure map id is kept: two different measure maps carrying
-    one, or one carrying an id another element holds, are refused. A minted
-    id is minted again around every id the manifest holds, the given ones
-    taken first. Equal measure maps of equal name and meta share one entry,
-    so two timelines holding the same measure map, or equal ones, name one
-    entry.
+    manifest written holds besides its measure maps, mapped to its holder.
+    A measure map is written under the id it holds from construction: two
+    different measure maps holding one id, or one holding an id another
+    element holds, are refused. Equal measure maps of equal name, meta and
+    id share one entry, so two timelines holding the same measure map name
+    one entry. A measure map a conversion map describes by rows is written
+    under the id that map holds for it, unless an equal entry is written
+    already, whose id it then names.
 
     While a timeline's conversion maps are written, :attr:`own` is that
     timeline's measure map, which a measure-derived map names when it
@@ -1472,11 +1495,10 @@ class MeasureMapEntries:
     Args:
         taken: Every id of the manifest but its measure maps', mapped to its
             holder.
-        measure_maps: The measure maps the manifest names, whose given ids
-            are taken before any is minted.
+        measure_maps: The measure maps the manifest names, written first.
 
     Raises:
-        ValueError: If a given id is refused.
+        ValueError: If an id is refused.
     """
 
     def __init__(
@@ -1489,34 +1511,33 @@ class MeasureMapEntries:
         # with the map kept alive so that its identity is not reused.
         self._written: dict[int, tuple[MeasureMap, str]] = {}
         for measure_map in measure_maps:
-            if not measure_map._id_minted:
-                self._admit_given(measure_map)
+            self._admit(measure_map)
 
     def id_of(self, measure_map: MeasureMap) -> str:
         """Return the id under which *measure_map* is written, adding it.
 
         Raises:
-            ValueError: If its given id is refused.
+            ValueError: If its id is refused.
         """
         known = self._written.get(id(measure_map))
         if known is not None:
             return known[1]
-        if not measure_map._id_minted:
-            return self._admit_given(measure_map)
-        for entry_id, entry in self._entries.items():
-            if _same_entry(entry, measure_map):
-                self._written[id(measure_map)] = (measure_map, entry_id)
-                return entry_id
-        entry_id = mint_id(MEASURE_MAP_ID_PREFIX, {*self._entries, *self.taken})
-        self._entries[entry_id] = measure_map
-        self._written[id(measure_map)] = (measure_map, entry_id)
-        return entry_id
+        return self._admit(measure_map)
 
-    def id_of_rows(self, rows: list[dict[str, Any]]) -> str:
-        """Return the id of the measure map compressed *rows* describe, adding it."""
+    def id_of_rows(self, rows: list[dict[str, Any]], measure_map_id: str) -> str:
+        """Return the id of the measure map compressed *rows* describe, adding
+        it under *measure_map_id* unless an equal entry is written already.
+
+        Raises:
+            ValueError: If *measure_map_id* is refused.
+        """
         from .structure import MeasureMap
 
-        return self.id_of(MeasureMap.from_rows(rows))
+        measure_map = MeasureMap.from_rows(rows, id=measure_map_id)
+        for entry_id, entry in self._entries.items():
+            if _same_entry(entry, measure_map):
+                return entry_id
+        return self._admit(measure_map)
 
     def write(self) -> list[dict[str, Any]]:
         """Return the ``measure_maps`` entries, sorted by id, in the complete form."""
@@ -1525,8 +1546,8 @@ class MeasureMapEntries:
             for entry_id in sorted(self._entries)
         ]
 
-    def _admit_given(self, measure_map: MeasureMap) -> str:
-        """Add a measure map under its given id, and return the id.
+    def _admit(self, measure_map: MeasureMap) -> str:
+        """Add a measure map under its id, and return the id.
 
         Raises:
             ValueError: If another element of the manifest, or another

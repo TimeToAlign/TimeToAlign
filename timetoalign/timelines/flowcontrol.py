@@ -59,7 +59,7 @@ from timetoalign.core.enums import FlowManifestation
 from timetoalign.core.ids import (
     _IdentifiedElement,
     _OpenObject,
-    _plan_admissions,
+    _refuse_held_ids,
     quote_id,
 )
 from timetoalign.core.provenance import (
@@ -919,9 +919,8 @@ class FlowControlElement(_IdentifiedElement):
         """Read the constructor arguments of the class's own keys."""
         return {}
 
-    def __post_init__(self) -> None:
-        """Mint or validate the ID, then check the coordinate."""
-        super().__post_init__()
+    def _complete(self) -> None:
+        """Check the coordinate and hold the provenance as a list of entries."""
         if not isinstance(self.coordinate, Coordinate):
             raise TypeError(
                 f"a {self.role} lies at a Coordinate, not at "
@@ -932,7 +931,7 @@ class FlowControlElement(_IdentifiedElement):
         object.__setattr__(
             self,
             "provenance",
-            _provenance_entries(self.provenance, f"{self.role} {quote_id(self.id)}"),
+            _provenance_entries(self.provenance, f"{self.role} {self._named}"),
         )
 
     def __repr__(self) -> str:
@@ -1058,16 +1057,17 @@ class Jump(FlowControlElement):
         meta: Additional metadata.
         provenance: How the Jump was made and who believes it: provenance
             entries, or None.
-        id: The Jump's ID; minted as ``jump_{N}`` when not given.
+        id: The Jump's ID; minted with the prefix ``jump`` when not given.
 
     Examples:
         >>> from timetoalign.core import Coordinate, TimeUnit
         >>> repeat = Jump(
         ...     Coordinate(64, TimeUnit.quarters),
         ...     [JumpDestination(repeat_count=1, manifestation="repeat_end")],
+        ...     id="repeat",
         ... )
         >>> repeat.id, repeat.manifestations
-        ('jump_1', ("repeat_end",))
+        ('repeat', ("repeat_end",))
         >>> repeat.to_dict()["targets"]
         [{'repeat_count': 1, 'manifestation': 'repeat_end'}]
     """
@@ -1101,10 +1101,10 @@ class Jump(FlowControlElement):
             )
         }
 
-    def __post_init__(self) -> None:
+    def _complete(self) -> None:
         """Check the destinations and put their distances on the Jump's axis."""
-        super().__post_init__()
-        what = f"jump {quote_id(self.id)}"
+        super()._complete()
+        what = f"jump {self._named}"
         if isinstance(self.targets, JumpDestination):
             targets: tuple[Any, ...] = (self.targets,)
         else:
@@ -1179,16 +1179,16 @@ class _ManifestedElement(FlowControlElement):
     ) -> dict[str, Any]:
         return {"manifestation": data.get("manifestation")}
 
-    def __post_init__(self) -> None:
+    def _complete(self) -> None:
         """Hold the manifestation as a word of the vocabulary where it is one."""
-        super().__post_init__()
+        super()._complete()
         object.__setattr__(
             self,
             "manifestation",
             _manifestation(
                 self.manifestation,
                 self._admitted,
-                f"{self.role} {quote_id(self.id)}",
+                f"{self.role} {self._named}",
             ),
         )
 
@@ -1219,12 +1219,12 @@ class JumpTarget(_ManifestedElement):
         meta: Additional metadata.
         provenance: How the element was made and who believes it:
             provenance entries, or None.
-        id: The element's ID; minted as ``jump_target_{N}`` when not given.
+        id: The element's ID; minted with the prefix ``jump_target`` when not given.
 
     Examples:
         >>> from timetoalign.core import Coordinate, TimeUnit
-        >>> JumpTarget(Coordinate(16, TimeUnit.quarters), manifestation="segno")
-        JumpTarget('jump_target_1', segno @ 16 quarters)
+        >>> JumpTarget(Coordinate(16, TimeUnit.quarters), manifestation="segno", id="segno")
+        JumpTarget('segno', segno @ 16 quarters)
     """
 
     role: ClassVar[str] = "jump_target"
@@ -1260,7 +1260,7 @@ class Break(_ManifestedElement):
         meta: Additional metadata.
         provenance: How the element was made and who believes it:
             provenance entries, or None.
-        id: The element's ID; minted as ``break_{N}`` when not given.
+        id: The element's ID; minted with the prefix ``break`` when not given.
 
     Examples:
         >>> from timetoalign.core import Coordinate, TimeUnit
@@ -1300,12 +1300,12 @@ class Break(_ManifestedElement):
             )
         return read
 
-    def __post_init__(self) -> None:
+    def _complete(self) -> None:
         """Refuse an ``ends`` that states no condition."""
-        super().__post_init__()
+        super()._complete()
         if self.ends is None:
             return
-        what = f"break {quote_id(self.id)}"
+        what = f"break {self._named}"
         if type(self.ends) is not FlowCondition:
             raise ValueError(
                 f"the `ends` of {what} is a FlowCondition, not "
@@ -1348,7 +1348,7 @@ class SectionBreak(_ManifestedElement):
         meta: Additional metadata.
         provenance: How the element was made and who believes it:
             provenance entries, or None.
-        id: The element's ID; minted as ``section_break_{N}`` when not given.
+        id: The element's ID; minted with the prefix ``section_break`` when not given.
     """
 
     role: ClassVar[str] = "section_break"
@@ -1370,7 +1370,7 @@ class Barline(_ManifestedElement):
         meta: Additional metadata.
         provenance: How the element was made and who believes it:
             provenance entries, or None.
-        id: The element's ID; minted as ``barline_{N}`` when not given.
+        id: The element's ID; minted with the prefix ``barline`` when not given.
     """
 
     role: ClassVar[str] = "barline"
@@ -1390,7 +1390,7 @@ _ROLES: dict[str, type[FlowControlElement]] = {
 
 # region FlowControlRegistry
 
-_Entry = tuple[str, bool, str, str]
+_Entry = tuple[str, str]
 
 
 def _left_out(left_out: Mapping[str, str], name: str) -> str:
@@ -1457,11 +1457,11 @@ class FlowControlView:
     Examples:
         >>> from timetoalign.core import Coordinate
         >>> view = FlowControlView(
-        ...     [Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)])],
+        ...     [Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)], id="j")],
         ...     unit="quarters",
         ... )
         >>> view.jumps
-        (Jump('jump_1' @ 8 quarters, 1 destination),)
+        (Jump('j' @ 8 quarters, 1 destination),)
         >>> view.place_of(view.jumps[0].targets[0], view.jumps[0])
         Coordinate(Fraction(0, 1), quarters)
     """
@@ -1926,12 +1926,12 @@ class FlowControlView:
         Examples:
             >>> from timetoalign.core import Coordinate
             >>> registry = FlowControlRegistry(unit="quarters")
-            >>> barline = registry.add(Barline(Coordinate(8, "quarters")))
+            >>> barline = registry.add(Barline(Coordinate(8, "quarters"), id="bar 2"))
             >>> _ = registry.with_belief(barline.id, "ana", "false", date="2026-11-25")
             >>> registry.elements, registry.active_elements()
-            ((Barline('barline_1' @ 8 quarters),), [])
+            ((Barline('bar 2' @ 8 quarters),), [])
             >>> registry.active_elements(believer="bea")
-            [Barline('barline_1' @ 8 quarters)]
+            [Barline('bar 2' @ 8 quarters)]
         """
         check_belief_filter(beliefs)
         return [
@@ -1976,9 +1976,8 @@ class FlowControlRegistry(FlowControlView):
     :meth:`add_all`, :meth:`with_belief` and :meth:`with_beliefs` alone,
     and no element ever leaves it. Every element carries an ID unique
     within the registry and, once the registry belongs to a timeline,
-    within that timeline's whole manifest: an element whose minted ID is
-    taken is stored under a freshly minted ID, and one whose given ID is
-    taken is refused. A manifest writes the registry as the timeline's
+    within that timeline's whole manifest: an element whose ID, given or
+    minted, is taken is refused. A manifest writes the registry as the timeline's
     ``flow_control`` array.
 
     The registry refuses what cannot be played: a second Jump at a
@@ -2019,9 +2018,10 @@ class FlowControlRegistry(FlowControlView):
         ...     Jump(
         ...         Coordinate(64, "quarters"),
         ...         [JumpDestination(to="segno", repeat_count=1, reset=False)],
+        ...         id="ds",
         ...     )
         ... ).id
-        'jump_1'
+        'ds'
         >>> [element.role for element in registry.elements]
         ['jump_target', 'jump']
         >>> registry.place_of(registry.jumps[0].targets[0], registry.jumps[0])
@@ -2090,7 +2090,7 @@ class FlowControlRegistry(FlowControlView):
         # Set by the owning timeline: admits IDs into its whole manifest,
         # gives the timeline's length (its places are the view's) and refuses
         # Jumps taking a position of its root's axis over the root's tree.
-        self._admit: Callable[..., list[str]] | None = None
+        self._admit: Callable[[list[_Entry]], None] | None = None
         self._length: Callable[[], Coordinate | None] | None = None
         self._refuse_jumps: Callable[..., None] | None = None
         self.add_all(elements)
@@ -2113,8 +2113,7 @@ class FlowControlRegistry(FlowControlView):
             element: The element.
 
         Returns:
-            The stored element, with its coordinate on the registry's axis
-            and its ID as admitted.
+            The stored element, with its coordinate on the registry's axis.
 
         Raises:
             ValueError: As :meth:`add_all`.
@@ -2126,19 +2125,17 @@ class FlowControlRegistry(FlowControlView):
     ) -> list[FlowControlElement]:
         """Add several elements together, or none of them.
 
-        The elements may name one another in any order. An element whose
-        minted ID is taken is stored under a freshly minted ID, and the
-        elements added with it name it by that ID.
+        The elements may name one another in any order. Each keeps its ID.
 
         Args:
             elements: The elements.
 
         Returns:
             The stored elements in the order given, each with its
-            coordinate on the registry's axis and its ID as admitted.
+            coordinate on the registry's axis.
 
         Raises:
-            ValueError: If an element's given ID is already taken, its unit
+            ValueError: If an element's ID is already taken, its unit
                 is not the registry's, or an element that is not rejected
                 cannot be played among those not rejected: a coordinate
                 holds a second Jump, or a Jump lies at a position of the
@@ -2155,51 +2152,34 @@ class FlowControlRegistry(FlowControlView):
         staged = [self._on_axis(element) for element in elements]
         if not staged:
             return []
-        entries: list[_Entry] = [
-            (
-                element.id,
-                element._minted,
-                element._id_prefix,
-                f"{element.role} {quote_id(element.id)}",
-            )
-            for element in staged
-        ]
-        ids = self._admitted_ids(entries, check_only=True)
-        kept = set(ids)
-        renamed: dict[str, str] = {}
-        for element, new_id in zip(staged, ids, strict=True):
-            if new_id != element.id and element.id not in kept:
-                renamed.setdefault(element.id, new_id)
-        stored = [
-            (
-                element
-                if new_id == element.id
-                else replace(element, id=new_id, _minted=True)
-            )._renamed(renamed)
-            for element, new_id in zip(staged, ids, strict=True)
-        ]
-        joined = [*self._elements, *stored]
-        standing = [element for element in stored if not element.is_rejected]
+        self._refuse_held(
+            [
+                (element.id, f"{element.role} {quote_id(element.id)}")
+                for element in staged
+            ]
+        )
+        joined = [*self._elements, *staged]
+        standing = [element for element in staged if not element.is_rejected]
         read = [element for element in joined if not element.is_rejected]
         self._check(standing, read, joined)
         self._check_on_axis(standing, read, self._known_length())
         if self._refuse_jumps is not None:
             self._refuse_jumps(standing, replaced=False)
-        self._admitted_ids(entries, check_only=False)
         self._elements = _canonical(joined)
-        return stored
+        return staged
 
-    def _admitted_ids(self, entries: list[_Entry], *, check_only: bool) -> list[str]:
-        """Return the ID each joining element is stored under.
+    def _refuse_held(self, entries: list[_Entry]) -> None:
+        """Refuse joining elements whose ID the registry, or once it belongs
+        to a timeline that timeline's manifest, holds, or two of them hold.
 
         Raises:
-            ValueError: If a given ID is already taken.
+            ValueError: If an ID is already taken.
         """
         if self._admit is not None:
-            return self._admit(entries, check_only=check_only)
+            self._admit(entries)
+            return
         taken = {held.id: f"{held.role} {quote_id(held.id)}" for held in self._elements}
-        plan = _plan_admissions(entries, taken)
-        return [plan.get(index, entry[0]) for index, entry in enumerate(entries)]
+        _refuse_held_ids(entries, taken)
 
     def _check_length(self, length: Coordinate) -> None:
         """Refuse a length of the timeline that leaves flow control outside it.
@@ -2259,16 +2239,16 @@ class FlowControlRegistry(FlowControlView):
         Examples:
             >>> from timetoalign.core import Coordinate
             >>> registry = FlowControlRegistry(unit="quarters")
-            >>> wrong = registry.add(
-            ...     Jump(Coordinate(16, "quarters"), [JumpDestination(repeat_count=1)]))
+            >>> wrong = registry.add(Jump(
+            ...     Coordinate(16, "quarters"), [JumpDestination(repeat_count=1)], id="wrong"))
             >>> registry.with_belief(wrong.id, "ana", "false").is_rejected
             True
-            >>> registry.add(
-            ...     Jump(Coordinate(16, "quarters"), [JumpDestination(by=-8, repeat_count=1)])
-            ... ).id
-            'jump_2'
+            >>> registry.add(Jump(
+            ...     Coordinate(16, "quarters"), [JumpDestination(by=-8, repeat_count=1)], id="right"
+            ... )).id
+            'right'
             >>> registry.jump_at(16).id
-            'jump_2'
+            'right'
         """
         return self.with_beliefs(
             [element_id], actor, belief, date=date, note=note, context=context
@@ -2399,21 +2379,6 @@ Reject the elements naming it in the same step (with_beliefs), then add their re
                 )
 
     # -- maintenance --------------------------------------------------------
-
-    def _reassign_id(self, old_id: str, new_id: str) -> None:
-        """Store the element with ID *old_id* under the minted ID *new_id*.
-
-        Every destination and condition naming it follows.
-        """
-        self._elements = tuple(
-            (
-                replace(element, id=new_id, _minted=True)
-                if element.id == old_id
-                else element
-            )
-            for element in self._elements
-        )
-        self._rename_references({old_id: new_id})
 
     def _rename_references(self, renamed: Mapping[str, str | None]) -> None:
         """Name the new ID of every renamed element or place; keep the others."""

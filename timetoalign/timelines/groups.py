@@ -23,7 +23,7 @@ from __future__ import annotations
 import copy
 import logging
 import weakref
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator
@@ -44,9 +44,10 @@ from timetoalign.core import (
 )
 from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.ids import (
+    IdMinter,
     _OpenObject,
-    _plan_admissions,
-    mint_id,
+    _refuse_held_ids,
+    content_minter,
     quote_id,
     validate_id,
 )
@@ -151,8 +152,8 @@ def _groups_by_timeline(
     """Map every member id of *groups* to the ids of the groups holding it.
 
     Membership is stated by the groups alone; this is its per-timeline view.
-    A timeline may be a member of several groups. Its group ids are sorted,
-    and a timeline no group holds is absent.
+    A timeline may be a member of several groups. Its group ids are in the
+    order of *groups*, and a timeline no group holds is absent.
 
     Args:
         groups: Groups keyed by their ids.
@@ -161,7 +162,7 @@ def _groups_by_timeline(
         ``{timeline_id: (group_id, ...)}``.
     """
     membership: dict[str, list[str]] = {}
-    for group_id in sorted(groups):
+    for group_id in groups:
         for member_id in groups[group_id].timeline_ids:
             membership.setdefault(member_id, []).append(group_id)
     return {member_id: tuple(ids) for member_id, ids in membership.items()}
@@ -176,31 +177,26 @@ def _groups_by_timeline(
 class _IdScope:
     """A group or a bundle: the one manifest of the trees it holds.
 
-    The manifest trees of a scope's members, its given id and the given ids
-    of the scopes it holds (a bundle's groups) make one manifest, in which
-    every id is unique, whatever element holds it. A newcomer's tree joins
-    the scope and every scope holding it together (:meth:`_admit_tree`);
-    while the scope lives, an element added later to a member's tree takes
-    its id in the scope too (``Timeline._admit_entries``). A minted id that
-    is written (a group's) gives way to a given id that takes it
-    (:meth:`_yield_minted_ids`); a minted bundle id is never written.
+    The manifest trees of a scope's members, its id and the ids of the
+    scopes it holds (a bundle's groups) make one manifest, in which every id
+    is unique, whatever element holds it. A newcomer's tree joins the scope
+    and every scope holding it together (:meth:`_admit_tree`); while the
+    scope lives, an element added later to a member's tree is checked
+    against the scope too (``Timeline._refuse_held``). An id held twice is
+    refused, given or minted alike; nothing is renamed.
 
-    A subclass is a dataclass with an ``id`` and ``_id_minted``; it lists
-    its members (:meth:`_scope_members`), registers a newcomer
-    (:meth:`_register`) and, holding scopes, supplies them
-    (:meth:`_sub_scopes`); a scope that can be held names the scopes
-    holding it (:meth:`_holders`). The statements of the scope's own
-    manifest come through one hook (:meth:`_statements_holder`).
+    A subclass is a dataclass with an ``id``; it lists its members
+    (:meth:`_scope_members`), registers a newcomer (:meth:`_register`) and,
+    holding scopes, supplies them (:meth:`_sub_scopes`); a scope that can be
+    held names the scopes holding it (:meth:`_holders`). The statements of
+    the scope's own manifest come through one hook
+    (:meth:`_statements_holder`).
     """
 
     _scope_kind: ClassVar[str]
     """The kind a message names and a minted id carries: ``group``, ``bundle``."""
     id: str
     """The scope's id, given or minted (a field of the subclass)."""
-    _id_minted: bool
-    """Whether the id was minted (a field of the subclass)."""
-    _writes_minted_id: ClassVar[bool]
-    """Whether a minted id of the kind is written, and so gives way."""
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         """Restore a pickled scope, recording it on its members and the
@@ -256,43 +252,33 @@ class _IdScope:
     def _scope_ids(self, *, trees: bool = True) -> dict[str, str]:
         """Map every id the scope's manifest holds to its holder.
 
-        The ids of every member's tree and the given ids of the scopes it
-        holds and its own. A minted scope id is left out: a
-        group's gives way to a given id that takes it
-        (:meth:`_yield_minted_ids`), and a bundle's is never written.
+        The ids of every member's tree, of the scopes it holds and its own.
 
         Args:
             trees: Include the ids of the members' trees.
         """
         held = _held_ids(self._scope_members()) if trees else {}
         for scope in (*self._sub_scopes().values(), self):
-            if not scope._id_minted:
-                held.setdefault(scope.id, f"{scope._scope_kind} {quote_id(scope.id)}")
+            held.setdefault(scope.id, f"{scope._scope_kind} {quote_id(scope.id)}")
         return held
 
-    def _admit_tree(
-        self, timeline: "Timeline", *, check_only: bool = False
-    ) -> list["_IdScope"]:
-        """Admit *timeline*'s manifest tree into this scope and its holders.
+    def _admit_tree(self, timeline: "Timeline") -> list["_IdScope"]:
+        """Check *timeline*'s manifest tree joining this scope and its holders.
 
         Every id is unique in the scopes, whatever kind of element holds
         it. A tree they hold already joins as it is. An element of another
-        tree whose id they hold is a collision: a minted id is minted again,
-        also around the ids of every other scope the tree belongs to, and a
-        given id raises. Nothing changes before every collision has been
-        checked, so a raise leaves the newcomer untouched. Then every minted
-        group id that a given id of the tree takes is minted again. The
-        caller registers the tree in the scope and the holders returned.
+        tree whose id they hold is a collision and refuses the join, given
+        or minted alike; nothing changes. The caller registers the tree in
+        the scope and the holders returned.
 
         Args:
             timeline: The timeline joining the scope.
-            check_only: Raise as admitting would, but change nothing.
 
         Returns:
             The scopes holding this one (:meth:`_holders`).
 
         Raises:
-            ValueError: If a given id of the tree is held in a scope.
+            ValueError: If an id of the tree is held in a scope.
         """
         root = _root(timeline)
         holders = self._holders()
@@ -303,70 +289,12 @@ class _IdScope:
         taken = _held_ids(members)
         for scope in scopes:
             taken.update(scope._scope_ids(trees=False))
-        entries, rename = root._subtree_entries()
-        plan = _plan_admissions(
-            entries,
+        _refuse_held_ids(
+            root._subtree_entries(),
             taken,
             scope=f"{self._scope_kind} {quote_id(self.id)}",
-            avoid=root._manifest_ids(),
         )
-        if not check_only:
-            for index, new_id in plan.items():
-                rename(index, new_id)
-            root._settle_scope(
-                {
-                    element_id
-                    for element_id, minted, _prefix, _desc in entries
-                    if not minted
-                },
-                joining=scopes,
-            )
         return holders
-
-    def _yield_minted_ids(
-        self,
-        given: set[str],
-        containers: Sequence["_IdScope"],
-        newcomer: "Timeline | None" = None,
-    ) -> None:
-        """Mint again each written minted id of this scope or its sub-scopes
-        that *given* holds.
-
-        The new id avoids every id of the *containers*, the scopes the given
-        ids belong to, and every scope they hold; each scope holding the
-        scope minted again keys it by the new id. The statements of every
-        manifest holding the scope minted again — its members' trees, its
-        own manifest and every bundle holding it with their trees — name it
-        by its new id, except the *newcomer*'s tree, where the old id names
-        the newcomer's own element.
-
-        Args:
-            given: Given ids now held in the scope's manifest.
-            containers: The scopes the given ids belong to.
-            newcomer: The root of the tree whose given ids joined, or None
-                when the elements holding them are not stored yet.
-        """
-        for scope in [self, *self._sub_scopes().values()]:
-            if not (scope._writes_minted_id and scope._id_minted and scope.id in given):
-                continue
-            taken = set(given) | set(scope._scope_ids())
-            for container in containers:
-                taken.update(container._scope_ids())
-                taken.update(container._sub_scopes())
-            old_id = scope.id
-            scope.id = mint_id(scope._scope_kind, taken)
-            for container in (self, *containers):
-                held = container._sub_scopes()
-                if held.get(old_id) is scope:
-                    held[scope.id] = held.pop(old_id)
-            holding = [scope, *scope._holders()]
-            roots = [
-                root
-                for holder in holding
-                for root in holder._member_roots()
-                if root is not newcomer
-            ]
-            rename_references(roots, holding, {old_id: scope.id})
 
 
 # endregion
@@ -397,7 +325,8 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
     Members keep the order in which they were added.
 
     Attributes:
-        id: Unique identifier for this group, ``group_N`` unless given.
+        id: Unique identifier for this group, minted with the prefix
+            ``group`` unless given.
         name: Optional human-readable name.
         meta: Additional metadata dictionary.
         styling: The members of the manifest's ``graphical`` other than
@@ -411,15 +340,15 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         ...     ContinuousLogicalTimeline,
         ...     DiscreteGraphicalTimeline,
         ... )
-        >>> score = ContinuousLogicalTimeline(length=Fraction(16))
-        >>> image = DiscreteGraphicalTimeline(length=4800)
-        >>> group = TimelineGroup(timelines=[score, image])
+        >>> score = ContinuousLogicalTimeline(length=Fraction(16), uid="score")
+        >>> image = DiscreteGraphicalTimeline(length=4800, uid="image")
+        >>> group = TimelineGroup(id="edition", timelines=[score, image])
         >>> group.id, group.timeline_ids
-        ('group_1', ['clt_1', 'dgt_1'])
-        >>> group.get_coordinate_at(Fraction(1, 3), "clt_1", format="coordinate")
+        ('edition', ['score', 'image'])
+        >>> group.get_coordinate_at(Fraction(1, 3), "score", format="coordinate")
         Coordinate(Fraction(1, 3), quarters)
-        >>> group.get_timestamp_at(Fraction(1, 3), "clt_1").get_coordinate_for(
-        ...     "dgt_1", format="int"
+        >>> group.get_timestamp_at(Fraction(1, 3), "score").get_coordinate_for(
+        ...     "image", format="int"
         ... )
         100
     """
@@ -427,7 +356,6 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
     _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "meta", "members")
     _manifest_path: ClassVar[tuple[str, ...]] = ("groups",)
     _scope_kind: ClassVar[str] = "group"
-    _writes_minted_id: ClassVar[bool] = True
 
     id: str = field(default="")
     name: str | None = field(default=None)
@@ -438,7 +366,6 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
     _timelines: dict[str, "Timeline"] = field(
         default_factory=dict, init=False, repr=False
     )
-    _id_minted: bool = field(default=False, init=False, repr=False)
     # The bundles holding the group, held weakly: a newcomer joins them too.
     _holder_refs: list[weakref.ref[_IdScope]] = field(
         default_factory=list, init=False, repr=False, compare=False
@@ -572,7 +499,6 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                         f"{content.ids[group_id]}"
                     )
                 group.id = validate_id(group_id)
-                group._id_minted = False
             if name is not None:
                 group.name = name
             group._keep_manifest(manifest)
@@ -646,29 +572,39 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         timelines: list["Timeline"] | None = None,
         meta: dict[str, Any] | None = None,
         styling: dict[str, Any] | None = None,
+        *,
+        seed: int | None = None,
     ) -> None:
         """Create a TimelineGroup.
 
         Args:
-            id: Unique identifier. If None, ``group_N`` is minted with N the
-                smallest number no timeline of *timelines* holds as an id.
+            id: Unique identifier. If None, an id with the prefix ``group``
+                is minted: from ``IdMinter(seed)`` with *seed*, else from the
+                content minter of the name and the ids of *timelines*.
             name: Optional human-readable name.
             timelines: Initial members, in order (optional).
             meta: Additional metadata dictionary.
             styling: The group file's ``styles`` and ``rules``
                 (optional), kept as given and never interpreted.
+            seed: The seed of the minter of the id when *id* is None; not
+                stored.
 
         Raises:
             ValueError: If a given id is invalid, or an initial member
                 cannot join (see :meth:`add_timeline`).
         """
         initial = list(timelines or [])
-        if id is None:
-            self.id = mint_id("group", _held_ids(initial))
-            self._id_minted = True
-        else:
+        if id is not None:
             self.id = validate_id(id)
-            self._id_minted = False
+        else:
+            minter = (
+                IdMinter(seed)
+                if seed is not None
+                else content_minter(
+                    "group", name, [timeline.id for timeline in initial]
+                )
+            )
+            self.id = minter.mint("group")
         self.name = name
         self.meta = dict(meta) if meta else {}
         self.styling = dict(styling) if styling else {}
@@ -719,12 +655,10 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
 
         Raises:
             ValueError: If the timeline is already a member; if it is nested
-                with a member; or if a given id of its tree — of any timeline,
-                conversion map, region or flow-control element of it — is
-                held by an element of the group's trees, is the group's given
-                id or is held in a bundle holding the group (a minted id held
-                there is minted again instead, and a minted group id that a
-                newcomer's given id takes is minted again).
+                with a member; or if an id of its tree — of any timeline,
+                conversion map, region or flow-control element of it, given
+                or minted — is held by an element of the group's trees, is
+                the group's id or is held in a bundle holding the group.
 
         Examples:
             >>> from timetoalign.timelines import TimelineGroup
@@ -732,14 +666,15 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> image = DiscreteGraphicalTimeline(length=5000)
-            >>> holes = DiscreteGraphicalTimeline(length=2000)
+            >>> image = DiscreteGraphicalTimeline(length=5000, uid="roll")
+            >>> holes = DiscreteGraphicalTimeline(length=2000, uid="holes")
             >>> image.add_child(holes, offset=1000)
-            >>> group = TimelineGroup(timelines=[ContinuousPhysicalTimeline(length=8.0)])
+            >>> audio = ContinuousPhysicalTimeline(length=8.0, uid="audio")
+            >>> group = TimelineGroup(timelines=[audio])
             >>> group.add_timeline(holes)
-            >>> group.get_coordinate_at(2.0, "cpt_1")
-            IdCoordinate(2.0, seconds, 'cpt_1')
-            >>> group.get_timestamp_at(2.0, "cpt_1").get_coordinate_for("dgt_2", format="int")
+            >>> group.get_coordinate_at(2.0, "audio")
+            IdCoordinate(2.0, seconds, 'audio')
+            >>> group.get_timestamp_at(2.0, "audio").get_coordinate_for("holes", format="int")
             500
         """
         self._admit_member(timeline)
@@ -864,28 +799,17 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         self._logger.debug(f"Removed timeline '{timeline_id}'")
         return timeline
 
-    def _rekey_members(self) -> None:
-        """Key the members by their current ids, keeping their order.
-
-        A member's id can change after it joined (a minted id is minted again
-        when its tree joins a wider scope); this restores the lookup.
-        """
-        self._timelines = {
-            timeline.id: timeline for timeline in self._timelines.values()
-        }
-
     def get_timeline(self, timeline_id: str) -> "Timeline":
         """Get a timeline by ID.
 
-        Supports partial string and regex matching:
-        1. Exact match: If ``timeline_id`` matches an ID exactly, returns it.
-        2. Substring match: If ``timeline_id`` is a substring of exactly one ID,
-           returns that timeline. If multiple match, returns the first and warns.
-        3. Regex match: If ``timeline_id`` is a valid regex, matches via
-           ``re.search()``. Same first-match logic with warning.
+        Takes an exact ID, else a regular expression matching whole IDs
+        (:func:`~timetoalign.core.ids.resolve_id`): when several match, the
+        first is returned with a warning. A fragment of an ID matches
+        nothing.
 
         Args:
-            timeline_id: The timeline's unique identifier, or a partial/regex pattern.
+            timeline_id: The timeline's ID, or a regular expression matching
+                whole IDs.
 
         Returns:
             The Timeline object.
@@ -894,9 +818,8 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             KeyError: If no timeline matches the pattern.
 
         Examples:
-            >>> group.get_timeline("clt_1")           # Exact match
-            >>> group.get_timeline("notes")          # Substring match
-            >>> group.get_timeline(r"^score:")       # Regex match
+            >>> group.get_timeline("score:clt_1")   # Exact match
+            >>> group.get_timeline("score:.*")      # Regular expression
         """
         resolved_id = resolve_id(timeline_id, list(self._timelines.keys()))
         return self._timelines[resolved_id]
@@ -918,11 +841,12 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
     def __getitem__(self, timeline_id: str) -> "Timeline":
         """Get a timeline by ID.
 
-        Shorthand for ``get_timeline(timeline_id)``. Supports partial
-        string and regex matching.
+        Shorthand for ``get_timeline(timeline_id)``: an exact ID, else a
+        regular expression matching whole IDs.
 
         Args:
-            timeline_id: The timeline's unique identifier, or a partial/regex pattern.
+            timeline_id: The timeline's ID, or a regular expression matching
+                whole IDs.
 
         Returns:
             The Timeline object.
@@ -931,8 +855,8 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             KeyError: If no timeline matches the pattern.
 
         Examples:
-            >>> tl = group["clt_1"]           # Exact match
-            >>> tl = group["score"]          # Substring match
+            >>> tl = group["score:clt_1"]   # Exact match
+            >>> tl = group["score:.*"]      # Regular expression
         """
         return self.get_timeline(timeline_id)
 
@@ -950,8 +874,8 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         ``timeline_id`` column is discarded because group membership is authoritative.
 
         Args:
-            timeline_id: If provided, only return events from this timeline.
-                Supports partial string and regex matching.
+            timeline_id: If provided, only return events from this timeline:
+                an exact ID, or a regular expression matching whole IDs.
             **kwargs: Passed through to each timeline's ``get_events()`` method
                 (e.g., ``min_coord``, ``max_coord``, ``event_type``).
 
@@ -1103,20 +1027,20 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> dgt_1 = DiscreteGraphicalTimeline(length=4875, unit="pixels")
-            >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds")
-            >>> group = TimelineGroup(timelines=[dgt_1, audio])
+            >>> scan = DiscreteGraphicalTimeline(length=4875, unit="pixels", uid="scan")
+            >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio")
+            >>> group = TimelineGroup(timelines=[scan, audio])
 
-            >>> ts = group.get_timestamp_at(75.0, "cpt_1")
+            >>> ts = group.get_timestamp_at(75.0, "audio")
             >>> ts.axis
-            IdCoordinate(75.0, seconds, 'cpt_1')
-            >>> ts.get_coordinate_for("dgt_1", format="int")
+            IdCoordinate(75.0, seconds, 'audio')
+            >>> ts.get_coordinate_for("scan", format="int")
             2438
 
             >>> # Using IdCoordinate (timeline_id extracted automatically)
-            >>> coord = IdCoordinate(75.0, TimeUnit.seconds, "cpt_1")
+            >>> coord = IdCoordinate(75.0, TimeUnit.seconds, "audio")
             >>> group.get_timestamp_at(coord).axis
-            IdCoordinate(75.0, seconds, 'cpt_1')
+            IdCoordinate(75.0, seconds, 'audio')
         """
         resolved = resolve_coordinate_spec(at, timeline_id=timeline_id)
         timeline_id = resolved.timeline_id
@@ -1300,22 +1224,22 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels")
-            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds")
+            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="scan")
+            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="audio")
             >>> group = TimelineGroup(timelines=[pixels, audio])
             >>> group.get_timestamp_table().column_names
-            ['dgt_1', 'cpt_1']
-            >>> group.get_timestamp_table([0.0, 2.5], "cpt_1", format="dataframe")
-               dgt_1 (pixels)  cpt_1 (seconds)
-            0               0              0.0
-            1            1000              2.5
+            ['scan', 'audio']
+            >>> group.get_timestamp_table([0.0, 2.5], "audio", format="dataframe")
+               scan (pixels)  audio (seconds)
+            0              0              0.0
+            1           1000              2.5
 
             The stored rows are exact:
 
-            >>> score = ContinuousLogicalTimeline(length=Fraction(5, 3))
+            >>> score = ContinuousLogicalTimeline(length=Fraction(5, 3), uid="score")
             >>> TimelineGroup(timelines=[score]).get_timestamp_table(
             ...     format="dataframe"
-            ... )["clt_1 (quarters)"].tolist()
+            ... )["score (quarters)"].tolist()
             [Fraction(0, 1), Fraction(5, 3)]
         """
         validate_table_format(format)
@@ -1809,11 +1733,11 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             >>> from timetoalign.timelines import TimelineGroup
             >>> from timetoalign.timelines.types import ContinuousPhysicalTimeline
             >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio")
-            >>> audio.add_events([{"event_type": "Note", "instant": 45.5}])
-            ['note_1']
+            >>> audio.add_events([{"id": "n1", "event_type": "Note", "instant": 45.5}])
+            ['n1']
             >>> group = TimelineGroup(id="my_group", timelines=[audio])
 
-            >>> ts = group.get_timestamp_for("note_1")
+            >>> ts = group.get_timestamp_for("n1")
             >>> ts.get_coordinate_for("audio", format="float")
             45.5
             >>> ts.get_unit(TimeUnit.seconds)  # C-Map conversion
@@ -2118,19 +2042,18 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             ...     ContinuousLogicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> image = DiscreteGraphicalTimeline(length=5000)
-            >>> part = DiscreteGraphicalTimeline(length=2000)
+            >>> image = DiscreteGraphicalTimeline(length=5000, uid="image")
+            >>> part = DiscreteGraphicalTimeline(length=2000, uid="part")
             >>> image.add_child(part, offset=1000)
-            >>> group = TimelineGroup(
-            ...     timelines=[part, ContinuousLogicalTimeline(length=Fraction(8))]
-            ... )
+            >>> score = ContinuousLogicalTimeline(length=Fraction(8), uid="score")
+            >>> group = TimelineGroup(id="g", timelines=[part, score])
             >>> data = group.to_dict()
             >>> [timeline["id"] for timeline in data["timelines"]]
-            ['#clt_1', '#dgt_1']
+            ['#image', '#score']
             >>> data["groups"]
-            [{'id': '#group_1', 'members': ['#clt_1', '#dgt_2']}]
+            [{'id': '#g', 'members': ['#part', '#score']}]
             >>> data["graphical"]
-            {'order': {'#group_1': ['#dgt_2', '#clt_1']}}
+            {'order': {'#g': ['#part', '#score']}}
         """
         roots: dict[str, Timeline] = {}
         for member in self._timelines.values():

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from timetoalign.core.enums import NumberType, TimeUnit
+from timetoalign.core.ids import reset_content_minters
 from timetoalign.maps.base import ConversionMap, OutputNumberTypeError
 from timetoalign.maps.composite import ChainMap, PiecewiseMap
 from timetoalign.maps.interpolation import InterpolationMap
@@ -304,10 +305,11 @@ class TestDeclaredOutputNumberType:
         assert type(inverse(Fraction(1, 6))) is Fraction
 
     def test_declaration_is_not_written(self, build):
-        assert (
-            build(output_number_type="fraction", uid="m").to_dict()
-            == build(uid="m").to_dict()
-        )
+        # The nested maps are minted from their content, afresh for each build.
+        reset_content_minters()
+        declared = build(output_number_type="fraction", uid="m").to_dict()
+        reset_content_minters()
+        assert declared == build(uid="m").to_dict()
 
 
 def quarters_scalar(scalar, **kwargs) -> ScalarMap:

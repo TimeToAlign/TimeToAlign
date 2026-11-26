@@ -63,15 +63,18 @@ class Region(_IdentifiedElement, StatementsMixin):
         end: End coordinate of the region.
         name: Optional display name (e.g., "Chorus"); names may repeat.
         meta: Additional metadata (e.g., traversal order labels).
-        id: The region's id; minted as ``region_{N}`` when not given.
+        id: The region's id. When not given, one with the prefix ``region``
+            is minted when the region is built: from ``IdMinter(seed)``
+            with ``seed=``, else from the content minter of its complete
+            form without the id.
 
     Examples:
         >>> from timetoalign import Coordinate, TimeUnit
         >>> start = Coordinate(16.0, TimeUnit.quarters)
         >>> end = Coordinate(32.0, TimeUnit.quarters)
-        >>> region = Region(start, end, name="Chorus")
+        >>> region = Region(start, end, name="Chorus", seed=7)
         >>> region.id
-        'region_1'
+        'region_1hvif5xc2r1fv'
         >>> region.duration
         Duration(Fraction(16, 1), quarters)
         >>> region.as_interval
@@ -157,9 +160,8 @@ end=Coordinate(Fraction(32, 1), quarters))
         region._keep_unknown_keys(data)
         return region
 
-    def __post_init__(self) -> None:
-        """Mint or validate the id, then validate region bounds and units."""
-        super().__post_init__()
+    def _complete(self) -> None:
+        """Validate the region's bounds and units."""
         if self.end.value < self.start.value:
             raise ValueError(
                 f"Region end ({self.end.value}) cannot be before "

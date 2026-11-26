@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from timetoalign.core import Coordinate, Duration, Measure, TimeUnit
 from timetoalign.core.enums import FlowManifestation, MeasureFindingKind
+from timetoalign.core.ids import IdMinter, content_minter
 from timetoalign.core.time import TimeScalarValue
 
 from ..flowcontrol import (
@@ -193,39 +194,40 @@ class FlowControlDraft:
 
     The signs at one coordinate are collected as the destinations of the
     one Jump there, and every element gets an ID of its own, minted in the
-    order written, so that the elements can name one another before a
-    registry admits them together. Coordinates are quarters, exact.
+    order written by the draft's minter (a loader's; without one, the
+    content minter of ``"flow_control"``), so that the elements can name
+    one another before a registry admits them together. Coordinates are
+    quarters, exact.
     :func:`flow_control_from_measures` and the score loaders write through
     it.
 
     Examples:
         >>> from fractions import Fraction
         >>> from timetoalign.timelines.flowcontrol import JumpDestination, JumpTarget
-        >>> draft = FlowControlDraft()
+        >>> draft = FlowControlDraft(IdMinter(7))
         >>> segno = draft.add(JumpTarget, Fraction(4), manifestation="segno")
         >>> draft.add_destination(Fraction(16), JumpDestination(to=segno.id, repeat_count=1))
-        'jump_1'
+        'jump_0g2wfq87pa7jx'
         >>> draft.add_destination(Fraction(16), JumpDestination(repeat_count=1))
-        'jump_1'
+        'jump_0g2wfq87pa7jx'
         >>> draft.elements()
-        [JumpTarget('jump_target_1', segno @ 4 quarters), \
-Jump('jump_1' @ 16 quarters, 2 destinations)]
+        [JumpTarget('jump_target_1hvif5xc2r1fv', segno @ 4 quarters), \
+Jump('jump_0g2wfq87pa7jx' @ 16 quarters, 2 destinations)]
     """
 
-    def __init__(self) -> None:
+    def __init__(self, minter: IdMinter | None = None) -> None:
         self._placed: list[FlowControlElement] = []
         self._destinations: dict[Fraction, list[JumpDestination]] = {}
         self._jump_ids: dict[Fraction, str] = {}
-        self._numbers: dict[str, int] = {}
+        self._minter = content_minter("flow_control") if minter is None else minter
 
     def _mint(self, prefix: str) -> str:
-        self._numbers[prefix] = self._numbers.get(prefix, 0) + 1
-        return f"{prefix}_{self._numbers[prefix]}"
+        return self._minter.mint(prefix)
 
     def add(self, element_class: type[_Placed], at: Fraction, **keys: Any) -> _Placed:
         """Write a jump target, a break, a section break or a barline at *at*."""
         element = element_class(
-            _quarters(at), id=self._mint(element_class.role), _minted=True, **keys
+            _quarters(at), id=self._mint(element_class.role), **keys
         )
         self._placed.append(element)
         return element
@@ -309,9 +311,7 @@ Jump('jump_1' @ 16 quarters, 2 destinations)]
     def elements(self) -> list[FlowControlElement]:
         """Return everything written, by coordinate and then by ID."""
         jumps = [
-            Jump(
-                _quarters(at), tuple(destinations), id=self._jump_ids[at], _minted=True
-            )
+            Jump(_quarters(at), tuple(destinations), id=self._jump_ids[at])
             for at, destinations in self._destinations.items()
         ]
         return sorted(
@@ -322,6 +322,8 @@ Jump('jump_1' @ 16 quarters, 2 destinations)]
 
 def flow_control_from_measures(
     measures: MeasureMap | Iterable[Any],
+    *,
+    seed: int | None = None,
 ) -> list[FlowControlElement]:
     """Return the flow control a measure map states.
 
@@ -354,11 +356,12 @@ def flow_control_from_measures(
             as :meth:`MeasureMap.expand_rows
             <timetoalign.timelines.MeasureMap.expand_rows>` returns them. In
             either, ``volta`` is a pass number or several of them.
+        seed: The seed of the minter of the elements' IDs; None mints them
+            from the content minter of the measures' rows.
 
     Returns:
         The elements by coordinate and then by ID, each with an ID of its
-        own (``jump_1``, ``jump_target_1``, ...) that a registry mints again
-        where it is taken.
+        own, its role the prefix, minted in the order written.
 
     Raises:
         ValueError: If a measure states no ``qstamp`` or no
@@ -375,16 +378,28 @@ def flow_control_from_measures(
         ...         {"count": 4},
         ...     ]
         ... )
-        >>> start, repeat = flow_control_from_measures(bars)
+        >>> start, repeat = flow_control_from_measures(bars, seed=7)
         >>> start
-        JumpTarget('jump_target_1', repeat_start @ 4 quarters)
+        JumpTarget('jump_target_1hvif5xc2r1fv', repeat_start @ 4 quarters)
         >>> repeat
-        Jump('jump_1' @ 12 quarters, 1 destination)
+        Jump('jump_0g2wfq87pa7jx' @ 12 quarters, 1 destination)
         >>> repeat.targets[0].to_dict()
-        {'to': 'jump_target_1', 'repeat_count': 1, 'manifestation': 'repeat_end'}
+        {'to': 'jump_target_1hvif5xc2r1fv', 'repeat_count': 1, 'manifestation': 'repeat_end'}
     """
-    draft = FlowControlDraft()
-    draft.add_measures(measures)
+    items = list(measures)
+    minter = (
+        IdMinter(seed)
+        if seed is not None
+        else content_minter(
+            "flow_control",
+            [
+                {str(key): str(value) for key, value in dict(item).items()}
+                for item in items
+            ],
+        )
+    )
+    draft = FlowControlDraft(minter)
+    draft.add_measures(items)
     return draft.elements()
 
 

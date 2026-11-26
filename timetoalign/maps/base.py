@@ -10,6 +10,7 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from enum import Enum
 from fractions import Fraction
 from typing import (
     TYPE_CHECKING,
@@ -28,7 +29,14 @@ from numpy.typing import NDArray
 from typing_extensions import TypeVar
 
 from ..core.enums import NumberType, TimeUnit
-from ..core.ids import _OpenObject, _plan_admissions, mint_id, quote_id, validate_id
+from ..core.ids import (
+    IdMinter,
+    _OpenObject,
+    _refuse_held_ids,
+    content_minter,
+    quote_id,
+    validate_id,
+)
 from ..core.time import Coordinate, CoordinateValue, express_as
 
 if TYPE_CHECKING:
@@ -211,8 +219,13 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
         5.0
     """
 
-    # Prefix of a minted id (``cmap_1``), one for every conversion map.
+    # Prefix of a minted id, one for every conversion map.
     _id_prefix: ClassVar[str] = "cmap"
+
+    # Set by a measure view that may write a measure map of its own: it
+    # holds that measure map's id from construction (``_own_measure_map_id``),
+    # minted after its own id by the same minter.
+    _names_own_measure_map: ClassVar[bool] = False
 
     _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "conversion_maps")
 
@@ -248,6 +261,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
         source_unit: TimeUnit | str | None,
         value_unit: TimeUnit | str | None = None,
         origin: CoordinateValue | Coordinate = 0,
+        seed: int | None = None,
     ) -> Self:
         """Build the map a law reads from calibration pairs.
 
@@ -275,6 +289,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
                 when a value is a number; a coordinate value must be in it.
             origin: Where the source axis starts, in the coordinates of the
                 positions: a child's offset on its parent.
+            seed: The seed of the minter of the map's id; not stored.
 
         Returns:
             The map through the pairs.
@@ -369,16 +384,17 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a ConversionMap.
 
         Args:
             source_unit: The unit of input coordinates. Defaults to class default.
             target_unit: The unit of output coordinates. Defaults to class default.
-            uid: Optional explicit ID, kept verbatim. If None, an id
-                ``cmap_1`` is minted, which a timeline re-mints should it
-                collide in the timeline's manifest, and a map nesting this
-                one should it collide in that map's tree.
+            uid: Optional explicit ID, kept verbatim. If None, an id with
+                the prefix ``cmap`` is minted: from ``IdMinter(seed)`` with
+                *seed*, else from the content minter of the map's class,
+                units, given name and the values it holds (:meth:`_content`).
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" if units are
                 provided, otherwise uses the map's ID.
@@ -386,14 +402,16 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
                 written in, among those the target unit admits. ``None``
                 leaves it to the map class or the target unit's default (see
                 :attr:`output_number_type`).
+            seed: The seed of the minter of the id when *uid* is None; not
+                stored.
 
         Raises:
             ValueError: If the target unit does not admit
                 *output_number_type*, or if it is ``fraction`` and the map
                 computes in doubles (see :attr:`output_number_type`).
         """
-        self._id_minted = uid is None
-        self._id = mint_id(self._id_prefix, ()) if uid is None else validate_id(uid)
+        if uid is not None:
+            validate_id(uid)
 
         # Set units
         if source_unit is not None:
@@ -431,6 +449,18 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
         self._own_output_number_type: NumberType | None = (
             self._stated_output_number_type()
         )
+
+        minter = None if seed is None else IdMinter(seed)
+        if uid is not None:
+            self._id = uid
+        else:
+            if minter is None:
+                minter = content_minter(self._id_prefix, *self._content(name))
+            self._id = minter.mint(self._id_prefix)
+        if self._names_own_measure_map:
+            if minter is None:
+                minter = content_minter(MEASURE_MAP_ID_PREFIX, self._id)
+            self._own_measure_map_id: str = minter.mint(MEASURE_MAP_ID_PREFIX)
 
         # Set name: explicit > "source_to_target" > id. Only a given name is
         # written by to_dict(); the others are derived for display.
@@ -813,19 +843,17 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
         for nested in self._nested_maps():
             yield from nested._measure_maps()
 
-    def _identity_entries(self, owner: str = "") -> list[tuple[str, bool, str, str]]:
-        """Return ``(id, minted, prefix, description)`` for this map and every
-        map nested in it, in the order of :meth:`_map_tree`.
+    def _identity_entries(self, owner: str = "") -> list[tuple[str, str]]:
+        """Return ``(id, description)`` for this map and every map nested in
+        it, in the order of :meth:`_map_tree`.
 
         Args:
             owner: Who holds this map, ending each description
-                (``" of timeline 'clt_1'"``).
+                (``" of timeline 'score'"``).
         """
         return [
             (
                 cmap._id,
-                cmap._id_minted,
-                cmap._id_prefix,
                 f"conversion map {quote_id(cmap._id)}"
                 + (
                     ""
@@ -836,6 +864,16 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
             )
             for cmap in self._map_tree()
         ]
+
+    def _content(self, name: str | None) -> list[Any]:
+        """What seeds a minted id: the class, the units, the given *name* and
+        every value the map holds when its id is minted, nested maps by id."""
+        state = {
+            key: _content_value(value)
+            for key, value in sorted(vars(self).items())
+            if key not in _STATELESS
+        }
+        return [type(self).__name__, name, state]
 
     def _unique_map_tree(self, owner: str = "") -> list[ConversionMap[Any, Any]]:
         """Return :meth:`_map_tree` as a list, refusing a map held twice in it.
@@ -857,20 +895,18 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
         return tree
 
     def _admit_ids(self) -> None:
-        """Give this map and every map nested in it ids unique in its tree.
+        """Refuse a tree of maps that repeats a map or an id.
 
-        A composite admits its tree when it is built, so that its own form
-        repeats no id: a given id is kept, a minted id another map of the
-        tree is given or keeps before it is minted again. A timeline admits
-        a map into its manifest (``Timeline._admit_map``).
+        A composite checks its tree when it is built, so that its own form
+        repeats no id; nothing is renamed. A timeline checks a map joining
+        its manifest (``Timeline._admit_map``).
 
         Raises:
             ValueError: If this tree nests one map in two places, or two maps
-                of it are given one id. Nothing is changed then.
+                of it hold one id.
         """
-        tree = self._unique_map_tree()
-        for index, new_id in _plan_admissions(self._identity_entries(), {}).items():
-            tree[index]._id = new_id
+        self._unique_map_tree()
+        _refuse_held_ids(self._identity_entries(), {})
 
     # endregion
 
@@ -1085,8 +1121,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
 # region Measure-map ids
 
 
-MEASURE_MAP_ID_PREFIX = "measuremap"
-"""The prefix of a minted measure-map id (``measuremap_1``)."""
+MEASURE_MAP_ID_PREFIX = "measure_map"
+"""The prefix of a minted measure-map id."""
 
 
 class MeasureMapIds(Protocol):
@@ -1096,7 +1132,8 @@ class MeasureMapIds(Protocol):
     ``own`` is the timeline's measure map, ``id_of`` the id under which a
     measure map is written in the manifest's ``measure_maps``, and
     ``id_of_rows`` that of the measure map compressed Measure Map rows
-    describe, added to them.
+    describe, added to them under the id the map writing them holds for
+    it, unless an equal entry is written already.
     """
 
     own: Any
@@ -1105,8 +1142,9 @@ class MeasureMapIds(Protocol):
         """Return the id under which *measure_map* is written."""
         ...
 
-    def id_of_rows(self, rows: list[dict[str, Any]]) -> str:
-        """Return the id of the measure map *rows* describe."""
+    def id_of_rows(self, rows: list[dict[str, Any]], measure_map_id: str) -> str:
+        """Return the id of the measure map *rows* describe, *measure_map_id*
+        unless an equal entry is written already."""
         ...
 
 
@@ -1119,9 +1157,9 @@ class _StandaloneMeasureMaps:
         """Return the measure map's own id."""
         return measure_map.id
 
-    def id_of_rows(self, rows: list[dict[str, Any]]) -> str:
-        """Return the first measure map id, since a map written alone has no siblings."""
-        return mint_id(MEASURE_MAP_ID_PREFIX, ())
+    def id_of_rows(self, rows: list[dict[str, Any]], measure_map_id: str) -> str:
+        """Return *measure_map_id*, the id the map written holds for it."""
+        return measure_map_id
 
 
 STANDALONE_MEASURE_MAPS: MeasureMapIds = _StandaloneMeasureMaps()
@@ -1134,8 +1172,35 @@ STANDALONE_MEASURE_MAPS: MeasureMapIds = _StandaloneMeasureMaps()
 # region Equality
 
 
-_STATELESS = frozenset({"_logger", "_inverse", "_id_minted"})
-"""Attributes that take no part in a map's equality."""
+_STATELESS = frozenset({"_logger", "_inverse", "_own_measure_map_id"})
+"""Attributes that take no part in a map's equality or its content seed."""
+
+
+def _content_value(value: Any) -> Any:
+    """*value* as a content seed spells it: JSON values, an array by its
+    values, a map by its id, any other object by its class alone."""
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return repr(value)
+    if isinstance(value, Fraction):
+        return f"{value.numerator}/{value.denominator}"
+    if isinstance(value, Enum):
+        return value.name
+    if isinstance(value, ConversionMap):
+        return value._id
+    if isinstance(value, np.ndarray):
+        return [str(value.dtype), list(value.shape), _content_value(value.tolist())]
+    if isinstance(value, (list, tuple)):
+        return [_content_value(item) for item in value]
+    if isinstance(value, Mapping):
+        return {str(key): _content_value(item) for key, item in value.items()}
+    if isinstance(value, Coordinate):
+        return [_content_value(value.value), value.unit.value]
+    held_id = getattr(value, "id", None)
+    if isinstance(held_id, str):
+        return held_id
+    return type(value).__name__
 
 
 def _state(cmap: ConversionMap[Any, Any]) -> dict[str, Any]:

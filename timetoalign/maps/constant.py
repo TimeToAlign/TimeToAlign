@@ -88,6 +88,7 @@ class ConstantMap(ConversionMap[Any]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a ConstantMap.
 
@@ -98,6 +99,7 @@ class ConstantMap(ConversionMap[Any]):
                 conflict with sibling maps.
             target_unit: The unit of a numeric constant (optional).
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
 
         Raises:
@@ -111,6 +113,7 @@ class ConstantMap(ConversionMap[Any]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
         )
 

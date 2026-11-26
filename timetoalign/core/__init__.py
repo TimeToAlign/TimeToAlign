@@ -15,7 +15,7 @@ Flat module layout (no sub-packages):
 * :mod:`timetoalign.core.enums` — ``Domain``, ``TimeUnit``, ``NumberType``,
   …
 * :mod:`timetoalign.core.ids` — ``IdMinter``, ``seed_from``,
-  ``content_minter``, ``mint_id``, ``mint_ids``.
+  ``content_minter``, ``reset_content_minters``.
 * :mod:`timetoalign.core.protocols` — pitch, harmony, and time protocols.
 * :mod:`timetoalign.core.timestamp` — ``TimeStamp``, ``TimeIntervalStamp``.
 """
@@ -156,8 +156,6 @@ from .ids import (
     ID_LENGTH,
     IdMinter,
     content_minter,
-    mint_id,
-    mint_ids,
     reset_content_minters,
     resolve_id,
     resolve_ids,
@@ -416,8 +414,6 @@ __all__ = [
     "seed_from",
     "content_minter",
     "reset_content_minters",
-    "mint_id",
-    "mint_ids",
     "validate_id",
     "resolve_id",
     "resolve_ids",

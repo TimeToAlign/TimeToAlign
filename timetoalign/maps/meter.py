@@ -90,6 +90,9 @@ class MetricMap(ConversionMap[int]):
         ... )
     """
 
+    # It may write a measure map of its own, under an id held from construction.
+    _names_own_measure_map = True
+
     # An MC is which measure you are in, not how far into the piece you are:
     # a whole number that indexes the map's own boundaries, whatever
     # representation the measures axis writes positions in.
@@ -106,6 +109,7 @@ class MetricMap(ConversionMap[int]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a MetricMap from explicit boundary data.
 
@@ -121,6 +125,7 @@ class MetricMap(ConversionMap[int]):
                 ordinal that indexes this map's own boundaries, not a
                 position on any coordinate axis.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to
                 ``"measure_counts"``.
 
@@ -132,6 +137,7 @@ class MetricMap(ConversionMap[int]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name or "measure_counts",
         )
         # The default name is derived for display; only a given one is written.
@@ -387,7 +393,7 @@ class MetricMap(ConversionMap[int]):
                 }
             )
             position += Fraction(length)
-        return entries.id_of_rows(rows)
+        return entries.id_of_rows(rows, self._own_measure_map_id)
 
     def _describes(self, measure_map: Any) -> bool:
         """Whether *measure_map*'s measures start, last and count as this map's."""
@@ -410,6 +416,8 @@ class MetricMap(ConversionMap[int]):
         start_mn: str = "1",
         anacrusis_quarters: Fraction | int | None = None,
         uid: str | None = None,
+        *,
+        seed: int | None = None,
     ) -> MetricMap:
         """Create a MetricMap with uniform measure lengths.
 
@@ -424,6 +432,7 @@ class MetricMap(ConversionMap[int]):
                      Use "0" for anacrusis measures.
             anacrusis_quarters: If set, the first measure is shorter (pickup).
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
 
         Returns:
             A new MetricMap instance.
@@ -486,6 +495,7 @@ class MetricMap(ConversionMap[int]):
             mns=mns,
             lengths=lengths,
             uid=uid,
+            seed=seed,
         )
 
     @classmethod
@@ -493,12 +503,15 @@ class MetricMap(ConversionMap[int]):
         cls,
         boundaries: Sequence[tuple[Fraction, int, str, Fraction]],
         uid: str | None = None,
+        *,
+        seed: int | None = None,
     ) -> MetricMap:
         """Create a MetricMap from explicit boundary tuples.
 
         Args:
             boundaries: List of (start_quarters, mc, mn, length_quarters) tuples.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
 
         Returns:
             A new MetricMap instance.
@@ -517,6 +530,7 @@ class MetricMap(ConversionMap[int]):
             mns=mns,
             lengths=lengths,
             uid=uid,
+            seed=seed,
         )
 
     @classmethod
@@ -525,6 +539,7 @@ class MetricMap(ConversionMap[int]):
         path: str | Path,
         *,
         uid: str | None = None,
+        seed: int | None = None,
     ) -> MetricMap:
         """Build a MetricMap from a Verovio timemap JSON file.
 
@@ -546,6 +561,7 @@ class MetricMap(ConversionMap[int]):
         Args:
             path: Path to the Verovio timemap JSON file.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
 
         Returns:
             A new MetricMap whose boundaries match the timemap.
@@ -599,6 +615,7 @@ class MetricMap(ConversionMap[int]):
             mns=mns,
             lengths=lengths,
             uid=uid,
+            seed=seed,
         )
 
     def __repr__(self) -> str:
@@ -641,6 +658,7 @@ class BeatInMeasureMap(ConversionMap[Fraction]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a BeatInMeasureMap.
 
@@ -650,6 +668,7 @@ class BeatInMeasureMap(ConversionMap[Fraction]):
             target_unit: Target unit. ``None`` by default: a beat count
                 inside a bar is a metrical position, not a coordinate.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to
                 ``"beat_in_measure"``.
         """
@@ -657,6 +676,7 @@ class BeatInMeasureMap(ConversionMap[Fraction]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name or "beat_in_measure",
         )
         # The default name is derived for display; only a given one is written.
@@ -753,12 +773,14 @@ class MetricalPositionMap(CombinationMap):
         uid: str | None = None,
         name: str | None = None,
         beat_map_id: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a MetricalPositionMap.
 
         Args:
             meter_map: The MetricMap providing measure structure.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
             beat_map_id: Optional explicit ID of the derived BeatInMeasureMap.
         """
@@ -769,6 +791,7 @@ class MetricalPositionMap(CombinationMap):
             maps={"mc": meter_map, "beat": beat_map},
             source_unit=TimeUnit.quarters,
             uid=uid,
+            seed=seed,
             name=name,
         )
 

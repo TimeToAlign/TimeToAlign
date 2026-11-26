@@ -81,6 +81,7 @@ class RotationMap(ConversionMap[float]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a RotationMap.
 
@@ -92,6 +93,7 @@ class RotationMap(ConversionMap[float]):
             source_unit: The unit of input coordinates.
             target_unit: The unit of output coordinates.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
 
         Raises:
@@ -104,6 +106,7 @@ class RotationMap(ConversionMap[float]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
         )
         self._period = float(period)
@@ -225,6 +228,7 @@ class FloorMap(ConversionMap[int]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a FloorMap.
 
@@ -235,6 +239,7 @@ class FloorMap(ConversionMap[int]):
             source_unit: The unit of input coordinates.
             target_unit: The unit of output coordinates.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
 
         Raises:
@@ -247,6 +252,7 @@ class FloorMap(ConversionMap[int]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
         )
         self._divisor = float(divisor)

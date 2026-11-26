@@ -9,9 +9,6 @@ Includes:
 - seed_from: The seed of a minter, computed from content.
 - content_minter: The process's minter of a content seed;
   ``reset_content_minters`` forgets them all.
-- mint_ids: The generator of numbered ids, ``{prefix}_{N}`` with N above
-  the highest held (e.g., ``clt_1``, ``region_2``, ``score:clt_1``,
-  ``note_3``); ``mint_id`` mints one.
 - validate_id: The rule every given id obeys.
 - resolve_id: Resolve an exact id or a regular expression to a single ID.
 - resolve_ids: Resolve a pattern to all matching IDs.
@@ -25,15 +22,14 @@ import operator
 import re
 import secrets
 import threading
-from collections.abc import Container, Iterable, Mapping, Sequence
+from collections.abc import Container, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, TypeGuard
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import pyarrow as pa
-import pyarrow.compute as pc
 import timetoshare
 
 from .enums import TimeUnit
@@ -406,120 +402,7 @@ def reset_content_minters() -> None:
 
 # endregion
 
-# region Numbered ids and identified elements
-
-
-#: The most digits of a minted number read back from a held id: the numbers
-#: are compared as int64, and an id with more digits is no minted id.
-_MINTED_DIGITS = 18
-
-
-def _highest_minted_number(prefix: str, taken: pa.Array[pa.Scalar[StringType]]) -> int:
-    """The highest N among the ids ``{prefix}_{N}`` in *taken*, 0 for none.
-
-    Read column-wise: no id of *taken* becomes a Python object.
-    """
-    pattern = rf"^{re.escape(prefix)}_[1-9][0-9]{{0,{_MINTED_DIGITS - 1}}}$"
-    minted = taken.filter(pc.match_substring_regex(taken, pattern=pattern))
-    if not len(minted):
-        return 0
-    numbers = pc.utf8_slice_codeunits(minted, start=len(prefix) + 1)
-    return pc.max(numbers.cast(pa.int64())).as_py()
-
-
-def _is_arrow_column(value: object) -> TypeGuard[pa.Array[Any] | pa.ChunkedArray[Any]]:
-    """Whether *value* is a PyArrow array, chunked or not, of any value type."""
-    return isinstance(value, (pa.Array, pa.ChunkedArray))
-
-
-def id_column(
-    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str | None],
-) -> pa.Array[pa.Scalar[StringType]]:
-    """Read the ids held in a scope as one string array without nulls.
-
-    This is how :func:`mint_ids` reads its *taken* ids; a caller minting
-    several times against the same ids reads them once with it.
-
-    Args:
-        taken: The ids (a string array, chunked or not, or any iterable of
-            strings; nulls are dropped).
-
-    Returns:
-        A string array of the ids, nulls dropped.
-
-    Examples:
-        >>> id_column(["note_1", None, "note_3"]).to_pylist()
-        ['note_1', 'note_3']
-    """
-    if _is_arrow_column(taken):
-        column = taken.combine_chunks() if isinstance(taken, pa.ChunkedArray) else taken
-    else:
-        column = pa.array(list(taken), pa.string())
-    return pc.drop_null(column.cast(pa.string()))
-
-
-def mint_ids(
-    prefix: str,
-    taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str | None],
-    count: int,
-) -> pa.Array[pa.Scalar[StringType]]:
-    """Mint *count* ids ``{prefix}_{N}``, the N above the highest held.
-
-    This is the one id generator of the library, for timelines, maps,
-    manifest elements, MatchClaims and events alike. N continues above the
-    highest number held in the scope under that prefix, so an id is never
-    given again: a number freed by a gap is not reissued, and the ids minted
-    one after another grow with the scope. It holds no state: the same
-    prefix and the same taken ids always give the same ids, whatever was
-    built before in the process. The taken ids are read column-wise, so a
-    scope of a million events costs no Python object per id.
-
-    Args:
-        prefix: The type prefix, optionally led by a role
-            (``"clt"``, ``"claim"``, ``"score:clt"``).
-        taken: The ids already held in the scope (a string array or any
-            iterable of strings; nulls are ignored).
-        count: How many ids to mint.
-
-    Returns:
-        A string array of *count* ids, ascending by number.
-
-    Examples:
-        >>> mint_ids("claim", pa.array(["claim_2", "x"]), 3).to_pylist()
-        ['claim_3', 'claim_4', 'claim_5']
-        >>> len(mint_ids("claim", pa.array([], pa.string()), 0))
-        0
-    """
-    first = _highest_minted_number(prefix, id_column(taken)) + 1
-    numbers = pa.array(np.arange(first, first + count, dtype=np.int64))
-    return pc.utf8_replace_slice(
-        numbers.cast(pa.string()), start=0, stop=0, replacement=f"{prefix}_"
-    )
-
-
-def mint_id(
-    prefix: str, taken: pa.Array[Any] | pa.ChunkedArray[Any] | Iterable[str | None]
-) -> str:
-    """Mint one id ``{prefix}_{N}``, N above the highest held (:func:`mint_ids`).
-
-    Args:
-        prefix: The type prefix, optionally led by a role.
-        taken: The ids already held in the scope the new id must be unique in.
-
-    Returns:
-        The minted id.
-
-    Examples:
-        >>> mint_id("clt", ())
-        'clt_1'
-        >>> mint_id("clt", {"clt_1", "clt_3"})
-        'clt_4'
-        >>> mint_id("score:clt", {"score:clt_1", "clt_7"})
-        'score:clt_2'
-    """
-    if not taken:
-        return f"{prefix}_1"
-    return mint_ids(prefix, taken, 1)[0].as_py()
+# region Identified elements
 
 
 def timeline_id_prefix(unit: TimeUnit) -> str:
@@ -537,91 +420,45 @@ def timeline_id_prefix(unit: TimeUnit) -> str:
     return f"{'d' if unit.is_discrete else 'c'}{unit.domain.value[0]}t"
 
 
-def _admit_id(
-    element_id: str,
-    *,
-    minted: bool,
-    prefix: str,
+def _refuse_held_ids(
+    entries: Sequence[tuple[str, str]],
     taken: Mapping[str, str],
-    element: str,
+    *,
     scope: str = "",
-) -> str:
-    """Return the id under which an element joins a scope.
+) -> None:
+    """Refuse elements joining a scope where one's id is held already.
 
-    An id the scope does not hold is kept. A taken id that was minted is
-    minted again in the scope; a taken id that was given raises.
+    The one check of every scope: an id the scope holds, or one two joining
+    elements hold, refuses the join, whether the id was given or minted.
+    Nothing is renamed. Every id is checked before the caller changes
+    anything.
 
     Args:
-        element_id: The element's current id.
-        minted: Whether the id was minted rather than given.
-        prefix: The prefix to mint with.
+        entries: ``(id, description)`` of each joining element.
         taken: Every id of the scope, mapped to a description of its holder.
-        element: A description of the joining element, for the error.
         scope: A description of the scope (``"group 'g'"``), for the error,
             or empty for the manifest of a timeline.
 
     Raises:
-        ValueError: If a given id is already taken.
-    """
-    if element_id not in taken:
-        return element_id
-    if minted:
-        return mint_id(prefix, taken)
-    raise ValueError(
-        f"{element} cannot join{' ' + scope if scope else ''}: its id "
-        f"{quote_id(element_id)} is already held by {taken[element_id]}"
-    )
+        ValueError: If an id is held in the scope or by another joining
+            element, naming the id and both holders.
 
-
-def _plan_admissions(
-    entries: Sequence[tuple[str, bool, str, str]],
-    taken: Mapping[str, str],
-    *,
-    scope: str = "",
-    avoid: Iterable[str] = (),
-) -> dict[int, str]:
-    """Plan the ids under which several elements join a scope together.
-
-    A given id is kept; it must be held neither in the scope nor by another
-    joining element. A minted id held in the scope, given to a joining
-    element or kept by a joining element before it is minted again. Nothing
-    is changed: every check precedes the plan, which maps the index of each
-    element to mint again to its new id.
-
-    Args:
-        entries: ``(id, minted, prefix, description)`` of each joining
-            element, in the order they claim their ids.
-        taken: Every id of the scope, mapped to a description of its holder.
-        scope: A description of the scope, for the error.
-        avoid: Further ids no id minted again may take: those of the other
-            scopes the elements belong to already.
-
-    Raises:
-        ValueError: If a given id is already held, in the scope or by
-            another joining element.
+    Examples:
+        >>> _refuse_held_ids([("a", "region 'a'")], {"b": "timeline 'b'"})
+        >>> _refuse_held_ids([("b", "region 'b'")], {"b": "timeline 'b'"})
+        Traceback (most recent call last):
+        ...
+        ValueError: region 'b' cannot join: its id 'b' is already held by timeline 'b'
     """
     claimed = dict(taken)
-    for element_id, minted, prefix, element in entries:
-        if not minted:
-            _admit_id(
-                element_id,
-                minted=False,
-                prefix=prefix,
-                taken=claimed,
-                element=element,
-                scope=scope,
+    for element_id, element in entries:
+        holder = claimed.get(element_id)
+        if holder is not None:
+            raise ValueError(
+                f"{element} cannot join{' ' + scope if scope else ''}: its id "
+                f"{quote_id(element_id)} is already held by {holder}"
             )
-            claimed[element_id] = element
-    occupied = set(claimed) | set(avoid) | {entry[0] for entry in entries}
-    plan: dict[int, str] = {}
-    for index, (element_id, minted, prefix, element) in enumerate(entries):
-        if not minted:
-            continue
-        if element_id in claimed:
-            element_id = plan[index] = mint_id(prefix, occupied)
-            occupied.add(element_id)
         claimed[element_id] = element
-    return plan
 
 
 class _OpenObject:
@@ -687,28 +524,55 @@ def _minimal_at(value: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any]:
 class _IdentifiedElement(_OpenObject):
     """Identity shared by the frozen elements of a timeline manifest.
 
-    A subclass names its kind in ``_id_prefix``. Constructed without an
-    ``id``, an element mints ``{prefix}_1`` (its own scope is empty) and
-    remembers that the id was minted, so that a collision when it joins a
-    timeline re-mints it rather than raising. A given id is validated and
-    kept verbatim. The minted flag is private and never serialized.
+    A subclass names its kind in ``_id_prefix``. A given ``id`` is validated
+    and kept verbatim. Constructed without one, an element mints
+    ``{prefix}_{suffix}`` once it is complete: from ``IdMinter(seed)`` when
+    a ``seed`` is given, else from the content minter of its prefix and its
+    complete form without the id (:meth:`to_dict`). The seed is not stored.
+
+    A subclass checks and completes its own fields in :meth:`_complete`,
+    which runs before the id is minted.
     """
 
     _id_prefix: ClassVar[str]
 
     id: str = field(default=None, kw_only=True)  # type: ignore[assignment]
-    _minted: bool = field(default=False, kw_only=True, repr=False, compare=False)
+    seed: InitVar[int | None] = field(default=None, kw_only=True)
     # A field, so that a copy made with ``dataclasses.replace`` keeps it.
     _unknown_keys: Mapping[str, Any] = field(
         default_factory=dict[str, Any], kw_only=True, repr=False, compare=False
     )
 
-    def __post_init__(self) -> None:
-        if self.id is None:
-            object.__setattr__(self, "id", mint_id(self._id_prefix, ()))
-            object.__setattr__(self, "_minted", True)
-        else:
+    def __post_init__(self, seed: int | None = None) -> None:
+        # The field is typed by what it holds once built; a None given is
+        # what asks for minting.
+        minting = self.id is None
+        if not minting:
             validate_id(self.id)
+        self._complete()
+        if minting:
+            minter = (
+                content_minter(self._id_prefix, self._content())
+                if seed is None
+                else IdMinter(seed)
+            )
+            object.__setattr__(self, "id", minter.mint(self._id_prefix))
+
+    @property
+    def _named(self) -> str:
+        """The element's id as a message names it, before it is minted too."""
+        # A given id is checked before the element completes, so only the
+        # id still to be minted is falsy here.
+        return quote_id(self.id) if self.id else "(unnamed)"
+
+    def _complete(self) -> None:
+        """Check and complete the element's fields: nothing here."""
+
+    def _content(self) -> dict[str, Any]:
+        """The element's complete form without its id, which seeds a minted id."""
+        content = self._dict_fields()
+        content.pop("id", None)
+        return content
 
     def to_dict(self, *, minimal: bool = True) -> dict[str, Any]:
         """Return this element as its JSON object, coordinates as bare values.

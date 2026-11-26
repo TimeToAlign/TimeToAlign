@@ -401,15 +401,17 @@ class TabularExportMixin(_Host):
             >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="cpt_1")
             >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=5)
-            >>> parent.add_events([{"event_type": "Note", "instant": 5.0}])
-            ['note_1']
-            >>> child.add_events([{"event_type": "Chord", "start": 0.0, "end": 2.5}])
-            ['chord_1']
-            >>> ts = parent.get_timestamp_for("note_1")
+            >>> parent.add_events([{"id": "n1", "event_type": "Note", "instant": 5.0}])
+            ['n1']
+            >>> child.add_events(
+            ...     [{"id": "c1", "event_type": "Chord", "start": 0.0, "end": 2.5}]
+            ... )
+            ['c1']
+            >>> ts = parent.get_timestamp_for("n1")
             >>> ts.axis  # For instant events
             IdCoordinate(5.0, seconds, 'cpt_1')
 
-            >>> ts = parent.get_timestamp_for("chord_1")  # found on the child
+            >>> ts = parent.get_timestamp_for("c1")  # found on the child
             >>> ts.start.axis  # For interval events
             IdCoordinate(5.0, seconds, 'cpt_1')
             >>> ts.end.axis

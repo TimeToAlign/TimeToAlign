@@ -7,14 +7,14 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+import timetoalign.core.ids as ids_module
 from timetoalign.core import TimeUnit
 from timetoalign.core.ids import (
     IdMinter,
     _mix64,
+    _refuse_held_ids,
     _unmix64,
     content_minter,
-    mint_id,
-    mint_ids,
     reset_content_minters,
     resolve_id,
     resolve_ids,
@@ -243,76 +243,58 @@ def test_fresh_minters_differ() -> None:
 # endregion
 
 
-# region Numbered id generator
+# region No numbered generator, one collision check
 
 
-class TestMintId:
-    """mint_id answers {prefix}_{N} above the highest N held, statelessly."""
-
-    @pytest.mark.parametrize(
-        ("prefix", "taken", "expected"),
-        [
-            ("clt", (), "clt_1"),
-            ("clt", {"clt_1", "clt_3"}, "clt_4"),
-            ("clt", {"clt_2"}, "clt_3"),
-            ("score:clt", {"score:clt_1"}, "score:clt_2"),
-        ],
-    )
-    def test_above_the_highest_number(
-        self, prefix: str, taken: set[str], expected: str
-    ) -> None:
-        assert mint_id(prefix, taken) == expected
-
-    def test_no_state_between_calls(self) -> None:
-        assert mint_id("region", ()) == "region_1"
-        assert mint_id("region", ()) == "region_1"
+@pytest.mark.parametrize(
+    "name",
+    [
+        "mint_id",
+        "mint_ids",
+        "id_column",
+        "_admit_id",
+        "_plan_admissions",
+        "_highest_minted_number",
+    ],
+)
+def test_the_numbered_machinery_is_gone(name: str) -> None:
+    assert not hasattr(ids_module, name)
 
 
-class TestMintIds:
-    """mint_ids answers what mint_id answers, one id after another."""
+class TestRefuseHeldIds:
+    """One check: an id held in the scope or twice among newcomers refuses."""
 
-    @staticmethod
-    def _one_by_one(prefix: str, taken: list[str | None], count: int) -> list[str]:
-        held = {value for value in taken if value is not None}
-        minted = []
-        for _ in range(count):
-            minted.append(mint_id(prefix, held))
-            held.add(minted[-1])
-        return minted
+    def test_free_ids_pass_and_change_nothing(self) -> None:
+        taken = {"score": "timeline 'score'"}
+        _refuse_held_ids([("a", "region 'a'"), ("b", "region 'b'")], taken)
+        assert taken == {"score": "timeline 'score'"}
 
-    @pytest.mark.parametrize(
-        ("taken", "count", "expected"),
-        [
-            (["claim_2", "x"], 3, ["claim_3", "claim_4", "claim_5"]),
-            (["claim_1", None], 1, ["claim_2"]),
-            (["claim_1"], 0, []),
-            ([f"claim_{n}" for n in range(1, 6)], 2, ["claim_6", "claim_7"]),
-            (
-                [
-                    "claim_0",
-                    "claim_01",
-                    "claimx_9",
-                    "other:claim_9",
-                    "claim_1234567890123456789",
-                ],
-                1,
-                ["claim_1"],
-            ),
-        ],
-    )
-    def test_same_as_minting_one_by_one(
-        self, taken: list[str | None], count: int, expected: list[str]
-    ) -> None:
-        minted = mint_ids("claim", pa.array(taken, type=pa.string()), count)
-        assert minted.to_pylist() == expected
-        assert expected == self._one_by_one("claim", taken, count)
+    def test_an_id_the_scope_holds_is_refused(self) -> None:
+        with pytest.raises(ValueError) as raised:
+            _refuse_held_ids(
+                [("a", "region 'a'"), ("b", "region 'b'")],
+                {"b": "timeline 'b'"},
+                scope="group 'g'",
+            )
+        assert str(raised.value) == (
+            "region 'b' cannot join group 'g': its id 'b' is already held by "
+            "timeline 'b'"
+        )
 
-    def test_a_role_prefix_is_matched_literally(self) -> None:
-        assert mint_id("a.b", ["axb_4"]) == "a.b_1"
+    def test_an_id_two_newcomers_share_is_refused(self) -> None:
+        with pytest.raises(ValueError) as raised:
+            _refuse_held_ids([("a", "timeline 'a'"), ("a", "region 'a'")], {})
+        assert str(raised.value) == (
+            "region 'a' cannot join: its id 'a' is already held by timeline 'a'"
+        )
 
-    def test_a_chunked_column_is_read(self) -> None:
-        taken = pa.chunked_array([["claim_4"], ["claim_9", None]])
-        assert mint_ids("claim", taken, 2).to_pylist() == ["claim_10", "claim_11"]
+    @pytest.mark.parametrize("held", ["clt_0a6t3vcta56ll", "score"])
+    def test_minted_and_given_ids_alike(self, held: str) -> None:
+        with pytest.raises(ValueError, match="is already held by"):
+            _refuse_held_ids([(held, f"timeline '{held}'")], {held: "the manifest"})
+
+
+# endregion
 
 
 class TestValidateId:

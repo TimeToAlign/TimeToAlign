@@ -20,7 +20,7 @@ import datetime
 import logging
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, TypeGuard, overload
@@ -47,7 +47,14 @@ from timetoalign.core import (
 )
 from timetoalign.core.enums import NumberType
 from timetoalign.core.fields import _compared, _filled, _struct_child
-from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
+from timetoalign.core.ids import (
+    IdMinter,
+    _OpenObject,
+    _refuse_held_ids,
+    content_minter,
+    quote_id,
+    validate_id,
+)
 from timetoalign.core.provenance import Belief, BeliefValue
 from timetoalign.core.retrieval import (
     CoordinateCollection,
@@ -77,7 +84,6 @@ from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.engines.events import _refusal_of
 from timetoalign.timelines.groups import (
     _groups_by_timeline,
-    _held_ids,
     _IdScope,
     _nested,
     _root,
@@ -100,7 +106,6 @@ from timetoalign.timelines.manifest import (
 from timetoalign.timelines.statements import (
     MutableStatementsMixin,
     _day,
-    rename_references,
 )
 
 from .claims import (
@@ -331,17 +336,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         ...     ContinuousPhysicalTimeline,
         ... )
         >>> bundle = AlignmentBundle()
-        >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=200))
+        >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=200, uid="score"))
         >>> _ = bundle.add_timeline(
-        ...     ContinuousPhysicalTimeline(length=91.0), grouped_with="clt_1"
+        ...     ContinuousPhysicalTimeline(length=91.0, uid="audio"), grouped_with="score"
         ... )
-        >>> stamp = bundle.get_matchstamp_at(100, "clt_1")
-        >>> stamp.get_coordinate_for("cpt_1", format="float")
+        >>> stamp = bundle.get_matchstamp_at(100, "score")
+        >>> stamp.get_coordinate_for("audio", format="float")
         45.5
     """
 
     _scope_kind: ClassVar[str] = "bundle"
-    _writes_minted_id: ClassVar[bool] = False
 
     id: str = field(default="")
     name: str | None = None
@@ -400,8 +404,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     _naming_cache: dict[tuple[_BeliefKey, str], MatchClaimField] = field(
         default_factory=dict, repr=False, compare=False
     )
-    # Whether the id was minted rather than given.
-    _id_minted: bool = field(default=False, init=False, repr=False, compare=False)
+    # The seed of the minter of the id when none is given; not stored.
+    seed: InitVar[int | None] = field(default=None, kw_only=True)
+    # Whether the id was given, so that the manifest written carries it.
+    _id_given: bool = field(default=False, init=False, repr=False, compare=False)
     # Whether the manifest read held a ``graphical`` object, written back
     # even with every member at its default.
     _has_graphical: bool = field(default=False, init=False, repr=False, compare=False)
@@ -421,12 +427,24 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         default_factory=lambda: module_logger, init=False, repr=False
     )
 
-    def __post_init__(self) -> None:
-        """Mint or validate the ID and set up the logger."""
-        # A minted id is never written to a manifest.
-        self._id_minted = not self.id
+    def __post_init__(self, seed: int | None = None) -> None:
+        """Mint or validate the ID and set up the logger.
+
+        Without an id, one with the prefix ``bundle`` is minted: from
+        ``IdMinter(seed)`` with *seed*, else from the content minter of the
+        name and the ids of the timelines and groups given. A minted id is
+        never written to a manifest.
+        """
+        self._id_given = bool(self.id)
         if not self.id:
-            self.id = mint_id("bundle", ())
+            minter = (
+                IdMinter(seed)
+                if seed is not None
+                else content_minter(
+                    "bundle", self.name, list(self.timelines), list(self.groups)
+                )
+            )
+            self.id = minter.mint("bundle")
         else:
             validate_id(self.id)
         self.support_policy = SupportPolicy(self.support_policy)
@@ -522,6 +540,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         id: str = "",
         name: str | None = None,
+        seed: int | None = None,
     ) -> "AlignmentBundle":
         """Merge multiple bundles' groups, standalone timelines, and claims.
 
@@ -535,33 +554,29 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timelines and regions travel with them, and their prefixes; the
         source bundles' own statements describe their manifests and are not
         carried. Each source group is entered as
-        a new group with the same members, name and meta, each member keeping
-        its own lock; a minted group id is minted again in the merged bundle,
-        a given one is kept, and a statement of any tree carried from the
-        same source bundle — a member's or an ungrouped root's — naming it
-        names its new id. Groups from
+        a new group with the same id, members, name and meta, each member
+        keeping its own lock. Groups from
         different source bundles remain distinct — merging does not itself
         align timelines across bundles. Add cross-group MatchClaims (e.g. via
         :meth:`create_match_claims`) afterwards to align them.
 
         Known limit: the timelines are not copied, the merged bundle shares
-        them with the source bundles. A source bundle whose group was minted
-        again in the merged one therefore no longer writes: the statements
-        of its trees name that group by its new id, which the source bundle
-        does not hold, and its ``to_dict`` raises.
+        them with the source bundles.
 
         Args:
             bundles: The bundles to merge, in order.
             id: Explicit ID for the merged bundle. Minted if omitted.
             name: Optional human-readable name for the merged bundle.
+            seed: The seed of the minter of the merged bundle's id when *id*
+                is omitted; not stored.
 
         Returns:
             A new AlignmentBundle containing every group, standalone
             timeline, and MatchClaim from ``bundles``.
 
         Raises:
-            ValueError: If two source bundles share a given group ID, a
-                given timeline ID collision would occur across bundles, or
+            ValueError: If two source bundles share a group ID, a timeline
+                ID collision would occur across bundles, or
                 two source bundles hold a MatchClaim under one id (the message
                 names the id and both bundles).
 
@@ -572,30 +587,25 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...     ContinuousPhysicalTimeline,
             ... )
             >>> score_bundle = AlignmentBundle()
-            >>> _ = score_bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
+            >>> _ = score_bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score"), as_group="score"
+            ... )
             >>> audio_bundle = AlignmentBundle()
             >>> _ = audio_bundle.add_timeline(
-            ...     ContinuousPhysicalTimeline(length=40.0), as_group="audio"
+            ...     ContinuousPhysicalTimeline(length=40.0, uid="audio"), as_group="audio"
             ... )
             >>> merged = AlignmentBundle.from_bundles([score_bundle, audio_bundle])
             >>> merged.n_groups == score_bundle.n_groups + audio_bundle.n_groups
             True
             >>> sorted(merged.timelines)
-            ['clt_1', 'cpt_1']
+            ['audio', 'score']
         """
         _refuse_shared_claim_ids(bundles)
-        merged = cls(id=id, name=name)
+        merged = cls(id=id, name=name, seed=seed)
         for bundle in bundles:
-            held = merged._roots()
-            carried = [
-                root
-                for root in bundle._roots()
-                if not any(root is seen for seen in held)
-            ]
-            rebuilt_groups: list[tuple[str, TimelineGroup]] = []
             for group in bundle.groups.values():
                 rebuilt = TimelineGroup(
-                    id=None if group._id_minted else group.id,
+                    id=group.id,
                     name=group.name,
                     meta=group.meta,
                 )
@@ -603,7 +613,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 for member in group:
                     rebuilt._admit_member(member)
                 merged._take_group(rebuilt)
-                rebuilt_groups.append((group.id, rebuilt))
             grouped = bundle.timeline_to_groups
             for timeline_id, timeline in bundle.timelines.items():
                 if timeline_id in grouped:
@@ -611,11 +620,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 if merged.timelines.get(timeline.id) is timeline:
                     continue
                 merged.add_timeline(timeline)
-            # Every tree carried from the bundle names its groups by their
-            # new ids, all renamed at once.
-            rename_references(
-                carried, (), {old: rebuilt.id for old, rebuilt in rebuilt_groups}
-            )
             merged._take_claims_of(bundle)
         return merged
 
@@ -627,6 +631,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         grouped_with: str | None = None,
         as_group: str | None = None,
+        seed: int | None = None,
     ) -> "AlignmentBundle":
         """Add a timeline, optionally grouped with an existing timeline.
 
@@ -660,7 +665,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 several groups is refused, since the group to join would be a
                 guess.
             as_group: Name of the group if a new one is created. The new
-                group's id is minted, ``group_N``.
+                group's id is minted (:class:`TimelineGroup`).
+            seed: The seed of the minter of a new group's id; not stored.
 
         Returns:
             self (for method chaining)
@@ -668,11 +674,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Raises:
             ValueError: If the timeline is already in the bundle while no
                 group is requested, or already in the group it would join; if
-                ``grouped_with`` names a timeline of several groups; if a
-                given id of its manifest tree — of any timeline, conversion
-                map, region or flow-control element of it — is held by
-                another element of the bundle's trees (a minted id held there
-                is minted again instead), by a group or by the bundle.
+                ``grouped_with`` names a timeline of several groups; if an id
+                of its manifest tree — of any timeline, conversion map,
+                region or flow-control element of it — is held by another
+                element of the bundle's trees, by a group or by the bundle.
             KeyError: If grouped_with names no timeline of the bundle's trees,
                 naming every timeline the bundle knows.
 
@@ -686,24 +691,25 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 ...     DiscreteLogicalTimeline,
                 ... )
                 >>> bundle = AlignmentBundle()
-                >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4000))
+                >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4000, uid="scan"))
                 >>> _ = bundle.add_timeline(
-                ...     DiscreteLogicalTimeline(length=960), grouped_with="dgt_1"
+                ...     DiscreteLogicalTimeline(length=960, uid="midi"), grouped_with="scan"
                 ... )
-                >>> bundle.groups["group_1"].timeline_ids
-                ['dgt_1', 'dlt_1']
+                >>> bundle.get_group_for_timeline("scan").timeline_ids
+                ['scan', 'midi']
 
             Partial alignment: the participating part is a child.
 
-                >>> image = DiscreteGraphicalTimeline(length=300000)
-                >>> holes = DiscreteGraphicalTimeline(length=277776)
+                >>> image = DiscreteGraphicalTimeline(length=300000, uid="image")
+                >>> holes = DiscreteGraphicalTimeline(length=277776, uid="holes")
                 >>> image.add_child(holes, offset=15343)
-                >>> audio = ContinuousPhysicalTimeline(length=600.0)
+                >>> audio = ContinuousPhysicalTimeline(length=600.0, uid="audio")
                 >>> bundle = AlignmentBundle()
                 >>> _ = bundle.add_timeline(audio, as_group="roll")
-                >>> _ = bundle.add_timeline(holes, grouped_with="cpt_1")
-                >>> sorted(bundle.timelines), bundle.timeline_to_groups
-                (['cpt_1', 'dgt_1', 'dgt_2'], {'cpt_1': ('group_1',), 'dgt_2': ('group_1',)})
+                >>> _ = bundle.add_timeline(holes, grouped_with="audio")
+                >>> roll = bundle.get_group_for_timeline("audio")
+                >>> sorted(bundle.timelines), roll.timeline_ids
+                (['audio', 'holes', 'image'], ['audio', 'holes'])
         """
         if grouped_with is None and as_group is None:
             # An ungrouped participant is a root: a child joins through its
@@ -752,8 +758,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 self._admit(timeline)
             if target is not None or as_group is not None:
                 founders = [timeline] if target is None else [target, timeline]
-                group = TimelineGroup(name=as_group, timelines=founders)
-                group.id = self._free_group_id(group)
+                group = TimelineGroup(name=as_group, timelines=founders, seed=seed)
+                self._refuse_group_id(group)
                 self._hold_group(group)
                 if target is not None:
                     # A member is registered, a nested one too.
@@ -774,11 +780,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         its own ``id``, with the root of every member that is a child — into
         the bundle's timeline and group registries. A member may already be a
         member of another group of the bundle: a timeline may belong to
-        several groups. A group whose minted id the bundle holds already is
-        minted again, and the statements of the trees joining with it, and
-        of the manifest it was read from, name it by its new id; a tree the
-        bundle held already names the bundle's own elements and is left as
-        it is.
+        several groups. The group keeps its id.
 
         Args:
             group: A ``TimelineGroup`` that already contains timelines.
@@ -787,11 +789,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             self (for method chaining)
 
         Raises:
-            ValueError: If the group's given ID is already held in the bundle
-                (a minted one is minted again instead), or if a given id of a
-                member's manifest tree is held by another element of the
-                bundle's trees (a minted id held there is minted again
-                instead), by a group or by the bundle.
+            ValueError: If the group's ID is already held in the bundle, or
+                if an id of a member's manifest tree is held by another
+                element of the bundle's trees, by a group or by the bundle.
 
         Examples:
             Add a recording group with three DPTs:
@@ -800,29 +800,21 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 >>> from timetoalign.timelines import TimelineGroup
                 >>> from timetoalign.timelines.types import DiscretePhysicalTimeline
                 >>> grp = TimelineGroup(
-                ...     timelines=[DiscretePhysicalTimeline(length=44100) for _ in range(3)]
+                ...     id="recording",
+                ...     timelines=[
+                ...         DiscretePhysicalTimeline(length=44100, uid=f"mic {n}")
+                ...         for n in range(1, 4)
+                ...     ],
                 ... )
                 >>> bundle = AlignmentBundle().add_group(grp)
-                >>> sorted(bundle.timelines), list(bundle.groups)
-                (['dpt_1', 'dpt_2', 'dpt_3'], ['group_1'])
+                >>> list(bundle.timelines), list(bundle.groups)
+                (['mic 1', 'mic 2', 'mic 3'], ['recording'])
         """
-        old_id = group.id
-        held = self._roots()
-        joining = [
-            root
-            for root in group._member_roots()
-            if not any(root is seen for seen in held)
-        ]
         self._take_group(group)
-        # The trees joining name the group by the id it had; the trees the
-        # bundle held name its own elements.
-        rename_references(joining, [group], {old_id: group.id})
         return self
 
     def _take_group(self, group: TimelineGroup) -> None:
-        """Admit *group* and its members, the group under an id of its own.
-
-        The statements naming the group are left as they are.
+        """Admit *group* and its members.
 
         Raises:
             ValueError: As :meth:`add_group`; nothing has changed then.
@@ -833,13 +825,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         # Check every member and the group id before anything changes.
         for member in members:
             if self.timelines.get(member.id) is not member:
-                self._admit(member, check_only=True)
-        group.id = self._free_group_id(group)
-
-        for member in members:
-            if self.timelines.get(member.id) is not member:
                 self._admit(member)
-        group._rekey_members()
+        self._refuse_group_id(group)
 
         self._hold_group(group)
         for member in members:
@@ -847,23 +834,20 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         self._logger.debug(f"Added group '{group.id}' with {len(members)} timelines")
 
-    def _admit(self, timeline: "Timeline", *, check_only: bool = False) -> None:
-        """Admit a timeline's manifest tree into the bundle's id scope.
+    def _admit(self, timeline: "Timeline") -> None:
+        """Check a timeline's manifest tree joining the bundle's id scope.
 
-        Every id is unique in the bundle, whatever element holds it. A given
-        group id and the bundle's given id are reserved; a minted group id
-        that a newcomer's given id takes is minted again for the group.
+        Every id is unique in the bundle, whatever element holds it, the
+        groups' ids and the bundle's own included. Nothing changes.
 
         Args:
             timeline: The timeline joining the bundle.
-            check_only: Raise as admitting would, but change nothing.
 
         Raises:
-            ValueError: If a given id of the tree is held by another element
-                of the bundle's trees, a group with a given id or the bundle
-                (minted ids held there are minted again instead).
+            ValueError: If an id of the tree is held by another element of
+                the bundle's trees, a group or the bundle.
         """
-        self._admit_tree(timeline, check_only=check_only)
+        self._admit_tree(timeline)
 
     def _scope_members(self) -> list["Timeline"]:
         """Return the registered timelines."""
@@ -956,25 +940,20 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self.groups[group.id] = group
         group._hold_in(self)
 
-    def _free_group_id(self, group: TimelineGroup) -> str:
-        """Return an id for *group* that no element of the bundle holds.
-
-        A free id is kept and a minted one that is held is minted again.
+    def _refuse_group_id(self, group: TimelineGroup) -> None:
+        """Refuse *group* joining the bundle where an element holds its id.
 
         Raises:
-            ValueError: If the group's given id is held in the bundle.
+            ValueError: If the group's id, given or minted, is held in the
+                bundle.
         """
-        held = self._scope_ids()
-        if group.id not in held and group.id not in self.groups:
-            return group.id
-        if not group._id_minted:
-            if group.id in self.groups:
-                raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
-            raise ValueError(
-                f"group {quote_id(group.id)} cannot join bundle {quote_id(self.id)}: "
-                f"its id {quote_id(group.id)} is already held by {held[group.id]}"
-            )
-        return mint_id("group", set(held) | set(self.groups) | set(_held_ids(group)))
+        if group.id in self.groups:
+            raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
+        _refuse_held_ids(
+            [(group.id, f"group {quote_id(group.id)}")],
+            self._scope_ids(),
+            scope=f"bundle {quote_id(self.id)}",
+        )
 
     def get_timeline(self, timeline_id: str) -> "Timeline":
         """Get a timeline of the bundle's trees by ID.
@@ -983,15 +962,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         not and at any depth; registered timelines come first when a pattern
         matches several.
 
-        Supports partial string and regex matching:
-        1. Exact match: If ``timeline_id`` matches an ID exactly, returns it.
-        2. Substring match: If ``timeline_id`` is a substring of exactly one ID,
-           returns that timeline. If multiple match, returns the first and warns.
-        3. Regex match: If ``timeline_id`` is a valid regex, matches via
-           ``re.search()``. Same first-match logic with warning.
+        Takes an exact ID, else a regular expression matching whole IDs
+        (:func:`~timetoalign.core.ids.resolve_id`): when several match, the
+        first is returned with a warning. A fragment of an ID matches
+        nothing.
 
         Args:
-            timeline_id: The timeline's unique identifier, or a partial/regex pattern.
+            timeline_id: The timeline's ID, or a regular expression matching
+                whole IDs.
 
         Returns:
             The Timeline object.
@@ -1010,9 +988,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0, uid="perf:cpt_1"))
             >>> bundle.get_timeline("score:clt_1").id  # Exact match
             'score:clt_1'
-            >>> bundle.get_timeline("score").id  # Substring match
-            'score:clt_1'
-            >>> bundle.get_timeline(r"^perf:").id  # Regex match
+            >>> bundle.get_timeline("perf:.*").id  # Regular expression
             'perf:cpt_1'
         """
         held = self.timelines.get(timeline_id)
@@ -1024,15 +1000,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     def get_group(self, group_id: str) -> TimelineGroup:
         """Get a group by ID.
 
-        Supports partial string and regex matching:
-        1. Exact match: If ``group_id`` matches an ID exactly, returns it.
-        2. Substring match: If ``group_id`` is a substring of exactly one ID,
-           returns that group. If multiple match, returns the first and warns.
-        3. Regex match: If ``group_id`` is a valid regex, matches via
-           ``re.search()``. Same first-match logic with warning.
+        Takes an exact ID, else a regular expression matching whole IDs
+        (:func:`~timetoalign.core.ids.resolve_id`): when several match, the
+        first is returned with a warning. A fragment of an ID matches
+        nothing.
 
         Args:
-            group_id: The group's unique identifier, or a partial/regex pattern.
+            group_id: The group's ID, or a regular expression matching whole
+                IDs.
 
         Returns:
             The TimelineGroup object.
@@ -1047,12 +1022,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...     ContinuousPhysicalTimeline,
             ... )
             >>> bundle = AlignmentBundle()
-            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
-            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0), as_group="audio")
-            >>> bundle.get_group("group_1").timeline_ids  # Exact match
-            ['clt_1']
-            >>> bundle.get_group(r"_2$").timeline_ids  # Regex match
-            ['cpt_1']
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score"), as_group="score"
+            ... )
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0, uid="audio"), as_group="audio"
+            ... )
+            >>> group_id = bundle.get_group_for_timeline("score").id
+            >>> bundle.get_group(group_id).timeline_ids
+            ['score']
         """
         resolved_id = resolve_id(group_id, list(self.groups.keys()))
         return self.groups[resolved_id]
@@ -3867,10 +3845,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 interval table form.
 
         Note:
-            Collapsed rows are ordered by the coordinate on the
-            lexicographically smallest timeline ID present in the component,
-            then by that ID — a total order, since two components can never
-            share a ``(timeline_id, coordinate)`` node.  A component that
+            Collapsed rows are ordered by the timeline the bundle registered
+            first among those present in the component, then by the
+            coordinate on it — a total order, since two components can never
+            share a ``(timeline_id, coordinate)`` node: the rows on the
+            first-registered timeline come first, in the order of its axis,
+            then those not on it, by the next timeline.  A component that
             somehow carries two coordinates for one timeline (which a
             well-formed alignment never does) keeps the smaller one.
 
@@ -3963,7 +3943,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ]
         )
         if from_graph:
-            rows = self._collapsed_claim_rows(anchors)
+            rows = self._collapsed_claim_rows(anchors, list(self._known_timelines()))
         else:
             rows = [
                 {timeline_a: coordinate_a, timeline_b: coordinate_b}
@@ -4131,6 +4111,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     @staticmethod
     def _collapsed_claim_rows(
         anchors: list[tuple[str, Coordinate, str, Coordinate]],
+        registered: list[str],
     ) -> list[dict[str, Coordinate]]:
         """Collapse alignment anchors into one row per aligned instant.
 
@@ -4145,6 +4126,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Args:
             anchors: ``(timeline_a_id, coordinate_a, timeline_b_id,
                 coordinate_b)`` per anchor, end anchors included.
+            registered: The bundle's timeline ids in the order the bundle
+                knows them, registered ones first.
 
         Returns:
             One row per component, ordered as documented on
@@ -4185,10 +4168,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             if carried is None or value < carried.value:
                 row[timeline_id] = coordinates[key]
 
-        return sorted(
-            components.values(),
-            key=lambda row: (float(row[min(row)].value), min(row)),
-        )
+        rank = {timeline_id: index for index, timeline_id in enumerate(registered)}
+
+        def first(row: dict[str, Coordinate]) -> tuple[int, str]:
+            """The row's timeline the bundle knows first, with its rank."""
+            return min((rank.get(tl_id, len(rank)), tl_id) for tl_id in row)
+
+        def order(row: dict[str, Coordinate]) -> tuple[int, float]:
+            """Sort key: the first timeline's rank, then the row's value on it."""
+            position, timeline_id = first(row)
+            return position, float(row[timeline_id].value)
+
+        return sorted(components.values(), key=order)
 
     def _invalidate_warp_cache(self) -> None:
         """Clear every cache built from the claims, forcing rebuild on next access."""
@@ -4836,7 +4827,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         lies where its entry read with the manifest places it, else beside
         the manifest (``match_claims.parquet``, ``projections.parquet``,
         ``boxes.parquet``);
-        its entry keeps its ID (a new one is minted, ``resource_N``) and
+        its entry keeps its ID (a new entry's is minted,
+        :meth:`Resource.of_file <timetoalign.timelines.manifest.Resource.of_file>`) and
         names the timelines it holds data for (sorted, or in the order the
         entry read lists them where it lists the same), the Parquet media
         type, the file's size and its SHA-256 digest. An entry of either
@@ -4861,23 +4853,35 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if len(claims) == 0 and not event_tables:
             return False
         named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
-        taken = {*self._scope_ids(), *(r.id for r in self.resources)}
+        taken = {
+            **self._scope_ids(),
+            **{r.id: f"resource {quote_id(r.id)}" for r in self.resources},
+        }
         written: dict[str, Resource] = {}
 
         def entry(table_type: str, url: str, path: Path, timelines: list[str]) -> None:
             """Record the resource entry of one written table.
 
             A held entry's id is reused, and its timeline order kept when it names
-            the same timelines; otherwise a resource id is minted.
+            the same timelines; otherwise a new entry mints its id, refused
+            where the manifest holds it.
             """
             held = named.get(table_type)
-            resource_id = held.id if held is not None else mint_id("resource", taken)
-            taken.add(resource_id)
             if held is not None and set(held.timelines) == set(timelines):
                 timelines = list(held.timelines)
-            written[table_type] = Resource.of_file(
-                path, id=resource_id, type=table_type, timelines=timelines, url=url
+            resource = Resource.of_file(
+                path,
+                id=None if held is None else held.id,
+                type=table_type,
+                timelines=timelines,
+                url=url,
             )
+            if held is None:
+                _refuse_held_ids(
+                    [(resource.id, f"resource {quote_id(resource.id)}")], taken
+                )
+                taken[resource.id] = f"resource {quote_id(resource.id)}"
+            written[table_type] = resource
 
         def place(table_type: str, default: str) -> tuple[str, Path]:
             """Return the URL and resolved path a table is written to, creating its folder.
@@ -4984,22 +4988,24 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ... )
             >>> bundle = AlignmentBundle()
             >>> _ = bundle.add_timeline(
-            ...     ContinuousLogicalTimeline(length=Fraction(16)), as_group="score"
+            ...     ContinuousLogicalTimeline(length=Fraction(16), uid="score"),
+            ...     as_group="score",
+            ...     seed=7,
             ... )
             >>> _ = bundle.add_timeline(
-            ...     ContinuousPhysicalTimeline(length=40.0), grouped_with="clt_1"
+            ...     ContinuousPhysicalTimeline(length=40.0, uid="audio"), grouped_with="score"
             ... )
             >>> data = bundle.to_dict()
             >>> "id" in data, [timeline["id"] for timeline in data["timelines"]]
-            (False, ['#clt_1', '#cpt_1'])
+            (False, ['#audio', '#score'])
             >>> data["groups"]
-            [{'id': '#group_1', 'name': 'score', 'members': ['#clt_1', '#cpt_1']}]
+            [{'id': '#group_1hvif5xc2r1fv', 'name': 'score', 'members': ['#audio', '#score']}]
             >>> data["graphical"]["order"]
-            {'#group_1': ['#clt_1', '#cpt_1']}
+            {'#group_1hvif5xc2r1fv': ['#score', '#audio']}
         """
         groups = [self.groups[group_id] for group_id in sorted(self.groups)]
         manifest = Manifest(
-            id=None if self._id_minted else self.id,
+            id=self.id if self._id_given else None,
             name=self.name,
             meta=self.meta,
             statement_state=self._statement_state,
@@ -5076,19 +5082,21 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...     DiscreteGraphicalTimeline,
             ... )
             >>> bundle = AlignmentBundle(id="thoresen_alignment")
-            >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4835), as_group="image")
             >>> _ = bundle.add_timeline(
-            ...     ContinuousPhysicalTimeline(length=60.0), grouped_with="dgt_1"
+            ...     DiscreteGraphicalTimeline(length=4835, uid="scan"), as_group="image", seed=7
+            ... )
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=60.0, uid="audio"), grouped_with="scan"
             ... )
             >>> print(bundle.diagram(width=60))
             AlignmentBundle[thoresen_alignment]
             <BLANKLINE>
-              TimelineGroup[group_1] (2 timelines)
+              TimelineGroup[group_1hvif5xc2r1fv] (2 timelines)
               ┌──────────────────────────────────────────────────────────┐
-              │ DiscreteGraphicalTimeline[dgt_1]                         │
+              │ DiscreteGraphicalTimeline[scan]                          │
               │                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels │
               │                                                          │
-              │ ContinuousPhysicalTimeline[cpt_1]                        │
+              │ ContinuousPhysicalTimeline[audio]                        │
               │                       0 ~~~~~~~~~~~~~~~~~~~~ 60 seconds  │
               └──────────────────────────────────────────────────────────┘
             <BLANKLINE>

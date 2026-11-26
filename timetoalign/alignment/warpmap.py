@@ -904,7 +904,6 @@ class WarpMap:
             warped_region = Region(
                 id=region.id,
                 name=region.name,
-                _minted=region._minted,
                 start=Coordinate(
                     warped_start,
                     target_unit,

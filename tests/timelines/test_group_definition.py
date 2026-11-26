@@ -6,6 +6,7 @@ The strategy is documented in ``tests/timelines/README.md`` ("Timeline Groups").
 from __future__ import annotations
 
 import copy
+import re
 from fractions import Fraction
 from typing import Any
 
@@ -15,6 +16,7 @@ from timetoshare import FORMAT_CONTEXT
 from tests.helpers import bare, filed, reading, refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
+from timetoalign.core.ids import IdMinter, reset_content_minters
 from timetoalign.core.time import express_as
 from timetoalign.timelines import SegmentLine, TimelineGroup
 from timetoalign.timelines.types import (
@@ -29,11 +31,12 @@ from timetoalign.timelines.types import (
 def _three_types() -> TimelineGroup:
     """A fraction, a float and an int member over one span."""
     return TimelineGroup(
+        id="g",
         timelines=[
             ContinuousLogicalTimeline(length=Fraction(16), uid="A"),
             ContinuousPhysicalTimeline(length=40.0, uid="B"),
             DiscreteGraphicalTimeline(length=4800, uid="C"),
-        ]
+        ],
     )
 
 
@@ -42,7 +45,7 @@ def _child_member() -> tuple[TimelineGroup, DiscreteGraphicalTimeline]:
     root = DiscreteGraphicalTimeline(length=5000, uid="R")
     root.add_child(DiscreteGraphicalTimeline(length=2000, uid="K"), offset=1000)
     group = TimelineGroup(
-        timelines=[ContinuousLogicalTimeline(length=Fraction(8), uid="A2")]
+        id="g", timelines=[ContinuousLogicalTimeline(length=Fraction(8), uid="A2")]
     )
     group.add_timeline(root.get_child("K"))
     return group, root
@@ -223,7 +226,7 @@ def test_child_member_writes_its_root() -> None:
     assert [timeline["id"] for timeline in data["timelines"]] == ["A2", "R"]
     assert data["groups"][0]["members"] == ["A2", "K"]
     assert data["graphical"] == {
-        "order": {"group_1": ["A2", "K"]},
+        "order": {"g": ["A2", "K"]},
         "styles": {},
         "rules": [],
         "timestamps": [],
@@ -243,7 +246,7 @@ def test_group_dict_is_exact() -> None:
     score = ContinuousLogicalTimeline(length=Fraction(16), uid="score")
     image = DiscreteGraphicalTimeline(length=4800, uid="image")
     group = TimelineGroup(
-        name="edition", meta={"source": "test"}, timelines=[score, image]
+        id="g", name="edition", meta={"source": "test"}, timelines=[score, image]
     )
 
     assert bare(group.to_dict(minimal=False)) == {
@@ -257,7 +260,7 @@ def test_group_dict_is_exact() -> None:
         ],
         "groups": [
             {
-                "id": "group_1",
+                "id": "g",
                 "name": "edition",
                 "meta": {"source": "test"},
                 "members": ["image", "score"],
@@ -266,7 +269,7 @@ def test_group_dict_is_exact() -> None:
         "measure_maps": [],
         "resources": [],
         "graphical": {
-            "order": {"group_1": ["score", "image"]},
+            "order": {"g": ["score", "image"]},
             "styles": {},
             "rules": [],
             "timestamps": [],
@@ -283,13 +286,13 @@ def test_group_dict_is_exact() -> None:
         ],
         "groups": [
             {
-                "id": "group_1",
+                "id": "g",
                 "name": "edition",
                 "meta": {"source": "test"},
                 "members": ["image", "score"],
             }
         ],
-        "graphical": {"order": {"group_1": ["score", "image"]}},
+        "graphical": {"order": {"g": ["score", "image"]}},
     }
 
 
@@ -348,7 +351,7 @@ STYLING: dict[str, Any] = {
         {
             "select": {
                 "element": "name",
-                "addresses": [{"id": "group_1", "part": ["name"]}],
+                "addresses": [{"id": "g", "part": ["name"]}],
             },
             "set": {"fill": "#7F00FF"},
         },
@@ -373,7 +376,7 @@ def test_styling_round_trips_unchanged(keys: tuple[str, ...]) -> None:
     assert rebuilt.styling == expected
     assert bare(rebuilt.to_dict()) == data
     assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
-        "order": {"group_1": ["A", "B", "C"]},
+        "order": {"g": ["A", "B", "C"]},
         **expected,
     }
     for key in keys:
@@ -388,7 +391,7 @@ def test_absent_styling_stays_absent() -> None:
 
     assert rebuilt.styling == {}
     assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
-        "order": {"group_1": ["A", "B", "C"]}
+        "order": {"g": ["A", "B", "C"]}
     }
 
 
@@ -402,7 +405,7 @@ def test_styling_without_order_reads_members_order() -> None:
 
     assert rebuilt.timeline_ids == ["C", "A", "B"]
     assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
-        "order": {"group_1": ["C", "A", "B"]},
+        "order": {"g": ["C", "A", "B"]},
         "styles": STYLING["styles"],
     }
 
@@ -470,9 +473,9 @@ def _malformed(change: Any) -> dict[str, Any]:
             "#/timelines/0/id",
         ),
         (
-            lambda d: d["graphical"]["order"].update(group_1=["A", "B"]),
+            lambda d: d["graphical"]["order"].update(g=["A", "B"]),
             "display_order",
-            "#/graphical/order/group_1",
+            "#/graphical/order/g",
             "'C'",
         ),
         (
@@ -528,7 +531,7 @@ def test_from_dict_refuses_a_parent_beside_its_child() -> None:
     group, _ = _child_member()
     data = bare(group.to_dict())
     data["groups"][0]["members"].append("R")
-    data["graphical"]["order"]["group_1"].append("R")
+    data["graphical"]["order"]["g"].append("R")
 
     with pytest.raises(ValueError) as refused:
         TimelineGroup.from_dict(filed(data))
@@ -570,10 +573,15 @@ def test_groups_sharing_a_member_read_each_group() -> None:
 # region Identity
 
 
-def test_default_id_is_minted_statelessly() -> None:
-    """Two fresh groups in one process are both ``group_1``."""
-    assert TimelineGroup().id == "group_1"
-    assert TimelineGroup().id == "group_1"
+def test_a_group_without_an_id_mints_one() -> None:
+    """Minted from the seed, else from content: reproducible, never equal twice."""
+    assert TimelineGroup(seed=7).id == IdMinter(7).mint("group")
+    reset_content_minters()
+    first = TimelineGroup().id
+    assert re.fullmatch(r"group_[0-9a-z]{13}", first)
+    assert TimelineGroup().id != first
+    reset_content_minters()
+    assert TimelineGroup().id == first
 
 
 def test_given_id_collision_raises_and_leaves_the_group() -> None:
@@ -584,7 +592,7 @@ def test_given_id_collision_raises_and_leaves_the_group() -> None:
     with pytest.raises(ValueError) as refused:
         group.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid="B"))
     assert str(refused.value) == (
-        "timeline 'B' cannot join group 'group_1': its id 'B' is already held by "
+        "timeline 'B' cannot join group 'g': its id 'B' is already held by "
         "timeline 'B'"
     )
     assert bare(group.to_dict()) == before
@@ -601,53 +609,72 @@ def test_descendant_id_collision_raises() -> None:
     assert newcomer.id == "other"
 
 
-def test_minted_root_id_is_minted_again() -> None:
-    """A minted root id held in the group is minted again for the newcomer."""
+def test_a_minted_root_id_held_in_the_group_is_refused() -> None:
+    """Two roots built with one seed hold one id: the second is refused."""
+    held = ContinuousLogicalTimeline(length=Fraction(4), seed=4)
+    group = TimelineGroup(id="g", timelines=[held])
+    newcomer = ContinuousLogicalTimeline(length=Fraction(2), seed=4)
+
+    with pytest.raises(ValueError) as refused:
+        group.add_timeline(newcomer)
+    assert str(refused.value) == (
+        f"timeline '{held.id}' cannot join group 'g': its id '{held.id}' is "
+        f"already held by timeline '{held.id}'"
+    )
+    assert newcomer.id == held.id
+    assert group.timeline_ids == [held.id]
+
+
+def test_a_minted_descendant_id_held_in_the_group_is_refused() -> None:
+    """A descendant built with a member's seed refuses its tree; nothing is renamed."""
+    held = ContinuousLogicalTimeline(length=Fraction(4), seed=4)
+    group = TimelineGroup(id="g", timelines=[held])
+    newcomer = ContinuousLogicalTimeline(length=Fraction(2), uid="part_parent")
+    child = ContinuousLogicalTimeline(length=Fraction(1), seed=4)
+    newcomer.add_child(child, offset=0)
+
+    with pytest.raises(ValueError, match=f"timeline '{held.id}' cannot join group"):
+        group.add_timeline(newcomer)
+    assert (newcomer.id, child.id) == ("part_parent", held.id)
+    assert newcomer.get_child(held.id) is child
+    assert group.timeline_ids == [held.id]
+
+
+def test_free_minted_ids_join_unchanged() -> None:
+    """A newcomer and its child whose minted ids are free keep them."""
     held = ContinuousLogicalTimeline(length=Fraction(4))
-    group = TimelineGroup(timelines=[held])
-    newcomer = ContinuousLogicalTimeline(length=Fraction(2))
-
-    group.add_timeline(newcomer)
-
-    assert (held.id, newcomer.id) == ("clt_1", "clt_2")
-    assert group.timeline_ids == ["clt_1", "clt_2"]
-
-
-def test_minted_descendant_id_is_minted_again() -> None:
-    """A held minted descendant id is minted again; its parent keeps it."""
-    held = ContinuousLogicalTimeline(length=Fraction(4))
-    group = TimelineGroup(timelines=[held])
+    group = TimelineGroup(id="g", timelines=[held])
     newcomer = ContinuousLogicalTimeline(length=Fraction(2), uid="part_parent")
     child = ContinuousLogicalTimeline(length=Fraction(1))
     newcomer.add_child(child, offset=0)
+    ids = (held.id, child.id)
 
     group.add_timeline(newcomer)
 
-    assert (held.id, child.id) == ("clt_1", "clt_2")
-    assert newcomer.get_child("clt_2") is child
-    assert group.get_timestamp_at(1, "clt_1").present_timelines == [
-        "clt_1",
+    assert (held.id, child.id) == ids
+    assert newcomer.get_child(child.id) is child
+    assert group.get_timestamp_at(1, held.id).present_timelines == [
+        held.id,
         "part_parent",
-        "clt_2",
+        child.id,
     ]
 
 
 def test_refused_newcomer_keeps_its_ids() -> None:
-    """Every collision is checked before a minted id of the tree is re-minted."""
+    """Every collision is checked before anything changes."""
+    first = ContinuousPhysicalTimeline(length=4.0)
     group = TimelineGroup(
-        timelines=[
-            ContinuousPhysicalTimeline(length=4.0),
-            ContinuousPhysicalTimeline(length=4.0, uid="B"),
-        ]
+        id="g", timelines=[first, ContinuousPhysicalTimeline(length=4.0, uid="B")]
     )
     newcomer = ContinuousPhysicalTimeline(length=2.0, uid="B")
     child = ContinuousPhysicalTimeline(length=1.0)
     newcomer.add_child(child, offset=0.0)
+    child_id = child.id
 
     with pytest.raises(ValueError, match="timeline 'B' cannot join group"):
         group.add_timeline(newcomer)
-    assert (newcomer.id, child.id) == ("B", "cpt_1")
-    assert group.timeline_ids == ["cpt_1", "B"]
+    assert (newcomer.id, child.id) == ("B", child_id)
+    assert group.timeline_ids == [first.id, "B"]
 
 
 def test_group_id_may_not_be_a_timeline_id() -> None:
@@ -663,14 +690,19 @@ def test_group_id_may_not_be_a_timeline_id() -> None:
     assert group.timeline_ids == []
 
 
-def test_minted_group_id_is_minted_again() -> None:
-    """A minted group id that a newcomer's given id takes is minted again."""
+def test_a_minted_group_id_is_never_renamed() -> None:
+    """A newcomer taking a minted group id is refused; the group keeps its id."""
     group = TimelineGroup()
+    group_id = group.id
 
-    group.add_timeline(ContinuousLogicalTimeline(length=Fraction(1), uid="group_1"))
-
-    assert group.id == "group_2"
-    assert group.timeline_ids == ["group_1"]
+    with pytest.raises(ValueError) as refused:
+        group.add_timeline(ContinuousLogicalTimeline(length=Fraction(1), uid=group_id))
+    assert str(refused.value) == (
+        f"timeline '{group_id}' cannot join group '{group_id}': its id "
+        f"'{group_id}' is already held by group '{group_id}'"
+    )
+    assert group.id == group_id
+    assert group.timeline_ids == []
 
 
 @pytest.mark.parametrize(
@@ -681,11 +713,11 @@ def test_parent_and_child_cannot_share_a_group(first: str, second: str) -> None:
     root = DiscreteGraphicalTimeline(length=5000, uid="R")
     root.add_child(DiscreteGraphicalTimeline(length=2000, uid="K"), offset=1000)
     timelines = {"R": root, "K": root.get_child("K")}
-    group = TimelineGroup(timelines=[timelines[first]])
+    group = TimelineGroup(id="g", timelines=[timelines[first]])
 
     with pytest.raises(
         ValueError,
-        match=f"Timeline '{second}' cannot join group 'group_1': it is nested "
+        match=f"Timeline '{second}' cannot join group 'g': it is nested "
         f"with member '{first}'",
     ):
         group.add_timeline(timelines[second])

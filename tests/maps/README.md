@@ -54,7 +54,9 @@ inside its anchors, or only in value, fails.
   `QuartersToMeasureNumber` and `MetricMap` write a `MeasureNumberMap`;
   `BeatInMeasureMap` and `MetricalPositionMap` write a `MeasureBeatMap`.
   Built outside a timeline, the view names the measure map built from the
-  map's own data by its minted id `measuremap_1`; within a timeline it names
+  map's own data by the id the map minted for it when it was built (with
+  `seed=7` and a given map id, `IdMinter(7).mint("measure_map")`; a measure
+  map's own minted id has the prefix `measure_map`); within a timeline it names
   the timeline's measure map when the map derives from it, and otherwise a
   measure map of its own (the timeline tests pin which). Where the view's
   answer has another shape than the legacy map's, the test states the

@@ -124,25 +124,16 @@ class TimelineHost(Protocol):
         """Return the root of every tree of this timeline's manifest, once each."""
         ...
 
-    def _admit_entries(
-        self,
-        entries: Sequence[tuple[str, bool, str, str]],
-        rename: Callable[[int, str], None] | None = None,
-        *,
-        avoid: Iterable[str] = (),
-        check_only: bool = False,
-    ) -> list[str]:
-        """Admit elements into this timeline's manifest under ids of their own."""
+    def _refuse_held(self, entries: Sequence[tuple[str, str]]) -> None:
+        """Refuse elements joining this timeline's manifest whose id it holds."""
         ...
 
-    def _admit_element_id(
-        self, element_id: str, *, minted: bool, prefix: str, element: str
-    ) -> str:
-        """Return the id under which an element joins this timeline's manifest."""
+    def _refuse_held_element(self, element_id: str, element: str) -> None:
+        """Refuse an element joining this timeline whose id the manifest holds."""
         ...
 
     def _admit_map(self, cmap: ConversionMap[Any]) -> None:
-        """Admit *cmap* and every map nested in it into this timeline's manifest."""
+        """Refuse *cmap* where an id of it or of a map nested in it is held."""
         ...
 
     def _rename_references(self, old_id: str, new_id: str) -> None:
@@ -368,6 +359,7 @@ class TimelineHost(Protocol):
         id: str | None = None,
         name: str | None = None,
         meta: dict[str, Any] | None = None,
+        seed: int | None = None,
     ) -> Region:
         """Create a new Region and attach it to this timeline."""
         ...

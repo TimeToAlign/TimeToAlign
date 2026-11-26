@@ -993,6 +993,7 @@ class MatchGraph:
         self._axis = axis
         self._source = source
         self._source_id = source_id
+        self._rank: dict[str, int] | None = None
 
     @property
     def claims(self) -> list[MatchClaim]:
@@ -1077,6 +1078,25 @@ class MatchGraph:
         return [anchor for claim in self._claims for anchor in claim.anchors] + [
             edge.anchor for edge in self._inferred
         ]
+
+    def _timeline_rank(self) -> dict[str, int]:
+        """The place of each timeline in registration order.
+
+        The source bundle's order (registered timelines first, in the order
+        they joined, then their descendants), then the timelines the
+        anchors name that no bundle registered, by ID: a graph built from
+        claims alone has no registration, and its stamps must not depend on
+        the order the claims are given in. Read once per graph.
+        """
+        if self._rank is None:
+            order = (
+                dict.fromkeys(self._source._known_timelines())
+                if self._source is not None
+                else {}
+            )
+            order.update(dict.fromkeys(sorted(self._timeline_units)))
+            self._rank = {timeline_id: index for index, timeline_id in enumerate(order)}
+        return self._rank
 
     def _collect_timeline_units(self) -> dict[str, TimeUnit]:
         """Collect the coordinate units recorded by this graph's anchors."""
@@ -1680,6 +1700,7 @@ class MatchGraph:
         instance._axis = axis
         instance._source = source
         instance._source_id = source_id
+        instance._rank = None
         return instance
 
     def get_stamps(
@@ -1710,13 +1731,18 @@ class MatchGraph:
         cross-section with its columns swapped.
 
         The choice is the one the retrieval order already names: the graph's
-        own source timeline where the component contains it, else the
-        lexically first node. Everything after the source was already sorted,
-        which is why only the first entry moved and the tail looked stable.
+        own source timeline where the component contains it, else the first
+        node of the timeline registered first (:meth:`_timeline_rank`), at
+        its smallest coordinate.
         """
+        rank = self._timeline_rank()
         return min(
             component,
-            key=lambda node: (node[0] != self._source_id, node[0], node[1]),
+            key=lambda node: (
+                node[0] != self._source_id,
+                rank.get(node[0], len(rank)),
+                node[1],
+            ),
         )
 
     def get_matchstamp(self) -> "MatchStamp":
@@ -1849,11 +1875,12 @@ class MatchGraph:
             and any(node[0] == self._source_id for node in component)
             else start_node[0]
         )
+        timeline_rank = self._timeline_rank()
         ordered_nodes = sorted(
             component,
             key=lambda node: (
                 node[0] != source_id,
-                "" if node[0] == source_id else node[0],
+                timeline_rank.get(node[0], len(timeline_rank)),
                 node[1],
             ),
         )

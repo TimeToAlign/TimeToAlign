@@ -19,6 +19,7 @@ Per ZERO TOLERANCE policy, all assertions use exact expected values.
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Callable
 from fractions import Fraction
 from typing import Any
@@ -46,6 +47,7 @@ from timetoalign.core import (
     Provenance,
     TimeUnit,
 )
+from timetoalign.core.ids import reset_content_minters
 from timetoalign.maps import ScalarMap, TableMap
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.types import (
@@ -93,7 +95,7 @@ class TestBundleCreation:
 
         assert bundle.n_timelines == 0
         assert bundle.n_groups == 0
-        assert bundle.id == "bundle_1"
+        assert re.fullmatch(r"bundle_[0-9a-z]{13}", bundle.id)
 
     def test_create_bundle_with_name(self) -> None:
         """Bundle can be created with a name."""
@@ -230,8 +232,8 @@ class TestGroupManagement:
         bundle = AlignmentBundle()
         bundle.add_timeline(simple_timeline, as_group="my_group")
 
-        assert bundle.group_ids == ["group_1"]
-        group = bundle.get_group("group_1")
+        (group_id,) = bundle.group_ids
+        group = bundle.get_group(group_id)
         assert group.name == "my_group"
         assert simple_timeline.id in group.timeline_ids
 
@@ -245,7 +247,7 @@ class TestGroupManagement:
 
         group = bundle.get_group_for_timeline("tl2")
         assert group is not None
-        assert group.id == "group_1"
+        assert bundle.group_ids == [group.id]
         assert group.name == "grp1"
 
     def test_standalone_timeline_has_no_group(self, simple_timeline: Timeline) -> None:
@@ -269,7 +271,8 @@ class TestGroupManagement:
         bundle.add_timeline(section, as_group="part")
 
         assert bundle.timeline_ids == ["section", "reference"]
-        assert bundle.timeline_to_groups == {"section": ("group_1",)}
+        (group_id,) = bundle.group_ids
+        assert bundle.timeline_to_groups == {"section": (group_id,)}
         assert bundle.get_matchstamp_at(0.0, "section").coordinates == {
             "section": Coordinate(0.0, TimeUnit.seconds),
             "reference": Coordinate(25.0, TimeUnit.seconds),
@@ -630,6 +633,7 @@ def _seconds_claim(
     value_b: float,
     *,
     provenance: Provenance | None = None,
+    id: str | None = None,  # noqa: A002 - the claim's id
 ) -> MatchClaim:
     """An instant claim between two seconds timelines (float axes).
 
@@ -642,6 +646,7 @@ def _seconds_claim(
         tl_b_id,
         Coordinate(value_b, TimeUnit.seconds),
         provenance=provenance,
+        id=id,
     )
 
 
@@ -748,7 +753,12 @@ class TestBundleEquality:
     def _built(
         timelines: tuple[Timeline, ...], *, extra: bool = False, believed: bool = False
     ) -> AlignmentBundle:
-        """A bundle over *timelines* (shared, so only the claims can differ)."""
+        """A bundle over *timelines* (shared, so only the claims can differ).
+
+        The content minters start afresh, so two bundles built alike mint
+        their groups and MatchClaims the same ids.
+        """
+        reset_content_minters()
         score, image, audio = timelines
         bundle = AlignmentBundle(id="equal")
         bundle.add_timeline(score, as_group="score_group")
@@ -1145,10 +1155,12 @@ class TestGetMatchstampAtCrossGroup:
 
         ts = bundle.get_matchstamp_at(100.0, "score").to_dict(format="nested")
 
-        # Must have source group; groups are keyed by their minted ids
-        assert "group_1" in ts
-        assert "group_2" in ts
-        recording_vals = ts["group_2"]
+        # Must have source group; groups are keyed by their ids
+        score_group = bundle.get_group_for_timeline("score").id
+        audio_group = bundle.get_group_for_timeline("audio").id
+        assert score_group in ts
+        assert audio_group in ts
+        recording_vals = ts[audio_group]
         audio_key = next(k for k in recording_vals if k.startswith("audio"))
         assert recording_vals[audio_key]["value"] == 50.0
 
@@ -1162,10 +1174,11 @@ class TestGetMatchstampAtCrossGroup:
 
         # Keys are "group_id/timeline_id (unit)"; the stamp holds every member
         # of the score's group, score and image, both on seconds axes.
-        score_keys = [k for k in ts if k.startswith("group_1/")]
+        group = bundle.get_group_for_timeline("score").id
+        score_keys = [k for k in ts if k.startswith(f"{group}/")]
         assert sorted(score_keys) == [
-            "group_1/image (seconds)",
-            "group_1/score (seconds)",
+            f"{group}/image (seconds)",
+            f"{group}/score (seconds)",
         ]
 
     def test_timestamp_no_claims_source_only(self) -> None:
@@ -1174,8 +1187,8 @@ class TestGetMatchstampAtCrossGroup:
 
         ts = bundle.get_matchstamp_at(100.0, "score").to_dict(format="nested")
 
-        assert "group_1" in ts
-        assert "group_2" not in ts
+        assert bundle.get_group_for_timeline("score").id in ts
+        assert bundle.get_group_for_timeline("audio").id not in ts
 
 
 # endregion
@@ -1341,7 +1354,7 @@ class TestAddMatchClaims:
 
         assert len(bundle.match_claim_table) == 3
         held = bundle.get_match_claims()
-        assert [claim.id for claim in held] == ["claim_1", "claim_2", "claim_3"]
+        assert [claim.id for claim in held] == [claim.id for claim in claims]
         assert held == claims
         assert all(claim.bundle is bundle for claim in held)
 
@@ -1356,7 +1369,9 @@ class TestAddMatchClaims:
         claims2 = [_seconds_claim(score_tl.id, 150.0, audio_tl.id, 75.0)]
         bundle.add_match_claims(claims2)
         assert len(bundle.match_claim_table) == 4
-        assert claims2[0].id == "claim_4"
+        assert [claim.id for claim in bundle.get_match_claims()] == [
+            claim.id for claim in [*claims1, *claims2]
+        ]
 
     def test_claim_naming_an_unknown_timeline_is_refused(self) -> None:
         """A claim naming a timeline the bundle does not hold adds nothing."""
@@ -1440,23 +1455,22 @@ class TestCreateMatchClaims:
         counts = (len(audio_tl.events), len(score_tl.events))
         assert counts == (2, 2)
         again = bundle.create_match_claims(self._pairs(score_tl.id, audio_tl.id))
-        # A Projection's ID is unique in the bundle: the score's two come
-        # first (the first pair gives the score one), the audio's is the third.
-        assert named(first) == [
-            ("claim_1", "o1", "projection_1"),
-            ("claim_2", "projection_3", "projection_2"),
+        # The first pair gives the score a Projection of the onset; the
+        # second a Projection on each side. A second call reuses all three.
+        (_, onset, on_score), (_, on_audio, of_nothing) = named(first)
+        assert onset == "o1"
+        assert [(event_a, event_b) for _, event_a, event_b in named(again)] == [
+            (onset, on_score),
+            (on_audio, of_nothing),
         ]
-        assert named(again) == [
-            ("claim_3", "o1", "projection_1"),
-            ("claim_4", "projection_3", "projection_2"),
-        ]
+        assert len({claim.id for claim in [*first, *again]}) == 4
         assert (len(audio_tl.events), len(score_tl.events)) == counts
-        assert score_tl.get_event("projection_1")["projection_of"] == {
+        assert score_tl.get_event(on_score)["projection_of"] == {
             "timeline_id": "audio",
             "event_id": "o1",
         }
-        assert score_tl.get_event("projection_2")["projection_of"] is None
-        assert audio_tl.get_event("projection_3")["projection_of"] is None
+        assert score_tl.get_event(of_nothing)["projection_of"] is None
+        assert audio_tl.get_event(on_audio)["projection_of"] is None
 
     def test_an_unknown_event_id_adds_nothing(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
@@ -1665,14 +1679,14 @@ class TestCreateMatchClaims:
             ]
         )
 
-        assert (claim.event_a_id, claim.event_b_id) == ("o1", "projection_1")
+        assert claim.event_a_id == "o1"
         assert claim.start_anchor.coordinate_a == Coordinate(2.5, TimeUnit.seconds)
         assert claim.start_anchor.coordinate_b == Coordinate(88200, TimeUnit.samples)
         assert type(claim.start_anchor.coordinate_b.value) is int
         (held,) = bundle.get_match_claims()
         assert held == claim
         assert held.start_anchor.coordinate_b == Coordinate(88200, TimeUnit.samples)
-        projection = audio.get_event("projection_1")
+        projection = audio.get_event(claim.event_b_id)
         assert projection["event_type"] == "Projection"
         assert projection["projection_of"] == {
             "timeline_id": "performance",
@@ -1689,8 +1703,8 @@ class TestCreateMatchClaims:
 def _believed_claims_bundle(actor: str = "ana") -> AlignmentBundle:
     """Three claims score -> audio, of which *actor* (ana) believes one false.
 
-    ``claim_1`` (0 -> 0) ana believes true; ``claim_2`` (100 -> 60) ana
-    believes false; ``claim_3`` (200 -> 100) states no belief.
+    ``held`` (0 -> 0) ana believes true; ``doubted`` (100 -> 60) ana
+    believes false; ``unstated`` (200 -> 100) states no belief.
     """
     bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
 
@@ -1703,12 +1717,22 @@ def _believed_claims_bundle(actor: str = "ana") -> AlignmentBundle:
     bundle.add_match_claims(
         [
             _seconds_claim(
-                score_tl.id, 0.0, audio_tl.id, 0.0, provenance=believed("true")
+                score_tl.id,
+                0.0,
+                audio_tl.id,
+                0.0,
+                provenance=believed("true"),
+                id="held",
             ),
             _seconds_claim(
-                score_tl.id, 100.0, audio_tl.id, 60.0, provenance=believed("false")
+                score_tl.id,
+                100.0,
+                audio_tl.id,
+                60.0,
+                provenance=believed("false"),
+                id="doubted",
             ),
-            _seconds_claim(score_tl.id, 200.0, audio_tl.id, 100.0),
+            _seconds_claim(score_tl.id, 200.0, audio_tl.id, 100.0, id="unstated"),
         ]
     )
     return bundle
@@ -1722,35 +1746,35 @@ class TestBeliefFilter:
         bundle = _believed_claims_bundle()
 
         assert [claim.id for claim in bundle.get_match_claims()] == [
-            "claim_1",
-            "claim_2",
-            "claim_3",
+            "held",
+            "doubted",
+            "unstated",
         ]
         assert [claim.id for claim in bundle.get_match_claims(believer="ana")] == [
-            "claim_1",
-            "claim_3",
+            "held",
+            "unstated",
         ]
         assert [
             claim.id
             for claim in bundle.get_match_claims(believer="ana", beliefs=["true"])
-        ] == ["claim_1"]
+        ] == ["held"]
         assert [
             claim.id
             for claim in bundle.get_match_claims(believer="ana", beliefs=["undecided"])
-        ] == ["claim_3"]
+        ] == ["unstated"]
         assert [
             claim.id
             for claim in bundle.get_match_claims(
                 believer="ana", beliefs=["true", "false"]
             )
-        ] == ["claim_1", "claim_2"]
+        ] == ["held", "doubted"]
 
     def test_get_matchstamp_at_reads_through_the_belief_filter(self) -> None:
-        """Score 100 is claim_2's anchor, unless ana's filter leaves it out.
+        """Score 100 is doubted's anchor, unless ana's filter leaves it out.
 
         No believer: the anchor, audio 60.0, not interpolated. ana's filter
-        keeps claim_1 and claim_3, between which score 100 interpolates to
-        audio 50.0. With the states ["true"] only claim_1 remains: one claim
+        keeps held and unstated, between which score 100 interpolates to
+        audio 50.0. With the states ["true"] only held remains: one claim
         cannot interpolate, so the stamp holds the score group alone.
         """
         bundle = _believed_claims_bundle()
@@ -1799,19 +1823,19 @@ class TestBeliefFilterIris:
     def test_compact_and_full_believer_select_alike(self, believer: str) -> None:
         bundle = _iri_believed_bundle()
         assert [claim.id for claim in bundle.get_match_claims(believer=believer)] == [
-            "claim_1",
-            "claim_3",
+            "held",
+            "unstated",
         ]
         assert [
             claim.id
             for claim in bundle.get_match_claims(believer=believer, beliefs=["true"])
-        ] == ["claim_1"]
+        ] == ["held"]
 
     def test_a_compact_belief_is_found_by_the_full_iri(self) -> None:
         bundle = _iri_believed_bundle("people:ana")
         assert [claim.id for claim in bundle.get_match_claims(believer=ANA)] == [
-            "claim_1",
-            "claim_3",
+            "held",
+            "unstated",
         ]
 
     def test_matchstamps_read_through_the_context(self) -> None:
@@ -1845,17 +1869,17 @@ class TestBeliefFilterIris:
         # believer names nobody among the beliefs.
         assert believes.matches_claim(claims[1].model_copy(deep=True)) is True
         graph = MatchGraph(claims, believer="people:ana", source=bundle)
-        assert [claim.id for claim in graph._claims] == ["claim_1", "claim_3"]
+        assert [claim.id for claim in graph._claims] == ["held", "unstated"]
 
     def test_declaring_the_prefix_changes_the_answer(self) -> None:
         bundle = _believed_claims_bundle(ANA)
         assert [
             claim.id for claim in bundle.get_match_claims(believer="people:ana")
-        ] == ["claim_1", "claim_2", "claim_3"]
+        ] == ["held", "doubted", "unstated"]
         bundle.add_prefix("people", "https://example.org/people/")
         assert [
             claim.id for claim in bundle.get_match_claims(believer="people:ana")
-        ] == ["claim_1", "claim_3"]
+        ] == ["held", "unstated"]
 
 
 # endregion
@@ -1887,30 +1911,31 @@ class TestAddMatchClaimField:
         assert bundle.add_match_claim_field(field) is bundle
 
     def test_field_rows_join_the_match_claim_table(self) -> None:
-        # The rows join the bundle's one table, the bundle minting their
-        # ids; the field passed in is left as it is, without ids.
+        # The rows join the bundle's one table under the ids the field
+        # minted when it was built; the bundle mints none.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         field = self._field(score_tl, audio_tl)
+        ids = [claim.id for claim in field]
         bundle.add_match_claim_field(field)
 
         assert len(bundle.match_claim_table) == 5
         held = bundle.get_match_claims()
-        assert [claim.id for claim in held] == [f"claim_{n}" for n in range(1, 6)]
-        assert [
-            claim.model_copy(update={"id": None}) for claim in held
-        ] == field.to_claims()
-        assert [claim.id for claim in field] == [None] * 5
+        assert [claim.id for claim in held] == ids
+        assert len(set(ids)) == 5
+        assert held == field.to_claims()
 
     def test_two_fields_join_one_bundle(self) -> None:
-        # Two loaders' fields, both built from columns, hold no ids; the
-        # bundle mints them in order of arrival.
+        # Two fields of equal rows, built one after the other, hold ten
+        # different ids, which join the one table in order of arrival.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
-        bundle.add_match_claim_field(self._field(score_tl, audio_tl))
-        bundle.add_match_claim_field(self._field(score_tl, audio_tl))
+        first = self._field(score_tl, audio_tl)
+        second = self._field(score_tl, audio_tl)
+        bundle.add_match_claim_field(first)
+        bundle.add_match_claim_field(second)
 
-        assert [claim.id for claim in bundle.get_match_claims()] == [
-            f"claim_{n}" for n in range(1, 11)
-        ]
+        ids = [claim.id for claim in [*first, *second]]
+        assert [claim.id for claim in bundle.get_match_claims()] == ids
+        assert len(set(ids)) == 10
 
     def test_matchstamp_via_columnar_field(self) -> None:
         # get_matchstamp_at answers from the field's rows at an exact grid
@@ -1938,15 +1963,14 @@ class TestAddMatchClaimField:
         }
 
     def test_claims_after_a_field_accumulate_in_one_table(self) -> None:
-        # Claims added after a field's rows are minted ids above the highest
-        # held and read alike with the rows.
+        # Claims added after a field's rows hold the ids they were built with
+        # and are read alike with the rows.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         bundle.add_match_claim_field(self._field(score_tl, audio_tl))
         claims = [_seconds_claim(score_tl.id, 175.0, audio_tl.id, 87.5)]
         bundle.add_match_claims(claims)
 
         assert len(bundle.match_claim_table) == 6
-        assert claims[0].id == "claim_6"
         assert bundle.get_match_claims()[5] == claims[0]
         stamp = bundle.get_matchstamp_at(175.0, score_tl.id)
         assert stamp.is_interpolated is False
@@ -2105,8 +2129,8 @@ class TestSeveralGroups:
 
         bundle.add_timeline(bundle.get_timeline("a"), as_group="solo")
 
-        assert bundle.timeline_to_groups["a"] == ("g1", "group_1")
-        assert bundle.groups["group_1"].name == "solo"
+        (solo,) = [group for group in bundle.groups.values() if group.name == "solo"]
+        assert bundle.timeline_to_groups["a"] == ("g1", solo.id)
 
     def test_a_member_is_refused_a_second_place_in_one_group(self) -> None:
         bundle = _shared_member_bundle()

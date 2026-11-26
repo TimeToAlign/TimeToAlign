@@ -1813,8 +1813,8 @@ and `F#4`, `Bb3`) gives `B♭3`, null, `F♯4`, `B♭3`.
 ### `test_ids.py` - Minted IDs, Given IDs and Resolution
 
 **Purpose:** Validates the random-id minter (`IdMinter`, `seed_from`,
-`content_minter`), the numbered-id generator, the rule every given id obeys,
-and the resolution of an id pattern.
+`content_minter`), the one collision check of every scope, the rule every
+given id obeys, and the resolution of an id pattern.
 
 **Test Categories:**
 
@@ -1877,27 +1877,24 @@ and the resolution of an id pattern.
    different seeds and mint different first ids (two 64-bit draws are
    equal with probability 2^−64).
 
-8. **The numbered id generator** (`mint_id`, `validate_id`,
-   `timeline_id_prefix`)
-   - `mint_ids(prefix, taken, count)` is the library's one id generator
-     (timelines, maps, manifest elements, MatchClaims, events): N continues
-     above the highest number held under that prefix, so an id once given is
-     never given again, a gap is never filled. `("claim", ["claim_2", "x"],
-     3)` → `claim_3`, `claim_4`, `claim_5`; nulls in `taken` are ignored; a
-     `count` of 0 answers an empty array; taken `claim_1`…`claim_5` with
-     `count` 2 → `claim_6`, `claim_7`; ids that are not minted ones under the
-     prefix do not count: `claim_0`, `claim_01`, `claimx_9`,
-     `other:claim_9` and a number of more than 18 digits leave the next
-     id `claim_1`; a role prefix is matched literally, `.` included
-     (`("a.b", ["axb_4"])` → `a.b_1`). It must answer exactly what `mint_id`
-     answers called `count` times with each answer added to the taken set
-     (checked against that loop), and `taken` may be a `pa.ChunkedArray`.
-   - `mint_id(prefix, taken)` mints one by the same rule: `("clt", ())` →
-     `clt_1`; `("clt", {"clt_1", "clt_3"})` → `clt_4`; `("clt",
-     {"clt_2"})` → `clt_3`; with a role, `("score:clt", {"score:clt_1"})` →
-     `score:clt_2`. Called twice with the same arguments it answers the same
-     id, because it keeps no state: an element held by no scope mints from
-     an empty taken set, so every free `Region` is `region_1`.
+8. **No numbered generator, one collision check** (`_refuse_held_ids`,
+   `validate_id`, `timeline_id_prefix`)
+   - Nothing is renamed and nothing is minted from the ids a scope holds:
+     the module holds none of `mint_id`, `mint_ids`, `id_column`,
+     `_admit_id`, `_plan_admissions`, `_highest_minted_number` (each
+     looked up and found absent), so no code path can mint "above the
+     highest number" or re-mint on a collision.
+   - `_refuse_held_ids(entries, taken, scope=)` is the one check every
+     scope uses: entries `(id, description)` whose ids the scope does not
+     hold and no two of which share an id pass and change nothing (the
+     `taken` mapping is not altered). An id the scope holds raises exactly
+     `<description> cannot join[ <scope>]: its id '<id>' is already held by
+     <holder>` — `region 'b' cannot join group 'g': its id 'b' is already
+     held by timeline 'b'` — and so does an id two newcomers share, the
+     later one naming the earlier as holder (`region 'a' cannot join: its
+     id 'a' is already held by timeline 'a'`). Minted and given ids are not
+     told apart: the check is the same for `clt_0a6t3vcta56ll` as for
+     `score`.
    - An id is free: any non-empty string without a control character.
      `validate_id` returns unchanged `"performance"`, `"a"`, `"Bass Kick"`,
      `"score:clt_7"`, `"a/b"` (a slash), `"intro to part 2"` (spaces), the
@@ -1933,6 +1930,47 @@ with the one-by-one path (compared id for id). Uniqueness at length 13
 follows from `mix64` being a bijection, which the inverse round trip shows
 directly instead of sampling for collisions. Given ids are kept verbatim,
 so the validity rule is tested on the strings users actually give.
+
+---
+
+### `test_minted_id_vectors.py` - The Shared Minted-ID Vectors
+
+**Purpose:** Holds timetoalign's minter equal to every other minter of the
+format. TimeToShare ships the vectors both minters (timetoalign's and
+TiLiE core's) are tested against,
+`timetoshare.validate.data_root() / "fixtures" / "ids" / "minted_ids.json"`,
+written by a reference implementation outside this library; this file
+reads them as a consumer does and checks `IdMinter` and `_mix64` against
+every one.
+
+**Test Categories:**
+
+1. **`mix64` pairs** — `_mix64(int(input)) == int(output)` for every pair of
+   `mix64` (inputs 0, 1, 2, 42, 2^63, 2^64 − 1, `0x0123456789abcdef`), the
+   decimal strings read as integers.
+2. **Minters** — for every entry of `minters` (seeds `"0"`, `"1"`,
+   `"42"`, `"81985529216486895"`, `"18446744073709551615"`, `"-1"`, each at
+   lengths 13, 10, 7), a fresh `IdMinter(int(seed), length=length)` mints
+   with `prefixes[k-1]` the k-th id, and the list equals `ids` exactly: the
+   counter is shared across prefixes, a role prefix (`score:clt`) is kept
+   as given, and a seed of `"-1"` is taken modulo 2^64 as the minter does.
+   `mint_many` is checked on the same entries: one batch of `len(ids)`
+   with a single prefix equals as many `mint` calls of a twin minter, and
+   its first id equals the vector's first id where the vector's first
+   prefix is that prefix.
+3. **Later ids** — for every entry of `later_ids`, a fresh minter's
+   `counter`-th id with `prefix` (minted as one batch of `counter − 1`
+   with `mint_many`, then one `mint`) equals `id`.
+4. **The file is the one consumers read** — its seeds are strings and its
+   lengths and counters integers, as the format states; the test fails,
+   naming the path, if the file is absent, rather than skipping.
+
+**Validity Rationale:** The vectors are computed by TimeToShare's own
+reference script, independent of this library, so agreement shows that
+timetoalign mints the ids the format describes; TiLiE core's test reads the
+same file, so the two minters agree id for id without either reading the
+other's code. No expected value is typed here: every one comes from the
+file.
 
 ---
 

@@ -1,10 +1,11 @@
-"""Identity of manifest elements: one id form, given ids kept, unique per manifest."""
+"""Identity of manifest elements: minted when built, given ids kept, unique per manifest."""
 
 from __future__ import annotations
 
 import gc
 import json
 import pickle
+import re
 from collections.abc import Callable, Iterator
 from fractions import Fraction as F
 from typing import Any
@@ -15,6 +16,7 @@ from timetoshare import validate
 from tests.helpers import bare, filed, refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, FlowManifestation, TimeUnit
+from timetoalign.core.ids import IdMinter, reset_content_minters
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
 from timetoalign.loader.graphical.paths import VerticalLinePath
@@ -29,6 +31,7 @@ from timetoalign.maps import (
     IntervalToConstantMap,
     LinearMap,
     MeasureRecordMap,
+    MetricMap,
     PiecewiseMap,
     QuartersToFloatingMeasures,
     ScalarMap,
@@ -49,6 +52,7 @@ from timetoalign.timelines import (
     TimelineGroup,
 )
 from timetoalign.timelines import groups as groups_module
+from timetoalign.timelines.flow import FlowMap
 from timetoalign.timelines.flowcontrol import (
     Barline,
     Break,
@@ -81,45 +85,101 @@ def _jump(at: Any, *, id: str | None = None, **place: Any) -> Jump:
     return Jump(_q(at), [JumpDestination(**place)], id=id)
 
 
-# region One form, one generator
+# region Minted when built
 
 
-@pytest.mark.parametrize(
-    ("build", "expected"),
-    [
-        (lambda: ContinuousLogicalTimeline(), "clt_1"),
-        (lambda: DiscreteLogicalTimeline(), "dlt_1"),
-        (lambda: ContinuousPhysicalTimeline(), "cpt_1"),
-        (lambda: DiscretePhysicalTimeline(), "dpt_1"),
-        (lambda: ContinuousGraphicalTimeline(), "cgt_1"),
-        (lambda: DiscreteGraphicalTimeline(), "dgt_1"),
-        (lambda: Timeline(unit="seconds"), "cpt_1"),
-        (lambda: Timeline(unit="ticks"), "dlt_1"),
-        (lambda: Timeline(unit="pixels"), "dgt_1"),
-        (lambda: SegmentLine[ContinuousLogicalTimeline](), "clt_1"),
-        (lambda: LinearMap(scalar=2), "cmap_1"),
-        (lambda: TableMap(x_values=[0, 4], y_values=[0.0, 2.5]), "cmap_1"),
-        (
-            lambda: QuartersToFloatingMeasures(x_values=[0, 4], y_values=[1.0, 2.0]),
-            "cmap_1",
+def _bars(**keys: Any) -> MeasureMap:
+    return MeasureMap.from_rows([{"count": 1, "time_signature": "4/4"}], **keys)
+
+
+# Each element built without an id, by its prefix; every builder takes the seed.
+BUILDS: list[tuple[str, str, Callable[..., Any]]] = [
+    ("clt", "clt", lambda **k: ContinuousLogicalTimeline(**k)),
+    ("dlt", "dlt", lambda **k: DiscreteLogicalTimeline(**k)),
+    ("cpt", "cpt", lambda **k: ContinuousPhysicalTimeline(**k)),
+    ("dpt", "dpt", lambda **k: DiscretePhysicalTimeline(**k)),
+    ("cgt", "cgt", lambda **k: ContinuousGraphicalTimeline(**k)),
+    ("dgt", "dgt", lambda **k: DiscreteGraphicalTimeline(**k)),
+    ("timeline_seconds", "cpt", lambda **k: Timeline(unit="seconds", **k)),
+    ("timeline_ticks", "dlt", lambda **k: Timeline(unit="ticks", **k)),
+    ("timeline_pixels", "dgt", lambda **k: Timeline(unit="pixels", **k)),
+    ("segment_line", "clt", lambda **k: SegmentLine[ContinuousLogicalTimeline](**k)),
+    ("linear", "cmap", lambda **k: LinearMap(scalar=2, **k)),
+    ("table", "cmap", lambda **k: TableMap(x_values=[0, 4], y_values=[0.0, 2.5], **k)),
+    (
+        "floating",
+        "cmap",
+        lambda **k: QuartersToFloatingMeasures(
+            x_values=[0, 4], y_values=[1.0, 2.0], **k
         ),
-        (
-            lambda: PiecewiseMap(breaks=[0, 8], maps=[ShiftMap(offset=1)]),
-            "cmap_1",
-        ),
-        (lambda: ScalarMap(2), "cmap_1"),
-        (lambda: Region(_q(0), _q(4)), "region_1"),
-        (lambda: Break(_q(4)), "break_1"),
-        (lambda: SectionBreak(_q(4)), "section_break_1"),
-        (lambda: Barline(_q(4)), "barline_1"),
-        (lambda: _jump(4, by=-4), "jump_1"),
-        (lambda: JumpTarget(_q(0), manifestation=SEGNO), "jump_target_1"),
-    ],
+    ),
+    (
+        "piecewise",
+        "cmap",
+        lambda **k: PiecewiseMap(breaks=[0, 8], maps=[ShiftMap(offset=1)], **k),
+    ),
+    ("scalar", "cmap", lambda **k: ScalarMap(2, **k)),
+    ("measure_map", "measure_map", lambda **k: _bars(**k)),
+    ("region", "region", lambda **k: Region(_q(0), _q(4), **k)),
+    ("break", "break", lambda **k: Break(_q(4), **k)),
+    ("section_break", "section_break", lambda **k: SectionBreak(_q(4), **k)),
+    ("barline", "barline", lambda **k: Barline(_q(4), **k)),
+    ("jump", "jump", lambda **k: Jump(_q(4), [JumpDestination(by=-4)], **k)),
+    (
+        "jump_target",
+        "jump_target",
+        lambda **k: JumpTarget(_q(0), manifestation=SEGNO, **k),
+    ),
+    ("flow_map", "flow", lambda **k: FlowMap("score", ("a",), **k)),
+    ("group", "group", lambda **k: TimelineGroup(**k)),
+    ("bundle", "bundle", lambda **k: AlignmentBundle(**k)),
+]
+BUILD_IDS = [name for name, _, _ in BUILDS]
+EACH = pytest.mark.parametrize(
+    ("prefix", "build"), [(prefix, build) for _, prefix, build in BUILDS], ids=BUILD_IDS
 )
-def test_standalone_elements_mint_their_first_id(
-    build: Callable[[], Any], expected: str
+
+
+@EACH
+def test_an_element_built_without_an_id_mints_one_with_its_prefix(
+    prefix: str, build: Callable[..., Any]
 ) -> None:
-    assert build().id == expected
+    assert re.fullmatch(rf"{prefix}_[0-9a-z]{{13}}", build().id)
+
+
+@EACH
+def test_a_seed_decides_the_id(prefix: str, build: Callable[..., Any]) -> None:
+    ContinuousLogicalTimeline(length=99)
+    assert build(seed=7).id == IdMinter(7).mint(prefix)
+    assert build(seed=7).id == IdMinter(7).mint(prefix)
+
+
+@EACH
+def test_content_seeded_ids_are_reproducible(
+    prefix: str, build: Callable[..., Any]
+) -> None:
+    reset_content_minters()
+    first = build().id
+    reset_content_minters()
+    ContinuousLogicalTimeline(length=99)
+    LinearMap(scalar=99)
+    assert build().id == first
+
+
+@EACH
+def test_equal_content_built_twice_holds_two_ids(
+    prefix: str, build: Callable[..., Any]
+) -> None:
+    assert build().id != build().id
+
+
+def test_a_seed_mints_several_ids_in_order() -> None:
+    timeline = ContinuousLogicalTimeline(length=12)
+    regions = timeline.create_regions_from_boundaries([0, 4, 8, 12], seed=7)
+    minter = IdMinter(7)
+    assert [region.id for region in regions] == [
+        minter.mint("region") for _ in range(3)
+    ]
 
 
 def _reference(*, reverse: bool = False) -> Timeline:
@@ -143,17 +203,6 @@ def _reference(*, reverse: bool = False) -> Timeline:
     return root
 
 
-REFERENCE_IDS = {
-    "timeline": "clt_1",
-    "children": {"clt_2", "clt_3"},
-    "regions": {"region_1", "region_2"},
-    "breaks": {"break_1", "break_2"},
-    "jump_targets": ["jump_target_1"],
-    "jumps": [("jump_1", ["jump_target_1"])],
-    "maps": ["cmap_1"],
-}
-
-
 def _ids(manifest: dict[str, Any]) -> dict[str, Any]:
     (payload,) = manifest["timelines"]
     flow = payload["flow_control"]
@@ -175,27 +224,30 @@ def _ids(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 class TestDeterminism:
-    """Minted ids depend on the manifest only, never on the process history."""
+    """Minted ids depend on what is built, never on unrelated process history."""
 
-    def test_reference_ids(self) -> None:
-        assert _ids(bare(_reference().to_dict())) == REFERENCE_IDS
-
-    def test_unrelated_construction_first_changes_nothing(self) -> None:
+    def test_one_build_writes_one_manifest(self) -> None:
+        reset_content_minters()
         reference = bare(_reference().to_dict())
+        reset_content_minters()
         for _ in range(5):
             ContinuousLogicalTimeline(length=4)
         for _ in range(4):
             LinearMap(scalar=3)
         assert bare(_reference().to_dict()) == reference
 
-    def test_reverse_insertion_order_mints_the_same_ids(self) -> None:
-        assert _ids(bare(_reference(reverse=True).to_dict())) == REFERENCE_IDS
+    def test_reverse_insertion_order_holds_the_same_ids(self) -> None:
+        reset_content_minters()
+        reference = _ids(bare(_reference().to_dict()))
+        reset_content_minters()
+        assert _ids(bare(_reference(reverse=True).to_dict())) == reference
 
-    def test_above_the_highest_number(self) -> None:
+    def test_a_given_id_is_never_parsed(self) -> None:
         root = ContinuousLogicalTimeline(length=32)
         root.add_child(ContinuousLogicalTimeline(length=4, uid="clt_3"), 0)
-        assert root.create_child(length=4, offset=4).id == "clt_4"
-        assert root.create_child(length=4, offset=8).id == "clt_5"
+        child = root.create_child(length=4, offset=4)
+        assert child.id != "clt_4"
+        assert re.fullmatch(r"clt_[0-9a-z]{13}", child.id)
 
     def test_no_old_form(self) -> None:
         for cls in (
@@ -210,6 +262,27 @@ class TestDeterminism:
             timeline_id = cls().id
             assert not timeline_id.startswith("tl:")
             assert "_" in timeline_id
+
+
+class TestNothingMintedWhileWriting:
+    """An object written twice gives one manifest twice."""
+
+    def test_the_reference_manifest(self) -> None:
+        root = _reference()
+        assert root.to_dict() == root.to_dict()
+
+    def test_a_measure_view_names_the_measure_map_it_holds(self) -> None:
+        meter = MetricMap.from_uniform(4, 4, seed=7)
+        timeline = ContinuousLogicalTimeline(length=16, uid="score")
+        timeline.add_conversion_map(meter)
+        first = bare(timeline.to_dict())
+        minter = IdMinter(7)
+        assert meter.id == minter.mint("cmap")
+        measure_map_id = minter.mint("measure_map")
+        assert [entry["id"] for entry in first["measure_maps"]] == [measure_map_id]
+        (written,) = first["timelines"][0]["conversion_maps"]
+        assert written["measure_map"] == measure_map_id
+        assert bare(timeline.to_dict()) == first
 
 
 # endregion
@@ -302,57 +375,63 @@ class TestGivenIds:
 # region Collisions
 
 
-def _with_region() -> ContinuousLogicalTimeline:
-    timeline = ContinuousLogicalTimeline(length=16)
-    timeline.create_region(0, 4, name="intro")
-    return timeline
+def _seeded(uid: str | None = None, *, timeline: int = 1) -> ContinuousLogicalTimeline:
+    """A timeline built with *timeline* as seed, holding a region of seed 2."""
+    built = ContinuousLogicalTimeline(length=16, uid=uid, seed=timeline)
+    built.create_region(0, 4, name="intro", seed=2)
+    return built
 
 
 class TestCollisions:
-    """Ids are unique within one manifest across all kinds."""
+    """Ids are unique within one manifest across all kinds; nothing is renamed."""
 
-    def test_minted_ids_are_minted_again_when_joining(self) -> None:
-        root = _with_region()
-        child = _with_region()
-        root.add_child(child, 0)
-        assert (root.id, root.list_regions()) == ("clt_1", ["region_1"])
-        assert (child.id, child.list_regions()) == ("clt_2", ["region_2"])
-        assert root.list_children() == ["clt_2"]
-        segments = [
-            event["id"]
-            for event in root._events
-            if event.get("event_type") == "Segment"
-        ]
-        assert segments == ["clt_2"]
-
-    def test_a_grandchild_is_renamed_under_its_parent(self) -> None:
-        root = ContinuousLogicalTimeline(length=16)
-        root.create_child(length=4)  # clt_2
-        child = ContinuousLogicalTimeline(length=8)
-        grandchild = child.create_child(length=4)  # clt_2 inside the child
-        root.add_child(child, 8)
-        assert (child.id, grandchild.id) == ("clt_3", "clt_4")
-        assert child.list_children() == ["clt_4"]
-        assert child.get_child("clt_4") is grandchild
-
-    def test_a_jump_target_minted_again_takes_its_jumps_along(self) -> None:
-        root = ContinuousLogicalTimeline(length=16)
-        root.flow_control.add(JumpTarget(_q(0), manifestation=SEGNO))
-        child = ContinuousLogicalTimeline(length=8)
-        target = child.flow_control.add(
-            JumpTarget(_q(2), name="segno", manifestation=SEGNO)
+    def test_a_minted_timeline_id_held_twice_is_refused(self) -> None:
+        root, child = _seeded(), _seeded()
+        held = child.id
+        assert root.id == held
+        with pytest.raises(ValueError) as refused:
+            root.add_child(child, 0)
+        assert str(refused.value) == (
+            f"timeline '{held}' cannot join: its id '{held}' is already held by "
+            f"timeline '{held}'"
         )
+        assert root.list_children() == []
+        assert (root.id, child.id) == (held, held)
+        assert root.list_regions() == child.list_regions()
+
+    def test_a_minted_region_id_held_twice_is_refused(self) -> None:
+        root, child = _seeded(), _seeded(timeline=3)
+        (region,) = root.list_regions()
+        with pytest.raises(ValueError) as refused:
+            root.add_child(child, 0)
+        assert str(refused.value) == (
+            f"region '{region}' of timeline '{child.id}' cannot join: its id "
+            f"'{region}' is already held by region '{region}' of timeline '{root.id}'"
+        )
+        assert root.list_children() == []
+        assert child.list_regions() == [region]
+
+    def test_a_jump_target_held_twice_refuses_the_child(self) -> None:
+        root = ContinuousLogicalTimeline(length=16)
+        held = root.flow_control.add(JumpTarget(_q(0), manifestation=SEGNO, seed=5))
+        child = ContinuousLogicalTimeline(length=8)
+        target = child.flow_control.add(JumpTarget(_q(2), name="segno", seed=5))
         child.flow_control.add(_jump(6, to=target.id))
-        root.add_child(child, 0)
-        assert [t.id for t in child.flow_control.jump_targets] == ["jump_target_2"]
-        assert [j.targets[0].to for j in child.flow_control.jumps] == ["jump_target_2"]
+        assert target.id == held.id
+        with pytest.raises(ValueError, match="is already held by jump_target"):
+            root.add_child(child, 0)
+        assert [t.id for t in child.flow_control.jump_targets] == [held.id]
+        assert [j.targets[0].to for j in child.flow_control.jumps] == [held.id]
+        assert root.list_children() == []
 
     def test_given_timeline_id_collision_raises(self) -> None:
         root = ContinuousLogicalTimeline(length=16, uid="score")
         with pytest.raises(ValueError) as error:
             root.add_child(ContinuousLogicalTimeline(length=4, uid="score"), 0)
-        assert "timeline 'score'" in str(error.value)
-        assert "already held by timeline 'score'" in str(error.value)
+        assert str(error.value) == (
+            "timeline 'score' cannot join: its id 'score' is already held by "
+            "timeline 'score'"
+        )
 
     def test_given_id_collides_across_kinds(self) -> None:
         root = ContinuousLogicalTimeline(length=16, uid="score")
@@ -381,7 +460,7 @@ class TestCollisions:
         child.add_conversion_map(ScalarMap(2, uid="tempo"))
         with pytest.raises(
             ValueError,
-            match="already held by conversion map 'tempo' of timeline 'clt_2'",
+            match=f"already held by conversion map 'tempo' of timeline '{child.id}'",
         ):
             root.add_conversion_map(ScalarMap(3, uid="tempo"))
         assert root.n_conversion_maps == 0
@@ -406,15 +485,15 @@ def _free_bundle() -> AlignmentBundle:
     return bundle
 
 
-def _bars() -> MeasureMap:
-    return MeasureMap.from_rows([{"count": 1, "time_signature": "4/4"}])
-
-
 class TestFreeIds:
     """Slashes, spaces, colons and URIs are ids, through a manifest round trip."""
 
     def test_every_kind_keeps_its_free_id(self) -> None:
-        payload = bare(_free_bundle().to_dict())
+        bundle = _free_bundle()
+        map_ids = sorted(
+            cmap.id for cmap in bundle.timelines["score/1"]._all_conversion_maps()
+        )
+        payload = bare(bundle.to_dict())
         text = json.dumps(payload)
         read = AlignmentBundle.from_dict(filed(json.loads(text)))
 
@@ -422,10 +501,8 @@ class TestFreeIds:
         score = read.timelines["score/1"]
         assert score.list_children() == ["part 2"]
         assert score.list_regions() == ["intro: A/B"]
-        assert sorted(cmap.id for cmap in score._all_conversion_maps()) == [
-            "cmap_1",
-            "urn:tempo",
-        ]
+        assert sorted(cmap.id for cmap in score._all_conversion_maps()) == map_ids
+        assert "urn:tempo" in map_ids
         assert score.measure_map.id == "https://example.org/op35/bars"
         assert [e.id for e in score.flow_control.breaks] == ["fine / end"]
         assert [t.id for t in score.flow_control.jump_targets] == ["segno 1"]
@@ -614,12 +691,16 @@ def test_an_id_held_twice_in_a_manifest_is_refused(
     assert refusal(refused.value) == refused_with
 
 
-def _joining(uid: str) -> ContinuousLogicalTimeline:
-    """A root of given id holding a minted region, map and jump target, and a jump."""
+def _joining(uid: str, *, seeded: bool = True) -> ContinuousLogicalTimeline:
+    """A root of given id holding a region, a map and a jump target (each of
+    one seed when *seeded*, so that two such trees collide), and a jump."""
+    seeds = (11, 12, 13) if seeded else (None, None, None)
     timeline = ContinuousLogicalTimeline(length=16, uid=uid)
-    timeline.create_region(0, 4)
-    timeline.add_conversion_map(LinearMap(scalar=2))
-    target = timeline.flow_control.add(JumpTarget(_q(2), manifestation=SEGNO))
+    timeline.create_region(0, 4, seed=seeds[0])
+    timeline.add_conversion_map(LinearMap(scalar=2, seed=seeds[1]))
+    target = timeline.flow_control.add(
+        JumpTarget(_q(2), manifestation=SEGNO, seed=seeds[2])
+    )
     timeline.flow_control.add(_jump(6, id=f"ds-{uid}", to=target.id))
     return timeline
 
@@ -644,10 +725,19 @@ def _bundle_of(*timelines: Timeline) -> AlignmentBundle:
     return bundle
 
 
+def _scope(container: TimelineGroup | AlignmentBundle) -> str:
+    kind = "group" if isinstance(container, TimelineGroup) else "bundle"
+    return f"{kind} '{container.id}'"
+
+
+def _members(container: TimelineGroup | AlignmentBundle) -> list[str]:
+    if isinstance(container, TimelineGroup):
+        return container.timeline_ids
+    return list(container.timelines)
+
+
 SCOPES = pytest.mark.parametrize(
-    ("join", "scope"),
-    [(_group_of, "group 'group_1'"), (_bundle_of, "bundle 'bundle_1'")],
-    ids=["group", "bundle"],
+    "join", [_group_of, _bundle_of], ids=["group", "bundle"]
 )
 
 
@@ -655,52 +745,51 @@ class TestJoiningScopes:
     """Trees joining a group or a bundle share one scope, every kind of element."""
 
     @SCOPES
-    def test_minted_ids_of_every_kind_are_minted_again(
-        self, join: Callable[..., Any], scope: str
+    def test_ids_of_one_seed_collide_and_are_refused_atomically(
+        self, join: Callable[..., Any]
     ) -> None:
         first, second = _joining("a"), _joining("b")
-        join(first, second)
+        before = _held(second)
+        container = join(first)
+        (map_id,) = before[1]
 
-        assert _held(first) == (
-            ["region_1"],
-            ["cmap_1"],
-            ["jump_target_1"],
-            ["jump_target_1"],
+        with pytest.raises(ValueError) as refused:
+            container.add_timeline(second)
+        assert str(refused.value) == (
+            f"conversion map '{map_id}' of timeline 'b' cannot join "
+            f"{_scope(container)}: its id '{map_id}' is already held by "
+            f"conversion map '{map_id}' of timeline 'a'"
         )
-        assert _held(second) == (
-            ["region_2"],
-            ["cmap_2"],
-            ["jump_target_2"],
-            ["jump_target_2"],
-        )
+        assert _held(second) == before
+        assert _members(container) == ["a"]
+
+    @SCOPES
+    def test_trees_built_from_content_join(self, join: Callable[..., Any]) -> None:
+        first, second = _joining("a", seeded=False), _joining("b", seeded=False)
+        before = (_held(first), _held(second))
+        container = join(first, second)
+
+        assert (_held(first), _held(second)) == before
+        assert _members(container) == ["a", "b"]
 
     @SCOPES
     def test_a_given_id_held_in_the_scope_is_refused_atomically(
-        self, join: Callable[..., Any], scope: str
+        self, join: Callable[..., Any]
     ) -> None:
-        first, second = _joining("a"), _joining("b")
+        first, second = _joining("a", seeded=False), _joining("b", seeded=False)
         first.add_conversion_map(ScalarMap(3, uid="intro"))
         second.create_region(4, 8, id="intro")
+        before = _held(second)
         container = join(first)
 
         with pytest.raises(ValueError) as refused:
-            (container.add_timeline)(second)
+            container.add_timeline(second)
         assert str(refused.value) == (
-            f"region 'intro' of timeline 'b' cannot join {scope}: its id 'intro' is "
-            "already held by conversion map 'intro' of timeline 'a'"
+            f"region 'intro' of timeline 'b' cannot join {_scope(container)}: its id "
+            "'intro' is already held by conversion map 'intro' of timeline 'a'"
         )
-        assert second.list_regions() == ["region_1", "intro"]
-        assert _held(second)[1:] == (
-            ["cmap_1"],
-            ["jump_target_1"],
-            ["jump_target_1"],
-        )
-        members = (
-            container.timeline_ids
-            if isinstance(container, TimelineGroup)
-            else sorted(container.timelines)
-        )
-        assert members == ["a"]
+        assert _held(second) == before
+        assert _members(container) == ["a"]
 
     def test_a_given_bundle_id_is_the_manifest_s(self) -> None:
         bundle = AlignmentBundle(id="study")
@@ -722,14 +811,32 @@ def test_a_given_group_id_held_by_a_region_is_refused() -> None:
     with pytest.raises(ValueError) as refused:
         bundle.add_group(group)
     assert str(refused.value) == (
-        "group 'g' cannot join bundle 'bundle_1': its id 'g' is already held by "
+        f"group 'g' cannot join bundle '{bundle.id}': its id 'g' is already held by "
         "region 'g' of timeline 'a'"
     )
     assert bundle.groups == {}
 
 
+def test_a_minted_group_id_is_never_renamed() -> None:
+    second = ContinuousLogicalTimeline(length=16, uid="b")
+    group = _group_of(_joining("a"), second)
+    bundle = AlignmentBundle()
+    bundle.add_group(group)
+    group_id = group.id
+
+    with pytest.raises(ValueError) as refused:
+        second.create_region(0, 4, id=group_id)
+    assert str(refused.value) == (
+        f"region '{group_id}' of timeline 'b' cannot join: its id '{group_id}' is "
+        f"already held by group '{group_id}'"
+    )
+    assert group.id == group_id
+    assert list(bundle.groups) == [group_id]
+    assert second.list_regions() == []
+
+
 class TestLivingScopes:
-    """While a group or a bundle holds trees, their elements take ids together."""
+    """While a group or a bundle holds trees, their elements are checked together."""
 
     @pytest.mark.parametrize("join", [_group_of, _bundle_of], ids=["group", "bundle"])
     @pytest.mark.parametrize(
@@ -750,7 +857,7 @@ class TestLivingScopes:
         ],
         ids=["region", "map", "break"],
     )
-    def test_an_element_added_later_takes_its_id_in_the_scope(
+    def test_an_element_added_later_is_checked_in_the_scope(
         self,
         join: Callable[..., Any],
         add: Callable[[Timeline], Any],
@@ -760,48 +867,43 @@ class TestLivingScopes:
         first.create_region(4, 8, id="intro")
         container = join(first, second)
 
-        assert second.create_region(0, 4).id == "region_2"
         with pytest.raises(ValueError) as refused:
             add(second)
         assert str(refused.value) == (
             f"{element} 'intro' of timeline 'b' cannot join: its id 'intro' is "
             "already held by region 'intro' of timeline 'a'"
         )
-        assert second.list_regions() == ["region_2"]
+        assert second.list_regions() == []
         assert second.n_conversion_maps == 0
         assert second.flow_control.breaks == ()
         assert container is not None
 
-    def test_a_removed_member_leaves_the_scope(self) -> None:
+    @staticmethod
+    def _pair() -> tuple[ContinuousLogicalTimeline, ContinuousLogicalTimeline]:
         first, second = _joining("a"), ContinuousLogicalTimeline(length=16, uid="b")
+        first.create_region(4, 8, id="intro")
+        return first, second
+
+    def test_a_removed_member_leaves_the_scope(self) -> None:
+        first, second = self._pair()
         group = _group_of(first, second)
         group.remove_timeline("b")
 
-        assert second.create_region(0, 4).id == "region_1"
+        assert second.create_region(0, 4, id="intro").id == "intro"
 
     def test_a_dropped_group_leaves_no_scope(self) -> None:
-        first, second = _joining("a"), ContinuousLogicalTimeline(length=16, uid="b")
+        first, second = self._pair()
         group = _group_of(first, second)
         del group
         gc.collect()
 
-        assert second.create_region(0, 4).id == "region_1"
+        assert second.create_region(0, 4, id="intro").id == "intro"
 
     def test_a_pickled_group_keeps_its_scope(self) -> None:
-        group = _group_of(_joining("a"), ContinuousLogicalTimeline(length=16, uid="b"))
-        restored = pickle.loads(pickle.dumps(group))
+        restored = pickle.loads(pickle.dumps(_group_of(*self._pair())))
 
-        assert restored.get_timeline("b").create_region(0, 4).id == "region_2"
-
-    def test_a_given_id_mints_a_minted_group_id_again(self) -> None:
-        first, second = _joining("a"), ContinuousLogicalTimeline(length=16, uid="b")
-        group = _group_of(first, second)
-        bundle = AlignmentBundle()
-        bundle.add_group(group)
-
-        assert second.create_region(0, 4, id="group_1").id == "group_1"
-        assert group.id == "group_2"
-        assert list(bundle.groups) == ["group_2"]
+        with pytest.raises(ValueError, match="already held by region 'intro'"):
+            restored.get_timeline("b").create_region(0, 4, id="intro")
 
 
 def _holding_region(uid: str, region_id: str | None) -> ContinuousLogicalTimeline:
@@ -837,10 +939,11 @@ def _empty_group_behind_a_bundle(
     return bundle, group, _holding_region("c", region_id)
 
 
-_REFUSED_C = (
-    "region 'r' of timeline 'c' cannot join group 'group_1': its id 'r' is "
-    "already held by region 'r' of timeline 'd'"
-)
+def _refused_c(group: TimelineGroup) -> str:
+    return (
+        f"region 'r' of timeline 'c' cannot join group '{group.id}': its id 'r' is "
+        "already held by region 'r' of timeline 'd'"
+    )
 
 
 class TestGroupBehindABundle:
@@ -851,20 +954,21 @@ class TestGroupBehindABundle:
 
         with pytest.raises(ValueError) as refused:
             group.add_timeline(newcomer)
-        assert str(refused.value) == _REFUSED_C
+        assert str(refused.value) == _refused_c(group)
         assert group.timeline_ids == ["a", "b"]
         assert list(bundle.timelines) == ["d", "a", "b"]
         assert newcomer.list_regions() == ["r"]
         assert newcomer.create_region(4, 8, id="d").id == "d"
 
-    def test_a_minted_id_is_minted_again_and_the_bundle_writes_the_newcomer(
-        self,
-    ) -> None:
+    def test_minted_ids_join_and_the_bundle_writes_the_newcomer(self) -> None:
         bundle, group, newcomer = _group_behind_a_bundle(None)
+        regions = (newcomer.list_regions(), bundle.timelines["d"].list_regions())
         group.add_timeline(newcomer)
 
-        assert newcomer.list_regions() == ["region_2"]
-        assert bundle.timelines["d"].list_regions() == ["region_1"]
+        assert (
+            newcomer.list_regions(),
+            bundle.timelines["d"].list_regions(),
+        ) == regions
         assert bundle.timelines["c"] is newcomer
         data = bare(bundle.to_dict(minimal=False))
         assert [timeline["id"] for timeline in data["timelines"]] == [
@@ -874,7 +978,7 @@ class TestGroupBehindABundle:
             "d",
         ]
         assert data["groups"] == [
-            {"id": "group_1", "name": None, "meta": {}, "members": ["a", "b", "c"]}
+            {"id": group.id, "name": None, "meta": {}, "members": ["a", "b", "c"]}
         ]
         validate(filed(data))
 
@@ -885,41 +989,40 @@ class TestGroupBehindABundle:
 
         with pytest.raises(ValueError) as refused:
             group.add_timeline(newcomer)
-        assert str(refused.value) == _REFUSED_C
+        assert str(refused.value) == _refused_c(group)
         assert group.timeline_ids == []
         assert list(bundle.timelines) == ["d"]
-        assert bundle.groups == {"group_1": group}
+        assert bundle.groups == {group.id: group}
         assert newcomer.list_regions() == ["r"]
 
-    def test_an_empty_group_mints_again_and_the_bundle_writes_the_newcomer(
+    def test_an_empty_group_takes_minted_ids_and_the_bundle_writes_the_newcomer(
         self,
     ) -> None:
         bundle, group, newcomer = _empty_group_behind_a_bundle(None)
         group.add_timeline(newcomer)
 
-        assert newcomer.list_regions() == ["region_2"]
-        assert bundle.timelines["d"].list_regions() == ["region_1"]
         assert bundle.timelines["c"] is newcomer
         data = bare(bundle.to_dict(minimal=False))
         assert [timeline["id"] for timeline in data["timelines"]] == ["c", "d"]
         assert data["groups"] == [
-            {"id": "group_1", "name": None, "meta": {}, "members": ["c"]}
+            {"id": group.id, "name": None, "meta": {}, "members": ["c"]}
         ]
         validate(filed(data))
 
     def test_an_unpickled_bundle_holds_its_empty_group_again(self) -> None:
-        bundle, _group, newcomer = _empty_group_behind_a_bundle("r")
+        bundle, group, newcomer = _empty_group_behind_a_bundle("r")
         restored = pickle.loads(pickle.dumps(bundle))
+        restored_group = restored.groups[group.id]
 
         with pytest.raises(ValueError) as refused:
-            restored.groups["group_1"].add_timeline(newcomer)
-        assert str(refused.value) == _REFUSED_C
-        assert restored.groups["group_1"].timeline_ids == []
+            restored_group.add_timeline(newcomer)
+        assert str(refused.value) == _refused_c(restored_group)
+        assert restored_group.timeline_ids == []
         assert list(restored.timelines) == ["d"]
 
     def test_a_group_the_bundle_no_longer_holds_does_not_consult_it(self) -> None:
         bundle, group, newcomer = _empty_group_behind_a_bundle("r")
-        bundle.groups.pop("group_1")
+        bundle.groups.pop(group.id)
         group.add_timeline(newcomer)
 
         assert group.timeline_ids == ["c"]
@@ -978,7 +1081,7 @@ def _measure_and_section() -> CombinationMap:
 
 
 def _holding_two_maps() -> ContinuousLogicalTimeline:
-    """A quarters timeline holding two minted maps, ``cmap_1`` and ``cmap_2``."""
+    """A quarters timeline holding two minted maps."""
     timeline = ContinuousLogicalTimeline(length=16)
     timeline.add_conversion_map(
         LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
@@ -1001,38 +1104,39 @@ def _map_ids(cmap: dict[str, Any]) -> Any:
 class TestNestedMaps:
     """Maps nested in maps hold ids of their own, unique in the manifest."""
 
-    def test_a_chain_of_two_unnamed_maps_writes_two_ids(self) -> None:
-        assert _map_ids(_seconds_to_minutes().to_dict()) == (
-            "cmap_1",
-            ["cmap_2", "cmap_3"],
-        )
+    def test_a_chain_of_two_unnamed_maps_writes_their_ids(self) -> None:
+        chain = _seconds_to_minutes()
+        assert _map_ids(chain.to_dict()) == (chain.id, [m.id for m in chain.maps])
+        assert len({chain.id, *(m.id for m in chain.maps)}) == 3
 
-    def test_a_nested_minted_id_taken_in_the_manifest_is_minted_again(self) -> None:
+    def test_a_chain_joining_a_timeline_keeps_every_id(self) -> None:
         timeline = _holding_two_maps()
-        timeline.add_conversion_map(_seconds_to_minutes())
+        held = [cmap.id for cmap in timeline._all_conversion_maps()]
+        chain = _seconds_to_minutes()
+        timeline.add_conversion_map(chain)
         written = bare(timeline.to_dict())["timelines"][0]["conversion_maps"]
         assert [_map_ids(cmap) for cmap in written] == [
-            "cmap_1",
-            "cmap_2",
-            ("cmap_4", ["cmap_5", "cmap_3"]),
+            *held,
+            (chain.id, [m.id for m in chain.maps]),
         ]
 
     def test_a_record_map_in_a_chain_in_a_combination(self) -> None:
         combination = _measure_and_section()
-        assert _map_ids(combination.to_dict()) == (
-            "cmap_1",
-            [("cmap_4", ["cmap_2", "cmap_3"]), "cmap_5"],
+        record, section = combination._nested_maps()
+        assert isinstance(record, ChainMap)
+        expected = (
+            combination.id,
+            [(record.id, [m.id for m in record.maps]), section.id],
         )
+        assert _map_ids(combination.to_dict()) == expected
         timeline = ContinuousLogicalTimeline(length=4, unit="whole_notes")
-        timeline.add_conversion_map(ConstantMap(value="a", source_unit="whole_notes"))
+        constant = ConstantMap(value="a", source_unit="whole_notes")
+        timeline.add_conversion_map(constant)
         timeline.add_conversion_map(combination)
         payload = bare(timeline.to_dict())
         assert [
             _map_ids(cmap) for cmap in payload["timelines"][0]["conversion_maps"]
-        ] == [
-            "cmap_1",
-            ("cmap_6", [("cmap_4", ["cmap_2", "cmap_3"]), "cmap_5"]),
-        ]
+        ] == [constant.id, expected]
         text = json.dumps(payload)
         assert (
             json.dumps(bare(Timeline.from_dict(filed(json.loads(text))).to_dict()))
@@ -1043,48 +1147,62 @@ class TestNestedMaps:
         cmap = IntervalToConstantMap(
             boundaries=[0, 4], values=["a", "b"], end=8, source_unit="quarters"
         )
-        assert _map_ids(cmap.to_dict()) == ("cmap_1", ["cmap_2", "cmap_3"])
+        assert _map_ids(cmap.to_dict()) == (
+            cmap.id,
+            [piece.id for piece in cmap._nested_maps()],
+        )
 
-    def test_a_joining_child_s_nested_map_is_minted_again(self) -> None:
+    def test_a_joining_child_s_nested_map_keeps_its_id(self) -> None:
         root = _holding_two_maps()
         child = ContinuousLogicalTimeline(length=8)
         chain = _seconds_to_minutes()
+        ids = (chain.id, [cmap.id for cmap in chain.maps])
         child.add_conversion_map(chain)
         root.add_child(child, 0)
-        assert [cmap.id for cmap in chain.maps] == ["cmap_5", "cmap_3"]
-        assert list(child._conversion_maps) == ["cmap_4"]
+        assert (chain.id, [cmap.id for cmap in chain.maps]) == ids
+        assert list(child._conversion_maps) == [chain.id]
 
     def test_two_nested_maps_given_one_id_raise(self) -> None:
         with pytest.raises(
             ValueError,
             match=(
-                "conversion map 'a' nested in conversion map 'cmap_1' cannot join: "
+                "conversion map 'a' nested in conversion map 'chain' cannot join: "
                 "its id 'a' is already held by conversion map 'a' nested in "
-                "conversion map 'cmap_1'"
+                "conversion map 'chain'"
             ),
         ):
-            ChainMap([LinearMap(scalar=2, uid="a"), LinearMap(scalar=3, uid="a")])
+            ChainMap(
+                [LinearMap(scalar=2, uid="a"), LinearMap(scalar=3, uid="a")],
+                uid="chain",
+            )
+
+    def test_two_nested_maps_of_one_seed_raise(self) -> None:
+        held = IdMinter(3).mint("cmap")
+        with pytest.raises(ValueError, match=f"its id '{held}' is already held"):
+            ChainMap(
+                [LinearMap(scalar=2, seed=3), LinearMap(scalar=3, seed=3)],
+                uid="chain",
+            )
 
     def test_a_nested_given_id_held_in_the_manifest_raises(self) -> None:
-        timeline = ContinuousLogicalTimeline(length=16)
+        timeline = ContinuousLogicalTimeline(length=16, uid="score")
         timeline.add_conversion_map(ScalarMap(2, uid="tempo"))
         chain = ChainMap([LinearMap(scalar=2), LinearMap(scalar=3, uid="tempo")])
+        ids = (chain.id, [cmap.id for cmap in chain.maps])
         with pytest.raises(
             ValueError,
-            match="already held by conversion map 'tempo' of timeline 'clt_1'",
+            match="already held by conversion map 'tempo' of timeline 'score'",
         ):
             timeline.add_conversion_map(chain)
         assert list(timeline._conversion_maps) == ["tempo"]
-        assert (chain.id, [cmap.id for cmap in chain.maps]) == (
-            "cmap_1",
-            ["cmap_2", "tempo"],
-        )
+        assert (chain.id, [cmap.id for cmap in chain.maps]) == ids
 
     def test_one_map_nested_in_two_places_raises(self) -> None:
         twice = LinearMap(scalar=2)
+        held = twice.id
         with pytest.raises(ValueError, match="nests one map in two places"):
             ChainMap([twice, twice])
-        assert twice.id == "cmap_1"
+        assert twice.id == held
 
     def test_reading_refuses_a_nested_id_repeated(self) -> None:
         payload = bare(ContinuousLogicalTimeline(length=16, uid="piece").to_dict())
@@ -1115,28 +1233,39 @@ class TestNestedMaps:
 # region Regions and jump targets by id
 
 
+def _target(flow: Any, target_id: str | None) -> Any:
+    """The jump target *target_id* names, as manifestation, name, coordinate."""
+    if target_id is None:
+        return None
+    (target,) = [t for t in flow.jump_targets if t.id == target_id]
+    return (target.manifestation, target.name, target.coordinate.value)
+
+
 class TestKeyedById:
     """The region API takes ids; a destination names its jump target by id."""
 
     def test_regions_with_one_name_coexist(self) -> None:
         timeline = ContinuousLogicalTimeline(length=32)
-        timeline.create_region(0, 8, name="Chorus")
-        timeline.create_region(16, 24, name="Chorus")
-        assert timeline.list_regions() == ["region_1", "region_2"]
-        assert timeline.has_region("region_2")
+        first = timeline.create_region(0, 8, name="Chorus")
+        second = timeline.create_region(16, 24, name="Chorus")
+        assert first.id != second.id
+        assert timeline.list_regions() == [first.id, second.id]
+        assert timeline.has_region(second.id)
         assert not timeline.has_region("Chorus")
-        assert timeline.get_region("region_2").name == "Chorus"
-        with pytest.raises(KeyError, match=r"\['region_1', 'region_2'\]"):
+        assert timeline.get_region(second.id).name == "Chorus"
+        with pytest.raises(KeyError, match=re.escape(str([first.id, second.id]))):
             timeline.get_region("Chorus")
 
     def test_children_from_regions_are_named_after_them(self) -> None:
         timeline = ContinuousLogicalTimeline(length=32)
-        timeline.create_region(0, 8, name="Chorus")
-        timeline.create_region(16, 24, name="Verse")
-        child = timeline.create_child_from_region("region_1")
-        assert (child.id, child.name) == ("clt_2", "Chorus")
-        children = timeline.create_children_from_regions(["region_2"])
-        assert [(c.id, c.name) for c in children] == [("clt_3", "Verse")]
+        chorus = timeline.create_region(0, 8, name="Chorus")
+        verse = timeline.create_region(16, 24, name="Verse")
+        child = timeline.create_child_from_region(chorus.id)
+        assert child.name == "Chorus"
+        assert re.fullmatch(r"clt_[0-9a-z]{13}", child.id)
+        (other,) = timeline.create_children_from_regions([verse.id])
+        assert other.name == "Verse"
+        assert len({child.id, other.id, chorus.id, verse.id}) == 4
 
     def test_a_destination_must_name_a_jump_target(self) -> None:
         timeline = ContinuousLogicalTimeline(length=32, uid="score")
@@ -1156,18 +1285,17 @@ class TestKeyedById:
             .create_timeline()
         )
         flow = timeline.flow_control
-        # IDs are minted in the order written: the two printed repeat
-        # starts, then the markers of the table (segno, 1e, 2e).
-        assert [
-            (target.id, target.manifestation, target.name, target.coordinate)
+        assert sorted(
+            (target.coordinate.value, target.name or "", str(target.manifestation))
             for target in flow.jump_targets
-        ] == [
-            ("jump_target_3", SEGNO, "segno", _q(12)),
-            ("jump_target_1", FlowManifestation.repeat_start, None, _q(42)),
-            ("jump_target_4", None, "1e", _q(42)),
-            ("jump_target_2", FlowManifestation.repeat_start, None, _q(84)),
-            ("jump_target_5", None, "2e", _q(84)),
+        ) == [
+            (12, "segno", str(SEGNO)),
+            (42, "", str(FlowManifestation.repeat_start)),
+            (42, "1e", "None"),
+            (84, "", str(FlowManifestation.repeat_start)),
+            (84, "2e", "None"),
         ]
+        (segno,) = [t for t in flow.jump_targets if t.name == "segno"]
         assert [(b.manifestation, b.coordinate) for b in flow.breaks] == [
             (FlowManifestation.fine, _q(42))
         ]
@@ -1176,7 +1304,7 @@ class TestKeyedById:
             for jump in flow.jumps
             for destination in jump.targets
             if destination.manifestation is FlowManifestation.dal_segno_al_fine
-        ] == ["jump_target_3", "jump_target_3"]
+        ] == [segno.id, segno.id]
 
     def test_a_destination_without_a_printed_place_names_none(self) -> None:
         timeline = (
@@ -1184,25 +1312,52 @@ class TestKeyedById:
             .load(SCORE / "couperin_concerts/c11n08_Rondeau.measures.tsv")
             .create_timeline()
         )
+        flow = timeline.flow_control
         repeat_end = FlowManifestation.repeat_end
+        repeat_start = FlowManifestation.repeat_start
         da_capo = FlowManifestation.da_capo
+        starts = sorted(
+            target.coordinate.value
+            for target in flow.jump_targets
+            if target.manifestation is repeat_start
+        )
         # The first repeat end has no printed start; a da capo has no place.
         # The two destinations without a manifestation go on to a couplet
         # (the markers 2e and 3e) after a da capo.
-        assert [
-            (jump.coordinate.value, destination.manifestation, destination.to)
-            for jump in timeline.flow_control.jumps
-            for destination in jump.targets
-        ] == [
-            (12, repeat_end, None),
-            (12, None, "jump_target_5"),
-            (12, None, "jump_target_6"),
-            (24, da_capo, None),
-            (24, repeat_end, "jump_target_1"),
-            (36, da_capo, None),
-            (36, repeat_end, "jump_target_2"),
-            (F(171, 2), repeat_end, "jump_target_3"),
-        ]
+        assert sorted(
+            (
+                (
+                    jump.coordinate.value,
+                    str(destination.manifestation),
+                    _target(flow, destination.to),
+                )
+                for jump in flow.jumps
+                for destination in jump.targets
+            ),
+            key=_by_place,
+        ) == sorted(
+            [
+                (12, str(repeat_end), None),
+                (12, "None", _target_named(flow, "2e")),
+                (12, "None", _target_named(flow, "3e")),
+                (24, str(da_capo), None),
+                (24, str(repeat_end), (repeat_start, None, starts[0])),
+                (36, str(da_capo), None),
+                (36, str(repeat_end), (repeat_start, None, starts[1])),
+                (F(171, 2), str(repeat_end), (repeat_start, None, starts[2])),
+            ],
+            key=_by_place,
+        )
+
+
+def _by_place(row: tuple[Any, str, Any]) -> tuple[Any, str, str]:
+    """Sort key of a destination row: its jump's coordinate, then the rest."""
+    return (row[0], row[1], repr(row[2]))
+
+
+def _target_named(flow: Any, name: str) -> Any:
+    (target,) = [t for t in flow.jump_targets if t.name == name]
+    return (target.manifestation, target.name, target.coordinate.value)
 
 
 # endregion
@@ -1351,7 +1506,8 @@ class TestIdsReadOncePerManifest:
         a = ContinuousLogicalTimeline(length=F(8), uid="a")
         a.create_region(0, 1, id="ra")
         b = ContinuousLogicalTimeline(length=F(8), uid="b")
-        b.add_conversion_map(LinearMap(scalar=2))
+        b_map = LinearMap(scalar=2)
+        b.add_conversion_map(b_map)
         c = ContinuousLogicalTimeline(length=F(8), uid="c")
         d = ContinuousLogicalTimeline(length=F(8), uid="d")
         first = AlignmentBundle(id="first")
@@ -1373,7 +1529,7 @@ class TestIdsReadOncePerManifest:
             "a": "timeline 'a'",
             "ra": "region 'ra' of timeline 'a'",
             "b": "timeline 'b'",
-            "cmap_1": "conversion map 'cmap_1' of timeline 'b'",
+            b_map.id: f"conversion map '{b_map.id}' of timeline 'b'",
             "c": "timeline 'c'",
             "d": "timeline 'd'",
             "g": "group 'g'",

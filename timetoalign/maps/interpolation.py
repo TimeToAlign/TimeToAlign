@@ -96,6 +96,7 @@ class InterpolationMap(ConversionMap[float]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize an InterpolationMap.
 
@@ -109,6 +110,7 @@ class InterpolationMap(ConversionMap[float]):
             source_unit: The unit of source coordinates (optional).
             target_unit: The unit of target coordinates (optional).
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Optional human-readable name.
             output_number_type: The representation results are written in,
                 among those the target unit admits; ``None`` for ``float``,
@@ -125,6 +127,7 @@ class InterpolationMap(ConversionMap[float]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
             output_number_type=output_number_type,
         )

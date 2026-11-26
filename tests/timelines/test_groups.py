@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from timetoalign.core import Coordinate, IdCoordinate, Interval
 from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.fields import field_metadata
+from timetoalign.core.ids import IdMinter
 from timetoalign.core.timestamp import Stamp, TimeStamp
 from timetoalign.maps import TableMap
 from timetoalign.storage.events import EventData
@@ -142,10 +145,10 @@ class TestTimelineGroupCreation:
         assert "audio" in group
 
     def test_auto_generated_id(self) -> None:
-        """An omitted id is minted as ``group_N``, N the smallest free number."""
-        assert TimelineGroup().id == "group_1"
-        held = ContinuousPhysicalTimeline(length=1.0, uid="group_1")
-        assert TimelineGroup(timelines=[held]).id == "group_2"
+        """An omitted id is minted with the prefix ``group``; ``seed=`` decides it."""
+        assert re.fullmatch(r"group_[0-9a-z]{13}", TimelineGroup().id)
+        held = ContinuousPhysicalTimeline(length=1.0, uid="group_x")
+        assert TimelineGroup(timelines=[held], seed=7).id == IdMinter(7).mint("group")
 
 
 class TestTimelineGroupEvents:

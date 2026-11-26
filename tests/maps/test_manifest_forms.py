@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from fractions import Fraction
 from typing import Any
 
@@ -23,6 +24,7 @@ from timetoalign import (
     Timeline,
 )
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.core.ids import IdMinter
 from timetoalign.loader.score.stores.measures import MeasureData
 from timetoalign.maps import (
     BeatInMeasureMap,
@@ -228,7 +230,8 @@ def test_each_view_reads_back_over_the_measure_map_it_names(view: type) -> None:
     bars = _bars()
     cmap = view(bars, uid="view")
     data = json.loads(json.dumps(cmap.to_dict()))
-    assert data["measure_map"] == bars.id == "measuremap_1"
+    assert data["measure_map"] == bars.id
+    assert re.fullmatch(r"measure_map_[0-9a-z]{13}", bars.id)
     read = ConversionMap.from_dict(data, measure_maps={bars.id: bars})
     assert type(read) is view
     assert read.measure_map is bars
@@ -453,6 +456,7 @@ def test_a_step_function_with_an_end_writes_constants_piecewise() -> None:
         source_unit="quarters",
         uid="pages",
     )
+    first, second = cmap._nested_maps()
     assert cmap.to_dict(minimal=True) == {
         "type": "PiecewiseMap",
         "id": "pages",
@@ -462,14 +466,14 @@ def test_a_step_function_with_an_end_writes_constants_piecewise() -> None:
         "maps": [
             {
                 "type": "ConstantMap",
-                "id": "cmap_1",
+                "id": first.id,
                 "source_unit": "quarters",
                 "target_unit": None,
                 "value": "a.png",
             },
             {
                 "type": "ConstantMap",
-                "id": "cmap_2",
+                "id": second.id,
                 "source_unit": "quarters",
                 "target_unit": None,
                 "value": "b.png",
@@ -511,7 +515,7 @@ def _view(data: dict[str, Any], view: str) -> dict[str, Any]:
 
 def test_a_floating_measure_map_names_the_measure_map_of_its_knots() -> None:
     cmap = QuartersToFloatingMeasures(
-        x_values=[0, 4, 7], y_values=[1.0, 2.0, 3.0], uid="floating"
+        x_values=[0, 4, 7], y_values=[1.0, 2.0, 3.0], uid="floating", seed=7
     )
     assert cmap.to_dict(minimal=False) == {
         "type": "FloatingMeasureMap",
@@ -519,7 +523,7 @@ def test_a_floating_measure_map_names_the_measure_map_of_its_knots() -> None:
         "name": None,
         "source_unit": "quarters",
         "target_unit": "floating_measures",
-        "measure_map": "measuremap_1",
+        "measure_map": IdMinter(7).mint("measure_map"),
     }
     read = _through_manifest(cmap)
     assert type(read) is FloatingMeasureMap
@@ -546,13 +550,15 @@ def test_from_measure_map_returns_a_view_remembering_its_measure_map() -> None:
 
 
 def test_measure_number_labels_read_back_as_numbers() -> None:
-    cmap = QuartersToMeasureNumber(boundaries=[0, 3, 7], mns=["0", "1", "2"], uid="mn")
+    cmap = QuartersToMeasureNumber(
+        boundaries=[0, 3, 7], mns=["0", "1", "2"], uid="mn", seed=7
+    )
     assert cmap.to_dict(minimal=True) == {
         "type": "MeasureNumberMap",
         "id": "mn",
         "source_unit": "quarters",
         "target_unit": None,
-        "measure_map": "measuremap_1",
+        "measure_map": IdMinter(7).mint("measure_map"),
     }
     read = _through_manifest(cmap)
     assert type(read) is MeasureNumberMap
@@ -600,6 +606,7 @@ def _meter() -> MetricMap:
         mns=["0", "1", "2"],
         lengths=[F(1), F(4), F(4)],
         uid="meter",
+        seed=7,
     )
 
 
@@ -613,7 +620,7 @@ def test_a_metric_map_writes_the_numbers_of_its_measure_counts() -> None:
         "id": "meter",
         "source_unit": "quarters",
         "target_unit": None,
-        "measure_map": "measuremap_1",
+        "measure_map": IdMinter(7).mint("measure_map"),
     }
     read = _through_manifest(cmap)
     assert type(read) is MeasureNumberMap

@@ -20,7 +20,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import _filled
-from timetoalign.core.ids import mint_id, quote_id, timeline_id_prefix
+from timetoalign.core.ids import IdMinter, content_minter, quote_id, timeline_id_prefix
 from timetoalign.core.time import (
     compare_number_column,
     coordinate_numeric_value,
@@ -411,6 +411,7 @@ class ChildrenMixin(_Host):
         self,
         child: Timeline,
         use_conversion_map: ConversionMapsSpec,
+        seed: int | None = None,
     ) -> Timeline:
         """Convert a child timeline to this timeline's unit via a C-Map.
 
@@ -419,8 +420,8 @@ class ChildrenMixin(_Host):
         it, and use it to derive a copy of the child in the parent's unit.
 
         The derived copy is named ``"{child.name} [{parent.unit}]"``, gets a
-        minted id in the parent's unit (minted again in the parent's manifest
-        when it joins), and retains all events with converted coordinates.
+        minted id in the parent's unit, and retains all events with converted
+        coordinates.
 
         Args:
             child: The child timeline to convert.
@@ -500,8 +501,15 @@ class ChildrenMixin(_Host):
                         del child._unit_maps[self._unit]
 
         # The name links back to the original; the id is minted, because a
-        # label is no identity.
-        derived._set_id(mint_id(timeline_id_prefix(self._unit), ()), minted=True)
+        # label is no identity: from the seed, else from the source's id and
+        # the unit it is converted to.
+        prefix = timeline_id_prefix(self._unit)
+        minter = (
+            IdMinter(seed)
+            if seed is not None
+            else content_minter(prefix, child.id, self._unit.value)
+        )
+        derived._set_id(minter.mint(prefix))
         derived._name = f"{child.name or child.id} [{self._unit}]"
 
         self._logger.debug(
@@ -519,6 +527,7 @@ class ChildrenMixin(_Host):
         use_conversion_map: ConversionMapsSpec = None,
         *,
         locked: bool | None = None,
+        seed: int | None = None,
     ) -> None:
         """Embed a child timeline at the specified offset.
 
@@ -535,9 +544,8 @@ class ChildrenMixin(_Host):
 
         The child's whole subtree joins this timeline's manifest, in which
         every id is unique across all element kinds: an element of the
-        subtree whose minted id is already held here receives a freshly
-        minted one, and an element whose given id is already held here makes
-        the call raise without changing anything.
+        subtree whose id, given or minted, is already held here makes the
+        call raise without changing anything. Nothing is renamed.
 
         A timeline can accommodate events and other timelines, called
         Children, as long as they use the same measuring unit.
@@ -550,7 +558,8 @@ class ChildrenMixin(_Host):
         copied with converted coordinates; the original child is NOT modified.
 
         The converted child is named ``"{child.name} [{parent.unit}]"`` and
-        receives a minted id.
+        receives a minted id: from ``IdMinter(seed)`` with *seed*, else from
+        the content minter of the source's id and the parent's unit.
 
         Args:
             child: The timeline to embed.
@@ -572,6 +581,8 @@ class ChildrenMixin(_Host):
                 ``False`` keeps the child's own state: an unlocked child stays
                 unlocked, a locked one stays locked; it is refused for an
                 unlocked segment line.
+            seed: The seed of the minter of a converted child's id; not
+                stored.
 
         Raises:
             TypeError: If child is not a Timeline.
@@ -579,8 +590,8 @@ class ChildrenMixin(_Host):
                 the offset is negative (not supported yet), the child is
                 already a child of this timeline, ``locked=True`` asks to lock
                 a plain segment, ``locked=False`` asks to leave a segment line
-                unlocked, an id given in the child's subtree is already
-                held in this manifest, a Jump of the child's subtree that is
+                unlocked, an id of the child's subtree is already held in
+                this manifest, a Jump of the child's subtree that is
                 not rejected lies at a position of the root's axis where one
                 of this timeline's tree lies (one Jump lies at a position of
                 a root's axis), or this timeline is locked and the child
@@ -593,7 +604,7 @@ class ChildrenMixin(_Host):
         """
         # Convert child's unit if a conversion map is specified
         if use_conversion_map is not None and child.unit != self._unit:
-            child = self._convert_child_to_parent_unit(child, use_conversion_map)
+            child = self._convert_child_to_parent_unit(child, use_conversion_map, seed)
 
         if locked:
             self._refuse_segment_lock(child)
@@ -636,11 +647,9 @@ class ChildrenMixin(_Host):
         child_end = (
             None if child.length is None else offset_coord.value + child.length.value
         )
-        # The whole subtree joins this manifest: a minted id held here is
-        # minted again, a given one raises before anything changes.
-        entries, rename = child._subtree_entries()
-        avoid = child._manifest_ids()
-        self._admit_entries(entries, avoid=avoid, check_only=True)
+        # The whole subtree joins this manifest: an id held here raises
+        # before anything changes.
+        self._refuse_held(child._subtree_entries())
         # One Jump per position of the root's axis, over the root's tree.
         _, start = self._root_start()
         self._refuse_repeated_jumps(
@@ -651,8 +660,6 @@ class ChildrenMixin(_Host):
         self._ensure_capacity(
             offset_coord.value if child_end is None else child_end, allow_expansion
         )
-
-        self._admit_entries(entries, rename, avoid=avoid)
 
         # Store child reference
         self._children[child.id] = child
@@ -681,6 +688,7 @@ class ChildrenMixin(_Host):
         child_class: type["Timeline"] | None = None,
         *,
         measures: bool = False,
+        seed: int | None = None,
     ) -> "Timeline":
         """Create and embed a child selected by this timeline's spawn hook.
 
@@ -708,6 +716,8 @@ class ChildrenMixin(_Host):
             child_class: Explicit class override for the child.
             measures: Give the child the slice of this timeline's measure
                 map over its span.
+            seed: The seed of the minter of the child's id when *uid* is
+                None; not stored.
 
         Returns:
             The newly created and embedded child Timeline.
@@ -742,6 +752,7 @@ class ChildrenMixin(_Host):
             number_type=self._number_type,
             uid=uid,
             name=name,
+            seed=seed,
         )
         if measured is not None:
             measured.give_to(child)
@@ -758,6 +769,7 @@ class ChildrenMixin(_Host):
         law: type[ConversionMap[Any]] = LinearMap,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> "Timeline":
         """Create a child over a calibrated segment, with the map it reads.
 
@@ -784,6 +796,8 @@ class ChildrenMixin(_Host):
             law: The map class whose ``from_pairs`` reads the pairs.
             uid: Unique identifier for the child. Auto-generated if None.
             name: Human-readable name for the child.
+            seed: The seed of the minter of the child's id when *uid* is
+                None; not stored.
 
         Returns:
             The newly created and embedded child, carrying the map.
@@ -824,7 +838,7 @@ class ChildrenMixin(_Host):
         cmap = law.from_pairs(
             pairs, source_unit=self._unit, value_unit=value_unit, origin=start
         )
-        child = self.create_child(length, offset, uid=uid, name=name)
+        child = self.create_child(length, offset, uid=uid, name=name, seed=seed)
         child.add_conversion_map(cmap)
         return child
 
@@ -1103,6 +1117,7 @@ class ChildrenMixin(_Host):
         copy_events: bool = True,
         uid: str | None = None,
         measures: bool = False,
+        seed: int | None = None,
     ) -> "Timeline":
         """Create a child timeline from a region (partitioning).
 
@@ -1127,6 +1142,8 @@ class ChildrenMixin(_Host):
             uid: Explicit child ID. When None, one is minted.
             measures: Give the child the slice of this timeline's measure
                 map over the region, as :meth:`create_child` does.
+            seed: The seed of the minter of the child's id when *uid* is
+                None; not stored.
 
         Returns:
             The newly created and attached child timeline.
@@ -1166,6 +1183,7 @@ class ChildrenMixin(_Host):
             number_type=self._number_type,
             uid=uid,
             name=region.name,
+            seed=seed,
         )
         if measured is not None:
             measured.give_to(child)
@@ -1243,6 +1261,7 @@ class ChildrenMixin(_Host):
         *,
         copy_events: bool = True,
         measures: bool = False,
+        seed: int | None = None,
     ) -> list["Timeline"]:
         """Create children from multiple regions (batch partitioning).
 
@@ -1254,6 +1273,8 @@ class ChildrenMixin(_Host):
             copy_events: Copy events to children.
             measures: Give each child the slice of this timeline's measure
                 map over its region, as :meth:`create_child` does.
+            seed: The seed of one minter of the children's ids, minted in
+                region order; None mints each from its content.
 
         Returns:
             List of child timelines in region order.
@@ -1272,10 +1293,15 @@ class ChildrenMixin(_Host):
         if region_ids is None:
             region_ids = list(self._regions.keys())
 
+        minter = None if seed is None else IdMinter(seed)
+        prefix = timeline_id_prefix(self._unit)
         result: list[Timeline] = []
         for region_id in region_ids:
             child = self.create_child_from_region(
-                region_id, copy_events=copy_events, measures=measures
+                region_id,
+                copy_events=copy_events,
+                measures=measures,
+                uid=None if minter is None else minter.mint(prefix),
             )
             result.append(child)
         return result
@@ -1902,10 +1928,11 @@ class ChildrenMixin(_Host):
         # structure is a materialization decision, to be made where
         # children are derived from that structure rather than here.
         for cmap_id, cmap in self._conversion_maps.items():
-            # The slice holds its own copy: a slice may join a manifest that
-            # holds the source's map, so the copy's id may be minted again.
+            # The slice holds its own copy under an id of its own, minted
+            # from the source map's id: a slice may join a manifest that
+            # holds the source's map. Maps nested in it are shared.
             copied = copy.copy(cmap)
-            copied._id_minted = True
+            copied._id = content_minter(cmap._id_prefix, cmap.id).mint(cmap._id_prefix)
             try:
                 target.add_conversion_map(copied)
             except (ValueError, TypeError):

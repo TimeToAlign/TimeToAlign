@@ -84,6 +84,7 @@ class _MeasureView(ConversionMap[Any, A]):
         *,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a view over *measure_map*.
 
@@ -91,6 +92,7 @@ class _MeasureView(ConversionMap[Any, A]):
             measure_map: The measure map read; every measure states its
                 ``qstamp``.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map.
 
         Raises:
@@ -101,6 +103,7 @@ class _MeasureView(ConversionMap[Any, A]):
             source_unit=TimeUnit.quarters,
             target_unit=self._view_target_unit,
             uid=uid,
+            seed=seed,
             name=name,
         )
         records = tuple(measure_map.measures)
@@ -324,6 +327,7 @@ class FloatingMeasureMap(QuartersToFloatingMeasures):
         *,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize the lattice of *measure_map*.
 
@@ -331,6 +335,7 @@ class FloatingMeasureMap(QuartersToFloatingMeasures):
             measure_map: Measures whose exact starts and lengths define the
                 lattice.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name (default: "quarters_to_measures").
 
         Raises:
@@ -338,7 +343,9 @@ class FloatingMeasureMap(QuartersToFloatingMeasures):
                 :meth:`QuartersToFloatingMeasures.from_measure_map`).
         """
         x_values, y_values = QuartersToFloatingMeasures._lattice(measure_map)
-        super().__init__(x_values=x_values, y_values=y_values, uid=uid, name=name)
+        super().__init__(
+            x_values=x_values, y_values=y_values, uid=uid, name=name, seed=seed
+        )
         self._measure_map = measure_map
 
     @property

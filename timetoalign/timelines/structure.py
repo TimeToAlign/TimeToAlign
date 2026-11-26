@@ -31,7 +31,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import join_row_member
-from timetoalign.core.ids import _OpenObject, mint_id, validate_id
+from timetoalign.core.ids import IdMinter, _OpenObject, content_minter, validate_id
 from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
 from timetoalign.core.time import (
     TimeScalarValue,
@@ -136,8 +136,8 @@ class MeasureMap(_OpenObject):
 
     In a manifest a measure map is an entry of ``measure_maps``: an ``id``,
     an optional ``name`` and ``meta``, and its compressed ``rows``. A map
-    built without an id mints ``measuremap_1``, which a manifest's writer
-    mints again should it collide. Identity takes no part in equality, nor
+    built without an id mints one with the prefix ``measure_map`` when it is
+    built, which every manifest it is written in names. Identity takes no part in equality, nor
     do the keys of each row that the row form does not define, which a map
     read from a manifest keeps by measure and writes back in that measure's
     row: two maps are equal when their measures are.
@@ -148,7 +148,6 @@ class MeasureMap(_OpenObject):
 
     _unknown_row_keys: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
     _id: str
-    _id_minted: bool
     _name: str | None
     _meta: Mapping[str, Any]
 
@@ -265,9 +264,7 @@ class MeasureMap(_OpenObject):
                         f"Measure Map row {position} states {key} {length}, which "
                         "is not positive"
                     )
-        measure_map = cls.from_rows(rows, keep_unknown_keys=True)
-        measure_map._id = measure_map_id
-        measure_map._id_minted = False
+        measure_map = cls.from_rows(rows, keep_unknown_keys=True, id=measure_map_id)
         measure_map._name = read_name(data, what)
         measure_map._meta = read_meta(data, what)
         measure_map._keep_unknown_keys(data)
@@ -508,7 +505,12 @@ class MeasureMap(_OpenObject):
 
     @classmethod
     def from_rows(
-        cls, rows: Iterable[Mapping[str, Any]], *, keep_unknown_keys: bool = False
+        cls,
+        rows: Iterable[Mapping[str, Any]],
+        *,
+        keep_unknown_keys: bool = False,
+        id: str | None = None,  # noqa: A002 - the manifest's key
+        seed: int | None = None,
     ) -> MeasureMap:
         """Build a measure map from Measure Map authoring rows.
 
@@ -517,6 +519,8 @@ class MeasureMap(_OpenObject):
                 tempo extensions.
             keep_unknown_keys: Keep each row's keys outside the row form,
                 written back in that measure's row, instead of refusing them.
+            id: The map's id, as the constructor takes it.
+            seed: The seed of the minter of the id when *id* is None.
 
         Returns:
             The exact immutable measure map represented by the rows.
@@ -530,10 +534,16 @@ class MeasureMap(_OpenObject):
             raise ValueError(
                 "Rows with tempo must be read by MetricHierarchy.from_rows"
             )
-        return cls.from_expanded_rows(expanded)
+        return cls.from_expanded_rows(expanded, id=id, seed=seed)
 
     @classmethod
-    def from_expanded_rows(cls, rows: Iterable[Mapping[str, Any]]) -> MeasureMap:
+    def from_expanded_rows(
+        cls,
+        rows: Iterable[Mapping[str, Any]],
+        *,
+        id: str | None = None,  # noqa: A002 - the manifest's key
+        seed: int | None = None,
+    ) -> MeasureMap:
         """Build measures from full rows whose ``next`` holds row counts.
 
         Every lane ends here: rows from :meth:`expand_rows`, which a loader
@@ -544,6 +554,8 @@ class MeasureMap(_OpenObject):
 
         Args:
             rows: Full rows with the keys :meth:`expand_rows` returns.
+            id: The map's id, as the constructor takes it.
+            seed: The seed of the minter of the id when *id* is None.
 
         Returns:
             The measure map the rows describe.
@@ -581,7 +593,7 @@ class MeasureMap(_OpenObject):
                     offset_within_measure=row["offset_within_measure"],
                 )
             )
-        measure_map = cls(measures)
+        measure_map = cls(measures, id=id, seed=seed)
         measure_map._unknown_row_keys = {
             row["ID"]: row["unknown_keys"] for row in source if row.get("unknown_keys")
         }
@@ -594,15 +606,20 @@ class MeasureMap(_OpenObject):
         id: str | None = None,  # noqa: A002 - the manifest's key
         name: str | None = None,
         meta: Mapping[str, Any] | None = None,
+        seed: int | None = None,
     ) -> None:
         """Normalize an immutable sequence of measures.
 
         Args:
             measures: Measures in printed order.
-            id: The map's id in a manifest, kept verbatim; minted
-                ``measuremap_1`` when None.
+            id: The map's id in a manifest, kept verbatim. When None, an id
+                with the prefix ``measure_map`` is minted: from
+                ``IdMinter(seed)`` with *seed*, else from the content minter
+                of the name and the measures (each as its ``repr``).
             name: The map's display name.
             meta: The map's free metadata.
+            seed: The seed of the minter of the id when *id* is None; not
+                stored.
 
         Raises:
             ValueError: If measure identifiers are not unique, a ``next``
@@ -656,10 +673,21 @@ class MeasureMap(_OpenObject):
                     else None
                 )
         self._measures = tuple(normalized)
-        self._id_minted = id is None
-        self._id = mint_id(MEASURE_MAP_ID_PREFIX, ()) if id is None else validate_id(id)
         self._name = name
         self._meta = dict(meta) if meta else {}
+        if id is not None:
+            self._id = validate_id(id)
+        else:
+            minter = (
+                IdMinter(seed)
+                if seed is not None
+                else content_minter(
+                    MEASURE_MAP_ID_PREFIX,
+                    name,
+                    [repr(measure) for measure in self._measures],
+                )
+            )
+            self._id = minter.mint(MEASURE_MAP_ID_PREFIX)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, MeasureMap):

@@ -17,7 +17,7 @@ from __future__ import annotations
 import copy
 import logging
 import weakref
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import replace
 from fractions import Fraction
 from types import MappingProxyType
@@ -34,9 +34,10 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.ids import (
+    IdMinter,
     _OpenObject,
-    _plan_admissions,
-    mint_id,
+    _refuse_held_ids,
+    content_minter,
     quote_id,
     timeline_id_prefix,
     validate_id,
@@ -147,6 +148,13 @@ def _refuse_negative_length(length: Coordinate, timeline_id: str) -> Coordinate:
             "is negative"
         )
     return length
+
+
+def _length_text(length: CoordinateValue | Coordinate | None) -> str | None:
+    """The length a timeline is built with, as its content seed spells it."""
+    if isinstance(length, Coordinate):
+        return f"{length.value} {length.unit.value}"
+    return None if length is None else str(length)
 
 
 class UnknownLengthError(ValueError):
@@ -309,6 +317,8 @@ class Timeline(
         name: str | None = None,
         locked: bool = False,
         meta: dict[str, Any] | None = None,
+        *,
+        seed: int | None = None,
     ) -> None:
         """Initialize a Timeline.
 
@@ -319,12 +329,16 @@ class Timeline(
             unit: The time unit for coordinates. Defaults to class default.
             number_type: The number type for coordinates. Defaults to the
                 one the unit itself uses.
-            uid: Explicit identifier, kept verbatim. When None, the id is
-                minted from the unit (``clt_1``, ``dpt_1``, ...).
+            uid: Explicit identifier, kept verbatim. When None, an id is
+                minted with the unit's prefix (``clt``, ``dpt``, ...): from
+                ``IdMinter(seed)`` with *seed*, else from the content minter
+                of the class, unit, number type, length and name.
             name: Human-readable name for display (distinct from uid).
             locked: If True, the length is fixed, known or not, and the
                 timeline cannot expand. Default False.
             meta: Additional metadata dictionary.
+            seed: The seed of the minter of the id when *uid* is None; not
+                stored.
 
         Raises:
             ValueError: If unit or number_type is not allowed for this class,
@@ -347,12 +361,25 @@ class Timeline(
         # Resolve number_type -- the unit decides what it can be.
         self._number_type = unit.resolve_number_type(number_type)
 
-        # A given id is kept; otherwise one is minted in an empty scope and
-        # re-minted if it collides when this timeline joins a manifest.
-        self._id_minted = uid is None
-        self._id = (
-            mint_id(timeline_id_prefix(unit), ()) if uid is None else validate_id(uid)
-        )
+        # A given id is kept; otherwise one is minted, from the seed or the
+        # content the timeline is built with.
+        if uid is not None:
+            self._id = validate_id(uid)
+        else:
+            prefix = timeline_id_prefix(unit)
+            minter = (
+                IdMinter(seed)
+                if seed is not None
+                else content_minter(
+                    prefix,
+                    type(self).__name__,
+                    unit.value,
+                    self._number_type.name,
+                    _length_text(length),
+                    name,
+                )
+            )
+            self._id = minter.mint(prefix)
         self._parent = None
         # The groups and bundles this timeline joined, held weakly: their
         # trees share one id scope with this timeline's tree while they live.
@@ -926,10 +953,10 @@ class Timeline(
             >>> from timetoalign.timelines.flowcontrol import Jump, JumpDestination
             >>> work = ContinuousLogicalTimeline(length=20, uid="work")
             >>> movement = work.create_child(12, 4, uid="movement")
-            >>> _ = movement.flow_control.add(
-            ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
+            >>> _ = movement.flow_control.add(Jump(
+            ...     Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)], id="repeat"))
             >>> work.flow_control.elements, work.tree_flow_control.jumps
-            ((), (Jump('jump_1' @ 12 quarters, 1 destination),))
+            ((), (Jump('repeat' @ 12 quarters, 1 destination),))
             >>> flow = work.get_flow()
             >>> flow.length
             Coordinate(Fraction(28, 1), quarters)
@@ -1073,7 +1100,7 @@ class Timeline(
     # region Manifest Identity
 
     def _adopt_flow_control(self, registry: FlowControlRegistry) -> None:
-        """Make *registry* this timeline's: its ids are admitted into the
+        """Make *registry* this timeline's: its ids are checked against the
         manifest, its destinations may name the timeline's places, and its
         elements and places lie within the timeline's length."""
         self._flow_control = registry
@@ -1082,21 +1109,15 @@ class Timeline(
         registry._length = self._flow_length
         registry._refuse_jumps = self._refuse_flow_jumps
 
-    def _admit_flow_control(
-        self, entries: Sequence[tuple[str, bool, str, str]], *, check_only: bool
-    ) -> list[str]:
-        """Return the ids under which flow-control elements join the manifest.
+    def _admit_flow_control(self, entries: Sequence[tuple[str, str]]) -> None:
+        """Refuse flow-control elements whose id the manifest holds.
 
         Raises:
-            ValueError: If a given id is already taken.
+            ValueError: If an id is already taken.
         """
         owner = f" of timeline {quote_id(self._id)}"
-        return self._admit_entries(
-            [
-                (element_id, minted, prefix, element + owner)
-                for element_id, minted, prefix, element in entries
-            ],
-            check_only=check_only,
+        self._refuse_held(
+            [(element_id, element + owner) for element_id, element in entries]
         )
 
     def _flow_length(self) -> Coordinate | None:
@@ -1115,7 +1136,7 @@ class Timeline(
         places.update(self._child_offsets)
         return places
 
-    def _set_id(self, new_id: str, *, minted: bool = False) -> None:
+    def _set_id(self, new_id: str) -> None:
         """Give this timeline a new id, renaming it under its parent.
 
         Every statement of the timeline's manifest naming the old id names
@@ -1126,46 +1147,30 @@ class Timeline(
         if self._parent is not None and new_id != old_id:
             self._parent._rename_child(old_id, new_id)
         self._id = new_id
-        self._id_minted = minted
         self._rename_references(old_id, new_id)
 
-    def _identity_entries(self) -> list[tuple[str, bool, str, str]]:
-        """Return ``(id, minted, prefix, description)`` for this timeline and
-        every element it holds itself (its children excluded), in the order
-        timeline, conversion maps (each followed by the maps nested in it),
-        regions, flow-control elements, FlowMaps, virtual timelines."""
+    def _identity_entries(self) -> list[tuple[str, str]]:
+        """Return ``(id, description)`` for this timeline and every element it
+        holds itself (its children excluded), in the order timeline,
+        conversion maps (each followed by the maps nested in it), regions,
+        flow-control elements, FlowMaps, virtual timelines."""
         owner = f"of timeline {quote_id(self._id)}"
         return [
-            (
-                self._id,
-                self._id_minted,
-                timeline_id_prefix(self._unit),
-                f"timeline {quote_id(self._id)}",
-            ),
+            (self._id, f"timeline {quote_id(self._id)}"),
             *(
                 entry
                 for cmap in self._all_conversion_maps()
                 for entry in cmap._identity_entries(f" {owner}")
             ),
             *(
-                (
-                    element.id,
-                    element._minted,
-                    element._id_prefix,
-                    f"{element._id_prefix} {quote_id(element.id)} {owner}",
-                )
+                (element.id, f"{element._id_prefix} {quote_id(element.id)} {owner}")
                 for element in (
                     *self._regions.values(),
                     *self._flow_control.elements,
                 )
             ),
             *(
-                (
-                    element.id,
-                    element._minted,
-                    element._id_prefix,
-                    f"{kind} {quote_id(element.id)} {owner}",
-                )
+                (element.id, f"{kind} {quote_id(element.id)} {owner}")
                 for kind, held in (
                     ("FlowMap", self._flow_maps),
                     ("virtual timeline", self._virtual_timelines),
@@ -1173,34 +1178,6 @@ class Timeline(
                 for element in held.values()
             ),
         ]
-
-    def _reassign_element_id(self, old_id: str, new_id: str) -> None:
-        """Store the element of this timeline with *old_id* under a minted id.
-
-        Every statement of the timeline's manifest naming the old id names
-        the new one.
-        """
-        held_map = next(
-            (
-                nested
-                for cmap in self._all_conversion_maps()
-                for nested in cmap._map_tree()
-                if nested.id == old_id
-            ),
-            None,
-        )
-        if old_id == self._id:
-            self._set_id(new_id, minted=True)
-        elif old_id in self._regions:
-            self._rename_region(old_id, new_id)
-        else:
-            if old_id in self._conversion_maps:
-                self._rename_conversion_map(old_id, new_id)
-            elif held_map is not None:
-                held_map._id = new_id
-            elif not self._reassign_flow_id(old_id, new_id):
-                self._flow_control._reassign_id(old_id, new_id)
-            self._rename_references(old_id, new_id)
 
     def _tree_ids(self) -> dict[str, str]:
         """Map every id of this timeline's tree to its holder's description.
@@ -1214,7 +1191,7 @@ class Timeline(
         return {
             element_id: description
             for timeline in (root, *(child for _, child in root._iter_descendants()))
-            for element_id, _minted, _prefix, description in timeline._identity_entries()
+            for element_id, description in timeline._identity_entries()
         }
 
     def _join_scope(self, container: _IdScope) -> None:
@@ -1248,9 +1225,7 @@ class Timeline(
 
         The manifest is this timeline's tree and, while the tree is held by
         groups or bundles, every tree those hold, with each group's and
-        bundle's given id: an id is unique within it across all element
-        kinds. A minted group id is left out, since a given id that takes it
-        mints the group again (:meth:`_settle_scope`).
+        bundle's id: an id is unique within it across all element kinds.
         """
         return _manifest_ids_of((self,))
 
@@ -1267,135 +1242,51 @@ class Timeline(
                 roots.setdefault(id(root), root)
         return list(roots.values())
 
-    def _settle_scope(self, given: set[str], joining: Sequence[_IdScope] = ()) -> None:
-        """Mint again every minted group id that the *given* ids now take.
+    def _refuse_held(self, entries: Sequence[tuple[str, str]]) -> None:
+        """Refuse elements joining this timeline's manifest whose id it holds.
 
-        A statement naming a group minted again names its new id, except
-        in a tree joining: there the old id names the tree's own element.
-
-        Args:
-            given: The given ids that joined this timeline's manifest.
-            joining: Groups and bundles the tree is joining, not yet
-                recorded on it; when given, this timeline's tree is the one
-                joining.
-        """
-        newcomer = self._tree_root() if joining else None
-        containers = [
-            *joining,
-            *(
-                container
-                for container in self._scope_containers()
-                if not any(scope is container for scope in joining)
-            ),
-        ]
-        for container in containers:
-            container._yield_minted_ids(given, containers, newcomer)
-
-    def _admit_entries(
-        self,
-        entries: Sequence[tuple[str, bool, str, str]],
-        rename: Callable[[int, str], None] | None = None,
-        *,
-        avoid: Iterable[str] = (),
-        check_only: bool = False,
-    ) -> list[str]:
-        """Admit elements into this timeline's manifest under ids of their own.
-
-        Every element joining the manifest joins here: an element added to
-        this timeline, a map with the maps nested in it, a child's whole
-        subtree. The elements are planned together (a given id the manifest
-        holds raises, a minted one is minted again), the elements minted
-        again are renamed, and every minted group id that a given id now
-        takes is minted again (:meth:`_settle_scope`).
+        Every element joining the manifest is checked here: an element added
+        to this timeline, a map with the maps nested in it, a child's whole
+        subtree. An id the manifest holds, or one two joining elements hold,
+        refuses the join, given or minted alike; nothing is renamed.
 
         Args:
-            entries: ``(id, minted, prefix, description)`` of each joining
-                element, in the order they claim their ids.
-            rename: Called with an element's index and its new id for each
-                element minted again; without it, the caller stores the
-                elements under the ids returned.
-            avoid: Further ids no id minted again may take.
-            check_only: Raise as admitting would, but change nothing.
-
-        Returns:
-            The id each element joins under, in the order of *entries*.
+            entries: ``(id, description)`` of each joining element.
 
         Raises:
-            ValueError: If a given id is already held, in the manifest or by
-                another joining element. Nothing has changed then.
+            ValueError: If an id is already held, in the manifest or by
+                another joining element. The caller changes nothing before.
         """
-        plan = _plan_admissions(entries, self._manifest_ids(), avoid=avoid)
-        if not check_only:
-            if rename is not None:
-                for index, new_id in plan.items():
-                    rename(index, new_id)
-            self._settle_scope(
-                {
-                    element_id
-                    for element_id, minted, _prefix, _desc in entries
-                    if not minted
-                }
-            )
-        return [plan.get(index, entry[0]) for index, entry in enumerate(entries)]
+        _refuse_held_ids(entries, self._manifest_ids())
 
-    def _admit_element_id(
-        self, element_id: str, *, minted: bool, prefix: str, element: str
-    ) -> str:
-        """Return the id under which an element joins this timeline's manifest.
+    def _refuse_held_element(self, element_id: str, element: str) -> None:
+        """Refuse an element joining this timeline whose id the manifest holds.
 
         Raises:
-            ValueError: If the element's given id is already taken.
+            ValueError: If the id is already held.
         """
-        (admitted,) = self._admit_entries(
-            [
-                (
-                    element_id,
-                    minted,
-                    prefix,
-                    f"{element} of timeline {quote_id(self._id)}",
-                )
-            ]
-        )
-        return admitted
+        self._refuse_held([(element_id, f"{element} of timeline {quote_id(self._id)}")])
 
     def _admit_map(self, cmap: ConversionMap[Any]) -> None:
-        """Admit *cmap* and every map nested in it into this timeline's manifest.
+        """Refuse *cmap* where an id of it or of a map nested in it is held.
 
         Raises:
-            ValueError: If a given id of the map's tree is already held in the
+            ValueError: If an id of the map's tree is already held in the
                 manifest or in the tree, or the tree nests one map twice.
         """
         owner = f" of timeline {quote_id(self._id)}"
-        tree = cmap._unique_map_tree(owner)
+        cmap._unique_map_tree(owner)
+        self._refuse_held(cmap._identity_entries(owner))
 
-        def rename(index: int, new_id: str) -> None:
-            """Store the map at *index* of the tree under *new_id*."""
-            tree[index]._id = new_id
-
-        self._admit_entries(cmap._identity_entries(owner), rename)
-
-    def _subtree_entries(
-        self,
-    ) -> tuple[list[tuple[str, bool, str, str]], Callable[[int, str], None]]:
-        """Return the identity entries of this timeline and its descendants.
-
-        Returns:
-            The entries, in the order of :meth:`_identity_entries`, timeline
-            by timeline from this one down; and the rename that stores the
-            element of an entry, by its index, under a new id.
-        """
-        joining = [
-            (timeline, entry)
+    def _subtree_entries(self) -> list[tuple[str, str]]:
+        """Return the identity entries of this timeline and its descendants,
+        in the order of :meth:`_identity_entries`, timeline by timeline from
+        this one down."""
+        return [
+            entry
             for timeline in (self, *(t for _, t in self._iter_descendants()))
             for entry in timeline._identity_entries()
         ]
-
-        def rename(index: int, new_id: str) -> None:
-            """Store the element of entry *index* under *new_id* on the timeline holding it."""
-            owner, (old_id, *_) = joining[index]
-            owner._reassign_element_id(old_id, new_id)
-
-        return [entry for _, entry in joining], rename
 
     # endregion
 
@@ -2492,7 +2383,6 @@ class Timeline(
         copied._measure_record_map = self._measure_record_map
         copied._metric_hierarchy = self._metric_hierarchy
         copied._adopt_flow_control(self._flow_control.copy())
-        copied._id_minted = self._id_minted
         copied._length = self._length
         copied._locked = self._locked
         copied._root_offset = self._root_offset

@@ -13,7 +13,7 @@ from timetoshare import DEFAULT_BELIEFS, BeliefState
 
 from timetoalign.core import CoordinateSpec, Gap
 from timetoalign.core.enums import FlowConvention
-from timetoalign.core.ids import quote_id
+from timetoalign.core.ids import IdMinter, quote_id, timeline_id_prefix
 from timetoalign.core.provenance import Provenance
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
@@ -406,21 +406,20 @@ class SegmentsMixin(_Host):
         (:meth:`FlowMap.resolve <timetoalign.timelines.flow.FlowMap.resolve>`),
         so one that names nothing of the tree never joins. Its gaps are kept
         in the timeline's number type. Its ID must be unique in the
-        timeline's manifest: a minted ID already held there is minted again,
-        a given one raises.
+        timeline's manifest.
 
         Args:
             flow_map: The FlowMap to attach, naming this timeline.
 
         Returns:
             The stored FlowMap: *flow_map* itself, or a copy with its gaps in
-            the timeline's number type or under the newly minted ID.
+            the timeline's number type.
 
         Raises:
             ValueError: If this timeline is a child, the FlowMap names
                 another timeline or cannot be read against this one, the
                 timeline already holds a canonical FlowMap and this is a
-                second one, or its given ID is already held in the manifest.
+                second one, or its ID is already held in the manifest.
         """
         stored = flow_map._on_axis(self._timeline)
         stored.resolve(self._timeline)
@@ -432,14 +431,7 @@ class SegmentsMixin(_Host):
                 f"FlowMap {quote_id(stored.id)} is a second canonical FlowMap of "
                 f"timeline {quote_id(self._id)}, after {quote_id(first.id)}"
             )
-        flow_map_id = self._admit_element_id(
-            stored.id,
-            minted=stored._minted,
-            prefix=stored._id_prefix,
-            element=f"FlowMap {quote_id(stored.id)}",
-        )
-        if flow_map_id != stored.id:
-            stored = replace(stored, id=flow_map_id, _minted=True)
+        self._refuse_held_element(stored.id, f"FlowMap {quote_id(stored.id)}")
         self._flow_maps[stored.id] = stored
         self._logger.debug(f"Added FlowMap '{stored.id}'")
         return stored
@@ -453,6 +445,7 @@ class SegmentsMixin(_Host):
         canonical: bool = False,
         name: str | None = None,
         provenance: Sequence[Any] = (),
+        seed: int | None = None,
     ) -> "FlowMap":
         """Create a FlowMap of this root timeline and attach it.
 
@@ -461,13 +454,16 @@ class SegmentsMixin(_Host):
                 or of a descendant, a child timeline at any depth or a
                 virtual timeline of this tree, given as the object or by its
                 ID, or a :class:`~timetoalign.core.Gap`.
-            id: The FlowMap's ID, kept verbatim. When None, ``flow_map_{N}``
-                is minted, unique in this timeline's manifest.
+            id: The FlowMap's ID, kept verbatim. When None, an ID with the
+                prefix ``flow`` is minted (:class:`FlowMap
+                <timetoalign.timelines.flow.FlowMap>`).
             convention: Which flow of the flow control the FlowMap states;
                 None for one written by hand.
             canonical: Whether this is the timeline's canonical FlowMap.
             name: Optional display name.
             provenance: How the FlowMap was made: provenance entries.
+            seed: The seed of the minter of the ID when *id* is None; not
+                stored.
 
         Returns:
             The created FlowMap.
@@ -480,9 +476,9 @@ class SegmentsMixin(_Host):
             >>> score = ContinuousLogicalTimeline(length=24, uid="score")
             >>> a = score.create_region(0, 16, id="a")
             >>> b = score.create_region(16, 24, id="b")
-            >>> score.create_flow_map([a, a, "b"], name="with the repeat")
-            FlowMap('flow_map_1', timeline='score', 3 chunks, name='with the repeat')
-            >>> score.get_flow_map("flow_map_1").resolve(score).length
+            >>> score.create_flow_map([a, a, "b"], id="repeat", name="with the repeat")
+            FlowMap('repeat', timeline='score', 3 chunks, name='with the repeat')
+            >>> score.get_flow_map("repeat").resolve(score).length
             Coordinate(Fraction(40, 1), quarters)
         """
         from ..flow.flowmap import FlowMap
@@ -499,6 +495,7 @@ class SegmentsMixin(_Host):
                 canonical=canonical,
                 name=name,
                 provenance=tuple(provenance),
+                seed=seed,
             )
         )
 
@@ -595,6 +592,7 @@ class SegmentsMixin(_Host):
         beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
         actor: str | None = None,
         date: str | datetime.date | None = None,
+        seed: int | None = None,
     ) -> "ComputedFlows | None":
         """Write this timeline's atomic sections and its computed FlowMaps.
 
@@ -654,6 +652,9 @@ class SegmentsMixin(_Host):
                 where there are such sections.
             date: The day of that belief, ``YYYY-MM-DD`` or a
                 :class:`datetime.date`; today when None.
+            seed: The seed of one minter of the IDs of the Regions and
+                FlowMaps written anew, in that order; None mints each from
+                its content.
 
         Returns:
             The atomic sections as they stand now (Regions kept and
@@ -675,17 +676,17 @@ class SegmentsMixin(_Host):
             >>> from timetoalign.timelines.flowcontrol import (
             ...     Jump, JumpDestination, JumpTarget)
             >>> score = ContinuousLogicalTimeline(length=12, uid="score")
-            >>> _ = score.flow_control.add(
-            ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
-            >>> written = score.create_flow_maps_from_flow_control()
+            >>> _ = score.flow_control.add(Jump(
+            ...     Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)], id="repeat"))
+            >>> written = score.create_flow_maps_from_flow_control(seed=7)
             >>> [(section.id, section.name, str(section.as_interval))
             ...  for section in written.sections]
-            [('region_1', 'A', '[0, 8) quarters'), ('region_2', 'B', '[8, 12) quarters')]
+            [('region_1hvif5xc2r1fv', 'A', '[0, 8) quarters'), ('region_0g2wfq87pa7jx', 'B', '[8, 12) quarters')]
             >>> for flow_map in written.flow_maps:
             ...     print(flow_map.convention, flow_map.chunks)
-            default ('region_1', 'region_1', 'region_2')
-            single ('region_1', 'region_2')
-            printed ('region_1', 'region_2')
+            default ('region_1hvif5xc2r1fv', 'region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx')
+            single ('region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx')
+            printed ('region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx')
             >>> written.findings
             ()
 
@@ -693,18 +694,19 @@ class SegmentsMixin(_Host):
             and is rejected; the last section keeps its Region under a new
             letter:
 
-            >>> _ = score.flow_control.add(JumpTarget(Coordinate(4, "quarters")))
+            >>> _ = score.flow_control.add(JumpTarget(Coordinate(4, "quarters"), id="sign"))
             >>> again = score.create_flow_maps_from_flow_control(
-            ...     actor="https://orcid.org/0000-0002-1825-0097", date="2026-11-25")
+            ...     actor="https://orcid.org/0000-0002-1825-0097", date="2026-11-25", seed=8)
             >>> [(section.id, section.name, str(section.as_interval))
             ...  for section in again.sections]
-            [('region_3', 'A', '[0, 4) quarters'), ('region_4', 'B', '[4, 8) quarters'), \
-('region_2', 'C', '[8, 12) quarters')]
-            >>> first = score.get_region("region_1")
+            [('region_260an7vd22pgd', 'A', '[0, 4) quarters'), \
+('region_3bgc3pscka0re', 'B', '[4, 8) quarters'), \
+('region_0g2wfq87pa7jx', 'C', '[8, 12) quarters')]
+            >>> first = score.get_region("region_1hvif5xc2r1fv")
             >>> str(first.as_interval), first.is_atomic_section
             ('[0, 8) quarters', False)
-            >>> again.flow_maps[0].id, again.flow_maps[0].chunks
-            ('flow_map_1', ('region_3', 'region_4', 'region_3', 'region_4', 'region_2'))
+            >>> again.flow_maps[0].id == written.flow_maps[0].id
+            True
         """
         from ..flow.engine import FlowFinding, atomic_sections, play
         from ..flow.flowmap import ComputedFlows, FlowMap
@@ -769,14 +771,25 @@ class SegmentsMixin(_Host):
         for region in rejected:
             self._regions[region.id] = region
         inferred = Provenance(method="inferred")
+        minter = None if seed is None else IdMinter(seed)
         regions: list[Region] = []
         for section in sections:
             region = standing.get((section.start.value, section.end.value))
             if region is None:
-                region = self.add_region(
+                built = (
                     Region(section.start, section.end, name=section.name)
-                    .with_prefix(_FORMAT_PREFIX, timetoshare.NAMESPACE)
-                    .with_statement("type", _ATOMIC_SECTION_TYPE, provenance=inferred)
+                    if minter is None
+                    else Region(
+                        section.start,
+                        section.end,
+                        name=section.name,
+                        id=minter.mint(Region._id_prefix),
+                    )
+                )
+                region = self.add_region(
+                    built.with_prefix(
+                        _FORMAT_PREFIX, timetoshare.NAMESPACE
+                    ).with_statement("type", _ATOMIC_SECTION_TYPE, provenance=inferred)
                 )
             elif region.name != section.name:
                 region = replace(region, name=section.name)
@@ -819,8 +832,15 @@ class SegmentsMixin(_Host):
                         tuple(regions[index].id for index in order),
                         convention=convention,
                         provenance=(inferred,),
-                        id=None if before is None else before.id,
-                        _minted=before is not None and before._minted,
+                        id=(
+                            before.id
+                            if before is not None
+                            else (
+                                None
+                                if minter is None
+                                else minter.mint(FlowMap._id_prefix)
+                            )
+                        ),
                         canonical=before is not None and before.canonical,
                         name=name,
                     )
@@ -850,6 +870,7 @@ class SegmentsMixin(_Host):
         *,
         id: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> "StatedFlow":
         """Write an order of measures a source states as a FlowMap of this root.
 
@@ -871,9 +892,12 @@ class SegmentsMixin(_Host):
 
         Args:
             order: The measure counts in the order played.
-            id: The FlowMap's ID, kept verbatim. When None, ``flow_map_{N}``
-                is minted.
+            id: The FlowMap's ID, kept verbatim. When None, an ID with the
+                prefix ``flow`` is minted.
             name: Optional display name of the FlowMap.
+            seed: The seed of one minter of the IDs of the Regions and,
+                when *id* is None, the FlowMap, in that order; None mints
+                each from its content.
 
         Returns:
             The Regions and the FlowMap written, and where the default flow
@@ -897,13 +921,13 @@ class SegmentsMixin(_Host):
             >>> score = ContinuousLogicalTimeline(length=12, uid="score")
             >>> _ = score.add_measure_map(MeasureMap.from_rows(
             ...     [{"count": 1, "time_signature": "4/4"}, {"count": 2}, {"count": 3}]))
-            >>> _ = score.flow_control.add(
-            ...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
-            >>> stated = score.create_flow_map_from_measure_order([1, 2, 1, 2, 3])
+            >>> _ = score.flow_control.add(Jump(
+            ...     Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)], id="repeat"))
+            >>> stated = score.create_flow_map_from_measure_order([1, 2, 1, 2, 3], seed=7)
             >>> [str(region.as_interval) for region in stated.regions]
             ['[0, 8) quarters', '[0, 12) quarters']
             >>> stated.flow_map.chunks, stated.differs_at
-            (('region_1', 'region_2'), None)
+            (('region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx'), None)
             >>> score.create_flow_map_from_measure_order([1, 2, 3]).differs_at
             Coordinate(Fraction(8, 1), quarters)
         """
@@ -998,8 +1022,18 @@ class SegmentsMixin(_Host):
         )
 
         bounds = list(dict.fromkeys(stretches))
-        regions = [self.create_region(start, end) for start, end in bounds]
+        minter = None if seed is None else IdMinter(seed)
+        regions = [
+            self.create_region(
+                start,
+                end,
+                id=None if minter is None else minter.mint(Region._id_prefix),
+            )
+            for start, end in bounds
+        ]
         chunk_of = dict(zip(bounds, regions, strict=True))
+        if id is None and minter is not None:
+            id = minter.mint(FlowMap._id_prefix)
         try:
             flow_map = self.add_flow_map(
                 FlowMap(
@@ -1028,22 +1062,20 @@ class SegmentsMixin(_Host):
         The statement must be true of this timeline: it applies a FlowMap
         the timeline holds to the timeline itself, and states the length,
         unit and number type the FlowMap gives. Its ID must be unique in the
-        timeline's manifest: a minted ID already held there is minted again,
-        a given one raises.
+        timeline's manifest.
 
         Args:
             virtual: The virtual timeline to attach.
 
         Returns:
-            The stored virtual timeline: *virtual* itself, or a copy under
-            the newly minted ID.
+            The stored virtual timeline, *virtual* itself.
 
         Raises:
             ValueError: If this timeline is a child, the statement cannot be
                 read against it (:meth:`VirtualTimeline.resolve
                 <timetoalign.timelines.flow.VirtualTimeline.resolve>`) or
-                states another length than its FlowMap gives, or its given
-                ID is already held in the manifest.
+                states another length than its FlowMap gives, or its ID is
+                already held in the manifest.
         """
         length = virtual.resolve(self._timeline).length
         if virtual.length != length or virtual.number_type is not length.number_type:
@@ -1051,14 +1083,9 @@ class SegmentsMixin(_Host):
                 f"virtual timeline {quote_id(virtual.id)} states the length "
                 f"{virtual.length!r}; FlowMap {quote_id(virtual.map)} gives {length!r}"
             )
-        virtual_id = self._admit_element_id(
-            virtual.id,
-            minted=virtual._minted,
-            prefix=virtual._id_prefix,
-            element=f"virtual timeline {quote_id(virtual.id)}",
+        self._refuse_held_element(
+            virtual.id, f"virtual timeline {quote_id(virtual.id)}"
         )
-        if virtual_id != virtual.id:
-            virtual = replace(virtual, id=virtual_id, _minted=True)
         self._virtual_timelines[virtual.id] = virtual
         self._logger.debug(f"Added virtual timeline '{virtual.id}'")
         return virtual
@@ -1069,6 +1096,7 @@ class SegmentsMixin(_Host):
         *,
         id: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> "VirtualTimeline":
         """State that a FlowMap of this root timeline was applied to it.
 
@@ -1079,9 +1107,10 @@ class SegmentsMixin(_Host):
         Args:
             flow_map: A FlowMap this timeline holds, or its ID.
             id: The virtual timeline's ID, kept verbatim. When None, an ID
-                of this timeline's kind is minted (``clt_{N}`` on quarters),
-                unique in the manifest.
+                with this timeline's prefix is minted (``clt`` on quarters).
             name: Optional display name.
+            seed: The seed of the minter of the ID when *id* is None; not
+                stored.
 
         Returns:
             The created virtual timeline.
@@ -1093,6 +1122,8 @@ class SegmentsMixin(_Host):
         from ..flow.flowmap import VirtualTimeline
 
         held = self.get_flow_map(flow_map if isinstance(flow_map, str) else flow_map.id)
+        if id is None and seed is not None:
+            id = IdMinter(seed).mint(timeline_id_prefix(self._unit))
         return self.add_virtual_timeline(
             VirtualTimeline.from_flow_map(held, self._timeline, id=id, name=name)
         )
@@ -1114,24 +1145,6 @@ class SegmentsMixin(_Host):
     def list_virtual_timelines(self) -> list[str]:
         """List the IDs of the virtual timelines this timeline holds."""
         return list(self._virtual_timelines)
-
-    def _reassign_flow_id(self, old_id: str, new_id: str) -> bool:
-        """Store the FlowMap or virtual timeline *old_id* under the minted *new_id*.
-
-        Returns:
-            Whether this timeline holds such an element.
-        """
-        if old_id in self._flow_maps:
-            flow_map = replace(self._flow_maps.pop(old_id), id=new_id, _minted=True)
-            self._flow_maps[new_id] = flow_map
-            return True
-        if old_id in self._virtual_timelines:
-            virtual = replace(
-                self._virtual_timelines.pop(old_id), id=new_id, _minted=True
-            )
-            self._virtual_timelines[new_id] = virtual
-            return True
-        return False
 
     def _rename_flow_references(self, renamed: Mapping[str, str | None]) -> None:
         """Make this timeline's FlowMaps and virtual timelines name the

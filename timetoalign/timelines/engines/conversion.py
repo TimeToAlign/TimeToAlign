@@ -99,15 +99,6 @@ class ConversionMapsMixin(_Host):
 
         self._logger.debug(f"Added conversion map '{cmap.id}'")
 
-    def _rename_conversion_map(self, old_id: str, new_id: str) -> None:
-        """Store the attached map *old_id* under the minted id *new_id*."""
-        cmap = self._conversion_maps[old_id]
-        cmap._id = new_id
-        self._conversion_maps = {
-            (new_id if key == old_id else key): attached
-            for key, attached in self._conversion_maps.items()
-        }
-
     def get_conversion_map(
         self, target_unit: TimeUnit | str
     ) -> ConversionMap[Any] | None:

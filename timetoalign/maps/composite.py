@@ -89,12 +89,14 @@ class ChainMap(ConversionMap[CoordinateValue]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a ChainMap.
 
         Args:
             maps: Sequence of maps. Must not be empty.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
             output_number_type: The representation results are written in,
                 among those the target unit admits; ``None`` for the target
@@ -128,6 +130,7 @@ class ChainMap(ConversionMap[CoordinateValue]):
             source_unit=maps[0].source_unit,
             target_unit=maps[-1].target_unit,
             uid=uid,
+            seed=seed,
             name=name,
             output_number_type=output_number_type,
         )
@@ -236,6 +239,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a PiecewiseMap.
 
@@ -245,6 +249,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             source_unit: Input unit.
             target_unit: Output unit.
             uid: Explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
             output_number_type: The representation results are written in,
                 among those the target unit admits; ``None`` for the target
@@ -271,6 +276,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
             output_number_type=output_number_type,
         )

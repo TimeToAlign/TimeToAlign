@@ -93,6 +93,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
         source_unit: TimeUnit | str | None,
         value_unit: TimeUnit | str | None = None,
         origin: CoordinateValue | Coordinate = 0,
+        seed: int | None = None,
     ) -> Self:
         """Build the line through the first and the last pair by position.
 
@@ -119,6 +120,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
                 when a value is a number; a coordinate value must be in it.
             origin: Where the source axis starts, in the coordinates of the
                 positions.
+            seed: The seed of the minter of the map's id; not stored.
 
         Returns:
             The map through the pairs.
@@ -160,6 +162,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
                 if number_type in calibration.value_unit.allowed_number_types
                 else None
             ),
+            seed=seed,
         )
         # The line's exact inverse, through the end pairs as given.
         position_0, value_0 = Fraction(first_position), Fraction(first_value)
@@ -184,6 +187,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a LinearMap.
 
@@ -193,6 +197,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
             source_unit: The unit of input coordinates.
             target_unit: The unit of output coordinates.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target".
             output_number_type: The representation results are written in,
@@ -213,6 +218,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
             output_number_type=output_number_type,
         )
@@ -371,6 +377,7 @@ class ScalarMap(ConversionMap[CoordinateValue]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a ScalarMap.
 
@@ -379,6 +386,7 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             source_unit: The unit of input coordinates.
             target_unit: The unit of output coordinates.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" (e.g.,
                 "pixels_to_inches").
@@ -398,6 +406,7 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
             output_number_type=output_number_type,
         )
@@ -471,6 +480,7 @@ class ShiftMap(ConversionMap[CoordinateValue]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a ShiftMap.
 
@@ -479,6 +489,7 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             source_unit: The unit of input coordinates.
             target_unit: The unit of output coordinates (typically same as source).
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target".
             output_number_type: The representation results are written in,
@@ -495,6 +506,7 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
             output_number_type=output_number_type,
         )

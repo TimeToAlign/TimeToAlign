@@ -82,6 +82,7 @@ class CombinationMap(ConversionMap[dict[str, Any], dict[str, NDArray[Any]]]):
         source_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a CombinationMap.
 
@@ -91,6 +92,7 @@ class CombinationMap(ConversionMap[dict[str, Any], dict[str, NDArray[Any]]]):
             source_unit: The unit of input coordinates. If not specified,
                         uses the source_unit of the first sub-map.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
 
         Raises:
@@ -132,6 +134,7 @@ class CombinationMap(ConversionMap[dict[str, Any], dict[str, NDArray[Any]]]):
             source_unit=resolved_source_unit,
             target_unit=None,
             uid=uid,
+            seed=seed,
             name=name,
         )
         self._admit_ids()

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
 from timetoalign.core import CoordinateSpec, CoordinateValue
-from timetoalign.core.ids import quote_id
+from timetoalign.core.ids import IdMinter, quote_id
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
@@ -61,20 +60,17 @@ class RegionsMixin(_Host):
     def add_region(self, region: Region) -> Region:
         """Attach a pre-existing Region object to this timeline.
 
-        The region's id must be unique in this timeline's manifest: a minted
-        id already held there is replaced by a freshly minted one, a given
-        one raises.
+        The region's id must be unique in this timeline's manifest.
 
         Args:
             region: The Region to attach.
 
         Returns:
-            The stored Region: *region* itself, or a copy under the newly
-            minted id.
+            The stored Region, *region* itself.
 
         Raises:
             ValueError: If the region's unit does not match the timeline's
-                unit, or its given id is already held in this manifest.
+                unit, or its id is already held in this manifest.
 
         Examples:
             >>> r = Region(Coordinate(10, TimeUnit.seconds),
@@ -86,15 +82,7 @@ class RegionsMixin(_Host):
                 f"Region unit '{region.unit}' does not match "
                 f"timeline unit '{self._unit}'"
             )
-        region_id = self._admit_element_id(
-            region.id,
-            minted=region._minted,
-            prefix="region",
-            element=f"region {quote_id(region.id)}",
-        )
-        if region_id != region.id:
-            region = replace(region, id=region_id, _minted=True)
-
+        self._refuse_held_element(region.id, f"region {quote_id(region.id)}")
         self._regions[region.id] = region
         self._logger.debug(
             f"Added region '{region.id}' "
@@ -111,6 +99,7 @@ class RegionsMixin(_Host):
         id: str | None = None,
         name: str | None = None,
         meta: dict[str, Any] | None = None,
+        seed: int | None = None,
     ) -> Region:
         """Create a new Region and attach it to this timeline.
 
@@ -120,10 +109,12 @@ class RegionsMixin(_Host):
         Args:
             start: Start coordinate.
             end: End coordinate (must be >= start).
-            id: The region's id, kept verbatim. When None, ``region_{N}`` is
-                minted, unique in this timeline's manifest.
+            id: The region's id, kept verbatim. When None, an id with the
+                prefix ``region`` is minted (:class:`Region`).
             name: Optional display name; names may repeat.
             meta: Optional metadata dictionary.
+            seed: The seed of the minter of the id when *id* is None; not
+                stored.
 
         Returns:
             The created Region object.
@@ -143,6 +134,7 @@ class RegionsMixin(_Host):
                 id=id,
                 name=name,
                 meta=meta or {},
+                seed=seed,
             )
         )
 
@@ -183,20 +175,6 @@ class RegionsMixin(_Host):
         self._regions[region.id] = region
         return self
 
-    def _rename_region(self, old_id: str, new_id: str) -> None:
-        """Store the region *old_id* under the minted id *new_id*.
-
-        Every statement of the timeline's manifest naming *old_id* names
-        *new_id* (``Timeline._rename_references``).
-        """
-        self._regions = {
-            (new_id if key == old_id else key): (
-                replace(region, id=new_id, _minted=True) if key == old_id else region
-            )
-            for key, region in self._regions.items()
-        }
-        self._rename_references(old_id, new_id)
-
     def create_regions_from_boundaries(
         self,
         boundaries: Sequence[CoordinateSpec],
@@ -204,6 +182,7 @@ class RegionsMixin(_Host):
         names: Sequence[str] | None = None,
         name_format: str = "{prefix}_{n}",
         prefix: str = "section",
+        seed: int | None = None,
     ) -> list[Region]:
         """Create contiguous regions from boundary coordinates.
 
@@ -218,6 +197,8 @@ class RegionsMixin(_Host):
             name_format: Format string. Placeholders: {prefix}, {i} (0-based),
                 {n} (1-based).
             prefix: Prefix for auto-generated names.
+            seed: The seed of one minter of the regions' ids, minted in
+                boundary order; None mints each from its content.
 
         Returns:
             List of k Region objects in boundary order.
@@ -243,8 +224,14 @@ class RegionsMixin(_Host):
             self._resolve_axis_value,
         )
 
+        minter = None if seed is None else IdMinter(seed)
         return [
-            self.create_region(start, end, name=name)
+            self.create_region(
+                start,
+                end,
+                name=name,
+                id=None if minter is None else minter.mint(Region._id_prefix),
+            )
             for start, end, name in zip(
                 coords[:-1], coords[1:], region_names, strict=True
             )
@@ -255,6 +242,7 @@ class RegionsMixin(_Host):
         field: str,
         *,
         name_format: str = "{value}",
+        seed: int | None = None,
     ) -> list[Region]:
         """Create regions by grouping *adjacent* events on a field value.
 
@@ -272,6 +260,8 @@ class RegionsMixin(_Host):
             field: Event field name to group by.
             name_format: Format string. Placeholders: {value}, {i} (0-based),
                 {n} (1-based), {run} (1-based run index for this value).
+            seed: The seed of one minter of the regions' ids, minted in
+                order of start; None mints each from its content.
 
         Returns:
             List of Region objects ordered by start coordinate.
@@ -343,6 +333,7 @@ class RegionsMixin(_Host):
             runs.append((current_value, run_start, run_end))
 
         # Create regions
+        minter = None if seed is None else IdMinter(seed)
         result: list[Region] = []
         for i, (value, start, end) in enumerate(runs):
             value_counts.setdefault(value, 0)
@@ -353,7 +344,12 @@ class RegionsMixin(_Host):
                 n=i + 1,
                 run=value_counts[value],
             )
-            region = self.create_region(start, end, name=region_name)
+            region = self.create_region(
+                start,
+                end,
+                name=region_name,
+                id=None if minter is None else minter.mint(Region._id_prefix),
+            )
             result.append(region)
 
         return result

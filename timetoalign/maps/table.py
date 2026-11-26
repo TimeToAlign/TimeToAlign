@@ -124,6 +124,7 @@ class TableMap(ConversionMap[CoordinateValue]):
         uid: str | None = None,
         name: str | None = None,
         output_number_type: NumberType | str | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a TableMap.
 
@@ -136,6 +137,7 @@ class TableMap(ConversionMap[CoordinateValue]):
             source_unit: The unit of input coordinates.
             target_unit: The unit of output coordinates.
             uid: Optional explicit ID.
+            seed: The seed of the minter of the id when *uid* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
             output_number_type: The representation results are written in,
                 among those the target unit admits; ``None`` for the target
@@ -166,6 +168,7 @@ class TableMap(ConversionMap[CoordinateValue]):
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
+            seed=seed,
             name=name,
             output_number_type=output_number_type,
         )
@@ -488,6 +491,8 @@ class TableMap(ConversionMap[CoordinateValue]):
         ticks_per_quarter: int = 480,
         source_unit: TimeUnit | str = "ticks",
         target_unit: TimeUnit | str = "seconds",
+        *,
+        seed: int | None = None,
     ) -> TableMap:
         """Create a TableMap from MIDI-style tempo changes.
 
@@ -501,6 +506,7 @@ class TableMap(ConversionMap[CoordinateValue]):
             ticks_per_quarter: MIDI resolution (ticks per quarter note).
             source_unit: Source unit name.
             target_unit: Target unit name.
+            seed: The seed of the minter of the map's id; not stored.
 
         Returns:
             A TableMap for tick-to-second conversion.
@@ -554,4 +560,5 @@ class TableMap(ConversionMap[CoordinateValue]):
             extrapolate=ExtrapolationPolicy.extrapolate,
             source_unit=source_unit,
             target_unit=target_unit,
+            seed=seed,
         )

@@ -172,9 +172,9 @@ class TestLinearMapFromPairs:
     def test_order_is_irrelevant(self):
         pairs = [(2, 5), (0, 1), (1, 3)]
         assert LinearMap.from_pairs(
-            pairs, source_unit=None, value_unit="quarters"
+            pairs, source_unit=None, value_unit="quarters", seed=1
         ) == LinearMap.from_pairs(
-            sorted(pairs), source_unit=None, value_unit="quarters"
+            sorted(pairs), source_unit=None, value_unit="quarters", seed=1
         )
 
     def test_coordinate_values_set_the_target_unit(self):

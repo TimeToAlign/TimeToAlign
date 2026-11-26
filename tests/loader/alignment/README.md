@@ -624,6 +624,15 @@ never computed by the code under test.
   the timeline's length; number type fraction, unit quarters. A triplet
   onset that a float could not hold (`20/3`) is the test that no float
   passed between file and timeline.
+* **The default encoding is read in the shape MTD's EDM files have.** The
+  corpus's `data_EDM-corr_MID` holds copies of its `data_SCORE_MID` files
+  (one track, the default tempo); MTD's own EDM files are type 1 with a
+  meta track (tempo 1,000,000 µs per quarter, time and key signature) and a
+  note track (a program change, note-offs as note-ons of velocity 0). A
+  test writes MTD0807's notes in that shape with mido into an extracted
+  copy (velocity 60, as MTD writes it) and expects the same onsets, ends
+  and pitches, velocity 60, and the same ten claims at the same quarters
+  and seconds: tempo and the meta track change nothing in quarters.
 * **Each alignment row but the last is one claim, at the exact onset.**
   Claims per theme = rows − 1 (10, 16, 10, 28; 64 in all), because every
   onset of these themes holds one note. MTD0807's row `6.66667;2.20401` is
@@ -643,7 +652,12 @@ never computed by the code under test.
   track are two children of one track timeline.
 * **The track is what MTD says of the recording, and no more.** Its length
   is unknown (`None`) unless `track_lengths` gives it; its name is
-  `Beethoven Op002No1-01, Brendel (CD 49, track 1)`; its statements are
+  `Beethoven Op002No1-01, Brendel (CD 49, track 1)`, and a track holding
+  themes of two movements (MTD has four, e.g. Bach BWV 872 prelude and
+  fugue in one track) is named after both: MTD0808's META edited to
+  `Op002No1-02` gives `Beethoven Op002No1-01 and Beethoven Op002No1-02,
+  Brendel (CD 49, track 1)`, `schema:recordingOf` both movements, and a
+  bundle named `MTD, 2 movements`; its statements are
   exactly: type `schema:MusicRecording`, `schema:recordingOf` the movement
   by label, `schema:inAlbum` the MusicBrainz release, three MeLODy
   identifiers (`MTD CollectionID`, `MTD NameCD`, `MTD NameTrack`, the
@@ -668,16 +682,50 @@ never computed by the code under test.
   its notes (`note_…`), its excerpt (`cpt_…`), its theme encoding
   (`clt_…`); then the tracks (`cpt_…`); then the claims (`claim_…`). Two
   fresh loaders without a seed mint equal IDs.
+* **`create_timeline` gives one timeline by its ID and refuses the rest.**
+  The track's ID gives the track (with the length `track_lengths` names),
+  a theme encoding's ID that timeline; an ID the loader did not make
+  raises `KeyError`, a keyword other than `track_lengths` `TypeError`
+  (as `create_bundle` refuses one).
+* **`from_file` passes the selection to `load`.** `movements`, `themes`
+  and `theme_midi` are keyword-only parameters of `load`, so the base
+  `Loader.from_file` hands them to `load` and `seed` to the constructor;
+  every test reading through `from_file` with a selection, and the seeded
+  ID test, prove the split.
 * **The package round trip keeps it all.** The bundle written with
   `to_file` validates with `timetoshare.validate`, reads back with
   `from_file` with 64 claims and the statements unchanged, and a matchstamp
   at MTD0807's onset `20/3` answers the excerpt's `2.20401` seconds.
 
+### Known issues of the data, stored as given
+
+In MTD 1.0.0, 25 alignment rows that become claims, in 25 themes, state a
+second outside their excerpt: 19 before its start (MTD1275
+`0.00000;-0.30000`, most others a few ten-thousandths) and 6 past its end
+(MTD1063 `7.75000;3.32070` on an excerpt 3.3 seconds long). The loader
+stores them as given: no clamp, no drop, no refusal. The claim's second is
+on the excerpt's axis, and the excerpt is a child of its track, which
+answers only within its span, so a matchstamp at such a claim holds the
+excerpt's coordinate and none of the track. None of the four sample themes
+has such a row, so two tests make one each in an extracted copy:
+
+* MTD0807's first row `0.12855` → `-0.10000`: the claim's `coordinate_b`
+  is `-0.1` seconds, and the matchstamp at onset `0` holds the theme and
+  the excerpt (`-0.1`) but not the track; the matchstamp at onset `1`,
+  unchanged, holds all three.
+* MTD0807's row `2.35321` (onset `7`) → `2.90000`, past the excerpt's
+  `2.8` seconds: the claim's `coordinate_b` is `2.9`, and the matchstamp at
+  onset `7` holds the excerpt but not the track.
+
 ### Refusals
 
 Each refusal changes one thing in an extracted copy of the corpus written to
-`tmp_path`: an alignment row moved off its onset (`6.66667` → `6.70000`),
+`tmp_path`: an alignment row moved off its onset (`6.66667` → `6.70000`;
+the message says that the alignment counts the quarters of
+`data_EDM-corr_MID` and names the folder the encoding was read from, also
+when `theme_midi="data_SCORE_MID"` is chosen),
 the last row moved, a `StartTime` not written `mm:ss`, an `EndTime` before
 the `StartTime`, a theme's MIDI file removed, a `theme_midi` that is no
 encoding folder, a folder holding no `MTD/data_META`, no source or two in one call, a
-second source while one is held, a keyword `create_bundle` does not take.
+second source while one is held, a keyword `create_bundle` or
+`create_timeline` does not take.

@@ -1,10 +1,10 @@
 """MtdLoader: themes of the Musical Theme Dataset (MTD) as one AlignmentBundle.
 
 The Musical Theme Dataset (Zalkow, Balke, Arifi-Müller and Müller, TISMIR
-2020, doi:10.5334/tismir.68) gives, for each of 2,067 themes of Barlow and
-Morgenstern's *A Dictionary of Musical Themes*, an encoding of the theme, an
-excerpt of a commercial recording of its movement, and an alignment between
-the two. One theme ``MTDxxxx_<ComposerID>_<WorkID>`` is three files of the
+2020, doi:10.5334/tismir.68) gives, for each of 2,067 themes (by MTD ID)
+from Barlow and Morgenstern's *A Dictionary of Musical Themes*, an encoding of
+the theme, an excerpt of a commercial recording of its movement, and an
+alignment between the two. One theme ``MTDxxxx_<ComposerID>_<WorkID>`` is three files of the
 archive's ``MTD/`` folder:
 
 * ``data_META/<stem>.json``: the theme's identifiers (``MTDID``, ``BMID``),
@@ -20,10 +20,13 @@ archive's ``MTD/`` folder:
 * the theme encoding as a MIDI file: ``data_EDM-corr_MID/<stem>.mid``, MTD's
   corrected encoding of the theme from the Electronic Dictionary of Musical
   Themes (EDM), whose quarter notes the alignment counts. The engraved
-  theme's MIDI, ``data_SCORE_MID/<stem>.mid``, holds other notes for about a
-  quarter of the themes (ornaments written out, other note values), so its
-  onsets do not always meet the alignment's rows; it can be chosen with
-  ``theme_midi="data_SCORE_MID"``.
+  theme's MIDI, ``data_SCORE_MID/<stem>.mid``, holds other notes for some
+  themes (ornaments written out, other note values), so its onsets do not
+  always meet the alignment's rows; it can be chosen with
+  ``theme_midi="data_SCORE_MID"``, which refuses 616 of the 2,067 themes of
+  MTD 1.0.0 (about 30 %: 498 with a row meeting no onset, 118 with a last
+  row that is not the end of the last note). One refused theme refuses the
+  whole ``load``, so read those themes from the default folder.
 
 The themes of one movement (one ``ComposerID`` and ``WorkID``) lie in one CD
 track. ``MtdLoader`` reads the archive in place, or an extracted folder, and
@@ -46,12 +49,24 @@ makes, for the movements or themes selected::
   excerpt (the two are two manifestations of the theme, related by the
   alignment);
 * per alignment row but the last, a synchronous
-  :class:`~timetoalign.alignment.claims.MatchClaim` from the note at that
+  :class:`~timetoalign.alignment.claims.MatchClaim` from each note at that
   onset to :data:`~timetoalign.core.ids.CHUNK` on the excerpt, anchored at
   the onset in quarters and the row's seconds.
 
 The loader reads what MTD states; it fetches nothing. Track lengths, and
-MusicBrainz recording and track IDs, are the caller's to add.
+MusicBrainz recording and track IDs, are the caller's to add. The pitches
+are the encoding's: META's ``MidiTransposition``, the interval by which the
+recording sounds transposed against the encoding (774 of the 2,067 themes,
+mostly an octave down), is not carried.
+
+Known issues of the data, stored as MTD gives them: in MTD 1.0.0, 25
+alignment rows that become claims, in 25 themes, state a second outside
+their excerpt, 19 before its start (MTD1275: ``0.00000;-0.30000``) and 6
+after its end (MTD1063: ``7.75000;3.32070`` on an excerpt 3.3 seconds
+long). The claim holds that second on the excerpt's axis; since the excerpt
+is a child of its track and a child answers only within its span, a
+matchstamp at such a claim names the excerpt's coordinate and no coordinate
+of the track.
 """
 
 from __future__ import annotations
@@ -60,13 +75,11 @@ import csv
 import io
 import json
 import re
-import zipfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pyarrow as pa
@@ -81,6 +94,7 @@ from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
+    as_directory,
     as_source,
     describe_source,
     find_sources,
@@ -104,6 +118,10 @@ if TYPE_CHECKING:
 #: The paper describing the dataset, the basis of every statement and claim.
 MTD_DOI = "https://doi.org/10.5334/tismir.68"
 
+#: The release of the MTD whose layout the loader reads, as provenance names
+#: it (the archive states no version of its own).
+MTD_VERSION = "MTD 1.0.0"
+
 #: The folder of the theme encoding whose quarter notes the alignment counts.
 DEFAULT_THEME_MIDI = "data_EDM-corr_MID"
 
@@ -124,9 +142,6 @@ _MUSICBRAINZ_RELEASE = "http://musicbrainz.org/release/"
 
 #: ``mm:ss`` with optional decimals, as ``StartTime`` / ``EndTime`` write it.
 _TIME = re.compile(r"(\d+):(\d{2}(?:\.\d+)?)")
-
-#: The keywords of :meth:`MtdLoader.from_file` that select what ``load`` reads.
-_SELECTION = ("movements", "themes", "theme_midi")
 
 #: A theme file's stem: ``MTD<id>_<ComposerID>_<WorkID>``.
 _STEM = re.compile(r"(MTD[^_]+)_.+")
@@ -197,6 +212,14 @@ def _movement_label(movement: str) -> str:
     return movement.replace("_", " ", 1)
 
 
+def _movements_label(movements: Iterable[str]) -> str:
+    """Movements as a person reads them: ``A``, ``A and B``, ``A, B and C``."""
+    labels = [_movement_label(movement) for movement in dict.fromkeys(movements)]
+    if len(labels) == 1:
+        return labels[0]
+    return f"{', '.join(labels[:-1])} and {labels[-1]}"
+
+
 def _number_or_text(text: str) -> str:
     """A disc or track number as a person reads it: ``049`` → ``49``, ``Track01`` → ``1``."""
     digits = text.removeprefix("Track")
@@ -226,8 +249,13 @@ class MtdLoader(AlignmentLoader):
     ``MTD/``, or ``MTD/`` itself), the movements or themes selected only.
     Per CD track it makes a seconds timeline with an excerpt child per
     theme, per theme a quarters timeline of the theme encoding, and per
-    alignment row but the last a MatchClaim from the note at that onset to
+    alignment row but the last a MatchClaim from each note at that onset to
     :data:`~timetoalign.core.ids.CHUNK` on the excerpt.
+
+    The notes keep the encoding's pitches; MTD's ``MidiTransposition``
+    between encoding and recording is not carried. A claim whose second
+    lies outside its excerpt (25 in MTD 1.0.0, see the module) is stored as
+    given; a matchstamp there names no coordinate of the track.
 
     **Usage follows the standard loader two-phase pattern:**
 
@@ -266,27 +294,6 @@ class MtdLoader(AlignmentLoader):
 
     # region Loading
 
-    @classmethod
-    def from_file(cls, *paths: SourceLike, **kwargs: Any) -> Self:
-        """Make a loader and read the selected themes of the source (see :meth:`load`).
-
-        Args:
-            *paths: The MTD archive, or the folder holding ``MTD/``, or
-                ``MTD/`` itself (one source).
-            **kwargs: ``movements``, ``themes`` and ``theme_midi`` go to
-                :meth:`load`; the rest (``seed``) to the constructor.
-
-        Returns:
-            The loader, loaded.
-
-        Examples:
-            >>> loader = MtdLoader.from_file(
-            ...     "MTD_1.0.0.zip", movements=["Beethoven_Op002No1-01"]
-            ... )
-        """
-        selection = {key: kwargs.pop(key) for key in _SELECTION if key in kwargs}
-        return cls(**kwargs).load(*paths, **selection)
-
     def load(
         self,
         *sources: SourceLike,
@@ -307,7 +314,12 @@ class MtdLoader(AlignmentLoader):
         the onset of the theme encoding within half a tick of the row's
         five-decimal quarters (``6.66667`` is ``20/3``). The last row is
         checked to be the end of the last note within half a tick; the
-        library has no place for the aligned span's end, so it is not kept.
+        library has no place for the aligned span's end, so it is not kept
+        (its second lies 0.05 seconds past the excerpt's end in all but one
+        theme of MTD 1.0.0).
+
+        :meth:`from_file` passes *movements*, *themes* and *theme_midi* to
+        this method and ``seed`` to the constructor.
 
         Args:
             *sources: One source: the MTD archive (a path, or a
@@ -340,13 +352,7 @@ class MtdLoader(AlignmentLoader):
                 f"Available: {list(THEME_MIDI_FOLDERS)}"
             )
         self._refuse_further_source(*sources)
-        source = sources[0]
-        held: Source
-        if isinstance(source, zipfile.Path) and not source.at:
-            # An archive's root is no member as_source finds: it is the archive.
-            held = source
-        else:
-            held = as_source(source)
+        held = as_source(sources[0])
         root = self._mtd_folder(held)
         metas = self._read_metas(root)
         selected = self._select(metas, movements, themes, held)
@@ -393,9 +399,7 @@ class MtdLoader(AlignmentLoader):
         Raises:
             FileNotFoundError: If *source* holds no ``MTD/data_META``.
         """
-        folder: Source = source
-        if isinstance(source, Path) and source.is_file() and zipfile.is_zipfile(source):
-            folder = zipfile.Path(source)
+        folder = as_directory(source)
         for candidate in (join_source(folder, "MTD"), folder):
             if join_source(candidate, "data_META").is_dir():
                 return candidate
@@ -475,7 +479,7 @@ class MtdLoader(AlignmentLoader):
         ppq, notes = self._read_notes(midi)
         alignment = join_source(root, f"data_ALIGNMENT/{stem}.csv")
         rows = self._read_alignment(alignment)
-        matched = self._match_rows(rows, ppq, notes, alignment, midi)
+        matched = self._match_rows(rows, ppq, notes, alignment, midi, self._theme_midi)
         excerpt_id = mint_timeline_id(TimeUnit.seconds, self._id_minter)
         score_id = mint_timeline_id(TimeUnit.quarters, self._id_minter)
         return _Theme(
@@ -548,6 +552,7 @@ class MtdLoader(AlignmentLoader):
         notes: tuple[_Note, ...],
         alignment: Source,
         midi: Source,
+        theme_midi: str,
     ) -> tuple[tuple[Fraction, float], ...]:
         """Each row but the last as ``(exact onset in quarters, seconds)``.
 
@@ -557,8 +562,13 @@ class MtdLoader(AlignmentLoader):
 
         Raises:
             ValueError: If a row meets no onset or two, or the last row is
-                not the end of the last note.
+                not the end of the last note; the message names the folder
+                the encoding was read from.
         """
+        reading = (
+            f" The alignment counts the quarters of {DEFAULT_THEME_MIDI}; this theme "
+            f"encoding was read from {theme_midi}."
+        )
         if len(rows) < 2:
             raise ValueError(f"{describe_source(alignment)} holds fewer than two rows")
         onsets = sorted({note.start for note in notes})
@@ -570,7 +580,8 @@ class MtdLoader(AlignmentLoader):
                 raise ValueError(
                     f"The alignment row {mid};{wav} of {describe_source(alignment)} meets "
                     f"{len(hits)} onsets of {describe_source(midi)} within half a tick "
-                    f"({ppq} ticks per quarter): {[str(Fraction(t, ppq)) for t in hits]}"
+                    f"({ppq} ticks per quarter): {[str(Fraction(t, ppq)) for t in hits]}."
+                    + reading
                 )
             _decimal(wav, alignment)
             matched.append((Fraction(hits[0], ppq), float(wav)))
@@ -580,7 +591,7 @@ class MtdLoader(AlignmentLoader):
             raise ValueError(
                 f"The last alignment row {last_mid} of {describe_source(alignment)} is not "
                 f"the end of the last note of {describe_source(midi)}, "
-                f"{Fraction(last_end, ppq)} quarters, within half a tick"
+                f"{Fraction(last_end, ppq)} quarters, within half a tick." + reading
             )
         return tuple(matched)
 
@@ -626,7 +637,9 @@ class MtdLoader(AlignmentLoader):
             seconds,
             timelines=axes,
             provenance=Provenance(
-                method="imported", basis=(MTD_DOI,), note="MTD 1.0.0 data_ALIGNMENT"
+                method="imported",
+                basis=(MTD_DOI,),
+                note=f"{MTD_VERSION} data_ALIGNMENT",
             ),
             minter=self._id_minter,
         )
@@ -777,12 +790,19 @@ class MtdLoader(AlignmentLoader):
 
         Args:
             uid: A CD track's or a theme encoding's timeline ID.
-            **kwargs: ``track_lengths``, as :meth:`create_timelines` takes it.
+            **kwargs: ``track_lengths``, as :meth:`create_timelines` takes
+                it; any other keyword is refused.
 
         Raises:
             KeyError: If no timeline has the ID.
             RuntimeError: If ``load()`` has not been called yet.
+            TypeError: If another keyword is given.
         """
+        unknown = sorted(set(kwargs) - {"track_lengths"})
+        if unknown:
+            raise TypeError(
+                f"MtdLoader.create_timeline() takes uid and track_lengths; got {unknown}"
+            )
         timelines = self.create_timelines(track_lengths=kwargs.get("track_lengths"))
         for timeline in timelines:
             if timeline.id == uid:
@@ -804,14 +824,15 @@ class MtdLoader(AlignmentLoader):
             number_type=NumberType.float,
             uid=self._track_ids[track],
             name=(
-                f"{_movement_label(themes[0].movement)}, {first['PerformanceID']} "
+                f"{_movements_label(theme.movement for theme in themes)}, "
+                f"{first['PerformanceID']} "
                 f"(CD {_number_or_text(disc)}, track {_number_or_text(number)})"
             ),
         )
         provenance = Provenance(
             method="imported",
             basis=(MTD_DOI,),
-            note="MTD 1.0.0 data_META of "
+            note=f"{MTD_VERSION} data_META of "
             + ", ".join(_mtd_id(theme.stem) for theme in themes),
         )
         pairs: list[tuple[str, Any]] = [("type", "schema:MusicRecording")]
@@ -870,7 +891,7 @@ class MtdLoader(AlignmentLoader):
         provenance = Provenance(
             method="imported",
             basis=(MTD_DOI,),
-            note=f"MTD 1.0.0 data_META/{theme.stem}.json",
+            note=f"{MTD_VERSION} data_META/{theme.stem}.json",
         )
         pairs: list[tuple[str, Any]] = [
             ("schema:isPartOf", {"label": _movement_label(theme.movement)}),
@@ -883,7 +904,7 @@ class MtdLoader(AlignmentLoader):
                 "dcterms:source",
                 {
                     "label": f"{THEME_MIDI_FOLDERS[self._theme_midi]}, "
-                    f"MTD 1.0.0 {self._theme_midi}/{theme.stem}.mid"
+                    f"{MTD_VERSION} {self._theme_midi}/{theme.stem}.mid"
                 },
             ),
         ]

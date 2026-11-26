@@ -14,6 +14,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+import mido
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
@@ -34,6 +35,21 @@ RELEASE_BRENDEL = "814c53fd-0732-4819-9753-4578f5ab992c"
 RELEASE_ABBADO = "25f51187-906f-48fb-a16f-9e61520f2730"
 TRACK_BRENDEL = (RELEASE_BRENDEL, "049", "Track01")
 DOI = "https://doi.org/10.5334/tismir.68"
+ALIGNMENT_0807 = "data_ALIGNMENT/MTD0807_Beethoven_Op002No1-01.csv"
+
+#: MTD0807's notes as ticks at 480 per quarter: (onset, end, MIDI pitch).
+NOTES_0807 = [
+    (0, 479, 60),
+    (480, 959, 65),
+    (960, 1439, 68),
+    (1440, 1919, 72),
+    (1920, 2399, 77),
+    (2400, 3119, 80),
+    (3120, 3199, 79),
+    (3200, 3279, 77),
+    (3280, 3359, 76),
+    (3360, 3839, 77),
+]
 
 
 # region Helpers
@@ -62,6 +78,34 @@ def folder(tmp_path: Path) -> Path:
     with zipfile.ZipFile(ARCHIVE) as archive:
         archive.extractall(tmp_path / "extracted")
     return tmp_path / "extracted"
+
+
+def write_edm_shaped(path: Path, notes: list[tuple[int, int, int]]) -> None:
+    """Write *notes* as MTD's EDM files are written: a meta track, then a note track.
+
+    Type 1, 480 ticks per quarter; the meta track holds tempo 1,000,000 µs
+    per quarter, a 2/2 time signature and the key of A♭ major; the note
+    track a program change and note-ons, each note ended by a note-on of
+    velocity 0, velocity 60.
+    """
+    meta = mido.MidiTrack(
+        [
+            mido.MetaMessage("set_tempo", tempo=1_000_000, time=0),
+            mido.MetaMessage("time_signature", numerator=2, denominator=2, time=0),
+            mido.MetaMessage("key_signature", key="Ab", time=0),
+            mido.MetaMessage("end_of_track", time=1),
+        ]
+    )
+    track = mido.MidiTrack([mido.Message("program_change", program=0, time=0)])
+    now = 0
+    for start, end, pitch in notes:
+        track.append(mido.Message("note_on", note=pitch, velocity=60, time=start - now))
+        track.append(mido.Message("note_on", note=pitch, velocity=0, time=end - start))
+        now = end
+    track.append(mido.MetaMessage("end_of_track", time=1))
+    midi = mido.MidiFile(type=1, ticks_per_beat=480)
+    midi.tracks += [meta, track]
+    midi.save(path)
 
 
 def edit(folder: Path, member: str, old: str, new: str) -> None:
@@ -118,6 +162,69 @@ class TestThemeEncoding:
         assert table.column("velocity").to_pylist() == [80] * 10
         assert table.column("event_type").to_pylist() == ["Note"] * 10
         assert Fraction(score.length.value) == Fraction(3839, 480)
+
+    def test_an_edm_shaped_file(self, folder: Path) -> None:
+        write_edm_shaped(
+            folder / "MTD/data_EDM-corr_MID/MTD0807_Beethoven_Op002No1-01.mid",
+            NOTES_0807,
+        )
+        loader = MtdLoader.from_file(folder, themes=["MTD0807"])
+        score = by_name(loader.create_timelines(), "B689 (MTD 0807)")
+        table = score.get_events().table
+        assert exact(table.column("start")) == [
+            Fraction(0),
+            Fraction(1),
+            Fraction(2),
+            Fraction(3),
+            Fraction(4),
+            Fraction(5),
+            Fraction(13, 2),
+            Fraction(20, 3),
+            Fraction(41, 6),
+            Fraction(7),
+        ]
+        assert exact(table.column("end")) == [
+            Fraction(479, 480),
+            Fraction(959, 480),
+            Fraction(1439, 480),
+            Fraction(1919, 480),
+            Fraction(2399, 480),
+            Fraction(3119, 480),
+            Fraction(3199, 480),
+            Fraction(3279, 480),
+            Fraction(3359, 480),
+            Fraction(3839, 480),
+        ]
+        assert pc.struct_field(table.column("pitch"), "midi_number").to_pylist() == [
+            60,
+            65,
+            68,
+            72,
+            77,
+            80,
+            79,
+            77,
+            76,
+            77,
+        ]
+        assert table.column("velocity").to_pylist() == [60] * 10
+        rows = claims_of(loader)
+        assert [row["event_a_id"] for row in rows] == table.column("id").to_pylist()
+        assert exact(
+            pa.array([row["start_anchor"]["coordinate_a"] for row in rows])
+        ) == exact(table.column("start"))
+        assert [row["start_anchor"]["coordinate_b"]["value"] for row in rows] == [
+            0.12855,
+            0.45519,
+            0.75268,
+            1.06608,
+            1.38863,
+            1.713,
+            2.13951,
+            2.20401,
+            2.2885,
+            2.35321,
+        ]
 
     def test_sixths_of_mtd1044(self) -> None:
         loader = MtdLoader.from_file(ARCHIVE, themes=["MTD1044"])
@@ -178,8 +285,28 @@ class TestTrackAndExcerpts:
         track = loader.create_timelines()[0]
         excerpt = track.get_child(track.list_children()[0])
         assert track.get_child_offset(excerpt.id).value == 60.75
+        # "5.55" as written: subtracting the floats would give 5.549999999999997.
         assert excerpt.length.value == 5.55
-        assert 66.3 - 60.75 != 5.55
+
+    def test_a_track_of_two_movements_is_named_after_both(self, folder: Path) -> None:
+        edit(
+            folder,
+            "data_META/MTD0808_Beethoven_Op002No1-01.json",
+            '"WorkID": "Op002No1-01"',
+            '"WorkID": "Op002No1-02"',
+        )
+        loader = MtdLoader.from_file(folder, themes=["MTD0807", "MTD0808"])
+        assert loader.tracks == [TRACK_BRENDEL]
+        assert loader.movements == [PIANO, "Beethoven_Op002No1-02"]
+        track = loader.create_timelines()[0]
+        assert track.name == (
+            "Beethoven Op002No1-01 and Beethoven Op002No1-02, Brendel (CD 49, track 1)"
+        )
+        assert track.statements["schema:recordingOf"] == [
+            {"label": "Beethoven Op002No1-01"},
+            {"label": "Beethoven Op002No1-02"},
+        ]
+        assert loader.create_bundle().name == "MTD, 2 movements"
 
     def test_track_lengths_are_the_callers(self) -> None:
         loader = MtdLoader.from_file(ARCHIVE, movements=[PIANO])
@@ -351,6 +478,45 @@ class TestClaims:
 # endregion
 
 
+# region Known issues of the data
+
+
+class TestSecondsOutsideTheExcerpt:
+    """A claim's second outside its excerpt is stored as given."""
+
+    def test_a_negative_second(self, folder: Path) -> None:
+        edit(folder, ALIGNMENT_0807, "0.12855", "-0.10000")
+        loader = MtdLoader.from_file(folder, themes=["MTD0807"])
+        bundle = loader.create_bundle()
+        track_id, score_id = bundle.timeline_ids
+        (excerpt_id,) = bundle.get_timeline(track_id).list_children()
+        first = claims_of(loader)[0]
+        assert first["start_anchor"]["coordinate_b"]["value"] == -0.1
+        assert exact(pa.array([first["start_anchor"]["coordinate_a"]])) == [Fraction(0)]
+        stamp = bundle.get_matchstamp_at(Fraction(0), score_id)
+        assert sorted(stamp.present_timelines) == sorted([score_id, excerpt_id])
+        assert stamp.get_coordinate_for(excerpt_id, format="float") == -0.1
+        unchanged = bundle.get_matchstamp_at(Fraction(1), score_id)
+        assert sorted(unchanged.present_timelines) == sorted(
+            [score_id, excerpt_id, track_id]
+        )
+
+    def test_a_second_past_the_end(self, folder: Path) -> None:
+        edit(folder, ALIGNMENT_0807, "2.35321", "2.90000")
+        loader = MtdLoader.from_file(folder, themes=["MTD0807"])
+        bundle = loader.create_bundle()
+        track_id, score_id = bundle.timeline_ids
+        (excerpt_id,) = bundle.get_timeline(track_id).list_children()
+        last = claims_of(loader)[-1]
+        assert last["start_anchor"]["coordinate_b"]["value"] == 2.9
+        stamp = bundle.get_matchstamp_at(Fraction(7), score_id)
+        assert sorted(stamp.present_timelines) == sorted([score_id, excerpt_id])
+        assert stamp.get_coordinate_for(excerpt_id, format="float") == 2.9
+
+
+# endregion
+
+
 # region Selection, sources and IDs
 
 
@@ -435,6 +601,29 @@ class TestIds:
         ]
         assert claims_of(first) == claims_of(second)
         assert first.create_bundle().id == second.create_bundle().id
+
+
+# endregion
+
+
+# region One timeline by its ID
+
+
+class TestCreateTimeline:
+    """``create_timeline`` gives one timeline of ``create_timelines`` by its ID."""
+
+    def test_the_track_and_a_theme(self) -> None:
+        loader = MtdLoader.from_file(ARCHIVE, themes=["MTD0807"])
+        track, score = loader.create_timelines()
+        assert loader.create_timeline(track.id).to_dict() == track.to_dict()
+        assert loader.create_timeline(score.id).to_dict() == score.to_dict()
+        sized = loader.create_timeline(track.id, track_lengths={TRACK_BRENDEL: 400.5})
+        assert sized.length.value == 400.5
+
+    def test_an_unknown_id(self) -> None:
+        loader = MtdLoader.from_file(ARCHIVE, themes=["MTD0807"])
+        with pytest.raises(KeyError, match="cpt_unknown"):
+            loader.create_timeline("cpt_unknown")
 
 
 # endregion
@@ -541,10 +730,29 @@ class TestRefusals:
         with pytest.raises(ValueError, match="got 2"):
             MtdLoader().load(ARCHIVE, ARCHIVE)
 
+    def test_the_refusal_names_the_encoding_read(self, folder: Path) -> None:
+        edit(folder, ALIGNMENT_0807, "6.66667", "6.70000")
+        reading = (
+            "The alignment counts the quarters of data_EDM-corr_MID; this theme "
+            "encoding was read from {}."
+        )
+        with pytest.raises(ValueError) as default:
+            MtdLoader.from_file(folder, themes=["MTD0807"])
+        assert str(default.value).endswith(reading.format("data_EDM-corr_MID"))
+        with pytest.raises(ValueError) as score:
+            MtdLoader.from_file(folder, themes=["MTD0807"], theme_midi="data_SCORE_MID")
+        assert "data_SCORE_MID/MTD0807_Beethoven_Op002No1-01.mid" in str(score.value)
+        assert str(score.value).endswith(reading.format("data_SCORE_MID"))
+
     def test_an_unknown_keyword_of_create_bundle(self) -> None:
         loader = MtdLoader.from_file(ARCHIVE, themes=["MTD0807"])
         with pytest.raises(TypeError, match="lengths"):
             loader.create_bundle(lengths={})
+
+    def test_an_unknown_keyword_of_create_timeline(self) -> None:
+        loader = MtdLoader.from_file(ARCHIVE, themes=["MTD0807"])
+        with pytest.raises(TypeError, match="lenghts"):
+            loader.create_timeline(loader.create_timelines()[0].id, lenghts={})
 
     def test_nothing_loaded(self) -> None:
         with pytest.raises(RuntimeError, match="load"):

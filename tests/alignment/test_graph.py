@@ -23,7 +23,7 @@ from timetoalign.alignment import (
 )
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
-from timetoalign.core import Coordinate, IdCoordinate
+from timetoalign.core import NOMATCH, Coordinate, IdCoordinate
 from timetoalign.core.enums import Domain, TimeUnit
 from timetoalign.core.timestamp import TimeStamp
 from timetoalign.maps import LinearMap, TableMap
@@ -79,6 +79,7 @@ def _nomatch(
         timeline_b_id=other_timeline_id,
         is_synchronous=False,
         event_a_id=event_id(timeline_id, Coordinate(value, unit)),
+        event_b_id=NOMATCH,
         **kwargs,
     )
 

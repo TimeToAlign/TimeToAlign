@@ -385,55 +385,63 @@ true data-row counts; raw `wc -l` figures (560/33/377) include the
 NOMATCH.  The bundle holds 8 timelines (1 score group + 7 standalone
 performers).
 
-**Every claim names two events (or one and the NOMATCH sentinel).** A row's
-``LABEL`` is a score *position*, not a score note (a chord holds several
-notes at one position), so the score side of every row is a `Projection`
-added to the score timeline at the resolved quarter; the performance side
-of an aligned note row is the performer's Note event the loader built from
-that row, and of an aligned bar or beat row a `Projection` at its time.
-`load` builds the timelines and their Notes and resolves the rows;
-`create_bundle` joins the timelines into the bundle first and only then
-states the claims, so every Projection is added inside the bundle. Before
-`create_bundle` the score holds its 2494 Note events and no Projection, a
-performer its 480 Notes and no Projection: a loader projecting in `load`
-would show Projections there. What proves it, counted from the files
-alone (after `create_bundle`):
+**Every side names an event or a sentinel.** A row's ``LABEL`` is a score
+*position*, not a score note (a chord holds several notes at one
+position). A note row's score side is a `Projection` added to the score
+timeline at the resolved quarter, standing for the performer's Note event
+the loader built from that row (the performance side); a dangling note
+row's is a `Projection` standing for no event, beside the NOMATCH
+sentinel. An aligned bar or beat row states two positions where neither
+timeline holds an event: its claim is CHUNK on both sides
+(`CHUNK_SENTINEL`, the anchor holding the quarter and the time) and no
+Projection is added for it. `load` builds the timelines and their Notes
+and resolves the rows; `create_bundle` joins the timelines into the bundle
+first and only then states the claims, so every Projection is added inside
+the bundle. Before `create_bundle` the score holds its 2494 Note events and
+no Projection, a performer its 480 Notes and no Projection: a loader
+projecting in `load` would show Projections there. What proves it, counted
+from the files alone (after `create_bundle`):
 
 - a timeline holds one Projection per position and event it stands for
   (the library's one projection operation reuses a Projection it holds),
   so the counts follow from the files' distinct values, never from their
   row counts:
-  - the score timeline holds 2494 Note events and 3815 Projections, 6309
+  - the score timeline holds 2494 Note events and 3439 Projections, 5933
     events: 3360 standing for a performer's Note (`7 × 480` aligned note
-    rows, each its own Note) and 455 standing for no event, one per
-    distinct ``LABEL`` among the bar, beat and dangling note rows of all
-    seven performers (a ``LABEL`` resolves to one quarter, and no two
-    ``LABEL`` strings to the same one, so distinct strings are distinct
-    positions);
-  - each performer timeline holds 480 Note events and 376 Projections, 856
-    events: one per distinct ``TIME`` among its 32 bar and 376 beat rows
-    (every bar row's time is one of a beat row's);
-- for every claim, `event_a_id` is an event id of the score timeline and
-  `event_b_id` one of its performer timeline (or null on a NOMATCH claim),
-  checked against the stored id columns, and each anchor coordinate equals
-  the stored start of the event it names: the claim states the events'
-  own positions;
+    rows, each its own Note) and 79 standing for no event, one per
+    distinct ``LABEL`` among the dangling note rows of all seven
+    performers (each performer's note file has 79 dangling rows at 79
+    distinct ``LABEL``s, the same 79 in every file; a ``LABEL`` resolves
+    to one quarter, and no two ``LABEL`` strings to the same one, so
+    distinct strings are distinct positions);
+  - each performer timeline holds its 480 Note events and no Projection
+    (the bar and beat sides are CHUNK); its length stays the latest aligned
+    note time (Ashkenazy `209.142` seconds), which no bar or beat time
+    passes in any of the seven performers' files;
+- for every note claim, `event_a_id` is an event id of the score timeline
+  and `event_b_id` one of its performer timeline (or `NOMATCH_SENTINEL` on
+  a NOMATCH claim), checked against the stored id columns, and each anchor
+  coordinate equals the stored start of the event it names: the claim
+  states the events' own positions; every bar and beat claim's
+  `chunk_sides` is its two timelines;
 - a note-level score Projection's `projection_of` names the performer's
-  Note event the claim joins it to; a bar- or beat-level Projection (both
-  sides) and a dangling row's score Projection stand for no event (null).
+  Note event the claim joins it to; a dangling row's score Projection
+  stands for no event (null).
 
 **The bundle's package is written and read back** (`tmp_path`). A
 Projection's ID is unique among all Projections of a package, and the
 loader adds every Projection while its timeline is in the bundle, so each
-is minted by the bundle: the Projections table holds 6447 rows, 3815 on
-the score and 376 on each performer, its IDs all distinct and each a minted
-`projection_…` (checked by its shape). Ashkenazy's first note-level claim
-(the first claim stated) names one of them. `AlignmentBundle.from_file`
-reads the package back with the same 6769 claims.
+is minted by the bundle: the Projections table holds 3439 rows, all on the
+score, its IDs all distinct and each a minted `projection_…` (checked by
+its shape). Ashkenazy's first note-level claim (the first claim stated)
+names one of them. The written MatchClaim table names `CHUNK_SENTINEL` on
+both sides in `7 × (32 + 376) = 2856` rows and `NOMATCH_SENTINEL` as
+`event_b_id` in `7 × 79 = 553`. `AlignmentBundle.from_file` reads the
+package back with the same 6769 claims.
 
 **Coordinate spot-check:** Ashkenazy's bar-level claim for LABEL `1+0/1`
-joins a score Projection at `Fraction(1, 2)` (0.5 quarters) to a
-performance Projection at `10.272` seconds; its first aligned note-level
+is CHUNK on both sides, its anchor at `Fraction(1, 2)` (0.5 quarters) on
+the score and `10.272` seconds on the performance; its first aligned note-level
 claim joins the score Projection at quarter `0` (the pickup, `0+11/8`) to
 the performer's first Note event (its ID minted from the loader's
 minter, read from the timeline).

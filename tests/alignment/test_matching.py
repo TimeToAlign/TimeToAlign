@@ -17,7 +17,7 @@ from timetoalign.alignment.matching import (
     prepare_abc_notes_for_matching,
     prepare_eep_notes_for_matching,
 )
-from timetoalign.core import Coordinate, Provenance, TimeUnit
+from timetoalign.core import CHUNK, Coordinate, Provenance, TimeUnit
 from timetoalign.core.time import struct_to_rational
 from timetoalign.loader.physical.eep_notes import INSTRUMENT_TO_STAFF, EepNotesLoader
 from timetoalign.loader.score.ms3 import Ms3Loader
@@ -205,23 +205,13 @@ def test_a_side_without_ids_gets_projections_of_the_other():
     assert len(performance.events) == 3
 
 
-def test_positions_only_give_projections_of_no_event():
+def test_positions_only_give_chunk_on_both_sides():
     performance, score = _timelines()
     claims = _match(performance, score).match_claims
 
-    on_performance = _projection_ids(performance)
-    on_score = _projection_ids(score)
-    assert _named(claims) == [
-        ("dpt_1", a, "clt_1", b) for a, b in zip(on_performance, on_score, strict=True)
-    ]
-    assert _projections(performance) == [
-        (projection_id, sample, None)
-        for projection_id, sample in zip(on_performance, SAMPLES, strict=True)
-    ]
-    assert _projections(score) == [
-        (projection_id, quarter, None)
-        for projection_id, quarter in zip(on_score, QUARTERS, strict=True)
-    ]
+    assert _named(claims) == [("dpt_1", CHUNK, "clt_1", CHUNK)] * 3
+    assert (_projections(performance), _projections(score)) == ([], [])
+    assert (len(performance.events), len(score.events)) == (3, 3)
     assert _anchors(claims) == [
         (Coordinate(sample, TimeUnit.samples), Coordinate(quarter, TimeUnit.quarters))
         for sample, quarter in zip(SAMPLES, QUARTERS, strict=True)
@@ -260,17 +250,8 @@ def test_matching_again_adds_nothing():
     performance, score = _timelines()
     first = _match(performance, score).match_claims
     again = _match(performance, score).match_claims
-    assert (
-        _named(again)
-        == _named(first)
-        == [
-            ("dpt_1", a, "clt_1", b)
-            for a, b in zip(
-                _projection_ids(performance), _projection_ids(score), strict=True
-            )
-        ]
-    )
-    assert (len(performance.events), len(score.events)) == (6, 6)
+    assert _named(again) == _named(first) == [("dpt_1", CHUNK, "clt_1", CHUNK)] * 3
+    assert (len(performance.events), len(score.events)) == (3, 3)
 
 
 def test_claims_need_both_timelines():
@@ -294,10 +275,8 @@ def test_matching_before_bundling():
     performance, score = _timelines()
     performance_group = TimelineGroup(timelines=[performance])
     score_group = TimelineGroup(timelines=[score])
-    # Neither side named: each timeline mints the ids of its three Projections.
+    # Neither side named: every claim is CHUNK on both sides, no Projection.
     claims = _match(performance, score).match_claims
-    on_performance = _projection_ids(performance)
-    on_score = _projection_ids(score)
 
     bundle = AlignmentBundle()
     bundle.add_group(performance_group)
@@ -311,27 +290,10 @@ def test_matching_before_bundling():
     held = bundle.get_match_claims()
     assert [claim.id for claim in held] == [claim.id for claim in claims]
     assert len({claim.id for claim in held}) == 3
-    assert _named(held) == [
-        ("dpt_1", a, "clt_1", b) for a, b in zip(on_performance, on_score, strict=True)
-    ]
-    resolved = [
-        (
-            bundle.timelines[claim.timeline_a_id].get_event(claim.event_a_id),
-            bundle.timelines[claim.timeline_b_id].get_event(claim.event_b_id),
-        )
-        for claim in held
-    ]
-    assert [
-        (a["id"], a["event_type"], struct_to_rational(a["start"])) for a, _ in resolved
-    ] == [
-        (projection_id, "Projection", sample)
-        for projection_id, sample in zip(on_performance, SAMPLES, strict=True)
-    ]
-    assert [
-        (b["id"], b["event_type"], struct_to_rational(b["start"])) for _, b in resolved
-    ] == [
-        (projection_id, "Projection", quarter)
-        for projection_id, quarter in zip(on_score, QUARTERS, strict=True)
+    assert _named(held) == [("dpt_1", CHUNK, "clt_1", CHUNK)] * 3
+    assert _anchors(held) == [
+        (Coordinate(sample, TimeUnit.samples), Coordinate(quarter, TimeUnit.quarters))
+        for sample, quarter in zip(SAMPLES, QUARTERS, strict=True)
     ]
     stamp = bundle.get_matchstamp_at(44100, "dpt_1")
     assert stamp.get_coordinate_for("clt_1", format="coordinate") == Coordinate(

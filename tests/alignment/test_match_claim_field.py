@@ -30,7 +30,7 @@ from timetoalign.alignment import (
     MatchClaimField,
     Provenance,
 )
-from timetoalign.core import Coordinate, NumberType, TimeUnit
+from timetoalign.core import NOMATCH, Coordinate, NumberType, TimeUnit
 from timetoalign.core.fields import SemanticField, StructField, derive_arrow_struct
 from timetoalign.core.time import COORDINATE_CELL_TYPE, RATIONAL_STRUCT_TYPE
 from timetoalign.timelines.types import (
@@ -295,9 +295,9 @@ class TestFromColumns:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Row 1 names no event on side b: a MatchClaim names the events it "
-                "matches. Give a side without an event of its own a Projection event "
-                "first, never a bare coordinate."
+                "Row 1 names nothing on side b: a side of a MatchClaim names an "
+                "event, or CHUNK_SENTINEL for a position on a timeline holding no "
+                "event for it."
             ),
         ):
             MatchClaimField.from_columns(
@@ -996,7 +996,7 @@ class TestDictRoundTrip:
             "onset_7",
             "sample_44100",
             "o2",
-            None,
+            "NOMATCH_SENTINEL",
             "o10",
         ]
         assert rows[1] == _DISCRETE_ROW
@@ -1235,9 +1235,14 @@ class TestTableRoundTrip:
             (
                 "event_b_id",
                 ["b0", "c0", None],
-                "MatchClaim table row 2 is synchronous and does not name an event on "
-                "each side; give a side without an event of its own a Projection "
-                "event first.",
+                "MatchClaim table row 2 names no event_a_id or no event_b_id (a side "
+                "without an event holds NOMATCH_SENTINEL or CHUNK_SENTINEL).",
+            ),
+            (
+                "event_b_id",
+                ["b0", NOMATCH, "c1"],
+                "MatchClaim table row 1 is synchronous and names NOMATCH_SENTINEL, "
+                "which stands only on a MatchClaim that is not synchronous.",
             ),
             (
                 "certainty",
@@ -1328,10 +1333,14 @@ class TestTableRoundTrip:
     def test_refuses_anchorless_row_naming_no_event(self) -> None:
         field = MatchClaimField.from_claims(_every_kind(NONE5)[3:4])
         table = _with_child(
-            field.table, "event_a_id", pa.array([None], type=pa.string())
+            field.table, "event_a_id", pa.array([NOMATCH], type=pa.string())
         )
         with pytest.raises(
-            ValueError, match=re.escape("MatchClaim table row 0 names no event.")
+            ValueError,
+            match=re.escape(
+                "MatchClaim table row 0 names NOMATCH_SENTINEL on both sides; a "
+                "NOMATCH MatchClaim names an event on its other side."
+            ),
         ):
             MatchClaimField.from_table(table)
 
@@ -1581,6 +1590,7 @@ class TestNullCoordinateRefused:
             timeline_b_id="B",
             is_synchronous=False,
             event_a_id="a",
+            event_b_id=NOMATCH,
         )
         with pytest.raises(
             ValueError,
@@ -1670,6 +1680,7 @@ class TestNullCoordinateRefused:
             timeline_b_id="B",
             is_synchronous=False,
             event_a_id="a",
+            event_b_id=NOMATCH,
         )
         assert MatchClaimField.from_claims([nomatch]).to_claims() == [nomatch]
 

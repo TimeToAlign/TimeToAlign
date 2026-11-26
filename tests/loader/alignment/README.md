@@ -506,7 +506,8 @@ stated all the same.
   verbatim, the bare string included. The claims are 17 = 1 + 13 + 1 + 2, in
   row order:
   * claim 1, a NOMATCH from the score: not synchronous, no anchor, timeline
-    a the score and b the performance, `event_a_id` `n4` (the claim holds no
+    a the score and b the performance, `event_a_id` `n4`, `event_b_id` the
+    NOMATCH sentinel `NOMATCH_SENTINEL` (the claim holds no
     coordinate: the note's position is its own on the score; a loader
     dropping the row would give 16 claims; one placing it at -1 s would give
     an anchor);
@@ -515,6 +516,7 @@ stated all the same.
     repeated id gives its own claim, not a refusal and not a merge;
   * claims 16 and 17, NOMATCH from the performance: timeline a the
     performance and b the score, `event_a_id` two minted `projection_…`,
+    `event_b_id` `NOMATCH_SENTINEL`,
     Projections standing for no score note (`projection_of`
     null) at 2.75 and 4.75 seconds (the Projections' `start`, as floats; the
     claims hold no coordinate). The file

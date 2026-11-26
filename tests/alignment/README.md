@@ -155,19 +155,17 @@ bridged with `create_match_claims`. Every claim names an event on each side.
 
   The field's `b_bridge` hull is therefore `[200, 800]`.
 - **Bridge A↔B.** `create_match_claims` pairs the position `a1 = 50` with the
-  position `b_bridge = 5 seconds`. Each side becomes a Projection event,
-  the only event of its timeline (`a1` at 50 quarters, `b_bridge` at 500
-  samples), and the claim names the two (two distinct IDs: a Projection's
-  ID is unique in the bundle); the bridge C-Map places 5 seconds at
-  exactly `500 samples` (`5 / 0.01`), so the claim's `b_bridge` anchor is
-  `500` samples. The claim holds the id minted when it was made.
+  position `b_bridge = 5 seconds`. Both sides are CHUNK (two positions,
+  neither timeline holding an event for them): neither timeline gains an
+  event, and the claim's anchor holds `a1` at 50 quarters and `b_bridge`
+  at 500 samples; the bridge C-Map places 5 seconds at exactly `500
+  samples` (`5 / 0.01`). The claim holds the id minted when it was made.
 - **Mixed units on one timeline.** A separate bundle (`source`, samples with
   the same C-Map; `target`, seconds) gets three claims from positions
   `source = 2.0 s, 400 samples, 6.0 s` to `target = 20.0, 40.0, 60.0`. Each
   source position is placed on the samples axis when its claim is made:
-  `200, 400, 600` samples: `source` holds exactly three Projections, in that
-  order, at those positions, each the event A of its claim (three distinct
-  IDs).
+  `200, 400, 600` samples, the anchors' coordinates on `source`; every
+  claim is CHUNK on both sides and `source` holds no event.
   The WarpMap's source array is `[200, 400, 600]` and `transfer(300)` gives
   `30.0`; no range or magnitude inference participates.
 
@@ -256,8 +254,8 @@ position. A test proves the rule only if it holds in the following cases:
 - `score`: quarters, length 16, exact (`Fraction`) axis.
 - `recording`: samples, length 441000, with `SamplesToSeconds(44100)`.
 - Four instant claims made with `create_match_claims` from positions, score
-  quarters → recording **seconds**: each side becomes a Projection event, and
-  each seconds position is placed on the recording's sample axis through the
+  quarters → recording **seconds**: both sides are CHUNK (two positions, no
+  Projection), and each seconds position is placed on the recording's sample axis through the
   C-Map when the claim is made, so the claims hold samples
   (`test_claims_hold_the_recording_samples`). Each `seconds × 44100` is whole:
 
@@ -783,7 +781,7 @@ ungrouped registered timeline. What proves it:
     100) with 100 unregistered children of length 1, grouped alone, beside a
     grouped recording (seconds, length 100.0) with claims `0 ↔ 0.0` and
     `100 ↔ 100.0` on the root (made by `create_match_claims` from positions,
-    a Projection on each side), has exactly 2 units, and the stamp at the
+    CHUNK on both sides), has exactly 2 units, and the stamp at the
     root's 50.5 holds the root 50.5, its child at 50 holding 1/2, and the
     recording 50.5 after exactly 1 transfer (102 units and 298 transfers
     before). In the fixture above, the units are the registered `clt_1` and
@@ -957,13 +955,16 @@ Anchors are value objects — identified entirely by their coordinates. Immutabi
 
 **Design:** MatchClaim has `timeline_a_id` and `timeline_b_id` as **top-level
 fields** (not derived from anchors). Anchors are `Optional` — only synchronous
-claims have them. A MatchClaim **connects events**: it names an event on each
-side, or one event and the NOMATCH sentinel (`None`) on the other; it never
-states a bare coordinate. Two case-specific constructors:
+claims have them. A MatchClaim **names an event or a sentinel on each
+side**: a synchronous claim an event or `CHUNK` (a position the anchor holds
+on a timeline holding no event for it), a non-synchronous claim two events
+(conceptual) or one event and `NOMATCH` on the other side. The sentinels
+are reserved strings (`NOMATCH_SENTINEL`, `CHUNK_SENTINEL`), never a null
+(the CHUNK section below). Two case-specific constructors:
 
 | Constructor | Case | Synchronous | Anchors |
 |-------------|------|-------------|---------|
-| `from_events(event_a, timeline_a, event_b, timeline_b)` | Two events correspond | Yes (default); `is_synchronous=False` gives a conceptual claim | From the events' coordinates, on the two timelines' axes |
+| `from_events(event_a, timeline_a, event_b, timeline_b)` | Two sides correspond (a dict without `id` is CHUNK) | Yes (default); `is_synchronous=False` gives a conceptual claim, between two events | From the sides' coordinates, on the two timelines' axes |
 | `nomatch(event, timeline, other_timeline)` | An event has no counterpart | No | None, and no coordinate at all |
 
 What a MatchGraph infers through groups is no MatchClaim (`MatchGraph`
@@ -973,13 +974,15 @@ property it does not have (`extra="forbid"`): passing one of the four is a
 `ValidationError` (`Extra inputs are not permitted`), so a caller still
 writing `is_explicit=False` is told, never silently given a stated claim.
 
-**Events are required.** The validator refuses a synchronous claim naming
-fewer than two events (one named, and none named, each refused) and a
-non-synchronous claim naming none, so no path — direct construction,
-`from_dict`, a factory — makes an event-less claim. `from_events` and
-`nomatch` refuse an event dict without `id`, naming the side. The messages
-are asserted exactly, because they tell the caller what to do (give the side
-a Projection event).
+**Every side names an event or the sentinel its kind admits.** Both event
+IDs are required strings (a claim without `event_b_id` is a pydantic
+`missing` error, `None` a `string_type` one). The validator refuses
+`NOMATCH` on a synchronous claim, `CHUNK` on one that is not, `NOMATCH` on
+both sides, and a name on a sentinel side, so no path — direct
+construction, `from_dict`, a factory — makes a claim of no kind. `nomatch`
+refuses an event dict without `id`, and `from_events` one on a claim that is
+not synchronous (a conceptual claim names two events), naming the side. The
+messages are asserted exactly, because they tell the caller what to do.
 
 **Coordinates are on the timelines' axes.** `check_on_timelines(timeline_a,
 timeline_b)` is the one check: every coordinate of the claim (both of each
@@ -1050,14 +1053,14 @@ its anchor written the other way round is refused before any query.
 | `test_one_timeline_twice_refused` | a claim naming one timeline on both sides is refused |
 | `test_synchronous_requires_anchor` | a synchronous claim without anchors is refused |
 | `test_non_synchronous_rejects_anchor` | a non-synchronous claim with anchors is refused |
-| `test_claim_names_its_events` | a synchronous claim naming one event, or none, and a non-synchronous claim naming none are refused with the exact messages |
+| `test_claim_names_its_events` | a synchronous claim naming `NOMATCH`, a non-synchronous one naming `CHUNK`, `NOMATCH` on both sides, a name on a sentinel side and a missing event ID are refused with the exact messages |
 | `test_from_events_places_numbers_on_the_axes` | raw numbers on `quarters` / `seconds` / `ticks` timelines, and a storage cell on `seconds`, take the timeline's unit and number type |
 | `test_from_events_converts_another_unit` | `3.16952381` seconds → `139776` samples through the C-Map; an `IdCoordinate` of another timeline and an unconvertible unit are refused |
 | `test_from_events_refuses_another_number_type` | a `float` quarters coordinate on a `fraction` timeline is refused with the check's exact message |
-| `test_from_events_requires_event_ids` | an event dict without `id` is refused, naming `event_a` / `event_b` |
+| `test_from_events_requires_event_ids` | on a conceptual claim an event dict without `id` is refused, naming `event_a` / `event_b` (on a synchronous one it is CHUNK: CHUNK section) |
 | `test_check_on_timelines` | the unit half and the number-type half each refused; the same claim accepted against `(unit, number_type)` pairs that state its coordinates; a timeline of another id refused |
 | `test_a_claim_without_anchors_holds_no_coordinate` | a NOMATCH claim passes the check whatever axes are given, none included: it holds no coordinate |
-| `test_nomatch_factory` | `nomatch()` has no anchors, `is_synchronous=False`, no coordinate in its dictionary (the event's `start` is the event's); the other timeline may be given by id |
+| `test_nomatch_factory` | `nomatch()` has no anchors, `is_synchronous=False`, `event_b_id` the string `NOMATCH_SENTINEL`, no coordinate in its dictionary (the event's `start` is the event's); the other timeline may be given by id |
 | `test_certainty_validation` / `test_certainty_boundaries` | the range rule, its two boundaries and `None` |
 | `test_to_dict_literal_with_provenance` | one claim with a given id, a certainty and a provenance holding a belief, as a whole literal, keys in the table's column order, anchors of two coordinates; `from_dict` gives it back equal, its anchor on the claim's timelines; an anchor stating a timeline id is refused |
 | `test_matchstamp_query_reads_the_claim_s_timeline` | the claim's stamp, and the refusal of its swapped anchor, as above |
@@ -1072,13 +1075,14 @@ the event's `id` and `name`; a `start` in the event dict is not kept.
 
 The `__repr__` of a NOMATCH claim names the two timelines and tags the claim
 with the flag word `NOMATCH` (not the internal field name
-"non-synchronous"); its `str` names the timelines and the event, no
-coordinate.
+"non-synchronous"); its `str` names the timelines, the event, and
+`NOMATCH` as event B (the sentinel by its name, never the reserved
+string), no coordinate.
 
 | Test | Validates |
 |------|-----------|
 | `test_repr_non_synchronous` | NOMATCH claim repr carries the `NOMATCH` flag and never the literal "non-synchronous" |
-| `test_repr_nomatch_names_the_timelines` | Exact strings: repr `MatchClaim(score:clt_1 <-> perf:Chopin_Ashkenazy [NOMATCH])` for an event stating `start` 188.8; `str` the header `MatchClaim (NOMATCH)`, timeline A, event A, timeline B |
+| `test_repr_nomatch_names_the_timelines` | Exact strings: repr `MatchClaim(score:clt_1 <-> perf:Chopin_Ashkenazy [NOMATCH])` for an event stating `start` 188.8; `str` the header `MatchClaim (NOMATCH)`, timeline A, event A, timeline B, `Event B:     NOMATCH` |
 | `test_nomatch_roundtrip` | `from_dict(to_dict())` equals the original |
 | `test_repr_synchronous_instant_with_units` | a synchronous instant repr carries no badge |
 | `test_str_shows_certainty_provenance_and_beliefs` | the whole multi-line `str` of a claim with certainty `0.9`, paradata and a belief |
@@ -1106,10 +1110,10 @@ This prevents creating semantically invalid claims. An interval match between `(
 ### What We're Validating
 
 `MatchClaim.claim_type` is derived from two structural facts and never
-stored: whether the claim is synchronous, and how many of `event_a_id` /
-`event_b_id` are set. Since a claim always names its events, three kinds
-remain: `event_match` (synchronous, an event on each side), `nomatch`
-(non-synchronous, one event, the other side the NOMATCH sentinel) and
+stored: whether the claim is synchronous, and whether `event_a_id` or
+`event_b_id` is the NOMATCH sentinel. Three kinds: `event_match`
+(synchronous, each side an event or CHUNK: a CHUNK–CHUNK claim is an
+`event_match` too), `nomatch` (non-synchronous, `NOMATCH` on one side) and
 `conceptual` (non-synchronous, two events). The kinds for a side, or both,
 without an event (`projection`, `anchor`) and the kind of a correspondence a
 MatchGraph infers (`implicit`, now the graph's own `InferredEdge`, never a
@@ -1121,6 +1125,73 @@ is_synchronous=False)`, `nomatch`, a `MatchClaimField` row), and the
 display: `repr` badges every kind but a plain `event_match` (a NOMATCH claim
 reads `MatchClaim(score:1 <-> recording:1 [NOMATCH])`, no coordinate: it
 holds none), and a conceptual claim never reads NOMATCH.
+
+---
+
+## The Sentinels NOMATCH and CHUNK (`test_chunk.py`)
+
+### What We're Validating
+
+A side of a MatchClaim without an event names a **sentinel**, a reserved
+string, never a null: `NOMATCH` (`"NOMATCH_SENTINEL"`) on a claim that is
+not synchronous, where the event on the other side has no counterpart, and
+`CHUNK` (`"CHUNK_SENTINEL"`) on a synchronous claim, where the timeline
+holds no event for the position the anchor states on that side. A CHUNK
+side is not an event and not a Projection: its coordinate is the anchor's.
+What would prove CHUNK works and is not a renamed Projection:
+
+- **The same anchors as events give.** A CHUNK–CHUNK claim and an
+  event–CHUNK claim, at the positions of a claim between two events, hold
+  the same anchors, give the same potential MatchStamps and the same
+  `get_matchstamp()` results, through each path that makes them
+  (`from_events`, `AlignmentBundle.create_match_claims`,
+  `MatchClaimField.from_columns`). The comparison is against a claim between
+  two held events at the same positions, built beside it, never against a
+  restatement of the anchors.
+- **No event stands for a CHUNK side.** `create_match_claims` with two
+  bare positions adds no Projection to either timeline (each timeline's
+  event count is unchanged), while a position beside a held event still adds
+  one Projection of that event, and a position beside `NOMATCH` one
+  Projection of no event (both unchanged). A pair of positions on a
+  conceptual call (`synchronous=False`) still gives a Projection on each
+  side: no anchor could hold their coordinates. A CHUNK position past an
+  unlocked timeline's end grows the timeline to it, as a Projection there
+  would (`audio`, length 60, reaches `75.0` seconds), and adds no event.
+- **`chunk_sides`** names the CHUNK sides' timelines in the claim's order:
+  `("score", "audio")` for CHUNK–CHUNK, `("audio",)` for event–CHUNK, `()`
+  for a claim between two events, a NOMATCH and a conceptual claim.
+- **The table holds the sentinels as strings.** A field holding a
+  CHUNK–CHUNK row, an event–CHUNK row, an event–event row, a NOMATCH row and
+  a conceptual row round-trips equal through `to_parquet`/`from_parquet`,
+  through `to_dict`/`from_dict`, and through a bundle's package written and
+  read back (`to_file`/`from_file`); the event ID columns hold no null, and
+  the CHUNK cells read `CHUNK_SENTINEL`, the NOMATCH cell `NOMATCH_SENTINEL`,
+  the sentinel sides' names null.
+- **The reader refuses what no MatchClaim can be**, row and reason named
+  exactly: a null event ID, `CHUNK` on a row that is not synchronous,
+  `NOMATCH` on a synchronous row, `NOMATCH` on both sides, a name on a
+  sentinel side. `from_columns` refuses a null event ID input, and
+  `from_events` a dict without `id` on a conceptual claim.
+- **The queries read the strings**: `filter(nomatch_only=True)` keeps the
+  NOMATCH row alone (never a CHUNK row), `filter(synchronous_only=True)` the
+  three synchronous rows, CHUNK rows included.
+- **The sentinels are no element IDs**: `validate_id`, an event added to a
+  timeline and a Projection under either string are refused.
+- **Text renderings name the sentinel**: `repr` marks a CHUNK side
+  `[CHUNK]` after its coordinate, `str` and the HTML card show `CHUNK` /
+  `NOMATCH` as the event, never the reserved string.
+- **Refusals before anything is added**: `create_match_claims` refuses the
+  bare `CHUNK` string as a side (it states no position), a name on a CHUNK
+  side, an end on one side only of a CHUNK–CHUNK pair (the anchors could
+  hold one end only: an interval needs both), a CHUNK position no number
+  cell stores (`nan`, the number cell's own message) and `NOMATCH` on both
+  sides, each as the second pair of a call whose first pair projects onto
+  `audio`: the message is asserted whole, and both timelines hold their two
+  events and the bundle no claim afterwards. `None` is no side any more
+  (`TypeError`, naming `NOMATCH_SENTINEL`).
+
+All values are exact: coordinates compared as `Coordinate` objects, counts
+as integers, messages as whole strings.
 
 ---
 
@@ -1175,8 +1246,12 @@ cell that could break it). Reading rebuilds the in-memory `AlignmentAnchor`
 on the row's two timelines. Readers refuse a row no `MatchClaim` could be,
 vectorized, naming the first offending row (`MatchClaim table row {i} ...`):
 a synchronous row without a start anchor, a non-synchronous row with an
-anchor, a synchronous row not naming an event on each side, a
-non-synchronous row naming none, a row naming one timeline twice, a
+anchor, a null event ID (a side without an event holds its sentinel:
+`MatchClaim table row 2 names no event_a_id or no event_b_id (a side
+without an event holds NOMATCH_SENTINEL or CHUNK_SENTINEL).`), `NOMATCH` on
+a synchronous row, `CHUNK` on one that is not, `NOMATCH` on both sides
+(`MatchClaim table row 0 names NOMATCH_SENTINEL on both sides; ...`), a
+name on a sentinel side, a row naming one timeline twice, a
 certainty outside `[0, 1]` (a null certainty is read, as TimeToShare allows
 it), an anchor holding a null coordinate (a non-finite number becomes a null
 cell: `MatchClaim table row 0 start_anchor.coordinate_a: the coordinate is
@@ -1230,9 +1305,11 @@ The vectorized constructor takes the two timeline-id columns, the two
 and `timelines=` (timelines, or a mapping from an id to a timeline or its
 `(unit, number_type)` pair). A coordinate is a number on its row's timeline,
 written in that timeline's unit and declared number type, and the field is
-checked against the timelines before it is returned. A row naming no event
-(a null event id) is refused (`Row 1 names no event on side b: ...`), and so
-is a row naming a timeline not given; there is no coordinate-only form. The
+checked against the timelines before it is returned. A side is an event ID
+or `CHUNK` (a position on a timeline holding no event for it: the CHUNK
+section); a null event ID is refused (`Row 1 names nothing on side b:
+...`), and so is a row naming a timeline not given, and `NOMATCH` (a row
+of `from_columns` is synchronous). The
 gold vector below exercises the per-row axes (a `fraction` quarters timeline
 beside two `float` ones) and the end columns make one row an interval claim.
 
@@ -1456,6 +1533,8 @@ timeline.
 | `test_from_columns_writes_each_row_on_its_axis` | row 0 `A` is `Fraction(0)` quarters, row 2 `B` `1.0` seconds, the events named, `certainty` 1.0 |
 | `test_from_columns_end_columns` | an end on both sides makes the row an interval claim, a null end an instant |
 | `test_from_columns_refusals` | unequal lengths, a null event id, a timeline not given, one end column alone |
+| `test_refuses_rows_no_claim_could_be` | each row rule, the null event ID and `NOMATCH` on a synchronous row among them, with its exact message |
+| `test_refuses_anchorless_row_naming_no_event` | a NOMATCH row whose event side is made `NOMATCH` too is refused: `NOMATCH` on both sides |
 | `TestNullCoordinateRefused` | a null coordinate refused by every reader; an end on one side only or a NaN end refused by `from_columns`, as specified above |
 | `TestNullRowRefused` | a null row refused by the constructor (plain and chunked), by `from_table` and by `from_dict`, each with its exact message, as specified above |
 | `TestOneSpelling` | an unreduced fraction is held reduced, so fields compare and succeed by value, as specified above |
@@ -2536,7 +2615,10 @@ function selects onsets and promises no duration.
 `match_notes_by_attributes` pairs rows of two frames greedily and states one MatchClaim per
 pair. A claim joins two events, so the function takes the two timelines and, per side, an
 optional id column naming each row's event on its timeline; a side without one states
-positions only and each of its matched rows becomes a `Projection` added to its timeline.
+positions only. Beside a named side, each matched row of a position side becomes a
+`Projection` of the other side's event, added to its timeline; where neither side names
+events, every claim is CHUNK on both sides (its anchor holds the two positions) and no
+Projection is added.
 
 The fixture is built by hand so every expected value is read off it: a performance timeline
 in samples at 44100 Hz (with `SamplesToSeconds`), events `p1` `p2` `p3` at samples 22050,
@@ -2556,16 +2638,15 @@ differs from row order, so a claim built from row positions instead of matched p
   timeline, in order), at `1/2`, `3/2`, `1`, each `projection_of` naming the performance
   note it was matched to; the claims name `p1`, `p2`, `p3` with the first, second and
   third Projection.
-* **Neither side names events**: each timeline gains three Projections standing for no
-  event (`projection_of` null), at the samples and quarters above, and the claims join
-  them pairwise, in order.
+* **Neither side names events**: every claim names `CHUNK_SENTINEL` on both sides, its
+  anchor at the samples and quarters above, and neither timeline gains an event (3 each).
 * **Matching again adds nothing.** The library has one projection operation (the bundle's
   `create_match_claims` and the loaders use it too), which reuses the Projection a timeline
   holds for the same event at the same position. Run twice on the same timelines, with the
-  score side as positions and with neither side named, the second run's claims name the
-  first run's Projections (the ids the timelines hold, in the same pairs) and both
-  timelines hold as many events as after the first run (score 6, performance 3; then
-  performance 6, score 6).
+  score side as positions, the second run's claims name the first run's Projections (the
+  ids the timeline holds, in the same pairs) and both timelines hold as many events as
+  after the first run (score 6, performance 3); with neither side named both runs' claims
+  are CHUNK on both sides and neither timeline gains an event (3 and 3).
 * **Refusals**, each leaving both timelines as they were: an id column naming an id the
   timeline does not hold (`KeyError`, `Pair 1: no event with id 'p9' on timeline 'dpt_1'
   or its children (3 events of its own)`); claims asked for without both timelines
@@ -2574,13 +2655,11 @@ differs from row order, so a claim built from row positions instead of matched p
 * **Provenance** defaults to `Provenance(method="inferred", note="greedy sequential matching
   by pitch")`.
 * **Matching before bundling.** Each timeline in a group of its own, neither side named, so
-  each mints the ids of its three Projections, before any bundle exists; then a bundle
+  every claim is CHUNK on both sides, made before any bundle exists; then a bundle
   takes both groups (`add_group`, one per group) and the claims (`add_match_claims`). The
   bundle holds both timelines in two groups (`[['dpt_1'], ['clt_1']]`) and the three
-  claims under the ids they were made with (three distinct; joining mints nothing). Each
-  claim resolves its two events by timeline and ID: side A `get_event` on `dpt_1` returns
-  the k-th Projection of `dpt_1`, at sample 22050, 44100, 66150, side B on `clt_1` the
-  k-th Projection of `clt_1`, at `1/2`, `3/2`, `1`.
+  claims under the ids they were made with (three distinct; joining mints nothing), each
+  CHUNK on both sides, its anchor at sample 22050, 44100, 66150 and `1/2`, `3/2`, `1`.
   `get_matchstamp_at(44100, "dpt_1")` places `clt_1` at exactly `Coordinate(3/2, quarters)`,
   the anchor of the second claim.
 
@@ -3357,7 +3436,7 @@ these lazily on first use and caches them until the table changes.
 | `TestCommensurabilityWithClaims` | 4 | claims make score–audio and image–audio commensurable; without claims, or with a NOMATCH claim only, they are not |
 | `TestCacheInvalidation` | 4 | the first transfer score → audio builds exactly one WarpMap (target `audio`) and answers 25; a second transfer answers 25 and builds none; after a new claim the next transfer builds one more; the rebuilt map gives score 100 → audio 50 and reaches the new anchor, 125 → 62.5 (50 + 25/50 · 25) |
 | `TestAddMatchClaims` | 6 | chaining; three claims are three rows under the claims' own ids, read back equal to the claims added and recording the bundle; a fourth call adds one row, the four ids in order of arrival; an unknown timeline (`['ghost'] that this bundle does not hold`) and an off-axis coordinate (`Row 1 start_anchor.coordinate_b is in quarters (fraction)` / `in seconds (fraction)`, `but timeline 'audio' counts in seconds (float)`) are refused with nothing added |
-| `TestCreateMatchClaims` | 13 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'd') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection), and the advice works: `n1` on `c` resolves to `c`'s event at 1, on `d` to `d`'s at 1; the timeline's own event answers for its ID: with `n3` added to `score` itself (at 3), `n3` on `score` resolves to `score`'s own event at 3 (not `d`'s at 6), `n3` on `d` still to `d`'s at 2, and `n1` added to `score` (at 7) makes `n1` on `score` resolve at 7 where it was refused before; one level deeper (`score` (quarters, 8) ⊃ `c` (offset 2, length 4) ⊃ `g` (offset 1 in `c`, length 2)), where `c` reports its own events beside a descendant's: with `score` holding `n1` at 7, `c` `n1` at 1 and `g` `x9` at 1, `n1` on `score` resolves to `score`'s own event at 7 (a holder read from a null `source_timeline` alone would take `c`'s row for `score`'s and refuse, naming `'None'`); with `c` and `g` each holding `n1` at 1 and `score` none, `n1` on `score` is refused (`The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'g') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`), nothing added, never resolved to `c`'s; a second call with the same pairs names the same Projections and adds no event (audio `o1` and one Projection, score a Projection of `o1` and one of nothing, before and after), its claims two new ids; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and the Projection it made stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
+| `TestCreateMatchClaims` | 13 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'd') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection), and the advice works: `n1` on `c` resolves to `c`'s event at 1, on `d` to `d`'s at 1; the timeline's own event answers for its ID: with `n3` added to `score` itself (at 3), `n3` on `score` resolves to `score`'s own event at 3 (not `d`'s at 6), `n3` on `d` still to `d`'s at 2, and `n1` added to `score` (at 7) makes `n1` on `score` resolve at 7 where it was refused before; one level deeper (`score` (quarters, 8) ⊃ `c` (offset 2, length 4) ⊃ `g` (offset 1 in `c`, length 2)), where `c` reports its own events beside a descendant's: with `score` holding `n1` at 7, `c` `n1` at 1 and `g` `x9` at 1, `n1` on `score` resolves to `score`'s own event at 7 (a holder read from a null `source_timeline` alone would take `c`'s row for `score`'s and refuse, naming `'None'`); with `c` and `g` each holding `n1` at 1 and `score` none, `n1` on `score` is refused (`The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'g') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`), nothing added, never resolved to `c`'s; a second call with the same pairs names the same Projection and adds no event (audio `o1` alone, score one Projection of `o1`, before and after; the pair of two positions is CHUNK on both sides, no Projection), its claims two new ids; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and the Projection it made stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
 | `TestBeliefFilter` | 2 | `held` (0 → 0, ana true), `doubted` (100 → 60, ana false), `unstated` (200 → 100, no belief). `get_match_claims`: no believer → all three; `believer="ana"` → `held`, `unstated`; `beliefs=["true"]` → `held`; `["undecided"]` → `unstated`; `["true", "false"]` → `held`, `doubted`. `get_matchstamp_at(100, "score")`: no believer → `doubted`'s anchor, audio and midi 60.0, not interpolated; ana → interpolated between `held` and `unstated`, audio and midi 50.0; ana, `["true"]` → one claim cannot interpolate: score 100 and image 200 alone |
 | `TestBeliefFilterIris` | 6 | the three claims with ana's full IRI, prefix `people` declared: `believer="people:ana"` and the full IRI both → `held`, `unstated`, with `["true"]` → `held`; beliefs recorded as `people:ana`, believer the full IRI → `held`, `unstated`; `get_matchstamp_at(100, "score", believer="people:ana")` interpolated, audio and midi 50.0; `get_matchstamps(claims=all three, believer="people:ana")` → two stamps, at score 0.0 and 200.0; `ClaimFilter(believer="people:ana").matches_claim` → `[True, False, True]` on the bundle's claims, `True` on a free copy of `doubted`; `MatchGraph(all three, believer="people:ana", source=bundle)` holds `held`, `unstated`; before the declaration `people:ana` keeps all three, after it `held`, `unstated` |
 | `TestAddMatchClaimField` | 6 | chaining; the five rows join the table under the five different ids the field minted when built, equal to the field's claims; two `from_columns` fields of equal rows join one bundle under ten different ids, in order of arrival; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field keeps its id, read as the sixth, and score 175 answers audio 87.5 exactly |
@@ -3720,7 +3799,7 @@ Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score +
 | `TestCoordinateBatch` | 7 | Position batches on `get_matchstamps_at()` / `get_matchstamp_table()`: order kept, one full cross-section per coordinate, IdCoordinate carries its timeline, parity with the singular getter, one table row per coordinate, `within` narrows columns, empty in → empty out, claims and positions together refused |
 | `TestMatchStampDisplay` | 8 | `MatchStamp.__str__`/`_repr_html_`: header, entries, empty, integer formatting, valid HTML, bold anchors, greyed inferred, and typed retrieval affordance appended after the table |
 | `TestMatchClaimDisplay` | 8 | `MatchClaim.__str__`/`_repr_html_`: instant, interval, NOMATCH, certainty and provenance lines (`Certainty:   0.95`, `Provenance:  method=inferred, note=…`), inferred, valid HTML, NOMATCH badge, affordance `Try` footer (`claim.get_matchstamp()`) appended after the table |
-| `TestMatchClaimEventStorage` | 12 | The events a claim names: `from_events()` keeps both event IDs and names (a missing name is `None`; an event dict without an ID is refused, `event_a names no event id`); a position without an event is given a Projection by `create_match_claims` (`projection_1`, no name, `projection_of` naming the source event, its coordinate on the target axis); `nomatch()` names one event and `None` on the other side; IDs and names displayed in `__str__`/`_repr_html_` and round-tripped by `to_dict()`/`from_dict()`; direct construction |
+| `TestMatchClaimEventStorage` | 12 | The events a claim names: `from_events()` keeps both event IDs and names (a missing name is `None`; an event dict without an ID on a synchronous claim is `CHUNK_SENTINEL` on that side, the anchor the same as the event's); a position beside a held event is given a Projection by `create_match_claims` (`projection_1`, no name, `projection_of` naming the source event, its coordinate on the target axis); `nomatch()` names one event and `NOMATCH_SENTINEL` on the other side; IDs and names displayed in `__str__`/`_repr_html_` and round-tripped by `to_dict()`/`from_dict()`; direct construction |
 | `TestTransferDocstring` | 1 | `transfer()` docstring no longer says "primary user-facing" |
 | `TestTopLevelExports` | 4 | `MatchGraph`, `MatchStamp`, `ClaimFilter` importable from top-level |
 
@@ -3738,6 +3817,13 @@ Projection: `len(bundle.match_claim_table)` and the timeline's
 `n_events` as before the call). A test that asserted only the exception
 would pass for a refusal raised for another reason; the neighbour is what
 shows the rule is drawn where it is stated.
+
+A pair of two bare positions on a synchronous call is CHUNK on both sides
+(the CHUNK section): no Projection stands there, but every rule below holds
+for a CHUNK position as for a Projection's, since the anchor holds it on
+the same axis, and its timeline grows to it as it would to a Projection.
+Where a rule is about what a Projection stores, the score side is the Note
+`n1` (a held event), so the other side is a Projection of it.
 
 The fixture: a score in quarters (`score`, length 16, fraction, holding
 the Note `n1` at 4), a recording in samples (`audio`, `DiscretePhysicalTimeline`,
@@ -3763,8 +3849,9 @@ an unlocked one with `locked=False`.
    on `score` `{"start": 8, "end": 4}` likewise (every axis). Accepted:
    `{"start": 201.18, "end": 226.08}` gives an interval claim whose anchors
    on `clock` are `201.18` and `226.08`. An end equal to the start is
-   accepted as before: a Projection of duration `0` (`temporal_type`
-   `interval`) and an interval claim whose two anchors are equal.
+   accepted as before: between two positions an interval claim whose two
+   anchors are equal (CHUNK on both sides, `audio` holding no event);
+   beside `n1` a Projection of duration `0` (`temporal_type` `interval`).
 3. **Past the end of a locked timeline.** On a locked `audio`
    `{"start": 44000, "end": 50000}` is a `ValueError` naming `50000`, the
    end `44100`, `locked` and both remedies (correct the span; make the
@@ -3772,7 +3859,8 @@ an unlocked one with `locked=False`.
    `44100`. An instant past the end (`{"start": 50000}`) is refused alike.
    Accepted: a span ending exactly at the end (`{"start": 44000, "end":
    44100}`). On an UNLOCKED timeline the same span is accepted and grows
-   the timeline to `50000` (unchanged behaviour). Atomicity across
+   the timeline to `50000` (unchanged behaviour), beside `n1` (a
+   Projection) and between two positions (CHUNK) alike. Atomicity across
    timelines: a call whose first pair projects onto `score` and whose
    second pair reaches past the locked `audio` adds no Projection to
    `score` either (the refusal comes before the first add).
@@ -3792,9 +3880,9 @@ an unlocked one with `locked=False`.
    the call: when the refusal came only as the child grew, `other` had
    received two Projections and `root` one, so comparing the whole tables
    is what proves the refusal now comes first. Accepted neighbour, the same
-   pairs with `{"start": 4}` on `kid`: two claims, `kid` holds one
-   Projection at `4` and keeps its length `5`, `root` one Projection at
-   `2`, `other` two, at `1` and `3`, each the event its claim names. The same rule on a segment line,
+   pairs with `{"start": 4}` on `kid`: two claims, CHUNK on both sides,
+   their anchors on `root` at `2` and on `kid` at `4`, `kid` keeping its
+   length `5`, and no timeline holding a Projection. The same rule on a segment line,
    whose parent decides a segment's end: `line` (quarters, length 9) holds
    `a` (length 4, at 0) and `b` (unknown length, at 4, so it ends at `5`
    on its own axis, where the line ends). A position at `6` on `b` is
@@ -3805,8 +3893,8 @@ an unlocked one with `locked=False`.
    and the MatchClaim table exactly as before (whole tables compared), as
    the same pairs did not when the refusal came only as the segment grew.
    Accepted neighbours: `5` on `b` (its length stays unknown) and `4` on
-   `a` (its length stays `4`), each holding the one Projection at that
-   position.
+   `a` (its length stays `4`), each claim's anchor at that position, CHUNK
+   on both sides, no Projection added.
 4. **An existing ID with another span.** A first call projects
    `{"id": "m1", "start": 0, "end": 4}` on `score`; a second side
    `{"id": "m1", "start": 2, "end": 6}` is a `ValueError` naming `m1`,
@@ -3822,17 +3910,19 @@ an unlocked one with `locked=False`.
    an instant the event is not. Its neighbour, differing only by stating
    the end `4` as well, is the accepted same-span case, which returns `m1`
    (an interval claim with the anchors `0` and `4`).
-5. **A side's name is kept.** A first claim states `{"start": 1, "name":
-   "bar 1"}` on `score`; a second call claims the same position without a
-   name, a third names the Projection by its ID (the one the first claim
-   names, minted when the first call added it): both claims show
-   `event_a_name == "bar 1"`, and `score` holds that one Projection, at
-   `1`. Within one call the same holds
+5. **A side's name is kept.** A first claim joins `n1` to `{"start": 1.0,
+   "name": "beat 1"}` on `clock`, a Projection of `n1`; a second call
+   claims the same position beside `n1` without a name, a third names the
+   Projection by its ID (the one the first claim names, minted when the
+   first call added it): both claims show `event_b_name == "beat 1"`, and
+   `clock` holds that one Projection, at `1.0`. Within one call the same holds
    (the second pair on the same Projection without a name shows the name of
    the first). A later side giving another name (`"first bar"`) shows the
    first name, `"bar 1"`: the name a Projection was first claimed under is
    the one every claim on it shows (the claim table holds one name per
    Projection). A Note's name is its own and stays untouched by this rule.
+   A name on a CHUNK side is refused (the CHUNK section): no event holds
+   it.
 6. **A float a timeline cannot store.** A timeline stores a float position
    as a number cell, which refuses a non-finite value (`nan`, `inf`,
    `-inf`) and one too large for its integer ratio (`2**63` and beyond).
@@ -3843,8 +3933,9 @@ an unlocked one with `locked=False`.
    with the score side first, `score` kept a Projection although nothing
    was claimed. The refusal now comes before the first add, with the same
    message, so what the rule proves is the unchanged state after it (as
-   for rules 1 to 4), in every position a value can take: `nan`, `inf`
-   and `-inf` as the start on `clock` (the score side first); `nan` and
+   for rules 1 to 4), in every position a value can take, the score side
+   the Note `n1`, so `clock` receives a Projection of it: `nan`, `inf`
+   and `-inf` as the start on `clock`; `nan` and
    `inf` as the end; `nan` in the second pair, after a valid first pair
    on the same two timelines; `2.0**63` as a start; and the end a start
    and a duration make (`{"start": 1e18, "end": 1e19}`: start and
@@ -3855,7 +3946,10 @@ an unlocked one with `locked=False`.
    `{"start": 1e300, "end": nan}` names `1e+300`. A `-inf` end after a
    finite start is refused as a backwards span (rule 2), as before.
    Accepted neighbours: `9e18`, below `2**63`, as a start on `clock`, and
-   a finite span `{"start": 1.0, "end": 2.0}`, each one claim.
+   a finite span `{"start": 1.0, "end": 2.0}`, each one claim, `clock`
+   holding the one Projection. A CHUNK position is held by the anchor's
+   number cell, so the same values are refused for it with the same
+   message, before anything is added (the CHUNK section).
 
 ## MatchStamp table order (`test_stamp_table_order.py`)
 

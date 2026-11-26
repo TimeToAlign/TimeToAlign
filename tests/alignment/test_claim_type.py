@@ -1,17 +1,17 @@
 """Tests for the derived ``MatchClaim.claim_type`` classification.
 
 A :class:`MatchClaim` never stores its semantic kind. ``claim_type`` reads the
-kind back from two structural facts: whether it is synchronous, and how many
-of its two sides name an event (``event_a_id`` / ``event_b_id``). A claim
-always names its events, so three kinds remain. Validation strategy:
+kind back from two structural facts: whether it is synchronous, and whether
+one of its two sides (``event_a_id`` / ``event_b_id``) is the NOMATCH
+sentinel. Three kinds. Validation strategy:
 ``tests/alignment/README.md`` ("Claim Kinds").
 
 ======================================  =================  ===========================
 Structure                               ``ClaimType``      Typical origin
 ======================================  =================  ===========================
-synchronous (an event on each side)     ``event_match``    ``MatchClaim.from_events``
-non-synchronous, one side names it      ``nomatch``        ``MatchClaim.nomatch``
-non-synchronous, both sides name one    ``conceptual``     ``from_events(..., is_synchronous=False)``
+synchronous (each side event or CHUNK)  ``event_match``    ``MatchClaim.from_events``
+non-synchronous, NOMATCH on one side    ``nomatch``        ``MatchClaim.nomatch``
+non-synchronous, an event on each side  ``conceptual``     ``from_events(..., is_synchronous=False)``
 ======================================  =================  ===========================
 
 Display
@@ -71,6 +71,16 @@ class TestClaimTypeClassification:
     def test_from_events_is_event_match(self) -> None:
         assert _event_match().claim_type is ClaimType.event_match
 
+    def test_chunk_sides_are_an_event_match(self) -> None:
+        chunk = MatchClaim.from_events(
+            {"start": 100}, SCORE, {"start": 45.5}, RECORDING
+        )
+        assert (chunk.claim_type, chunk.is_nomatch, chunk.is_conceptual) == (
+            ClaimType.event_match,
+            False,
+            False,
+        )
+
     def test_from_events_not_synchronous_is_conceptual(self) -> None:
         claim = _conceptual()
         assert claim.claim_type is ClaimType.conceptual
@@ -80,7 +90,7 @@ class TestClaimTypeClassification:
     def test_nomatch_is_nomatch(self) -> None:
         claim = _nomatch()
         assert claim.claim_type is ClaimType.nomatch
-        assert (claim.event_a_id, claim.event_b_id) == ("x", None)
+        assert (claim.event_a_id, claim.event_b_id) == ("x", "NOMATCH_SENTINEL")
 
     def test_field_row_materialises_as_event_match(self) -> None:
         field = MatchClaimField.from_columns(

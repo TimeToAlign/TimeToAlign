@@ -19,7 +19,7 @@ import pytest
 from timetoalign.alignment import MatchClaim
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine
-from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core import NOMATCH, Coordinate, TimeUnit
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -62,6 +62,7 @@ def _nomatch(timeline_id: str, value: float, other_timeline_id: str) -> MatchCla
         timeline_b_id=other_timeline_id,
         is_synchronous=False,
         event_a_id=event_id(timeline_id, Coordinate(value, TimeUnit.number)),
+        event_b_id=NOMATCH,
     )
 
 

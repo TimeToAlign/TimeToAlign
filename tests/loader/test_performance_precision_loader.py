@@ -14,9 +14,10 @@ It verifies:
 - the score timeline (2494 notes, quarters, pickup note at 0),
 - per-performer MatchClaim counts (559 note = 480 sync + 79 NOMATCH;
   32 bar; 376 beat) and the bundle totals (8 timelines, 6769 claims),
-- the events every claim names (Projections where a row states a position
-  only) and the Projections standing for them, one per position and event
-  stood for.
+- the events every claim names: a score Projection standing for the
+  performer's Note (note rows) or for no event (dangling rows), CHUNK on
+  both sides of a bar or beat claim (two positions, no Projection), one
+  Projection per position and event stood for.
 
 All counts and coordinates are exact per the Zero Tolerance Validation
 Policy.  Validation logic is documented in ``tests/loader/README.md``.
@@ -35,7 +36,7 @@ import pytest
 from tests.loader.minting import shape, shapes
 from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.claims import MatchClaim
-from timetoalign.core import Provenance, TimeUnit
+from timetoalign.core import CHUNK, NOMATCH, Coordinate, Provenance, TimeUnit
 from timetoalign.core.time import struct_to_rational
 from timetoalign.loader.alignment import PerformancePrecisionLoader
 from timetoalign.loader.tabular.solo import SoloLoader
@@ -164,13 +165,13 @@ def test_load_adds_no_projection(loader: PerformancePrecisionLoader) -> None:
 
 
 def test_score_timeline_basics(loader: PerformancePrecisionLoader, bundle) -> None:
-    """2494 notes; Projections: 3360 of a performer's Note, 455 positions of none."""
+    """2494 notes; Projections: 3360 of a performer's Note, 79 dangling positions."""
     score = loader.create_timeline("score")
-    assert _event_type_counts(score) == {"Note": 2494, "Projection": 3815}
-    assert len(score.events) == 6309
+    assert _event_type_counts(score) == {"Note": 2494, "Projection": 3439}
+    assert len(score.events) == 5933
     projections = score.events.filter(event_type="Projection").table
     of_no_event = projections.column("projection_of").null_count
-    assert (of_no_event, projections.num_rows - of_no_event) == (455, 3360)
+    assert (of_no_event, projections.num_rows - of_no_event) == (79, 3360)
     assert score.unit == TimeUnit.quarters
     assert score.length.value == 212.5
 
@@ -275,10 +276,11 @@ def test_per_performer_counts(bundle, performer_key: str) -> None:
 def test_performer_physical_timeline(
     loader: PerformancePrecisionLoader, bundle
 ) -> None:
-    """One Note per aligned note row (480), one Projection per bar/beat time."""
+    """One Note per aligned note row (480); the bar and beat sides are CHUNK."""
     perf = loader.create_timeline("Chopin_Ashkenazy")
     assert perf.unit == TimeUnit.seconds
-    assert _event_type_counts(perf) == {"Note": 480, "Projection": 376}
+    assert _event_type_counts(perf) == {"Note": 480}
+    assert perf.length == Coordinate(209.142, TimeUnit.seconds)
 
 
 def test_claim_provenance(bundle) -> None:
@@ -297,7 +299,10 @@ def _stored_start(row: dict[str, Any]) -> Fraction:
 
 @pytest.mark.parametrize("performer_key", PERFORMERS)
 def test_every_claim_names_its_events(loader, bundle, performer_key: str) -> None:
-    """Each claim names events of its two timelines, at their own starts."""
+    """A note claim names events of its two timelines, at their own starts.
+
+    A bar or beat claim is CHUNK on both sides: two positions, no event.
+    """
     score = _events_by_id(loader.create_timeline("score"))
     perf_tl = loader.create_timeline(performer_key)
     performance = _events_by_id(perf_tl)
@@ -305,10 +310,13 @@ def test_every_claim_names_its_events(loader, bundle, performer_key: str) -> Non
         for claim in _by_granularity(
             _performer_claims(bundle, performer_key), granularity
         ):
+            if granularity != "note":
+                assert claim.chunk_sides == (claim.timeline_a_id, claim.timeline_b_id)
+                continue
             projection = score[claim.event_a_id]
             assert projection["event_type"] == "Projection"
             if claim.is_nomatch:
-                assert claim.event_b_id is None
+                assert claim.event_b_id == NOMATCH
                 assert projection["projection_of"] is None
                 continue
             performed = performance[claim.event_b_id]
@@ -316,16 +324,11 @@ def test_every_claim_names_its_events(loader, bundle, performer_key: str) -> Non
             assert claim.start_anchor.coordinate_b.value == float(
                 _stored_start(performed)
             )
-            if granularity == "note":
-                assert performed["event_type"] == "Note"
-                assert projection["projection_of"] == {
-                    "timeline_id": perf_tl.id,
-                    "event_id": claim.event_b_id,
-                }
-            else:
-                assert performed["event_type"] == "Projection"
-                assert performed["projection_of"] is None
-                assert projection["projection_of"] is None
+            assert performed["event_type"] == "Note"
+            assert projection["projection_of"] == {
+                "timeline_id": perf_tl.id,
+                "event_id": claim.event_b_id,
+            }
 
 
 def test_ashkenazy_first_note_claim(bundle, loader) -> None:
@@ -351,7 +354,7 @@ def test_the_bundle_s_package_is_written_and_read_back(bundle, tmp_path: Path) -
     bundle.to_file(tmp_path / "package.yaml")
     table = pq.read_table(tmp_path / "projections.parquet")
     ids = table.column("id").to_pylist()
-    assert len(set(ids)) == len(ids) == 6447
+    assert len(set(ids)) == len(ids) == 3439
     assert set(shapes(ids)) == {"projection"}
     assert first.event_a_id in ids
     counts = pc.value_counts(table.column("timeline_id")).to_pylist()
@@ -360,10 +363,17 @@ def test_the_bundle_s_package_is_written_and_read_back(bundle, tmp_path: Path) -
         for timeline_id in bundle.timelines
         if shape(timeline_id) == "score:clt"
     ]
-    assert {row["values"]: row["counts"] for row in counts} == {
-        score_id: 3815,
-        **{_performer_id(bundle, key): 376 for key in PERFORMERS},
-    }
+    assert {row["values"]: row["counts"] for row in counts} == {score_id: 3439}
+    claims = pq.read_table(tmp_path / "match_claims.parquet")
+    sides = list(
+        zip(
+            claims.column("event_a_id").to_pylist(),
+            claims.column("event_b_id").to_pylist(),
+            strict=True,
+        )
+    )
+    assert sides.count((CHUNK, CHUNK)) == 2856
+    assert sum(1 for _, b in sides if b == NOMATCH) == 553
     read = AlignmentBundle.from_file(tmp_path / "package.yaml")
     assert read.match_claim_table == bundle.match_claim_table
     assert len(read.get_match_claims()) == 6769
@@ -381,8 +391,7 @@ def test_ashkenazy_bar_spot_check(bundle) -> None:
     synchronous = [c for c in bar_claims if c.is_synchronous]
     # The first bar row of the file is LABEL 1+0/1 (the first downbeat).
     first = synchronous[0]
-    assert first.event_a_id.startswith("projection_")
-    assert first.event_b_id.startswith("projection_")
+    assert (first.event_a_id, first.event_b_id) == (CHUNK, CHUNK)
     assert first.start_anchor.coordinate_a.value == Fraction(1, 2)
     assert first.start_anchor.coordinate_a.unit is TimeUnit.quarters
     assert first.start_anchor.coordinate_b.value == 10.272

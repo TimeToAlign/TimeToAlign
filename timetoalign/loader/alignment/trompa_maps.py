@@ -41,7 +41,12 @@ import math
 from collections import Counter
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
+from timetoalign.alignment.claims import (
+    NOMATCH,
+    ClaimSide,
+    MatchClaim,
+    _claims_between_events,
+)
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.time import Coordinate
 from timetoalign.loader._sources import Source, describe_source
@@ -246,15 +251,15 @@ class MapsLoader(AlignmentLoader):
             onset = Coordinate(row["obs_mean_onset"], TimeUnit.seconds)
             for xml_id in _ids(row):
                 if not xml_id.startswith(_INSERTED_ID_PREFIX):
-                    performed = None if onset.value < 0 else {"start": onset}
+                    performed = NOMATCH if onset.value < 0 else {"start": onset}
                     pairs.append((xml_id, score, performed, performance))
                 elif inserted[xml_id] == 1:
                     pairs.append(
-                        ({"id": xml_id, "start": onset}, performance, None, score)
+                        ({"id": xml_id, "start": onset}, performance, NOMATCH, score)
                     )
                 else:
                     stated = {"start": onset, "name": xml_id}
-                    pairs.append((stated, performance, None, score))
+                    pairs.append((stated, performance, NOMATCH, score))
         return _claims_between_events(pairs, provenance=provenance)
 
     def create_bundle(

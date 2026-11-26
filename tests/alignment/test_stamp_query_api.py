@@ -30,6 +30,7 @@ from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
 from timetoalign.core import (
+    NOMATCH,
     Coordinate,
     IdCoordinate,
     IdCoordinateField,
@@ -68,6 +69,7 @@ def _nomatch(timeline_a: str, timeline_b: str) -> MatchClaim:
         timeline_b_id=timeline_b,
         is_synchronous=False,
         event_a_id="orphan",
+        event_b_id=NOMATCH,
     )
 
 
@@ -826,11 +828,12 @@ class TestMatchClaimEventStorage:
         assert claim.event_b_name == "Verse 1"
 
     def test_from_events_needs_an_id_and_no_name(self):
-        """An event without a name gives None; an event without an ID is refused.
+        """An event without a name gives None; a dict without an ID is CHUNK.
 
-        A claim names the events it matches, so an event dict that names no
-        event cannot make one: a side without an event of its own is given a
-        Projection first (see ``test_projection_stands_for_a_side_without_event``).
+        A synchronous claim names an event or CHUNK on each side: an event
+        dict that names no event states a position the anchor holds, where
+        no Projection stands (``tests/alignment/README.md``, the CHUNK
+        section).
         """
         claim = self._from_events(
             {"id": "e1", "start": 10.0}, {"id": "e2", "start": 20.0}
@@ -838,10 +841,11 @@ class TestMatchClaimEventStorage:
         assert claim.event_a_name is None
         assert claim.event_b_name is None
 
-        with pytest.raises(ValueError, match="event_a names no event id"):
-            self._from_events({"start": 10.0}, {"id": "e2", "start": 20.0})
-        with pytest.raises(ValueError, match="event_b names no event id"):
-            self._from_events({"id": "e1", "start": 10.0}, {"start": 20.0})
+        chunk_a = self._from_events({"start": 10.0}, {"id": "e2", "start": 20.0})
+        chunk_b = self._from_events({"id": "e1", "start": 10.0}, {"start": 20.0})
+        assert (chunk_a.event_a_id, chunk_a.event_b_id) == ("CHUNK_SENTINEL", "e2")
+        assert (chunk_b.event_a_id, chunk_b.event_b_id) == ("e1", "CHUNK_SENTINEL")
+        assert chunk_a.start_anchor == chunk_b.start_anchor == claim.start_anchor
 
     def test_projection_stands_for_a_side_without_event(self):
         """A position on the target side is given a Projection naming the source event.
@@ -884,7 +888,7 @@ class TestMatchClaimEventStorage:
 
         assert claim.event_a_id == "e999"
         assert claim.event_a_name == "Orphan Note"
-        assert claim.event_b_id is None
+        assert claim.event_b_id == NOMATCH
 
     def test_str_displays_event_ids(self):
         """__str__ includes event IDs when present."""

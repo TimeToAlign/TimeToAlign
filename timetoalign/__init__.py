@@ -107,6 +107,8 @@ from __future__ import annotations
 from importlib import import_module
 
 from timetoalign.core import (
+    CHUNK,
+    NOMATCH,
     Belief,
     BoundingBox,
     BoundingBoxField,
@@ -312,6 +314,9 @@ __all__ = [
     "__version__",
     # Enums
     "ClaimType",
+    # The sentinels of a MatchClaim's sides
+    "CHUNK",
+    "NOMATCH",
     "ColumnNaming",
     "ColumnRole",
     "Domain",

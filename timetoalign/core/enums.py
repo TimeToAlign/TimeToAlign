@@ -372,22 +372,23 @@ class ClaimType(FancyStrEnum):
     """The semantic kind of a MatchClaim, derived from its structure.
 
     A claim's kind is never stored; it is read from whether the claim is
-    synchronous and how many of its two sides name an event. A MatchClaim
-    always names two events, or one event and the NOMATCH sentinel on the
-    other side; a side without an event of its own is given a Projection event
-    first, never a bare coordinate. What a MatchGraph infers through groups is
-    the graph's own and has no kind here.
+    synchronous and whether a side is the NOMATCH sentinel. A MatchClaim
+    names an event or a sentinel on each side: a synchronous one an event or
+    the CHUNK sentinel (a position on a timeline holding no event for it,
+    held by the anchor), one that is not synchronous two events, or one
+    event and the NOMATCH sentinel. What a MatchGraph infers through groups
+    is the graph's own and has no kind here.
 
     Members:
-        event_match: Two events on different timelines correspond, temporally
-            anchored.
+        event_match: Synchronous: two sides correspond, temporally anchored,
+            each side an event or CHUNK.
         nomatch: An event has no counterpart on the other timeline.
         conceptual: Two events correspond structurally, with no temporal
             commitment (no anchors).
     """
 
     event_match = auto()
-    """Two events correspond, temporally anchored."""
+    """Synchronous: two sides correspond, temporally anchored, each an event or CHUNK."""
     event = event_match
     """Alias for event_match."""
 

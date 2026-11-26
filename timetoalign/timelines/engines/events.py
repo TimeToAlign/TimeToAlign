@@ -33,7 +33,7 @@ from timetoalign.core.fields import (
     _struct_members,
     _valid_struct_cell,
 )
-from timetoalign.core.ids import IdMinter, content_minter, quote_id
+from timetoalign.core.ids import SENTINELS, IdMinter, content_minter, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
     combine_number_columns,
@@ -790,9 +790,10 @@ class EventsMixin(_Host):
         column-wise, never as Python objects.
 
         Raises:
-            ValueError: If an ID is held already or given twice, or a
-                Projection ID names a Projection of another timeline of the
-                manifest.
+            ValueError: If an ID is held already or given twice, is a
+                sentinel (:data:`~timetoalign.core.ids.NOMATCH`,
+                :data:`~timetoalign.core.ids.CHUNK`), or a Projection ID
+                names a Projection of another timeline of the manifest.
         """
         held = self._events.table.column("id")
         missing = [row.get("event_type") for row in rows if row.get("id") is None]
@@ -808,6 +809,12 @@ class EventsMixin(_Host):
                 for row in rows
             ]
         row_ids: list[str] = [row["id"] for row in rows]
+        reserved = [event_id for event_id in row_ids if event_id in SENTINELS]
+        if reserved:
+            raise ValueError(
+                f"Event id {quote_id(reserved[0])} is reserved for a sentinel of "
+                f"a MatchClaim's side; give the event another id"
+            )
         ids = pa.array(row_ids, type=pa.string())
         if any(row.get("event_type") == PROJECTION_EVENT_TYPE for row in rows):
             around, holders = self._manifest_projection_ids()

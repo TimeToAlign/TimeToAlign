@@ -38,7 +38,7 @@ import pytest
 
 from tests.loader.minting import shape
 from timetoalign.alignment.claims import MatchClaim
-from timetoalign.core import Provenance, TimeUnit
+from timetoalign.core import NOMATCH, Provenance, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.maps.convenience import SamplesToSeconds
 from timetoalign.testdata import ensure_data
@@ -277,8 +277,8 @@ def test_claims_name_the_rows_notes(bundle, performer_key: str) -> None:
     expected = [
         {
             "0": (score_id, row["partid"], cpt_id, row["ppartid"]),
-            "1": (score_id, row["partid"], cpt_id, None),
-            "2": (cpt_id, row["ppartid"], score_id, None),
+            "1": (score_id, row["partid"], cpt_id, NOMATCH),
+            "2": (cpt_id, row["ppartid"], score_id, NOMATCH),
         }[row["matchtype"]]
         for row in rows
     ]

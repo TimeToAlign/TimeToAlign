@@ -166,11 +166,16 @@ class TestBackwardsSpan:
         (claim,) = bundle.create_match_claims(
             [({"start": 2, "end": 2}, "score", {"start": 30, "end": 30}, "audio")]
         )
-        event = _timeline(bundle, "audio").get_event(claim.event_b_id)
-        assert event["temporal_type"] == "interval"
-        assert event["duration"] == {"value": 0.0, "numerator": 0, "denominator": 1}
+        assert claim.chunk_sides == ("score", "audio")
+        assert _timeline(bundle, "audio").n_events == 0
         assert claim.start_anchor.coordinate_b.value == 30
         assert claim.end_anchor.coordinate_b.value == 30
+        (projected,) = bundle.create_match_claims(
+            [("n1", "score", {"start": 30, "end": 30}, "audio")]
+        )
+        event = _timeline(bundle, "audio").get_event(projected.event_b_id)
+        assert event["temporal_type"] == "interval"
+        assert event["duration"] == {"value": 0.0, "numerator": 0, "denominator": 1}
 
 
 class TestPastTheEndOfALockedTimeline:
@@ -218,10 +223,15 @@ class TestPastTheEndOfALockedTimeline:
         assert claim.end_anchor.coordinate_b.value == 44100
         assert _timeline(bundle, "audio").length == Coordinate(44100, "samples")
 
-    def test_an_unlocked_timeline_grows(self) -> None:
+    @pytest.mark.parametrize(
+        "score_side",
+        [{"start": 4, "end": 8}, "n1"],
+        ids=["chunk", "projection"],
+    )
+    def test_an_unlocked_timeline_grows(self, score_side) -> None:
         bundle = _bundle()
         bundle.create_match_claims(
-            [({"start": 4, "end": 8}, "score", {"start": 44000, "end": 50000}, "audio")]
+            [(score_side, "score", {"start": 44000, "end": 50000}, "audio")]
         )
         assert _timeline(bundle, "audio").length == Coordinate(50000, "samples")
 
@@ -308,39 +318,37 @@ class TestNameKept:
     def test_later_claims_show_the_first_name(self) -> None:
         bundle = _bundle()
         (first,) = bundle.create_match_claims(
-            [({"start": 1, "name": "bar 1"}, "score", {"start": 1.0}, "clock")]
+            [("n1", "score", {"start": 1.0, "name": "beat 1"}, "clock")]
         )
-        projection = first.event_a_id
-        assert _own_projections(bundle, "score") == [(projection, 1)]
-        assert first.event_a_name == "bar 1"
+        projection = first.event_b_id
+        assert _own_projections(bundle, "clock") == [(projection, 1)]
+        assert first.event_b_name == "beat 1"
         (unnamed,) = bundle.create_match_claims(
-            [({"start": 1}, "score", {"start": 2.0}, "clock")]
+            [("n1", "score", {"start": 1.0}, "clock")]
         )
-        (by_id,) = bundle.create_match_claims(
-            [(projection, "score", {"start": 3.0}, "clock")]
-        )
+        (by_id,) = bundle.create_match_claims([("n1", "score", projection, "clock")])
         (renamed,) = bundle.create_match_claims(
-            [({"start": 1, "name": "first bar"}, "score", {"start": 4.0}, "clock")]
+            [("n1", "score", {"start": 1.0, "name": "first beat"}, "clock")]
         )
-        assert [(c.event_a_id, c.event_a_name) for c in (unnamed, by_id, renamed)] == [
-            (projection, "bar 1"),
-            (projection, "bar 1"),
-            (projection, "bar 1"),
+        assert [(c.event_b_id, c.event_b_name) for c in (unnamed, by_id, renamed)] == [
+            (projection, "beat 1"),
+            (projection, "beat 1"),
+            (projection, "beat 1"),
         ]
-        assert _own_projections(bundle, "score") == [(projection, 1)]
+        assert _own_projections(bundle, "clock") == [(projection, 1)]
 
     def test_within_one_call(self) -> None:
         bundle = _bundle()
         claims = bundle.create_match_claims(
             [
-                ({"start": 1, "name": "bar 1"}, "score", {"start": 1.0}, "clock"),
-                ({"start": 1}, "score", {"start": 2.0}, "clock"),
+                ("n1", "score", {"start": 1.0, "name": "beat 1"}, "clock"),
+                ("n1", "score", {"start": 1.0}, "clock"),
             ]
         )
-        ((projection, _),) = _own_projections(bundle, "score")
-        assert [(c.event_a_id, c.event_a_name) for c in claims] == [
-            (projection, "bar 1"),
-            (projection, "bar 1"),
+        ((projection, _),) = _own_projections(bundle, "clock")
+        assert [(c.event_b_id, c.event_b_name) for c in claims] == [
+            (projection, "beat 1"),
+            (projection, "beat 1"),
         ]
 
     def test_a_note_keeps_its_own_name(self) -> None:
@@ -428,10 +436,11 @@ class TestPastWhereANestedTimelineReaches:
             ("kid", Fraction(4)),
         ]
         assert bundle.get_timeline("kid").length == Coordinate(5, "quarters")
+        assert [c.chunk_sides for c in claims] == [("other", "root"), ("other", "kid")]
         assert {t: _own_projections(bundle, t) for t in ("root", "kid", "other")} == {
-            "root": [(claims[0].event_b_id, 2)],
-            "kid": [(claims[1].event_b_id, 4)],
-            "other": [(claims[0].event_a_id, 1), (claims[1].event_a_id, 3)],
+            "root": [],
+            "kid": [],
+            "other": [],
         }
 
 
@@ -523,7 +532,11 @@ class TestPastWhereASegmentReaches:
             Fraction(start),
         ]
         assert bundle.get_timeline(segment).length == length
-        assert [p[1] for p in _own_projections(bundle, segment)] == [Fraction(start)]
+        assert [c.chunk_sides for c in claims] == [
+            ("other", "line"),
+            ("other", segment),
+        ]
+        assert _own_projections(bundle, segment) == []
 
 
 NAN = float("nan")
@@ -569,7 +582,7 @@ class TestFloatATimelineCannotStore:
         self, side: dict, message: str
     ) -> None:
         bundle = _bundle()
-        refused = _refused(bundle, [({"start": 1}, "score", side, "clock")], message)
+        refused = _refused(bundle, [("n1", "score", side, "clock")], message)
         assert refused == message
 
     def test_refused_in_the_second_pair(self) -> None:
@@ -577,8 +590,8 @@ class TestFloatATimelineCannotStore:
         _refused(
             bundle,
             [
-                ({"start": 1}, "score", {"start": 1.0}, "clock"),
-                ({"start": 2}, "score", {"start": NAN}, "clock"),
+                ("n1", "score", {"start": 1.0}, "clock"),
+                ("n1", "score", {"start": NAN}, "clock"),
             ],
             "cannot store non-finite value nan as a number cell",
         )
@@ -587,15 +600,15 @@ class TestFloatATimelineCannotStore:
         bundle = _bundle()
         _refused(
             bundle,
-            [({"start": 1}, "score", {"start": 1.0, "end": -INF}, "clock")],
+            [("n1", "score", {"start": 1.0, "end": -INF}, "clock")],
             "runs backwards: its end -inf seconds lies before its start 1.0 seconds",
         )
 
     @pytest.mark.parametrize("side", [{"start": 9e18}, {"start": 1.0, "end": 2.0}])
     def test_a_storable_float_is_accepted(self, side: dict) -> None:
         bundle = _bundle()
-        claims = bundle.create_match_claims([({"start": 1}, "score", side, "clock")])
+        claims = bundle.create_match_claims([("n1", "score", side, "clock")])
         assert len(claims) == 1
         assert len(bundle.match_claim_table) == 1
-        assert _timeline(bundle, "score").n_events == 2
+        assert _timeline(bundle, "score").n_events == 1
         assert _timeline(bundle, "clock").n_events == 1

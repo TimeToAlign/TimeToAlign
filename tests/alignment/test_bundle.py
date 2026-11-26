@@ -38,6 +38,7 @@ from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.alignment.warpmap import WarpMap
 from timetoalign.core import (
+    CHUNK,
     Belief,
     Coordinate,
     CoordinateField,
@@ -1438,7 +1439,7 @@ class TestCreateMatchClaims:
 
     @staticmethod
     def _pairs(score_id: str, audio_id: str) -> list:
-        """A held onset against a position, and two positions."""
+        """A held onset against a position, and two positions (CHUNK on both sides)."""
         return [
             ("o1", audio_id, {"start": 10.0}, score_id),
             ({"start": 20.0}, audio_id, {"start": 40.0}, score_id),
@@ -1453,15 +1454,16 @@ class TestCreateMatchClaims:
 
         first = bundle.create_match_claims(self._pairs(score_tl.id, audio_tl.id))
         counts = (len(audio_tl.events), len(score_tl.events))
-        assert counts == (2, 2)
+        assert counts == (1, 1)
         again = bundle.create_match_claims(self._pairs(score_tl.id, audio_tl.id))
         # The first pair gives the score a Projection of the onset; the
-        # second a Projection on each side. A second call reuses all three.
-        (_, onset, on_score), (_, on_audio, of_nothing) = named(first)
-        assert onset == "o1"
+        # second is CHUNK on both sides, no Projection. A second call reuses
+        # the one Projection.
+        (_, onset, on_score), (_, chunk_a, chunk_b) = named(first)
+        assert (onset, chunk_a, chunk_b) == ("o1", CHUNK, CHUNK)
         assert [(event_a, event_b) for _, event_a, event_b in named(again)] == [
             (onset, on_score),
-            (on_audio, of_nothing),
+            (CHUNK, CHUNK),
         ]
         assert len({claim.id for claim in [*first, *again]}) == 4
         assert (len(audio_tl.events), len(score_tl.events)) == counts
@@ -1469,8 +1471,6 @@ class TestCreateMatchClaims:
             "timeline_id": "audio",
             "event_id": "o1",
         }
-        assert score_tl.get_event(of_nothing)["projection_of"] is None
-        assert audio_tl.get_event(on_audio)["projection_of"] is None
 
     def test_an_unknown_event_id_adds_nothing(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
@@ -1610,8 +1610,8 @@ class TestCreateMatchClaims:
             )
         assert str(raised.value) == (
             "Pair 1: the side on timeline 'audio' names no event of it and states "
-            "no 'start': a side of a MatchClaim is an event, or a position where a "
-            "Projection stands for one."
+            "no 'start': a side of a MatchClaim is an event, or a position, where a "
+            "Projection stands for one or, between two positions, CHUNK_SENTINEL."
         )
         assert (len(score_tl.events), len(audio_tl.events)) == (0, 0)
         assert len(bundle.match_claim_table) == 0

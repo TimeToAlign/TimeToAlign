@@ -17,7 +17,13 @@ from tests.loader.minting import shape, shapes  # noqa: E402
 from timetoalign import MapsLoader  # noqa: E402
 from timetoalign.alignment.bundle import AlignmentBundle  # noqa: E402
 from timetoalign.alignment.claims import MatchClaim  # noqa: E402
-from timetoalign.core import Coordinate, Projection, Provenance, TimeUnit  # noqa: E402
+from timetoalign.core import (  # noqa: E402
+    NOMATCH,
+    Coordinate,
+    Projection,
+    Provenance,
+    TimeUnit,
+)
 from timetoalign.loader.score import VerovioLoader  # noqa: E402
 from timetoalign.maps import SamplesToSeconds  # noqa: E402
 from timetoalign.timelines import (  # noqa: E402
@@ -249,7 +255,7 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         score.id,
         performance.id,
     )
-    assert (unperformed.event_a_id, unperformed.event_b_id) == ("n4", None)
+    assert (unperformed.event_a_id, unperformed.event_b_id) == ("n4", NOMATCH)
 
     aligned = [
         (xml_id, quarter, float(onset))
@@ -274,7 +280,7 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         assert claim.is_synchronous is False
         assert (claim.start_anchor, claim.end_anchor) == (None, None)
         assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)
-        assert (claim.event_a_id, claim.event_b_id) == (ids[n - 1], None)
+        assert (claim.event_a_id, claim.event_b_id) == (ids[n - 1], NOMATCH)
         assert claim.event_a_name == INSERTED
 
     # One Projection per performed note: 14 of score notes, 2 of none.

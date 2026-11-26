@@ -28,7 +28,7 @@ from timetoshare import DEFAULT_BELIEFS
 
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.alignment.filters import ClaimFilter
-from timetoalign.core import Belief, Coordinate, Provenance, TimeUnit
+from timetoalign.core import NOMATCH, Belief, Coordinate, Provenance, TimeUnit
 
 from .helpers import event_id, match_claim
 
@@ -72,6 +72,7 @@ def claim_nomatch() -> MatchClaim:
         timeline_b_id="perf:dlt_5",
         is_synchronous=False,
         event_a_id=event_id("score:clt_1", Coordinate(20.0, TimeUnit.number)),
+        event_b_id=NOMATCH,
     )
 
 
@@ -540,6 +541,7 @@ def _parity_claims() -> list[MatchClaim]:
             timeline_b_id="perf:dlt_5",
             is_synchronous=False,
             event_a_id="score:clt_1@20.0",
+            event_b_id=NOMATCH,
         ),
         MatchClaim(
             id="nm_b",
@@ -547,6 +549,7 @@ def _parity_claims() -> list[MatchClaim]:
             timeline_b_id="audio:cpt_1",
             is_synchronous=False,
             event_b_id="audio:cpt_1@3.0",
+            event_a_id=NOMATCH,
         ),
         MatchClaim(
             id="conceptual",

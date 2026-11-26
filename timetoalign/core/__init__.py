@@ -153,7 +153,9 @@ from .fields import (
     resolve_source_fields,
 )
 from .ids import (
+    CHUNK,
     ID_LENGTH,
+    NOMATCH,
     IdMinter,
     content_minter,
     reset_content_minters,
@@ -409,6 +411,8 @@ __all__ = [
     "validate_table_format",
     "reject_dataframe_options",
     # IDs
+    "CHUNK",
+    "NOMATCH",
     "ID_LENGTH",
     "IdMinter",
     "seed_from",

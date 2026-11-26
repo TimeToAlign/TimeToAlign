@@ -37,6 +37,7 @@ from timetoalign.alignment import (
     MatchGraph,
 )
 from timetoalign.core import (
+    NOMATCH,
     BoundingBox,
     Box,
     Coordinate,
@@ -137,7 +138,7 @@ def _bundle(*, nomatch: bool = True) -> AlignmentBundle:
     )
     if nomatch:
         bundle.create_match_claims(
-            [("n2", "score", None, "audio")], provenance=provenance
+            [("n2", "score", NOMATCH, "audio")], provenance=provenance
         )
     return bundle
 

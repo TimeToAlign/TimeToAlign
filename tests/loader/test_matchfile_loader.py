@@ -22,7 +22,7 @@ import pytest
 
 from tests.loader.minting import shape
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.core import Coordinate, Provenance, TimeUnit
+from timetoalign.core import NOMATCH, Coordinate, Provenance, TimeUnit
 from timetoalign.core.time import struct_to_rational
 from timetoalign.loader.alignment.matchfile import MatchfileLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
@@ -331,7 +331,7 @@ class TestMatchfileLoaderSingle:
             (c.event_a_id, c.event_b_id) for c in claims if c.is_synchronous
         ) == sorted(matched)
         assert sorted(c.event_a_id for c in claims if c.is_nomatch) == sorted(deleted)
-        assert {c.event_b_id for c in claims if c.is_nomatch} == {None}
+        assert {c.event_b_id for c in claims if c.is_nomatch} == {NOMATCH}
 
     def test_claims_state_the_notes_own_positions(self, p01_loader: MatchfileLoader):
         """Each anchor holds the start and end its two events hold."""

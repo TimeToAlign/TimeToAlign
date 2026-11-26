@@ -22,7 +22,14 @@ from timetoalign.alignment import (
     MatchClaimField,
     Provenance,
 )
-from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
+from timetoalign.core import (
+    CHUNK,
+    NOMATCH,
+    Coordinate,
+    IdCoordinate,
+    NumberType,
+    TimeUnit,
+)
 from timetoalign.maps import SamplesToSeconds
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -339,27 +346,50 @@ class TestMatchClaim:
             _claim(anchor, is_synchronous=False)
 
     def test_claim_names_its_events(self, basic_anchor: AlignmentAnchor) -> None:
-        both = (
-            "A synchronous MatchClaim names an event on each side (event_a_id and "
-            "event_b_id). Give a side without an event of its own a Projection event "
-            "first, never a bare coordinate."
-        )
-        for events in ({}, {"event_a_id": "a1"}, {"event_b_id": "b1"}):
-            with pytest.raises(ValidationError, match=re.escape(both)):
-                MatchClaim(
-                    timeline_a_id="score:1",
-                    timeline_b_id="recording:1",
-                    start_anchor=basic_anchor,
-                    **events,
-                )
-        with pytest.raises(
-            ValidationError,
-            match=re.escape(
-                "A MatchClaim names its events: a NOMATCH claim one event (the other "
-                "side None, the NOMATCH sentinel), a conceptual claim two."
+        synchronous = {
+            "timeline_a_id": "score:1",
+            "timeline_b_id": "recording:1",
+            "start_anchor": basic_anchor,
+        }
+        not_synchronous = {
+            "timeline_a_id": "score:1",
+            "timeline_b_id": "recording:1",
+            "is_synchronous": False,
+        }
+        refused = (
+            (
+                {**synchronous, "event_a_id": "a1", "event_b_id": NOMATCH},
+                "NOMATCH_SENTINEL stands only on a MatchClaim that is not "
+                "synchronous: a synchronous MatchClaim names an event or "
+                "CHUNK_SENTINEL on each side.",
             ),
-        ):
-            MatchClaim(timeline_a_id="a", timeline_b_id="b", is_synchronous=False)
+            (
+                {**not_synchronous, "event_a_id": CHUNK, "event_b_id": "b1"},
+                "CHUNK_SENTINEL stands only on a synchronous MatchClaim, whose "
+                "anchor holds its coordinate.",
+            ),
+            (
+                {**not_synchronous, "event_a_id": NOMATCH, "event_b_id": NOMATCH},
+                "A NOMATCH MatchClaim names an event on its other side.",
+            ),
+            (
+                {
+                    **synchronous,
+                    "event_a_id": "a1",
+                    "event_b_id": CHUNK,
+                    "event_b_name": "bar 1",
+                },
+                "event_b_name is 'bar 1', but side B is CHUNK_SENTINEL: a "
+                "sentinel side has no name.",
+            ),
+            (
+                {**synchronous, "event_a_id": "a1"},
+                "event_b_id\n  Field required",
+            ),
+        )
+        for properties, message in refused:
+            with pytest.raises(ValidationError, match=re.escape(message)):
+                MatchClaim(**properties)
 
     def test_get_coordinate_for(self, basic_anchor: AlignmentAnchor) -> None:
         claim = _claim(basic_anchor)
@@ -626,12 +656,14 @@ class TestFromEvents:
             with pytest.raises(
                 ValueError,
                 match=re.escape(
-                    f"{side} names no event id: a MatchClaim names the events it "
-                    f"matches. Give a side without an event of its own a Projection "
-                    f"event first, never a bare coordinate."
+                    f"{side} names no event id: a conceptual MatchClaim names two "
+                    f"events. Give a position without an event of its own a "
+                    f"Projection event first."
                 ),
             ):
-                MatchClaim.from_events(event_a, SCORE, event_b, MIDI)
+                MatchClaim.from_events(
+                    event_a, SCORE, event_b, MIDI, is_synchronous=False
+                )
 
 
 class TestCheckOnTimelines:
@@ -702,6 +734,7 @@ class TestCheckOnTimelines:
             timeline_a_id="recording:1",
             timeline_b_id="score:1",
             is_synchronous=False,
+            event_a_id=NOMATCH,
             event_b_id="n9",
         )
         assert nomatch.check_on_timelines(RECORDING, SCORE) is nomatch
@@ -728,7 +761,7 @@ class TestNomatch:
         assert (claim.event_a_id, claim.event_a_name, claim.event_b_id) == (
             "orphan",
             "E5",
-            None,
+            "NOMATCH_SENTINEL",
         )
         # A NOMATCH claim holds no coordinate: the event's own start is the
         # event's, read from its timeline, never repeated in the claim.
@@ -779,6 +812,7 @@ class TestSerialisationAndDisplay:
             timeline_b_id="tl2",
             is_synchronous=False,
             event_a_id="e_orphan",
+            event_b_id=NOMATCH,
         )
         assert repr(claim) == "MatchClaim(tl1 <-> tl2 [NOMATCH])"
 
@@ -795,7 +829,8 @@ class TestSerialisationAndDisplay:
             "MatchClaim (NOMATCH)\n"
             "  Timeline A:  score:clt_1\n"
             "  Event A:     orphan\n"
-            "  Timeline B:  perf:Chopin_Ashkenazy"
+            "  Timeline B:  perf:Chopin_Ashkenazy\n"
+            "  Event B:     NOMATCH"
         )
 
     def test_nomatch_roundtrip(self) -> None:

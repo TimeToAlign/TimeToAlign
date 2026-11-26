@@ -10,6 +10,8 @@ Includes:
 - content_minter: The process's minter of a content seed;
   ``reset_content_minters`` forgets them all.
 - validate_id: The rule every given id obeys.
+- NOMATCH, CHUNK: The two sentinels a MatchClaim names on a side without an
+  event, strings no element may take as its id.
 - resolve_id: Resolve an exact id or a regular expression to a single ID.
 - resolve_ids: Resolve a pattern to all matching IDs.
 """
@@ -44,13 +46,29 @@ if TYPE_CHECKING:
 
 _REFUSED_ID_CHARACTERS = re.compile(r"[\x00-\x1f]")
 
+NOMATCH = "NOMATCH_SENTINEL"
+"""The NOMATCH sentinel: the side of a MatchClaim that is not synchronous
+where the event named on the other side has no counterpart. Reserved: no
+element takes it as its id (:func:`validate_id`)."""
+
+CHUNK = "CHUNK_SENTINEL"
+"""The CHUNK sentinel: a side of a synchronous MatchClaim whose timeline
+holds no event for the position the claim states there; the anchor holds
+that side's coordinate. Reserved: no element takes it as its id
+(:func:`validate_id`)."""
+
+SENTINELS: tuple[str, ...] = (NOMATCH, CHUNK)
+"""The reserved strings a MatchClaim names as a side without an event."""
+
 
 def validate_id(element_id: object) -> str:
     """Return *element_id* if it is a valid given id, else raise.
 
     An id is any non-empty string without a control character (U+0000 to
-    U+001F, which an XML attribute cannot carry). Whitespace, slashes,
-    colons, dots, URIs and unicode are permitted.
+    U+001F, which an XML attribute cannot carry) that is not one of the
+    sentinels a MatchClaim names on a side without an event (:data:`NOMATCH`,
+    :data:`CHUNK`). Whitespace, slashes, colons, dots, URIs and unicode are
+    permitted.
 
     Args:
         element_id: The id to check.
@@ -59,8 +77,8 @@ def validate_id(element_id: object) -> str:
         The same id.
 
     Raises:
-        ValueError: If the id is no string, is empty or contains a control
-            character.
+        ValueError: If the id is no string, is empty, contains a control
+            character or is a sentinel.
 
     Examples:
         >>> validate_id("Bass Kick")
@@ -71,6 +89,10 @@ def validate_id(element_id: object) -> str:
         Traceback (most recent call last):
         ...
         ValueError: Invalid id 'a\\tb': an id must be non-empty and contain no control character
+        >>> validate_id("CHUNK_SENTINEL")
+        Traceback (most recent call last):
+        ...
+        ValueError: Invalid id 'CHUNK_SENTINEL': it is reserved for a sentinel
     """
     if (
         not isinstance(element_id, str)
@@ -81,6 +103,8 @@ def validate_id(element_id: object) -> str:
             f"Invalid id {element_id!r}: an id must be non-empty and contain no "
             "control character"
         )
+    if element_id in SENTINELS:
+        raise ValueError(f"Invalid id {element_id!r}: it is reserved for a sentinel")
     return element_id
 
 

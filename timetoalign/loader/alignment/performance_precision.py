@@ -31,14 +31,15 @@ with:
 * a :class:`~timetoalign.alignment.claims.MatchClaim` per alignment row
   per granularity — synchronous claims for located onsets and NOMATCH
   claims for the dangling (``"N"``) score positions.  A row states a score
-  position, not a score note, so each claim names a
-  :class:`~timetoalign.core.Projection` on the score timeline there, and
-  on the performance side the performer's Note event (note rows) or a
-  Projection at the row's time (bar and beat rows).  A timeline holds one
-  Projection per position and event it stands for: a note row's score
-  Projection stands for the performer's Note, while the bar, beat and
-  dangling rows of every performer that name one score position share
-  one Projection standing for no event.
+  position, not a score note.  A note row's claim names a
+  :class:`~timetoalign.core.Projection` on the score timeline there,
+  standing for the performer's Note event the claim joins it to.  A bar or
+  beat row states two positions where neither timeline holds an event, so
+  its claim is CHUNK on both sides (:data:`~timetoalign.core.ids.CHUNK`):
+  its anchor holds the two positions, and no Projection stands there.  A
+  dangling row's NOMATCH claim names a score Projection standing for no
+  event, which the dangling rows of every performer naming one score
+  position share.
 
 The Projections are added by ``create_bundle``, once the timelines are in
 the bundle: a Projection's ID is unique among all Projections of the
@@ -65,7 +66,7 @@ from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
-from timetoalign.alignment.claims import ClaimSide
+from timetoalign.alignment.claims import NOMATCH, ClaimSide
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.loader._ids import give_event_ids
@@ -129,11 +130,11 @@ class PerformancePrecisionLoader(AlignmentLoader):
        score and performance timelines with their notes, and every
        alignment row resolved to its two sides.
     2. ``loader.create_bundle()`` — assembles the AlignmentBundle and states
-       every row as a MatchClaim in it, adding the Projections the claims
-       stand on.
+       every row as a MatchClaim in it, adding the Projections the note
+       and dangling rows' claims stand on.
     3. ``loader.create_timeline(uid)`` / ``create_timelines()`` — retrieve
-       individual timelines (holding Projections once ``create_bundle``
-       has stated the claims).
+       individual timelines (the score holding its Projections once
+       ``create_bundle`` has stated the claims).
 
     Args:
         score_unit: Unit for the score timeline. Default
@@ -526,7 +527,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                 quarters = self._resolve_label(measure, offset_wn, starts, m0_downbeat)
                 performed: ClaimSide
                 if time_str == _DANGLING:
-                    performed = None
+                    performed = NOMATCH
                 elif gran == "note":
                     performed = next(notes)
                 else:
@@ -578,14 +579,16 @@ class PerformancePrecisionLoader(AlignmentLoader):
         * an aligned note-level row: a Projection on the score at its
           LABEL's position stands for the performed Note event
           (``projection_of`` naming it), and the claim joins the two;
-        * an aligned bar- or beat-level row: both sides are positions only,
-          so each gets a Projection standing for no event, and the claim
-          joins the two Projections;
-        * a dangling row: a NOMATCH claim from its score Projection.
+        * an aligned bar- or beat-level row: both sides are positions where
+          neither timeline holds an event, so the claim is CHUNK on both
+          sides (:data:`~timetoalign.core.ids.CHUNK`), its anchor holding
+          the two positions, and no Projection is added;
+        * a dangling row: a NOMATCH claim from a score Projection standing
+          for no event.
 
         A timeline keeps one Projection per position and event it stands
-        for, so the bar and beat positions every performer shares stand once
-        on the score timeline, and a second call adds no Projection. Every
+        for, so the dangling positions every performer shares stand once on
+        the score timeline, and a second call adds no Projection. Every
         Projection is added while its timeline is in the bundle, so its ID
         is minted unique among all Projections of the bundle and the
         bundle's package can be written.

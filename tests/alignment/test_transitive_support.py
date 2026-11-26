@@ -166,13 +166,10 @@ class TestTransitiveUnion:
     def test_bridge_position_is_placed_on_the_bridge_axis(self) -> None:
         merged, _ = _make_bundles()
         (bridge,) = merged.get_match_claims(between=("a1:clt_1", "b_bridge:dpt_1"))
-        assert _events(merged, "a1:clt_1") == [
-            (bridge.event_a_id, "Projection", Coordinate(50, TimeUnit.quarters))
-        ]
-        assert _events(merged, "b_bridge:dpt_1") == [
-            (bridge.event_b_id, "Projection", Coordinate(500, TimeUnit.samples))
-        ]
-        assert bridge.event_a_id != bridge.event_b_id
+        assert bridge.chunk_sides == ("a1:clt_1", "b_bridge:dpt_1")
+        assert _events(merged, "a1:clt_1") == []
+        assert _events(merged, "b_bridge:dpt_1") == []
+        assert bridge.start_anchor.coordinate_a == Coordinate(50, TimeUnit.quarters)
         assert bridge.start_anchor.coordinate_b == Coordinate(500, TimeUnit.samples)
 
     def test_union_has_no_negative_coordinates(self) -> None:
@@ -229,11 +226,8 @@ class TestTransitiveUnion:
             Coordinate(400, TimeUnit.samples),
             Coordinate(600, TimeUnit.samples),
         ]
-        assert _events(bundle, "source") == [
-            (claim.event_a_id, "Projection", claim.start_anchor.coordinate_a)
-            for claim in claims
-        ]
-        assert len({claim.event_a_id for claim in claims}) == 3
+        assert [claim.chunk_sides for claim in claims] == [("source", "target")] * 3
+        assert _events(bundle, "source") == []
         warp = bundle._get_or_build_warp_map("source", "target")
 
         assert warp is not None

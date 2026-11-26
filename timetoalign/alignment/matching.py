@@ -7,7 +7,10 @@ The primary use case is aligning performance recordings with score data.
 The matching produces :class:`MatchClaim` objects that connect events of two
 timelines, enabling cross-group coordinate transfer via WarpMaps in an
 :class:`AlignmentBundle`. A side whose rows name no event of its timeline
-gets a :class:`~timetoalign.core.Projection` there first.
+gets a :class:`~timetoalign.core.Projection` there first, standing for the
+other side's event; where neither side names one, both sides are CHUNK
+(:data:`~timetoalign.core.ids.CHUNK`), the claims' anchors holding the
+positions.
 
 Algorithm:
     Greedy sequential matching: for each source note (in order), find the
@@ -146,15 +149,17 @@ def match_notes_by_attributes(
     This is the core matching algorithm used to align EEP performance notes
     with unfolded ABC score notes by pitch name + staff number.
 
-    Each claim joins two events, one on each timeline. A side given an id
+    Each claim joins two sides, one on each timeline. A side given an id
     column names, per row, the event of its timeline (or of a descendant of
     it) with that id, which must be one, at that event's own position; a
-    side without one states positions only, so each of its matched rows
-    gets a :class:`~timetoalign.core.Projection` on its timeline, standing
-    for the other side's event where that side names one
-    (``projection_of``) and for no event otherwise. A Projection the
-    timeline already holds for that event at that position is reused, so
-    matching again adds no Projection. Every coordinate is placed on its
+    side without one states positions only. Where the other side names an
+    event, each matched row of a position side gets a
+    :class:`~timetoalign.core.Projection` on its timeline standing for that
+    event (``projection_of``); a Projection the timeline already holds for
+    that event at that position is reused, so matching again adds no
+    Projection. Where neither side has an id column, every claim is CHUNK
+    on both sides (:data:`~timetoalign.core.ids.CHUNK`): its anchor holds
+    the two positions, and no Projection is added. Every coordinate is placed on its
     timeline's own axis: a value in another unit is converted through the
     timeline's C-Map.
 
@@ -174,15 +179,17 @@ def match_notes_by_attributes(
             MatchClaim); required when ``create_claims`` is True.
         target_timeline: The timeline of the target rows (side B).
         source_id_column: Column in source_df naming each row's event on
-            ``source_timeline``; without it, the source side gets Projections.
+            ``source_timeline``; without it, the source side gets
+            Projections (CHUNK where the target side has none either).
         target_id_column: Column in target_df naming each row's event on
-            ``target_timeline``; without it, the target side gets Projections.
+            ``target_timeline``; without it, the target side gets
+            Projections (CHUNK where the source side has none either).
         source_unit: Unit of the source coordinates; ``None`` (the default)
             is the source timeline's unit.
         target_unit: Unit of the target coordinates; ``None`` is the target
             timeline's unit.
         create_claims: If True, generate MatchClaim objects for each match
-            (and add the Projections they need to the timelines).
+            (and add the Projections they need to the timelines, if any).
         provenance: How the MatchClaims were made, recorded on each; by
             default the method ``"inferred"`` and a note naming the matching
             rule.

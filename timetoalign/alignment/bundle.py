@@ -1575,7 +1575,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
     def create_match_claims(
         self,
-        event_pairs: Sequence[tuple[dict | str | None, str, dict | str | None, str]],
+        event_pairs: Sequence[tuple[dict | str, str, dict | str, str]],
         *,
         synchronous: bool = True,
         certainty: float = 1.0,
@@ -1585,7 +1585,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     ) -> list[MatchClaim]:
         """Create MatchClaims between events, projecting a side that has none.
 
-        A MatchClaim connects two events. Each tuple ``(event_a,
+        A MatchClaim connects two sides. Each tuple ``(event_a,
         timeline_a_id, event_b, timeline_b_id)`` names one side per
         timeline, each side one of:
 
@@ -1605,31 +1605,39 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
           (:meth:`Timeline.add_projections`): under the dict's ``id`` (an
           event the bundle does not hold, ``projection_of`` null), or,
           without one, naming the other side's event in ``projection_of``
-          when the other side is an event its timeline holds (null when both
-          sides are positions). The timeline keeps one Projection per event
-          and position: a second call with the same pairs reuses every
-          Projection the first added. An ``id`` the timeline already holds
-          names that event; given with ``start``/``end``, they must be the
-          event's own span. The ``name`` is the claim's name of the
-          Projection: the name the first claim on a Projection recorded is
-          the one every later claim on it shows;
-        - ``None``, the NOMATCH sentinel, on one side at most.
+          when the other side is an event its timeline holds (null when the
+          other side is ``NOMATCH`` or both sides are positions of a
+          conceptual pair). The timeline keeps one
+          Projection per event and position: a second call with the same
+          pairs reuses every Projection the first added. An ``id`` the
+          timeline already holds names that event; given with
+          ``start``/``end``, they must be the event's own span. The ``name``
+          is the claim's name of the Projection: the name the first claim on
+          a Projection recorded is the one every later claim on it shows.
+          Where both sides of a synchronous pair are dicts without ``id``,
+          no Projection stands for either: both sides are
+          :data:`~timetoalign.core.ids.CHUNK`, the claim's anchor holding
+          the two positions (an interval where both state an end, neither
+          states a ``name``);
+        - :data:`~timetoalign.core.ids.NOMATCH`, the NOMATCH sentinel, on
+          one side at most.
 
-        The MatchClaim is then made between the two events, on the two
+        The MatchClaim is then made between the two sides, on the two
         timelines' own axes (:meth:`MatchClaim.from_events`); an end on both
-        sides makes an interval claim. A pair with ``None`` makes a NOMATCH
-        claim for the other side's event (:meth:`MatchClaim.nomatch`), its
-        id minted at its construction. The claims join the bundle
-        (:meth:`add_match_claims`).
+        sides makes an interval claim. A pair with ``NOMATCH`` makes a
+        NOMATCH claim for the other side's event
+        (:meth:`MatchClaim.nomatch`), its id minted at its construction. The
+        claims join the bundle (:meth:`add_match_claims`).
 
         Every pair is checked before any Projection is added, so a refusal
         leaves the bundle and its timelines unchanged: the timelines are the
         bundle's, an id names an event of its timeline, at most one side is
-        ``None``, every position is placed on its timeline's axis. A
-        Projection never lengthens a locked timeline (a loader locks a
-        timeline whose source states its length, such as a recording's):
-        a position past its end is refused. An unlocked timeline grows to
-        hold it where its parent contains the new end (a parent never grows
+        ``NOMATCH``, every position is placed on its timeline's axis. A
+        position, a Projection's or a CHUNK side's, never lengthens a locked
+        timeline (a loader locks a timeline whose source states its length,
+        such as a recording's): a position past its end is refused. An
+        unlocked timeline grows to hold it where its parent contains the new
+        end (a parent never grows
         with its child); a position past an end the parent cannot contain is
         refused, as is one past where the parent ends a child of unknown
         length.
@@ -1657,7 +1665,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             gave it.
 
         Raises:
-            ValueError: If both sides of a pair are ``None``, an event ID
+            ValueError: If both sides of a pair are ``NOMATCH``, a side is
+                ``CHUNK`` (a CHUNK side is a dict stating a position), a
+                CHUNK side states a name, a pair with CHUNK on both sides
+                states an end on one side only, an event ID
                 names no one event (the timeline does not hold it and two
                 of its descendants do), a dict naming no held event states
                 no ``start``, a position is a float on a timeline counting
@@ -1674,6 +1685,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 registered), or an id string names no event of its timeline.
 
         Examples:
+            >>> from timetoalign import NOMATCH
             >>> from timetoalign.alignment import AlignmentBundle
             >>> from timetoalign.timelines.types import (
             ...     ContinuousLogicalTimeline,
@@ -1697,11 +1709,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...     [
             ...         ("n10", "score", "o42", "audio"),
             ...         ("n99", "score", {"start": 55.0}, "audio"),  # projected
-            ...         ("n99", "score", None, "audio"),  # NOMATCH
+            ...         ("n99", "score", NOMATCH, "audio"),
             ...     ]
             ... )
             >>> [(claim.event_a_id, claim.event_b_id) for claim in claims[::2]]
-            [('n10', 'o42'), ('n99', None)]
+            [('n10', 'o42'), ('n99', 'NOMATCH_SENTINEL')]
             >>> projection = claims[1].event_b_id
             >>> audio.get_event(projection)["projection_of"]
             {'timeline_id': 'score', 'event_id': 'n99'}
@@ -2065,6 +2077,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             A score aligned with two performances, one of which skips a
             note::
 
+                >>> from timetoalign import NOMATCH
                 >>> from timetoalign.alignment import AlignmentBundle
                 >>> from timetoalign.timelines.types import (
                 ...     ContinuousLogicalTimeline,
@@ -2084,7 +2097,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 ...         ({"start": 0}, "score:clt_1", {"start": 0}, "perf:dlt_1"),
                 ...         ({"start": 8}, "score:clt_1", {"start": 3840}, "perf:dlt_1"),
                 ...         ({"start": 0}, "score:clt_1", {"start": 0}, "perf:dlt_5"),
-                ...         ({"start": 8}, "score:clt_1", None, "perf:dlt_5"),  # NOMATCH
+                ...         ({"start": 8}, "score:clt_1", NOMATCH, "perf:dlt_5"),
                 ...     ]
                 ... )
 

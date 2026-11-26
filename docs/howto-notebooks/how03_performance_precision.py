@@ -117,8 +117,8 @@ metrical_position_map = loader.metrical_position_map
 #
 # The score is a logical {{< glossary Timeline >}} measured in quarters. It holds
 # every note of the `.solo` score, each placed at its absolute quarter position.
-# The Projections the alignment's claims stand on are not here yet: they are
-# added when the bundle is created (§5). The loader asks for it by its role,
+# The Projections the alignment's note claims stand on are not here yet: they
+# are added when the bundle is created (§5). The loader asks for it by its role,
 # `"score"`; its stored ID is the role followed by a minted one, `score:clt_…`,
 # seeded from the specimen's files.
 
@@ -174,8 +174,8 @@ pitch_field = solo.events.get_field(EnharmonicPitch)
 # ## 4. The performance timelines
 #
 # Each recording is a physical {{< glossary Timeline >}} measured in seconds, one
-# Note per aligned note onset; the Projections of its bar and beat rows are
-# added with the bundle (§5). Each is named by its performer key, by which the
+# Note per aligned note onset, and it gains no Projection with the bundle (§5).
+# Each is named by its performer key, by which the
 # loader also finds it; its stored ID is minted, `perf:cpt_…`. The Ashkenazy
 # recording is `"Chopin_Ashkenazy"`:
 
@@ -208,14 +208,15 @@ bundle
 # %% [markdown]
 # A MatchClaim joins two events. An alignment row names its score position by
 # a `measure+offset` label, which may stand for several notes of a chord, so
-# the score side of every claim is a {{< glossary Projection >}}: an event
+# on a note row the score side is a {{< glossary Projection >}}: an event
 # added to the score timeline at the label's position when `create_bundle()`
-# states the claims, so the timelines shown in §3 and §4 held Notes only and
-# hold their Projections from here on. On a note row it
-# names the performer's Note it stands for (`projection_of`); a bar or beat
-# row has no note on either side, so the performance side gets a Projection
-# too. A timeline keeps one Projection per event and position, so the score's
-# Projections are shared wherever the labels agree:
+# states the claims, naming the performer's Note it stands for
+# (`projection_of`). The score shown in §3 held Notes only and holds these
+# Projections from here on. An unmatched note row is a NOMATCH stated from its
+# score position, so its score side is a Projection of no event, one per
+# position. A bar or beat row has no note on either side: both sides are the
+# sentinel CHUNK, whose coordinates the claim's anchor states, and no
+# Projection is added for them, so the recordings hold none:
 
 # %%
 {
@@ -266,7 +267,7 @@ note_claims = [c for c in ashkenazy_claims if granularity(c) == "note"]
 # %% [markdown]
 # A single bar-level claim links a score quarter to a performed second. This one
 # anchors the downbeat of the first full measure (quarter 0.5) to the moment
-# Ashkenazy played it:
+# Ashkenazy played it; neither side has an event, so both are marked `[CHUNK]`:
 
 # %%
 ashkenazy_bar_claims = [c for c in ashkenazy_claims if granularity(c) == "bar"]

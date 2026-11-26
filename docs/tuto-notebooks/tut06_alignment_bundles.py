@@ -34,6 +34,7 @@ import warnings
 from fractions import Fraction
 
 from timetoalign import (
+    NOMATCH,
     AlignmentBundle,
     ClaimType,
     ContinuousGraphicalTimeline,
@@ -204,10 +205,15 @@ belief_view
 #
 # {{< glossary ClaimType >}} is derived from a claim's structure; it is never
 # stored separately. The possibilities are `event_match`,
-# {{< glossary NOMATCH >}} and `conceptual`. Every claim names an event on
-# each side it aligns. When one side has no event of its
+# {{< glossary NOMATCH >}} and `conceptual`. Each side of a claim names an
+# event or a sentinel. When one side has no event of its
 # own, give a position instead: a {{< glossary Projection >}} is added there,
-# an event standing for the other side's event on this timeline.
+# an event standing for the other side's event on this timeline. A NOMATCH
+# names its absent side with the sentinel `NOMATCH`. When both sides of a
+# synchronous claim are bare positions, each side is the sentinel CHUNK: the
+# anchor states its coordinate, and no Projection is added. A MatchClaim
+# table writes the two sentinels into its event ID columns as
+# `NOMATCH_SENTINEL` and `CHUNK_SENTINEL`.
 
 # %%
 projected_claim = claim_bundle.create_match_claims(
@@ -215,7 +221,7 @@ projected_claim = claim_bundle.create_match_claims(
 )[0]
 projection = score.get_event(projected_claim.event_a_id)
 absence_claim = claim_bundle.create_match_claims(
-    [(None, score.id, "perf-ornament", performance.id)]
+    [(NOMATCH, score.id, "perf-ornament", performance.id)]
 )[0]
 conceptual_claim = claim_bundle.create_match_claims(
     [("score-c4", score.id, "perf-ornament", performance.id)],

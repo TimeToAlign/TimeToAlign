@@ -23,7 +23,7 @@
 # **What you will learn:**
 #
 # 1. Match performance notes to score notes by shared attributes (pitch, staff),
-#    giving each matched position a {{< glossary Projection >}}
+#    stating each matched pair by its two positions
 # 2. Create an `AlignmentBundle` with performance and score groups
 # 3. Query coordinates across both using `get_matchstamp_at()`
 # 4. Create `MatchLine` objects from both directions
@@ -127,11 +127,10 @@ abc_prepared = prepare_abc_notes_for_matching(abc_df)
 # files reuse their note IDs, one file per instrument, and a played-through
 # score repeats a passage's notes under the same IDs. So both sides are given
 # as positions (`source_coord_column`, `target_coord_column`, each on its
-# timeline's axis), and every matched position gets a Projection on its
-# timeline: an event standing there for the matched note. The notes of a
-# chord share one Projection, since a timeline holds one Projection per
-# position. The matcher returns a `MatchResult` containing the matched pairs
-# and the `MatchClaim` objects between the Projections.
+# timeline's axis). A synchronous claim between two positions names no event:
+# each side is the sentinel CHUNK, whose coordinate the claim's anchor states,
+# and no event is added to either timeline. The matcher returns a
+# `MatchResult` containing the matched pairs and their `MatchClaim` objects.
 
 # %%
 match_result = match_notes_by_attributes(
@@ -147,13 +146,13 @@ match_result = match_notes_by_attributes(
 match_result.summary()
 
 # %%
-# The Projections the matching added, and the first claim's two events
+# The first claim, its CHUNK sides, and the Projections the matching added
 first_claim = match_result.match_claims[0]
 {
+    "first claim": first_claim,
+    "its CHUNK sides": first_claim.chunk_sides,
     "performance Projections": len(perf_tl.get_events(event_type="Projection")),
     "score Projections": len(clt1.get_events(event_type="Projection")),
-    "first claim, performance side": perf_tl.get_event(first_claim.event_a_id),
-    "first claim, score side": clt1.get_event(first_claim.event_b_id),
 }
 
 # %% [markdown]

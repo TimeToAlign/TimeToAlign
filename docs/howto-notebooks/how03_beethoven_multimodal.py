@@ -518,8 +518,9 @@ abc_prepared = prepare_abc_notes_for_matching(abc_notes_df)
 # A MatchClaim joins two events, but here neither side names its events
 # uniquely: the EEP note IDs repeat across instruments, and the unfolded
 # score repeats a passage's notes under the same IDs. Both sides are
-# therefore given as positions, and every matched position gets a
-# `Projection` on its timeline, an event standing there for the matched note.
+# therefore given as positions: each side is the sentinel CHUNK, whose
+# coordinate the claim's anchor states, and no event is added to either
+# timeline.
 # The EEP onsets are stated in seconds (`source_unit`); the audio DPT's
 # conversion map places them on its own axis.
 #
@@ -684,25 +685,26 @@ dpt16
 #
 # These claims are the key connection between the Emerson recording and the
 # score group. Neither timeline has an event at a section boundary, so each
-# side is given as a position, the score side named by its section's Greek
-# letter. When the claims are made in §13, a `Projection` is added at each
-# position and the MatchClaim joins the two.
+# side is given as a position. When the claims are made in §13, both sides of
+# each claim are the sentinel CHUNK: the anchor states the two coordinates,
+# and no event is added. A CHUNK side carries no name, so the section's Greek
+# letter stays with the measure map; the claims follow its rows in order.
 
 # %%
 emerson_pairs = [
     (
-        {"start": float(row["measure_unfold_start"]), "name": section},
+        {"start": float(row["measure_unfold_start"])},
         "clt2_unfolded",
         {"start": float(row["seconds_start"])},
         "dpt_16",
     )
-    for section, row in ema_df.iterrows()
+    for _, row in ema_df.iterrows()
 ]
 
 # Final end boundary
 emerson_pairs.append(
     (
-        {"start": float(ema_df["measure_unfold_end"].iloc[-1]), "name": "end"},
+        {"start": float(ema_df["measure_unfold_end"].iloc[-1])},
         "clt2_unfolded",
         {"start": float(ema_df["seconds_end"].iloc[-1])},
         "dpt_16",
@@ -779,8 +781,8 @@ bundle.add_group(emerson_group)
 for dpt_id in ["dpt_1", "dpt_6", "dpt_11"]:
     bundle.add_match_claims(match_results[dpt_id].match_claims)
 
-# Make the Emerson section boundary claims (CLT2_unfolded <-> DPT16): a
-# Projection at each boundary position, then the claim between the two
+# Make the Emerson section boundary claims (CLT2_unfolded <-> DPT16), each
+# between two positions
 emerson_claims = bundle.create_match_claims(
     emerson_pairs,
     provenance=Provenance(
@@ -1048,7 +1050,7 @@ boundary_df
 # | Cross-domain timestamps | Quarters -> pixels -> page number | 9.1 |
 # | Played-through score | A timeline as long as the default flow | 9.2, 11.3 |
 # | `match_notes_by_attributes()` | EEP <-> ABC note matching (played-through notes) | 10 |
-# | `create_match_claims()` with positions | Section-boundary alignment through Projections (alpha-kappa) | 11.5, 13 |
+# | `create_match_claims()` with positions | Section-boundary alignment between positions (alpha-kappa) | 11.5, 13 |
 # | `add_timeline()` on a group | Bridge independent alignment networks | 12.1 |
 # | `MatchLine` + `WarpMap` | Explicit construction from MatchClaims | 13.1 |
 # | `AlignmentBundle` | Multi-group cross-domain transfer | 13 |

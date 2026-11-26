@@ -216,8 +216,8 @@ recording.add_projections(
 # believes nothing, so the aligner gives a `provenance` and no `actor`. One
 # claim matches the third note to the second onset. The other places
 # quarter 6, where the score has no event, at 5 seconds, where the recording
-# has none: both sides are positions, so each gets a Projection whose
-# `projection_of` is empty.
+# has none: both sides are positions, so neither gets a Projection. Each side
+# is the sentinel CHUNK, whose coordinate the claim's anchor states.
 
 # %%
 proposed = Provenance(service=ALIGNER, method="inferred", date=DAY)
@@ -305,7 +305,11 @@ show(manifest_path, "resources")
 #
 # The MatchClaim table has one row per claim and one column per property of
 # a MatchClaim: its two timelines and two events, the anchors' coordinates,
-# its provenance with the beliefs, and more. Its identifying columns:
+# its provenance with the beliefs, and more. An event ID cell is never empty:
+# a side without an event holds a sentinel, `NOMATCH_SENTINEL` for the absent
+# side of a NOMATCH and `CHUNK_SENTINEL` for a side whose coordinate the
+# anchor states, as on both sides of the doubted claim. Its identifying
+# columns:
 
 # %%
 pq.read_table(package / "match_claims.parquet").select(
@@ -325,10 +329,10 @@ pq.read_table(package / "projections.parquet").to_pylist()
 
 # %% [markdown]
 # A Projection's id is unique among all the Projections of the manifest,
-# whichever timeline holds it, so the table names each id once: the
-# recording's Projection for the fourth note (its `projection_of` names the
-# note), and one Projection of each timeline for the claim between two
-# positions. Each id is minted (`projection_…`) and never re-minted, and a
+# whichever timeline holds it, so the table names each id once. Here it holds
+# one row, the recording's Projection for the fourth note (its
+# `projection_of` names the note); the claim between two positions added
+# none. Each id is minted (`projection_…`) and never re-minted, and a
 # Projection given an id another timeline's Projection holds is refused.
 
 # %% [markdown]
@@ -338,9 +342,9 @@ pq.read_table(package / "projections.parquet").to_pylist()
 # Projection onto its timeline, then the MatchClaim table. The bundle read
 # holds the same claims and the same manifest, and its belief filter gives
 # the same answers. Its timelines hold their Projections but not the notes
-# and onsets, which the manifest does not carry (the score read holds one
-# event, its Projection). Each claim keeps the coordinates of its two
-# events, so MatchStamps need no event: under the editor's beliefs the
+# and onsets, which the manifest does not carry (the score read holds no
+# event at all). Each claim keeps the coordinates of its two
+# sides, so MatchStamps need no event: under the editor's beliefs the
 # third note, at quarter 2, still lies at 1.75 seconds.
 
 # %%

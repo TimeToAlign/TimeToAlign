@@ -106,7 +106,8 @@ def claims_table(claims, *timelines) -> pd.DataFrame:
     claim holds no coordinate: it names one event and the sentinel. MAPS
     states that event on timeline A and the sentinel on timeline B, so its
     ``at`` is the event's start, read from the event on timeline A among
-    *timelines*; its ``there`` is empty.
+    *timelines*; its ``there`` is empty, and its ``event there`` is the
+    sentinel as the MatchClaim table writes it, ``NOMATCH_SENTINEL``.
     """
     by_id = {timeline.id: timeline for timeline in timelines}
     rows = []
@@ -129,7 +130,7 @@ def claims_table(claims, *timelines) -> pd.DataFrame:
                 "at": str(here),
                 "to": claim.timeline_b_id,
                 "there": "" if there is None else str(there),
-                "event there": claim.event_b_id or "",
+                "event there": claim.event_b_id,
             }
         )
     return pd.DataFrame(rows)

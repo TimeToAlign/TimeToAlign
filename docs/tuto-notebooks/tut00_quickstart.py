@@ -204,7 +204,7 @@ coordinate_pair
 # An {{< glossary AlignmentBundle >}} collects broader alignment evidence; its
 # basic link is a {{< glossary MatchClaim >}}. A synchronous claim asserts that
 # two events correspond. Where a side has no event of its own, give its
-# position: a {{< glossary Projection >}} is added there to stand for it.
+# position instead.
 
 # %%
 bundle = AlignmentBundle(name="quickstart")
@@ -225,9 +225,10 @@ claim
 # %% [markdown]
 # The rendered claim shows the unit-bearing positions `@12.5 seconds` and
 # `@415/24 quarters`, each in its timeline's unit and number type. Neither
-# timeline held an event there, so the claim joins the two Projections the
-# bundle added; the alignment tutorial explains them with the other claim
-# types. A bundle can combine this claim with wider alignment evidence. Open
+# timeline holds an event there, so each side is marked `[CHUNK]`: the
+# sentinel for a side whose coordinate the claim states without an event. The
+# alignment tutorial explains it with the other claim types. A bundle can
+# combine this claim with wider alignment evidence. Open
 # [Alignment Bundles](tut06_alignment_bundles.ipynb) to assemble and query
 # larger alignments.
 

@@ -33,7 +33,10 @@
 # recordings against one another **directly** — one file already carries the
 # whole graph. The natural reading is a **complete pairwise topology**: at every
 # grid column, every unordered pair of recordings is related by a synchronous
-# instant {{< glossary MatchClaim >}}.
+# instant {{< glossary MatchClaim >}}. The file states positions on a grid and
+# no events (no note, no beat), so each side of such a claim is the sentinel
+# `CHUNK`: a position on a timeline that holds no event for it, stated by the
+# claim's anchor.
 #
 # We **load an existing alignment**; nothing here runs an aligner. The warp was
 # computed once, offline, and written to disk; the loader reads it faithfully.
@@ -133,9 +136,10 @@ field = loader.get_field(MatchClaim)
 # %% [markdown]
 # The field is held columnar precisely so that this many claims need not be a
 # million Python objects. Indexing it materialises **one** {{< glossary MatchClaim >}}
-# on demand — an ordinary pairwise claim joining the grid-point events of two
-# recordings at one grid column, carrying the shared provenance the export
-# recorded (Listen Here!'s
+# on demand — an ordinary pairwise claim joining two recordings at one grid
+# column, `CHUNK` on both sides (the card names `CHUNK` as each side's event):
+# its anchor holds the two positions in samples, and no event stands behind
+# either. It carries the shared provenance the export recorded (Listen Here!'s
 # chroma-feature DTW). We look at a single claim to see the shape; we do **not**
 # iterate or materialise the whole field.
 
@@ -151,10 +155,11 @@ field[0]
 # {{< glossary Timeline >}} per recording, each in its own group, and the
 # complete pairwise claim set tying every recording to every other. Audio is
 # carried on a {{< glossary Discrete >}} samples axis because a sample index is
-# what a recording actually counts; each recording's verbatim JSON seconds are
-# preserved beside it as a field on the grid-column events. All the alignment
-# lives in the bundle's one MatchClaim table, which the bundle keeps columnar
-# rather than exploding into a million claim objects.
+# what a recording actually counts: each grid time becomes its nearest sample,
+# and a samples-to-seconds C-Map reads it back in seconds. The timelines hold
+# no events, since the file names none. All the alignment lives in the
+# bundle's one MatchClaim table, which the bundle keeps columnar rather than
+# exploding into a million claim objects.
 
 # %%
 bundle = loader.create_bundle()
@@ -259,9 +264,9 @@ stamp
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | One recording per group | `dpt_…` samples timeline, one point event per grid column, recording-length |
+# | One recording per group | `dpt_…` samples timeline, recording-length, no events |
 # | The whole pairwise alignment | a columnar {{< glossary MatchClaimField >}} via `get_field(MatchClaim)` |
-# | One claim, materialised | `field[i]` → a synchronous instant {{< glossary MatchClaim >}} |
+# | One claim, materialised | `field[i]` → a synchronous instant {{< glossary MatchClaim >}}, `CHUNK` on both sides |
 # | The reference recording | `loader.reference` — the grid origin, but just another recording |
 # | A point placed everywhere | `bundle.get_matchstamp_at(coord, timeline_id)` → every recording at once |
 #

@@ -27,7 +27,7 @@ from timetoalign.alignment import (
     MatchClaimField,
     Provenance,
 )
-from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core import CHUNK, NOMATCH, Coordinate, TimeUnit
 from timetoalign.core.time import COORDINATE_CELL_TYPE, PACKAGE_COORDINATE_CELL_TYPE
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -68,18 +68,29 @@ class TestFixtureTable:
     def test_read_and_written_back_unchanged(self, tmp_path: Path) -> None:
         fixture = pq.read_table(_FIXTURE)
         field = MatchClaimField.from_parquet(_FIXTURE)
-        assert [claim.id for claim in field] == [f"claim_{n}" for n in range(1, 16)]
+        assert [claim.id for claim in field] == [f"claim_{n}" for n in range(1, 17)]
         kinds = [claim.claim_type.name for claim in field]
         assert kinds == ["event_match"] * 11 + ["nomatch", "event_match"] + [
             "conceptual",
+            "event_match",
             "event_match",
         ]
         nomatch = field[11]
         assert (nomatch.event_a_id, nomatch.event_b_id, nomatch.anchors) == (
             "note_10",
-            None,
+            NOMATCH,
             [],
         )
+        # The sentinels are strings in the event ID columns: CHUNK on both
+        # sides of claim_11, on side A of claim_16.
+        assert [
+            (claim.id, claim.event_a_id, claim.event_b_id, claim.chunk_sides)
+            for claim in field
+            if claim.chunk_sides
+        ] == [
+            ("claim_11", CHUNK, CHUNK, ("dpt_1", "cpt_1")),
+            ("claim_16", CHUNK, "note_2", ("cpt_1",)),
+        ]
         # An anchor cell holds two coordinates; reading rebuilds the anchor on
         # the row's timelines.
         assert [anchor.timelines for claim in field for anchor in claim.anchors] == [

@@ -14,14 +14,14 @@ It verifies:
   reached through the uniform ``loader.get_field(MatchClaim)`` API (the
   ``loader.claim_field`` property is gone);
 - the loader repr names the reference recording (``header.ref``);
-- one samples timeline per recording, each in its own group, with source-time
-  events, verbatim ``seconds`` fields, and ``length`` converted from the
-  recording's stored ``duration``;
+- one samples timeline per recording, each in its own group, holding no
+  events, with ``length`` converted from the recording's stored
+  ``duration``;
 - faithful preservation of negative pre-onset warp coordinates (never
   clamped or dropped);
-- claims that name events: each joins the grid column's point event on
-  its two recordings (one minted ``listenherepoint_…`` per column, the same
-  on every recording), at their instants;
+- claims that are CHUNK on both sides (the file states grid positions,
+  no events), each anchored at its column's two sample positions; a grid
+  time becomes its nearest sample;
 - a ``get_matchstamp_at`` headline read returning all recordings'
   coordinates at one reference instant via the columnar query path;
 - every other bundle claim reader answering the columnar store with
@@ -44,13 +44,18 @@ import json
 import wave
 from pathlib import Path
 
-import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
 
 from tests.loader.minting import minted
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
-from timetoalign.core import Coordinate, IdCoordinateField, Provenance, TimeUnit
+from timetoalign.core import (
+    CHUNK,
+    Coordinate,
+    IdCoordinateField,
+    Provenance,
+    TimeUnit,
+)
 from timetoalign.loader.alignment import ListenHereLoader
 from timetoalign.timelines import DiscretePhysicalTimeline
 
@@ -99,13 +104,17 @@ def _write_silent_wav(path: Path, sample_rate: int) -> None:
 
 
 #: What the loader (seed 0) mints, in order: one timeline per recording in
-#: sorted key order, their C-Maps, the grid's five points, the 15 claims.
-_MINTED = minted(
-    0, *["dpt"] * 3, *["cmap"] * 3, *["listenherepoint"] * 5, *["claim"] * 15
-)
+#: sorted key order, their C-Maps, the 15 claims.
+_MINTED = minted(0, *["dpt"] * 3, *["cmap"] * 3, *["claim"] * 15)
 REC = dict(zip(["rec-a", "rec-b", "rec-ref"], _MINTED[:3], strict=True))
-POINTS = _MINTED[6:11]
-CLAIMS = _MINTED[11:]
+CLAIMS = _MINTED[6:]
+
+#: Each recording's grid times in samples (``rint(seconds × 44100)``).
+SAMPLES = {
+    "rec-a": [0, 882, 1764, 2646, 3528],
+    "rec-b": [-441, 441, 1323, 2205, 3087],
+    "rec-ref": [0, 1102, 1984, 2866, 3749],
+}
 
 
 @pytest.fixture()
@@ -242,18 +251,14 @@ def test_bundle_timeline_uids(loader: ListenHereLoader) -> None:
     }
 
 
-def test_timeline_events_retain_source_seconds(loader: ListenHereLoader) -> None:
+def test_recordings_hold_no_events(loader: ListenHereLoader) -> None:
+    # The file states grid positions, no events: no point, no Projection.
     bundle = loader.create_bundle()
-    timeline = bundle.timelines[REC["rec-b"]]
-    assert len(timeline.events) == 5
-    assert timeline.events.table.column("seconds").to_pylist() == [
-        -0.01,
-        0.01,
-        0.03,
-        0.05,
-        0.07,
+    assert [len(timeline.events) for timeline in bundle.timelines.values()] == [
+        0,
+        0,
+        0,
     ]
-    assert pa.types.is_float64(timeline.events.table.schema.field("seconds").type)
 
 
 def test_recording_timelines_are_discrete_samples(loader: ListenHereLoader) -> None:
@@ -272,13 +277,6 @@ def test_assumed_sample_rate_is_recorded(loader: ListenHereLoader) -> None:
     timeline = loader.create_bundle().timelines[REC["rec-a"]]
     assert timeline.meta["sample_rate"] == 44100
     assert timeline.meta["sample_rate_provenance"] == "assumed"
-    assert timeline.events.table.column("seconds").to_pylist() == [
-        0.0,
-        0.02,
-        0.04,
-        0.06,
-        0.08,
-    ]
 
 
 def test_audio_file_sample_rate_converts_coordinates(tmp_path: Path) -> None:
@@ -305,9 +303,6 @@ def test_audio_file_sample_rate_converts_coordinates(tmp_path: Path) -> None:
         # seconds are float-canonical, so a public map call answers in the
         # representation that axis declares.
         assert timeline.get_conversion_map(TimeUnit.seconds)(960) == 0.02
-        assert timeline.events.table.column("seconds").to_pylist() == (
-            [0.0, 0.02, 0.04] if timeline.id == REC["rec-a"] else [0.0, 0.01, 0.03]
-        )
 
     claim = loader.get_field(MatchClaim)[1]
     assert claim.start_anchor.coordinate_a.value == 960
@@ -315,7 +310,7 @@ def test_audio_file_sample_rate_converts_coordinates(tmp_path: Path) -> None:
     assert claim.start_anchor.coordinate_a.unit is TimeUnit.samples
 
 
-def test_claim_source_seconds_are_recoverable_exactly(tmp_path: Path) -> None:
+def test_grid_seconds_become_the_nearest_sample(tmp_path: Path) -> None:
     path = _write_spec(
         tmp_path,
         {
@@ -332,12 +327,12 @@ def test_claim_source_seconds_are_recoverable_exactly(tmp_path: Path) -> None:
     bundle = loader.create_bundle()
     claim = loader.get_field(MatchClaim)[1]
     timeline = bundle.timelines[claim.timeline_a_id]
-    starts = timeline.events.table.column("start").combine_chunks().field("value")
-    index = pc.index(starts, int(claim.start_anchor.coordinate_a.value)).as_py()
 
+    # 0.001 s × 44100 Hz = 44.1 → 44 samples; the C-Map reads 44 back as
+    # 44 / 44100 s, and the stated 0.001 s is not kept.
     assert claim.start_anchor.coordinate_a.value == 44
-    assert timeline.get_conversion_map(TimeUnit.seconds)(44) != 0.001
-    assert timeline.events.table.column("seconds")[index].as_py() == 0.001
+    assert timeline.get_conversion_map(TimeUnit.seconds)(44) == 44 / 44100
+    assert len(timeline.events) == 0
 
 
 # endregion
@@ -485,36 +480,27 @@ def test_claim_provenance(loader: ListenHereLoader) -> None:
     assert loader.get_field(MatchClaim).provenance == claim.provenance
 
 
-def test_claims_name_the_grid_points(loader: ListenHereLoader) -> None:
-    # Every recording holds one point per grid column, column i under the id
-    # POINTS[i] (minted once per load); each claim joins the same column's point on its
-    # two recordings, at the instants those points hold.
-    bundle = loader.create_bundle()
-    points = {
-        timeline_id: {
-            row["id"]: row["start"]["numerator"]
-            for row in timeline.events.table.to_pylist()
-        }
-        for timeline_id, timeline in bundle.timelines.items()
-    }
-    assert {timeline_id: list(by_id) for timeline_id, by_id in points.items()} == {
-        timeline_id: POINTS
-        for timeline_id in (REC["rec-a"], REC["rec-b"], REC["rec-ref"])
-    }
+def test_claims_are_chunk_on_both_sides(loader: ListenHereLoader) -> None:
+    # The file names no event: every claim is CHUNK on both sides, in field
+    # order the three pairs over the five grid columns, each anchored at its
+    # column's two sample positions.
     claims = list(loader.get_field(MatchClaim))
-    pairs = [
-        (REC["rec-a"], REC["rec-b"]),
-        (REC["rec-a"], REC["rec-ref"]),
-        (REC["rec-b"], REC["rec-ref"]),
-    ]
+    pairs = [("rec-a", "rec-b"), ("rec-a", "rec-ref"), ("rec-b", "rec-ref")]
     assert [
         (c.timeline_a_id, c.event_a_id, c.timeline_b_id, c.event_b_id) for c in claims
-    ] == [(a, POINTS[i - 1], b, POINTS[i - 1]) for a, b in pairs for i in range(1, 6)]
-    for claim in claims:
-        assert claim.start_anchor.coordinates == (
-            Coordinate(points[claim.timeline_a_id][claim.event_a_id], TimeUnit.samples),
-            Coordinate(points[claim.timeline_b_id][claim.event_b_id], TimeUnit.samples),
+    ] == [(REC[a], CHUNK, REC[b], CHUNK) for a, b in pairs for _ in range(5)]
+    assert [c.chunk_sides for c in claims] == [
+        (REC[a], REC[b]) for a, b in pairs for _ in range(5)
+    ]
+    assert [c.start_anchor.coordinates for c in claims] == [
+        (
+            Coordinate(SAMPLES[a][column], TimeUnit.samples),
+            Coordinate(SAMPLES[b][column], TimeUnit.samples),
         )
+        for a, b in pairs
+        for column in range(5)
+    ]
+    assert all(c.end_anchor is None for c in claims)
 
 
 # endregion

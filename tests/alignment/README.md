@@ -1702,9 +1702,12 @@ TimeToShare's own artifacts:
   `COORDINATE_CELL_TYPE` cells.
 - **The fixture table, read and written back.** TimeToShare's fixture
   `fixtures/tables/<version>/match_claims.parquet` is read with
-  `MatchClaimField.from_parquet`: fifteen claims, `claim_1`–`claim_15`,
-  thirteen `event_match`, one `nomatch` (`claim_12`, naming `note_10` and
-  the sentinel, no anchor), one `conceptual` (`claim_14`); rows with a null
+  `MatchClaimField.from_parquet`: sixteen claims, `claim_1`–`claim_16`,
+  fourteen `event_match`, one `nomatch` (`claim_12`, naming `note_10` and
+  `NOMATCH`, no anchor), one `conceptual` (`claim_14`); the sentinels
+  read as the strings of the event ID columns, `CHUNK` on both sides of
+  `claim_11` and on side A of `claim_16` (their `chunk_sides`
+  `(dpt_1, cpt_1)` and `(cpt_1,)`); rows with a null
   `beliefs` read. Every anchor read back stands on its row's two timelines
   (the table's anchor cell holds the two coordinates alone): `claim_2`'s is
   `clt_1` 1 quarter ↔ `dpt_1` 44100 samples. Written back with `to_parquet`, the file read again
@@ -2327,12 +2330,13 @@ with the MatchClaims stating each and the expected potential MatchStamps.
 Those values are literal data written by hand in TimeToShare's emission
 script, never computed by a derivation, so they are an independent oracle.
 
-- `AlignmentBundle.from_file(manifest.yaml)` holds the fifteen MatchClaims
-  and the eleven Projections (eight on `dpt_1`, two on `cpt_1`, one on
-  `clt_2`; `clt_1` holds none), so every timeline's events are its
+- `AlignmentBundle.from_file(manifest.yaml)` holds the sixteen MatchClaims
+  and the nine Projections (seven on `dpt_1`, one on `cpt_1`, one on
+  `clt_2`; `clt_1` holds none; the CHUNK sides of `claim_11` and `claim_16`
+  hold none), so every timeline's events are its
   Projections alone; the bundle's Projections table equals the fixture's
   rows (the table is read from the bundle's timelines sorted by ID, each
-  timeline in its event order: `clt_2`, `cpt_1` ×2, `dpt_1` ×8, the order
+  timeline in its event order: `clt_2`, `cpt_1`, `dpt_1` ×7, the order
   the fixture holds them in). The Projections file is the fixture's byte
   for byte, as the MatchClaim file is.
 - Written to a fresh directory, `match_claims.parquet` and

@@ -20,6 +20,12 @@ claims are held columnar in a
 :class:`~timetoalign.alignment.claims.MatchClaimField` and assembled
 **vectorized** (never one Python claim object per row).
 
+The file states positions on a grid and nothing else: no note, beat or other
+event of any recording.  Every claim therefore names the sentinel
+:data:`~timetoalign.core.ids.CHUNK` on both sides — a position on a timeline
+that holds no event for it — and its anchor holds the two positions, in
+samples.  The recordings' timelines hold no events.
+
 ``ListenHereLoader`` ingests one alignment JSON file in one call::
 
     bundle = ListenHereLoader.from_file(alignment_json).create_bundle()
@@ -30,13 +36,13 @@ and produces a single :class:`~timetoalign.alignment.bundle.AlignmentBundle`:
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
   (``dpt_…``, named after the recording's stem) per recording, each in its
   **own** group, with ``length`` converted from that recording's stored
-  ``duration``.  The recordings carry one point event for each source-grid
-  time, the point of one grid column under one ID on every recording.  Its integer sample
-  coordinate supports the alignment, while its ``seconds`` field preserves the
-  verbatim JSON value; all pairwise alignment lives in the cross-group claim
-  field; and
-* the complete-topology pairwise claims, reached through the uniform field
-  API ``loader.get_field(MatchClaim)`` -> :class:`MatchClaimField`.
+  ``duration`` and a samples-to-seconds C-Map; no events; and
+* the complete-topology pairwise claims, ``CHUNK`` on both sides, reached
+  through the uniform field API ``loader.get_field(MatchClaim)`` ->
+  :class:`MatchClaimField`.
+
+A grid time becomes the nearest sample, ``rint(seconds × sample_rate)``; the
+seconds the file states are not kept beside it.
 
 The reference recording named by ``header.ref`` fixes the grid origin but is
 **not** a privileged hub: it is just another recording, related to every other
@@ -69,7 +75,7 @@ import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
-from timetoalign.core import NumberType, Provenance, TimeUnit
+from timetoalign.core import CHUNK, NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.display.html import code
@@ -83,7 +89,6 @@ from timetoalign.loader._sources import (
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps import SamplesToSeconds
-from timetoalign.storage import mint_event_ids
 from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import DiscretePhysicalTimeline
 
@@ -105,9 +110,6 @@ _AGENT_IDENTIFIER = "dtw_chroma_alignment"
 #: Fallback for exports whose recordings are not available beside the JSON.
 _DEFAULT_SAMPLE_RATE = 44100
 
-#: Event type of a recording's point on the shared reference grid.
-_POINT_EVENT_TYPE = "ListenHerePoint"
-
 
 # endregion
 
@@ -123,6 +125,9 @@ class ListenHereLoader(AlignmentLoader):
     a bundle in which every recording is a samples timeline in its own group,
     related to every other recording by a complete set of pairwise synchronous
     instant :class:`MatchClaim` rows held columnar in a :class:`MatchClaimField`.
+    The file states grid positions, not events, so every claim is
+    :data:`~timetoalign.core.ids.CHUNK` on both sides and the timelines hold
+    no events.
 
     **Usage follows the standard loader two-phase pattern:**
 
@@ -145,14 +150,11 @@ class ListenHereLoader(AlignmentLoader):
         self._durations: dict[str, float] = {}
         self._sample_rates: dict[str, int] = {}
         self._sample_rate_provenance: dict[str, str] = {}
-        self._times_by_key: dict[str, list[float]] = {}
         self._claim_field: MatchClaimField | None = None
         # IDs minted once per load, so that every timeline built from the
-        # loader holds them: each recording's timeline and C-Map, and the
-        # grid's points, one per column, the same on every recording.
+        # loader holds them: each recording's timeline and C-Map.
         self._uid_by_key: dict[str, str] = {}
         self._cmap_uid_by_key: dict[str, str] = {}
-        self._point_ids: pa.Array = pa.array([], pa.string())
         self._name: str | None = None
         # The reference recording key (``header.ref``): the grid origin.
         self._ref: str | None = None
@@ -232,18 +234,11 @@ class ListenHereLoader(AlignmentLoader):
             )
 
         self._keys = keys
-        self._times_by_key = times_by_key
         minter = self._id_minter
         self._uid_by_key = {
             key: mint_timeline_id(TimeUnit.samples, minter) for key in keys
         }
         self._cmap_uid_by_key = {key: minter.mint(CMAP_PREFIX) for key in keys}
-        # One point per grid column, under one ID on every recording: the
-        # claims join the recordings by these IDs.
-        self._point_ids = mint_event_ids(
-            pa.repeat(pa.scalar(_POINT_EVENT_TYPE), len(times_by_key[keys[0]])),
-            minter,
-        )
         self._name = path.stem
         self._ref = ref
         agent = header.get("createdBy", _DEFAULT_AGENT)
@@ -309,13 +304,11 @@ class ListenHereLoader(AlignmentLoader):
     ) -> MatchClaimField:
         """Build the complete-topology pairwise claim field, vectorized.
 
-        Every recording's timeline holds one ``ListenHerePoint`` event per
-        reference grid column, the point of column ``i`` under the ``i``-th
-        of the loader's point IDs (the same on every recording).  For every
-        unordered pair of recordings ``(a, b)`` and every column ``i``, a
-        synchronous instant claim joins the point ``i`` of ``a``, at
-        ``times_a[i]`` in samples, to the point ``i`` of ``b``.  The parallel
-        columns are concatenated across all pairs with numpy and handed to
+        For every unordered pair of recordings ``(a, b)`` and every column
+        ``i``, a synchronous instant claim joins ``times_a[i]`` on ``a`` to
+        ``times_b[i]`` on ``b``, both in samples, with :data:`CHUNK` on both
+        sides (the file names no event).  The parallel columns are
+        concatenated across all pairs with numpy and handed to
         :meth:`MatchClaimField.from_columns`, so no :class:`MatchClaim` object
         is constructed.
 
@@ -361,15 +354,8 @@ class ListenHereLoader(AlignmentLoader):
             if coord_b_blocks
             else np.empty(0, dtype=np.int64)
         )
-        # Grid column i is the point event ``self._point_ids[i]`` of every
-        # recording, so both sides of each claim name the same point id.
-        point_ids = self._point_ids
-        n_pairs = len(a_id_blocks)
-        event_ids = (
-            pa.concat_arrays([point_ids] * n_pairs)
-            if n_pairs
-            else pa.array([], type=pa.string())
-        )
+        # The file states positions, no events: CHUNK on both sides.
+        event_ids = pa.repeat(pa.scalar(CHUNK), len(timeline_a_ids))
 
         provenance = Provenance(method="imported", note=f"{agent} {_AGENT_IDENTIFIER}")
         return MatchClaimField.from_columns(
@@ -530,7 +516,7 @@ class ListenHereLoader(AlignmentLoader):
         )
 
     def _make_timeline(self, key: str) -> DiscretePhysicalTimeline:
-        """Build one samples timeline with faithful source-time events."""
+        """Build one recording's samples timeline: no events, one C-Map."""
         stem = self._stems[key]
         sample_rate = self._sample_rates[key]
         timeline = DiscretePhysicalTimeline(
@@ -542,20 +528,6 @@ class ListenHereLoader(AlignmentLoader):
                 "sample_rate": sample_rate,
                 "sample_rate_provenance": self._sample_rate_provenance[key],
             },
-        )
-        times = self._times_by_key[key]
-        timeline.add_events(
-            [
-                {
-                    "id": point_id,
-                    "event_type": _POINT_EVENT_TYPE,
-                    "instant": int(round(seconds * sample_rate)),
-                    "seconds": np.float64(seconds),
-                }
-                for point_id, seconds in zip(
-                    self._point_ids.to_pylist(), times, strict=True
-                )
-            ]
         )
         timeline.add_conversion_map(
             SamplesToSeconds(sample_rate=sample_rate, uid=self._cmap_uid_by_key[key])

@@ -1617,8 +1617,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
           Where both sides of a synchronous pair are dicts without ``id``,
           no Projection stands for either: both sides are
           :data:`~timetoalign.core.ids.CHUNK`, the claim's anchor holding
-          the two positions (an interval where both state an end, neither
-          states a ``name``);
+          the two positions (an interval where both state an end; a
+          ``name`` names the stated position and is kept as that side's
+          ``event_X_name``);
         - :data:`~timetoalign.core.ids.NOMATCH`, the NOMATCH sentinel, on
           one side at most.
 
@@ -1668,8 +1669,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ValueError: If both sides of a pair are ``NOMATCH``, a side is
                 ``CHUNK`` or a dict whose ``id`` is ``NOMATCH`` or ``CHUNK``
                 (a CHUNK side is a dict stating a position without ``id``,
-                a NOMATCH side is ``NOMATCH``), a CHUNK side states a name, a pair with CHUNK on both sides
-                states an end on one side only, an event ID
+                a NOMATCH side is ``NOMATCH``), a pair with CHUNK on both
+                sides states an end on one side only, an event ID
                 names no one event (the timeline does not hold it and two
                 of its descendants do), a dict naming no held event states
                 no ``start``, a position is a float on a timeline counting

@@ -138,8 +138,8 @@ field = loader.get_field(MatchClaim)
 # million Python objects. Indexing it materialises **one** {{< glossary MatchClaim >}}
 # on demand — an ordinary pairwise claim joining two recordings at one grid
 # column, `CHUNK` on both sides (the card names `CHUNK` as each side's event):
-# its anchor holds the two positions in samples, and no event stands behind
-# either. It carries the shared provenance the export recorded (Listen Here!'s
+# its anchor holds the two positions in seconds, exactly the numbers the file
+# states, and no event stands behind either. It carries the shared provenance the export recorded (Listen Here!'s
 # chroma-feature DTW). We look at a single claim to see the shape; we do **not**
 # iterate or materialise the whole field.
 
@@ -151,13 +151,14 @@ field[0]
 #
 # ## 3. Build the bundle
 #
-# `create_bundle()` assembles the {{< glossary AlignmentBundle >}}: one samples
+# `create_bundle()` assembles the {{< glossary AlignmentBundle >}}: one seconds
 # {{< glossary Timeline >}} per recording, each in its own group, and the
-# complete pairwise claim set tying every recording to every other. Audio is
-# carried on a {{< glossary Discrete >}} samples axis because a sample index is
-# what a recording actually counts: each grid time becomes its nearest sample,
-# and a samples-to-seconds C-Map reads it back in seconds. The timelines hold
-# no events, since the file names none. All the alignment lives in the
+# complete pairwise claim set tying every recording to every other. The file
+# gives seconds, so each recording is a continuous seconds timeline with the
+# number type float, its length the duration the file stores, and every grid
+# time stays the number the file wrote. The loader reads no recording, so it
+# states no sample rate and adds no samples axis. The timelines hold no
+# events, since the file names none. All the alignment lives in the
 # bundle's one MatchClaim table, which the bundle keeps columnar rather than
 # exploding into a million claim objects.
 
@@ -217,17 +218,16 @@ stamp
 
 # %% [markdown]
 # Read across that {{< glossary MatchStamp >}}: the same musical instant the
-# reference reaches at this sample falls at a different sample in each of the
+# reference reaches at this second falls at a different time in each of the
 # other five recordings — a quicker reading reaches it earlier, a steadier one
-# later. Every reading is an integer, because a samples axis is
-# {{< glossary Discrete >}} and no sample index is ever half-counted. One
+# later. Each reading is one of the file's own `times` values. One
 # coordinate, placed once, located in all six recordings in a single query:
 
 # %%
 {
     "timelines in the stamp": stamp.n_timelines,
-    "samples per recording": {
-        bundle.get_timeline(tl_id).name: stamp.get_coordinate_for(tl_id, format="int")
+    "seconds per recording": {
+        bundle.get_timeline(tl_id).name: stamp.get_coordinate_for(tl_id, format="float")
         for tl_id in bundle.timeline_ids
     },
 }
@@ -264,7 +264,7 @@ stamp
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | One recording per group | `dpt_…` samples timeline, recording-length, no events |
+# | One recording per group | `cpt_…` seconds timeline (float), recording-length, no events |
 # | The whole pairwise alignment | a columnar {{< glossary MatchClaimField >}} via `get_field(MatchClaim)` |
 # | One claim, materialised | `field[i]` → a synchronous instant {{< glossary MatchClaim >}}, `CHUNK` on both sides |
 # | The reference recording | `loader.reference` — the grid origin, but just another recording |

@@ -685,26 +685,27 @@ dpt16
 #
 # These claims are the key connection between the Emerson recording and the
 # score group. Neither timeline has an event at a section boundary, so each
-# side is given as a position. When the claims are made in §13, both sides of
-# each claim are the sentinel CHUNK: the anchor states the two coordinates,
-# and no event is added. A CHUNK side carries no name, so the section's Greek
-# letter stays with the measure map; the claims follow its rows in order.
+# side is given as a position, the score side named by its section's Greek
+# letter. When the claims are made in §13, both sides of each claim are the
+# sentinel CHUNK: the anchor states the two coordinates, and no event is
+# added. The name stays on the claim's score side (`event_a_name`), naming
+# the position it states.
 
 # %%
 emerson_pairs = [
     (
-        {"start": float(row["measure_unfold_start"])},
+        {"start": float(row["measure_unfold_start"]), "name": section},
         "clt2_unfolded",
         {"start": float(row["seconds_start"])},
         "dpt_16",
     )
-    for _, row in ema_df.iterrows()
+    for section, row in ema_df.iterrows()
 ]
 
 # Final end boundary
 emerson_pairs.append(
     (
-        {"start": float(ema_df["measure_unfold_end"].iloc[-1])},
+        {"start": float(ema_df["measure_unfold_end"].iloc[-1]), "name": "end"},
         "clt2_unfolded",
         {"start": float(ema_df["seconds_end"].iloc[-1])},
         "dpt_16",

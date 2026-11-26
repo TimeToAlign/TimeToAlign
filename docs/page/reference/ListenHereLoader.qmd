@@ -8,7 +8,7 @@ Load a Listen Here! alignment JSON file as one AlignmentBundle.
 
 The loader parses a single alignment JSON file describing many recordings
 of one work warped onto a shared equidistant reference grid, and assembles
-a bundle in which every recording is a samples timeline in its own group,
+a bundle in which every recording is a seconds timeline in its own group,
 related to every other recording by a complete set of pairwise synchronous
 instant :class:`MatchClaim` rows held columnar in a :class:`MatchClaimField`.
 The file states grid positions, not events, so every claim is
@@ -36,8 +36,8 @@ The loader reads the existing alignment; it never runs an aligner.
 | Name | Description |
 | --- | --- |
 | [create_bundle](#timetoalign.loader.alignment.listen_here.ListenHereLoader.create_bundle) | Assemble the AlignmentBundle from the loaded alignment. |
-| [create_timeline](#timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timeline) | Return a single recording's samples timeline by its uid. |
-| [create_timelines](#timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timelines) | Return one samples timeline per recording, in sorted order. |
+| [create_timeline](#timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timeline) | Return a single recording's seconds timeline by its uid. |
+| [create_timelines](#timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timelines) | Return one seconds timeline per recording, in sorted order. |
 | [get_field](#timetoalign.loader.alignment.listen_here.ListenHereLoader.get_field) | Return the complete-topology pairwise claim field. |
 | [load](#timetoalign.loader.alignment.listen_here.ListenHereLoader.load) | Ingest one Listen Here! alignment JSON file. |
 
@@ -49,8 +49,8 @@ loader.alignment.listen_here.ListenHereLoader.create_bundle()
 
 Assemble the AlignmentBundle from the loaded alignment.
 
-Each recording becomes a samples
-:class:`DiscretePhysicalTimeline` in its own group, and the complete
+Each recording becomes a seconds
+:class:`ContinuousPhysicalTimeline` in its own group, and the complete
 pairwise claim field is added to the bundle **columnar**.
 
 The field is handed to the bundle with
@@ -83,13 +83,13 @@ loader.alignment.listen_here.ListenHereLoader.create_timeline(
 )
 ```
 
-Return a single recording's samples timeline by its uid.
+Return a single recording's seconds timeline by its uid.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name   | Type                 | Description                                                         | Default   |
 |--------|----------------------|---------------------------------------------------------------------|-----------|
-| uid    | [str](`str`) \| None | A timeline uid (``dpt_…``), as :meth:`create_timelines` lists them. | `None`    |
+| uid    | [str](`str`) \| None | A timeline uid (``cpt_…``), as :meth:`create_timelines` lists them. | `None`    |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -104,7 +104,7 @@ Return a single recording's samples timeline by its uid.
 loader.alignment.listen_here.ListenHereLoader.create_timelines(id_pattern=None)
 ```
 
-Return one samples timeline per recording, in sorted order.
+Return one seconds timeline per recording, in sorted order.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -161,9 +161,9 @@ Ingest one Listen Here! alignment JSON file.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                   | Description                                                                                                                                   | Default    |
-|--------|--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| source | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Path to the ``alignment.json`` file, or its member in a ZIP archive (recordings named relative to it are then looked up in the same archive). | _required_ |
+| Name   | Type                                                   | Description                                                          | Default    |
+|--------|--------------------------------------------------------|----------------------------------------------------------------------|------------|
+| source | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Path to the ``alignment.json`` file, or its member in a ZIP archive. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 

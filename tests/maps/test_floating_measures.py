@@ -330,6 +330,35 @@ def _first_ending(*, jump_back: bool) -> MeasureMap:
     )
 
 
+def _repeat_end_leading_on() -> MeasureMap:
+    """The pickup ``m0`` and ``m1``; ``m2`` (3 quarters) ends a repeat, leading back and on.
+
+    ``m2``'s ``next`` names ``m0`` and ``m3``; ``m3`` and ``m4`` are full bars
+    numbered 3 and 4, no record states a volta.
+    """
+    records = list(_first_ending(jump_back=True).measures)
+    records[2] = Measure(
+        id="m2",
+        number=2,
+        time_signature="4/4",
+        nominal_length=Fraction(4),
+        actual_length=Fraction(3),
+        end_repeat=True,
+        next=("m0", "m3"),
+    )
+    records[3:] = [
+        Measure(
+            id=f"m{number}",
+            number=number,
+            time_signature="4/4",
+            nominal_length=Fraction(4),
+            actual_length=Fraction(4),
+        )
+        for number in (3, 4)
+    ]
+    return MeasureMap(records)
+
+
 def _warns_exactly(*lines: str) -> pytest.WarningsChecker:
     """Expect the one floating-measure warning, with exactly these *lines*."""
     text = "Floating measures that do not add up to their bars:\n" + ";\n".join(
@@ -339,22 +368,37 @@ def _warns_exactly(*lines: str) -> pytest.WarningsChecker:
 
 
 WOO71_DOUBTS = (
-    "short: measures '42', '43' (number 38) end 3/2 quarters into a bar of 2, "
-    "and nothing they lead to completes the bar",
-    "overlength: measures '261', '262' (number 237) reach 11/2 quarters into a bar of 3",
+    "offset mismatch: measure '43' (number 38) states offset 3/2, not 1 where '42' ends",
+    "offset mismatch: measure '262' (number 237) states offset 3/2, not 4 where '261' ends",
     "overlength: measures '371', '372' (number 346) reach 9/2 quarters into a bar of 3",
 )
 SQ8913219_DOUBTS = (
     "overlength: measures '77', '78' (number 76) reach 8 quarters into a bar of 4",
     "short: measure '221' (number 219) ends 3 quarters into a bar of 4, "
-    "and nothing it leads to completes the bar",
-    "short: measures '482', '483' (number 480) end 5/2 quarters into a bar of 3, "
-    "and nothing they lead to completes the bar",
+    "and measure '222' (number 220), which it leads to, does not complete the bar",
+    "offset mismatch: measure '483' (number 480) states offset 2, not 3/2 where '482' ends",
     "overlength: measures '533', '534' (number 529) reach 5 quarters into a bar of 3",
     "overlength: measures '626', '627' (number 617) reach 7 quarters into a bar of 4",
     "overlength: measures '675', '676' (number 663) reach 15/2 quarters into a bar of 4",
     "overlength: measures '684', '685' (number 671) reach 8 quarters into a bar of 4",
 )
+
+
+def _doubtful_refusal(first: str, second: str) -> str:
+    """The refusal of a doubtful split at offset 3/4, its records named *first*, *second*."""
+    return (
+        f"The floating measures starting with measures {first!r} and {second!r} have "
+        "nominal downbeats 0 and -1/4, which do not increase; adjacent measures form one "
+        "floating measure only when they share a number or the second completes the bar "
+        "the first leaves incomplete, and endings under different volta brackets count "
+        "through as separate floating measures. Floating measures that do not add up to "
+        f"their bars:\n  doubtful split, not joined: measure {first!r} (number 5) and "
+        f"measure {second!r} (number 6) together fill a bar of 2 quarters, but {second!r} "
+        f"states offset 3/4, not 1/2 where {first!r} ends"
+    )
+
+
+DOUBTFUL_REFUSAL = _doubtful_refusal("a", "b")
 OP106_IV_DOUBTS = (
     "overlength: measures '1', '2' (number 1) reach 35/4 quarters into a bar of 4",
     "overlength: measures '3', '4', '5' (number 2) reach 10 quarters into a bar of 4",
@@ -952,7 +996,7 @@ class TestMeasuresThatDoNotAddUp:
 
         with _warns_exactly(
             "short: measure 'm3' (number 3) ends 3 quarters into a bar of 4, "
-            "and nothing it leads to completes the bar"
+            "and measure 'm4' (number 4), which it leads to, does not complete the bar"
         ):
             cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
 
@@ -993,9 +1037,54 @@ class TestMeasuresThatDoNotAddUp:
         """The same m2 with the default next: m3 starts at offset 0, not 3."""
         with _warns_exactly(
             "short: measure 'm2' (number 2) ends 3 quarters into a bar of 4, "
-            "and nothing it leads to completes the bar"
+            "and measure 'm3' (number 2), which it leads to, does not complete the bar"
         ):
             QuartersToFloatingMeasures.from_measure_map(_first_ending(jump_back=False))
+
+    def test_a_bar_ending_a_repeat_must_add_up_on_every_pass(self) -> None:
+        """m2 leads back to the pickup m0 and on to the fresh bar m3: short."""
+        with _warns_exactly(
+            "short: measure 'm2' (number 2) ends 3 quarters into a bar of 4, "
+            "and measure 'm3' (number 3), which it leads to, does not complete the bar"
+        ):
+            cmap = QuartersToFloatingMeasures.from_measure_map(_repeat_end_leading_on())
+
+        assert cmap.x_values.tolist() == [-3.0, 1.0, 5.0, 8.0, 12.0, 16.0]
+        assert cmap(7) == 2.666
+
+    def test_an_offset_mismatch_inside_a_compound_warns(self) -> None:
+        """b, numbered like a, states offset 1 where a ends at 1/2."""
+        measure_map = _two_records_at_one_downbeat(
+            5, 5, second_offset=Fraction(1), second_actual=Fraction(1)
+        )
+
+        with _warns_exactly(
+            "offset mismatch: measure 'b' (number 5) states offset 1, not 1/2 where 'a' ends"
+        ):
+            cmap = QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        assert cmap.x_values.tolist() == [0.0, 1.5]
+        assert cmap.y_values.tolist() == [1.0, 2.0]
+        assert cmap(Fraction(3, 4)) == 1.5
+
+    def test_a_refused_lattice_names_the_places_and_does_not_warn(self) -> None:
+        """b at offset 3/4 is a doubtful split whose downbeat precedes a's."""
+        measure_map = _two_records_at_one_downbeat(5, 6, second_offset=Fraction(3, 4))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(ValueError, match=f"^{re.escape(DOUBTFUL_REFUSAL)}$"):
+                QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+    def test_the_warning_names_the_caller(self) -> None:
+        """The warning is attributed to this file, not to the package."""
+        measure_map = MeasureMap(_four_four_bars(short="m3", actual=Fraction(3)))
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            QuartersToFloatingMeasures.from_measure_map(measure_map)
+
+        assert [(w.category, w.filename) for w in caught] == [(UserWarning, __file__)]
 
     def test_writing_a_lattice_does_not_warn_again(self) -> None:
         """The manifest view re-reads the measure map silently."""
@@ -1034,3 +1123,27 @@ class TestScoreFloatingMeasures:
         reading = timeline.convert_to(Fraction(20), TimeUnit.floating_measures)
         assert (reading.value, reading.unit) == (10.5, TimeUnit.floating_measures)
         assert len(timeline.measure_map) == 397
+
+    def test_a_score_without_a_lattice_says_so(self, tmp_path: Path) -> None:
+        """mc 2 states offset 3/4 where mc 1 ends at 1/2: no lattice, one warning."""
+        path = tmp_path / "doubtful.measures.tsv"
+        path.write_text(
+            "mc\tmn\tquarterbeats\ttimesig\tact_dur\tmc_offset\n"
+            "1\t5\t0\t2/4\t1/8\t0\n"
+            "2\t6\t1/2\t2/4\t3/8\t3/16\n",
+            encoding="utf-8",
+        )
+        expected = (
+            f"The score {str(path)!r} has no floating measures: "
+            + _doubtful_refusal("1", "2")
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            timeline = Ms3Loader.from_file(path).create_timeline()
+
+        assert [(w.category, w.filename, str(w.message)) for w in caught] == [
+            (UserWarning, __file__, expected)
+        ]
+        assert TimeUnit.floating_measures not in timeline._get_available_units()
+        assert len(timeline.measure_map) == 2

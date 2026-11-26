@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import bisect
 import math
+import os
+import sys
 import warnings
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Generic, Sequence, TypeGuard, TypeVar
@@ -645,24 +647,49 @@ def _quarters(value: Fraction) -> str:
     return f"{value} quarter{'' if value == 1 else 's'}"
 
 
+def _offset_mismatches(run: Sequence[Measure]) -> list[str]:
+    """Describe the records of *run* whose stated offset is not where the run ends.
+
+    A record states an offset when its ``offset_within_measure`` is above 0.
+    Inside a run, such a record should begin where the records before it
+    end: the first record's offset plus their actual lengths.
+    """
+    mismatches: list[str] = []
+    end = _offset(run[0])
+    for previous, record in zip(run, run[1:]):
+        end += previous.actual_length or Fraction(0)
+        offset = _offset(record)
+        if offset > 0 and offset != end:
+            mismatches.append(
+                f"offset mismatch: {_measures_label([record])} states offset {offset}, "
+                f"not {end} where {previous.id!r} ends"
+            )
+    return mismatches
+
+
 def _lattice_doubts(compounds: Sequence[Sequence[Measure]]) -> list[str]:
     """Describe the floating measures of *compounds* that do not add up to bars.
 
-    Three kinds, each measured against the nominal length of a run's last
-    record, the bar the run ends in:
+    Four kinds, the last three measured against the nominal length of a
+    run's last record, the bar the run ends in:
 
+    * **offset mismatch**: a record inside a run whose stated offset is not
+      where the records before it end. Such a run is judged by its
+      mismatches only: its records say two different things about where
+      it ends, so neither the overlength nor the short kind applies;
     * **doubtful split**: a run that ends short of its bar, followed by a
       record numbered apart with the same nominal length whose actual length
       would complete the bar exactly, but whose offset is not where the run
-      ends (so it did not join);
+      ends (so it did not join); both runs are reported only under this kind;
     * **overlength**: a run that reaches past its bar;
     * **short**: a run that ends short of its bar, is neither the first run
-      (an anacrusis) nor the last, is no part of a doubtful split, and none
-      of whose last record's successors (its ``next``, by default the
-      following record) completes the bar: a successor completes it when it
-      has the bar's nominal length, its offset is where the run ends and its
-      actual length makes up the rest, as the second part of a split bar
-      does when the first part ends a first ending or a repeat.
+      (an anacrusis) nor the last, and is not completed by every record its
+      last record leads to (its ``next``, by default the following record):
+      a successor completes it when it has the bar's nominal length, its
+      offset is where the run ends and its actual length makes up the rest,
+      as the second part of a split bar does when the first part ends a
+      first ending. A bar that ends a repeat leads both back and on, and
+      each pass must add up.
     """
     records = [record for run in compounds for record in run]
     by_id = {record.id: record for record in records}
@@ -671,6 +698,8 @@ def _lattice_doubts(compounds: Sequence[Sequence[Measure]]) -> list[str]:
     after = 0
     for index, run in enumerate(compounds):
         after += len(run)
+        mismatches = _offset_mismatches(run)
+        doubts.extend(mismatches)
         last = run[-1]
         nominal = last.nominal_length
         if nominal is None:
@@ -691,27 +720,72 @@ def _lattice_doubts(compounds: Sequence[Sequence[Measure]]) -> list[str]:
                     f"{_quarters(nominal)}, but {record.id!r} states offset "
                     f"{_offset(record)}, not {end} where {last.id!r} ends"
                 )
+        if mismatches or index in in_split:
+            continue
         if end > nominal:
             doubts.append(
                 f"overlength: {_measures_label(run)} "
                 f"{'reaches' if len(run) == 1 else 'reach'} {_quarters(end)} into a bar "
                 f"of {nominal}"
             )
-        elif end < nominal and 0 < index < len(compounds) - 1 and index not in in_split:
+        elif end < nominal and 0 < index < len(compounds) - 1:
             if last.next is None:
-                successors = [records[after]] if after < len(records) else []
+                successors = [records[after]]
             else:
                 successors = [by_id[name] for name in last.next if name in by_id]
-            if not any(
-                _offset(successor) == end and _makes_up(successor, nominal, end)
+            failing = [
+                successor
                 for successor in successors
-            ):
-                doubts.append(
-                    f"short: {_measures_label(run)} {'ends' if len(run) == 1 else 'end'} "
-                    f"{_quarters(end)} into a bar of {nominal}, and nothing "
-                    f"{'it leads' if len(run) == 1 else 'they lead'} to completes the bar"
+                if not (
+                    _offset(successor) == end and _makes_up(successor, nominal, end)
                 )
+            ]
+            if successors and not failing:
+                continue
+            leads = "it leads" if len(run) == 1 else "they lead"
+            tail = (
+                f"{_measures_label(failing)}, which {leads} to, "
+                f"{'does' if len(failing) == 1 else 'do'} not complete the bar"
+                if failing
+                else f"{leads} to no measure of the map"
+            )
+            doubts.append(
+                f"short: {_measures_label(run)} {'ends' if len(run) == 1 else 'end'} "
+                f"{_quarters(end)} into a bar of {nominal}, and {tail}"
+            )
     return doubts
+
+
+def _doubts_text(doubts: Sequence[str]) -> str:
+    """The list of places that do not add up, as warnings and refusals give it."""
+    lines = ";\n".join(f"  {doubt}" for doubt in doubts)
+    return f"Floating measures that do not add up to their bars:\n{lines}"
+
+
+_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep
+
+
+def _warn_at_caller(message: str) -> None:
+    """Emit a ``UserWarning`` attributed to the first caller outside this package.
+
+    The warning names the line of the user's code that led to it, however
+    deep inside the package it was raised; were no frame outside, the
+    outermost one is named.
+    """
+    frame = sys._getframe(1)
+    while frame.f_back is not None and frame.f_code.co_filename.startswith(
+        _PACKAGE_DIR
+    ):
+        frame = frame.f_back
+    module_globals = frame.f_globals
+    warnings.warn_explicit(
+        message,
+        UserWarning,
+        frame.f_code.co_filename,
+        frame.f_lineno,
+        module=module_globals.get("__name__", "<string>"),
+        registry=module_globals.setdefault("__warningregistry__", {}),
+    )
 
 
 class QuartersToFloatingMeasures(TableMap):
@@ -825,16 +899,22 @@ class QuartersToFloatingMeasures(TableMap):
 
         Building the lattice emits one ``UserWarning`` per measure map
         listing, by measure ID and number, the places where the measures do
-        not add up to their bars, each measured against the nominal length
-        of the compound's last record: a *doubtful split* (two incomplete
-        records numbered apart, of one nominal length, that would complete
-        one bar exactly, but the second's offset is not where the first
-        ends, so they stay apart); an *overlength* compound, which reaches
-        past its bar; and a *short* compound, which ends inside its bar, is
-        neither the first nor the last, and is not completed by any record
-        it leads to (``next``, by default the following record) at the
-        offset where it ends, as the second part of a split bar completes a
-        first ending or a part that ends a repeat.
+        not add up to their bars: an *offset mismatch* (a record inside a
+        compound states an offset other than where the records before it
+        end; such a compound is reported for that alone); a *doubtful
+        split* (two incomplete records numbered apart, of one nominal
+        length, that would complete one bar exactly, but the second's
+        offset is not where the first ends, so they stay apart); an
+        *overlength* compound, which reaches past the nominal length of its
+        last record; and a *short* compound, which ends inside that bar, is
+        neither the first nor the last, and is not completed, at the offset
+        where it ends, by every record it leads to (``next``, by default the
+        following record), as the second part of a split bar completes a
+        first ending that jumps back to it.  A bar that ends a repeat leads
+        both back and on, so each pass must add up.  The warning is
+        attributed to the first caller outside the package.  A measure map
+        without a lattice raises instead, and its error lists the same
+        places.
 
         One knot per compound measure, placed at its first record's
         **virtual nominal downbeat** — its sounding start minus the
@@ -865,11 +945,13 @@ class QuartersToFloatingMeasures(TableMap):
             ValueError: If the measure map has no measures, a record lacks
                 its qstamp or actual length, or the knots do not increase:
                 two compound measures share a virtual nominal downbeat, or a
-                later one starts before an earlier one.
+                later one starts before an earlier one; the message then
+                also lists the places that do not add up, where there are any.
 
         Warns:
-            UserWarning: Once, listing every doubtful split, overlength and
-                short compound measure, where there is any.
+            UserWarning: Once, for a lattice that is built, listing every
+                offset mismatch, doubtful split, overlength and short
+                compound measure, where there is any.
         """
         from timetoalign.maps.measures import FloatingMeasureMap
 
@@ -932,14 +1014,6 @@ class QuartersToFloatingMeasures(TableMap):
             return record.qstamp - _offset(record)
 
         compounds = QuartersToFloatingMeasures._compound_measures(measure_map)
-        doubts = _lattice_doubts(compounds) if warn else []
-        if doubts:
-            lines = ";\n".join(f"  {doubt}" for doubt in doubts)
-            warnings.warn(
-                f"Floating measures that do not add up to their bars:\n{lines}",
-                UserWarning,
-                stacklevel=3,
-            )
         head = compounds[0][0]
         extent = sum(
             (record.actual_length or Fraction(0) for record in compounds[0]),
@@ -961,6 +1035,7 @@ class QuartersToFloatingMeasures(TableMap):
         labels = [repr(compound[0].id) for compound in compounds] + ["the end"]
         for index, (previous, current) in enumerate(zip(x_values, x_values[1:])):
             if current <= previous:
+                doubts = _lattice_doubts(compounds)
                 raise ValueError(
                     f"The floating measures starting with measures {labels[index]} and "
                     f"{labels[index + 1]} have nominal downbeats {previous} and {current}, "
@@ -968,8 +1043,13 @@ class QuartersToFloatingMeasures(TableMap):
                     "only when they share a number or the second completes the bar the "
                     "first leaves incomplete, and endings under different volta "
                     "brackets count through as separate floating measures"
+                    + (f". {_doubts_text(doubts)}" if doubts else "")
                 )
 
+        if warn:
+            doubts = _lattice_doubts(compounds)
+            if doubts:
+                _warn_at_caller(_doubts_text(doubts))
         return x_values, y_values
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> float:

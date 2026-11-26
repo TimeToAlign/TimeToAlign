@@ -317,9 +317,10 @@ class ScoreStore(EventStore):
         joined and share a nominal downbeat leave the ``"measures"`` entry
         absent; no approximate lattice is built in its place, since an fm
         reading those measures do not support is worse than no fm reading.
-        Measures that do not add up to their bars (a doubtful split, an
-        overlength or a short bar) keep their lattice and are listed in one
-        ``UserWarning``.
+        The absence is announced in a ``UserWarning`` naming the score's
+        source and the refusal. Measures that do not add up to their bars
+        (an offset mismatch, a doubtful split, an overlength or a short bar)
+        keep their lattice and are listed in one ``UserWarning``.
 
         Args:
             ppq: Pulses per quarter note. Given, the result holds a
@@ -335,6 +336,14 @@ class ScoreStore(EventStore):
         Returns:
             Dict mapping target unit name to ConversionMap.
 
+        Warns:
+            UserWarning: When the measures have no floating-measure lattice
+                and the ``"measures"`` entry is left out, naming the source
+                and the refusal; and as
+                :meth:`QuartersToFloatingMeasures.from_measure_map
+                <timetoalign.maps.interval.QuartersToFloatingMeasures.from_measure_map>`
+                for measures that do not add up to their bars.
+
         Examples:
             >>> bundle = score_loader.load("score.musicxml")
             >>> cmaps = bundle.get_cmaps()
@@ -349,7 +358,10 @@ class ScoreStore(EventStore):
             >>> measure_map(4.0)  # e.g., 2.0 (start of measure 2)
         """
         from timetoalign.maps import ScalarMap
-        from timetoalign.maps.interval import QuartersToFloatingMeasures
+        from timetoalign.maps.interval import (
+            QuartersToFloatingMeasures,
+            _warn_at_caller,
+        )
         from timetoalign.timelines.structure import MeasureMap
 
         cmaps: dict[str, ConversionMap] = {}
@@ -377,11 +389,13 @@ class ScoreStore(EventStore):
                 cmaps["measures"] = QuartersToFloatingMeasures.from_measure_map(
                     measure_map
                 )
-            except ValueError:
+            except ValueError as refusal:
                 # Measures that cannot be joined share a nominal downbeat:
                 # the lattice cannot anchor two ordinals there, and the
-                # conversion stays absent, as the docstring says.
-                pass
+                # conversion stays absent, as the docstring says, and said.
+                source = self.metadata.get("source")
+                score = "The score" if source is None else f"The score {str(source)!r}"
+                _warn_at_caller(f"{score} has no floating measures: {refusal}")
 
         return cmaps
 

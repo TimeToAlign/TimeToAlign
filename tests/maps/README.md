@@ -820,27 +820,42 @@ floating measures. No approximate lattice is built in its place.
 `UserWarning` per measure map that lists, in score order and by measure ID
 and number, every place where the measures do not add up to their bars, or
 no warning at all. Each compound is measured against the nominal length of
-its last record, the bar it ends in. Three kinds:
+its last record, the bar it ends in. Four kinds:
 
+- **offset mismatch** — a record inside a compound that states an offset
+  (`offset_within_measure` above 0) other than where the records before it
+  in the compound end (the first record's offset plus their actual
+  lengths). An offset of `0` states nothing: a continuation written from
+  the start of its record is the numbering convention's business. A
+  compound with a mismatch is reported for its mismatches only: its
+  records say two different things about where it ends, so summing its
+  lengths into an overlength or a short line would report a number the
+  source does not state.
 - **doubtful split** — a compound that ends short of its bar (`end` below
   A's nominal length), followed by a record B numbered apart (both
   numbers non-null, no different voltas) with the same nominal length
   whose `actual_length` completes the bar exactly from `end`, but whose
   offset is not `end` (no offset at all, i.e. `0`, or another one). They
   do not join: the numbers say two bars and the offset does not say
-  otherwise. Both compounds of the pair are reported only under this kind.
+  otherwise. Both compounds of the pair are reported only under this kind,
+  so the second is never also reported as overlength.
 - **overlength** — a compound whose `end` exceeds its nominal length. It is
   kept as joined.
 - **short** — a compound whose `end` lies below its nominal length, which is
   neither the first compound (an anacrusis) nor the last (whose rest the
-  anacrusis supplies), and which is not completed by any record its last
+  anacrusis supplies), and which is not completed by EVERY record its last
   record leads to. Its successors are its `next`, by default the following
   record; a successor completes it when it has the bar's nominal length,
   its offset is `end` and its actual length makes up the rest of the bar.
   This exemption is what a first ending looks like: a 3/4-of-a-bar first
-  ending that jumps back to the start of the repeat, where a pickup at
-  offset 3/4 carries the missing quarter, adds up across the jump, although
-  the two records are not adjacent and never join.
+  ending whose `next` names only the jump back to the start of the repeat,
+  where a pickup at offset 3/4 carries the missing quarter, adds up across
+  the jump, although the two records are not adjacent and never join. A
+  bar that ends a repeat and is not a first ending names two successors,
+  the jump back and the record after it; each pass plays the bar and then
+  one successor, so each pass must add up, and a fresh bar after it does
+  not complete the bar however well the jump target does. A `next` that
+  names no record of the map leaves nothing to complete the bar.
 
 The message reads
 `Floating measures that do not add up to their bars:` followed by one line
@@ -849,17 +864,42 @@ group of records is written `measures 'a', 'b' (number 5)`, a single one
 `measure 'a' (number 5)`, a record without a number `(no number)`. Lengths
 are quarters as exact ratios (`35/4`). The three kinds read:
 
+- `offset mismatch: measure 'B' (number n) states offset o, not e where
+  'A' ends` (`A` the record before `B` in the compound, `e` where the
+  compound ends up to `A`)
 - `doubtful split, not joined: measure 'A' (number m) and measure 'B'
   (number n) together fill a bar of N quarters, but 'B' states offset o,
   not e where 'A' ends`
 - `overlength: measures … reach E quarters into a bar of N` (`reaches`
   for a single record)
-- `short: measures … end E quarters into a bar of N, and nothing they lead
-  to completes the bar` (`ends` / `it leads` for a single record)
+- `short: measures … end E quarters into a bar of N, and measure 'S'
+  (number s), which they lead to, does not complete the bar` (`ends` /
+  `it leads` for a single record; the successors that do not complete it
+  are named in their `next` order, `measures 'S', 'T' (…)` and `do` for
+  two; `…, and they lead to no measure of the map` where `next` names
+  none of its records)
 
-The lattice is built and converts in all three cases; the warning is the
-only difference. Writing a lattice to a manifest re-reads it without
-warning again.
+**Only a lattice that is built warns.** The knots are computed first. Where
+they increase, the lattice is built and converts in all four cases, and the
+warning is the only difference. Where they do not, the map raises the
+refusal below and no warning is emitted; the refusal's message ends with
+the same list (`. Floating measures that do not add up to their bars:` and
+the lines), so the error says what in the measures led to it. Writing a
+lattice to a manifest re-reads it without warning again.
+
+**The warning names the user's line.** It is attributed to the first stack
+frame outside the `timetoalign` package, however deep inside it was raised:
+`warnings.catch_warnings(record=True)` records the calling test file as the
+warning's `filename`, not a file of the package. Attributing a fixed number
+of frames up would name a package file for every caller but one.
+
+**A score without a lattice says so.** A score loader leaves the
+floating-measure conversion out where the measures have no lattice (no
+approximate lattice is built in its place). That absence is announced: the
+score store emits one `UserWarning`, attributed like the above, reading
+`The score '<source>' has no floating measures: <the refusal's message>`,
+`<source>` being the file the loader read. A silent absence would leave a
+loader's user with a timeline that lacks an axis and no word why.
 
 **The specimens of the compound rule** are hand-derived below; every one of them
 raised before records joined, because a continuation record's nominal downbeat
@@ -940,8 +980,9 @@ numbered `5` and `6`, `b` a 2/4 bar at offset `1/2`: `a` ends `0 + 1/2 =
 
 - numbered `5` and `6`, `b` sounding `1` quarter instead of `3/2`: `1/2 + 1
   = 3/2` does not complete the bar, so no fit; the numbers differ, the
-  knots coincide, the map raises. No warning precedes it: `a` and `b` are
-  the first and the last compound, and `b` does not complete the bar;
+  knots coincide, the map raises. Nothing in the measures fails to add up
+  (`a` and `b` are the first and the last compound, and `b` does not
+  complete the bar), so the message lists no places;
 - both without a number: they never join, the map raises;
 - numbered `5` and `5`, `a` under volta 1 and `b` under volta 2: the voltas
   differ, the map raises.
@@ -1126,7 +1167,7 @@ Both call shapes are asserted element for element across a sweep of the whole
 three-bar grid, plus these four boundary readings. A float-interpolating column
 reads `1.002` at quarter `0.007` and fails here.
 
-**The three warnings, by specimen.** Each kind is pinned with the whole
+**The warnings, by specimen.** Each kind is pinned with the whole
 message (`pytest.warns(UserWarning, match=re.escape(...))` anchored on the
 complete text), and with the readings the lattice still gives:
 
@@ -1155,7 +1196,8 @@ are those of the table above.
 quarters (offset 0) and the default `next`: `m3` is neither first nor last,
 ends `3 < 4` into its bar, and its successor `m4` sits at offset `0`, not
 `3`. Message: `short: measure 'm3' (number 3) ends 3 quarters into a bar of
-4, and nothing it leads to completes the bar`. Knots `0, 4, 8, 11, 15, 19`
+4, and measure 'm4' (number 4), which it leads to, does not complete the
+bar`. Knots `0, 4, 8, 11, 15, 19`
 with ordinals 1–6: `fm(10) = 3 + 2/3 → 3.666`, `fm(11) = 4.0`.
 
 *Not short: a first ending completed across the jump* — the anacrusis `m0`
@@ -1168,7 +1210,62 @@ across the jump, so no warning. `m2` and `m3` state different voltas and
 stay apart. Knots `-3, 1, 5, 8, 12, 16` with ordinals 0–5: `fm(5) = 2.0`,
 `fm(7) = 2 + 2/3 → 2.666`, `fm(8) = 3.0`. With `m2`'s `next` left to the
 default, its successor is `m3` at offset `0`, and the same map warns
-`short: measure 'm2' (number 2) ends 3 quarters into a bar of 4, …`.
+`short: measure 'm2' (number 2) ends 3 quarters into a bar of 4, and
+measure 'm3' (number 2), which it leads to, does not complete the bar`.
+
+*Short: a bar that ends a repeat leads both back and on* — the same
+anacrusis `m0` and bar `m1`, then `m2` (number 2, no volta, 3 quarters at
+`5`, end repeat, `next` naming `m0` and `m3`), `m3` (number 3, a full bar
+at `8`), `m4` (number 4, a full bar at `12`). The first pass jumps back to
+`m0`, which completes the bar (`3 + 1 = 4`); the second goes on to `m3`,
+which starts a fresh bar at offset `0`. Not every pass adds up, so it is
+short: `short: measure 'm2' (number 2) ends 3 quarters into a bar of 4, and
+measure 'm3' (number 3), which it leads to, does not complete the bar`. An
+exemption on ANY successor would let the jump target excuse the second
+pass, and this map would be silent. Knots `-3, 1, 5, 8, 12, 16`, ordinals
+0–5, `fm(7) = 2.666` as above. The real first endings stay silent under
+the stricter rule, because a first ending's `next` names the jump target
+alone: op18 flow mc 44 (`next 28`) and mc 93 (`next 85`), the same bars of
+the ABC edition, and mc 126 of the first movement of Op. 106 (3.5 of 4
+quarters, `next 1`, completed by the 1/2-quarter anacrusis mc 1).
+
+*Offset mismatch* — `a` and `b` both numbered `5` (one compound by number),
+`a` sounding `1/2` from offset 0, `b` stating offset `1` and sounding `1`
+quarter at `1/2`. The compound ends at `1/2` up to `a`; `b` states `1`.
+Message: `offset mismatch: measure 'b' (number 5) states offset 1, not 1/2
+where 'a' ends`, and no other line (summed, `1/2 + 1 = 3/2 < 2` would be
+short, but the compound is the first and the last anyway). The lattice is
+built: one compound, knots `0 → 1`, `3/2 → 2`, so `fm(3/4) = 1 +
+(3/4)/(3/2) = 1.5`.
+
+*A doubtful split that has no lattice* — `a` and `b` numbered `5` and `6`,
+`b` at offset `3/4`: `a` ends at `1/2`, `b` has the nominal length `2` and
+`1/2 + 3/2 = 2`, so it is a doubtful split; `b`'s own reach `3/4 + 3/2 =
+9/4 > 2` is not also reported as overlength. `b`'s nominal downbeat `1/2 -
+3/4 = -1/4` precedes `a`'s `0`, so the map raises; no warning is emitted,
+and the error reads, in full:
+`The floating measures starting with measures 'a' and 'b' have nominal
+downbeats 0 and -1/4, which do not increase; adjacent measures form one
+floating measure only when they share a number or the second completes the
+bar the first leaves incomplete, and endings under different volta brackets
+count through as separate floating measures. Floating measures that do not
+add up to their bars:` followed by the line `  doubtful split, not joined:
+measure 'a' (number 5) and measure 'b' (number 6) together fill a bar of 2
+quarters, but 'b' states offset 3/4, not 1/2 where 'a' ends`.
+
+*The loader's word on a score without a lattice* — the same two bars as a
+DCML measures table written to a temporary file: mc 1 (`mn 5`, 2/4,
+`quarterbeats 0`, `act_dur 1/8` = `1/2` quarter, `mc_offset 0`) and mc 2
+(`mn 6`, 2/4, `quarterbeats 1/2`, `act_dur 3/8` = `3/2`, `mc_offset 3/16`
+= `3/4`). The loader names the records by their mc, `'1'` and `'2'`.
+`create_timeline()` returns a timeline whose measure map holds both rows
+and which has no floating-measure unit, and emits exactly one warning:
+`The score '<path>' has no floating measures: ` followed by the refusal
+above with `'1'` and `'2'` for `'a'` and `'b'`.
+
+*Who the warning names* — `QuartersToFloatingMeasures.from_measure_map`
+called from the test on the short-`m3` map, and `create_timeline()` of the
+loader above, each record one warning whose `filename` is the test file.
 
 **What a loaded score gets.** A score's fm conversion is derived from the
 structure its measure rows describe — the measure map those rows build — never
@@ -1180,16 +1277,19 @@ conversion like any other score: `fm(20) == 10.5` on the loaded timeline, and
 its measure map holds all `397` measure rows of the TSV. Its lattice warns
 once, about three places that do not add up, all in the data:
 
-- mc 42 + 43 (`mn 38`): 1 quarter, then `1/2` at offset `3/2` — the two
-  parts reach `0 + 1 + 1/2 = 3/2` into a 2/4 bar (`2`), and mc 43's offset
-  `3/2` is not where mc 42 ends (`1`). mc 42's `next 33` names mc 33, but
-  the compound's last record is mc 43, whose successor mc 44 starts a bar:
-  `short: measures '42', '43' (number 38) end 3/2 quarters into a bar of 2,
-  and nothing they lead to completes the bar`;
-- mc 261 + 262 (`mn 237`, the second ending, 4 quarters in 2/4, then
-  `3/2` in 6/8 at offset `3/2`): `0 + 4 + 3/2 = 11/2` against the 6/8 bar
-  of the last record (`3`): `overlength: measures '261', '262' (number 237)
-  reach 11/2 quarters into a bar of 3`;
+- mc 42 + 43 (`mn 38`): mc 42 sounds 1 quarter from offset 0, so it ends at
+  `0 + 1 = 1`; mc 43 (`act_dur 1/8`, `mc_offset 3/8`) states offset `3/2`.
+  The two say different things about the bar: summed, the compound reaches
+  `3/2` of a 2/4 bar (short); from mc 43's own offset, it reaches `3/2 +
+  1/2 = 2` and fills it. The mismatch is the fact, so it is the line:
+  `offset mismatch: measure '43' (number 38) states offset 3/2, not 1 where
+  '42' ends`, and no short line;
+- mc 261 + 262 (`mn 237`, the second ending): mc 261 sounds 4 quarters from
+  offset 0 (`act_dur 1` in 2/4), ending at `4`; mc 262 (6/8, `act_dur
+  3/8`, `mc_offset 3/8`) states offset `3/2`: `offset mismatch: measure
+  '262' (number 237) states offset 3/2, not 4 where '261' ends`, and no
+  overlength line (the sum `0 + 4 + 3/2 = 11/2` against the 6/8 bar's `3`
+  is no fact the source states);
 - mc 371 + 372 (`mn 346`, 6/8, `act_dur 3/4` then `3/8`, both at offset
   0): `3 + 3/2 = 9/2 > 3`: `overlength: measures '371', '372' (number 346)
   reach 9/2 quarters into a bar of 3`.
@@ -1197,8 +1297,13 @@ once, about three places that do not add up, all in the data:
 *sq8913219* warns once with seven lines, in this order: overlength
 `'77', '78' (number 76)` 8 in 4 (mc 78 is the first ending, numbered like
 the bar before it); short `'221' (number 219)` 3 in 4 (a bar cut short
-before the change to 3/8); short `'482', '483' (number 480)` `3/2 + 1 =
-5/2` in 3 (the last record's 3/4 bar); overlength `'533', '534' (number
+before the change to 3/8; mc 221 states no `next`, so its successor is mc
+222, `mn 220`, at offset 0: `short: measure '221' (number 219) ends 3
+quarters into a bar of 4, and measure '222' (number 220), which it leads
+to, does not complete the bar`); offset mismatch `'483' (number 480)`: mc
+482 sounds `3/2` from offset 0, mc 483 states offset 2 (`mc_offset 1/2`),
+so `offset mismatch: measure '483' (number 480) states offset 2, not 3/2
+where '482' ends`; overlength `'533', '534' (number
 529)` 5 in 3; overlength `'626', '627' (number 617)` 7 in 4; overlength
 `'675', '676' (number 663)` `15/2` in 4; overlength `'684', '685' (number
 671)` 8 in 4. The compound [583, 584] (3/4 bar before the *fine*, then the

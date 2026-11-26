@@ -43,6 +43,7 @@ def _interval_claim(
     span_a: tuple[Coordinate, Coordinate],
     timeline_b: str,
     span_b: tuple[Coordinate, Coordinate],
+    claim_id: str | None = None,
 ) -> MatchClaim:
     """Create one synchronous interval claim between two spans."""
     return match_claim(
@@ -52,14 +53,15 @@ def _interval_claim(
         span_b[0],
         end_a=span_a[1],
         end_b=span_b[1],
+        id=claim_id,
     )
 
 
 def _bundle(*, video: bool = False) -> AlignmentBundle:
-    """The recording group, the score and the scan, with claims 1 and 2.
+    """The recording group, the score and the scan, with claims ``c1`` and ``c2``.
 
-    ``track_hi`` is ``track`` at twice the rate. With *video*, claim 3 joins
-    ``track_hi`` to a video.
+    ``track_hi`` is ``track`` at twice the rate. With *video*, claim ``c3``
+    joins ``track_hi`` to a video.
     """
     bundle = AlignmentBundle(id="interval-reading")
     bundle.add_timeline(_timeline("track", 2000, TimeUnit.samples, NumberType.int))
@@ -75,9 +77,14 @@ def _bundle(*, video: bool = False) -> AlignmentBundle:
             (SAMPLES(1000), SAMPLES(1087)),
             "score",
             (QUARTERS(56), QUARTERS(63)),
+            "c1",
         ),
         _interval_claim(
-            "track", (SAMPLES(1037), SAMPLES(1047)), "scan", (PIXELS(0), PIXELS(45))
+            "track",
+            (SAMPLES(1037), SAMPLES(1047)),
+            "scan",
+            (PIXELS(0), PIXELS(45)),
+            "c2",
         ),
     ]
     if video:
@@ -88,6 +95,7 @@ def _bundle(*, video: bool = False) -> AlignmentBundle:
                 (SAMPLES(2000), SAMPLES(2174)),
                 "video",
                 (FRAMES(100), FRAMES(274)),
+                "c3",
             )
         )
     bundle.add_match_claims(claims)
@@ -162,7 +170,7 @@ class TestReadingFromAGroupSibling:
 
         assert stamp.coordinates == EXPECTED_AT_1044
         assert list(stamp.coordinates) == ["track", "track_hi", "score", "scan"]
-        assert _claim_ids(stamp) == ["claim_1", "claim_2"]
+        assert _claim_ids(stamp) == ["c1", "c2"]
         assert stamp.stated_pairs == []
         assert stamp.inferred_pairs == [
             ("track", "score"),
@@ -179,7 +187,7 @@ class TestReadingFromAGroupSibling:
         assert stamp.coordinates == EXPECTED_AT_1044
         assert stamp.coordinates == carrier.coordinates
         assert list(stamp.coordinates) == ["track_hi", "track", "score", "scan"]
-        assert _claim_ids(stamp) == ["claim_1", "claim_2"]
+        assert _claim_ids(stamp) == ["c1", "c2"]
         assert set(_claim_ids(stamp)) == set(_claim_ids(carrier))
         assert stamp.stated_pairs == []
         assert stamp.inferred_pairs == [
@@ -199,8 +207,8 @@ class TestReadingFromAGroupSibling:
             for claim, timeline_id, coordinate in stamp._interval_candidate_rows()
         ]
         assert rows == [
-            ("claim_1", "score", QUARTERS(Fraction(5180, 87))),
-            ("claim_2", "scan", PIXELS(32)),
+            ("c1", "score", QUARTERS(Fraction(5180, 87))),
+            ("c2", "scan", PIXELS(32)),
         ]
         assert rows == [
             (claim.id, timeline_id, coordinate)
@@ -222,8 +230,8 @@ class TestReadingFromAGroupSibling:
         expected = {**EXPECTED_AT_1044, "video": FRAMES(188)}
         assert carrier.coordinates == expected
         assert stamp.coordinates == expected
-        assert _claim_ids(carrier) == ["claim_1", "claim_2", "claim_3"]
-        assert _claim_ids(stamp) == ["claim_3", "claim_1", "claim_2"]
+        assert _claim_ids(carrier) == ["c1", "c2", "c3"]
+        assert _claim_ids(stamp) == ["c3", "c1", "c2"]
 
     def test_sibling_anchor_is_stated_but_query_stays_interpolated(self) -> None:
         bundle = _bundle()
@@ -237,7 +245,7 @@ class TestReadingFromAGroupSibling:
         }
         assert carrier.coordinates == expected
         assert stamp.coordinates == expected
-        assert _claim_ids(stamp) == ["claim_1"]
+        assert _claim_ids(stamp) == ["c1"]
         assert carrier.stated_pairs == [("track", "score")]
         assert stamp.stated_pairs == [("track", "score")]
         assert stamp.inferred_pairs == [("track_hi", "track")]
@@ -258,8 +266,8 @@ class TestReadingFromAGroupSibling:
             },
         ]
         assert [_claim_ids(stamp) for stamp in stamps] == [
-            ["claim_1", "claim_2"],
-            ["claim_1"],
+            ["c1", "c2"],
+            ["c1"],
         ]
 
     def test_table_on_the_sibling(self) -> None:
@@ -294,13 +302,14 @@ class TestDisplayAfterTheGroupsChanged:
         bundle = _bundle(video=True)
         stamp = bundle.get_matchstamp_at(1044, "track")
         before = repr(stamp)
-        bundle.get_group("group_1").remove_timeline("track_hi")
+        (group_id,) = bundle.timeline_to_groups["track_hi"]
+        bundle.get_group(group_id).remove_timeline("track_hi")
         return stamp, before
 
     def test_repr_drops_only_the_unreadable_claim(self) -> None:
         stamp, before = self._stamp_then_ungroup()
 
-        assert _claim_ids(stamp) == ["claim_1", "claim_2", "claim_3"]
+        assert _claim_ids(stamp) == ["c1", "c2", "c3"]
         assert before == (
             "MatchStamp(track=1044 samples, track_hi=2088 samples, "
             "score=5180/87 quarters, scan=32 pixels, video=188 frames, "
@@ -337,7 +346,7 @@ class TestDisplayAfterTheGroupsChanged:
 
     def test_a_value_asked_for_still_raises(self) -> None:
         stamp, _ = self._stamp_then_ungroup()
-        message = "Interval claim 'claim_3' holds none of the positions ['track']"
+        message = "Interval claim 'c3' holds none of the positions ['track']"
 
         with pytest.raises(ValueError) as caught:
             stamp.get_coordinates_for(["score"])
@@ -365,6 +374,7 @@ class TestClaimBetweenTwoSiblings:
                     (SAMPLES(1000), SAMPLES(1087)),
                     "track_hi",
                     (SAMPLES(3000), SAMPLES(3174)),
+                    "c1",
                 )
             ]
         )
@@ -376,7 +386,7 @@ class TestClaimBetweenTwoSiblings:
 
         assert stamp.coordinates == {"track": SAMPLES(1044), "track_hi": SAMPLES(3088)}
         assert list(stamp.coordinates) == ["track", "track_hi"]
-        assert _claim_ids(stamp) == ["claim_1"]
+        assert _claim_ids(stamp) == ["c1"]
         assert stamp.stated_pairs == []
         assert stamp.inferred_pairs == [("track", "track_hi")]
         assert stamp.is_interpolated is True

@@ -199,6 +199,7 @@ def source_timeline_with_events() -> Timeline:
     # Add a region
     score.add_region(
         Region(
+            id="verse",
             name="Verse",
             start=Coordinate(0.0, TimeUnit.quarters),
             end=Coordinate(100.0, TimeUnit.quarters),
@@ -206,6 +207,7 @@ def source_timeline_with_events() -> Timeline:
     )
     score.add_region(
         Region(
+            id="chorus",
             name="Chorus",
             start=Coordinate(100.0, TimeUnit.quarters),
             end=Coordinate(200.0, TimeUnit.quarters),
@@ -584,12 +586,12 @@ class TestMaterialise:
         assert len(warped._regions) == 2
 
         # Each warped region keeps its source region's id and name.
-        verse = warped.get_region("region_1")
+        verse = warped.get_region("verse")
         assert verse.name == "Verse"
         assert float(verse.start.value) == 0.0
         assert float(verse.end.value) == 50.0
 
-        chorus = warped.get_region("region_2")
+        chorus = warped.get_region("chorus")
         assert chorus.name == "Chorus"
         assert float(chorus.start.value) == 50.0
         assert float(chorus.end.value) == 100.0

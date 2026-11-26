@@ -8,6 +8,7 @@ and no assertion here consults them.
 from __future__ import annotations
 
 import copy
+import re
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -19,6 +20,7 @@ from timetoshare import FORMAT_CONTEXT
 from tests.helpers import bare, filed, refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import SupportPolicy
+from timetoalign.core.ids import IdMinter
 from timetoalign.loader import RekordboxLoader
 from timetoalign.loader.alignment import (
     Ieee1599Loader,
@@ -46,9 +48,11 @@ from ..timelines.test_group_definition import STYLING, _answers, _group_manifest
 def _direct_bundle() -> AlignmentBundle:
     """Two groups, an ungrouped root and a member that is a child.
 
-    - ``score`` (quarters) groups with ``audio`` (seconds) as ``edition``;
+    - ``score`` (quarters) groups with ``audio`` (seconds) in ``g1``, named
+      ``edition``;
     - ``image`` (pixels) holds the child ``holes``, which groups with
-      ``midi`` (quarters) as ``roll``; ``image`` itself is ungrouped;
+      ``midi`` (quarters) in ``g2``, named ``roll``; ``image`` itself is
+      ungrouped;
     - ``notes`` (seconds) is ungrouped.
     """
     score = ContinuousLogicalTimeline(length=Fraction(16), uid="score")
@@ -62,12 +66,15 @@ def _direct_bundle() -> AlignmentBundle:
     bundle = AlignmentBundle(
         name="study", meta={"corpus": "test"}, support_policy=SupportPolicy.clamp
     )
-    bundle.add_timeline(score, as_group="edition")
-    bundle.add_timeline(audio, grouped_with="score")
-    bundle.add_timeline(holes, as_group="roll")
-    bundle.add_timeline(midi, grouped_with="holes")
+    bundle.add_group(TimelineGroup(id="g1", name="edition", timelines=[score, audio]))
+    bundle.add_group(TimelineGroup(id="g2", name="roll", timelines=[holes, midi]))
     bundle.add_timeline(notes)
     return bundle
+
+
+def _group_ids_by_name(bundle: AlignmentBundle) -> dict[str, str]:
+    """Every group's id, keyed by its name."""
+    return {group.name: group_id for group_id, group in bundle.groups.items()}
 
 
 def _bundle_answers(bundle: AlignmentBundle) -> dict[str, Any]:
@@ -152,7 +159,7 @@ def test_bundle_dict_is_exact() -> None:
     bundle = _direct_bundle()
     timelines = {timeline.id: timeline for timeline in bundle.timelines.values()}
 
-    assert bundle.id == "bundle_1"
+    assert re.fullmatch(r"bundle_[0-9a-z]{13}", bundle.id)
     assert bare(bundle.to_dict(minimal=False)) == {
         "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
@@ -164,13 +171,13 @@ def test_bundle_dict_is_exact() -> None:
         ],
         "groups": [
             {
-                "id": "group_1",
+                "id": "g1",
                 "name": "edition",
                 "meta": {},
                 "members": ["audio", "score"],
             },
             {
-                "id": "group_2",
+                "id": "g2",
                 "name": "roll",
                 "meta": {},
                 "members": ["holes", "midi"],
@@ -179,7 +186,7 @@ def test_bundle_dict_is_exact() -> None:
         "measure_maps": [],
         "resources": [],
         "graphical": {
-            "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
+            "order": {"g1": ["score", "audio"], "g2": ["holes", "midi"]},
             "styles": {},
             "rules": [],
             "timestamps": [],
@@ -188,7 +195,7 @@ def test_bundle_dict_is_exact() -> None:
         },
     }
     assert bare(bundle.to_dict(minimal=True))["graphical"] == {
-        "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]}
+        "order": {"g1": ["score", "audio"], "g2": ["holes", "midi"]}
     }
 
 
@@ -203,7 +210,7 @@ def test_given_bundle_id_is_written() -> None:
         "timelines": [],
     }
     rebuilt = AlignmentBundle.from_dict(_direct_bundle().to_dict())
-    assert rebuilt.id == "bundle_1"
+    assert re.fullmatch(r"bundle_[0-9a-z]{13}", rebuilt.id)
     assert "id" not in bare(rebuilt.to_dict())
 
 
@@ -215,10 +222,10 @@ def test_direct_bundle_round_trip() -> None:
     # The support policy is a setting of the bundle, not part of the manifest.
     assert rebuilt.support_policy is SupportPolicy.omit
     assert rebuilt.timeline_to_groups == {
-        "score": ("group_1",),
-        "audio": ("group_1",),
-        "holes": ("group_2",),
-        "midi": ("group_2",),
+        "score": ("g1",),
+        "audio": ("g1",),
+        "holes": ("g2",),
+        "midi": ("g2",),
     }
     assert sorted(rebuilt.timelines) == [
         "audio",
@@ -246,10 +253,12 @@ def test_child_in_one_group_and_root_in_another() -> None:
     _assert_round_trip(bundle)
 
     assert [timeline["id"] for timeline in data["timelines"]] == ["audio", "image"]
-    assert [group["members"] for group in data["groups"]] == [
-        ["holes"],
-        ["audio", "image"],
-    ]
+    groups = _group_ids_by_name(bundle)
+    assert [group["id"] for group in data["groups"]] == sorted(groups.values())
+    assert {group["id"]: group["members"] for group in data["groups"]} == {
+        groups["part"]: ["holes"],
+        groups["page"]: ["audio", "image"],
+    }
 
 
 def test_no_claims_are_written() -> None:
@@ -272,12 +281,12 @@ def test_no_claims_are_written() -> None:
 def test_missing_graphical_reads_members_order() -> None:
     """A group without an order entry joins in ``members`` order."""
     data = bare(_direct_bundle().to_dict())
-    del data["graphical"]["order"]["group_1"]
+    del data["graphical"]["order"]["g1"]
 
     rebuilt = AlignmentBundle.from_dict(filed(data))
 
-    assert rebuilt.groups["group_1"].timeline_ids == ["audio", "score"]
-    assert rebuilt.groups["group_2"].timeline_ids == ["holes", "midi"]
+    assert rebuilt.groups["g1"].timeline_ids == ["audio", "score"]
+    assert rebuilt.groups["g2"].timeline_ids == ["holes", "midi"]
 
 
 def test_styling_round_trips_unchanged() -> None:
@@ -290,7 +299,7 @@ def test_styling_round_trips_unchanged() -> None:
     assert rebuilt.styling == STYLING
     assert bare(rebuilt.to_dict(minimal=False)) == data
     assert bare(rebuilt.to_dict(minimal=False))["graphical"] == {
-        "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
+        "order": {"g1": ["score", "audio"], "g2": ["holes", "midi"]},
         **STYLING,
         "timestamps": [],
         "matchstamps": [],
@@ -310,9 +319,9 @@ def test_styling_without_order_reads_members_order() -> None:
 
     rebuilt = AlignmentBundle.from_dict(filed(data))
 
-    assert rebuilt.groups["group_1"].timeline_ids == ["audio", "score"]
+    assert rebuilt.groups["g1"].timeline_ids == ["audio", "score"]
     assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
-        "order": {"group_1": ["audio", "score"], "group_2": ["holes", "midi"]},
+        "order": {"g1": ["audio", "score"], "g2": ["holes", "midi"]},
         "rules": STYLING["rules"],
     }
 
@@ -394,14 +403,12 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
             lambda d: d["groups"].append(d["groups"][0]),
             "duplicate_id",
             "#/groups/2/id",
-            "'group_1' is not unique in the manifest, first at #/groups/0/id",
+            "'g1' is not unique in the manifest, first at #/groups/0/id",
         ),
         (
             lambda d: (
                 d["groups"][0].update(id="notes"),
-                d["graphical"]["order"].update(
-                    notes=d["graphical"]["order"].pop("group_1")
-                ),
+                d["graphical"]["order"].update(notes=d["graphical"]["order"].pop("g1")),
             ),
             "duplicate_id",
             "#/groups/0/id",
@@ -411,7 +418,7 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
             lambda d: d["groups"][0]["members"].append("ghost"),
             "group_member",
             "#/groups/0/members/2",
-            "'ghost' names no timeline of this manifest",
+            "'ghost' names no timeline or virtual timeline of this manifest",
         ),
         (
             lambda d: d["groups"][0]["members"].append("score"),
@@ -422,23 +429,23 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
         (
             lambda d: (
                 d["groups"][1]["members"].append("image"),
-                d["graphical"]["order"]["group_2"].append("image"),
+                d["graphical"]["order"]["g2"].append("image"),
             ),
             "group_member",
             "#/groups/1/members/2",
             "member 'image' contains member 'holes' of the same group",
         ),
         (
-            lambda d: d["graphical"]["order"].update(group_7=["score"]),
+            lambda d: d["graphical"]["order"].update(g7=["score"]),
             "order_key",
-            "#/graphical/order/group_7",
-            "'group_7' names no group or timeline of this manifest",
+            "#/graphical/order/g7",
+            "'g7' names no group, timeline or virtual timeline of this manifest",
         ),
         (
-            lambda d: d["graphical"]["order"].update(group_1=["score"]),
+            lambda d: d["graphical"]["order"].update(g1=["score"]),
             "display_order",
-            "#/graphical/order/group_1",
-            "member 'audio' of group 'group_1' is missing",
+            "#/graphical/order/g1",
+            "member 'audio' of group 'g1' is missing",
         ),
     ],
     ids=[
@@ -473,15 +480,21 @@ def test_from_dict_refuses_malformed_input(
 
 
 def test_default_ids_are_minted() -> None:
-    """A fresh bundle is ``bundle_1``; ``as_group`` names a minted group."""
-    bundle = AlignmentBundle()
-    bundle.add_timeline(ContinuousLogicalTimeline(length=Fraction(4)), as_group="a")
+    """A bundle and a group ``as_group`` names mint their ids at construction."""
+    bundle = AlignmentBundle(seed=5)
+    bundle.add_timeline(
+        ContinuousLogicalTimeline(length=Fraction(4)), as_group="a", seed=6
+    )
     bundle.add_timeline(ContinuousPhysicalTimeline(length=4.0), as_group="b")
 
-    assert bundle.id == "bundle_1"
-    assert AlignmentBundle().id == "bundle_1"
-    assert bundle.group_ids == ["group_1", "group_2"]
+    assert bundle.id == IdMinter(5).mint("bundle")
+    assert AlignmentBundle(seed=5).id == bundle.id
+    first, second = bundle.group_ids
+    assert first == IdMinter(6).mint("group")
+    assert re.fullmatch(r"group_[0-9a-z]{13}", second)
+    assert second != first
     assert [group.name for group in bundle.groups.values()] == ["a", "b"]
+    assert AlignmentBundle().id != AlignmentBundle().id
 
 
 def test_child_brings_its_root_ungrouped() -> None:
@@ -494,7 +507,9 @@ def test_child_brings_its_root_ungrouped() -> None:
     bundle.add_timeline(holes, as_group="roll")
 
     assert bundle.timeline_ids == ["holes", "image"]
-    assert bundle.timeline_to_groups == {"holes": ("group_1",)}
+    (roll,) = bundle.group_ids
+    assert bundle.timeline_to_groups == {"holes": (roll,)}
+    assert bundle.groups[roll].name == "roll"
     assert bundle.get_timeline("image") is image
 
 
@@ -519,20 +534,30 @@ def test_ungrouped_child_registers_its_root() -> None:
         bundle.add_timeline(holes)
 
 
-def test_loader_minted_ids_are_minted_again() -> None:
-    """Three loads of one file mint ``cpt_1`` each; one bundle tells them apart."""
+def test_loader_ids_held_twice_are_refused() -> None:
+    """Three loads of one file mint one id; a bundle refuses it a second time."""
     path = ensure_data("score") / "bruckner5_scherzo/harnoncourt/Bruckner5_Scherzo.json"
     timelines = [
-        TiliaJsonLoader().load(path).create_timeline("cpt_1") for _ in range(3)
+        TiliaJsonLoader().load(path).create_timeline("HIERARCHY_TIMELINE_0")
+        for _ in range(3)
     ]
-    assert [timeline.id for timeline in timelines] == ["cpt_1", "cpt_1", "cpt_1"]
+    minted = timelines[0].id
+    assert [timeline.id for timeline in timelines] == [minted] * 3
     bundle = AlignmentBundle()
+    bundle.add_timeline(timelines[0])
+    before = bare(bundle.to_dict())
 
-    for timeline in timelines:
-        bundle.add_timeline(timeline)
+    for timeline in timelines[1:]:
+        with pytest.raises(ValueError) as refused:
+            bundle.add_timeline(timeline)
+        assert str(refused.value) == (
+            f"timeline '{minted}' cannot join bundle '{bundle.id}': its id "
+            f"'{minted}' is already held by timeline '{minted}'"
+        )
 
-    assert [timeline.id for timeline in timelines] == ["cpt_1", "cpt_2", "cpt_3"]
-    assert bundle.timeline_ids == ["cpt_1", "cpt_2", "cpt_3"]
+    assert [timeline.id for timeline in timelines] == [minted] * 3
+    assert bundle.timeline_ids == [minted]
+    assert bare(bundle.to_dict()) == before
 
 
 def test_root_brought_along_can_be_grouped_later() -> None:
@@ -545,16 +570,21 @@ def test_root_brought_along_can_be_grouped_later() -> None:
 
     bundle.add_timeline(image, as_group="page")
 
-    assert bundle.timeline_to_groups == {"holes": ("group_1",), "image": ("group_2",)}
+    groups = _group_ids_by_name(bundle)
+    assert bundle.timeline_to_groups == {
+        "holes": (groups["part"],),
+        "image": (groups["page"],),
+    }
     with pytest.raises(ValueError, match="already exists in bundle"):
         bundle.add_timeline(image)
 
     # A grouped timeline joins a further group.
     bundle.add_timeline(image, as_group="again")
 
+    groups = _group_ids_by_name(bundle)
     assert bundle.timeline_to_groups == {
-        "holes": ("group_1",),
-        "image": ("group_2", "group_3"),
+        "holes": (groups["part"],),
+        "image": (groups["page"], groups["again"]),
     }
 
 
@@ -563,11 +593,13 @@ def test_member_of_another_group_is_admitted() -> None:
     score = ContinuousLogicalTimeline(length=Fraction(4), uid="score")
     bundle = AlignmentBundle()
     bundle.add_timeline(score, as_group="one")
+    (one,) = bundle.group_ids
+    group = TimelineGroup(timelines=[score])
 
-    bundle.add_group(TimelineGroup(timelines=[score]))
+    bundle.add_group(group)
 
-    assert bundle.group_ids == ["group_1", "group_2"]
-    assert bundle.timeline_to_groups == {"score": ("group_1", "group_2")}
+    assert bundle.group_ids == [one, group.id]
+    assert bundle.timeline_to_groups == {"score": (one, group.id)}
     assert bundle.timeline_ids == ["score"]
 
 
@@ -614,8 +646,8 @@ def test_given_id_collision_raises_and_leaves_the_bundle() -> None:
     with pytest.raises(ValueError) as refused:
         bundle.add_timeline(DiscreteGraphicalTimeline(length=10, uid="holes"))
     assert str(refused.value) == (
-        "timeline 'holes' cannot join bundle 'bundle_1': its id 'holes' is already "
-        "held by timeline 'holes'"
+        f"timeline 'holes' cannot join bundle '{bundle.id}': its id 'holes' is "
+        "already held by timeline 'holes'"
     )
     assert bare(bundle.to_dict()) == before
 
@@ -631,21 +663,37 @@ def test_descendant_id_collision_raises() -> None:
     assert "fresh" not in bundle.timelines
 
 
-def test_minted_root_id_is_minted_again() -> None:
-    """A minted root id held in the bundle is minted again for the newcomer."""
+def test_minted_root_id_held_is_refused() -> None:
+    """A minted id joins as it is; held already, it is refused, never re-minted."""
     bundle = AlignmentBundle()
     first = ContinuousLogicalTimeline(length=Fraction(4))
     second = ContinuousLogicalTimeline(length=Fraction(2))
+    ids = (first.id, second.id)
     bundle.add_timeline(first)
-
     bundle.add_timeline(second)
 
-    assert (first.id, second.id) == ("clt_1", "clt_2")
-    assert bundle.timeline_ids == ["clt_1", "clt_2"]
+    assert (first.id, second.id) == ids
+    assert first.id != second.id
+    assert bundle.timeline_ids == list(ids)
+
+    seeded = ContinuousLogicalTimeline(length=Fraction(4), seed=1)
+    again = ContinuousLogicalTimeline(length=Fraction(4), seed=1)
+    assert seeded.id == again.id == IdMinter(1).mint("clt")
+    bundle.add_timeline(seeded)
+    before = bare(bundle.to_dict())
+    with pytest.raises(ValueError) as refused:
+        bundle.add_timeline(again)
+    assert str(refused.value) == (
+        f"timeline '{seeded.id}' cannot join bundle '{bundle.id}': its id "
+        f"'{seeded.id}' is already held by timeline '{seeded.id}'"
+    )
+    assert again.id == seeded.id
+    assert bundle.timeline_ids == [*ids, seeded.id]
+    assert bare(bundle.to_dict()) == before
 
 
 def test_given_group_id_collision_raises() -> None:
-    """A given group id held in the bundle is refused; a minted one re-mints."""
+    """A given group id held in the bundle is refused; minted ones join as they are."""
     bundle = AlignmentBundle()
     bundle.add_group(
         TimelineGroup(id="g", timelines=[ContinuousLogicalTimeline(length=4)])
@@ -660,7 +708,7 @@ def test_given_group_id_collision_raises() -> None:
     bundle.add_group(minted)
     bundle.add_group(other)
 
-    assert bundle.group_ids == ["g", "group_1", "group_2"]
+    assert bundle.group_ids == ["g", minted.id, other.id]
 
 
 def test_timeline_id_equal_to_a_given_group_id_is_refused() -> None:
@@ -674,43 +722,47 @@ def test_timeline_id_equal_to_a_given_group_id_is_refused() -> None:
     with pytest.raises(ValueError) as refused:
         bundle.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid="g"))
     assert str(refused.value) == (
-        "timeline 'g' cannot join bundle 'bundle_1': its id 'g' is already held by "
-        "group 'g'"
+        f"timeline 'g' cannot join bundle '{bundle.id}': its id 'g' is already "
+        "held by group 'g'"
     )
     assert bare(bundle.to_dict()) == before
 
 
-def test_minted_group_id_taken_by_a_timeline_is_minted_again() -> None:
-    """A given timeline id that a minted group holds re-mints the group."""
-    bundle = _direct_bundle()
+def test_timeline_id_equal_to_a_minted_group_id_is_refused() -> None:
+    """A minted group id refuses a timeline that carries it, as a given one does."""
+    bundle = AlignmentBundle()
+    bundle.add_timeline(
+        ContinuousLogicalTimeline(length=Fraction(16), uid="score"), as_group="edition"
+    )
+    (edition,) = bundle.group_ids
+    before = bare(bundle.to_dict())
 
-    bundle.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid="group_1"))
-
-    assert bundle.group_ids == ["group_2", "group_3"]
-    assert bundle.groups["group_3"].timeline_ids == ["score", "audio"]
-    assert bundle.timeline_to_groups == {
-        "score": ("group_3",),
-        "audio": ("group_3",),
-        "holes": ("group_2",),
-        "midi": ("group_2",),
-    }
-    assert "group_1" in bundle.timelines
-    _assert_round_trip(bundle)
+    with pytest.raises(ValueError) as refused:
+        bundle.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid=edition))
+    assert str(refused.value) == (
+        f"timeline '{edition}' cannot join bundle '{bundle.id}': its id "
+        f"'{edition}' is already held by group '{edition}'"
+    )
+    assert bundle.group_ids == [edition]
+    assert bundle.timeline_to_groups == {"score": (edition,)}
+    assert bare(bundle.to_dict()) == before
 
 
 def test_refused_newcomer_keeps_its_ids() -> None:
-    """Every collision is checked before a minted id of the tree is re-minted."""
+    """A refused newcomer and its minted descendants keep their ids."""
     bundle = AlignmentBundle()
-    bundle.add_timeline(ContinuousPhysicalTimeline(length=4.0))
+    held = ContinuousPhysicalTimeline(length=4.0)
+    bundle.add_timeline(held)
     bundle.add_timeline(ContinuousPhysicalTimeline(length=4.0, uid="B"))
     newcomer = ContinuousPhysicalTimeline(length=2.0, uid="B")
     child = ContinuousPhysicalTimeline(length=1.0)
     newcomer.add_child(child, offset=0.0)
+    child_id = child.id
 
     with pytest.raises(ValueError, match="timeline 'B' cannot join bundle"):
         bundle.add_timeline(newcomer)
-    assert (newcomer.id, child.id) == ("B", "cpt_1")
-    assert bundle.timeline_ids == ["cpt_1", "B"]
+    assert (newcomer.id, child.id) == ("B", child_id)
+    assert bundle.timeline_ids == [held.id, "B"]
 
 
 def test_refused_group_keeps_its_member_ids() -> None:
@@ -720,12 +772,13 @@ def test_refused_group_keeps_its_member_ids() -> None:
         TimelineGroup(id="g", timelines=[ContinuousLogicalTimeline(length=4)])
     )
     member = ContinuousLogicalTimeline(length=2)
+    member_id = member.id
     refused = TimelineGroup(id="g", timelines=[member])
 
     with pytest.raises(ValueError, match="Group 'g' already exists in bundle"):
         bundle.add_group(refused)
-    assert (refused.id, member.id) == ("g", "clt_1")
-    assert refused.timeline_ids == ["clt_1"]
+    assert (refused.id, member.id) == ("g", member_id)
+    assert refused.timeline_ids == [member_id]
 
 
 @pytest.mark.parametrize("grouped", [True, False], ids=["grouped", "ungrouped"])
@@ -738,8 +791,8 @@ def test_parent_and_child_cannot_share_a_group(grouped: bool) -> None:
     bundle.add_timeline(image, as_group="page" if grouped else None)
     before = bare(bundle.to_dict())
     message = (
-        "Timeline 'holes' cannot join group 'group_1': it is nested with member "
-        "'image'"
+        f"Timeline 'holes' cannot join group '{bundle.group_ids[0]}': it is nested "
+        "with member 'image'"
         if grouped
         else "Timeline 'holes' cannot be grouped with 'image': one is nested"
     )
@@ -749,18 +802,34 @@ def test_parent_and_child_cannot_share_a_group(grouped: bool) -> None:
     assert bare(bundle.to_dict()) == before
 
 
-def test_from_bundles_re_mints_minted_group_ids() -> None:
-    """Merging two bundles keeps both groups under distinct minted ids."""
+def test_from_bundles_keeps_minted_group_ids() -> None:
+    """Merging keeps every group under its id; a group id held twice is refused."""
     first = AlignmentBundle()
     first.add_timeline(ContinuousLogicalTimeline(length=4, uid="a"), as_group="x")
     second = AlignmentBundle()
     second.add_timeline(ContinuousPhysicalTimeline(length=4.0, uid="b"), as_group="y")
+    (x,), (y,) = first.group_ids, second.group_ids
 
     merged = AlignmentBundle.from_bundles([first, second])
 
-    assert merged.group_ids == ["group_1", "group_2"]
+    assert merged.group_ids == [x, y]
     assert [group.name for group in merged.groups.values()] == ["x", "y"]
-    assert merged.timeline_to_groups == {"a": ("group_1",), "b": ("group_2",)}
+    assert merged.timeline_to_groups == {"a": (x,), "b": (y,)}
+
+    seeded = AlignmentBundle()
+    seeded.add_timeline(
+        ContinuousLogicalTimeline(length=4, uid="c"), as_group="x", seed=1
+    )
+    again = AlignmentBundle()
+    again.add_timeline(
+        ContinuousPhysicalTimeline(length=4.0, uid="d"), as_group="y", seed=1
+    )
+    shared = IdMinter(1).mint("group")
+    assert seeded.group_ids == again.group_ids == [shared]
+    with pytest.raises(ValueError) as refused:
+        AlignmentBundle.from_bundles([seeded, again])
+    assert str(refused.value) == f"Group '{shared}' already exists in bundle"
+    assert (seeded.group_ids, again.group_ids) == ([shared], [shared])
 
 
 @pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
@@ -769,6 +838,7 @@ def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
     source = AlignmentBundle.from_dict(filed(_group_manifest(locked)))
     other = AlignmentBundle()
     other.add_timeline(ContinuousLogicalTimeline(length=4, uid="c"), as_group="y")
+    (y,) = other.group_ids
     before = bare(source.to_dict(minimal=False))
 
     merged = AlignmentBundle.from_bundles([source, other])
@@ -776,7 +846,7 @@ def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
     assert merged.timeline_to_groups == {
         "line": ("g",),
         "plain": ("g",),
-        "c": ("group_1",),
+        "c": (y,),
     }
     assert [merged.get_timeline(uid).is_locked for uid in ("line", "plain", "c")] == [
         locked,

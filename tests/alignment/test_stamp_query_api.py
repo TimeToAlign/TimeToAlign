@@ -847,10 +847,10 @@ class TestMatchClaimEventStorage:
         """A position on the target side is given a Projection naming the source event.
 
         ``create_match_claims`` adds a Projection at the stated position to
-        the target timeline (minted ``projection_1``, its ``projection_of``
-        naming the source event) and claims between the source event and it:
-        the source event's ID and name on side A, the Projection's ID and no
-        name on side B.
+        the target timeline (its ID minted, its ``projection_of`` naming the
+        source event) and claims between the source event and it: the source
+        event's ID and name on side A, the Projection's ID and no name on
+        side B.
         """
         source = _number_timeline("source")
         source.add_events(
@@ -867,10 +867,11 @@ class TestMatchClaimEventStorage:
 
         assert claim.event_a_id == "e100"
         assert claim.event_a_name == "Beat 1"
-        assert claim.event_b_id == "projection_1"
+        assert target.events.table.column("id").to_pylist() == [claim.event_b_id]
         assert claim.event_b_name is None
         assert claim.start_anchor.coordinate_b == Coordinate(10.0, TimeUnit.number)
-        assert target.get_event("projection_1")["projection_of"] == {
+        assert target.get_event(claim.event_b_id)["event_type"] == "Projection"
+        assert target.get_event(claim.event_b_id)["projection_of"] == {
             "timeline_id": "source",
             "event_id": "e100",
         }

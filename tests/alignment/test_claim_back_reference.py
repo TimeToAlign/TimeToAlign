@@ -33,8 +33,10 @@ def _coordinate(value: float) -> Coordinate:
     return Coordinate(value, FM, number_type=NumberType.float)
 
 
-def _claim(score: tuple[float, float], perf: tuple[float, float]) -> MatchClaim:
-    """One interval claim ``score [a, b]`` -> ``perf [c, d]``."""
+def _claim(
+    claim_id: str, score: tuple[float, float], perf: tuple[float, float]
+) -> MatchClaim:
+    """One interval claim *claim_id*, ``score [a, b]`` -> ``perf [c, d]``."""
     return match_claim(
         "score",
         _coordinate(score[0]),
@@ -42,6 +44,7 @@ def _claim(score: tuple[float, float], perf: tuple[float, float]) -> MatchClaim:
         _coordinate(perf[0]),
         end_a=_coordinate(score[1]),
         end_b=_coordinate(perf[1]),
+        id=claim_id,
     )
 
 
@@ -55,8 +58,14 @@ def bundle() -> AlignmentBundle:
                 length=1200, uid=timeline_id, unit=FM, number_type=NumberType.float
             )
         )
-    chain = [_claim((i, i + 1), (2 * i, 2 * i + 2)) for i in range(N_CHAIN)]
-    held.add_match_claims(chain + [_claim(score, perf) for score, perf in OVERLAPPING])
+    chain = [
+        _claim(f"chain_{i}", (i, i + 1), (2 * i, 2 * i + 2)) for i in range(N_CHAIN)
+    ]
+    overlapping = [
+        _claim(f"overlap_{k}", score, perf)
+        for k, (score, perf) in enumerate(OVERLAPPING, start=1)
+    ]
+    held.add_match_claims(chain + overlapping)
     return held
 
 
@@ -83,8 +92,8 @@ class TestReadingAClaim:
         claims = bundle.get_match_claims()
         assert copies == []
         assert len(claims) == N_CHAIN + len(OVERLAPPING)
-        assert [claim.id for claim in claims[:2]] == ["claim_1", "claim_2"]
-        assert claims[-1].id == "claim_303"
+        assert [claim.id for claim in claims[:2]] == ["chain_0", "chain_1"]
+        assert claims[-1].id == "overlap_3"
         assert all(claim.bundle is bundle for claim in claims)
 
 
@@ -140,10 +149,10 @@ class TestRetrievalCopiesNoClaim:
         assert copies == []
         held = bundle.get_match_claims()
         assert [claim.id for claim in stamp.interval_claims] == [
-            "claim_11",
-            "claim_301",
-            "claim_302",
-            "claim_303",
+            "chain_10",
+            "overlap_1",
+            "overlap_2",
+            "overlap_3",
         ]
         assert stamp.interval_claims == [held[10], held[300], held[301], held[302]]
         assert all(claim.bundle is bundle for claim in stamp.interval_claims)

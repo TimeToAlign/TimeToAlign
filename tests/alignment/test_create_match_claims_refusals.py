@@ -310,21 +310,24 @@ class TestNameKept:
         (first,) = bundle.create_match_claims(
             [({"start": 1, "name": "bar 1"}, "score", {"start": 1.0}, "clock")]
         )
-        assert (first.event_a_id, first.event_a_name) == ("projection_1", "bar 1")
+        projection = first.event_a_id
+        assert _own_projections(bundle, "score") == [(projection, 1)]
+        assert first.event_a_name == "bar 1"
         (unnamed,) = bundle.create_match_claims(
             [({"start": 1}, "score", {"start": 2.0}, "clock")]
         )
         (by_id,) = bundle.create_match_claims(
-            [("projection_1", "score", {"start": 3.0}, "clock")]
+            [(projection, "score", {"start": 3.0}, "clock")]
         )
         (renamed,) = bundle.create_match_claims(
             [({"start": 1, "name": "first bar"}, "score", {"start": 4.0}, "clock")]
         )
         assert [(c.event_a_id, c.event_a_name) for c in (unnamed, by_id, renamed)] == [
-            ("projection_1", "bar 1"),
-            ("projection_1", "bar 1"),
-            ("projection_1", "bar 1"),
+            (projection, "bar 1"),
+            (projection, "bar 1"),
+            (projection, "bar 1"),
         ]
+        assert _own_projections(bundle, "score") == [(projection, 1)]
 
     def test_within_one_call(self) -> None:
         bundle = _bundle()
@@ -334,9 +337,10 @@ class TestNameKept:
                 ({"start": 1}, "score", {"start": 2.0}, "clock"),
             ]
         )
+        ((projection, _),) = _own_projections(bundle, "score")
         assert [(c.event_a_id, c.event_a_name) for c in claims] == [
-            ("projection_1", "bar 1"),
-            ("projection_1", "bar 1"),
+            (projection, "bar 1"),
+            (projection, "bar 1"),
         ]
 
     def test_a_note_keeps_its_own_name(self) -> None:
@@ -425,9 +429,9 @@ class TestPastWhereANestedTimelineReaches:
         ]
         assert bundle.get_timeline("kid").length == Coordinate(5, "quarters")
         assert {t: _own_projections(bundle, t) for t in ("root", "kid", "other")} == {
-            "root": [("projection_3", 2)],
-            "kid": [("projection_4", 4)],
-            "other": [("projection_1", 1), ("projection_2", 3)],
+            "root": [(claims[0].event_b_id, 2)],
+            "kid": [(claims[1].event_b_id, 4)],
+            "other": [(claims[0].event_a_id, 1), (claims[1].event_a_id, 3)],
         }
 
 

@@ -154,6 +154,13 @@ def _projections(timeline) -> list[tuple]:
     ]
 
 
+def _projection_ids(timeline) -> list[str]:
+    """The ids of the Projections a timeline holds, in order, each once."""
+    ids = [row[0] for row in _projections(timeline)]
+    assert len(set(ids)) == len(ids)
+    return ids
+
+
 SAMPLES = [22050, 44100, 66150]
 QUARTERS = [Fraction(1, 2), Fraction(3, 2), Fraction(1)]
 
@@ -184,13 +191,16 @@ def test_a_side_without_ids_gets_projections_of_the_other():
     performance, score = _timelines()
     claims = _match(performance, score, source_id_column="id").match_claims
 
+    projected = _projection_ids(score)
     assert _named(claims) == [
-        ("dpt_1", f"p{n}", "clt_1", f"projection_{k}")
-        for k, n in enumerate((1, 2, 3), start=1)
+        ("dpt_1", f"p{n}", "clt_1", projection_id)
+        for n, projection_id in zip((1, 2, 3), projected, strict=True)
     ]
     assert _projections(score) == [
-        (f"projection_{k}", quarter, {"timeline_id": "dpt_1", "event_id": f"p{k}"})
-        for k, quarter in enumerate(QUARTERS, start=1)
+        (projection_id, quarter, {"timeline_id": "dpt_1", "event_id": f"p{k}"})
+        for k, (projection_id, quarter) in enumerate(
+            zip(projected, QUARTERS, strict=True), start=1
+        )
     ]
     assert len(performance.events) == 3
 
@@ -199,15 +209,18 @@ def test_positions_only_give_projections_of_no_event():
     performance, score = _timelines()
     claims = _match(performance, score).match_claims
 
+    on_performance = _projection_ids(performance)
+    on_score = _projection_ids(score)
     assert _named(claims) == [
-        ("dpt_1", f"projection_{k}", "clt_1", f"projection_{k}") for k in (1, 2, 3)
+        ("dpt_1", a, "clt_1", b) for a, b in zip(on_performance, on_score, strict=True)
     ]
     assert _projections(performance) == [
-        (f"projection_{k}", sample, None) for k, sample in enumerate(SAMPLES, start=1)
+        (projection_id, sample, None)
+        for projection_id, sample in zip(on_performance, SAMPLES, strict=True)
     ]
     assert _projections(score) == [
-        (f"projection_{k}", quarter, None)
-        for k, quarter in enumerate(QUARTERS, start=1)
+        (projection_id, quarter, None)
+        for projection_id, quarter in zip(on_score, QUARTERS, strict=True)
     ]
     assert _anchors(claims) == [
         (Coordinate(sample, TimeUnit.samples), Coordinate(quarter, TimeUnit.quarters))
@@ -250,7 +263,12 @@ def test_matching_again_adds_nothing():
     assert (
         _named(again)
         == _named(first)
-        == [("dpt_1", f"projection_{k}", "clt_1", f"projection_{k}") for k in (1, 2, 3)]
+        == [
+            ("dpt_1", a, "clt_1", b)
+            for a, b in zip(
+                _projection_ids(performance), _projection_ids(score), strict=True
+            )
+        ]
     )
     assert (len(performance.events), len(score.events)) == (6, 6)
 
@@ -276,8 +294,10 @@ def test_matching_before_bundling():
     performance, score = _timelines()
     performance_group = TimelineGroup(timelines=[performance])
     score_group = TimelineGroup(timelines=[score])
-    # Neither side named: each timeline mints projection_1 .. projection_3 alone.
+    # Neither side named: each timeline mints the ids of its three Projections.
     claims = _match(performance, score).match_claims
+    on_performance = _projection_ids(performance)
+    on_score = _projection_ids(score)
 
     bundle = AlignmentBundle()
     bundle.add_group(performance_group)
@@ -289,9 +309,10 @@ def test_matching_before_bundling():
         ["clt_1"],
     ]
     held = bundle.get_match_claims()
-    assert [claim.id for claim in held] == ["claim_1", "claim_2", "claim_3"]
+    assert [claim.id for claim in held] == [claim.id for claim in claims]
+    assert len({claim.id for claim in held}) == 3
     assert _named(held) == [
-        ("dpt_1", f"projection_{k}", "clt_1", f"projection_{k}") for k in (1, 2, 3)
+        ("dpt_1", a, "clt_1", b) for a, b in zip(on_performance, on_score, strict=True)
     ]
     resolved = [
         (
@@ -303,14 +324,14 @@ def test_matching_before_bundling():
     assert [
         (a["id"], a["event_type"], struct_to_rational(a["start"])) for a, _ in resolved
     ] == [
-        (f"projection_{k}", "Projection", sample)
-        for k, sample in enumerate(SAMPLES, start=1)
+        (projection_id, "Projection", sample)
+        for projection_id, sample in zip(on_performance, SAMPLES, strict=True)
     ]
     assert [
         (b["id"], b["event_type"], struct_to_rational(b["start"])) for _, b in resolved
     ] == [
-        (f"projection_{k}", "Projection", quarter)
-        for k, quarter in enumerate(QUARTERS, start=1)
+        (projection_id, "Projection", quarter)
+        for projection_id, quarter in zip(on_score, QUARTERS, strict=True)
     ]
     stamp = bundle.get_matchstamp_at(44100, "dpt_1")
     assert stamp.get_coordinate_for("clt_1", format="coordinate") == Coordinate(

@@ -128,15 +128,13 @@ class TestWhatTheLibraryWrites:
             timelines=[SCORE, AUDIO, PCM],
             provenance=shared,
         )
-        assert field.table.column("id").to_pylist() == [None, None, None]
+        minted = field.table.column("id").to_pylist()
+        assert None not in minted
+        assert len(set(minted)) == 3
         bundle = _bundle()
         bundle.add_match_claim_field(field)
         claims = bundle.match_claim_table
-        assert claims.table.column("id").to_pylist() == [
-            "claim_1",
-            "claim_2",
-            "claim_3",
-        ]
+        assert claims.table.column("id").to_pylist() == minted
         table = pq.read_table(claims.to_parquet(tmp_path))
         assert match_claim_problems(table) == []
         members = ("numerator", "denominator", "value")
@@ -187,9 +185,11 @@ class TestWhatTheLibraryWrites:
             ),
         ]
         field = MatchClaimField.from_claims(claims)
-        assert field.table.column("id").to_pylist() == ["c1", "c2", None]
+        ids = ["c1", "c2", claims[2].id]
+        assert claims[2].id not in (None, "c1", "c2")
+        assert field.table.column("id").to_pylist() == ids
         bundle = _bundle()
         bundle.add_match_claims(claims)
         table = bundle.match_claim_table.package_table
         assert match_claim_problems(table) == []
-        assert table.column("id").to_pylist() == ["c1", "c2", "claim_1"]
+        assert table.column("id").to_pylist() == ids

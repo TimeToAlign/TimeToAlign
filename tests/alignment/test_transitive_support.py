@@ -53,8 +53,8 @@ def _make_bundles() -> tuple[AlignmentBundle, AlignmentBundle]:
         ``b_bundle`` is B alone, for the parity check.
     """
     # Bundle A: a star of single claims, each timeline in its own group. Its
-    # claims are stated under ids of their own (star_1 ... star_6): a merge
-    # refuses two bundles holding one id, and bundle B mints claim_1 ...
+    # claims are stated under ids of their own (star_1 ... star_6); bundle B's
+    # field holds the ids minted at its construction.
     a1 = Timeline(length=100, unit=TimeUnit.quarters, uid="a1:clt_1")
     a2 = Timeline(length=100, unit=TimeUnit.seconds, uid="a2:cpt_1")
     a3 = Timeline(length=100, unit=TimeUnit.seconds, uid="a3:cpt_2")
@@ -115,6 +115,19 @@ def _make_bundles() -> tuple[AlignmentBundle, AlignmentBundle]:
     return merged, bundle_b
 
 
+def _events(bundle: AlignmentBundle, timeline_id: str) -> list[tuple]:
+    """``(id, event_type, start)`` of every event the timeline holds, in order."""
+    timeline = bundle.get_timeline(timeline_id)
+    return [
+        (
+            event["id"],
+            event["event_type"],
+            timeline.get_coordinate_for(event["id"]).to_coordinate(),
+        )
+        for event in timeline.events
+    ]
+
+
 # endregion
 
 
@@ -143,21 +156,23 @@ class TestTransitiveUnion:
         }
 
     def test_merge_keeps_every_claim_id(self) -> None:
-        merged, _ = _make_bundles()
-        table = merged.match_claim_table.table
-        assert table.column("id").to_pylist() == (
-            [f"star_{n}" for n in range(1, 7)]
-            + [f"claim_{n}" for n in range(1, 9)]
-            + ["claim_9"]
-        )
+        merged, b_bundle = _make_bundles()
+        b_ids = b_bundle.match_claim_table.table.column("id").to_pylist()
+        (bridge,) = merged.get_match_claims(between=("a1:clt_1", "b_bridge:dpt_1"))
+        ids = merged.match_claim_table.table.column("id").to_pylist()
+        assert ids == [f"star_{n}" for n in range(1, 7)] + b_ids + [bridge.id]
+        assert len(set(ids)) == 15
 
     def test_bridge_position_is_placed_on_the_bridge_axis(self) -> None:
         merged, _ = _make_bundles()
         (bridge,) = merged.get_match_claims(between=("a1:clt_1", "b_bridge:dpt_1"))
-        assert (bridge.event_a_id, bridge.event_b_id) == (
-            "projection_1",
-            "projection_2",
-        )
+        assert _events(merged, "a1:clt_1") == [
+            (bridge.event_a_id, "Projection", Coordinate(50, TimeUnit.quarters))
+        ]
+        assert _events(merged, "b_bridge:dpt_1") == [
+            (bridge.event_b_id, "Projection", Coordinate(500, TimeUnit.samples))
+        ]
+        assert bridge.event_a_id != bridge.event_b_id
         assert bridge.start_anchor.coordinate_b == Coordinate(500, TimeUnit.samples)
 
     def test_union_has_no_negative_coordinates(self) -> None:
@@ -214,16 +229,11 @@ class TestTransitiveUnion:
             Coordinate(400, TimeUnit.samples),
             Coordinate(600, TimeUnit.samples),
         ]
-        assert [claim.event_a_id for claim in claims] == [
-            "projection_1",
-            "projection_2",
-            "projection_3",
+        assert _events(bundle, "source") == [
+            (claim.event_a_id, "Projection", claim.start_anchor.coordinate_a)
+            for claim in claims
         ]
-        assert [event["id"] for event in source.events] == [
-            "projection_1",
-            "projection_2",
-            "projection_3",
-        ]
+        assert len({claim.event_a_id for claim in claims}) == 3
         warp = bundle._get_or_build_warp_map("source", "target")
 
         assert warp is not None

@@ -47,6 +47,7 @@ from timetoalign.core import (
     Quadrilateral,
     TimeUnit,
 )
+from timetoalign.core.ids import IdMinter, reset_content_minters
 from timetoalign.core.time import number_to_json, struct_to_rational
 from timetoalign.loader.alignment.ieee1599 import Ieee1599Loader
 from timetoalign.loader.midi import ScoreMidiLoader
@@ -151,12 +152,12 @@ def _number(
 
 
 def _merged(b_claim: str = "claim_2") -> AlignmentBundle:
-    """``from_bundles`` of ``source_a`` holding ``claim_1`` and ``source_b``.
+    """``from_bundles`` of ``source_a`` and ``source_b``.
 
     Each source holds a score and a samples timeline (``a_score``,
     ``a_pcm``; ``b_score``, ``b_pcm``), the Note ``n1`` and the onset ``o1``
     at their origins, and one instant claim between them: ``source_a``'s
-    minted ``claim_1``, ``source_b``'s given *b_claim*. A MatchClaim is
+    minted at its construction, ``source_b``'s given *b_claim*. A MatchClaim is
     addressed by its id alone, so the two sources hold different ids.
     ``a_score`` also holds ``n2`` at 1 quarter and ``b_pcm`` ``o2`` at
     44100 samples, for a claim the merged bundle adds.
@@ -190,6 +191,11 @@ def _merged(b_claim: str = "claim_2") -> AlignmentBundle:
 
 def _bytes(directory: Path) -> dict[str, bytes]:
     return {path.name: path.read_bytes() for path in sorted(directory.iterdir())}
+
+
+def _is_minted_resource_id(resource_id: str) -> bool:
+    """Whether *resource_id* has the form of an id the library mints."""
+    return re.fullmatch(r"resource_[0-9a-z]{13}", resource_id) is not None
 
 
 class TestResources:
@@ -245,7 +251,7 @@ class TestResources:
                 [_resource(timelines=["#score", "#ghost"])],
                 "resource_timeline",
                 "#/resources/0/timelines/1",
-                "'ghost' names no timeline of this manifest",
+                "'ghost' names no timeline or virtual timeline of this manifest",
             ),
             (
                 [_resource(), _resource(id="#resource_2")],
@@ -340,7 +346,10 @@ class TestWriting:
         # A belief changes the MatchClaim table a writing would write, so a
         # writer that wrote the tables before refusing changes the bytes.
         bundle.add_match_claim_belief(
-            "claim_1", actor="wd:Q1", belief="false", date="2026-11-22"
+            bundle.get_match_claims()[0].id,
+            actor="wd:Q1",
+            belief="false",
+            date="2026-11-22",
         )
 
         with pytest.raises(ValueError) as refused:
@@ -357,6 +366,9 @@ class TestWriting:
         bundle = _bundle()
 
         path = bundle.to_file(tmp_path / "package.yaml")
+        # The Projection each claim's side B names: n1's span, n2's and onset_a's
+        # positions on pcm, p1's on audio.
+        spans, n2, onset, p1 = (c.event_b_id for c in bundle.get_match_claims()[:4])
 
         assert sorted(p.name for p in tmp_path.iterdir()) == FILES
         projections = pq.read_table(tmp_path / "projections.parquet")
@@ -371,7 +383,7 @@ class TestWriting:
                 "projection_of": None,
             },
             {
-                "id": "projection_4",
+                "id": p1,
                 "timeline_id": "audio",
                 "unit": "seconds",
                 "number_type": "float",
@@ -380,7 +392,7 @@ class TestWriting:
                 "projection_of": {"timeline_id": "part", "event_id": "p1"},
             },
             {
-                "id": "projection_1",
+                "id": spans,
                 "timeline_id": "pcm",
                 "unit": "samples",
                 "number_type": "int",
@@ -389,7 +401,7 @@ class TestWriting:
                 "projection_of": {"timeline_id": "score", "event_id": "n1"},
             },
             {
-                "id": "projection_2",
+                "id": n2,
                 "timeline_id": "pcm",
                 "unit": "samples",
                 "number_type": "int",
@@ -398,7 +410,7 @@ class TestWriting:
                 "projection_of": {"timeline_id": "score", "event_id": "n2"},
             },
             {
-                "id": "projection_3",
+                "id": onset,
                 "timeline_id": "pcm",
                 "unit": "samples",
                 "number_type": "int",
@@ -410,18 +422,20 @@ class TestWriting:
         manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
         claims = pq.read_table(tmp_path / "match_claims.parquet")
         check_match_claims(claims, manifest)
-        # A Projection's ID is unique in the package: ``audio``'s Projection,
-        # created after ``pcm``'s three, is ``projection_4``, and the claim
-        # naming it follows.
+        assert len({spans, n2, onset, p1, "onset_a"}) == 5
         assert claims.select(["id", "event_a_id", "event_b_id"]).to_pylist()[3] == {
-            "id": "claim_4",
+            "id": bundle.get_match_claims()[3].id,
             "event_a_id": "p1",
-            "event_b_id": "projection_4",
+            "event_b_id": p1,
         }
         assert projection_problems(projections, manifest) == []
 
+        ids = [resource.id for resource in bundle.resources]
+        assert all(_is_minted_resource_id(resource_id) for resource_id in ids)
+        assert len(set(ids)) == 2
         expected = []
-        for number, (kind, timelines, name) in enumerate(
+        for resource_id, (kind, timelines, name) in zip(
+            ids,
             [
                 (
                     "MatchClaim",
@@ -430,12 +444,12 @@ class TestWriting:
                 ),
                 ("Projection", ("audio", "pcm"), "projections.parquet"),
             ],
-            start=1,
+            strict=True,
         ):
             data = (tmp_path / name).read_bytes()
             expected.append(
                 Resource(
-                    f"resource_{number}",
+                    resource_id,
                     kind,
                     timelines,
                     name,
@@ -445,10 +459,12 @@ class TestWriting:
                 )
             )
         assert bundle.resources == expected
+        # The file holds the resources in canonical order, by ID.
+        in_canonical_order = sorted(expected, key=lambda resource: resource.id)
         assert (
             manifest["resources"]
             == timetoshare.with_file_ids(
-                {"resources": [resource.to_dict() for resource in expected]}
+                {"resources": [resource.to_dict() for resource in in_canonical_order]}
             )["resources"]
         )
 
@@ -470,8 +486,9 @@ class TestWriting:
 
     def test_the_actor_context_survives_the_package(self, tmp_path: Path) -> None:
         bundle = _bundle().add_prefix("orcid", "https://orcid.org/")
+        believed = bundle.get_match_claims()[1].id
         bundle.add_match_claim_belief(
-            "claim_2", actor="orcid:0000-0001", belief="true", date="2026-11-21"
+            believed, actor="orcid:0000-0001", belief="true", date="2026-11-21"
         )
         believer = "https://orcid.org/0000-0001"
         (tmp_path / "first").mkdir()
@@ -494,7 +511,7 @@ class TestWriting:
                 for claim in holder.get_match_claims(
                     believer=believer, beliefs=["true"]
                 )
-            ] == ["claim_2"]
+            ] == [believed]
         (tmp_path / "second").mkdir()
         read.to_file(tmp_path / "second" / "package.yaml")
         assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
@@ -505,11 +522,12 @@ class TestWriting:
             .add_prefix("ex", "http://example.org/ns/")
             .add_prefix("orcid", "https://orcid.org/")
         )
+        held = bundle.get_match_claims()
         bundle.add_match_claim_belief(
-            "claim_2", actor="orcid:0000-0001", belief="true", date="2026-11-21"
+            held[1].id, actor="orcid:0000-0001", belief="true", date="2026-11-21"
         )
         bundle.add_match_claim_belief(
-            "claim_3", actor="wd:Q1", belief="true", date="2026-11-21"
+            held[2].id, actor="wd:Q1", belief="true", date="2026-11-21"
         )
 
         path = bundle.to_file(tmp_path / "package.yaml")
@@ -527,17 +545,24 @@ class TestWriting:
     def test_writing_over_the_package_obeys_the_succession_rule(
         self, tmp_path: Path
     ) -> None:
-        _bundle().to_file(tmp_path / "package.yaml")
+        bundle = _bundle()
+        bundle.to_file(tmp_path / "package.yaml")
         before = _bytes(tmp_path)
 
+        bundle.to_file(tmp_path / "package.yaml")
+        assert _bytes(tmp_path) == before
+        # The same construction run again (a fresh process) mints the same ids.
+        reset_content_minters()
         _bundle().to_file(tmp_path / "package.yaml")
         assert _bytes(tmp_path) == before
 
+        nomatch = bundle.get_match_claims()[4].id
         message = (
-            "The new MatchClaim table lacks the MatchClaim 'claim_5' of the "
+            f"The new MatchClaim table lacks the MatchClaim '{nomatch}' of the "
             "existing one: a MatchClaim is never removed; record the belief "
             "'false' in it instead (AlignmentBundle.add_match_claim_belief)."
         )
+        reset_content_minters()
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _bundle(nomatch=False).to_file(tmp_path / "package.yaml")
         assert _bytes(tmp_path) == before
@@ -566,9 +591,13 @@ class TestWriting:
             "plain.yaml",
             "projections.parquet",
         ]
-        assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
-            ("resource_1", "Projection", ("pcm",), "projections.parquet")
-        ]
+        (resource,) = bundle.resources
+        assert _is_minted_resource_id(resource.id)
+        assert (resource.type, resource.timelines, resource.url) == (
+            "Projection",
+            ("pcm",),
+            "projections.parquet",
+        )
         read = AlignmentBundle.from_file(tmp_path / "plain.yaml")
         known = read._known_timelines()
         assert projection_table(known[tid] for tid in sorted(known)).equals(
@@ -658,15 +687,19 @@ class TestWriting:
             "tables",
             "tables/claims.parquet",
         ]
-        assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
-            (
-                "resource_7",
-                "MatchClaim",
-                ("audio", "part", "pcm", "score"),
-                "tables/claims.parquet",
-            ),
-            ("resource_8", "Projection", ("audio", "pcm"), "projections.parquet"),
-        ]
+        claims, projections = bundle.resources
+        assert (claims.id, claims.type, claims.timelines, claims.url) == (
+            "resource_7",
+            "MatchClaim",
+            ("audio", "part", "pcm", "score"),
+            "tables/claims.parquet",
+        )
+        assert _is_minted_resource_id(projections.id)
+        assert (projections.type, projections.timelines, projections.url) == (
+            "Projection",
+            ("audio", "pcm"),
+            "projections.parquet",
+        )
 
     def test_a_url_with_a_scheme_is_refused(self, tmp_path: Path) -> None:
         bundle = _bundle()
@@ -685,14 +718,16 @@ class TestWriting:
         self, tmp_path: Path
     ) -> None:
         merged = _merged()
-        merged.create_match_claims([("n2", "a_score", "o2", "b_pcm")])
+        (a_claim,) = merged.get_match_claims(timeline_id="a_score")
+        (created,) = merged.create_match_claims([("n2", "a_score", "o2", "b_pcm")])
         (tmp_path / "first").mkdir()
 
         path = merged.to_file(tmp_path / "first" / "merged.yaml")
 
         table = pq.read_table(tmp_path / "first" / "match_claims.parquet")
         assert table.column_names == list(MatchClaimField.pa_schema.names)
-        assert table.column("id").to_pylist() == ["claim_1", "claim_2", "claim_3"]
+        assert table.column("id").to_pylist() == [a_claim.id, "claim_2", created.id]
+        assert len({a_claim.id, "claim_2", created.id}) == 3
         manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
         assert match_claim_problems(table, manifest) == []
 
@@ -705,9 +740,14 @@ class TestWriting:
         assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
 
     def test_a_merged_package_obeys_the_succession_rule(self, tmp_path: Path) -> None:
-        _merged().to_file(tmp_path / "merged.yaml")
+        merged = _merged()
+        merged.to_file(tmp_path / "merged.yaml")
         before = _bytes(tmp_path)
 
+        merged.to_file(tmp_path / "merged.yaml")
+        assert _bytes(tmp_path) == before
+        # The same construction run again (a fresh process) mints the same ids.
+        reset_content_minters()
         _merged().to_file(tmp_path / "merged.yaml")
         assert _bytes(tmp_path) == before
 
@@ -716,6 +756,7 @@ class TestWriting:
             "existing one: a MatchClaim is never removed; record the belief "
             "'false' in it instead (AlignmentBundle.add_match_claim_belief)."
         )
+        reset_content_minters()
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _merged("claim_7").to_file(tmp_path / "merged.yaml")
         assert _bytes(tmp_path) == before
@@ -746,18 +787,16 @@ class TestWriting:
         )
 
         # The manifest holds no event rows: the claim names the events it read.
-        read.add_match_claims(
-            [
-                MatchClaim.from_events(
-                    {"id": "n2", "start": Fraction(1)},
-                    read.get_timeline("a_score"),
-                    {"id": "o2", "start": 44100},
-                    read.get_timeline("b_pcm"),
-                )
-            ]
+        added = MatchClaim.from_events(
+            {"id": "n2", "start": Fraction(1)},
+            read.get_timeline("a_score"),
+            {"id": "o2", "start": 44100},
+            read.get_timeline("b_pcm"),
         )
+        read.add_match_claims([added])
+        a_claim = read.get_match_claims()[0].id
         read.add_match_claim_belief(
-            "claim_1",
+            a_claim,
             actor="https://orcid.org/0000-0001",
             belief="false",
             date="2026-11-21",
@@ -765,9 +804,9 @@ class TestWriting:
         read.to_file(tmp_path / "second" / "merged.yaml")
         rewritten = pq.read_table(tmp_path / "second" / "match_claims.parquet")
         assert rewritten.select(["id", "scope"]).to_pylist() == [
-            {"id": "claim_1", "scope": "source_a"},
+            {"id": a_claim, "scope": "source_a"},
             {"id": "claim_2", "scope": None},
-            {"id": "claim_3", "scope": None},
+            {"id": added.id, "scope": None},
         ]
 
     def test_unreduced_fractions_in_the_tables_read_as_their_value(
@@ -781,7 +820,10 @@ class TestWriting:
         bundle.add_timeline(score)
         bundle.add_timeline(audio)
         pair = ({"start": Fraction(3, 2)}, "score", "o1", "audio")
-        bundle.create_match_claims([("n1", "score", "o1", "audio"), pair])
+        _, projected = bundle.create_match_claims(
+            [("n1", "score", "o1", "audio"), pair]
+        )
+        projection_id = projected.event_a_id
         bundle.to_file(tmp_path / "package.yaml")
         first = _bytes(tmp_path)
 
@@ -832,7 +874,7 @@ class TestWriting:
         assert read.match_claim_table == bundle.match_claim_table
         held = read.get_timeline("score").get_events(event_type="Projection")
         assert [(row["id"], row["start"]) for row in held] == [
-            ("projection_1", {"value": 1.5, "numerator": 3, "denominator": 2})
+            (projection_id, {"value": 1.5, "numerator": 3, "denominator": 2})
         ]
         # The package holds no Note (a manifest names no event), so the score
         # read holds the Projection alone, and get-or-add names it again.
@@ -843,7 +885,7 @@ class TestWriting:
             start=Coordinate(Fraction(3, 2), TimeUnit.quarters),
             projection_of=EventReference(timeline_id="audio", event_id="o1"),
         )
-        assert again.add_projections([projection]) == ["projection_1"]
+        assert again.add_projections([projection]) == [projection_id]
         assert len(again.events) == 1
 
         read.to_file(tmp_path / "package.yaml")
@@ -871,13 +913,14 @@ class TestWriting:
         _bundle().to_file(tmp_path / "package.yaml")
         table = pq.read_table(tmp_path / "projections.parquet")
         ids = table.column("id").to_pylist()
-        ids[row] = "projection_1"
+        # Row 2 is n1's Projection on pcm; row 3 is on pcm too, row 1 on audio.
+        ids[row] = ids[2]
         pq.write_table(
             table.set_column(0, "id", pa.array(ids, pa.string())),
             tmp_path / "projections.parquet",
         )
 
-        message = "the ID 'projection_1' is given twice"
+        message = f"the ID '{ids[2]}' is given twice"
         with pytest.raises(TableError, match=f"^{re.escape(message)}$"):
             AlignmentBundle.from_file(tmp_path / "package.yaml")
 
@@ -888,29 +931,34 @@ class TestWriting:
         bundle.add_timeline(pcm)
         bundle.add_timeline(audio)
         assert audio.add_projections(
-            Projection(start=Coordinate(0.5, TimeUnit.seconds))
-        ) == ["projection_1"]
-        # Free, so it mints on its own.
+            Projection(start=Coordinate(0.5, TimeUnit.seconds)), seed=1
+        ) == [SHARED]
+        # Free, so it mints on its own, from the same seed.
         part = DiscretePhysicalTimeline(length=1000, uid="part")
         assert part.add_projections(
-            Projection(start=Coordinate(5, TimeUnit.samples))
-        ) == ["projection_1"]
+            Projection(start=Coordinate(5, TimeUnit.samples)), seed=1
+        ) == [SHARED]
 
         # Joining the bundle's tree as a child keeps the ID ...
         pcm.add_child(part, 0)
         assert pcm.n_children == 1
         assert part._parent is pcm
-        assert part.events.table.column("id").to_pylist() == ["projection_1"]
+        assert part.events.table.column("id").to_pylist() == [SHARED]
         # ... and the table of both timelines is not written.
         with pytest.raises(ValueError) as raised:
             projection_table([audio, part])
         assert str(raised.value) == _shared_message("audio", "part")
 
 
+#: The first Projection ID a minter of the seed 1 mints: two timelines given
+#: their Projections apart with that seed each hold it.
+SHARED = IdMinter(1).mint("projection")
+
+
 def _shared_message(first: str, second: str) -> str:
-    """The writer's refusal of ``projection_1`` on *first* and *second*."""
+    """The writer's refusal of ``SHARED`` on *first* and *second*."""
     return (
-        f"Projection ID 'projection_1' names a Projection on the timeline "
+        f"Projection ID '{SHARED}' names a Projection on the timeline "
         f"'{first}' and one on '{second}': a Projection's ID is unique among all "
         "Projections of a manifest and its package. Create the MatchClaims once "
         "the timelines share the bundle (for instance with "
@@ -920,15 +968,15 @@ def _shared_message(first: str, second: str) -> str:
 
 
 def _apart() -> tuple[DiscretePhysicalTimeline, ContinuousPhysicalTimeline]:
-    """``pcm`` and ``audio``, each given ``projection_1`` while free."""
+    """``pcm`` and ``audio``, each minting ``SHARED`` while free (seed 1)."""
     pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
     audio = ContinuousPhysicalTimeline(length=16.0, uid="audio")
     assert pcm.add_projections(
-        Projection(start=Coordinate(22050, TimeUnit.samples))
-    ) == ["projection_1"]
+        Projection(start=Coordinate(22050, TimeUnit.samples)), seed=1
+    ) == [SHARED]
     assert audio.add_projections(
-        Projection(start=Coordinate(0.5, TimeUnit.seconds))
-    ) == ["projection_1"]
+        Projection(start=Coordinate(0.5, TimeUnit.seconds)), seed=1
+    ) == [SHARED]
     return pcm, audio
 
 
@@ -957,7 +1005,7 @@ def _held_projections(bundle: AlignmentBundle) -> dict[str, list[tuple[str, Any]
 class TestProjectionIdsAtAJoin:
     """A join keeps a Projection ID the manifest holds; the writer refuses it."""
 
-    HELD = {"pcm": [("projection_1", 22050)], "audio": [("projection_1", 0.5)]}
+    HELD = {"pcm": [(SHARED, 22050)], "audio": [(SHARED, 0.5)]}
 
     @staticmethod
     def _not_written(bundle: AlignmentBundle, path: Path) -> None:
@@ -978,10 +1026,15 @@ class TestProjectionIdsAtAJoin:
         )
         assert _held_projections(bundle) == self.HELD
         self._not_written(bundle, tmp_path)
-        # A new Projection is minted above every Projection of the manifest.
-        assert audio.add_projections(
+        # A new Projection is minted under an ID of its own.
+        (added,) = audio.add_projections(
             Projection(start=Coordinate(1.0, TimeUnit.seconds))
-        ) == ["projection_2"]
+        )
+        assert added != SHARED
+        assert _held_projections(bundle) == {
+            "pcm": [(SHARED, 22050)],
+            "audio": [(SHARED, 0.5), (added, 1.0)],
+        }
 
     def test_add_group_joins(self, tmp_path: Path) -> None:
         pcm, audio = _apart()
@@ -1011,7 +1064,7 @@ class TestProjectionIdsAtAJoin:
         bundle = AlignmentBundle(id="package").add_timeline(pcm).add_timeline(audio)
         assert _package_projections(bundle, tmp_path) == [
             ("audio", "onset_a"),
-            ("pcm", "projection_1"),
+            ("pcm", SHARED),
         ]
 
 
@@ -1332,8 +1385,10 @@ class TestBoxes:
         assert rows["f"]["bounding_box"]["height"] == _number(1, 1)
 
         data = (tmp_path / "boxes.parquet").read_bytes()
+        (written,) = bundle.resources
+        assert _is_minted_resource_id(written.id)
         expected = Resource(
-            "resource_1",
+            written.id,
             "Box",
             ("seg_2", "sys", "uu"),
             "boxes.parquet",
@@ -1642,14 +1697,19 @@ def _written_twice(
 class TestEventTablesBesideOtherEvents:
     def test_one_projection_beside_notes(self, tmp_path: Path) -> None:
         score = _score_with_notes()
-        assert score.add_projections(
+        (projection_id,) = score.add_projections(
             [
                 Projection(
                     start=Coordinate(Fraction(1, 3), TimeUnit.quarters),
                     duration=Duration(Fraction(2, 3), TimeUnit.quarters),
                 )
             ]
-        ) == ["projection_1"]
+        )
+        assert score.events.table.column("id").to_pylist() == [
+            "n1",
+            "n2",
+            projection_id,
+        ]
         bundle = AlignmentBundle(id="one")
         bundle.add_timeline(score)
 
@@ -1662,7 +1722,7 @@ class TestEventTablesBesideOtherEvents:
         ]
         assert pq.read_table(first / "projections.parquet").to_pylist() == [
             {
-                "id": "projection_1",
+                "id": projection_id,
                 "timeline_id": "score",
                 "unit": "quarters",
                 "number_type": "fraction",
@@ -1671,11 +1731,15 @@ class TestEventTablesBesideOtherEvents:
                 "projection_of": None,
             }
         ]
-        assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
-            ("resource_1", "Projection", ("score",), "projections.parquet")
-        ]
+        (resource,) = bundle.resources
+        assert _is_minted_resource_id(resource.id)
+        assert (resource.type, resource.timelines, resource.url) == (
+            "Projection",
+            ("score",),
+            "projections.parquet",
+        )
         assert _projection_rows(read._known_timelines()["score"]) == [
-            ("projection_1", Fraction(1, 3), Fraction(2, 3), None)
+            (projection_id, Fraction(1, 3), Fraction(2, 3), None)
         ]
 
     def test_two_boxes_beside_a_note(self, tmp_path: Path) -> None:
@@ -1697,8 +1761,17 @@ class TestEventTablesBesideOtherEvents:
             ),
         ]
         assert seg_2.add_events(
-            [{"event_type": "Note", "start": 0, "duration": 10, "midi": 60}, *boxes]
-        ) == ["note_1", "rect_h2", "rect_b"]
+            [
+                {
+                    "id": "note_a",
+                    "event_type": "Note",
+                    "start": 0,
+                    "duration": 10,
+                    "midi": 60,
+                },
+                *boxes,
+            ]
+        ) == ["note_a", "rect_h2", "rect_b"]
         bundle = AlignmentBundle(id="boxes")
         bundle.add_timeline(seg_2)
 
@@ -1749,7 +1822,10 @@ class TestEventTablesBesideOtherEvents:
         bundle = AlignmentBundle(id="two")
         bundle.add_timeline(score)
         bundle.add_timeline(pcm)
-        bundle.create_match_claims([({"start": 0, "end": 4}, "score", "o1", "pcm")])
+        (claim,) = bundle.create_match_claims(
+            [({"start": 0, "end": 4}, "score", "o1", "pcm")]
+        )
+        projection_id = claim.event_a_id
 
         read = _written_twice(bundle, tmp_path, "two.yaml")
 
@@ -1757,7 +1833,7 @@ class TestEventTablesBesideOtherEvents:
         reference = {"timeline_id": "pcm", "event_id": "o1"}
         assert pq.read_table(first / "projections.parquet").to_pylist() == [
             {
-                "id": "projection_1",
+                "id": projection_id,
                 "timeline_id": "score",
                 "unit": "quarters",
                 "number_type": "fraction",
@@ -1771,12 +1847,12 @@ class TestEventTablesBesideOtherEvents:
             ("Projection", ("score",)),
         ]
         assert _projection_rows(read._known_timelines()["score"]) == [
-            ("projection_1", Fraction(0), Fraction(4), reference)
+            (projection_id, Fraction(0), Fraction(4), reference)
         ]
         assert [
-            (claim.id, claim.event_a_id, claim.timeline_a_id, claim.event_b_id)
-            for claim in read.get_match_claims()
-        ] == [("claim_1", "projection_1", "score", "o1")]
+            (held.id, held.event_a_id, held.timeline_a_id, held.event_b_id)
+            for held in read.get_match_claims()
+        ] == [(claim.id, projection_id, "score", "o1")]
 
 
 def _eep_beside_midi() -> list[Timeline]:
@@ -1793,13 +1869,8 @@ def _eep_beside_midi() -> list[Timeline]:
 
 
 def _ieee_beside_ms3() -> list[Timeline]:
-    (ieee,) = [
-        timeline
-        for timeline in Ieee1599Loader.from_file(
-            ensure_data("ieee1599") / "bach_artefuga_01.xml"
-        ).create_timelines()
-        if timeline.id == "los:dlt_2"
-    ]
+    loader = Ieee1599Loader.from_file(ensure_data("ieee1599") / "bach_artefuga_01.xml")
+    ieee = loader.create_timeline(loader.los_uid)
     ms3 = Ms3Loader.from_file(
         ensure_data("vienna_1x22") / "ms3" / "chopin_op10_no3.notes.tsv"
     ).create_timeline(uid="ms3")

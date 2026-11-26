@@ -56,9 +56,9 @@ All Thoresen test data constants and shared fixtures are centralised in `tests/a
 
 `test_thoresen_poc.py::TestThoresenSegmentClaims` pins the claim fixture itself: five interval claims, each connecting `dgt_1` and `dgt_2`, contiguous on both sides from 0 to the total width (4835, 4328), with exactly that provenance and the event pairs `(system_1, page_1)` … `(system_5, page_5)` in order.
 
-### No ID Reset
+### IDs in these tests
 
-Every id the alignment module mints is minted statelessly (`group_N`, `bundle_N`, `claim_N`, N above the highest number its holder holds), so no test resets a generator and no test depends on what an earlier test built.
+Every id is minted when its object is constructed: random, `{prefix}_` + 13 base-36 characters, from the seed a test passes (`seed=`) or else from the object's content. `tests/conftest.py` resets the content minters before every test, so no test depends on what an earlier test built. A test that is not about minting never pins a minted spelling: it gives the element a speaking id (`uid="score"`, `id="c1"`) or reads the id through the object (`group.id`, `claim.id`). A test about minting computes the expected id with a second minter of the same seed, never by typing it.
 
 ---
 
@@ -122,10 +122,12 @@ properties are proven with a synthetic fixture that owns no corpus data:
 
 Merging keeps every claim id, and a MatchClaim is addressed by its id
 alone: the two source bundles hold different ids (bundle A states its
-claims as `star_1` … `star_6`, bundle B mints `claim_1` … `claim_8`), since
-a merge refuses two sources holding one id, and the claim the merged bundle
-adds afterwards is minted above the highest it holds. The test pins the ids
-of the merged MatchClaim table, so a merge that re-mints an id fails.
+claims as `star_1` … `star_6`, bundle B's field holds the eight ids minted
+at its construction), since a merge refuses two sources holding one id, and
+the bridge claim the merged bundle adds afterwards holds the id minted when
+it was made. The test compares the merged MatchClaim table's ids with the
+ids bundle B still holds and the bridge claim's own, so a merge that
+re-mints an id fails.
 
 ### Synthetic Fixture Topology
 
@@ -140,8 +142,9 @@ bridged with `create_match_claims`. Every claim names an event on each side.
 - **Bundle B — a WarpMap-able columnar `MatchClaimField`.** `b_bridge`
   (samples, int axis, len 1000) carrying a `ScalarMap(0.01, samples→seconds)`
   C-Map, plus `b1` (samples, len 3000) and `b2` (samples, len 3000), each in
-  its own group. The field (`MatchClaimField.from_columns`, ids `claim_1` …
-  `claim_8`) holds native-samples instant anchors between named events:
+  its own group. The field (`MatchClaimField.from_columns`, its eight ids
+  minted at construction) holds native-samples instant anchors between
+  named events:
 
   | `b_bridge` (samples) | `b1` (samples) | `b2` (samples) |
   |---|---|---|
@@ -152,23 +155,26 @@ bridged with `create_match_claims`. Every claim names an event on each side.
 
   The field's `b_bridge` hull is therefore `[200, 800]`.
 - **Bridge A↔B.** `create_match_claims` pairs the position `a1 = 50` with the
-  position `b_bridge = 5 seconds`. Each side becomes a Projection event
-  (`projection_1` on `a1`, `projection_2` on `b_bridge`: a Projection's ID
-  is unique in the bundle); the bridge C-Map places 5 seconds at
+  position `b_bridge = 5 seconds`. Each side becomes a Projection event,
+  the only event of its timeline (`a1` at 50 quarters, `b_bridge` at 500
+  samples), and the claim names the two (two distinct IDs: a Projection's
+  ID is unique in the bundle); the bridge C-Map places 5 seconds at
   exactly `500 samples` (`5 / 0.01`), so the claim's `b_bridge` anchor is
-  `500` samples. The merged bundle mints it `claim_9`.
+  `500` samples. The claim holds the id minted when it was made.
 - **Mixed units on one timeline.** A separate bundle (`source`, samples with
   the same C-Map; `target`, seconds) gets three claims from positions
   `source = 2.0 s, 400 samples, 6.0 s` to `target = 20.0, 40.0, 60.0`. Each
   source position is placed on the samples axis when its claim is made:
-  `200, 400, 600` samples, the Projections `projection_1` … `projection_3`.
+  `200, 400, 600` samples: `source` holds exactly three Projections, in that
+  order, at those positions, each the event A of its claim (three distinct
+  IDs).
   The WarpMap's source array is `[200, 400, 600]` and `transfer(300)` gives
   `30.0`; no range or magnitude inference participates.
 
 ### Exact Expected Values
 
-**Merged MatchClaim table:** ids `star_1 … star_6`, `claim_1 … claim_8`,
-`claim_9`.
+**Merged MatchClaim table:** ids `star_1 … star_6`, then bundle B's eight
+ids as bundle B holds them, then the bridge claim's id: fifteen distinct.
 
 **Union query — `merged.get_matchstamp_at(50, "a1:clt_1")` (default `omit`):**
 
@@ -387,8 +393,8 @@ claim on a sibling.
   grouped with `track` (position `p` on `track` is `2p` on `track_hi`).
 - `score`: quarters, fraction, length 200; `scan`: pixels, int, length 2000;
   `video`: frames, int, length 2000.
-- Claim 1 `track [1000, 1087] ↔ score [56, 63]`; claim 2
-  `track [1037, 1047] ↔ scan [0, 45]`; claim 3 (one test only)
+- Claim 1 (id `c1`) `track [1000, 1087] ↔ score [56, 63]`; claim 2 (`c2`)
+  `track [1037, 1047] ↔ scan [0, 45]`; claim 3 (`c3`, one test only)
   `track_hi [2000, 2174] ↔ video [100, 274]`.
 - A float pair: `mix` and `take`, seconds, float, length 200, one claim
   `mix [0.0, 87.0] ↔ take [56.0, 63.0]`.
@@ -397,11 +403,11 @@ claim on a sibling.
 
 | Question | Expected |
 |---|---|
-| `track` at 1044 | `score` `5180/87` (`56 + 44/87 · 7`), `scan` `32`, `track_hi` `2088`; claims `[claim_1, claim_2]`; inferred pairs `(track, score)`, `(track, scan)`, `(track, track_hi)` |
+| `track` at 1044 | `score` `5180/87` (`56 + 44/87 · 7`), `scan` `32`, `track_hi` `2088`; claims `[c1, c2]`; inferred pairs `(track, score)`, `(track, scan)`, `(track, track_hi)` |
 | `track_hi` at 2088 | the same coordinates and claims; inferred pairs `(track, score)`, `(track, scan)`, `(track_hi, track)` |
 | `mix` at 44.0 | `take` `59.54022988505747`, a `float` |
-| with claim 3: `track` at 1044 | `video` `188`; claims `[claim_1, claim_2, claim_3]` |
-| with claim 3: `track_hi` at 2088 | the same coordinates; claims `[claim_3, claim_1, claim_2]` |
+| with claim 3: `track` at 1044 | `video` `188`; claims `[c1, c2, c3]` |
+| with claim 3: `track_hi` at 2088 | the same coordinates; claims `[c3, c1, c2]` |
 | `track_hi` at 2000 (sibling anchor) | `track` 1000, `score` 56; `scan` unreached (outside claim 2 and the WarpMap's hull); stated pair `(track, score)`; `is_interpolated` True (False on `track` at 1000) |
 | plural getter and table, `track_hi` at `[2088, 2000]` | rows as the two singular questions; the table's `score` cells `5180/87` and `56`, `scan` `32` and null |
 
@@ -416,7 +422,8 @@ out, as a C-Map failing at the coordinate is; a getter asking for a value
 keeps raising, since a queried path that cannot resolve raises.
 
 The proof: with claim 3, the stamp on `track` at 1044 lists claims 1, 2, 3,
-claim 3 read on `track_hi`. Then `track_hi` is removed from the group. The
+claim 3 read on `track_hi`. Then `track_hi` is removed from its group (the
+group the bundle minted for it, read from `timeline_to_groups`). The
 stamp's `repr` is then exactly the one before minus the claim 3 entry, its
 `str` lists the five coordinates and the claim rows 1 and 2 (claim 3's row
 `track_hi<->video` absent, the others keeping their numbers), and its
@@ -424,7 +431,7 @@ stamp's `repr` is then exactly the one before minus the claim 3 entry, its
 claims) and no `track_hi<->video`. The stamp's coordinates are untouched (`video` `188`
 still among them: the stamp holds what was read when it was made).
 `get_coordinates_for(["score"])` and `_ambiguous_interval_candidates()`
-raise `ValueError` naming `claim_3` and the position it no longer holds
+raise `ValueError` naming `c3` and the position it no longer holds
 (`['track']`), exactly as before the change, which proves the tolerance is
 the display's alone. Before the change, `repr` and `str` raised this same
 `ValueError`.
@@ -436,7 +443,7 @@ members states another counterpart: `track [1000, 1087] ↔ track_hi [3000,
 3174]` (an offset of 2000 samples where the group gives a factor of 2). Asked
 on the first member, `track` at 1044, the stamp holds what the claim gives,
 not the group: coordinates `track` `1044`, `track_hi` `3088` (`3000 + 44/87
-· 174`, exact), in that order; `interval_claims` `[claim_1]`; no stated
+· 174`, exact), in that order; `interval_claims` `[c1]` (the claim given id `c1`); no stated
 pair; the inferred pair `(track, track_hi)`; `is_interpolated` True; one
 display row, `claim 1 track<->track_hi: track_hi=3088 samples`; no
 ambiguity; and the table row the same two cells. The claim is read once
@@ -467,8 +474,8 @@ value). What proves it is the number of claims copied, counted by wrapping
 actually duplicated, independent of speed.
 
 - **A claim read records its bundle.** Every claim `get_match_claims` returns
-  has `bundle is` the bundle; their ids are the ones the bundle minted in
-  order, `claim_1` … `claim_303`.
+  has `bundle is` the bundle; their ids are the ones the claims were given,
+  in the order added, `chain_0` … `overlap_3`.
 - **One claim, one copy.** Deep-copying one claim read from the bundle
   (`copy.deepcopy` and `model_copy(deep=True)` alike) copies exactly that
   claim: the copy count is 1, the copied object the claim itself.
@@ -495,12 +502,12 @@ actually duplicated, independent of speed.
 ### Fixture
 
 Two standalone float-canonical `floating_measures` timelines, `score` and
-`perf`, length 1200. Claim `i` (`i = 0 … 299`, id `claim_{i + 1}`) is an
+`perf`, length 1200. Claim `i` (`i = 0 … 299`, id `chain_{i}`) is an
 interval claim between two fixture events (`helpers.match_claim`) mapping
 `score [i, i + 1]` to `perf [2i, 2i + 2]`; three further claims `score [10,
 12]`, `score [10.25, 10.75]`, `score [9, 11]` (to `perf [20, 24]`, `[20.5,
-21.5]`, `[18, 22]`; ids `claim_301` … `claim_303`) overlap position `10.5`,
-which claim 10 (`claim_11`) also covers. The query at `score 10.5` is
+21.5]`, `[18, 22]`; ids `overlap_1` … `overlap_3`) overlap position `10.5`,
+which claim 10 (`chain_10`) also covers. The query at `score 10.5` is
 therefore covered by exactly four claims; they all map it to `perf 21`.
 
 ### Exact Expected Values
@@ -511,7 +518,7 @@ therefore covered by exactly four claims; they all map it to `perf 21`.
 | `copy.deepcopy(claim read)` | 1 (that claim) | copy `None`, original the bundle |
 | `claim.model_copy(deep=True)` | 1 (that claim) | copy `None`, original the bundle |
 | `copy.deepcopy(bundle)` | 0 | every claim read from the copy records the copy |
-| `get_matchstamp_at(10.5, "score")` | 0 | `interval_claims` are `claim_11`, `claim_301`, `claim_302`, `claim_303`, recording the bundle |
+| `get_matchstamp_at(10.5, "score")` | 0 | `interval_claims` are `chain_10`, `overlap_1`, `overlap_2`, `overlap_3`, recording the bundle |
 
 The stamp's `perf` coordinate is `21` floating measures, a float on the float
 axis.
@@ -1035,7 +1042,7 @@ its anchor written the other way round is refused before any query.
 |------|-----------|
 | `test_instant_creation` | Single anchor → `is_interval == False`, timeline IDs are top-level |
 | `test_interval_creation` | Two anchors → `is_interval == True`; both ends read back per timeline |
-| `test_auto_generated_and_explicit_id` | a claim made without an id holds `None`; a given id is kept |
+| `test_auto_generated_and_explicit_id` | a claim made without an id holds one from construction, `claim_` + 13 base-36 characters, and an equal claim built after it holds another (the minting itself: Claim Ids); a given id is kept |
 | `test_removed_properties_are_refused` | `id_minted`, `is_explicit`, `source_claim_id`, `source_coordinate` are no fields and each is refused as an extra input |
 | `test_mismatched_anchors_raises` | **Critical invariant**: an end anchor on another pair of timelines is refused, naming both pairs |
 | `test_anchor_timeline_mismatch_raises` | an anchor on other timelines, and one in the wrong order, are refused with the message naming both pairs |
@@ -1628,13 +1635,13 @@ TimeToShare's own artifacts:
 - **Columns by name.** The fixture's columns in reverse order read
   (`from_package_table`) to the same claims.
 - **What the library writes, TimeToShare accepts.** TimeToShare's table
-  requires every id, and a field built from columns or claims mints none
-  (only the bundle mints), so what is written is a
-  bundle's `match_claim_table`. A field from `from_columns` over a fraction
+  requires every id, and a field or claim holds its ids from construction
+  (a bundle mints none), so what a bundle writes is what it was given. A
+  field from `from_columns` over a fraction
   `quarters`, an int `samples` and a float `seconds` timeline (a float `0.1`
-  among the cells), with a shared provenance, holds three null ids; added to
-  a bundle of those three timelines it becomes rows `claim_1`–`claim_3`, and
-  the bundle's table written with `to_parquet` gives
+  among the cells), with a shared provenance, holds three distinct ids and
+  no null; added to a bundle of those three timelines its rows keep them,
+  and the bundle's table written with `to_parquet` gives
   `match_claim_problems(...) == []`, each cell's number written once by its
   number type: `(numerator, denominator, value)` of the start anchors'
   cells A and B are `(1, 3, null)` and `(null, null, 0.1)`, `(4, 1, null)`
@@ -1642,10 +1649,11 @@ TimeToShare's own artifacts:
   (the float `0.1` never written as a ratio, the ints without
   denominator), and TimeToShare's `row_provenance` reads the shared
   provenance on every row. An interval claim (`c1`), a NOMATCH claim (`c2`) and a
-  conceptual claim without an id, stored with `from_claims`, hold the ids
-  `["c1", "c2", None]`; added to a bundle, its table holds
-  `["c1", "c2", "claim_1"]` (minted above the highest held number, none) and
-  its `package_table` gives `match_claim_problems(...) == []`.
+  conceptual claim built without an id (so holding the id minted at its
+  construction, neither null nor `c1`/`c2`), stored with `from_claims`, hold
+  the ids `["c1", "c2", <the third claim's id>]`; added to a bundle, its
+  table holds the same three and its `package_table` gives
+  `match_claim_problems(...) == []`.
 
 **Where the fixture comes from.** The installed `timetoshare` package ships
 it: the test reads `timetoshare.tables.fixture_path("match_claims.parquet")`.
@@ -1683,33 +1691,34 @@ at 4) and `pcm` (samples, int, length 705600; notes `o1` at 0, `o2` at
 100000, `o3` at 176400), both ungrouped roots of the bundle `beliefs`;
 `create_match_claims` of `n1`↔`o1`, `n2`↔`o2`, `n3`↔`o3` with one shared
 provenance (`method` `imported`, `service` `https://example.org/aligner`)
-gives `claim_1`–`claim_3`. The actor is Wikidata's `Q42`, written absolutely
-(`http://www.wikidata.org/entity/Q42`) or compactly (`wd:Q42`, a prefix of
-the catalogue, hence of every bundle's `@context`). `claim_2` is not on the
+gives three claims; a test reads their ids from the bundle (`first`,
+`second`, `third`, in table order), never typing them. The actor is
+Wikidata's `Q42`, written absolutely (`http://www.wikidata.org/entity/Q42`) or compactly (`wd:Q42`, a prefix of
+the catalogue, hence of every bundle's `@context`). `second` is not on the
 line through the other two: 2 quarters lie halfway between 0 and 4, so
-without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
+without `second` the WarpMap of `first` and `third` places quarter 2 at
 176400 / 2 = 88200 samples, and with it at 100000.
 
 ### Exact Expected Values
 
-- **The belief is recorded, nothing else changes.** `add_match_claim_belief("claim_2",
+- **The belief is recorded, nothing else changes.** `add_match_claim_belief(second,
   actor=Q42, belief="false", date="2026-11-21")` returns the bundle; the
-  provenance of `claim_2` is the shared entry plus that one belief,
-  `claim_1` and `claim_3` keep the shared entry, every column but
+  provenance of `second` is the shared entry plus that one belief,
+  `first` and `third` keep the shared entry, every column but
   `provenance` of the table is equal to the one before, and the table holds
   no shared provenance any more (each row carries its own, since one
   differs).
 - **One belief per actor, compared as IRIs.** A second `add_match_claim_belief` on
-  `claim_2` by `wd:Q42`, `true`, 2026-11-22, replaces the first: the claim
+  `second` by `wd:Q42`, `true`, 2026-11-22, replaces the first: the claim
   holds exactly that one belief, as written (`wd:Q42`).
 - **The filter reads it at once.** Before any belief, `get_match_claims(
-  believer=Q42)` holds the three; after `false` it holds `claim_1`,
-  `claim_3`, with `beliefs=["true"]` none, with `["false"]` `claim_2`, with
-  `["undecided"]` `claim_1`, `claim_3`; after the compact `true`,
-  `believer=Q42, beliefs=["true"]` holds `claim_2` alone.
+  believer=Q42)` holds the three; after `false` it holds `first`,
+  `third`, with `beliefs=["true"]` none, with `["false"]` `second`, with
+  `["undecided"]` `first`, `third`; after the compact `true`,
+  `believer=Q42, beliefs=["true"]` holds `second` alone.
 - **The coordinate getters take the belief filter.** Quarter 2 on `score`
   onto `pcm`: `get_coordinate_at` gives 100000 without a believer and with
-  `Q42` before the belief; after `Q42` believes `claim_2` false it gives
+  `Q42` before the belief; after `Q42` believes `second` false it gives
   88200 for `Q42` (absolute or compact) and 100000 without a believer
   (the cache built before the belief is not read). The same holds for
   `get_coordinate_for("n2", "pcm")` (88200), `get_coordinates_at` of
@@ -1722,7 +1731,7 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   `get_match_claims` and by `get_matchstamp_at` (`The belief filter keeps
   the states ['true', 'undecided', 'unlikely', 'false'], not ['maybe']`).
 - **A MatchLine built from a bundle's claims compares actors as the bundle
-  does.** After `Q42` believes `claim_2` false,
+  does.** After `Q42` believes `second` false,
   `MatchLine.from_claims(bundle.get_match_claims(), "score",
   believer=WD_Q42, source=bundle)` holds two stamps, at 0 and 4 quarters:
   under the bundle's `@context` the compact believer is the absolute actor.
@@ -1736,12 +1745,12 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   bundle, `add_statement("dcterms:title", "Beliefs")` then
   `add_belief("dcterms:title", "Beliefs", actor=Q42, belief="unlikely",
   date="2026-11-21")` (the statements' method) and
-  `add_match_claim_belief("claim_2", actor=Q42, belief="false",
+  `add_match_claim_belief(second, actor=Q42, belief="false",
   date="2026-11-21")`: the bundle's provenance is exactly one entry
   `{"property": "dcterms:title", "value": "Beliefs", "beliefs": [{"actor":
   Q42, "belief": "unlikely", "date": "2026-11-21"}]}`, its statements still
   `{"dcterms:title": ["Beliefs"]}`, and the MatchClaims hold the one belief
-  in `claim_2` (`claim_1` and `claim_3` keep the shared provenance). Neither
+  in `second` (`first` and `third` keep the shared provenance). Neither
   belief reaches the other's holder.
 - **The actor context is every prefix the manifest declares.** The fixture
   bundle's manifest (`to_dict()`) with `"orcid": "https://orcid.org/"`
@@ -1751,7 +1760,7 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   "https://orcid.org/"`. A MatchClaim between quarter 0 and sample 0 stated
   with `actor="orcid:0000-0001"` (date 2026-11-21) is kept by
   `get_match_claims(believer="https://orcid.org/0000-0001", beliefs=["true"])`
-  (one claim, `claim_1`) — under a context holding only the prefixes the
+  (one claim, the one stated) — under a context holding only the prefixes the
   statements use, the compact actor would stay as written and the filter
   would keep none.
 - **The date defaults to today**, read where statements read it: with
@@ -1764,7 +1773,7 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   `source_a` and drops that of `source_b`.
 - **The package succeeds itself.** The bundle written with `to_file`, then
   given a belief and written over its own files, is accepted by the
-  succession rule; read back, `claim_2` holds the belief and the table
+  succession rule; read back, `second` holds the belief and the table
   equals the bundle's.
 - **`create_match_claims(..., actor=)`.** With `actor=wd:Q42,
   date="2026-11-21"` and no provenance, the claim's provenance is exactly
@@ -1774,8 +1783,8 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   `actor`, the given provenance stands unchanged (a loader states no
   belief). `date` without `actor` is refused (`a date dates the belief of
   the actor stating the MatchClaims; give actor=`) and nothing is added.
-- **Copy-on-write forms.** `MatchClaimField.with_belief("claim_2", belief)`
-  over the bundle's table returns a field whose `claim_2` holds the belief
+- **Copy-on-write forms.** `MatchClaimField.with_belief(second, belief)`
+  over the bundle's table returns a field whose `second` holds the belief
   and leaves the table unchanged; an id the field lacks raises `KeyError`
   (`The MatchClaim table holds no MatchClaim 'claim_9' (3 MatchClaims).`);
   a one-row field holding a shared provenance keeps it shared, with the
@@ -1824,48 +1833,47 @@ then fails to load. Each test pins one of these with exact values.
   fraction, 16, its child `part` at 8, length 4, the notes `n1` at 0 with
   duration 1 and `n2` at 3/2; `part` holds `p1` at 1), `pcm` (samples, int,
   705600) and `audio` (seconds, float, 16.0) — and, through
-  `create_match_claims` with one shared provenance (`method` `imported`):
-  `claim_1` `n1` ↔ a span 0–44100 on `pcm` (an interval claim),
-  `claim_2` `n2` ↔ 66150 on `pcm`, `claim_3` the position 0.5 s named
-  `onset_a` on `audio` ↔ 22050 on `pcm` (both sides positions),
-  `claim_4` `p1` (the child's note) ↔ 9.0 s on `audio`, `claim_5` a NOMATCH
-  of `n2` towards `audio`. `to_file(dir / "package.yaml")` leaves exactly
-  three files. The Projections table holds five rows, timelines sorted by
-  ID and each timeline's Projections in the order they were added:
-  `onset_a` on `audio` (no source), `projection_4` on `audio` (of
-  `part`/`p1`), `projection_1` on `pcm` (of `score`/`n1`), `projection_2`
-  (of `score`/`n2`), `projection_3` (no source). A Projection's ID is
-  unique among all Projections of the bundle, so each is minted above
-  every Projection ID the bundle's timelines hold when it is created:
-  `create_match_claims` adds `pcm`'s three first (the timeline a pair
-  first gives a Projection), then `audio`'s, which is `projection_4`, never
-  a second `projection_1`. `claim_4` names `projection_4` as its event B.
-  Each
+  `create_match_claims` with one shared provenance (`method` `imported`),
+  five claims in this order: (1) `n1` ↔ a span 0–44100 on `pcm` (an
+  interval claim), (2) `n2` ↔ 66150 on `pcm`, (3) the position 0.5 s named
+  `onset_a` on `audio` ↔ 22050 on `pcm` (both sides positions), (4) `p1`
+  (the child's note) ↔ 9.0 s on `audio`, (5) a NOMATCH of `n2` towards
+  `audio`. A test reads each claim's id, and the ID of the Projection its
+  side B names, from the claim (claims 1–4 name the Projections `P1` …
+  `P4` below); none is typed. `to_file(dir / "package.yaml")` leaves
+  exactly three files. The Projections table holds five rows, timelines
+  sorted by ID and each timeline's Projections in the order they were
+  added: `onset_a` on `audio` (no source), `P4` on `audio` (of
+  `part`/`p1`), `P1` on `pcm` (of `score`/`n1`), `P2` (of `score`/`n2`),
+  `P3` (no source); the five IDs are distinct, and the MatchClaim table's
+  fourth row is claim 4, `p1` ↔ `P4`. Each
   row states its axis once, `unit` and `number_type` (`seconds`/`float`
   on `audio`, `samples`/`int` on `pcm`), and `start` and `duration` their
   number once, as `(numerator, denominator, value)`: `onset_a` start
-  `(null, null, 0.5)` (no mirror), `projection_4` `(null, null,
-  9.0)`, `projection_1` start `(0, null, null)` and duration `(44100, null,
-  null)`, `projection_2` `(66150, null, null)`, `projection_3` `(22050,
-  null, null)`; every instant's duration null. The
+  `(null, null, 0.5)` (no mirror), `P4` `(null, null, 9.0)`, `P1` start
+  `(0, null, null)` and duration `(44100, null, null)`, `P2` `(66150, null,
+  null)`, `P3` `(22050, null, null)`; every instant's duration null. The
   MatchClaim table passes TimeToShare's check against the manifest written
   (`check_match_claims`), and so does the Projections table
-  (`projection_problems` is empty). `bundle.resources` and the
-  manifest name `resource_1` (`MatchClaim`, timelines `audio`, `part`,
-  `pcm`, `score`) and `resource_2` (`Projection`, `audio`, `pcm`), each
-  with the Parquet media type, and `size` and `integrity` equal to the
-  file's byte count and the SHA-256 of its bytes, computed in the test from
-  the file itself (a Parquet file's bytes depend on the writing library's
-  version, so the test pins the relation, not a digest literal).
+  (`projection_problems` is empty). `bundle.resources` names, in the order
+  written, an entry of type `MatchClaim` (timelines `audio`, `part`, `pcm`,
+  `score`) and one of type `Projection` (`audio`, `pcm`), each under an ID
+  minted when it was made (`resource_` + 13 base-36 characters, two
+  distinct), with the Parquet media type, and `size` and `integrity` equal
+  to the file's byte count and the SHA-256 of its bytes, computed in the
+  test from the file itself (a Parquet file's bytes depend on the writing
+  library's version, so the test pins the relation, not a digest literal);
+  the manifest file holds the same two entries in canonical order, by ID.
 - **Read back exactly.** `from_file` gives a bundle whose
   `match_claim_table` equals the written one row for row (provenance
   included), whose timelines hold the same Projections (`projection_table`
   of the bundle read equals the file's table), and whose `to_dict()` equals
-  the writer's. Written again into a fresh directory, all three files are
+  the writer's (`resources` included, which both give in canonical order,
+  by ID, whatever order the bundle made them in). Written again into a fresh directory, all three files are
   byte for byte the first ones.
 - **The actor context survives the package.** The synthetic package with
   `add_prefix("orcid", "https://orcid.org/")` on the bundle and the belief
-  `true` of `orcid:0000-0001` recorded in `claim_2`
+  `true` of `orcid:0000-0001` recorded in claim 2
   (`add_match_claim_belief`, date 2026-11-21): no statement uses `orcid`,
   only a MatchClaim table actor does. The manifest written holds `"orcid":
   "https://orcid.org/"` in its `@context` beside the format's terms and
@@ -1873,7 +1881,7 @@ then fails to load. Each test pins one of these with exact values.
   back, `bundle.prefixes == {"orcid": "https://orcid.org/"}`, the belief is
   still written `orcid:0000-0001` in the table, and
   `get_match_claims(believer="https://orcid.org/0000-0001", beliefs=["true"])`
-  keeps `claim_2` alone, as it does on the bundle written. A writer keeping
+  keeps claim 2 alone, as it does on the bundle written. A writer keeping
   only the prefixes statements use would drop the declaration: the compact
   actor would then expand to nothing after the reload and the filter would
   keep no claim. Written again, the files are byte for byte the first ones.
@@ -1883,25 +1891,31 @@ then fails to load. Each test pins one of these with exact values.
   actors), whether the bundle declares it or the catalogue does. The
   synthetic package with `add_prefix("ex", "http://example.org/ns/")`
   (used by nothing) and `add_prefix("orcid", "https://orcid.org/")`, the
-  belief `true` of `orcid:0000-0001` in `claim_2` and of `wd:Q1` (a
-  catalogue prefix no statement uses) in `claim_3`, written with its table:
+  belief `true` of `orcid:0000-0001` in claim 2 and of `wd:Q1` (a
+  catalogue prefix no statement uses) in claim 3, written with its table:
   the `@context` is exactly the format's terms, `orcid` and `wd` with the
   catalogue's namespace; `ex` is not written. Read back, `prefixes` is
   `{"orcid": "https://orcid.org/"}` (`wd` is the catalogue's, so not the
   bundle's own). A writer keeping every declared prefix would write `ex`;
   one keeping only what statements use would drop `orcid` and `wd`.
 - **The succession rule binds the writer.** Writing the same bundle over
-  its own files succeeds and changes no byte. A bundle holding only
-  `claim_1`–`claim_4` of those claims, written over them, is refused (`The
-  new MatchClaim table lacks the MatchClaim 'claim_5' of the existing
-  one: ...`) before anything is written: the three files keep their bytes.
+  its own files succeeds and changes no byte, and so does the same
+  construction run again as a fresh process runs it (after
+  `reset_content_minters()`, so its claims and Projections hold the ids the
+  first run minted). The construction without claim 5, run afresh the same
+  way (claims 1–4 hold the first run's ids), written over them, is refused
+  (`The new MatchClaim table lacks the MatchClaim '<claim 5's id>' of the
+  existing one: ...`) before anything is written: the three files keep
+  their bytes. Built twice in one run, the bundles would hold different
+  ids (equal content minted twice gives two ids), so the comparison of
+  equal constructions needs the fresh run.
 - **No claims and no Projections, no table.** A bundle with timelines and
   neither MatchClaims nor Projections writes the manifest alone, which
   holds no `resources`.
 - **Projections without claims.** A bundle whose `pcm` holds one
   Projection (`Timeline.add_projections`, 22050, no source) and no
-  MatchClaim writes the manifest and `projections.parquet`, named by
-  `resource_1` (`Projection`, `pcm`); read back, `pcm` holds that
+  MatchClaim writes the manifest and `projections.parquet`, named by one
+  entry under a minted ID (`Projection`, `pcm`); read back, `pcm` holds that
   Projection (the bundle's Projections table equals the file's).
 - **A named table that is absent.** The fixture `bundle_resources.yaml`
   copied alone into a directory loads (a manifest is read without its
@@ -1923,51 +1937,54 @@ then fails to load. Each test pins one of these with exact values.
   ("score",), "tables/claims.parquet")]` the table is written to
   `tables/claims.parquet`, the entry keeps `resource_7` and its URL and
   names the four timelines the claims name; the Projections table, new,
-  gets `resource_8` beside the manifest. A URL with a scheme
+  gets an entry under a minted ID (`resource_` + 13 characters) beside the
+  manifest. A URL with a scheme
   (`https://example.org/claims.parquet`) is refused.
 - **Merged claims keep their ids.** `from_bundles` of `source_a` and
   `source_b`, each holding a score (quarters) and a samples timeline with
   the Note `n1` and the onset `o1` at their origins and one claim
-  `n1` ↔ `o1`: `source_a`'s minted `claim_1`, `source_b`'s given `claim_2`;
-  `merged` then creates `claim_3` between `n2` (1 quarter on `a_score`)
-  and `o2` (44100 samples on `b_pcm`). No claim needs a Projection, so the
-  package holds no Projections table. `to_file` writes the MatchClaim table
-  with exactly the twelve MatchClaim columns, ids `claim_1`, `claim_2`,
-  `claim_3`, which TimeToShare's check accepts against the manifest
+  `n1` ↔ `o1`: `source_a`'s minted at its construction, `source_b`'s given
+  `claim_2`; `merged` then creates a third between `n2` (1 quarter on
+  `a_score`) and `o2` (44100 samples on `b_pcm`). No claim needs a
+  Projection, so the package holds no Projections table. `to_file` writes
+  the MatchClaim table with exactly the twelve MatchClaim columns, ids
+  `source_a`'s claim's, `claim_2` and the created claim's (three
+  distinct), which TimeToShare's check accepts against the manifest
   written; read back, the MatchClaim table and `to_dict()` equal the
   writer's, and a second write gives the same bytes. Written over its own
-  files the merged bundle changes no byte; the same merge with
+  files the merged bundle changes no byte, nor does the same merge run
+  afresh (after `reset_content_minters()`); the same merge run afresh with
   `source_b`'s claim given `claim_7` instead, written over them, lacks
   `claim_2` and is refused (`The new MatchClaim table lacks the MatchClaim
   'claim_2' of the existing one: ...`), the files keeping their bytes: a
   MatchClaim is its ID.
 - **A further column is kept.** The merged package's MatchClaim table
-  (`claim_1`, `claim_2`) rewritten by hand with a `scope` column appended
+  (`source_a`'s claim, `claim_2`) rewritten by hand with a `scope` column appended
   (`source_a`, null), as a package written by an earlier tool holds one:
   `MatchClaimField.from_parquet` reads it, the column last in `table`, its
   values as written, and `package_table` equals the file's table;
   `AlignmentBundle.from_file` holds the same field, and its
   `filter(timeline_id="b_score")` keeps the row's `scope` (null). Written
   to another directory, the MatchClaim table equals the hand-written one;
-  after a claim `n2` ↔ `o2` is added (minted `claim_3`) and `claim_1` is
-  believed `false`, the rewritten table's `id`/`scope` rows are `claim_1`
-  `source_a`, `claim_2` null, `claim_3` null: the column is carried row
-  for row, null for a row added, and never compared by the succession
-  rule.
+  after a claim `n2` ↔ `o2` is added (its id minted at its construction)
+  and `source_a`'s claim is believed `false`, the rewritten table's
+  `id`/`scope` rows are `source_a`'s claim `source_a`, `claim_2` null, the
+  added claim null: the column is carried row for row, null for a row
+  added, and never compared by the succession rule.
 - **An unreduced fraction in the package's tables** (the format's rule that "any fraction
   is valid" at the file boundary, through the whole path). A package of
   `score` (quarters, fraction, 8; `n1` at 1/2) and `audio` (seconds, float,
-  60.0; `o1` at 1.0) with `claim_1` `n1` ↔ `o1` and `claim_2` the position
-  3/2 on `score` ↔ `o1` (a Projection `projection_1` on `score` at 3/2, of
-  `audio`/`o1`) is written, then both files are rewritten by hand with every
+  60.0; `o1` at 1.0) with a claim `n1` ↔ `o1` and a second, the position
+  3/2 on `score` ↔ `o1` (a Projection on `score` at 3/2, of `audio`/`o1`,
+  its ID read from that claim) is written, then both files are rewritten by hand with every
   fraction spelled doubled: the MatchClaim cells `(2, 4, null)` and
   `(6, 4, null)`, the Projection's start `(6, 4, null)`. `from_file` reads
   it: its `match_claim_table` equals the writer's and `score` holds one
-  Projection, `projection_1` at `Coordinate(3/2, quarters)` (cell
+  Projection, under that ID, at `Coordinate(3/2, quarters)` (cell
   `{1.5, 3, 2}`). `add_projections` of the Projection of `audio`/`o1` at
   `Coordinate(3/2, quarters)` on the `score` read (the package holds no
   Note: a manifest names no event, so the Projection is its one event)
-  returns `["projection_1"]` and `score` still holds one event: get-or-add
+  returns `[<that ID>]` and `score` still holds one event: get-or-add
   matches a cell read as `6/4` with one placed as `3/2`. Written
   back over the rewritten files (the succession rule compares values, so
   the file's `6/4` is the bundle's `3/2`), the three files are byte for byte
@@ -1976,20 +1993,22 @@ then fails to load. Each test pins one of these with exact values.
   timeline `ghost`) makes `from_file` raise TimeToShare's `TableError`.
 - **Projection IDs are unique across the package** (TimeToShare's check
   keys the Projections table on the ID alone). Reading: the file's row 3
-  (`projection_2` on `pcm`) rewritten to `projection_1` is refused by that
-  check, which the reader raises as it stands, a `TableError` `the ID
-  'projection_1' is given twice`; so is row 1 (`projection_4` on `audio`)
-  rewritten to `projection_1`, the same ID on two timelines, with the
-  same message. Writing: IDs are minted unique when a Projection is
-  created in its manifest, and nothing is minted again on writing (an ID
-  once given is stable, a MatchClaim may name it). Timelines that created
-  their Projections apart and joined afterwards may each hold one ID, so
-  the writer refuses such a table before any file is written: a free
-  `part` given `projection_1` at sample 5 joins `pcm` of a bundle whose
-  `audio` holds `projection_1` (minted there at 0.5 s) as a child (the
-  join succeeds: `pcm` has one child, `part` keeps `projection_1`), and
-  `projection_table` of `audio` and `part` raises `Projection ID
-  'projection_1' names a Projection on the timeline 'audio' and one on
+  (`P2` on `pcm`) rewritten to row 2's ID (`P1`, on `pcm`) is refused by
+  that check, which the reader raises as it stands, a `TableError` `the ID
+  '<P1>' is given twice`; so is row 1 (`P4` on `audio`) rewritten to
+  `P1`, the same ID on two timelines, with the same message. Writing: an
+  ID is minted when a Projection is created, a minted or given ID another
+  timeline of the manifest holds is refused there, and nothing is minted
+  again on writing (an ID once given is stable, a MatchClaim may name it).
+  Timelines that created their Projections apart and joined afterwards may
+  each hold one ID, so the writer refuses such a table before any file is
+  written. `SHARED` is `IdMinter(1).mint("projection")`, the ID
+  `add_projections(..., seed=1)` mints first (computed by a second
+  minter, never typed): `audio` of a bundle mints it at 0.5 s, a free
+  `part` mints it at sample 5, and `part` joins `pcm` of that bundle as a
+  child (the join succeeds: `pcm` has one child, `part` keeps `SHARED`),
+  and `projection_table` of `audio` and `part` raises `Projection ID
+  '<SHARED>' names a Projection on the timeline 'audio' and one on
   'part': a Projection's ID is unique among all Projections of a manifest
   and its package. Create the MatchClaims once the timelines share the
   bundle (for instance with AlignmentBundle.create_match_claims), so that
@@ -2002,8 +2021,8 @@ then fails to load. Each test pins one of these with exact values.
   workflow (each timeline of a separate group mints its own Projections),
   and a MatchClaim addresses an event by its timeline and ID, so a join
   is never refused for a Projection ID. Two timelines given Projections
-  apart each mint `projection_1` (`pcm` at 22050 samples, `audio` at
-  0.5 s). Every way a timeline joins a bundle's manifest passes one
+  apart with one seed each mint `SHARED` (`pcm` at 22050 samples, `audio`
+  at 0.5 s). Every way a timeline joins a bundle's manifest passes one
   admission, so each is tried once with the bundle holding `pcm`:
   `add_timeline(audio)`, `add_timeline(audio, grouped_with="pcm")` (the
   group, held by the bundle, admits it), `add_group` of a group holding
@@ -2012,15 +2031,15 @@ then fails to load. Each test pins one of these with exact values.
   changes exactly what it changes otherwise: the bundle's timelines are
   `['pcm', 'audio']`, its groups' members as the join makes them (none;
   `[['pcm', 'audio']]`; `[['audio']]`; none), and each timeline keeps its
-  one Projection `projection_1` at its position (never minted again). A
-  Projection then added without an ID to `audio` is minted
-  `projection_2`, above every Projection of the manifest. Writing the
+  one Projection `SHARED` at its position (never minted again). A
+  Projection then added without an ID to `audio` (at 1.0 s) is minted an
+  ID other than `SHARED`, and `audio` holds the two. Writing the
   package raises `ValueError` before any file is written (the directory
   stays empty), naming the ID and both timelines in the table's order
   (sorted by timeline ID: `audio`, then `pcm`) and the remedy, the message
   of the item above. The control: `audio`'s Projection given the ID
   `onset_a` instead joins, and the package holds `onset_a` on `audio` and
-  `projection_1` on `pcm`. A bundle whose MatchClaims were created inside
+  `SHARED` on `pcm`. A bundle whose MatchClaims were created inside
   it writes and reads back with its exact Projection IDs (the loader tests
   of the Performance Precision and MAPS bundles).
 - **Boxes in the package** (`TestBoxes`). One writer serves every event
@@ -2060,7 +2079,8 @@ then fails to load. Each test pins one of these with exact values.
   `f.bounding_box.height` `{1, 1, null}` (a fraction keeps its
   denominator, 1 included); `m1.quadrilateral.bottom_right` is `{x: {2161,
   null, null}, y: {2266, null, null}}`; `rect_h2.quadrilateral` and
-  `m1.bounding_box` are null. The resource is `resource_1`, type `"Box"`,
+  `m1.bounding_box` are null. The resource is one entry under a minted ID
+  (`resource_` + 13 characters), type `"Box"`,
   timelines `["seg_2", "sys", "uu"]`, URL `boxes.parquet`, the Parquet
   media type, its size and SHA-256 those of the file. `from_file` reads
   back the four Boxes equal to the originals (each timeline's Box rows
@@ -2155,17 +2175,18 @@ then fails to load. Each test pins one of these with exact values.
   - *One Projection beside Notes.* `score` (`ContinuousLogicalTimeline`,
     quarters, fraction, length 16) holds `n1` (start 0, duration 1, `midi`
     60) and `n2` (start 3/2, `midi` 62), then one Projection added by
-    `add_projections` (start 1/3, duration 2/3; minted `projection_1`). The
-    bundle `one` holds `score` alone; `to_file` writes exactly
-    `one.yaml` and `projections.parquet`, whose one row is `{id:
-    projection_1, timeline_id: score, unit: quarters, number_type:
-    fraction, start: {1, 3, null}, duration: {2, 3, null}, projection_of:
-    null}`; the resource is `resource_1`, type `"Projection"`, timelines
+    `add_projections` (start 1/3, duration 2/3; its minted ID is the one
+    `add_projections` returns, and `score`'s ids are `n1`, `n2`, that ID).
+    The bundle `one` holds `score` alone; `to_file` writes exactly
+    `one.yaml` and `projections.parquet`, whose one row is `{id: <that ID>,
+    timeline_id: score, unit: quarters, number_type: fraction, start: {1,
+    3, null}, duration: {2, 3, null}, projection_of: null}`; the resource is
+    one entry under a minted ID, type `"Projection"`, timelines
     `["score"]`, URL `projections.parquet`. Read back, `score` holds that
     Projection alone (start 1/3, duration 2/3, `projection_of` null: the
     manifest names no Note).
   - *Two Boxes beside a Note.* `seg_2` (pixels, int, length 867,
-    `meta["box"]` x 7) holds the Note `note_1` (start 0, duration 10,
+    `meta["box"]` x 7) holds the Note `note_a` (start 0, duration 10,
     `midi` 60), `rect_h2` (the bounding box (385, 46, 139, 20): start 378,
     duration 139) and `rect_b` (the bounding box (400, 100, 50, 30): start
     393, duration 50). `to_file` writes exactly the manifest and
@@ -2178,14 +2199,14 @@ then fails to load. Each test pins one of these with exact values.
     above) and `pcm` (`DiscretePhysicalTimeline`, samples, int, length
     705600) holds the Note `o1` at 22050. One MatchClaim states the score
     side as the position `{start: 0, end: 4}` and the performance side as
-    the event `o1`: it adds the Projection `projection_1` on `score` and
-    none on `pcm`. `projections.parquet` holds exactly one row, `{id:
-    projection_1, timeline_id: score, unit: quarters, number_type:
+    the event `o1`: it adds a Projection on `score` (its ID the claim's
+    event A) and none on `pcm`. `projections.parquet` holds exactly one
+    row, `{id: <that ID>, timeline_id: score, unit: quarters, number_type:
     fraction, start: {0, 1, null}, duration: {4, 1, null}, projection_of:
     {timeline_id: pcm, event_id: o1}}`; the Projection resource names
     `["score"]` alone. Read back, `score` holds that Projection with its
-    reference, and the bundle holds the one MatchClaim, `claim_1`, from
-    `projection_1` on `score` to `o1` on `pcm`.
+    reference, and the bundle holds the one MatchClaim, under the id it was
+    made with, from that Projection on `score` to `o1` on `pcm`.
   - The byte-equal fixture tests above (`test_the_package_is_written_back`,
     `TestTimeToShareFixturePackage`), whose timelines hold Projections
     alone, are unchanged and stay green.
@@ -2201,7 +2222,8 @@ then fails to load. Each test pins one of these with exact values.
   StringQuartetEEP_I_Normal_align_vln1.notes`, `pitch` a name string)
   and `ScoreMidiLoader`'s `midi/score/beethoven_op18.mid` (`pitch` an
   integer); *IEEE 1599 beside ms3*, `ieee1599/bach_artefuga_01.xml`'s
-  timeline `los:dlt_2` (`staff` and `voice` text identifiers) and
+  logically organised symbols timeline (the loader's `los_uid`; `staff`
+  and `voice` text identifiers) and
   `Ms3Loader`'s Chopin Op. 10 No. 3 notes (`staff` and `voice` integers).
   Each directory then holds exactly the manifest, the manifest has no
   `resources` key and validates (`timetoshare.validate`), and
@@ -2295,16 +2317,27 @@ from every assertion here.
    every key TimeToShare gives a default, the empty `resources`,
    `graphical.timestamps`, `graphical.matchstamps` and `graphical.elisions` included: two groups
    and an ungrouped root, a group member that is a
-   child (its root is written, the child id is the member), the `group_N`
-   ids, no `id` (the bundle's `bundle_1` is minted), no `support_policy`,
-   and the member order as added. A bundle with a given id writes it; an
-   anonymous bundle read back writes no id again.
-3. **Identity.** A fresh bundle is `bundle_1`; `as_group` names the new group
-   and its id is minted `group_1`, `group_2`; a child added to a group brings
+   child (its root is written, the child id is the member), the groups'
+   given ids `g1` and `g2` (named `edition` and `roll`), no `id` (the
+   bundle's id is minted, `bundle_` + 13 base-36 characters, and never
+   written), no `support_policy`, and the member order as added. A bundle
+   with a given id writes it; an anonymous bundle read back writes no id
+   again. Where groups are minted (`as_group`), the `groups` list is in
+   the order of their ids (TimeToShare's canonical order), so a test reads
+   each group's id by its name and compares the list with the sorted ids.
+3. **Identity.** Every id is minted at construction and never renamed. A
+   bundle given `seed=5` holds `IdMinter(5).mint("bundle")`, as does a
+   second bundle of that seed; two anonymous bundles built alike hold two
+   ids. `as_group` names the new group, whose id is minted (with `seed=6`,
+   `IdMinter(6).mint("group")`; without, another `group_` + 13 characters).
+   A child added to a group brings
    its root, ungrouped; a child added ungrouped registers only its root (an
    ungrouped participant is always a root), and the round trip restores
-   exactly that participant set; three loader-minted `cpt_1` timelines join
-   one bundle as `cpt_1`, `cpt_2`, `cpt_3`; a timeline already in one group
+   exactly that participant set; three loads of one TiLiA file mint one
+   timeline id three times (a loader seeds from its source), and a bundle
+   holding the first refuses the other two (`timeline '<id>' cannot join
+   bundle '<bundle id>': its id '<id>' is already held by timeline
+   '<id>'`), each keeping its id, the bundle unchanged; a timeline already in one group
    may join another (see "A Timeline in Several Groups" below: the root
    brought along with its child and grouped later joins a third group by
    `as_group`, and a pre-built group holding a grouped member is admitted);
@@ -2313,19 +2346,23 @@ from every assertion here.
    flow-control elements alike; the other kinds are proved in
    `tests/timelines/test_manifest_ids.py`); a given timeline id held by
    another timeline (of any tree in the bundle, descendants included)
-   raises `ValueError` (`timeline 'holes' cannot join bundle 'bundle_1':
+   raises `ValueError` (`timeline 'holes' cannot join bundle '<bundle id>':
    its id 'holes' is already held by timeline 'holes'`) and leaves the
-   bundle unchanged; a minted id held there is minted again. A refused newcomer keeps
-   its ids: every collision check — the timeline ids and the group id —
-   runs before any id is minted again, so a minted `clt_1` that admission
-   would have re-minted is still `clt_1` after its group or its root was
-   refused. A given group id refuses a timeline that carries it (`timeline
-   'g' cannot join bundle 'bundle_1': its id 'g' is already held by group
-   'g'`); a *minted*
-   group id that a newcomer's given timeline id takes is minted again
-   (`group_1` → `group_3` beside an existing `group_2`), and the members keep
-   their membership under the new id. `from_bundles` merges two bundles'
-   minted groups as `group_1` and `group_2`. A merge locks nothing and
+   bundle unchanged. Two timelines built without an id hold two minted ids
+   and join under them; a minted id held already is refused the same way,
+   never minted again (two timelines built with `seed=1` hold
+   `IdMinter(1).mint("clt")`; the second is refused, keeps it, and the
+   bundle writes what it wrote before). A refused newcomer keeps its ids,
+   its minted descendants' included; a group refused for its given id
+   leaves its member's minted id as it was. A given group id refuses a
+   timeline that carries it (`timeline 'g' cannot join bundle '<bundle
+   id>': its id 'g' is already held by group 'g'`); so does a *minted*
+   group id, the group and its members unchanged. Groups given no id join
+   under their minted ids (`group_ids` is `["g", <first>, <second>]`).
+   `from_bundles` keeps every group's id (`[x, y]` as the sources hold
+   them), and two sources holding one group id (each built with `seed=1`)
+   are refused (`Group '<id>' already exists in bundle`), the sources
+   keeping their groups. A merge locks nothing and
    changes no source: a bundle read from a manifest whose group `g` holds a
    segment line `line` (segments 4 and 2 quarters) stating `locked: false`
    and a plain `plain`, merged with a bundle of one group of `c`, gives `line`
@@ -2341,10 +2378,11 @@ from every assertion here.
 5. **Refusals.** `from_dict` raises `ValueError` naming the problem for a
    missing marker or required key, an empty manifest id, a timeline written
    twice, a group id written twice or equal to a timeline id, a member naming
-   no timeline, a group naming one member twice (`names a member twice`; two
+   no timeline (`'ghost' names no timeline or virtual timeline of this
+   manifest`, TimeToShare's words), a group naming one member twice (`names a member twice`; two
    groups sharing a member are no error), a group naming a parent and its
-   child, a key of `graphical.order` naming no group or timeline (`'graphical.order'
-   names no group or timeline: ['group_7']`), and a group's order that is not a
+   child, a key of `graphical.order` naming no group or timeline (`'g7' names
+   no group, timeline or virtual timeline of this manifest`), and a group's order that is not a
    permutation of its members. A key the library does not know is not
    refused: it is kept and written back.
 6. **Styling is carried, never read.** A bundle file's `graphical` may hold
@@ -2438,16 +2476,18 @@ differs from row order, so a claim built from row positions instead of matched p
   quarter (`1/2`, `3/2`, `1`, read from the strings, never through a float); no event is
   added to either timeline.
 * **The score side states positions only** (no `target_id_column`): the score timeline gains
-  three Projections, `projection_1` … `projection_3`, at `1/2`, `3/2`, `1`, each
-  `projection_of` naming the performance note it was matched to; the claims name
-  `(p1, projection_1)`, `(p2, projection_2)`, `(p3, projection_3)`.
+  three Projections, each its own minted ID (three distinct; the test reads them from the
+  timeline, in order), at `1/2`, `3/2`, `1`, each `projection_of` naming the performance
+  note it was matched to; the claims name `p1`, `p2`, `p3` with the first, second and
+  third Projection.
 * **Neither side names events**: each timeline gains three Projections standing for no
-  event (`projection_of` null), and the claims join them pairwise.
+  event (`projection_of` null), at the samples and quarters above, and the claims join
+  them pairwise, in order.
 * **Matching again adds nothing.** The library has one projection operation (the bundle's
   `create_match_claims` and the loaders use it too), which reuses the Projection a timeline
   holds for the same event at the same position. Run twice on the same timelines, with the
   score side as positions and with neither side named, the second run's claims name the
-  first run's Projections (`projection_1` … `projection_3`, in the same pairs) and both
+  first run's Projections (the ids the timelines hold, in the same pairs) and both
   timelines hold as many events as after the first run (score 6, performance 3; then
   performance 6, score 6).
 * **Refusals**, each leaving both timelines as they were: an id column naming an id the
@@ -2458,15 +2498,15 @@ differs from row order, so a claim built from row positions instead of matched p
 * **Provenance** defaults to `Provenance(method="inferred", note="greedy sequential matching
   by pitch")`.
 * **Matching before bundling.** Each timeline in a group of its own, neither side named, so
-  each mints `projection_1` … `projection_3` alone; then a bundle takes both groups
-  (`add_group`, one per group) and the claims (`add_match_claims`). Nothing refuses the
-  shared IDs: the bundle holds both timelines in two groups (`[['dpt_1'], ['clt_1']]`) and
-  the three claims `claim_1` … `claim_3`. Each claim resolves its two events by timeline and
-  ID: side A `get_event` on `dpt_1` returns the Projection `projection_k` at sample 22050,
-  44100, 66150, side B on `clt_1` the Projection `projection_k` at `1/2`, `3/2`, `1`.
+  each mints the ids of its three Projections, before any bundle exists; then a bundle
+  takes both groups (`add_group`, one per group) and the claims (`add_match_claims`). The
+  bundle holds both timelines in two groups (`[['dpt_1'], ['clt_1']]`) and the three
+  claims under the ids they were made with (three distinct; joining mints nothing). Each
+  claim resolves its two events by timeline and ID: side A `get_event` on `dpt_1` returns
+  the k-th Projection of `dpt_1`, at sample 22050, 44100, 66150, side B on `clt_1` the
+  k-th Projection of `clt_1`, at `1/2`, `3/2`, `1`.
   `get_matchstamp_at(44100, "dpt_1")` places `clt_1` at exactly `Coordinate(3/2, quarters)`,
-  the anchor of the second claim. A join that refused the shared IDs fails at the first
-  `add_group`.
+  the anchor of the second claim.
 
 ### Matching across spellings
 
@@ -3426,7 +3466,7 @@ exact pixel `2438` on `dgt_1` for all three coordinate forms.
 | `test_materialise_warps_instant_events` | Instant event coordinates warped correctly (reads `start` struct dict, not `instant`) |
 | `test_materialise_warps_interval_events` | Start/end/duration all warped; duration uses `forward(start+dur) - forward(start)` for non-linear correctness |
 | `test_materialise_warps_children` | Child offsets converted, child count preserved |
-| `test_materialise_warps_regions` | Region boundaries converted, region names preserved |
+| `test_materialise_warps_regions` | Region boundaries converted; each warped region keeps its source region's id (`verse`, `chorus`) and name |
 | `test_type_conversion_clt_to_cpt` | Source CLT (quarters) → target CPT (seconds): correct type and unit |
 | `test_full_pipeline` | Three claims `score`↔`audio` at (0, 0), (100, 50), (200, 100) → MatchLine → WarpMap: forward 50 → 25.0, inverse 75 → 150.0 |
 
@@ -3677,7 +3717,7 @@ an unlocked one with `locked=False`.
    is what proves the refusal now comes first. Accepted neighbour, the same
    pairs with `{"start": 4}` on `kid`: two claims, `kid` holds one
    Projection at `4` and keeps its length `5`, `root` one Projection at
-   `2`, `other` two, at `1` and `3`. The same rule on a segment line,
+   `2`, `other` two, at `1` and `3`, each the event its claim names. The same rule on a segment line,
    whose parent decides a segment's end: `line` (quarters, length 9) holds
    `a` (length 4, at 0) and `b` (unknown length, at 4, so it ends at `5`
    on its own axis, where the line ends). A position at `6` on `b` is
@@ -3707,8 +3747,10 @@ an unlocked one with `locked=False`.
    (an interval claim with the anchors `0` and `4`).
 5. **A side's name is kept.** A first claim states `{"start": 1, "name":
    "bar 1"}` on `score`; a second call claims the same position without a
-   name, a third names the Projection by its ID (`"projection_1"`): both
-   claims show `event_a_name == "bar 1"`. Within one call the same holds
+   name, a third names the Projection by its ID (the one the first claim
+   names, minted when the first call added it): both claims show
+   `event_a_name == "bar 1"`, and `score` holds that one Projection, at
+   `1`. Within one call the same holds
    (the second pair on the same Projection without a name shows the name of
    the first). A later side giving another name (`"first bar"`) shows the
    first name, `"bar 1"`: the name a Projection was first claimed under is

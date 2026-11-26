@@ -256,7 +256,10 @@ class TestMatchClaim:
     def test_auto_generated_and_explicit_id(
         self, basic_anchor: AlignmentAnchor
     ) -> None:
-        assert _claim(basic_anchor).id is None
+        first, second = _claim(basic_anchor), _claim(basic_anchor)
+        assert re.fullmatch(r"claim_[0-9a-z]{13}", first.id)
+        assert re.fullmatch(r"claim_[0-9a-z]{13}", second.id)
+        assert first.id != second.id
         assert _claim(basic_anchor, id="my_claim").id == "my_claim"
 
     @pytest.mark.parametrize(

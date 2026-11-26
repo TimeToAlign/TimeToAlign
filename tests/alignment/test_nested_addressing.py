@@ -108,7 +108,9 @@ def test_registry_holds_only_what_was_registered() -> None:
     bundle.get_matchstamp_at(Fraction(27, 2), "clt_4")
 
     assert bundle.timeline_ids == REGISTERED
-    assert bundle.timeline_to_groups == {"clt_6": ("group_1",), "clt_7": ("group_1",)}
+    (group_id,) = bundle.groups
+    assert bundle.groups[group_id].name == "score"
+    assert bundle.timeline_to_groups == {"clt_6": (group_id,), "clt_7": (group_id,)}
 
 
 @pytest.mark.parametrize("timeline_id", ["clt_2", "clt_3", "clt_4", "clt_5", "clt_7"])
@@ -707,8 +709,9 @@ def test_grouped_with_names_a_nested_timeline() -> None:
     bundle.add_timeline(timelines["clt_6"], grouped_with="clt_7")
 
     assert bundle.timeline_ids == ["clt_1", "clt_7", "clt_6"]
-    assert bundle.groups["group_1"].timeline_ids == ["clt_7", "clt_6"]
-    assert bundle.timeline_to_groups == {"clt_6": ("group_1",), "clt_7": ("group_1",)}
+    (group_id,) = bundle.groups
+    assert bundle.groups[group_id].timeline_ids == ["clt_7", "clt_6"]
+    assert bundle.timeline_to_groups == {"clt_6": (group_id,), "clt_7": (group_id,)}
     values = _values(bundle.get_matchstamp_at(Fraction(27, 2), "clt_6").coordinates)
     assert values == [
         ("clt_6", Fraction(27, 2)),
@@ -732,12 +735,13 @@ def test_add_group_with_a_nested_member(
     if tree_first:
         bundle.add_timeline(timelines["clt_1"])
 
-    bundle.add_group(
-        TimelineGroup(name="score", timelines=[timelines["clt_7"], timelines["clt_6"]])
+    group = TimelineGroup(
+        name="score", timelines=[timelines["clt_7"], timelines["clt_6"]]
     )
+    bundle.add_group(group)
 
     assert bundle.timeline_ids == registered
-    assert bundle.timeline_to_groups == {"clt_6": ("group_1",), "clt_7": ("group_1",)}
+    assert bundle.timeline_to_groups == {"clt_6": (group.id,), "clt_7": (group.id,)}
     assert _stamp_from_partner(bundle) == GROUPED_AT_27_HALVES
 
 

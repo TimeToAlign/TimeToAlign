@@ -45,7 +45,7 @@ def _matchstamp_with_maps(*, conversion_maps: bool = True) -> MatchStamp:
     """Build a bundle-backed MatchStamp with exact-value conversion maps."""
     timeline = _timeline_with_maps()
     bundle = AlignmentBundle(id="stamp-contract")
-    bundle.add_timeline(timeline, as_group="clock-group")
+    bundle.add_group(TimelineGroup(id="clock-group", timelines=[timeline]))
     return bundle.get_matchstamp_at(
         25.0,
         "clock",
@@ -178,8 +178,8 @@ def test_matchstamp_to_dict_formats_are_exact() -> None:
         "value": 25.0,
     }
     assert stamp.to_dict(format="flat") == {"clock (seconds)": data}
-    assert stamp.to_dict(format="prefix") == {"group_1/clock (seconds)": data}
-    assert stamp.to_dict(format="nested") == {"group_1": {"clock (seconds)": data}}
+    assert stamp.to_dict(format="prefix") == {"clock-group/clock (seconds)": data}
+    assert stamp.to_dict(format="nested") == {"clock-group": {"clock (seconds)": data}}
     assert stamp.to_dict(format="graph") == {
         "coordinates": {"clock": data},
         "stated_pairs": [],

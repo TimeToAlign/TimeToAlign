@@ -481,7 +481,9 @@ Both directions of exactness are asserted, each on value and Python type
 End to end, `create_match_claims` projecting `1/3` quarters onto the ticks
 timeline adds a Projection at `160` and the MatchClaim table's frame reads
 `Fraction(1, 3)` in the quarters column and `160` in an `int64` ticks column:
-the cells are the MatchClaim's coordinates as held.
+the cells are the MatchClaim's coordinates as held. The Projection is found
+through the MatchClaim (`claim.event_b_id`, a minted ID): the ticks timeline
+holds it as a `Projection` event of `n1` on `score`.
 
 The other half of the rule is the refusal: `add_match_claims` refuses a
 MatchClaim whose coordinate is off its timeline's axis, whether in another unit (`1.5`
@@ -2126,7 +2128,9 @@ reaching `float(None)` and failing with an unrelated `TypeError`.
 The exact coordinate values distinguish the typed default from explicit
 numeric projections and make attached `TimeUnit` values observable. The cases
 pin `present_timelines`, singular and plural retrieval, conversion-map gating, every
-`MatchStamp.to_dict()` format, and frozen `MatchStamp` fields. Exact dictionary
+`MatchStamp.to_dict()` format, and frozen `MatchStamp` fields. The
+fixture's group is given the ID `clock-group`, so the `prefix` and
+`nested` forms key it by that name (`clock-group/clock (seconds)`). Exact dictionary
 shapes ensure neither grouped rendering nor legacy graph serialization drifts.
 
 **`MatchStamp` conversion-row display:** `MatchStamp.__str__`/`_repr_html_`

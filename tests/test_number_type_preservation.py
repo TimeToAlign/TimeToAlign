@@ -735,8 +735,10 @@ def test_a_projected_claim_reaches_the_table_in_the_declared_types() -> None:
             )
         ]
     )
-    assert claim.event_b_id == "projection_1"
-    assert bundle.get_timeline("ticks").get_event("projection_1")["start"] == {
+    projection = bundle.get_timeline("ticks").get_event(claim.event_b_id)
+    assert projection["event_type"] == "Projection"
+    assert projection["projection_of"] == {"timeline_id": "score", "event_id": "n1"}
+    assert projection["start"] == {
         "value": 160.0,
         "numerator": 160,
         "denominator": 1,

@@ -328,3 +328,19 @@ def test_a_fresh_loader_builds_everything_with_the_same_ids() -> None:
     }
     assert len(set(ms3["events"])) == 530
     assert len(ms3["manifest"]["measure_maps"]) == 1
+
+
+def _flow_control_ids(measures: Path) -> set[str]:
+    """The flow-control IDs of a fresh ms3 loader's timeline, in fresh process minters."""
+    reset_content_minters()
+    timeline = Ms3Loader.from_file(measures).create_timeline()
+    return {element.id for element in timeline.flow_control.elements}
+
+
+def test_two_scores_do_not_share_flow_control_ids() -> None:
+    op18 = ensure_data("score") / "beethoven_op18-4iv_multimodal" / "op18_no4_mov4_flow"
+    musette = _flow_control_ids(MUSETTE / "c05n05_musete.measures.tsv")
+    finale = _flow_control_ids(op18 / "op18_no4_mov4_flow.measures.tsv")
+    assert {"jump", "jump_target"} <= {shape(i) for i in musette}
+    assert {"jump", "jump_target"} <= {shape(i) for i in finale}
+    assert musette.isdisjoint(finale)

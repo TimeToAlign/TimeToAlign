@@ -315,14 +315,21 @@ class TestTimelineIdentity:
     def test_bundle_holds_every_timeline_in_its_own_group(
         self, ieee1599_loader, ieee1599_bundle
     ) -> None:
-        """Claims relate singleton groups rather than extending one group."""
+        """Claims relate singleton groups, each named by its timeline's role."""
         loader = ieee1599_loader("gymnopedie")
         bundle = ieee1599_bundle("gymnopedie")
 
         assert list(bundle.timelines) == loader.timeline_uids
         group_ids = bundle.group_ids
         assert shapes(group_ids) == ["group"] * len(loader.timeline_uids)
-        assert [group.name for group in bundle.groups.values()] == loader.timeline_uids
+        assert [group.name for group in bundle.groups.values()] == [
+            "spine",
+            "los",
+            "eng_montreal_les_editions_outremontaises_2006",
+            "eng_transcription_2012",
+            "satie_gymnopedie1_coleman",
+            "satie_gymnopedie1_pfaul",
+        ]
         assert all(group.n_timelines == 1 for group in bundle.groups.values())
         assert bundle.timeline_to_groups == {
             uid: (group_id,) for uid, group_id in zip(loader.timeline_uids, group_ids)

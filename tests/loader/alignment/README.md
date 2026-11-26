@@ -105,8 +105,12 @@ with its own first image: the roles are exactly `a_take_mp3`, `b_take_mp3`,
 `_`): the gymnopédie edition `"eng:Montréal: Les Éditions Outremontaises
 (2006)"` becomes `eng_montreal_les_editions_outremontaises_2006`, and the track
 `audio/ChaseColeman/satie-gymnopedie1-coleman.mp3` becomes
-`satie_gymnopedie1_coleman`.  All timelines are standalone: the bundle holds no
-`TimelineGroup`, since the claims already carry the connectivity.
+`satie_gymnopedie1_coleman`.  The bundle holds every timeline in a group of
+its own, since the claims already carry the connectivity. A group's name is
+its timeline's role, what the document states, never a minted id: the
+gymnopédie bundle's groups are named exactly `spine`, `los`,
+`eng_montreal_les_editions_outremontaises_2006`, `eng_transcription_2012`,
+`satie_gymnopedie1_coleman` and `satie_gymnopedie1_pfaul`, in timeline order.
 
 A LOS event sits at the VTU coordinate of the spine event it references — that
 reference *is* its temporal position.  A `<chord>` contributes one event per
@@ -556,6 +560,13 @@ stated all the same.
   `trompa-align_inserted_Cs4` (the second time as the event the timeline
   holds). Before, a second call added every Projection again and refused the
   kept inserted id.
+* **A second reading in one run mints the same IDs.** The claims and the
+  Projections are minted from the loader's minter, seeded from the file
+  read, never from the minters the process keeps for objects built in code,
+  which count on from one build to the next. Two fresh `MapsLoader`s reading
+  the second fixture one after the other, each onto the same score and a
+  fresh seconds timeline, give equal claim IDs, in order, and equal
+  Projection IDs on the two performances; the 17 claim IDs are distinct.
 
 ### Refusals
 

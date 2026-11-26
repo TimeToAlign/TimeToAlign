@@ -323,6 +323,26 @@ def test_a_second_call_reuses_every_projection(
         assert [first[-1].event_a_id, again[-1].event_a_id] == [INSERTED, INSERTED]
 
 
+def test_a_second_reading_mints_the_same_ids(
+    score: Timeline, stated_path: Path
+) -> None:
+    def read() -> tuple[list[str], list[str]]:
+        performance = _seconds_timeline()
+        claims = MapsLoader.from_file(stated_path).create_match_claims(
+            score, performance
+        )
+        return [claim.id for claim in claims], performance.events.table.column(
+            "id"
+        ).to_pylist()
+
+    first_claims, first_projections = read()
+    again_claims, again_projections = read()
+    assert again_claims == first_claims
+    assert again_projections == first_projections
+    assert len(set(first_claims)) == 17
+    assert len(first_projections) == 16
+
+
 def test_kinds_are_logged(stated_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO, logger="timetoalign"):
         MapsLoader.from_file(stated_path)

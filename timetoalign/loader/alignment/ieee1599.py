@@ -480,6 +480,8 @@ class Ieee1599Loader(XmlLoader):
 
         self._spine_uid: str | None = None
         self._los_uid: str | None = None
+        #: Timeline uid -> the role it was minted with (its layer's label).
+        self._roles: dict[str, str] = {}
         #: Spine event id -> cumulative VTU coordinate.
         self._spine_coordinates: dict[str, int] = {}
         self._spine_rows: list[dict[str, Any]] = []
@@ -556,6 +558,7 @@ class Ieee1599Loader(XmlLoader):
         super().clear()
         self._spine_uid = None
         self._los_uid = None
+        self._roles.clear()
         self._spine_coordinates.clear()
         self._spine_rows.clear()
         self._los_rows.clear()
@@ -587,6 +590,12 @@ class Ieee1599Loader(XmlLoader):
         self._store_tables()
         self._build_claim_field()
 
+    def _mint_timeline_uid(self, unit: TimeUnit, role: str) -> str:
+        """Mint the uid of one layer's timeline and remember the role it leads with."""
+        uid = mint_timeline_id(unit, self._id_minter, role=role)
+        self._roles[uid] = role
+        return uid
+
     def _read_metadata(self, root: ET.Element) -> None:
         """Collect root attributes and ``<general>`` bibliographic metadata."""
         metadata: dict[str, Any] = {
@@ -616,9 +625,7 @@ class Ieee1599Loader(XmlLoader):
         coordinate and the hpos sum a single integer field.  Events notated as
         simultaneous carry ``timing="0"`` and so share a coordinate.
         """
-        self._spine_uid = mint_timeline_id(
-            TimeUnit.ticks, self._id_minter, role="spine"
-        )
+        self._spine_uid = self._mint_timeline_uid(TimeUnit.ticks, "spine")
         timing = 0
         hpos = 0
         for event in root.findall("./logic/spine/event"):
@@ -648,7 +655,7 @@ class Ieee1599Loader(XmlLoader):
         recoverable by grouping on ``event_ref`` and ordering by
         ``notehead_index``.
         """
-        self._los_uid = mint_timeline_id(TimeUnit.ticks, self._id_minter, role="los")
+        self._los_uid = self._mint_timeline_uid(TimeUnit.ticks, "los")
         los = root.find("./logic/los")
         if los is None:
             return
@@ -853,9 +860,7 @@ class Ieee1599Loader(XmlLoader):
         for group in root.findall("./notational/graphic_instance_group"):
             description = group.get("description") or "edition"
             spec = _EditionSpec(
-                uid=mint_timeline_id(
-                    TimeUnit.pixels, self._id_minter, role=roles[group]
-                ),
+                uid=self._mint_timeline_uid(TimeUnit.pixels, roles[group]),
                 description=description,
                 pages=[],
                 rows=[],
@@ -983,7 +988,7 @@ class Ieee1599Loader(XmlLoader):
             general = track.find("track_general")
             notes = None if general is None else general.find("notes")
             spec = _TrackSpec(
-                uid=mint_timeline_id(TimeUnit.seconds, self._id_minter, role=role),
+                uid=self._mint_timeline_uid(TimeUnit.seconds, role),
                 file_name=file_name,
                 attributes={
                     "encoding_format": track.get("encoding_format"),
@@ -1413,14 +1418,17 @@ class Ieee1599Loader(XmlLoader):
     def create_bundle(self, **kwargs: Any) -> AlignmentBundle:
         """Assemble the AlignmentBundle from the parsed document.
 
-        Each timeline occupies its own singleton TimelineGroup. The claims
-        relate those groups through the spine and are added columnar with
+        Each timeline occupies its own singleton TimelineGroup, named by the
+        timeline's role: ``spine``, ``los``, an edition's description or a
+        track's file stem as the document states them (see
+        :attr:`timeline_uids`). The claims relate those groups through the
+        spine and are added columnar with
         :meth:`~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field`
         rather than exploded into claim objects.
 
         Returns:
-            An ``AlignmentBundle`` with one group per timeline and the
-            MatchClaims.
+            An ``AlignmentBundle`` with one group per timeline, each named by
+            its timeline's role, and the MatchClaims.
 
         Raises:
             RuntimeError: If ``load()`` has not been called yet.
@@ -1434,7 +1442,7 @@ class Ieee1599Loader(XmlLoader):
 
         bundle = AlignmentBundle(name=self._name)
         for timeline in self.create_timelines():
-            bundle.add_timeline(timeline, as_group=timeline.id)
+            bundle.add_timeline(timeline, as_group=self._roles[timeline.id])
         if self._claim_field is not None:
             bundle.add_match_claim_field(self._claim_field)
         return bundle

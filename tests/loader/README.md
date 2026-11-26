@@ -87,6 +87,14 @@ per seed kind:
     map, flow control, C-Maps and the FlowMap `create_stated_flow_map`
     writes) and its events' IDs. Each comparison also holds a minted ID
     of each kind named, so the equality is not one of empty lists.
+12. *Two scores do not share flow-control IDs.* Flow control is minted from
+    the loader's minter, which is seeded from the bytes read; a minter that
+    is not (a default one, or a process minter fresh at the first load) gives
+    the same jump and jump-target IDs to every score's first load. Two fresh
+    `Ms3Loader`s on two different measures tables, both stating jumps (the
+    Musette and the Op. 18 No. 4 finale with its repeats and endings), each
+    run first in a fresh set of process minters, give disjoint flow-control
+    IDs, so the two timelines can join one manifest.
 
 ## Single-source loaders
 

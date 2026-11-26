@@ -19,7 +19,8 @@ claims are materialised lazily, only when a row is indexed or iterated.
 Every kind of MatchClaim is a row like any other: synchronous claims
 with their anchors, NOMATCH and conceptual claims without. The event ID
 columns are never null: a side without an event holds its sentinel,
-:data:`NOMATCH` or :data:`CHUNK`, and its name is null.
+:data:`NOMATCH` or :data:`CHUNK`; a NOMATCH side's name is null, a
+CHUNK side's names the stated position where one is given.
 
 Like every paired Field, its struct schema is derived from the scalar by
 :func:`~timetoalign.core.fields.derive_arrow_struct` — so a row's type is

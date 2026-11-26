@@ -1259,8 +1259,8 @@ class Manifest(_OpenObject):
         key names a timeline or group of the manifest. ``graphical`` is
         written when there is an order to keep, styling, or a ``graphical``
         read with the manifest; ``id`` only when the manifest has one.
-        ``resources`` holds the manifest's resources, each naming only the
-        timelines written among its own. The
+        ``resources`` holds the manifest's resources in canonical order, by
+        ID, each naming only the timelines written among its own. The
         manifest's, every timeline's and every region's statements and
         provenance are written where not empty; a value naming an element
         of the manifests the roots belong to that this one leaves out is
@@ -1403,7 +1403,7 @@ class Manifest(_OpenObject):
                 **resource.to_dict(),
                 "timelines": [tid for tid in resource.timelines if tid in written],
             }
-            for resource in self.resources
+            for resource in sorted(self.resources, key=lambda resource: resource.id)
         ]
         band_orders = {
             key: copy.deepcopy(entry)

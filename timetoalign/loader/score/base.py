@@ -226,6 +226,7 @@ class ScoreLoader(EventLoader):
 
         if uid is None:
             uid = mint_timeline_id(self._unit, self._id_minter)
+        measure_map = self._measure_map() if len(self._store.measures) else None
         timeline = self.store.create_timeline(
             uid=uid,
             store_filters=store_filters,
@@ -235,8 +236,9 @@ class ScoreLoader(EventLoader):
             ppq=ppq,
             attach_cmaps=attach_cmaps,
             minter=self._id_minter,
+            measure_map=measure_map,
         )
-        self._populate_timeline_structure(timeline)
+        self._populate_timeline_structure(timeline, measure_map)
         return timeline
 
     def _measure_map(self) -> MeasureMap:
@@ -245,8 +247,14 @@ class ScoreLoader(EventLoader):
 
         return MeasureMap.from_measure_data(self._store.measures)
 
-    def _populate_timeline_structure(self, timeline: Timeline) -> None:
+    def _populate_timeline_structure(
+        self, timeline: Timeline, measure_map: MeasureMap | None = None
+    ) -> None:
         """Attach structure derivable from a non-empty measure store.
+
+        *measure_map* is the one the loaded measure table describes when the
+        caller built it already (the one the timeline's floating-measure
+        conversion reads); without it, it is built here.
 
         The measure store must describe one measure map in printed order. A
         store whose measures cannot form that map is a defect of the source,
@@ -264,10 +272,10 @@ class ScoreLoader(EventLoader):
         Raises:
             ValueError: If the stored measures cannot form a ``MeasureMap``.
         """
-        if len(self._store.measures) == 0:
-            return
-
-        measure_map = self._measure_map()
+        if measure_map is None:
+            if len(self._store.measures) == 0:
+                return
+            measure_map = self._measure_map()
         timeline.add_measure_map(measure_map)
         elements = self._flow_control_elements(measure_map, timeline.id)
 
@@ -301,7 +309,7 @@ class ScoreLoader(EventLoader):
         """
         from timetoalign.timelines.flow import FlowControlDraft
 
-        draft = FlowControlDraft()
+        draft = FlowControlDraft(self._id_minter)
         draft.add_measures(measure_map)
         self._write_signs(draft, measure_map, timeline_id)
         return draft.elements()

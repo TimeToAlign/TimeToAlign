@@ -820,10 +820,11 @@ class Ms3Loader(ScoreLoader):
                 ),
                 name=name,
             )
-            self._populate_timeline_structure(timeline)
+            measure_map = self._measure_map()
+            self._populate_timeline_structure(timeline, measure_map)
             if attach_cmaps:
                 for cmap in self.store.get_cmaps(
-                    ppq=ppq, minter=self._id_minter
+                    ppq=ppq, minter=self._id_minter, measure_map=measure_map
                 ).values():
                     timeline.add_conversion_map(cmap)
         else:

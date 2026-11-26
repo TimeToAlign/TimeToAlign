@@ -22,7 +22,7 @@ import operator
 import re
 import secrets
 import threading
-from collections.abc import Container, Generator, Mapping, Sequence
+from collections.abc import Callable, Container, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -355,7 +355,9 @@ def seed_from(*parts: object) -> int:
 
 _CONTENT_MINTERS: dict[tuple[int, int], IdMinter] = {}
 _CONTENT_MINTERS_LOCK = threading.Lock()
-_CALL_MINTER: ContextVar[IdMinter | None] = ContextVar("_CALL_MINTER", default=None)
+_CALL_MINTER: ContextVar[Callable[[], IdMinter] | None] = ContextVar(
+    "_CALL_MINTER", default=None
+)
 
 
 def content_minter(*parts: object, length: int = ID_LENGTH) -> IdMinter:
@@ -386,9 +388,11 @@ def content_minter(*parts: object, length: int = ID_LENGTH) -> IdMinter:
         >>> content_minter("region", 0, 4).seed == seed_from("region", 0, 4)
         True
     """
-    call_minter = _CALL_MINTER.get()
-    if call_minter is not None and call_minter.length == length:
-        return call_minter
+    call = _CALL_MINTER.get()
+    if call is not None:
+        call_minter = call()
+        if call_minter.length == length:
+            return call_minter
     key = (seed_from(*parts), length)
     with _CONTENT_MINTERS_LOCK:
         minter = _CONTENT_MINTERS.get(key)
@@ -408,17 +412,24 @@ def reset_content_minters() -> None:
 
 
 @contextmanager
-def minting_from(seed: int | None) -> Generator[None, None, None]:
+def minting_from(
+    seed: int | IdMinter | Callable[[], IdMinter] | None,
+) -> Generator[None, None, None]:
     """Mint every id of a call from one ``IdMinter(seed)``.
 
     A method given ``seed=`` runs its work inside this block: each element
     the call builds without an id of its own draws it from the one minter,
     in the order the call builds them, whatever ran before in the process.
-    Without a seed the block changes nothing. An element given its own
-    ``seed=`` inside the block mints from that seed instead.
+    Given a minter, the block draws from that minter, which goes on
+    counting; given a function, from the minter it returns when an id is
+    minted (a loader's, whose seed is computed only when its first id is
+    minted: everything a loader builds takes its ids from the loader's
+    minter). Without a seed the block changes nothing. An element given its
+    own ``seed=`` inside the block mints from that seed instead.
 
     Args:
-        seed: The seed of the call, or None.
+        seed: The seed of the call, a minter to draw from, a function
+            returning one, or None.
 
     Examples:
         >>> with minting_from(7):
@@ -430,7 +441,13 @@ def minting_from(seed: int | None) -> Generator[None, None, None]:
     if seed is None:
         yield
         return
-    token = _CALL_MINTER.set(IdMinter(seed))
+    if not isinstance(seed, IdMinter) and not callable(seed):
+        seed = IdMinter(seed)
+    if isinstance(seed, IdMinter):
+        minter = seed
+        token = _CALL_MINTER.set(lambda: minter)
+    else:
+        token = _CALL_MINTER.set(seed)
     try:
         yield
     finally:

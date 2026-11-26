@@ -22,6 +22,7 @@ from timetoalign.storage.store import EventStore
 if TYPE_CHECKING:
     from timetoalign.maps import ConversionMap
     from timetoalign.timelines.base import Timeline
+    from timetoalign.timelines.structure import MeasureMap
 
 module_logger = logging.getLogger(__name__)
 
@@ -224,6 +225,7 @@ class ScoreStore(EventStore):
         attach_cmaps: bool = True,
         *,
         minter: IdMinter | None = None,
+        measure_map: MeasureMap | None = None,
     ) -> "Timeline":
         """Create a Timeline from this ScoreStore.
 
@@ -247,6 +249,8 @@ class ScoreStore(EventStore):
                 given), plus a ShiftMap for the anacrusis offset.
             minter: The minter of every timeline and C-Map ID the call mints
                 (a loader's); without one, each is minted by its class.
+            measure_map: The measure map of the score, which the
+                floating-measure conversion reads (see :meth:`get_cmaps`).
 
         Returns:
             A Timeline with attached C-Maps.
@@ -264,7 +268,7 @@ class ScoreStore(EventStore):
         )
 
         if attach_cmaps:
-            cmaps = self.get_cmaps(ppq=ppq, minter=minter)
+            cmaps = self.get_cmaps(ppq=ppq, minter=minter, measure_map=measure_map)
             for cmap in cmaps.values():
                 timeline.add_conversion_map(cmap)
 
@@ -285,7 +289,11 @@ class ScoreStore(EventStore):
         return timeline
 
     def get_cmaps(
-        self, ppq: int | None = None, *, minter: IdMinter | None = None
+        self,
+        ppq: int | None = None,
+        *,
+        minter: IdMinter | None = None,
+        measure_map: MeasureMap | None = None,
     ) -> dict[str, ConversionMap]:
         """Get the ConversionMaps the score's data states.
 
@@ -315,6 +323,10 @@ class ScoreStore(EventStore):
                 (default) adds none.
             minter: The minter of the maps' IDs (a loader's); without one,
                 each map mints its own.
+            measure_map: The measure map the floating-measure conversion
+                reads: the score timeline's own, so that a manifest names one
+                measure map for both. Without one, it is built from the
+                measure table.
 
         Returns:
             Dict mapping target unit name to ConversionMap.
@@ -354,9 +366,10 @@ class ScoreStore(EventStore):
 
         # Floating-measure conversion is derived from the structure described
         # by the rows, never from printed labels.
-        if len(self.measures) > 0:
+        if measure_map is not None or len(self.measures) > 0:
             try:
-                measure_map = MeasureMap.from_measure_data(self.measures)
+                if measure_map is None:
+                    measure_map = MeasureMap.from_measure_data(self.measures)
                 cmaps["measures"] = QuartersToFloatingMeasures.from_measure_map(
                     measure_map
                 )

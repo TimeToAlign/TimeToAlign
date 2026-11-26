@@ -796,8 +796,9 @@ class ChildrenMixin(_Host):
             law: The map class whose ``from_pairs`` reads the pairs.
             uid: Unique identifier for the child. Auto-generated if None.
             name: Human-readable name for the child.
-            seed: The seed of the minter of the child's id when *uid* is
-                None; not stored.
+            seed: The seed of one minter of every id the call mints: the
+                map's, then the child's when *uid* is None
+                (:func:`~timetoalign.core.ids.minting_from`); not stored.
 
         Returns:
             The newly created and embedded child, carrying the map.
@@ -835,10 +836,11 @@ class ChildrenMixin(_Host):
                     f"from {start} to {'its unknown end' if end is None else end}."
                 )
             pairs.append((at, value))
-        cmap = law.from_pairs(
-            pairs, source_unit=self._unit, value_unit=value_unit, origin=start
-        )
-        child = self.create_child(length, offset, uid=uid, name=name, seed=seed)
+        with minting_from(seed):
+            cmap = law.from_pairs(
+                pairs, source_unit=self._unit, value_unit=value_unit, origin=start
+            )
+            child = self.create_child(length, offset, uid=uid, name=name)
         child.add_conversion_map(cmap)
         return child
 

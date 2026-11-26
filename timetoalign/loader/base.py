@@ -19,17 +19,27 @@ Design principles:
 
 from __future__ import annotations
 
+import functools
 import html
+import inspect
 import logging
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Concatenate,
+    Generic,
+    ParamSpec,
+    TypeVar,
+)
 
 import numpy as np
 import pyarrow as pa
@@ -41,10 +51,9 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
-from timetoalign.core.ids import IdMinter, seed_from
+from timetoalign.core.ids import CMAP_PREFIX, IdMinter, minting_from, seed_from
 from timetoalign.core.time import struct_to_coordinate
 from timetoalign.display.html import affordance_html, code
-from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.storage import EventData
 
 from ._sources import (
@@ -103,6 +112,43 @@ def _canonical(value: object) -> object:
     return value
 
 
+_LoaderT = TypeVar("_LoaderT", bound="Loader[Any]")
+_Params = ParamSpec("_Params")
+_Result = TypeVar("_Result")
+
+
+def _minting_from_the_loader(
+    method: Callable[Concatenate[_LoaderT, _Params], _Result],
+) -> Callable[Concatenate[_LoaderT, _Params], _Result]:
+    """Run a door of a loader with the loader's minter as the call's minter.
+
+    Every element the method builds without an ID of its own (a group, a
+    bundle, a map, flow control, events) takes it from the loader's
+    :class:`~timetoalign.core.ids.IdMinter` of the latest ``load`` call, in
+    build order (:func:`~timetoalign.core.ids.minting_from`), never from a
+    minter the process keeps: what a fresh loader builds from unchanged
+    sources does not depend on anything built before it in the process.
+    """
+
+    @functools.wraps(method)
+    def door(self: _LoaderT, *args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
+        with minting_from(lambda: self._id_minter):
+            return method(self, *args, **kwargs)
+
+    return door
+
+
+def _mint_doors_from_the_loader(cls: type) -> None:
+    """Wrap every door *cls* defines: ``load``, ``load_*`` and ``create_*`` methods.
+
+    See :func:`_minting_from_the_loader`.
+    """
+    for name, member in list(vars(cls).items()):
+        door = name == "load" or name.startswith(("load_", "create_"))
+        if door and inspect.isfunction(member):
+            setattr(cls, name, _minting_from_the_loader(member))
+
+
 class Loader(ABC, Generic[PayloadT]):
     """Shared lifecycle for all loader families.
 
@@ -110,11 +156,19 @@ class Loader(ABC, Generic[PayloadT]):
     construction, and timeline-creation surfaces. Payload-specific state and
     APIs belong to subclasses such as :class:`EventLoader`,
     :class:`ManifestLoader`, and :class:`AlignmentLoader`.
+
+    Every ``load``, ``load_*`` and ``create_*`` method of every loader
+    mints from the loader's minter (see :meth:`load`): the groups, bundles,
+    maps and flow control it builds without an ID of their own included.
     """
 
     #: Whether one loader reads one source only. ``load`` then refuses a second
     #: source, in the same call or a later one, until ``clear()``.
     _single_source: ClassVar[bool] = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _mint_doors_from_the_loader(cls)
 
     def __init__(self, *, seed: int | None = None) -> None:
         """Initialize shared loader state.
@@ -374,6 +428,9 @@ class Loader(ABC, Generic[PayloadT]):
     def __repr__(self) -> str:
         """Return a concise shared-lifecycle representation."""
         return f"{self.__class__.__name__}(sources={len(self._sources)})"
+
+
+_mint_doors_from_the_loader(Loader)
 
 
 class EventLoader(Loader[LoadSourceResult]):

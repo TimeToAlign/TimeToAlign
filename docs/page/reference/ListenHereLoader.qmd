@@ -11,6 +11,9 @@ of one work warped onto a shared equidistant reference grid, and assembles
 a bundle in which every recording is a samples timeline in its own group,
 related to every other recording by a complete set of pairwise synchronous
 instant :class:`MatchClaim` rows held columnar in a :class:`MatchClaimField`.
+The file states grid positions, not events, so every claim is
+:data:`~timetoalign.core.ids.CHUNK` on both sides and the timelines hold
+no events.
 
 **Usage follows the standard loader two-phase pattern:**
 

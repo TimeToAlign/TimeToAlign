@@ -153,6 +153,8 @@ Classes for connecting and aligning timelines.
 | [AlignmentAnchor](AlignmentAnchor.qmd#timetoalign.alignment.AlignmentAnchor) | A coordinate pair associating one coordinate on timeline A with one |
 | [MatchClaim](MatchClaim.qmd#timetoalign.alignment.MatchClaim) | A claim that two events on different timelines correspond. |
 | [ClaimType](ClaimType.qmd#timetoalign.core.ClaimType) | The semantic kind of a MatchClaim, derived from its structure. |
+| [NOMATCH](NOMATCH.qmd#timetoalign.core.NOMATCH) | The NOMATCH sentinel: the side of a MatchClaim that is not synchronous |
+| [CHUNK](CHUNK.qmd#timetoalign.core.CHUNK) | The CHUNK sentinel: a side of a synchronous MatchClaim whose timeline |
 | [MatchClaimField](MatchClaimField.qmd#timetoalign.alignment.MatchClaimField) | The MatchClaim table: a ``SemanticField[MatchClaim]`` columnar store. |
 | [Provenance](Provenance.qmd#timetoalign.core.Provenance) | How an item was made (paradata) and who believes it. |
 | [Belief](Belief.qmd#timetoalign.core.Belief) | One actor's belief in an item, at a date. |

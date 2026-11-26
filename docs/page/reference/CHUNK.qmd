@@ -1,0 +1,8 @@
+# CHUNK { #timetoalign.core.CHUNK }
+
+`core.CHUNK`
+
+The CHUNK sentinel: a side of a synchronous MatchClaim whose timeline
+holds no event for the position the claim states there; the anchor holds
+that side's coordinate. Reserved: no element takes it as its id
+(:func:`validate_id`).

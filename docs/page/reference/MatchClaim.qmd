@@ -7,17 +7,27 @@ alignment.MatchClaim()
 A claim that two events on different timelines correspond.
 
 A MatchClaim always knows which two timelines it connects via top-level
-``timeline_a_id`` and ``timeline_b_id`` fields, and it names the events
-it is about: it names an event on each side, or one event
-and the NOMATCH sentinel (``None``) on the other. It never states a bare
-coordinate: a side without an event of its own is given a Projection
-event first. Anchors are only present for synchronous claims, and each of
-their coordinates is on its timeline's own axis (:meth:`check_on_timelines`).
+``timeline_a_id`` and ``timeline_b_id`` fields, and it names on each
+side an event or a sentinel, a reserved string no element takes as its
+ID:
+
+- a synchronous claim names an event or :data:`CHUNK` on each side. A
+  CHUNK side is a position the anchor states on a timeline holding no
+  event for it: not an event and not a Projection, its coordinate the
+  anchor's on that side;
+- a claim that is not synchronous names two events (conceptual), or one
+  event and :data:`NOMATCH` on the other side (the event has no
+  counterpart there).
+
+A sentinel side has no name. Anchors are only present for synchronous
+claims, and each of their coordinates is on its timeline's own axis
+(:meth:`check_on_timelines`).
 
 ## Two factories {.doc-section .doc-section-two-factories}
 
-(a) ``from_events``: Two events on different timelines correspond
-    (synchronous, with anchors; or conceptual, without).
+(a) ``from_events``: Two sides on different timelines correspond
+    (synchronous, with anchors, each side an event or CHUNK; or
+    conceptual, between two events, without).
 (b) ``nomatch``: An event has no equivalent on the other timeline.
 
 A MatchClaim is always stated: the correspondences a
@@ -35,10 +45,10 @@ are the graph's own inferred edges, never MatchClaims.
 | is_synchronous | [bool](`bool`)                                                            | True if temporally synchronous matches.                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | provenance     | [Provenance](`timetoalign.core.provenance.Provenance`) \| None            | How the claim was made and who believes it (:class:`~timetoalign.core.provenance.Provenance`).                                                                                                                                                                                                                                                                                                                                                                |
 | certainty      | [float](`float`) \| None                                                  | How certain the claim is, in [0, 1] (1.0, certain; ``None``, not stated).                                                                                                                                                                                                                                                                                                                                                                                     |
-| event_a_id     | [str](`str`) \| None                                                      | ID of the event on timeline A (``None``: the NOMATCH sentinel).                                                                                                                                                                                                                                                                                                                                                                                               |
-| event_a_name   | [str](`str`) \| None                                                      | Name/label of the event on timeline A (if known).                                                                                                                                                                                                                                                                                                                                                                                                             |
-| event_b_id     | [str](`str`) \| None                                                      | ID of the event on timeline B (``None``: the NOMATCH sentinel).                                                                                                                                                                                                                                                                                                                                                                                               |
-| event_b_name   | [str](`str`) \| None                                                      | Name/label of the event on timeline B (if known).                                                                                                                                                                                                                                                                                                                                                                                                             |
+| event_a_id     | [str](`str`)                                                              | ID of the event on timeline A, or a sentinel (:data:`NOMATCH`, :data:`CHUNK`).                                                                                                                                                                                                                                                                                                                                                                                |
+| event_a_name   | [str](`str`) \| None                                                      | Name/label of the event on timeline A (if known; ``None`` on a sentinel side).                                                                                                                                                                                                                                                                                                                                                                                |
+| event_b_id     | [str](`str`)                                                              | ID of the event on timeline B, or a sentinel.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| event_b_name   | [str](`str`) \| None                                                      | Name/label of the event on timeline B (if known; ``None`` on a sentinel side).                                                                                                                                                                                                                                                                                                                                                                                |
 | id             | [str](`str`) \| None                                                      | The claim's identifier, which alone addresses it: unique in the :class:`MatchClaimField` or ``AlignmentBundle`` holding the claim. It never changes: a table or bundle already holding it refuses the claim. A claim made without one mints one at construction (``claim_…``): from ``IdMinter(seed)`` when :meth:`from_events` or :meth:`nomatch` is given ``seed=``, else from the content minter of its other properties (:meth:`to_dict` without ``id``). |
 
 ## Examples {.doc-section .doc-section-examples}
@@ -62,8 +72,19 @@ are the graph's own inferred edges, never MatchClaims.
 
 ```python
 >>> claim = MatchClaim.nomatch({"id": "orphan", "start": 12}, score, recording)
->>> claim.start_anchor is None, claim.claim_type.name
-(True, 'nomatch')
+>>> claim.start_anchor is None, claim.claim_type.name, claim.event_b_id
+(True, 'nomatch', 'NOMATCH_SENTINEL')
+```
+
+Two positions where neither timeline holds an event, CHUNK on both
+sides:
+
+```python
+>>> claim = MatchClaim.from_events({"start": 4}, score, {"start": 30.0}, recording)
+>>> claim.chunk_sides, claim.claim_type.name
+(('score', 'recording'), 'event_match')
+>>> claim
+MatchClaim(instant: score@4 quarters [CHUNK] <-> recording@30 seconds [CHUNK])
 ```
 
 ## Methods
@@ -74,7 +95,7 @@ are the graph's own inferred edges, never MatchClaims.
 | [connects](#timetoalign.alignment.MatchClaim.connects) | Check if this claim connects to a specific timeline. |
 | [connects_both](#timetoalign.alignment.MatchClaim.connects_both) | Check if this claim connects two specific timelines. |
 | [from_dict](#timetoalign.alignment.MatchClaim.from_dict) | Deserialize from dictionary (inverse of :meth:`to_dict`). |
-| [from_events](#timetoalign.alignment.MatchClaim.from_events) | Case (a): Two events on different timelines correspond. |
+| [from_events](#timetoalign.alignment.MatchClaim.from_events) | Case (a): Two sides on different timelines correspond. |
 | [from_row](#timetoalign.alignment.MatchClaim.from_row) | Reconstruct a claim from a struct-shaped Arrow row dict. |
 | [get_coordinate](#timetoalign.alignment.MatchClaim.get_coordinate) | Dispatch a singular or plural timeline-key claim query. |
 | [get_coordinate_for](#timetoalign.alignment.MatchClaim.get_coordinate_for) | Return the start anchor coordinate for one member timeline. |
@@ -197,9 +218,15 @@ alignment.MatchClaim.from_events(
 )
 ```
 
-Case (a): Two events on different timelines correspond.
+Case (a): Two sides on different timelines correspond.
 
-Each event's coordinate is placed on its timeline's axis: a number is
+On a synchronous claim each side is an event or :data:`CHUNK`: an
+event dict without ``id`` states a position where its timeline holds
+no event, and the claim names CHUNK there, the anchor holding the
+position. A claim that is not synchronous (conceptual) names two
+events.
+
+Each side's coordinate is placed on its timeline's axis: a number is
 a position on the timeline, in its unit and declared number type; a
 :class:`Coordinate` in another unit is converted through the
 timeline's C-Map; a coordinate in the timeline's unit but another
@@ -208,32 +235,32 @@ the claim made).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name           | Type                                                           | Description                                                                                                                      | Default    |
-|----------------|----------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|------------|
-| event_a        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]            | Event dict from timeline A; must hold ``id`` and ``coord_key`` (and ``end_coord_key`` for an interval match), may hold ``name``. | _required_ |
-| timeline_a     | [Any](`typing.Any`)                                            | Timeline A.                                                                                                                      | _required_ |
-| event_b        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]            | Event dict from timeline B, likewise.                                                                                            | _required_ |
-| timeline_b     | [Any](`typing.Any`)                                            | Timeline B.                                                                                                                      | _required_ |
-| coord_key      | [str](`str`)                                                   | Key for the start coordinate in event dicts.                                                                                     | `'start'`  |
-| end_coord_key  | [str](`str`) \| None                                           | Key for the end coordinate (creates an interval match).                                                                          | `None`     |
-| is_synchronous | [bool](`bool`)                                                 | Whether the events are temporally synchronous; a non-synchronous (conceptual) claim holds no anchors.                            | `True`     |
-| certainty      | [float](`float`)                                               | How certain the claim is, in [0, 1].                                                                                             | `1.0`      |
-| provenance     | [Provenance](`timetoalign.core.provenance.Provenance`) \| None | How the claim was made and who believes it.                                                                                      | `None`     |
-| id             | [str](`str`) \| None                                           | The claim's id; without one, it is minted (:class:`MatchClaim`).                                                                 | `None`     |
-| seed           | [int](`int`) \| None                                           | The seed of the minter of a missing id.                                                                                          | `None`     |
+| Name           | Type                                                           | Description                                                                                                                                                                                                                                               | Default    |
+|----------------|----------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| event_a        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]            | Event dict from timeline A; holds ``coord_key`` (and ``end_coord_key`` for an interval match) and the event's ``id`` (without one, side A is CHUNK, which only a synchronous claim names), may hold ``name`` (an event's only: a CHUNK side has no name). | _required_ |
+| timeline_a     | [Any](`typing.Any`)                                            | Timeline A.                                                                                                                                                                                                                                               | _required_ |
+| event_b        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]            | Event dict from timeline B, likewise.                                                                                                                                                                                                                     | _required_ |
+| timeline_b     | [Any](`typing.Any`)                                            | Timeline B.                                                                                                                                                                                                                                               | _required_ |
+| coord_key      | [str](`str`)                                                   | Key for the start coordinate in event dicts.                                                                                                                                                                                                              | `'start'`  |
+| end_coord_key  | [str](`str`) \| None                                           | Key for the end coordinate (creates an interval match).                                                                                                                                                                                                   | `None`     |
+| is_synchronous | [bool](`bool`)                                                 | Whether the events are temporally synchronous; a non-synchronous (conceptual) claim holds no anchors.                                                                                                                                                     | `True`     |
+| certainty      | [float](`float`)                                               | How certain the claim is, in [0, 1].                                                                                                                                                                                                                      | `1.0`      |
+| provenance     | [Provenance](`timetoalign.core.provenance.Provenance`) \| None | How the claim was made and who believes it.                                                                                                                                                                                                               | `None`     |
+| id             | [str](`str`) \| None                                           | The claim's id; without one, it is minted (:class:`MatchClaim`).                                                                                                                                                                                          | `None`     |
+| seed           | [int](`int`) \| None                                           | The seed of the minter of a missing id.                                                                                                                                                                                                                   | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type           | Description                                               |
-|--------|----------------|-----------------------------------------------------------|
-|        | \'MatchClaim\' | A MatchClaim naming both events, with 1 or 2 anchors when |
-|        | \'MatchClaim\' | synchronous.                                              |
+| Name   | Type           | Description                                              |
+|--------|----------------|----------------------------------------------------------|
+|        | \'MatchClaim\' | A MatchClaim naming both sides, with 1 or 2 anchors when |
+|        | \'MatchClaim\' | synchronous.                                             |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                       |
-|--------|----------------------------|-----------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If an event names no id, or a coordinate cannot be placed on its timeline's axis. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an event dict's ``id`` is :data:`NOMATCH` or :data:`CHUNK` (a sentinel is no event), an event dict names no id on a claim that is not synchronous, a CHUNK side states a name, or a coordinate cannot be placed on its timeline's axis. |
 
 ### from_row { #timetoalign.alignment.MatchClaim.from_row }
 
@@ -485,7 +512,7 @@ alignment.MatchClaim.nomatch(
 Case (b): An event has no equivalent on the other timeline.
 
 Creates a non-synchronous claim with no anchors, naming the event on
-side A and the NOMATCH sentinel (``None``) on side B.
+side A and the NOMATCH sentinel (:data:`NOMATCH`) on side B.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -507,9 +534,9 @@ side A and the NOMATCH sentinel (``None``) on side B.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description               |
-|--------|----------------------------|---------------------------|
-|        | [ValueError](`ValueError`) | If the event names no id. |
+| Name   | Type                       | Description                                                                                   |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the event names no id, or names :data:`NOMATCH` or :data:`CHUNK` (a sentinel is no event). |
 
 ### set_bundle { #timetoalign.alignment.MatchClaim.set_bundle }
 

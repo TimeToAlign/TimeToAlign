@@ -603,8 +603,11 @@ events' coordinates, and the events stay addressable for everything else
 that is said about them. A side without an event of its own is given a
 {{< glossary Projection >}}: an event added to that timeline at the stated
 position, standing for the other side's event (its `projection_of`), or for
-none when both sides are stated as positions. Every stated MatchClaim
-therefore joins two events. `AlignmentBundle.create_match_claims()` adds the
+none where no such event is known. A synchronous claim between two bare
+positions is instead {{< glossary CHUNK >}} on both sides: its anchors state
+the coordinates and no Projection is added. Each side of a stated MatchClaim
+therefore names an event or a sentinel.
+`AlignmentBundle.create_match_claims()` adds the
 Projections a list of pairs needs and reuses those a timeline already holds.
 It checks every pair before it adds anything, so a refused list leaves the
 bundle and its timelines unchanged: a float position on a timeline counting
@@ -709,8 +712,8 @@ flag, its provenance and its certainty. Its kind, the
 {{< glossary ClaimType >}}, is derived from that structure and never stored.
 Three kinds are distinguished:
 
-1. **event_match**: synchronous, an event on each side, a Projection
-   included---the core alignment operation, and the kind that yields
+1. **event_match**: synchronous, an event or CHUNK on each side, a
+   Projection included---the core alignment operation, and the kind that yields
    AlignmentAnchors.
 2. **nomatch** ({{< glossary NOMATCH >}}): non-synchronous, one event and
    the sentinel---a positive assertion that the event has no equivalent on

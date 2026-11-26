@@ -377,6 +377,10 @@ quartodoc:
           package: timetoalign.alignment
         - name: ClaimType
           package: timetoalign.core
+        - name: NOMATCH
+          package: timetoalign.core
+        - name: CHUNK
+          package: timetoalign.core
         - name: MatchClaimField
           package: timetoalign.alignment
         - name: Provenance

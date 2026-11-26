@@ -1,0 +1,7 @@
+# NOMATCH { #timetoalign.core.NOMATCH }
+
+`core.NOMATCH`
+
+The NOMATCH sentinel: the side of a MatchClaim that is not synchronous
+where the event named on the other side has no counterpart. Reserved: no
+element takes it as its id (:func:`validate_id`).

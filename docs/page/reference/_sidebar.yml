@@ -125,6 +125,8 @@ website:
       - reference/AlignmentAnchor.qmd
       - reference/MatchClaim.qmd
       - reference/ClaimType.qmd
+      - reference/NOMATCH.qmd
+      - reference/CHUNK.qmd
       - reference/MatchClaimField.qmd
       - reference/Provenance.qmd
       - reference/Belief.qmd

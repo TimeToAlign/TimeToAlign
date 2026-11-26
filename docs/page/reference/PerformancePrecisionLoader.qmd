@@ -22,11 +22,11 @@ quarter-note positions.
    score and performance timelines with their notes, and every
    alignment row resolved to its two sides.
 2. ``loader.create_bundle()`` — assembles the AlignmentBundle and states
-   every row as a MatchClaim in it, adding the Projections the claims
-   stand on.
+   every row as a MatchClaim in it, adding the Projections the note
+   and dangling rows' claims stand on.
 3. ``loader.create_timeline(uid)`` / ``create_timelines()`` — retrieve
-   individual timelines (holding Projections once ``create_bundle``
-   has stated the claims).
+   individual timelines (the score holding its Projections once
+   ``create_bundle`` has stated the claims).
 
 ## Parameters {.doc-section .doc-section-parameters}
 
@@ -70,14 +70,16 @@ one call per performer and granularity, in file order:
 * an aligned note-level row: a Projection on the score at its
   LABEL's position stands for the performed Note event
   (``projection_of`` naming it), and the claim joins the two;
-* an aligned bar- or beat-level row: both sides are positions only,
-  so each gets a Projection standing for no event, and the claim
-  joins the two Projections;
-* a dangling row: a NOMATCH claim from its score Projection.
+* an aligned bar- or beat-level row: both sides are positions where
+  neither timeline holds an event, so the claim is CHUNK on both
+  sides (:data:`~timetoalign.core.ids.CHUNK`), its anchor holding
+  the two positions, and no Projection is added;
+* a dangling row: a NOMATCH claim from a score Projection standing
+  for no event.
 
 A timeline keeps one Projection per position and event it stands
-for, so the bar and beat positions every performer shares stand once
-on the score timeline, and a second call adds no Projection. Every
+for, so the dangling positions every performer shares stand once on
+the score timeline, and a second call adds no Projection. Every
 Projection is added while its timeline is in the bundle, so its ID
 is minted unique among all Projections of the bundle and the
 bundle's package can be written.

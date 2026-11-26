@@ -1,7 +1,7 @@
 # Loader { #timetoalign.loader.Loader }
 
 ```python
-loader.Loader()
+loader.Loader(seed=None)
 ```
 
 Shared lifecycle for all loader families.
@@ -11,23 +11,27 @@ construction, and timeline-creation surfaces. Payload-specific state and
 APIs belong to subclasses such as :class:`EventLoader`,
 :class:`ManifestLoader`, and :class:`AlignmentLoader`.
 
+Every ``load``, ``load_*`` and ``create_*`` method of every loader
+mints from the loader's minter (see :meth:`load`): the groups, bundles,
+maps and flow control it builds without an ID of their own included.
+
 ## Attributes
 
 | Name | Description |
 | --- | --- |
 | [metadata](#timetoalign.loader.Loader.metadata) | Aggregated source metadata. |
-| [sources](#timetoalign.loader.Loader.sources) | List of loaded source paths. |
+| [sources](#timetoalign.loader.Loader.sources) | The loaded sources: ``Path`` objects and ZIP members (``zipfile.Path``). |
 
 ## Methods
 
 | Name | Description |
 | --- | --- |
-| [clear](#timetoalign.loader.Loader.clear) | Clear shared source state. |
+| [clear](#timetoalign.loader.Loader.clear) | Clear shared source state; the next ``load`` seeds as the first did. |
 | [create_bundle](#timetoalign.loader.Loader.create_bundle) | Create an alignment bundle when supported. |
 | [create_group](#timetoalign.loader.Loader.create_group) | Create a timeline group when supported. |
 | [create_timeline](#timetoalign.loader.Loader.create_timeline) | Create a timeline from the loaded payload. |
 | [create_timelines](#timetoalign.loader.Loader.create_timelines) | Create all timelines, optionally filtered by an implementation. |
-| [from_file](#timetoalign.loader.Loader.from_file) | Instantiate the loader, load *paths*, and return it. |
+| [from_file](#timetoalign.loader.Loader.from_file) | Instantiate the loader with *kwargs*, load *paths*, and return it. |
 | [load](#timetoalign.loader.Loader.load) | Load and accept one or more sources through the shared template. |
 
 ### clear { #timetoalign.loader.Loader.clear }
@@ -36,7 +40,7 @@ APIs belong to subclasses such as :class:`EventLoader`,
 loader.Loader.clear()
 ```
 
-Clear shared source state.
+Clear shared source state; the next ``load`` seeds as the first did.
 
 ### create_bundle { #timetoalign.loader.Loader.create_bundle }
 
@@ -78,7 +82,22 @@ Create all timelines, optionally filtered by an implementation.
 loader.Loader.from_file(*paths, **kwargs)
 ```
 
-Instantiate the loader, load *paths*, and return it.
+Instantiate the loader with *kwargs*, load *paths*, and return it.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                   | Description                                                                                   | Default   |
+|----------|--------------------------------------------------------|-----------------------------------------------------------------------------------------------|-----------|
+| *paths   | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Filesystem paths or members of ZIP archives (``zipfile.Path``), as :meth:`load` takes them.   | `()`      |
+| **kwargs | [Any](`typing.Any`)                                    | Passed to the loader's constructor, ``seed`` among them (the seed of the loader's ID minter). | `{}`      |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from zipfile import Path as ZipPath
+>>> member = ZipPath("corpus.zip", at="corpus/measures/piece.measures.tsv")
+>>> loader = Ms3Loader.from_file(member)
+```
 
 ### load { #timetoalign.loader.Loader.load }
 
@@ -87,3 +106,29 @@ loader.Loader.load(*sources)
 ```
 
 Load and accept one or more sources through the shared template.
+
+Each source is a filesystem path (``Path`` or ``str``) or a member of
+a ZIP archive (``zipfile.Path``), which is read without extracting
+the archive. Its entry in ``metadata["sources"]`` records ``path``
+(for a member: the archive's absolute path, and ``member``, the
+member's path inside it) and ``loaded_at``.
+
+Every ID the loader mints (events, timelines, maps, MatchClaims,
+Projections) comes from its :class:`~timetoalign.core.ids.IdMinter`,
+in the order the loader builds them. Every ``load`` call seeds a
+new one: the first call after the loader is made or cleared from
+the loader's ``seed`` when one was given, else from
+:func:`~timetoalign.core.ids.seed_from` of the loader's class name,
+its configuration (the constructor arguments that shape the
+events) and the SHA-256 digests of the call's sources, in order;
+every later call from ``seed_from`` of the previous call's seed and
+its own sources' digests, so later sources count too. A fresh
+loader loading unchanged sources in the same calls mints the same
+IDs, in any process; IDs the source states are kept as they are.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                                     | Description                                                                                                                                                  |
+|--------|------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [FileNotFoundError](`FileNotFoundError`) | If a ``zipfile.Path`` names a member its archive does not hold.                                                                                              |
+|        | [ValueError](`ValueError`)               | If the loader reads one source and is given none or more than one, or any while it holds one (after ``clear()`` it reads one again). Nothing is parsed then. |

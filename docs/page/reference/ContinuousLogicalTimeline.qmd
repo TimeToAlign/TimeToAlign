@@ -9,6 +9,8 @@ timelines.ContinuousLogicalTimeline(
     name=None,
     locked=False,
     meta=None,
+    *,
+    seed=None,
 )
 ```
 

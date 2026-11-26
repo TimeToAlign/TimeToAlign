@@ -6,7 +6,7 @@ timelines.FlowMap(
     chunks,
     *,
     id=None,
-    _minted=False,
+    seed=None,
     _unknown_keys=dict[str, Any](),
     convention=None,
     canonical=False,
@@ -30,7 +30,7 @@ interval. :meth:`resolve` reads it against its root timeline.
 | canonical  | [bool](`bool`)                                                                    | Whether this is the canonical FlowMap of its timeline.                                                                                                                                                                                                                       |
 | name       | [str](`str`) \| None                                                              | Optional display name.                                                                                                                                                                                                                                                       |
 | provenance | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\]   | How the FlowMap was made and who believes it: any number of :class:`~timetoalign.core.provenance.Provenance` entries, as the manifest lists them.                                                                                                                            |
-| id         | [str](`str`)                                                                      | The FlowMap's ID; minted as ``flow_map_{N}`` when not given.                                                                                                                                                                                                                 |
+| id         | [str](`str`)                                                                      | The FlowMap's ID; minted with the prefix ``flow`` when not given.                                                                                                                                                                                                            |
 
 ## Raises {.doc-section .doc-section-raises}
 
@@ -42,9 +42,9 @@ interval. :meth:`resolve` reads it against its root timeline.
 
 ```python
 >>> from timetoalign.core import Gap
->>> reading = FlowMap("score", ["region_2", Gap(4), "region_1"])
+>>> reading = FlowMap("score", ["b", Gap(4), "a"], seed=7)
 >>> reading.id, reading.convention, reading.canonical
-('flow_map_1', None, False)
+('flow_1hvif5xc2r1fv', None, False)
 >>> FlowMap.from_dict(reading.to_dict()) == reading
 True
 ```

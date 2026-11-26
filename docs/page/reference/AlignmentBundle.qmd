@@ -15,6 +15,8 @@ alignment.AlignmentBundle(
     _matchgraph_cache=dict(),
     _in_force_cache=dict(),
     _naming_cache=dict(),
+    *,
+    seed=None,
 )
 ```
 
@@ -32,15 +34,15 @@ The bundle provides:
 - Coordinate transfer between any two timelines (same-group or
   cross-group via ``MatchClaim``/``WarpMap``)
 
-IMPORTANT: The resulting bundle structure is order-independent. Adding
-timelines in any order produces the same alignment relationships and
-coordinate transfer results.
+The alignment relationships and coordinates do not depend on the order
+in which timelines are added; the order of table rows and columns and
+of a stamp's coordinates follows registration.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
 | Name              | Type                                                                                   | Description                                                                                                                                                                                                                                              |
 |-------------------|----------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| id                | [str](`str`)                                                                           | Unique identifier for this bundle, ``bundle_N`` unless given.                                                                                                                                                                                            |
+| id                | [str](`str`)                                                                           | Unique identifier for this bundle, minted with the prefix ``bundle`` unless given.                                                                                                                                                                       |
 | name              | [str](`str`) \| None                                                                   | Optional human-readable name.                                                                                                                                                                                                                            |
 | timelines         | [dict](`dict`)\[[str](`str`), \'Timeline\'\]                                           | Dictionary mapping timeline IDs to Timeline objects: every timeline added, and the root of every one that is a child. The other descendants of these roots are not listed, yet every getter answers for them as for the listed ones.                     |
 | groups            | [dict](`dict`)\[[str](`str`), [TimelineGroup](`timetoalign.timelines.TimelineGroup`)\] | Dictionary mapping group IDs to TimelineGroup objects. The groups are the one statement of membership; a timeline may be a member of several (see :attr:`timeline_to_groups`).                                                                           |
@@ -67,12 +69,12 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 ...     ContinuousPhysicalTimeline,
 ... )
 >>> bundle = AlignmentBundle()
->>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=200))
+>>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=200, uid="score"))
 >>> _ = bundle.add_timeline(
-...     ContinuousPhysicalTimeline(length=91.0), grouped_with="clt_1"
+...     ContinuousPhysicalTimeline(length=91.0, uid="audio"), grouped_with="score"
 ... )
->>> stamp = bundle.get_matchstamp_at(100, "clt_1")
->>> stamp.get_coordinate_for("cpt_1", format="float")
+>>> stamp = bundle.get_matchstamp_at(100, "score")
+>>> stamp.get_coordinate_for("audio", format="float")
 45.5
 ```
 
@@ -225,11 +227,7 @@ It registers the group and every timeline it contains — each under
 its own ``id``, with the root of every member that is a child — into
 the bundle's timeline and group registries. A member may already be a
 member of another group of the bundle: a timeline may belong to
-several groups. A group whose minted id the bundle holds already is
-minted again, and the statements of the trees joining with it, and
-of the manifest it was read from, name it by its new id; a tree the
-bundle held already names the bundle's own elements and is left as
-it is.
+several groups. The group keeps its id.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -245,9 +243,9 @@ it is.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the group's given ID is already held in the bundle (a minted one is minted again instead), or if a given id of a member's manifest tree is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle. |
+| Name   | Type                       | Description                                                                                                                                                             |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the group's ID is already held in the bundle, or if an id of a member's manifest tree is held by another element of the bundle's trees, by a group or by the bundle. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -257,11 +255,15 @@ Add a recording group with three DPTs:
     >>> from timetoalign.timelines import TimelineGroup
     >>> from timetoalign.timelines.types import DiscretePhysicalTimeline
     >>> grp = TimelineGroup(
-    ...     timelines=[DiscretePhysicalTimeline(length=44100) for _ in range(3)]
+    ...     id="recording",
+    ...     timelines=[
+    ...         DiscretePhysicalTimeline(length=44100, uid=f"mic {n}")
+    ...         for n in range(1, 4)
+    ...     ],
     ... )
     >>> bundle = AlignmentBundle().add_group(grp)
-    >>> sorted(bundle.timelines), list(bundle.groups)
-    (['dpt_1', 'dpt_2', 'dpt_3'], ['group_1'])
+    >>> list(bundle.timelines), list(bundle.groups)
+    (['mic 1', 'mic 2', 'mic 3'], ['recording'])
 
 ### add_match_claim_belief { #timetoalign.alignment.AlignmentBundle.add_match_claim_belief }
 
@@ -325,9 +327,11 @@ in a pair of the bundle's own statements is recorded by
 >>> bundle = AlignmentBundle()
 >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
 >>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=705600, uid="pcm"))
->>> _ = bundle.create_match_claims([({"start": 0}, "score", {"start": 0}, "pcm")])
+>>> (claim,) = bundle.create_match_claims(
+...     [({"start": 0}, "score", {"start": 0}, "pcm")]
+... )
 >>> _ = bundle.add_match_claim_belief(
-...     "claim_1", actor="https://orcid.org/0000-0001", belief="false",
+...     claim.id, actor="https://orcid.org/0000-0001", belief="false",
 ...     date="2026-11-21",
 ... )
 >>> len(bundle.get_match_claims(believer="https://orcid.org/0000-0001"))
@@ -384,9 +388,8 @@ here, and a claim holding one is refused.
 
 A MatchClaim is addressed by its id alone, and a claim's id never
 changes: an id the bundle holds, or one held by two of the claims,
-is refused, whether it was given or minted. A claim without an id is given the id the bundle mints
-(``claim_N``, N above the highest held), set on the claim object
-itself: its first id, not a rename. Each claim records the bundle
+is refused, whether it was given or minted. Every claim holds its id
+from its construction, and joining mints none. Each claim records the bundle
 (:attr:`MatchClaim.bundle`); a claim another bundle holds joins as a
 copy. The table holds the claims' rows, so a claim read back from
 the bundle equals the one added but is another object. Every check
@@ -481,6 +484,7 @@ alignment.AlignmentBundle.add_timeline(
     *,
     grouped_with=None,
     as_group=None,
+    seed=None,
 )
 ```
 
@@ -511,7 +515,8 @@ bundle, grouped or not, joins a further group through
 |--------------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
 | timeline     | \'Timeline\'         | The Timeline to add.                                                                                                                                                                                                                                                                                                                                                           | _required_ |
 | grouped_with | [str](`str`) \| None | ID of a timeline of the bundle's trees to share a group with, registered or nested in one; it is registered as a member. If provided, both timelines become part of the same group. If the target timeline is not yet in a group, a new group is created with the target as its first member. A target in several groups is refused, since the group to join would be a guess. | `None`     |
-| as_group     | [str](`str`) \| None | Name of the group if a new one is created. The new group's id is minted, ``group_N``.                                                                                                                                                                                                                                                                                          | `None`     |
+| as_group     | [str](`str`) \| None | Name of the group if a new one is created. The new group's id is minted (:class:`TimelineGroup`).                                                                                                                                                                                                                                                                              | `None`     |
+| seed         | [int](`int`) \| None | The seed of the minter of a new group's id; not stored.                                                                                                                                                                                                                                                                                                                        | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -521,10 +526,10 @@ bundle, grouped or not, joins a further group through
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is already in the bundle while no group is requested, or already in the group it would join; if ``grouped_with`` names a timeline of several groups; if a given id of its manifest tree — of any timeline, conversion map, region or flow-control element of it — is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle. |
-|        | [KeyError](`KeyError`)     | If grouped_with names no timeline of the bundle's trees, naming every timeline the bundle knows.                                                                                                                                                                                                                                                                                                                  |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                 |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already in the bundle while no group is requested, or already in the group it would join; if ``grouped_with`` names a timeline of several groups; if an id of its manifest tree — of any timeline, conversion map, region or flow-control element of it — is held by another element of the bundle's trees, by a group or by the bundle. |
+|        | [KeyError](`KeyError`)     | If grouped_with names no timeline of the bundle's trees, naming every timeline the bundle knows.                                                                                                                                                                                                                                                            |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -537,24 +542,25 @@ Linear (full-extent) alignment:
     ...     DiscreteLogicalTimeline,
     ... )
     >>> bundle = AlignmentBundle()
-    >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4000))
+    >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4000, uid="scan"))
     >>> _ = bundle.add_timeline(
-    ...     DiscreteLogicalTimeline(length=960), grouped_with="dgt_1"
+    ...     DiscreteLogicalTimeline(length=960, uid="midi"), grouped_with="scan"
     ... )
-    >>> bundle.groups["group_1"].timeline_ids
-    ['dgt_1', 'dlt_1']
+    >>> bundle.get_group_for_timeline("scan").timeline_ids
+    ['scan', 'midi']
 
 Partial alignment: the participating part is a child.
 
-    >>> image = DiscreteGraphicalTimeline(length=300000)
-    >>> holes = DiscreteGraphicalTimeline(length=277776)
+    >>> image = DiscreteGraphicalTimeline(length=300000, uid="image")
+    >>> holes = DiscreteGraphicalTimeline(length=277776, uid="holes")
     >>> image.add_child(holes, offset=15343)
-    >>> audio = ContinuousPhysicalTimeline(length=600.0)
+    >>> audio = ContinuousPhysicalTimeline(length=600.0, uid="audio")
     >>> bundle = AlignmentBundle()
     >>> _ = bundle.add_timeline(audio, as_group="roll")
-    >>> _ = bundle.add_timeline(holes, grouped_with="cpt_1")
-    >>> sorted(bundle.timelines), bundle.timeline_to_groups
-    (['cpt_1', 'dgt_1', 'dgt_2'], {'cpt_1': ('group_1',), 'dgt_2': ('group_1',)})
+    >>> _ = bundle.add_timeline(holes, grouped_with="audio")
+    >>> roll = bundle.get_group_for_timeline("audio")
+    >>> sorted(bundle.timelines), roll.timeline_ids
+    (['audio', 'holes', 'image'], ['audio', 'holes'])
 
 ### add_verb { #timetoalign.alignment.AlignmentBundle.add_verb }
 
@@ -684,9 +690,9 @@ timeline, each side one of:
 The MatchClaim is then made between the two events, on the two
 timelines' own axes (:meth:`MatchClaim.from_events`); an end on both
 sides makes an interval claim. A pair with ``None`` makes a NOMATCH
-claim for the other side's event (:meth:`MatchClaim.nomatch`). The
-claims join the bundle (:meth:`add_match_claims`), which mints their
-ids.
+claim for the other side's event (:meth:`MatchClaim.nomatch`), its
+id minted at its construction. The claims join the bundle
+(:meth:`add_match_claims`).
 
 Every pair is checked before any Projection is added, so a refusal
 leaves the bundle and its timelines unchanged: the timelines are the
@@ -720,10 +726,10 @@ length.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, an event ID names no one event (the timeline does not hold it and two of its descendants do), a dict naming no held event states no ``start``, a position is a float on a timeline counting samples, a span runs backwards, a position lies past where its timeline can reach (the end of a locked timeline, or an end its parent cannot contain), an ``id`` the timeline holds is given with a span not its own, a position cannot be placed on its timeline's axis, or *date* is given without *actor* or is no calendar date. |
-|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline.                                                                                                                                                                                                                                                                                                                                                                                                |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, an event ID names no one event (the timeline does not hold it and two of its descendants do), a dict naming no held event states no ``start``, a position is a float on a timeline counting samples, a span runs backwards, a position lies past where its timeline can reach (the end of a locked timeline, or an end its parent cannot contain), an ``id`` the timeline holds is given with a span not its own, a position cannot be placed on its timeline's axis, a float start, end or duration is one its timeline cannot store (not finite, or too large for a number cell), or *date* is given without *actor* or is no calendar date. |
+|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -754,13 +760,14 @@ length.
 ...         ("n99", "score", None, "audio"),  # NOMATCH
 ...     ]
 ... )
->>> [(claim.event_a_id, claim.event_b_id) for claim in claims]
-[('n10', 'o42'), ('n99', 'projection_1'), ('n99', None)]
->>> audio.get_event("projection_1")["projection_of"]
+>>> [(claim.event_a_id, claim.event_b_id) for claim in claims[::2]]
+[('n10', 'o42'), ('n99', None)]
+>>> projection = claims[1].event_b_id
+>>> audio.get_event(projection)["projection_of"]
 {'timeline_id': 'score', 'event_id': 'n99'}
 >>> again = bundle.create_match_claims([("n99", "score", {"start": 55.0}, "audio")])
->>> again[0].event_b_id, again[0].id
-('projection_1', 'claim_4')
+>>> again[0].event_b_id == projection, again[0].id == claims[1].id
+(True, False)
 >>> stated = bundle.create_match_claims(
 ...     [("n10", "score", "o42", "audio")],
 ...     actor="https://orcid.org/0000-0002-1825-0097",
@@ -817,19 +824,21 @@ Generate ASCII diagram for this bundle.
 ...     DiscreteGraphicalTimeline,
 ... )
 >>> bundle = AlignmentBundle(id="thoresen_alignment")
->>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4835), as_group="image")
 >>> _ = bundle.add_timeline(
-...     ContinuousPhysicalTimeline(length=60.0), grouped_with="dgt_1"
+...     DiscreteGraphicalTimeline(length=4835, uid="scan"), as_group="image", seed=7
+... )
+>>> _ = bundle.add_timeline(
+...     ContinuousPhysicalTimeline(length=60.0, uid="audio"), grouped_with="scan"
 ... )
 >>> print(bundle.diagram(width=60))
 AlignmentBundle[thoresen_alignment]
 
-  TimelineGroup[group_1] (2 timelines)
+  TimelineGroup[group_1hvif5xc2r1fv] (2 timelines)
   ┌──────────────────────────────────────────────────────────┐
-  │ DiscreteGraphicalTimeline[dgt_1]                         │
+  │ DiscreteGraphicalTimeline[scan]                          │
   │                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels │
   │                                                          │
-  │ ContinuousPhysicalTimeline[cpt_1]                        │
+  │ ContinuousPhysicalTimeline[audio]                        │
   │                       0 ~~~~~~~~~~~~~~~~~~~~ 60 seconds  │
   └──────────────────────────────────────────────────────────┘
 
@@ -839,7 +848,7 @@ AlignmentBundle[thoresen_alignment]
 ### from_bundles { #timetoalign.alignment.AlignmentBundle.from_bundles }
 
 ```python
-alignment.AlignmentBundle.from_bundles(bundles, *, id='', name=None)
+alignment.AlignmentBundle.from_bundles(bundles, *, id='', name=None, seed=None)
 ```
 
 Merge multiple bundles' groups, standalone timelines, and claims.
@@ -854,28 +863,23 @@ ids first). The statements of the
 timelines and regions travel with them, and their prefixes; the
 source bundles' own statements describe their manifests and are not
 carried. Each source group is entered as
-a new group with the same members, name and meta, each member keeping
-its own lock; a minted group id is minted again in the merged bundle,
-a given one is kept, and a statement of any tree carried from the
-same source bundle — a member's or an ungrouped root's — naming it
-names its new id. Groups from
+a new group with the same id, members, name and meta, each member
+keeping its own lock. Groups from
 different source bundles remain distinct — merging does not itself
 align timelines across bundles. Add cross-group MatchClaims (e.g. via
 :meth:`create_match_claims`) afterwards to align them.
 
 Known limit: the timelines are not copied, the merged bundle shares
-them with the source bundles. A source bundle whose group was minted
-again in the merged one therefore no longer writes: the statements
-of its trees name that group by its new id, which the source bundle
-does not hold, and its ``to_dict`` raises.
+them with the source bundles.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name    | Type                                  | Description                                           | Default    |
-|---------|---------------------------------------|-------------------------------------------------------|------------|
-| bundles | [list](`list`)\[\'AlignmentBundle\'\] | The bundles to merge, in order.                       | _required_ |
-| id      | [str](`str`)                          | Explicit ID for the merged bundle. Minted if omitted. | `''`       |
-| name    | [str](`str`) \| None                  | Optional human-readable name for the merged bundle.   | `None`     |
+| Name    | Type                                  | Description                                                                        | Default    |
+|---------|---------------------------------------|------------------------------------------------------------------------------------|------------|
+| bundles | [list](`list`)\[\'AlignmentBundle\'\] | The bundles to merge, in order.                                                    | _required_ |
+| id      | [str](`str`)                          | Explicit ID for the merged bundle. Minted if omitted.                              | `''`       |
+| name    | [str](`str`) \| None                  | Optional human-readable name for the merged bundle.                                | `None`     |
+| seed    | [int](`int`) \| None                  | The seed of the minter of the merged bundle's id when *id* is omitted; not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -886,9 +890,9 @@ does not hold, and its ``to_dict`` raises.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                               |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If two source bundles share a given group ID, a given timeline ID collision would occur across bundles, or two source bundles hold a MatchClaim under one id (the message names the id and both bundles). |
+| Name   | Type                       | Description                                                                                                                                                                                   |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If two source bundles share a group ID, a timeline ID collision would occur across bundles, or two source bundles hold a MatchClaim under one id (the message names the id and both bundles). |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -899,16 +903,18 @@ does not hold, and its ``to_dict`` raises.
 ...     ContinuousPhysicalTimeline,
 ... )
 >>> score_bundle = AlignmentBundle()
->>> _ = score_bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
+>>> _ = score_bundle.add_timeline(
+...     ContinuousLogicalTimeline(length=16, uid="score"), as_group="score"
+... )
 >>> audio_bundle = AlignmentBundle()
 >>> _ = audio_bundle.add_timeline(
-...     ContinuousPhysicalTimeline(length=40.0), as_group="audio"
+...     ContinuousPhysicalTimeline(length=40.0, uid="audio"), as_group="audio"
 ... )
 >>> merged = AlignmentBundle.from_bundles([score_bundle, audio_bundle])
 >>> merged.n_groups == score_bundle.n_groups + audio_bundle.n_groups
 True
 >>> sorted(merged.timelines)
-['clt_1', 'cpt_1']
+['audio', 'score']
 ```
 
 ### from_dict { #timetoalign.alignment.AlignmentBundle.from_dict }
@@ -1296,18 +1302,16 @@ alignment.AlignmentBundle.get_group(group_id)
 
 Get a group by ID.
 
-Supports partial string and regex matching:
-1. Exact match: If ``group_id`` matches an ID exactly, returns it.
-2. Substring match: If ``group_id`` is a substring of exactly one ID,
-   returns that group. If multiple match, returns the first and warns.
-3. Regex match: If ``group_id`` is a valid regex, matches via
-   ``re.search()``. Same first-match logic with warning.
+Takes an exact ID, else a regular expression matching whole IDs
+(:func:`~timetoalign.core.ids.resolve_id`): when several match, the
+first is returned with a warning. A fragment of an ID matches
+nothing.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type         | Description                                                | Default    |
-|----------|--------------|------------------------------------------------------------|------------|
-| group_id | [str](`str`) | The group's unique identifier, or a partial/regex pattern. | _required_ |
+| Name     | Type         | Description                                                 | Default    |
+|----------|--------------|-------------------------------------------------------------|------------|
+| group_id | [str](`str`) | The group's ID, or a regular expression matching whole IDs. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1330,12 +1334,15 @@ Supports partial string and regex matching:
 ...     ContinuousPhysicalTimeline,
 ... )
 >>> bundle = AlignmentBundle()
->>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
->>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0), as_group="audio")
->>> bundle.get_group("group_1").timeline_ids  # Exact match
-['clt_1']
->>> bundle.get_group(r"_2$").timeline_ids  # Regex match
-['cpt_1']
+>>> _ = bundle.add_timeline(
+...     ContinuousLogicalTimeline(length=16, uid="score"), as_group="score"
+... )
+>>> _ = bundle.add_timeline(
+...     ContinuousPhysicalTimeline(length=40.0, uid="audio"), as_group="audio"
+... )
+>>> group_id = bundle.get_group_for_timeline("score").id
+>>> bundle.get_group(group_id).timeline_ids
+['score']
 ```
 
 ### get_group_for_timeline { #timetoalign.alignment.AlignmentBundle.get_group_for_timeline }
@@ -1518,9 +1525,9 @@ Dispatch a positional or event-key match-stamp query.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                                                                                                                                                                                                                   | Description                         |
-|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
-|        | [MatchStamp](`timetoalign.alignment.graph.MatchStamp`) \| [MatchIntervalStamp](`timetoalign.alignment.graph.MatchIntervalStamp`) \| [list](`list`)\[[MatchStamp](`timetoalign.alignment.graph.MatchStamp`) \| [MatchIntervalStamp](`timetoalign.alignment.graph.MatchIntervalStamp`)\] | The selected precise-getter result. |
+| Name   | Type                                                                                                                                                                                                                                                                                                                                                               | Description                         |
+|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
+|        | [MatchStamp](`timetoalign.alignment.graph.MatchStamp`) \| [MatchIntervalStamp](`timetoalign.alignment.graph.MatchIntervalStamp`) \| [list](`list`)\[[MatchStamp](`timetoalign.alignment.graph.MatchStamp`)\] \| [list](`list`)\[[MatchStamp](`timetoalign.alignment.graph.MatchStamp`) \| [MatchIntervalStamp](`timetoalign.alignment.graph.MatchIntervalStamp`)\] | The selected precise-getter result. |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -1770,11 +1777,14 @@ are already collapsed cross-sections) and is ignored.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                         | Description                                                      |
-|--------|------------------------------|------------------------------------------------------------------|
-|        | \'pa.Table \| pd.DataFrame\' | One field per timeline, each a coordinate struct carrying its    |
-|        | \'pa.Table \| pd.DataFrame\' | number twice.  Non-synchronous claims are excluded.  Empty input |
-|        | \'pa.Table \| pd.DataFrame\' | yields an empty table.                                           |
+| Name   | Type                         | Description                                                    |
+|--------|------------------------------|----------------------------------------------------------------|
+|        | \'pa.Table \| pd.DataFrame\' | One field per timeline, each a coordinate struct carrying its  |
+|        | \'pa.Table \| pd.DataFrame\' | number twice, in the order the bundle registered the timelines |
+|        | \'pa.Table \| pd.DataFrame\' | (:meth:`_known_timelines`; a timeline it does not know after   |
+|        | \'pa.Table \| pd.DataFrame\' | them, by ID), each followed by its derived C-Map fields.       |
+|        | \'pa.Table \| pd.DataFrame\' | Non-synchronous claims are excluded.  Empty input yields an    |
+|        | \'pa.Table \| pd.DataFrame\' | empty table.                                                   |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -1785,10 +1795,12 @@ are already collapsed cross-sections) and is ignored.
 
 #### Note {.doc-section .doc-section-note}
 
-Collapsed rows are ordered by the coordinate on the
-lexicographically smallest timeline ID present in the component,
-then by that ID — a total order, since two components can never
-share a ``(timeline_id, coordinate)`` node.  A component that
+Collapsed rows are ordered by the timeline the bundle registered
+first among those present in the component, then by the
+coordinate on it — a total order, since two components can never
+share a ``(timeline_id, coordinate)`` node: the rows on the
+first-registered timeline come first, in the order of its axis,
+then those not on it, by the next timeline.  A component that
 somehow carries two coordinates for one timeline (which a
 well-formed alignment never does) keeps the smaller one.
 
@@ -1819,7 +1831,7 @@ well-formed alignment never does) keeps the smaller one.
 >>> table.num_rows  # one per anchor
 4
 >>> table.column_names
-['perf:cpt_1', 'perf:cpt_2', 'score:clt_1']
+['score:clt_1', 'perf:cpt_1', 'perf:cpt_2']
 >>> bundle.get_matchstamp_table(from_graph=True).num_rows  # one per instant
 2
 >>> bundle.get_matchstamp_table([0, 8], "score:clt_1").num_rows
@@ -2100,18 +2112,16 @@ Every timeline of the trees the bundle holds is found, registered or
 not and at any depth; registered timelines come first when a pattern
 matches several.
 
-Supports partial string and regex matching:
-1. Exact match: If ``timeline_id`` matches an ID exactly, returns it.
-2. Substring match: If ``timeline_id`` is a substring of exactly one ID,
-   returns that timeline. If multiple match, returns the first and warns.
-3. Regex match: If ``timeline_id`` is a valid regex, matches via
-   ``re.search()``. Same first-match logic with warning.
+Takes an exact ID, else a regular expression matching whole IDs
+(:func:`~timetoalign.core.ids.resolve_id`): when several match, the
+first is returned with a warning. A fragment of an ID matches
+nothing.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type         | Description                                                   | Default    |
-|-------------|--------------|---------------------------------------------------------------|------------|
-| timeline_id | [str](`str`) | The timeline's unique identifier, or a partial/regex pattern. | _required_ |
+| Name        | Type         | Description                                                    | Default    |
+|-------------|--------------|----------------------------------------------------------------|------------|
+| timeline_id | [str](`str`) | The timeline's ID, or a regular expression matching whole IDs. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2138,9 +2148,7 @@ Supports partial string and regex matching:
 >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0, uid="perf:cpt_1"))
 >>> bundle.get_timeline("score:clt_1").id  # Exact match
 'score:clt_1'
->>> bundle.get_timeline("score").id  # Substring match
-'score:clt_1'
->>> bundle.get_timeline(r"^perf:").id  # Regex match
+>>> bundle.get_timeline("perf:.*").id  # Regular expression
 'perf:cpt_1'
 ```
 
@@ -2286,18 +2294,20 @@ support policy is a setting of the bundle, not part of the manifest.
 ... )
 >>> bundle = AlignmentBundle()
 >>> _ = bundle.add_timeline(
-...     ContinuousLogicalTimeline(length=Fraction(16)), as_group="score"
+...     ContinuousLogicalTimeline(length=Fraction(16), uid="score"),
+...     as_group="score",
+...     seed=7,
 ... )
 >>> _ = bundle.add_timeline(
-...     ContinuousPhysicalTimeline(length=40.0), grouped_with="clt_1"
+...     ContinuousPhysicalTimeline(length=40.0, uid="audio"), grouped_with="score"
 ... )
 >>> data = bundle.to_dict()
 >>> "id" in data, [timeline["id"] for timeline in data["timelines"]]
-(False, ['#clt_1', '#cpt_1'])
+(False, ['#audio', '#score'])
 >>> data["groups"]
-[{'id': '#group_1', 'name': 'score', 'members': ['#clt_1', '#cpt_1']}]
+[{'id': '#group_1hvif5xc2r1fv', 'name': 'score', 'members': ['#audio', '#score']}]
 >>> data["graphical"]["order"]
-{'#group_1': ['#clt_1', '#cpt_1']}
+{'#group_1hvif5xc2r1fv': ['#score', '#audio']}
 ```
 
 ### to_file { #timetoalign.alignment.AlignmentBundle.to_file }

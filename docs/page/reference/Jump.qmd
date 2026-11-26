@@ -6,7 +6,7 @@ timelines.Jump(
     targets,
     *,
     id=None,
-    _minted=False,
+    seed=None,
     _unknown_keys=dict[str, Any](),
     name=None,
     label=None,
@@ -33,7 +33,7 @@ holds, the flow goes on.
 | label      | [str](`str`) \| None                                                                            | A human-readable label.                                                                                                                                                                                                                                                                                                                 |
 | meta       | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                             | Additional metadata.                                                                                                                                                                                                                                                                                                                    |
 | provenance | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None         | How the Jump was made and who believes it: provenance entries, or None.                                                                                                                                                                                                                                                                 |
-| id         | [str](`str`)                                                                                    | The Jump's ID; minted as ``jump_{N}`` when not given.                                                                                                                                                                                                                                                                                   |
+| id         | [str](`str`)                                                                                    | The Jump's ID; minted with the prefix ``jump`` when not given.                                                                                                                                                                                                                                                                          |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -42,9 +42,10 @@ holds, the flow goes on.
 >>> repeat = Jump(
 ...     Coordinate(64, TimeUnit.quarters),
 ...     [JumpDestination(repeat_count=1, manifestation="repeat_end")],
+...     id="repeat",
 ... )
 >>> repeat.id, repeat.manifestations
-('jump_1', ("repeat_end",))
+('repeat', ("repeat_end",))
 >>> repeat.to_dict()["targets"]
 [{'repeat_count': 1, 'manifestation': 'repeat_end'}]
 ```

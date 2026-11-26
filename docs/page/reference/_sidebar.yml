@@ -36,7 +36,6 @@ website:
       - reference/EventType.qmd
       - reference/ColumnNaming.qmd
       - reference/ColumnRole.qmd
-      - reference/ScopedId.qmd
       - reference/TimeStamp.qmd
       - reference/TimeIntervalStamp.qmd
       section: Core Types

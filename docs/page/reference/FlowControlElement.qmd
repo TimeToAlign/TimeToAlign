@@ -5,7 +5,7 @@ timelines.FlowControlElement(
     coordinate,
     *,
     id=None,
-    _minted=False,
+    seed=None,
     _unknown_keys=dict[str, Any](),
     name=None,
     label=None,

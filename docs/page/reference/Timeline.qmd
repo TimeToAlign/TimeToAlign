@@ -9,6 +9,8 @@ timelines.Timeline(
     name=None,
     locked=False,
     meta=None,
+    *,
+    seed=None,
 )
 ```
 
@@ -270,6 +272,7 @@ timelines.Timeline.add_child(
     use_conversion_map=None,
     *,
     locked=None,
+    seed=None,
 )
 ```
 
@@ -288,9 +291,8 @@ Parent-child coordinate conversion uses exact offset arithmetic.
 
 The child's whole subtree joins this timeline's manifest, in which
 every id is unique across all element kinds: an element of the
-subtree whose minted id is already held here receives a freshly
-minted one, and an element whose given id is already held here makes
-the call raise without changing anything.
+subtree whose id, given or minted, is already held here makes the
+call raise without changing anything. Nothing is renamed.
 
 A timeline can accommodate events and other timelines, called
 Children, as long as they use the same measuring unit.
@@ -303,7 +305,8 @@ the ``child_unit -> parent_unit`` conversion. The child's events are
 copied with converted coordinates; the original child is NOT modified.
 
 The converted child is named ``"{child.name} [{parent.unit}]"`` and
-receives a minted id.
+receives a minted id: from ``IdMinter(seed)`` with *seed*, else from
+the content minter of the source's id and the parent's unit.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -314,13 +317,14 @@ receives a minted id.
 | allow_expansion    | [bool](`bool`)                                                        | If True, expand this timeline if needed.                                                                                                                                                                                                                                                                                                                                                                        | `False`    |
 | use_conversion_map | [ConversionMapsSpec](`timetoalign.core.timestamp.ConversionMapsSpec`) | Conversion map specification for unit conversion. Accepts the same formats as the ``conversion_maps`` parameter in timestamp functions: - ``None`` (default): No conversion; units must match. - ``True``: Auto-select a parent C-Map whose target unit   matches the child's unit. - ``str``: Look up by C-Map ID or target unit name. - ``TimeUnit``: Find by target unit. - ``ConversionMap``: Use directly. | `None`     |
 | locked             | [bool](`bool`) \| None                                                | Whether to lock the child. ``None`` (the default) locks every child but a plain segment, which is never locked. ``False`` keeps the child's own state: an unlocked child stays unlocked, a locked one stays locked; it is refused for an unlocked segment line.                                                                                                                                                 | `None`     |
+| seed               | [int](`int`) \| None                                                  | The seed of the minter of a converted child's id; not stored.                                                                                                                                                                                                                                                                                                                                                   | `None`     |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, a Jump of the child's subtree that is not rejected lies at a position of the root's axis where one of this timeline's tree lies (one Jump lies at a position of a root's axis), or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id of the child's subtree is already held in this manifest, a Jump of the child's subtree that is not rejected lies at a position of the root's axis where one of this timeline's tree lies (one Jump lies at a position of a root's axis), or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
 
 ### add_conversion_map { #timetoalign.timelines.Timeline.add_conversion_map }
 
@@ -362,7 +366,7 @@ itself), a given one raises.
 ### add_events { #timetoalign.timelines.Timeline.add_events }
 
 ```python
-timelines.Timeline.add_events(rows, allow_expansion=False)
+timelines.Timeline.add_events(rows, allow_expansion=False, *, seed=None)
 ```
 
 Add events to the timeline.
@@ -370,9 +374,11 @@ Add events to the timeline.
 Only ``event_type`` and a coordinate are strictly required per dict.
 Missing fields are filled in automatically:
 
-- **id**: minted above every ID held on this timeline, its prefix the
-  event type in lower case: ``note_1``, ``beat_1``, ``projection_1``.
-  An ID once given on the timeline is never given again.
+- **id**: minted (:func:`~timetoalign.storage.events.mint_event_ids`),
+  its prefix the event type in lower case: ``note_…``, ``beat_…``,
+  ``projection_…``; from ``IdMinter(seed)`` when *seed* is given,
+  else from the content minter of the timeline's ID, the number of
+  events it holds and the event types of the rows without an ID.
 - **temporal_type**: inferred from keys -- ``"interval"`` when both
   ``start`` and ``end`` (or ``duration``) are present, ``"instant"``
   otherwise.
@@ -415,6 +421,7 @@ may be given in place of its row, alone or in the list.
 |-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
 | rows            | [Event](`timetoalign.core.Event`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Event](`timetoalign.core.Event`)\] | Event dictionaries or events (one or a list). Required keys of a dictionary: - event_type: class name (e.g. ``"Beat"``, ``"Note"``,   ``"Projection"``) - instant: coordinate (for instant events), **or** - start, end: coordinates (for interval events) | _required_ |
 | allow_expansion | [bool](`bool`)                                                                                                                                                          | If True, expand timeline if events exceed length.                                                                                                                                                                                                          | `False`    |
+| seed            | [int](`int`) \| None                                                                                                                                                    | The seed of the minter of the missing IDs.                                                                                                                                                                                                                 | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -424,9 +431,9 @@ may be given in place of its row, alone or in the list.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If an ID is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box's shape is off the timeline's axis (or its row's ``unit``, ``number_type`` or ``timeline_id`` names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an ID, given or minted, is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box's shape is off the timeline's axis (or its row's ``unit``, ``number_type`` or ``timeline_id`` names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -436,8 +443,8 @@ may be given in place of its row, alone or in the list.
 >>> tl.add_events([
 ...     {"event_type": "Beat", "instant": 0.0},
 ...     {"event_type": "Note", "start": 0.0, "end": 0.5},
-... ])
-['beat_1', 'note_1']
+... ], seed=0)
+['beat_1be6k8ij6dzad', 'note_3cccv6pc7fclm']
 ```
 
 ### add_external_references { #timetoalign.timelines.Timeline.add_external_references }
@@ -500,8 +507,7 @@ The FlowMap is read against the timeline first
 (:meth:`FlowMap.resolve <timetoalign.timelines.flow.FlowMap.resolve>`),
 so one that names nothing of the tree never joins. Its gaps are kept
 in the timeline's number type. Its ID must be unique in the
-timeline's manifest: a minted ID already held there is minted again,
-a given one raises.
+timeline's manifest.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -514,13 +520,13 @@ a given one raises.
 | Name   | Type        | Description                                                       |
 |--------|-------------|-------------------------------------------------------------------|
 |        | \'FlowMap\' | The stored FlowMap: *flow_map* itself, or a copy with its gaps in |
-|        | \'FlowMap\' | the timeline's number type or under the newly minted ID.          |
+|        | \'FlowMap\' | the timeline's number type.                                       |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                   |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If this timeline is a child, the FlowMap names another timeline or cannot be read against this one, the timeline already holds a canonical FlowMap and this is a second one, or its given ID is already held in the manifest. |
+| Name   | Type                       | Description                                                                                                                                                                                                             |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If this timeline is a child, the FlowMap names another timeline or cannot be read against this one, the timeline already holds a canonical FlowMap and this is a second one, or its ID is already held in the manifest. |
 
 ### add_measure_map { #timetoalign.timelines.Timeline.add_measure_map }
 
@@ -605,7 +611,12 @@ table's actors use it.
 ### add_projections { #timetoalign.timelines.Timeline.add_projections }
 
 ```python
-timelines.Timeline.add_projections(projections, allow_expansion=False)
+timelines.Timeline.add_projections(
+    projections,
+    allow_expansion=False,
+    *,
+    seed=None,
+)
 ```
 
 Add Projections to the timeline, reusing those it already holds.
@@ -618,8 +629,8 @@ same event of another timeline, or none) at the same exact ``start``
 and ``duration``; a Projection with an ``id`` reuses the one held
 under that id when its content is equal. Rows of one call are taken
 alike, so two rows standing for one thing give one Projection.
-Everything else is added, its id kept or minted
-(``projection_N``).
+Everything else is added, its id kept or minted (``projection_…``,
+by :meth:`add_events`).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -627,6 +638,7 @@ Everything else is added, its id kept or minted
 |-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|------------|
 | projections     | [Projection](`timetoalign.core.Projection`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Projection](`timetoalign.core.Projection`)\] | :class:`~timetoalign.core.Projection` objects or their event rows (one or a list). | _required_ |
 | allow_expansion | [bool](`bool`)                                                                                                                                                                              | If True, expand the timeline if a Projection added exceeds its length.             | `False`    |
+| seed            | [int](`int`) \| None                                                                                                                                                                        | The seed of the minter of the missing IDs, as :meth:`add_events` takes it.         | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -648,10 +660,10 @@ Everything else is added, its id kept or minted
 >>> tl = ContinuousPhysicalTimeline(length=10.0)
 >>> n1 = EventReference(timeline_id="score", event_id="n1")
 >>> at = Coordinate(2.5, "seconds")
->>> tl.add_projections([Projection(start=at, projection_of=n1)] * 2)
-['projection_1', 'projection_1']
+>>> tl.add_projections([Projection(start=at, projection_of=n1)] * 2, seed=0)
+['projection_1be6k8ij6dzad', 'projection_1be6k8ij6dzad']
 >>> tl.add_projections(Projection(start=at, projection_of=n1))
-['projection_1']
+['projection_1be6k8ij6dzad']
 ```
 
 ### add_region { #timetoalign.timelines.Timeline.add_region }
@@ -662,9 +674,7 @@ timelines.Timeline.add_region(region)
 
 Attach a pre-existing Region object to this timeline.
 
-The region's id must be unique in this timeline's manifest: a minted
-id already held there is replaced by a freshly minted one, a given
-one raises.
+The region's id must be unique in this timeline's manifest.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -674,16 +684,15 @@ one raises.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                             | Description                                                   |
-|--------|--------------------------------------------------|---------------------------------------------------------------|
-|        | [Region](`timetoalign.timelines.regions.Region`) | The stored Region: *region* itself, or a copy under the newly |
-|        | [Region](`timetoalign.timelines.regions.Region`) | minted id.                                                    |
+| Name   | Type                                             | Description                         |
+|--------|--------------------------------------------------|-------------------------------------|
+|        | [Region](`timetoalign.timelines.regions.Region`) | The stored Region, *region* itself. |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                |
-|--------|----------------------------|------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the region's unit does not match the timeline's unit, or its given id is already held in this manifest. |
+| Name   | Type                       | Description                                                                                          |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the region's unit does not match the timeline's unit, or its id is already held in this manifest. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -788,8 +797,7 @@ Attach a virtual timeline to this root timeline.
 The statement must be true of this timeline: it applies a FlowMap
 the timeline holds to the timeline itself, and states the length,
 unit and number type the FlowMap gives. Its ID must be unique in the
-timeline's manifest: a minted ID already held there is minted again,
-a given one raises.
+timeline's manifest.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -799,16 +807,15 @@ a given one raises.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                | Description                                                    |
-|--------|---------------------|----------------------------------------------------------------|
-|        | \'VirtualTimeline\' | The stored virtual timeline: *virtual* itself, or a copy under |
-|        | \'VirtualTimeline\' | the newly minted ID.                                           |
+| Name   | Type                | Description                                    |
+|--------|---------------------|------------------------------------------------|
+|        | \'VirtualTimeline\' | The stored virtual timeline, *virtual* itself. |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                   |
-|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If this timeline is a child, the statement cannot be read against it (:meth:`VirtualTimeline.resolve <timetoalign.timelines.flow.VirtualTimeline.resolve>`) or states another length than its FlowMap gives, or its given ID is already held in the manifest. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                             |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If this timeline is a child, the statement cannot be read against it (:meth:`VirtualTimeline.resolve <timetoalign.timelines.flow.VirtualTimeline.resolve>`) or states another length than its FlowMap gives, or its ID is already held in the manifest. |
 
 ### append_child { #timetoalign.timelines.Timeline.append_child }
 
@@ -825,7 +832,8 @@ is a fresh, unlocked timeline, its identity may be set here: *uid*
 becomes the child's ID (the key under which it is stored and
 retrieved) and *name* its human-readable name — both applied before
 :meth:`add_child` embeds it (locking it unless it is a plain segment
-of a segment line).
+of a segment line). A child :meth:`add_child` refuses keeps the id
+and name it had.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -924,6 +932,7 @@ timelines.Timeline.create_calibrated_child(
     law=LinearMap,
     uid=None,
     name=None,
+    seed=None,
 )
 ```
 
@@ -950,6 +959,7 @@ a refusal leaves this timeline unchanged.
 | law         | [type](`type`)\[[ConversionMap](`timetoalign.maps.ConversionMap`)\[[Any](`typing.Any`)\]\]                                                                             | The map class whose ``from_pairs`` reads the pairs.                                                                                                                        | `LinearMap` |
 | uid         | [str](`str`) \| None                                                                                                                                                   | Unique identifier for the child. Auto-generated if None.                                                                                                                   | `None`      |
 | name        | [str](`str`) \| None                                                                                                                                                   | Human-readable name for the child.                                                                                                                                         | `None`      |
+| seed        | [int](`int`) \| None                                                                                                                                                   | The seed of one minter of every id the call mints: the map's, then the child's when *uid* is None (:func:`~timetoalign.core.ids.minting_from`); not stored.                | `None`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -994,6 +1004,7 @@ timelines.Timeline.create_child(
     child_class=None,
     *,
     measures=False,
+    seed=None,
 )
 ```
 
@@ -1024,6 +1035,7 @@ refusal leaves this timeline unchanged.
 | allow_expansion | [bool](`bool`)                                              | If True, expand the parent when needed.                                            | `False`    |
 | child_class     | [type](`type`)\[\'Timeline\'\] \| None                      | Explicit class override for the child.                                             | `None`     |
 | measures        | [bool](`bool`)                                              | Give the child the slice of this timeline's measure map over its span.             | `False`    |
+| seed            | [int](`int`) \| None                                        | The seed of the minter of the child's id when *uid* is None; not stored.           | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1063,6 +1075,7 @@ timelines.Timeline.create_child_from_region(
     copy_events=True,
     uid=None,
     measures=False,
+    seed=None,
 )
 ```
 
@@ -1091,6 +1104,7 @@ child, since the child would end past that end.
 | copy_events | [bool](`bool`)       | Copy events within the region to the child.                                                            | `True`     |
 | uid         | [str](`str`) \| None | Explicit child ID. When None, one is minted.                                                           | `None`     |
 | measures    | [bool](`bool`)       | Give the child the slice of this timeline's measure map over the region, as :meth:`create_child` does. | `False`    |
+| seed        | [int](`int`) \| None | The seed of the minter of the child's id when *uid* is None; not stored.                               | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1108,8 +1122,8 @@ child, since the child would end past that end.
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> tl.create_regions_by_splitting("breaks", prefix="movement")
->>> mov4 = tl.create_child_from_region("region_4")
+>>> movements = tl.create_regions_by_splitting("breaks", prefix="movement")
+>>> mov4 = tl.create_child_from_region(movements[3].id)
 >>> mov4.name
 'movement_4'
 ```
@@ -1125,6 +1139,7 @@ timelines.Timeline.create_children_from_boundaries(
     prefix='section',
     allow_expansion=False,
     measures=False,
+    seed=None,
 )
 ```
 
@@ -1134,14 +1149,15 @@ Source events are not copied into the children.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                          | Description                                                                                           | Default          |
-|-----------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|------------------|
-| boundaries      | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.                                                             | _required_       |
-| names           | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                | Explicit names for the k children.                                                                    | `None`           |
-| name_format     | [str](`str`)                                                                                  | Format with {prefix}, {i}, and {n} placeholders.                                                      | `'{prefix}_{n}'` |
-| prefix          | [str](`str`)                                                                                  | Prefix for auto-generated names.                                                                      | `'section'`      |
-| allow_expansion | [bool](`bool`)                                                                                | If True, expand the parent when needed.                                                               | `False`          |
-| measures        | [bool](`bool`)                                                                                | Give each child the slice of this timeline's measure map over its span, as :meth:`create_child` does. | `False`          |
+| Name            | Type                                                                                          | Description                                                                                                                                                                                                                    | Default          |
+|-----------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|
+| boundaries      | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.                                                                                                                                                                                      | _required_       |
+| names           | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                | Explicit names for the k children.                                                                                                                                                                                             | `None`           |
+| name_format     | [str](`str`)                                                                                  | Format with {prefix}, {i}, and {n} placeholders.                                                                                                                                                                               | `'{prefix}_{n}'` |
+| prefix          | [str](`str`)                                                                                  | Prefix for auto-generated names.                                                                                                                                                                                               | `'section'`      |
+| allow_expansion | [bool](`bool`)                                                                                | If True, expand the parent when needed.                                                                                                                                                                                        | `False`          |
+| measures        | [bool](`bool`)                                                                                | Give each child the slice of this timeline's measure map over its span, as :meth:`create_child` does.                                                                                                                          | `False`          |
+| seed            | [int](`int`) \| None                                                                          | The seed of one minter of every id the call mints (the measure maps and views of each child, with *measures*), in boundary order (:func:`~timetoalign.core.ids.minting_from`). The children's ids are their names. Not stored. | `None`           |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1176,6 +1192,7 @@ timelines.Timeline.create_children_from_regions(
     *,
     copy_events=True,
     measures=False,
+    seed=None,
 )
 ```
 
@@ -1191,6 +1208,7 @@ are independent.
 | region_ids  | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Region ids. None = all regions in insertion order.                                                      | `None`    |
 | copy_events | [bool](`bool`)                                                 | Copy events to children.                                                                                | `True`    |
 | measures    | [bool](`bool`)                                                 | Give each child the slice of this timeline's measure map over its region, as :meth:`create_child` does. | `False`   |
+| seed        | [int](`int`) \| None                                           | The seed of one minter of the children's ids, minted in region order; None mints each from its content. | `None`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1225,6 +1243,7 @@ timelines.Timeline.create_flow_map(
     canonical=False,
     name=None,
     provenance=(),
+    seed=None,
 )
 ```
 
@@ -1235,11 +1254,12 @@ Create a FlowMap of this root timeline and attach it.
 | Name       | Type                                                          | Description                                                                                                                                                                                                           | Default    |
 |------------|---------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
 | chunks     | [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\] | What is played, in order: each a Region of this timeline or of a descendant, a child timeline at any depth or a virtual timeline of this tree, given as the object or by its ID, or a :class:`~timetoalign.core.Gap`. | _required_ |
-| id         | [str](`str`) \| None                                          | The FlowMap's ID, kept verbatim. When None, ``flow_map_{N}`` is minted, unique in this timeline's manifest.                                                                                                           | `None`     |
+| id         | [str](`str`) \| None                                          | The FlowMap's ID, kept verbatim. When None, an ID with the prefix ``flow`` is minted (:class:`FlowMap <timetoalign.timelines.flow.FlowMap>`).                                                                         | `None`     |
 | convention | [str](`str`) \| None                                          | Which flow of the flow control the FlowMap states; None for one written by hand.                                                                                                                                      | `None`     |
 | canonical  | [bool](`bool`)                                                | Whether this is the timeline's canonical FlowMap.                                                                                                                                                                     | `False`    |
 | name       | [str](`str`) \| None                                          | Optional display name.                                                                                                                                                                                                | `None`     |
 | provenance | [Sequence](`collections.abc.Sequence`)\[[Any](`typing.Any`)\] | How the FlowMap was made: provenance entries.                                                                                                                                                                         | `()`       |
+| seed       | [int](`int`) \| None                                          | The seed of the minter of the ID when *id* is None; not stored.                                                                                                                                                       | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1260,9 +1280,9 @@ Create a FlowMap of this root timeline and attach it.
 >>> score = ContinuousLogicalTimeline(length=24, uid="score")
 >>> a = score.create_region(0, 16, id="a")
 >>> b = score.create_region(16, 24, id="b")
->>> score.create_flow_map([a, a, "b"], name="with the repeat")
-FlowMap('flow_map_1', timeline='score', 3 chunks, name='with the repeat')
->>> score.get_flow_map("flow_map_1").resolve(score).length
+>>> score.create_flow_map([a, a, "b"], id="repeat", name="with the repeat")
+FlowMap('repeat', timeline='score', 3 chunks, name='with the repeat')
+>>> score.get_flow_map("repeat").resolve(score).length
 Coordinate(Fraction(40, 1), quarters)
 ```
 
@@ -1274,6 +1294,7 @@ timelines.Timeline.create_flow_map_from_measure_order(
     *,
     id=None,
     name=None,
+    seed=None,
 )
 ```
 
@@ -1297,11 +1318,12 @@ Each call writes its Regions and its FlowMap anew.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                   | Description                                                             | Default    |
-|--------|--------------------------------------------------------|-------------------------------------------------------------------------|------------|
-| order  | [Iterable](`collections.abc.Iterable`)\[[int](`int`)\] | The measure counts in the order played.                                 | _required_ |
-| id     | [str](`str`) \| None                                   | The FlowMap's ID, kept verbatim. When None, ``flow_map_{N}`` is minted. | `None`     |
-| name   | [str](`str`) \| None                                   | Optional display name of the FlowMap.                                   | `None`     |
+| Name   | Type                                                   | Description                                                                                                                            | Default    |
+|--------|--------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|------------|
+| order  | [Iterable](`collections.abc.Iterable`)\[[int](`int`)\] | The measure counts in the order played.                                                                                                | _required_ |
+| id     | [str](`str`) \| None                                   | The FlowMap's ID, kept verbatim. When None, an ID with the prefix ``flow`` is minted.                                                  | `None`     |
+| name   | [str](`str`) \| None                                   | Optional display name of the FlowMap.                                                                                                  | `None`     |
+| seed   | [int](`int`) \| None                                   | The seed of one minter of the IDs of the Regions and, when *id* is None, the FlowMap, in that order; None mints each from its content. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1315,6 +1337,7 @@ Each call writes its Regions and its FlowMap anew.
 | Name   | Type                                                                  | Description                                                                                                                                                                                                                                                                  |
 |--------|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |        | [ValueError](`ValueError`)                                            | If this timeline is a child, holds no measure map or is not in quarters; the order is empty or names a count that is no measure of the measure map or whose length is unknown; the flow control cannot be played; or the given ID is already held. Nothing has changed then. |
+|        | [TypeError](`TypeError`)                                              | If the flow :meth:`get_flow` returns holds a gap, which a flow played from flow control never does. Nothing has changed then.                                                                                                                                                |
 |        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If the length is unknown.                                                                                                                                                                                                                                                    |
 
 #### Examples {.doc-section .doc-section-examples}
@@ -1326,13 +1349,13 @@ Each call writes its Regions and its FlowMap anew.
 >>> score = ContinuousLogicalTimeline(length=12, uid="score")
 >>> _ = score.add_measure_map(MeasureMap.from_rows(
 ...     [{"count": 1, "time_signature": "4/4"}, {"count": 2}, {"count": 3}]))
->>> _ = score.flow_control.add(
-...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
->>> stated = score.create_flow_map_from_measure_order([1, 2, 1, 2, 3])
+>>> _ = score.flow_control.add(Jump(
+...     Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)], id="repeat"))
+>>> stated = score.create_flow_map_from_measure_order([1, 2, 1, 2, 3], seed=7)
 >>> [str(region.as_interval) for region in stated.regions]
 ['[0, 8) quarters', '[0, 12) quarters']
 >>> stated.flow_map.chunks, stated.differs_at
-(('region_1', 'region_2'), None)
+(('region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx'), None)
 >>> score.create_flow_map_from_measure_order([1, 2, 3]).differs_at
 Coordinate(Fraction(8, 1), quarters)
 ```
@@ -1345,6 +1368,7 @@ timelines.Timeline.create_flow_maps_from_flow_control(
     beliefs=DEFAULT_BELIEFS,
     actor=None,
     date=None,
+    seed=None,
 )
 ```
 
@@ -1405,6 +1429,7 @@ away and never lets a Region's ID name another stretch:
 | beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The belief states read.                                                                                                                       | `DEFAULT_BELIEFS` |
 | actor    | [str](`str`) \| None                                                                   | Who recomputes, an IRI: the actor whose belief rejects the atomic sections that are none any more. Needed only where there are such sections. | `None`            |
 | date     | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None                 | The day of that belief, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                          | `None`            |
+| seed     | [int](`int`) \| None                                                                   | The seed of one minter of the IDs of the Regions and FlowMaps written anew, in that order; None mints each from its content.                  | `None`            |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1431,17 +1456,17 @@ away and never lets a Region's ID name another stretch:
 >>> from timetoalign.timelines.flowcontrol import (
 ...     Jump, JumpDestination, JumpTarget)
 >>> score = ContinuousLogicalTimeline(length=12, uid="score")
->>> _ = score.flow_control.add(
-...     Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)]))
->>> written = score.create_flow_maps_from_flow_control()
+>>> _ = score.flow_control.add(Jump(
+...     Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)], id="repeat"))
+>>> written = score.create_flow_maps_from_flow_control(seed=7)
 >>> [(section.id, section.name, str(section.as_interval))
 ...  for section in written.sections]
-[('region_1', 'A', '[0, 8) quarters'), ('region_2', 'B', '[8, 12) quarters')]
+[('region_1hvif5xc2r1fv', 'A', '[0, 8) quarters'), ('region_0g2wfq87pa7jx', 'B', '[8, 12) quarters')]
 >>> for flow_map in written.flow_maps:
 ...     print(flow_map.convention, flow_map.chunks)
-default ('region_1', 'region_1', 'region_2')
-single ('region_1', 'region_2')
-printed ('region_1', 'region_2')
+default ('region_1hvif5xc2r1fv', 'region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx')
+single ('region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx')
+printed ('region_1hvif5xc2r1fv', 'region_0g2wfq87pa7jx')
 >>> written.findings
 ()
 ```
@@ -1451,23 +1476,31 @@ and is rejected; the last section keeps its Region under a new
 letter:
 
 ```python
->>> _ = score.flow_control.add(JumpTarget(Coordinate(4, "quarters")))
+>>> _ = score.flow_control.add(JumpTarget(Coordinate(4, "quarters"), id="sign"))
 >>> again = score.create_flow_maps_from_flow_control(
-...     actor="https://orcid.org/0000-0002-1825-0097", date="2026-11-25")
+...     actor="https://orcid.org/0000-0002-1825-0097", date="2026-11-25", seed=8)
 >>> [(section.id, section.name, str(section.as_interval))
 ...  for section in again.sections]
-[('region_3', 'A', '[0, 4) quarters'), ('region_4', 'B', '[4, 8) quarters'), ('region_2', 'C', '[8, 12) quarters')]
->>> first = score.get_region("region_1")
+[('region_260an7vd22pgd', 'A', '[0, 4) quarters'), ('region_3bgc3pscka0re', 'B', '[4, 8) quarters'), ('region_0g2wfq87pa7jx', 'C', '[8, 12) quarters')]
+>>> first = score.get_region("region_1hvif5xc2r1fv")
 >>> str(first.as_interval), first.is_atomic_section
 ('[0, 8) quarters', False)
->>> again.flow_maps[0].id, again.flow_maps[0].chunks
-('flow_map_1', ('region_3', 'region_4', 'region_3', 'region_4', 'region_2'))
+>>> again.flow_maps[0].id == written.flow_maps[0].id
+True
 ```
 
 ### create_region { #timetoalign.timelines.Timeline.create_region }
 
 ```python
-timelines.Timeline.create_region(start, end, *, id=None, name=None, meta=None)
+timelines.Timeline.create_region(
+    start,
+    end,
+    *,
+    id=None,
+    name=None,
+    meta=None,
+    seed=None,
+)
 ```
 
 Create a new Region and attach it to this timeline.
@@ -1481,9 +1514,10 @@ attaches it, and returns it.
 |--------|-------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|------------|
 | start  | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)         | Start coordinate.                                                                                        | _required_ |
 | end    | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)         | End coordinate (must be >= start).                                                                       | _required_ |
-| id     | [str](`str`) \| None                                        | The region's id, kept verbatim. When None, ``region_{N}`` is minted, unique in this timeline's manifest. | `None`     |
+| id     | [str](`str`) \| None                                        | The region's id, kept verbatim. When None, an id with the prefix ``region`` is minted (:class:`Region`). | `None`     |
 | name   | [str](`str`) \| None                                        | Optional display name; names may repeat.                                                                 | `None`     |
 | meta   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| None | Optional metadata dictionary.                                                                            | `None`     |
+| seed   | [int](`int`) \| None                                        | The seed of the minter of the id when *id* is None; not stored.                                          | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1507,7 +1541,12 @@ attaches it, and returns it.
 ### create_regions_by_grouping { #timetoalign.timelines.Timeline.create_regions_by_grouping }
 
 ```python
-timelines.Timeline.create_regions_by_grouping(field, *, name_format='{value}')
+timelines.Timeline.create_regions_by_grouping(
+    field,
+    *,
+    name_format='{value}',
+    seed=None,
+)
 ```
 
 Create regions by grouping *adjacent* events on a field value.
@@ -1524,10 +1563,11 @@ and each occurrence should be its own region.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type         | Description                                                                                                   | Default     |
-|-------------|--------------|---------------------------------------------------------------------------------------------------------------|-------------|
-| field       | [str](`str`) | Event field name to group by.                                                                                 | _required_  |
-| name_format | [str](`str`) | Format string. Placeholders: {value}, {i} (0-based), {n} (1-based), {run} (1-based run index for this value). | `'{value}'` |
+| Name        | Type                 | Description                                                                                                   | Default     |
+|-------------|----------------------|---------------------------------------------------------------------------------------------------------------|-------------|
+| field       | [str](`str`)         | Event field name to group by.                                                                                 | _required_  |
+| name_format | [str](`str`)         | Format string. Placeholders: {value}, {i} (0-based), {n} (1-based), {run} (1-based run index for this value). | `'{value}'` |
+| seed        | [int](`int`) \| None | The seed of one minter of the regions' ids, minted in order of start; None mints each from its content.       | `None`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1545,10 +1585,9 @@ and each occurrence should be its own region.
 
 ```python
 >>> # Time-signature regions (adjacent grouping)
->>> tl.create_regions_by_grouping("timesig")
-[Region('region_1', name='4/4', 0-64 quarters),
- Region('region_2', name='3/4', 64-88 quarters),
- Region('region_3', name='4/4', 88-120 quarters)]
+>>> regions = tl.create_regions_by_grouping("timesig")
+>>> [region.name for region in regions]
+['4/4', '3/4', '4/4']
 ```
 
 ### create_regions_by_splitting { #timetoalign.timelines.Timeline.create_regions_by_splitting }
@@ -1562,6 +1601,7 @@ timelines.Timeline.create_regions_by_splitting(
     prefix='section',
     include_before_first=True,
     include_after_last=True,
+    seed=None,
 )
 ```
 
@@ -1583,14 +1623,15 @@ For each matching event the split coordinate is the event's ``end``
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name                 | Type                                                                                                                                                | Description                                                          | Default          |
-|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------|------------------|
-| predicate            | [str](`str`) \| [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Callable](`collections.abc.Callable`)\[\[[dict](`dict`)\], [bool](`bool`)\] | Field name, filter dict, or callable identifying split-point events. | _required_       |
-| names                | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                                                                      | Explicit region names.                                               | `None`           |
-| name_format          | [str](`str`)                                                                                                                                        | Format string. Placeholders: {prefix}, {i}, {n}.                     | `'{prefix}_{n}'` |
-| prefix               | [str](`str`)                                                                                                                                        | Prefix for auto-generated names.                                     | `'section'`      |
-| include_before_first | [bool](`bool`)                                                                                                                                      | Create a region from timeline origin to first split point.           | `True`           |
-| include_after_last   | [bool](`bool`)                                                                                                                                      | Create a region from last split point to timeline end.               | `True`           |
+| Name                 | Type                                                                                                                                                | Description                                                                                               | Default          |
+|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|------------------|
+| predicate            | [str](`str`) \| [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Callable](`collections.abc.Callable`)\[\[[dict](`dict`)\], [bool](`bool`)\] | Field name, filter dict, or callable identifying split-point events.                                      | _required_       |
+| names                | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                                                                      | Explicit region names.                                                                                    | `None`           |
+| name_format          | [str](`str`)                                                                                                                                        | Format string. Placeholders: {prefix}, {i}, {n}.                                                          | `'{prefix}_{n}'` |
+| prefix               | [str](`str`)                                                                                                                                        | Prefix for auto-generated names.                                                                          | `'section'`      |
+| include_before_first | [bool](`bool`)                                                                                                                                      | Create a region from timeline origin to first split point.                                                | `True`           |
+| include_after_last   | [bool](`bool`)                                                                                                                                      | Create a region from last split point to timeline end.                                                    | `True`           |
+| seed                 | [int](`int`) \| None                                                                                                                                | The seed of one minter of the regions' ids, minted in coordinate order; None mints each from its content. | `None`           |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1627,6 +1668,7 @@ timelines.Timeline.create_regions_from_boundaries(
     names=None,
     name_format='{prefix}_{n}',
     prefix='section',
+    seed=None,
 )
 ```
 
@@ -1638,12 +1680,13 @@ regions; their ids are minted.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                                          | Description                                                                   | Default          |
-|-------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|------------------|
-| boundaries  | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.                                     | _required_       |
-| names       | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                | Explicit names for the k regions. Mutually exclusive with name_format/prefix. | `None`           |
-| name_format | [str](`str`)                                                                                  | Format string. Placeholders: {prefix}, {i} (0-based), {n} (1-based).          | `'{prefix}_{n}'` |
-| prefix      | [str](`str`)                                                                                  | Prefix for auto-generated names.                                              | `'section'`      |
+| Name        | Type                                                                                          | Description                                                                                             | Default          |
+|-------------|-----------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|------------------|
+| boundaries  | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.                                                               | _required_       |
+| names       | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                | Explicit names for the k regions. Mutually exclusive with name_format/prefix.                           | `None`           |
+| name_format | [str](`str`)                                                                                  | Format string. Placeholders: {prefix}, {i} (0-based), {n} (1-based).                                    | `'{prefix}_{n}'` |
+| prefix      | [str](`str`)                                                                                  | Prefix for auto-generated names.                                                                        | `'section'`      |
+| seed        | [int](`int`) \| None                                                                          | The seed of one minter of the regions' ids, minted in boundary order; None mints each from its content. | `None`           |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1660,19 +1703,23 @@ regions; their ids are minted.
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> tl.create_regions_from_boundaries(
+>>> regions = tl.create_regions_from_boundaries(
 ...     [0, 30, 60, 90],
 ...     prefix="movement",
 ... )
-[Region('region_1', name='movement_1', 0-30 quarters),
- Region('region_2', name='movement_2', 30-60 quarters),
- Region('region_3', name='movement_3', 60-90 quarters)]
+>>> [region.name for region in regions]
+['movement_1', 'movement_2', 'movement_3']
 ```
 
 ### create_segment_line { #timetoalign.timelines.Timeline.create_segment_line }
 
 ```python
-timelines.Timeline.create_segment_line(boundaries, *, copy_events=True)
+timelines.Timeline.create_segment_line(
+    boundaries,
+    *,
+    copy_events=True,
+    seed=None,
+)
 ```
 
 Create a SegmentLine by segmenting at boundary coordinates.
@@ -1690,10 +1737,11 @@ Does NOT modify self. Returns a new independent SegmentLine.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                                          | Description                                 | Default    |
-|-------------|-----------------------------------------------------------------------------------------------|---------------------------------------------|------------|
-| boundaries  | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.   | _required_ |
-| copy_events | [bool](`bool`)                                                                                | Copy events into their respective segments. | `True`     |
+| Name        | Type                                                                                          | Description                                                                                                                                                                                      | Default    |
+|-------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| boundaries  | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.                                                                                                                                                        | _required_ |
+| copy_events | [bool](`bool`)                                                                                | Copy events into their respective segments.                                                                                                                                                      | `True`     |
+| seed        | [int](`int`) \| None                                                                          | The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:`~timetoalign.core.ids.minting_from`); without one, each from its content. Not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1723,6 +1771,7 @@ timelines.Timeline.create_segment_line_by_grouping(
     *,
     copy_events=True,
     name_format='{value}',
+    seed=None,
 )
 ```
 
@@ -1735,11 +1784,12 @@ Does NOT modify self. Does NOT add intermediate regions to self.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type           | Description                      | Default     |
-|-------------|----------------|----------------------------------|-------------|
-| field       | [str](`str`)   | Event field to group by.         | _required_  |
-| copy_events | [bool](`bool`) | Copy events into segments.       | `True`      |
-| name_format | [str](`str`)   | Format string for segment names. | `'{value}'` |
+| Name        | Type                 | Description                                                                                                                                                                                      | Default     |
+|-------------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
+| field       | [str](`str`)         | Event field to group by.                                                                                                                                                                         | _required_  |
+| copy_events | [bool](`bool`)       | Copy events into segments.                                                                                                                                                                       | `True`      |
+| name_format | [str](`str`)         | Format string for segment names.                                                                                                                                                                 | `'{value}'` |
+| seed        | [int](`int`) \| None | The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:`~timetoalign.core.ids.minting_from`); without one, each from its content. Not stored. | `None`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1771,6 +1821,7 @@ timelines.Timeline.create_segment_line_by_splitting(
     prefix='section',
     include_before_first=True,
     include_after_last=True,
+    seed=None,
 )
 ```
 
@@ -1784,15 +1835,16 @@ The predicate follows the same semantics as
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name                 | Type                                                                                                                                                | Description                                                           | Default          |
-|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|------------------|
-| predicate            | [str](`str`) \| [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Callable](`collections.abc.Callable`)\[\[[dict](`dict`)\], [bool](`bool`)\] | Column name, filter dict, or callable identifying split-point events. | _required_       |
-| copy_events          | [bool](`bool`)                                                                                                                                      | Copy events into segments.                                            | `True`           |
-| names                | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                                                                      | Explicit segment names.                                               | `None`           |
-| name_format          | [str](`str`)                                                                                                                                        | Format string for segment names.                                      | `'{prefix}_{n}'` |
-| prefix               | [str](`str`)                                                                                                                                        | Prefix for auto-generated names.                                      | `'section'`      |
-| include_before_first | [bool](`bool`)                                                                                                                                      | Include segment before first split point.                             | `True`           |
-| include_after_last   | [bool](`bool`)                                                                                                                                      | Include segment after last split point.                               | `True`           |
+| Name                 | Type                                                                                                                                                | Description                                                                                                                                                                                      | Default          |
+|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|
+| predicate            | [str](`str`) \| [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Callable](`collections.abc.Callable`)\[\[[dict](`dict`)\], [bool](`bool`)\] | Column name, filter dict, or callable identifying split-point events.                                                                                                                            | _required_       |
+| copy_events          | [bool](`bool`)                                                                                                                                      | Copy events into segments.                                                                                                                                                                       | `True`           |
+| names                | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                                                                      | Explicit segment names.                                                                                                                                                                          | `None`           |
+| name_format          | [str](`str`)                                                                                                                                        | Format string for segment names.                                                                                                                                                                 | `'{prefix}_{n}'` |
+| prefix               | [str](`str`)                                                                                                                                        | Prefix for auto-generated names.                                                                                                                                                                 | `'section'`      |
+| include_before_first | [bool](`bool`)                                                                                                                                      | Include segment before first split point.                                                                                                                                                        | `True`           |
+| include_after_last   | [bool](`bool`)                                                                                                                                      | Include segment after last split point.                                                                                                                                                          | `True`           |
+| seed                 | [int](`int`) \| None                                                                                                                                | The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:`~timetoalign.core.ids.minting_from`); without one, each from its content. Not stored. | `None`           |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1821,6 +1873,7 @@ timelines.Timeline.create_segment_line_from_regions(
     region_ids=None,
     *,
     copy_events=True,
+    seed=None,
 )
 ```
 
@@ -1833,10 +1886,11 @@ Does NOT modify self.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                           | Description                                                                                                | Default   |
-|-------------|----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|-----------|
-| region_ids  | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Ordered region ids. None = all regions sorted by start coordinate. Each segment is named after its region. | `None`    |
-| copy_events | [bool](`bool`)                                                 | Copy events into segments.                                                                                 | `True`    |
+| Name        | Type                                                           | Description                                                                                                                                                                                      | Default   |
+|-------------|----------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| region_ids  | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Ordered region ids. None = all regions sorted by start coordinate. Each segment is named after its region.                                                                                       | `None`    |
+| copy_events | [bool](`bool`)                                                 | Copy events into segments.                                                                                                                                                                       | `True`    |
+| seed        | [int](`int`) \| None                                           | The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:`~timetoalign.core.ids.minting_from`); without one, each from its content. Not stored. | `None`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1860,7 +1914,13 @@ Does NOT modify self.
 ### create_virtual_timeline { #timetoalign.timelines.Timeline.create_virtual_timeline }
 
 ```python
-timelines.Timeline.create_virtual_timeline(flow_map, *, id=None, name=None)
+timelines.Timeline.create_virtual_timeline(
+    flow_map,
+    *,
+    id=None,
+    name=None,
+    seed=None,
+)
 ```
 
 State that a FlowMap of this root timeline was applied to it.
@@ -1871,11 +1931,12 @@ length, and holds no events.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                 | Description                                                                                                                                     | Default    |
-|----------|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| flow_map | \'FlowMap \| str\'   | A FlowMap this timeline holds, or its ID.                                                                                                       | _required_ |
-| id       | [str](`str`) \| None | The virtual timeline's ID, kept verbatim. When None, an ID of this timeline's kind is minted (``clt_{N}`` on quarters), unique in the manifest. | `None`     |
-| name     | [str](`str`) \| None | Optional display name.                                                                                                                          | `None`     |
+| Name     | Type                 | Description                                                                                                             | Default    |
+|----------|----------------------|-------------------------------------------------------------------------------------------------------------------------|------------|
+| flow_map | \'FlowMap \| str\'   | A FlowMap this timeline holds, or its ID.                                                                               | _required_ |
+| id       | [str](`str`) \| None | The virtual timeline's ID, kept verbatim. When None, an ID with this timeline's prefix is minted (``clt`` on quarters). | `None`     |
+| name     | [str](`str`) \| None | Optional display name.                                                                                                  | `None`     |
+| seed     | [int](`int`) \| None | The seed of the minter of the ID when *id* is None; not stored.                                                         | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1893,7 +1954,14 @@ length, and holds no events.
 ### derive { #timetoalign.timelines.Timeline.derive }
 
 ```python
-timelines.Timeline.derive(target_unit, name=None, copy_events=False)
+timelines.Timeline.derive(
+    target_unit,
+    name=None,
+    copy_events=False,
+    *,
+    uid=None,
+    seed=None,
+)
 ```
 
 Create a derivative timeline in a different unit via C-Map conversion.
@@ -1914,11 +1982,13 @@ the parent's unit). Use TimelineGroup to connect them.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                    | Description                                               | Default    |
-|-------------|---------------------------------------------------------|-----------------------------------------------------------|------------|
-| target_unit | [TimeUnit](`timetoalign.core.TimeUnit`) \| [str](`str`) | The unit for the derived timeline.                        | _required_ |
-| name        | [str](`str`) \| None                                    | Optional name for the derived timeline.                   | `None`     |
-| copy_events | [bool](`bool`)                                          | If True, copy and convert events to the derived timeline. | `False`    |
+| Name        | Type                                                    | Description                                                                                                                                                                                                                                             | Default    |
+|-------------|---------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| target_unit | [TimeUnit](`timetoalign.core.TimeUnit`) \| [str](`str`) | The unit for the derived timeline.                                                                                                                                                                                                                      | _required_ |
+| name        | [str](`str`) \| None                                    | Optional name for the derived timeline.                                                                                                                                                                                                                 | `None`     |
+| copy_events | [bool](`bool`)                                          | If True, copy and convert events to the derived timeline.                                                                                                                                                                                               | `False`    |
+| uid         | [str](`str`) \| None                                    | The derived timeline's id; minted when None.                                                                                                                                                                                                            | `None`     |
+| seed        | [int](`int`) \| None                                    | The seed of one minter of every id the call mints, in the order built: the derived timeline (unless *uid* is given), the inverse C-Map, the copied events (:func:`~timetoalign.core.ids.minting_from`); without one, each from its content. Not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2640,10 +2710,10 @@ the root timeline's coordinate system.
 ```python
 >>> from timetoalign import Timeline, TimeUnit
 >>> timeline = Timeline(length=4, unit=TimeUnit.quarters)
->>> timeline.add_events([{"event_type": "Note", "start": 0, "end": 1}])
-['note_1']
->>> timeline.get_event("note_1")["id"]
-'note_1'
+>>> timeline.add_events([{"id": "n1", "event_type": "Note", "start": 0, "end": 1}])
+['n1']
+>>> timeline.get_event("n1")["id"]
+'n1'
 >>> timeline.get_event("nonexistent") is None
 True
 ```
@@ -3027,9 +3097,8 @@ A region contains coord if region.start <= coord < region.end
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> tl.get_regions_at(75.0)
-[Region('region_1', name='verse', 30-90 quarters),
- Region('region_2', name='chorus', 60-120 quarters)]
+>>> [region.name for region in tl.get_regions_at(75.0)]
+['verse', 'chorus']
 ```
 
 ### get_slice { #timetoalign.timelines.Timeline.get_slice }
@@ -3042,6 +3111,7 @@ timelines.Timeline.get_slice(
     truncate_events=True,
     include_children=True,
     copy_cmaps=True,
+    seed=None,
 )
 ```
 
@@ -3074,13 +3144,14 @@ accolade by accolade, each slice stating its own area.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name             | Type                                                | Description                                                                                                                                                                         | Default    |
-|------------------|-----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| start            | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | Start coordinate (inclusive).                                                                                                                                                       | _required_ |
-| end              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | End coordinate (exclusive).                                                                                                                                                         | _required_ |
-| truncate_events  | [bool](`bool`)                                      | If True (default), interval events straddling the slice boundaries are clipped to [start, end). If False, events must be fully contained to be included. Children are sliced alike. | `True`     |
-| include_children | [bool](`bool`)                                      | If True (default), child timelines whose span overlaps [start, end) are recursively sliced and included.                                                                            | `True`     |
-| copy_cmaps       | [bool](`bool`)                                      | If True (default), ConversionMaps are bounded-copied for the slice range.                                                                                                           | `True`     |
+| Name             | Type                                                | Description                                                                                                                                                                                                                       | Default    |
+|------------------|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| start            | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | Start coordinate (inclusive).                                                                                                                                                                                                     | _required_ |
+| end              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | End coordinate (exclusive).                                                                                                                                                                                                       | _required_ |
+| truncate_events  | [bool](`bool`)                                      | If True (default), interval events straddling the slice boundaries are clipped to [start, end). If False, events must be fully contained to be included. Children are sliced alike.                                               | `True`     |
+| include_children | [bool](`bool`)                                      | If True (default), child timelines whose span overlaps [start, end) are recursively sliced and included.                                                                                                                          | `True`     |
+| copy_cmaps       | [bool](`bool`)                                      | If True (default), ConversionMaps are bounded-copied for the slice range.                                                                                                                                                         | `True`     |
+| seed             | [int](`int`) \| None                                | The seed of one minter of every id the slice mints, in the order built: the slice, then its children's slices, then the copied maps (:func:`~timetoalign.core.ids.minting_from`); without one, each from its content. Not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -3255,17 +3326,19 @@ is not found on this timeline directly.
 >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="cpt_1")
 >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
 >>> parent.add_child(child, offset=5)
->>> parent.add_events([{"event_type": "Note", "instant": 5.0}])
-['note_1']
->>> child.add_events([{"event_type": "Chord", "start": 0.0, "end": 2.5}])
-['chord_1']
->>> ts = parent.get_timestamp_for("note_1")
+>>> parent.add_events([{"id": "n1", "event_type": "Note", "instant": 5.0}])
+['n1']
+>>> child.add_events(
+...     [{"id": "c1", "event_type": "Chord", "start": 0.0, "end": 2.5}]
+... )
+['c1']
+>>> ts = parent.get_timestamp_for("n1")
 >>> ts.axis  # For instant events
 IdCoordinate(5.0, seconds, 'cpt_1')
 ```
 
 ```python
->>> ts = parent.get_timestamp_for("chord_1")  # found on the child
+>>> ts = parent.get_timestamp_for("c1")  # found on the child
 >>> ts.start.axis  # For interval events
 IdCoordinate(5.0, seconds, 'cpt_1')
 >>> ts.end.axis

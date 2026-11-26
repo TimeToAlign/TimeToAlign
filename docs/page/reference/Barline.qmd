@@ -5,7 +5,7 @@ timelines.Barline(
     coordinate,
     *,
     id=None,
-    _minted=False,
+    seed=None,
     _unknown_keys=dict[str, Any](),
     name=None,
     label=None,
@@ -29,4 +29,4 @@ It changes nothing in the flow.
 | label         | [str](`str`) \| None                                                                    | A human-readable label.                                                    |
 | meta          | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                     | Additional metadata.                                                       |
 | provenance    | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None | How the element was made and who believes it: provenance entries, or None. |
-| id            | [str](`str`)                                                                            | The element's ID; minted as ``barline_{N}`` when not given.                |
+| id            | [str](`str`)                                                                            | The element's ID; minted with the prefix ``barline`` when not given.       |

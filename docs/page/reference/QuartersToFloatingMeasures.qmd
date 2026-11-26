@@ -8,6 +8,7 @@ QuartersToFloatingMeasures(
     target_unit=TimeUnit.floating_measures,
     uid=None,
     name=None,
+    seed=None,
 )
 ```
 
@@ -61,19 +62,21 @@ dropped.
 ### from_measure_map { #timetoalign.QuartersToFloatingMeasures.from_measure_map }
 
 ```python
-QuartersToFloatingMeasures.from_measure_map(measure_map)
+QuartersToFloatingMeasures.from_measure_map(measure_map, *, seed=None)
 ```
 
 Build the floating-measure lattice of a measure map.
 
 A floating measure is a **compound measure**: a maximal run of
-consecutive measure records that share one ``number`` and one
-``nominal_length``, each continuing the one before it.  A record
-continues the compound so far when the last record's ``next``
-names it, or when its ``offset_within_measure`` is exactly where
-the compound so far ends inside the notated bar (the first
-record's offset plus the records' actual lengths) — the second
-part of a bar split at a repeat sign whose first part jumps back.
+consecutive measure records that share one ``number``, each
+continuing the one before it.  A record continues the compound so
+far when the last record's ``next`` names it — across a metre
+change too, since one measure number is one notated bar — or
+when it has the last record's ``nominal_length`` and its
+``offset_within_measure`` is exactly where the compound so far
+ends inside the notated bar (the first record's offset plus the
+records' actual lengths) — the second part of a bar split at a
+repeat sign whose first part jumps back.
 Two records stating different ``volta`` brackets never join, nor
 does a record without a number.  A record on its own is a
 compound of one.  The records of a split bar, whose parts the
@@ -102,6 +105,7 @@ and get two consecutive ordinals — and never resets.
 | Name        | Type                                                       | Description                                                 | Default    |
 |-------------|------------------------------------------------------------|-------------------------------------------------------------|------------|
 | measure_map | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | Measures whose exact starts and lengths define the lattice. | _required_ |
+| seed        | [int](`int`) \| None                                       | The seed of the minter of the map's id; not stored.         | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

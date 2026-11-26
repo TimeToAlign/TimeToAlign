@@ -8,6 +8,8 @@ PiecewiseMap(
     target_unit=None,
     uid=None,
     name=None,
+    output_number_type=None,
+    seed=None,
 )
 ```
 
@@ -29,17 +31,7 @@ Intervals are [start, end).
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.PiecewiseMap.from_dict) | Deserialize from dictionary. |
 | [inverse](#timetoalign.PiecewiseMap.inverse) | Return the inverse map. |
-| [to_dict](#timetoalign.PiecewiseMap.to_dict) | Serialize to dictionary. |
-
-### from_dict { #timetoalign.PiecewiseMap.from_dict }
-
-```python
-PiecewiseMap.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### inverse { #timetoalign.PiecewiseMap.inverse }
 
@@ -53,11 +45,3 @@ Requires all sub-maps to be invertible and the resulting target intervals to be 
 This is non-trivial if the target intervals don't line up.
 For now, we implement the naive inversion:
 Convert breaks using forward maps to get new breaks, invert maps.
-
-### to_dict { #timetoalign.PiecewiseMap.to_dict }
-
-```python
-PiecewiseMap.to_dict(minimal=False)
-```
-
-Serialize to dictionary.

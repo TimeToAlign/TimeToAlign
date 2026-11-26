@@ -5,6 +5,8 @@ loader.midi.MidiLoader(
     unit=None,
     number_type=None,
     interval_policy=IntervalPolicy.warn,
+    *,
+    seed=None,
 )
 ```
 

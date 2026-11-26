@@ -10,6 +10,8 @@ TableMap(
     target_unit=None,
     uid=None,
     name=None,
+    output_number_type=None,
+    seed=None,
 )
 ```
 
@@ -49,28 +51,18 @@ This is useful for:
 ```
 
 ```python
->>> # Inverse map
+>>> # Inverse map, landing on the ticks axis, which writes whole ticks
 >>> inverse = tempo_map.inverse()
 >>> inverse(1.0)
-720.0
+720
 ```
 
 ## Methods
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.TableMap.from_dict) | Deserialize from dictionary. |
 | [from_tempo_changes](#timetoalign.TableMap.from_tempo_changes) | Create a TableMap from MIDI-style tempo changes. |
 | [inverse](#timetoalign.TableMap.inverse) | Return the inverse map (swap x and y). |
-| [to_dict](#timetoalign.TableMap.to_dict) | Serialize to dictionary. |
-
-### from_dict { #timetoalign.TableMap.from_dict }
-
-```python
-TableMap.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### from_tempo_changes { #timetoalign.TableMap.from_tempo_changes }
 
@@ -81,6 +73,8 @@ TableMap.from_tempo_changes(
     ticks_per_quarter=480,
     source_unit='ticks',
     target_unit='seconds',
+    *,
+    seed=None,
 )
 ```
 
@@ -98,6 +92,7 @@ MIDI ticks to seconds based on tempo information.
 | ticks_per_quarter | [int](`int`)                                                  | MIDI resolution (ticks per quarter note).                                         | `480`       |
 | source_unit       | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) | Source unit name.                                                                 | `'ticks'`   |
 | target_unit       | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) | Target unit name.                                                                 | `'seconds'` |
+| seed              | [int](`int`) \| None                                          | The seed of the minter of the map's id; not stored.                               | `None`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -135,11 +130,3 @@ Return the inverse map (swap x and y).
 | Name   | Type                                         | Description                             |
 |--------|----------------------------------------------|-----------------------------------------|
 |        | [NotImplementedError](`NotImplementedError`) | If y values are not strictly monotonic. |
-
-### to_dict { #timetoalign.TableMap.to_dict }
-
-```python
-TableMap.to_dict(minimal=False)
-```
-
-Serialize to dictionary.

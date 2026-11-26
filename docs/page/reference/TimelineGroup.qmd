@@ -7,6 +7,8 @@ timelines.TimelineGroup(
     timelines=None,
     meta=None,
     styling=None,
+    *,
+    seed=None,
 )
 ```
 
@@ -33,7 +35,7 @@ Members keep the order in which they were added.
 
 | Name    | Type                                                | Description                                                                                                                                                  |
 |---------|-----------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| id      | [str](`str`)                                        | Unique identifier for this group, ``group_N`` unless given.                                                                                                  |
+| id      | [str](`str`)                                        | Unique identifier for this group, minted with the prefix ``group`` unless given.                                                                             |
 | name    | [str](`str`) \| None                                | Optional human-readable name.                                                                                                                                |
 | meta    | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata dictionary.                                                                                                                              |
 | styling | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | The members of the manifest's ``graphical`` other than ``order`` (``styles``, ``rules``, ``timestamps`` and any other), kept as given and never interpreted. |
@@ -47,15 +49,15 @@ Members keep the order in which they were added.
 ...     ContinuousLogicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> score = ContinuousLogicalTimeline(length=Fraction(16))
->>> image = DiscreteGraphicalTimeline(length=4800)
->>> group = TimelineGroup(timelines=[score, image])
+>>> score = ContinuousLogicalTimeline(length=Fraction(16), uid="score")
+>>> image = DiscreteGraphicalTimeline(length=4800, uid="image")
+>>> group = TimelineGroup(id="edition", timelines=[score, image])
 >>> group.id, group.timeline_ids
-('group_1', ['clt_1', 'dgt_1'])
->>> group.get_coordinate_at(Fraction(1, 3), "clt_1", format="coordinate")
+('edition', ['score', 'image'])
+>>> group.get_coordinate_at(Fraction(1, 3), "score", format="coordinate")
 Coordinate(Fraction(1, 3), quarters)
->>> group.get_timestamp_at(Fraction(1, 3), "clt_1").get_coordinate_for(
-...     "dgt_1", format="int"
+>>> group.get_timestamp_at(Fraction(1, 3), "score").get_coordinate_for(
+...     "image", format="int"
 ... )
 100
 ```
@@ -123,9 +125,9 @@ A segment line is locked when it joins, as when it becomes a child.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is already a member; if it is nested with a member; or if a given id of its tree — of any timeline, conversion map, region or flow-control element of it — is held by an element of the group's trees, is the group's given id or is held in a bundle holding the group (a minted id held there is minted again instead, and a minted group id that a newcomer's given id takes is minted again). |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                    |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already a member; if it is nested with a member; or if an id of its tree — of any timeline, conversion map, region or flow-control element of it, given or minted — is held by an element of the group's trees, is the group's id or is held in a bundle holding the group. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -135,14 +137,15 @@ A segment line is locked when it joins, as when it becomes a child.
 ...     ContinuousPhysicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> image = DiscreteGraphicalTimeline(length=5000)
->>> holes = DiscreteGraphicalTimeline(length=2000)
+>>> image = DiscreteGraphicalTimeline(length=5000, uid="roll")
+>>> holes = DiscreteGraphicalTimeline(length=2000, uid="holes")
 >>> image.add_child(holes, offset=1000)
->>> group = TimelineGroup(timelines=[ContinuousPhysicalTimeline(length=8.0)])
+>>> audio = ContinuousPhysicalTimeline(length=8.0, uid="audio")
+>>> group = TimelineGroup(timelines=[audio])
 >>> group.add_timeline(holes)
->>> group.get_coordinate_at(2.0, "cpt_1")
-IdCoordinate(2.0, seconds, 'cpt_1')
->>> group.get_timestamp_at(2.0, "cpt_1").get_coordinate_for("dgt_2", format="int")
+>>> group.get_coordinate_at(2.0, "audio")
+IdCoordinate(2.0, seconds, 'audio')
+>>> group.get_timestamp_at(2.0, "audio").get_coordinate_for("holes", format="int")
 500
 ```
 
@@ -464,7 +467,7 @@ concatenates their Arrow tables into a single EventData. Each row includes a
 
 | Name        | Type                 | Description                                                                                                     | Default   |
 |-------------|----------------------|-----------------------------------------------------------------------------------------------------------------|-----------|
-| timeline_id | [str](`str`) \| None | If provided, only return events from this timeline. Supports partial string and regex matching.                 | `None`    |
+| timeline_id | [str](`str`) \| None | If provided, only return events from this timeline: an exact ID, or a regular expression matching whole IDs.    | `None`    |
 | **kwargs    | [Any](`typing.Any`)  | Passed through to each timeline's ``get_events()`` method (e.g., ``min_coord``, ``max_coord``, ``event_type``). | `{}`      |
 
 #### Returns {.doc-section .doc-section-returns}
@@ -532,18 +535,16 @@ timelines.TimelineGroup.get_timeline(timeline_id)
 
 Get a timeline by ID.
 
-Supports partial string and regex matching:
-1. Exact match: If ``timeline_id`` matches an ID exactly, returns it.
-2. Substring match: If ``timeline_id`` is a substring of exactly one ID,
-   returns that timeline. If multiple match, returns the first and warns.
-3. Regex match: If ``timeline_id`` is a valid regex, matches via
-   ``re.search()``. Same first-match logic with warning.
+Takes an exact ID, else a regular expression matching whole IDs
+(:func:`~timetoalign.core.ids.resolve_id`): when several match, the
+first is returned with a warning. A fragment of an ID matches
+nothing.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type         | Description                                                   | Default    |
-|-------------|--------------|---------------------------------------------------------------|------------|
-| timeline_id | [str](`str`) | The timeline's unique identifier, or a partial/regex pattern. | _required_ |
+| Name        | Type         | Description                                                    | Default    |
+|-------------|--------------|----------------------------------------------------------------|------------|
+| timeline_id | [str](`str`) | The timeline's ID, or a regular expression matching whole IDs. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -560,9 +561,8 @@ Supports partial string and regex matching:
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> group.get_timeline("clt_1")           # Exact match
->>> group.get_timeline("notes")          # Substring match
->>> group.get_timeline(r"^score:")       # Regex match
+>>> group.get_timeline("score:clt_1")   # Exact match
+>>> group.get_timeline("score:.*")      # Regular expression
 ```
 
 ### get_timestamp { #timetoalign.timelines.TimelineGroup.get_timestamp }
@@ -654,24 +654,24 @@ descendants are reached through their exact offsets.
 ...     ContinuousPhysicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> dgt_1 = DiscreteGraphicalTimeline(length=4875, unit="pixels")
->>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds")
->>> group = TimelineGroup(timelines=[dgt_1, audio])
+>>> scan = DiscreteGraphicalTimeline(length=4875, unit="pixels", uid="scan")
+>>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio")
+>>> group = TimelineGroup(timelines=[scan, audio])
 ```
 
 ```python
->>> ts = group.get_timestamp_at(75.0, "cpt_1")
+>>> ts = group.get_timestamp_at(75.0, "audio")
 >>> ts.axis
-IdCoordinate(75.0, seconds, 'cpt_1')
->>> ts.get_coordinate_for("dgt_1", format="int")
+IdCoordinate(75.0, seconds, 'audio')
+>>> ts.get_coordinate_for("scan", format="int")
 2438
 ```
 
 ```python
 >>> # Using IdCoordinate (timeline_id extracted automatically)
->>> coord = IdCoordinate(75.0, TimeUnit.seconds, "cpt_1")
+>>> coord = IdCoordinate(75.0, TimeUnit.seconds, "audio")
 >>> group.get_timestamp_at(coord).axis
-IdCoordinate(75.0, seconds, 'cpt_1')
+IdCoordinate(75.0, seconds, 'audio')
 ```
 
 ### get_timestamp_for { #timetoalign.timelines.TimelineGroup.get_timestamp_for }
@@ -718,13 +718,13 @@ Timeline.get_timestamp_at).
 >>> from timetoalign.timelines import TimelineGroup
 >>> from timetoalign.timelines.types import ContinuousPhysicalTimeline
 >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio")
->>> audio.add_events([{"event_type": "Note", "instant": 45.5}])
-['note_1']
+>>> audio.add_events([{"id": "n1", "event_type": "Note", "instant": 45.5}])
+['n1']
 >>> group = TimelineGroup(id="my_group", timelines=[audio])
 ```
 
 ```python
->>> ts = group.get_timestamp_for("note_1")
+>>> ts = group.get_timestamp_for("n1")
 >>> ts.get_coordinate_for("audio", format="float")
 45.5
 >>> ts.get_unit(TimeUnit.seconds)  # C-Map conversion
@@ -789,24 +789,24 @@ Get the group's timestamps as a table, one row per cross-section.
 ...     ContinuousPhysicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels")
->>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds")
+>>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="scan")
+>>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="audio")
 >>> group = TimelineGroup(timelines=[pixels, audio])
 >>> group.get_timestamp_table().column_names
-['dgt_1', 'cpt_1']
->>> group.get_timestamp_table([0.0, 2.5], "cpt_1", format="dataframe")
-   dgt_1 (pixels)  cpt_1 (seconds)
-0               0              0.0
-1            1000              2.5
+['scan', 'audio']
+>>> group.get_timestamp_table([0.0, 2.5], "audio", format="dataframe")
+   scan (pixels)  audio (seconds)
+0              0              0.0
+1           1000              2.5
 ```
 
 The stored rows are exact:
 
 ```python
->>> score = ContinuousLogicalTimeline(length=Fraction(5, 3))
+>>> score = ContinuousLogicalTimeline(length=Fraction(5, 3), uid="score")
 >>> TimelineGroup(timelines=[score]).get_timestamp_table(
 ...     format="dataframe"
-... )["clt_1 (quarters)"].tolist()
+... )["score (quarters)"].tolist()
 [Fraction(0, 1), Fraction(5, 3)]
 ```
 
@@ -1014,19 +1014,18 @@ a timeline or region the manifest leaves out is left out too.
 ...     ContinuousLogicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> image = DiscreteGraphicalTimeline(length=5000)
->>> part = DiscreteGraphicalTimeline(length=2000)
+>>> image = DiscreteGraphicalTimeline(length=5000, uid="image")
+>>> part = DiscreteGraphicalTimeline(length=2000, uid="part")
 >>> image.add_child(part, offset=1000)
->>> group = TimelineGroup(
-...     timelines=[part, ContinuousLogicalTimeline(length=Fraction(8))]
-... )
+>>> score = ContinuousLogicalTimeline(length=Fraction(8), uid="score")
+>>> group = TimelineGroup(id="g", timelines=[part, score])
 >>> data = group.to_dict()
 >>> [timeline["id"] for timeline in data["timelines"]]
-['#clt_1', '#dgt_1']
+['#image', '#score']
 >>> data["groups"]
-[{'id': '#group_1', 'members': ['#clt_1', '#dgt_2']}]
+[{'id': '#g', 'members': ['#part', '#score']}]
 >>> data["graphical"]
-{'order': {'#group_1': ['#dgt_2', '#clt_1']}}
+{'order': {'#g': ['#part', '#score']}}
 ```
 
 ### to_file { #timetoalign.timelines.TimelineGroup.to_file }

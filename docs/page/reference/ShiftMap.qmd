@@ -1,7 +1,15 @@
 # ShiftMap { #timetoalign.ShiftMap }
 
 ```python
-ShiftMap(offset=0, source_unit=None, target_unit=None, uid=None, name=None)
+ShiftMap(
+    offset=0,
+    source_unit=None,
+    target_unit=None,
+    uid=None,
+    name=None,
+    output_number_type=None,
+    seed=None,
+)
 ```
 
 Pure offset transformation: y = x + offset.
@@ -35,17 +43,7 @@ A simplified version of LinearMap with scalar=1.
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.ShiftMap.from_dict) | Deserialize from dictionary. |
 | [inverse](#timetoalign.ShiftMap.inverse) | Return the inverse map: y = x - b. |
-| [to_dict](#timetoalign.ShiftMap.to_dict) | Serialize to dictionary. |
-
-### from_dict { #timetoalign.ShiftMap.from_dict }
-
-```python
-ShiftMap.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### inverse { #timetoalign.ShiftMap.inverse }
 
@@ -54,11 +52,3 @@ ShiftMap.inverse()
 ```
 
 Return the inverse map: y = x - b.
-
-### to_dict { #timetoalign.ShiftMap.to_dict }
-
-```python
-ShiftMap.to_dict(minimal=False)
-```
-
-Serialize to dictionary.

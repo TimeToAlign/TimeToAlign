@@ -1,7 +1,14 @@
 # ConstantMap { #timetoalign.ConstantMap }
 
 ```python
-ConstantMap(value, source_unit=None, uid=None, name=None)
+ConstantMap(
+    value,
+    source_unit=None,
+    target_unit=None,
+    uid=None,
+    name=None,
+    seed=None,
+)
 ```
 
 A ConversionMap that returns a constant value for any input.
@@ -12,7 +19,10 @@ pair a numeric conversion (pixels to seconds) with a string label
 (source image filename).
 
 The constant value can be of any type, though strings are the most
-common use case. The map has no source or target unit by default.
+common use case; a manifest holds a number or a string. The map has no
+source or target unit by default; a numeric constant on a target unit is
+written as that unit writes numbers. With a target unit the constant must
+be a number or a string: any other value is refused at construction.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
@@ -38,29 +48,7 @@ timetoalign.CombinationMap
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.ConstantMap.from_dict) | Deserialize from dictionary. |
 | [inverse](#timetoalign.ConstantMap.inverse) | ConstantMap cannot be inverted. |
-| [to_dict](#timetoalign.ConstantMap.to_dict) | Serialize to dictionary. |
-
-### from_dict { #timetoalign.ConstantMap.from_dict }
-
-```python
-ConstantMap.from_dict(data)
-```
-
-Deserialize from dictionary.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                                | Description                                            | Default    |
-|--------|-----------------------------------------------------|--------------------------------------------------------|------------|
-| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dictionary representation with at least a 'value' key. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                   | Description             |
-|--------|--------------------------------------------------------|-------------------------|
-|        | [ConstantMap](`timetoalign.maps.constant.ConstantMap`) | A ConstantMap instance. |
 
 ### inverse { #timetoalign.ConstantMap.inverse }
 
@@ -75,15 +63,3 @@ ConstantMap cannot be inverted.
 | Name   | Type                                         | Description                                                 |
 |--------|----------------------------------------------|-------------------------------------------------------------|
 |        | [NotImplementedError](`NotImplementedError`) | Always, as a constant function has no well-defined inverse. |
-
-### to_dict { #timetoalign.ConstantMap.to_dict }
-
-```python
-ConstantMap.to_dict(minimal=False)
-```
-
-Serialize to dictionary.
-
-A numeric constant is encoded with the canonical JSON number form;
-every other constant (the common case is a string label)
-is emitted as-is and must therefore already be JSON-native.

@@ -26,15 +26,15 @@ bytes. IDs are bare, as the library holds them.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name       | Type                                                            | Description                                                                            |
-|------------|-----------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| id         | [str](`str`)                                                    | The resource's ID, held by no other element of the manifest (a new entry's is minted). |
-| type       | [str](`str`)                                                    | What the file's rows are.                                                              |
-| timelines  | [tuple](`tuple`)\[[str](`str`), ...\]                           | The IDs of the timelines the file holds data for.                                      |
-| url        | [str](`str`)                                                    | Its location, relative to the manifest's own.                                          |
-| media_type | [str](`str`) \| None                                            | Its media type, or None.                                                               |
-| size       | [int](`int`) \| None                                            | Its size in bytes, or None.                                                            |
-| integrity  | [Integrity](`timetoalign.timelines.manifest.Integrity`) \| None | The digest of its bytes, or None.                                                      |
+| Name       | Type                                                            | Description                                                                                              |
+|------------|-----------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| id         | [str](`str`)                                                    | The resource's ID, held by no other element of the manifest (:meth:`of_file` mints one for a new entry). |
+| type       | [str](`str`)                                                    | What the file's rows are.                                                                                |
+| timelines  | [tuple](`tuple`)\[[str](`str`), ...\]                           | The IDs of the timelines the file holds data for.                                                        |
+| url        | [str](`str`)                                                    | Its location, relative to the manifest's own.                                                            |
+| media_type | [str](`str`) \| None                                            | Its media type, or None.                                                                                 |
+| size       | [int](`int`) \| None                                            | Its size in bytes, or None.                                                                              |
+| integrity  | [Integrity](`timetoalign.timelines.manifest.Integrity`) \| None | The digest of its bytes, or None.                                                                        |
 
 ## Raises {.doc-section .doc-section-raises}
 
@@ -83,11 +83,12 @@ Read one entry of ``resources``, IDs bare, keeping its unknown keys.
 timelines.Resource.of_file(
     path,
     *,
-    id,
+    id=None,
     type,
     timelines,
     url,
     media_type=PARQUET_MEDIA_TYPE,
+    seed=None,
 )
 ```
 
@@ -95,14 +96,15 @@ Describe the file *path*: its size and SHA-256 digest from its bytes.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name       | Type                                                      | Description                            | Default              |
-|------------|-----------------------------------------------------------|----------------------------------------|----------------------|
-| path       | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\] | The file.                              | _required_           |
-| id         | [str](`str`)                                              | The resource's ID.                     | _required_           |
-| type       | [str](`str`)                                              | What its rows are.                     | _required_           |
-| timelines  | [Iterable](`collections.abc.Iterable`)\[[str](`str`)\]    | The timelines it holds data for.       | _required_           |
-| url        | [str](`str`)                                              | Its location relative to the manifest. | _required_           |
-| media_type | [str](`str`) \| None                                      | Its media type, Parquet's by default.  | `PARQUET_MEDIA_TYPE` |
+| Name       | Type                                                      | Description                                                                                                                                                                                    | Default              |
+|------------|-----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------|
+| path       | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\] | The file.                                                                                                                                                                                      | _required_           |
+| id         | [str](`str`) \| None                                      | The resource's ID, kept verbatim. When None, an ID with the prefix ``resource`` is minted: from ``IdMinter(seed)`` with *seed*, else from the content minter of *type*, *timelines* and *url*. | `None`               |
+| type       | [str](`str`)                                              | What its rows are.                                                                                                                                                                             | _required_           |
+| timelines  | [Iterable](`collections.abc.Iterable`)\[[str](`str`)\]    | The timelines it holds data for.                                                                                                                                                               | _required_           |
+| url        | [str](`str`)                                              | Its location relative to the manifest.                                                                                                                                                         | _required_           |
+| media_type | [str](`str`) \| None                                      | Its media type, Parquet's by default.                                                                                                                                                          | `PARQUET_MEDIA_TYPE` |
+| seed       | [int](`int`) \| None                                      | The seed of the minter of the ID when *id* is None; not stored.                                                                                                                                | `None`               |
 
 ### path_in { #timetoalign.timelines.Resource.path_in }
 

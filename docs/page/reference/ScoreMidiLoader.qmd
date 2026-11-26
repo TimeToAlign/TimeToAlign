@@ -24,6 +24,16 @@ The default partitura parser emits :class:`ScoreMidiEventData`, the wider
 schema containing ``voice``, ``staff``, and ``part_id``. ``parser="mido"``
 parses only MIDI messages and emits the base :class:`MidiEventData` schema;
 it is appropriate when structural score information is not required.
+Both parsers write each note's ``velocity`` as its note-on message states
+it; partitura's score parse keeps none, so the default path reads the
+velocities from the same file and joins them to partitura's notes by
+partitura's note number, checking onset, pitch and duration. A note that
+cannot be joined that way (a partitura release numbering its notes
+otherwise) keeps an empty velocity, and one ``UserWarning`` per file names
+the first such note; ``parser="mido"`` reads every velocity.
+
+A MIDI file states no note IDs, so every event ID is minted by the
+loader's minter (``note_…``), whichever parser reads the file.
 
 ## Attributes
 

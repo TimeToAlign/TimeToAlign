@@ -1,7 +1,14 @@
 # ConversionMap { #timetoalign.ConversionMap }
 
 ```python
-ConversionMap(source_unit=None, target_unit=None, uid=None, name=None)
+ConversionMap(
+    source_unit=None,
+    target_unit=None,
+    uid=None,
+    name=None,
+    output_number_type=None,
+    seed=None,
+)
 ```
 
 Abstract base class for coordinate conversion maps.
@@ -48,11 +55,12 @@ array([2., 4., 6.])
 | Name | Description |
 | --- | --- |
 | [convert_array](#timetoalign.ConversionMap.convert_array) | Convert an array of values. |
-| [from_dict](#timetoalign.ConversionMap.from_dict) | Deserialize a map from a dictionary. |
+| [from_dict](#timetoalign.ConversionMap.from_dict) | Read a map from its TimeToShare form. |
+| [from_pairs](#timetoalign.ConversionMap.from_pairs) | Build the map a law reads from calibration pairs. |
 | [inverse](#timetoalign.ConversionMap.inverse) | Return the inverse of this map. |
 | [matches_selector](#timetoalign.ConversionMap.matches_selector) | Return whether a user conversion-map selector addresses this map. |
 | [then](#timetoalign.ConversionMap.then) | Compose this map with another (this first, then other). |
-| [to_dict](#timetoalign.ConversionMap.to_dict) | Serialize the map to a dictionary. |
+| [to_dict](#timetoalign.ConversionMap.to_dict) | Return the map's TimeToShare form: one of the format's map types. |
 
 ### convert_array { #timetoalign.ConversionMap.convert_array }
 
@@ -78,9 +86,9 @@ and composite maps delegate to their sub-maps.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                     | Description                                               |
-|--------|----------------------------------------------------------|-----------------------------------------------------------|
-|        | [NDArray](`numpy.typing.NDArray`)\[[Any](`typing.Any`)\] | NumPy array of converted values with same shape as input. |
+| Name   | Type                           | Description                                               |
+|--------|--------------------------------|-----------------------------------------------------------|
+|        | [A](`timetoalign.maps.base.A`) | NumPy array of converted values with same shape as input. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -99,35 +107,93 @@ array([0.  , 0.5 , 1.5])
 ### from_dict { #timetoalign.ConversionMap.from_dict }
 
 ```python
-ConversionMap.from_dict(data)
+ConversionMap.from_dict(data, *, measure_maps=None)
 ```
 
-Deserialize a map from a dictionary.
+Read a map from its TimeToShare form.
 
-Dispatches to the concrete subclass named by ``data["type"]`` using
-the self-registering class registry populated by
-``__init_subclass__``. ``name`` may be left out; every other key the
-map's own dictionary form writes is required. Every key that form
-does not write is kept and written back.
+Dispatches on ``data["type"]``, one of the format's ten map types,
+and builds that type's class: a manifest states the abstract type
+only, so a ``LinearMap`` from ticks to quarters reads as a
+:class:`LinearMap`, never as the ``TicksToQuarters`` it may have
+been written from. A key the type writes is required unless it has
+a default, which TimeToShare supplies (:func:`timetoshare.complete`);
+every key it does not write is kept and written back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                | Description                | Default    |
-|--------|-----------------------------------------------------|----------------------------|------------|
-| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dictionary representation. | _required_ |
+| Name         | Type                                                                              | Description                                                      | Default    |
+|--------------|-----------------------------------------------------------------------------------|------------------------------------------------------------------|------------|
+| data         | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                               | The map's TimeToShare form.                                      | _required_ |
+| measure_maps | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The manifest's measure maps by id, which the measure views name. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                          | Description               |
-|--------|-------------------------------------------------------------------------------|---------------------------|
-|        | [ConversionMap](`timetoalign.maps.base.ConversionMap`)\[[Any](`typing.Any`)\] | A ConversionMap instance. |
+| Name   | Type                                                                                               | Description   |
+|--------|----------------------------------------------------------------------------------------------------|---------------|
+|        | [ConversionMap](`timetoalign.maps.base.ConversionMap`)\[[Any](`typing.Any`), [Any](`typing.Any`)\] | The map read. |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                      |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the type is missing or unknown, or a key other than ``name`` is missing.                      |
-|        | [TypeError](`TypeError`)   | If the registered class does not override from_dict, which would otherwise recurse indefinitely. |
+| Name   | Type                       | Description                                                                                                                                                        |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the type is missing or is none of the ten, a required key is missing, a value is malformed, or a measure view names a measure map *measure_maps* does not hold. |
+
+### from_pairs { #timetoalign.ConversionMap.from_pairs }
+
+```python
+ConversionMap.from_pairs(
+    pairs,
+    *,
+    source_unit,
+    value_unit=None,
+    origin=0,
+    seed=None,
+)
+```
+
+Build the map a law reads from calibration pairs.
+
+Each pair holds a position and the value it reads on the target
+axis. Positions are given in coordinates where the map's source axis
+starts at *origin*: the map reads ``position - origin``, while the
+pairs are checked against the law on the positions as given, where
+their rounding happened. Values are coordinates carrying the one
+unit they share, or numbers in *value_unit*. A map class that is a
+law of calibration implements this; the pairs it receives are
+checked against the law, never fitted to it.
+
+Exactness is a property of the whole calibration. When every
+position and value is exact (an ``int`` or a ``Fraction``), the
+pairs must lie on the law exactly. Otherwise, exact and float
+numbers may mix, and a position may miss the one at which the law
+reads its value by the error a position computed in doubles may
+carry, a bound derived by forward error analysis in ulps of the
+positions and of the span.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                           | Description                                                                                                       | Default    |
+|-------------|----------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|------------|
+| pairs       | [Sequence](`collections.abc.Sequence`)\[[CalibrationPair](`timetoalign.maps.base.CalibrationPair`)\]           | ``(position, value)`` pairs, in any order.                                                                        | _required_ |
+| source_unit | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                                          | The unit of the positions.                                                                                        | _required_ |
+| value_unit  | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                                          | The unit of the values, the map's target unit. Needed when a value is a number; a coordinate value must be in it. | `None`     |
+| origin      | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) \| [Coordinate](`timetoalign.core.time.Coordinate`) | Where the source axis starts, in the coordinates of the positions: a child's offset on its parent.                | `0`        |
+| seed        | [int](`int`) \| None                                                                                           | The seed of the minter of the map's id; not stored.                                                               | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                |
+|--------|----------------------------------|----------------------------|
+|        | [Self](`typing_extensions.Self`) | The map through the pairs. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                                         | Description                                          |
+|--------|----------------------------------------------|------------------------------------------------------|
+|        | [NotImplementedError](`NotImplementedError`) | If the class is no law of calibration.               |
+|        | [TypeError](`TypeError`)                     | If a value is a number and no *value_unit* is given. |
+|        | [ValueError](`ValueError`)                   | As the implementing class states.                    |
 
 ### inverse { #timetoalign.ConversionMap.inverse }
 
@@ -196,29 +262,44 @@ Compose this map with another (this first, then other).
 ### to_dict { #timetoalign.ConversionMap.to_dict }
 
 ```python
-ConversionMap.to_dict(minimal=False)
+ConversionMap.to_dict(minimal=True)
 ```
 
-Serialize the map to a dictionary.
+Return the map's TimeToShare form: one of the format's map types.
 
-Subclasses should call ``super().to_dict(minimal=minimal)`` and add
-their parameters; rational parameters go through
-:func:`~timetoalign.core.number_to_json` so that the whole
-dictionary stays JSON-serializable.
+Every map is written as one of ten abstract types (``LinearMap``,
+``TableMap``, ``ConstantMap``, ``PiecewiseMap``, ``ChainMap``,
+``CombinationMap`` and the measure views ``MeasureRecordMap``,
+``MeasureNumberMap``, ``FloatingMeasureMap``, ``MeasureBeatMap``),
+with that type's fields only; the map read back from it converts
+every coordinate as this map does. Numbers are written in the
+representation they have: an integer, a float, or an exact Fraction
+pair. ``name`` is the name given at construction, or None when the
+map displays a derived one. An output number type given at
+construction is not written: a map of the format is independent of
+any number type, so the map read back writes its results as its
+target unit does by default. Keys the library does not know, kept
+when the map was read, are written back.
 
-``name`` is the name given at construction, or None when the map
-displays a derived one; every subclass ``from_dict`` passes it back
-to the constructor. Keys the library does not know, kept when the map
-was read, are written back.
+A measure view names its measure map by id. Written on its own, it
+names the measure map's own id; written with a timeline, the
+manifest's ``measure_maps`` entry it names (see
+:meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name    | Type           | Description                                             | Default   |
-|---------|----------------|---------------------------------------------------------|-----------|
-| minimal | [bool](`bool`) | Leave out ``name`` when it is None, in nested maps too. | `False`   |
+| Name    | Type           | Description                                                                                                                                                                | Default   |
+|---------|----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| minimal | [bool](`bool`) | Write the minimal form (the default): every key at its default value left out, in nested maps too. With False, the complete form: every key written, its default included. | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                | Description                           |
-|--------|-----------------------------------------------------|---------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dictionary representation of the map. |
+| Name   | Type                                                | Description                 |
+|--------|-----------------------------------------------------|-----------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | The map's TimeToShare form. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                             |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the map has no TimeToShare form (a periodic map, a table interpolating to the nearest or the next anchor) or cannot be written losslessly; the message names the map and the reason. |

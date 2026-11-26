@@ -10,6 +10,8 @@ InterpolationMap(
     target_unit=None,
     uid=None,
     name=None,
+    output_number_type=None,
+    seed=None,
 )
 ```
 
@@ -64,31 +66,9 @@ and ``inverse()`` returns a new map that converts target -> source.
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.InterpolationMap.from_dict) | Deserialize from dictionary. |
 | [identity](#timetoalign.InterpolationMap.identity) | Create an identity map (output = input). |
 | [inverse](#timetoalign.InterpolationMap.inverse) | Return the inverse map (target -> source). |
 | [matches_selector](#timetoalign.InterpolationMap.matches_selector) | Return whether a user conversion-map selector addresses this map. |
-| [to_dict](#timetoalign.InterpolationMap.to_dict) | Serialize the map to a dictionary. |
-
-### from_dict { #timetoalign.InterpolationMap.from_dict }
-
-```python
-InterpolationMap.from_dict(data)
-```
-
-Deserialize from dictionary.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                                | Description                | Default    |
-|--------|-----------------------------------------------------|----------------------------|------------|
-| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dictionary representation. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                                  | Description                      |
-|--------|-----------------------------------------------------------------------|----------------------------------|
-|        | [InterpolationMap](`timetoalign.maps.interpolation.InterpolationMap`) | A new InterpolationMap instance. |
 
 ### identity { #timetoalign.InterpolationMap.identity }
 
@@ -161,17 +141,3 @@ auto-generated and have no meaningful user-facing id or name.
 | Name   | Type           | Description                                           |
 |--------|----------------|-------------------------------------------------------|
 |        | [bool](`bool`) | True if key equals this map's id, name, or source_id. |
-
-### to_dict { #timetoalign.InterpolationMap.to_dict }
-
-```python
-InterpolationMap.to_dict(minimal=False)
-```
-
-Serialize the map to a dictionary.
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                | Description                           |
-|--------|-----------------------------------------------------|---------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dictionary representation of the map. |

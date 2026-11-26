@@ -52,7 +52,6 @@ TSV columns (notes.tsv gold standard):
 | Name | Description |
 | --- | --- |
 | [create_timeline](#timetoalign.loader.score.Ms3Loader.create_timeline) | Create a score timeline carrying the parsed measure structure. |
-| [from_file](#timetoalign.loader.score.Ms3Loader.from_file) | Create a loader and load TSV files in one step. |
 | [load](#timetoalign.loader.score.Ms3Loader.load) | Load one or more TSV source files. |
 
 ### create_timeline { #timetoalign.loader.score.Ms3Loader.create_timeline }
@@ -95,41 +94,6 @@ floating-measure conversion absent.
 |--------|----------------------------------------------|---------------------|
 |        | [Timeline](`timetoalign.timelines.Timeline`) | The score timeline. |
 
-### from_file { #timetoalign.loader.score.Ms3Loader.from_file }
-
-```python
-loader.score.Ms3Loader.from_file(*paths, auto_discover=False)
-```
-
-Create a loader and load TSV files in one step.
-
-Convenience constructor for loading one or more TSV files.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name          | Type                                   | Description                                                          | Default   |
-|---------------|----------------------------------------|----------------------------------------------------------------------|-----------|
-| *paths        | [Path](`pathlib.Path`) \| [str](`str`) | Paths to TSV files (notes, measures, harmonies, chords).             | `()`      |
-| auto_discover | [bool](`bool`)                         | If True, automatically locate companion facet files for each source. | `False`   |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type          | Description                                             |
-|--------|---------------|---------------------------------------------------------|
-|        | \'Ms3Loader\' | A new Ms3Loader instance with the files already loaded. |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> loader = Ms3Loader.from_file("score.notes.tsv", "score.measures.tsv")
->>> loader.store.summary()
-```
-
-```python
->>> # Auto-discover all facet files from a single notes file:
->>> loader = Ms3Loader.from_file("score.notes.tsv", auto_discover=True)
-```
-
 ### load { #timetoalign.loader.score.Ms3Loader.load }
 
 ```python
@@ -148,11 +112,14 @@ A facet the piece does not have is not looked for further; a source
 for which no companion at all is found raises a ``UserWarning``
 naming the paths that were looked at, and is loaded alone.
 
+A member of a ZIP archive (``zipfile.Path``) finds its companions
+among the members of the same archive.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                   | Description         | Default   |
-|----------|----------------------------------------|---------------------|-----------|
-| *sources | [Path](`pathlib.Path`) \| [str](`str`) | Paths to TSV files. | `()`      |
+| Name     | Type                                                   | Description                                     | Default   |
+|----------|--------------------------------------------------------|-------------------------------------------------|-----------|
+| *sources | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Paths to TSV files, or members of ZIP archives. | `()`      |
 
 #### Returns {.doc-section .doc-section-returns}
 

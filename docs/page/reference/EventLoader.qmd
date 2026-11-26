@@ -5,6 +5,8 @@ loader.EventLoader(
     unit=None,
     number_type=None,
     interval_policy=IntervalPolicy.warn,
+    *,
+    seed=None,
 )
 ```
 
@@ -20,12 +22,12 @@ Subclasses must implement:
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name        | Type                                         | Description                                 |
-|-------------|----------------------------------------------|---------------------------------------------|
-| events      | [EventData](`timetoalign.storage.EventData`) | The EventData containing all loaded events. |
-| sources     | [list](`list`)\[[Path](`pathlib.Path`)\]     | List of loaded source file paths.           |
-| unit        | [TimeUnit](`timetoalign.core.TimeUnit`)      | The time unit for coordinates.              |
-| number_type | [NumberType](`timetoalign.core.NumberType`)  | The number type for coordinates.            |
+| Name        | Type                                                             | Description                                 |
+|-------------|------------------------------------------------------------------|---------------------------------------------|
+| events      | [EventData](`timetoalign.storage.EventData`)                     | The EventData containing all loaded events. |
+| sources     | [list](`list`)\[[Source](`timetoalign.loader._sources.Source`)\] | List of loaded source file paths.           |
+| unit        | [TimeUnit](`timetoalign.core.TimeUnit`)                          | The time unit for coordinates.              |
+| number_type | [NumberType](`timetoalign.core.NumberType`)                      | The number type for coordinates.            |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -133,12 +135,12 @@ Both fields must contain coordinate data (either core coordinates like
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name         | Type                   | Description                                                                                                                           | Default    |
-|--------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------|------------|
-| source_field | [str](`str`)           | Name of the source coordinate field.                                                                                                  | _required_ |
-| target_field | [str](`str`)           | Name of the target coordinate field.                                                                                                  | _required_ |
-| map_type     | [type](`type`) \| None | The map class to create. Defaults to TableMap. Supported: TableMap, LinearMap, ScalarMap.                                             | `None`     |
-| **kwargs     | [Any](`typing.Any`)    | Additional arguments passed to the map constructor. For TableMap: kind, extrapolate For LinearMap: (computed automatically from data) | `{}`       |
+| Name         | Type                   | Description                                                                                                                                                                                           | Default    |
+|--------------|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| source_field | [str](`str`)           | Name of the source coordinate field.                                                                                                                                                                  | _required_ |
+| target_field | [str](`str`)           | Name of the target coordinate field.                                                                                                                                                                  | _required_ |
+| map_type     | [type](`type`) \| None | The map class to create. Defaults to TableMap. Supported: TableMap, LinearMap, ScalarMap.                                                                                                             | `None`     |
+| **kwargs     | [Any](`typing.Any`)    | Additional arguments passed to the map constructor. For TableMap: kind, extrapolate For LinearMap: (computed automatically from data) Without ``uid``, the map's ID is minted by the loader's minter. | `{}`       |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -203,7 +205,8 @@ loader.EventLoader.create_timeline(
 
 Create a Timeline from the loaded events.
 
-Convenience method that delegates to self.store.create_timeline().
+Builds the timeline from ``self.store``; every timeline ID it mints
+comes from the loader's minter.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -270,19 +273,23 @@ Get a summary of loaded events.
 ### from_parquet { #timetoalign.loader.EventLoader.from_parquet }
 
 ```python
-loader.EventLoader.from_parquet(path)
+loader.EventLoader.from_parquet(path, *, seed=None)
 ```
 
 Load a Loader from a Parquet file.
 
 Note: This creates a new Loader with the EventData loaded,
-but source paths may not be accessible for re-loading.
+but source paths may not be accessible for re-loading. The events
+keep their IDs; the loader's minter, for the timeline IDs it mints
+later, is ``IdMinter(seed)``, else seeded from the class name and
+the file's bytes.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                   | Description               | Default    |
-|--------|----------------------------------------|---------------------------|------------|
-| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the Parquet file. | _required_ |
+| Name   | Type                                   | Description                         | Default    |
+|--------|----------------------------------------|-------------------------------------|------------|
+| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the Parquet file.           | _required_ |
+| seed   | [int](`int`) \| None                   | The seed of the loader's ID minter. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

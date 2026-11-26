@@ -4,10 +4,12 @@
 IntervalToConstantMap(
     boundaries,
     values,
+    end=None,
     source_unit=None,
     target_unit=None,
     uid=None,
     name=None,
+    seed=None,
 )
 ```
 
@@ -18,6 +20,14 @@ returns the value associated with the interval that contains x.
 
 Values can be any type (string, int, float, etc.). This is NOT a coordinate
 conversion map when values are non-numeric (e.g., string labels).
+
+Without an ``end`` the map is total: a position before the first boundary
+takes the first value, and the last interval has no end. With an ``end``
+the map is defined on ``[boundaries[0], end)`` only, the form a manifest
+can hold for labels: a ``PiecewiseMap`` of ``ConstantMap``s. Without an
+``end``, a map of numbers is written as a ``TableMap`` of kind
+``previous`` (a ``ConstantMap`` for a single boundary), and a map of
+labels with more than one boundary cannot be written.
 
 This is useful for:
 - Measure number lookup (quarters -> MN label)
@@ -50,18 +60,8 @@ This is useful for:
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.IntervalToConstantMap.from_dict) | Deserialize from dictionary. |
 | [inverse](#timetoalign.IntervalToConstantMap.inverse) | IntervalToConstantMap is not invertible. |
-| [to_dict](#timetoalign.IntervalToConstantMap.to_dict) | Serialize to dictionary. |
 | [to_table_map](#timetoalign.IntervalToConstantMap.to_table_map) | Convert to TableMap for numeric values. |
-
-### from_dict { #timetoalign.IntervalToConstantMap.from_dict }
-
-```python
-IntervalToConstantMap.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### inverse { #timetoalign.IntervalToConstantMap.inverse }
 
@@ -76,14 +76,6 @@ IntervalToConstantMap is not invertible.
 | Name   | Type                                         | Description   |
 |--------|----------------------------------------------|---------------|
 |        | [NotImplementedError](`NotImplementedError`) | Always.       |
-
-### to_dict { #timetoalign.IntervalToConstantMap.to_dict }
-
-```python
-IntervalToConstantMap.to_dict(minimal=False)
-```
-
-Serialize to dictionary.
 
 ### to_table_map { #timetoalign.IntervalToConstantMap.to_table_map }
 
@@ -104,9 +96,11 @@ numeric.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                          | Description                                   |
-|--------|-----------------------------------------------|-----------------------------------------------|
-|        | [TableMap](`timetoalign.maps.table.TableMap`) | TableMap with the same boundaries and values. |
+| Name   | Type                                          | Description                                                  |
+|--------|-----------------------------------------------|--------------------------------------------------------------|
+|        | [TableMap](`timetoalign.maps.table.TableMap`) | TableMap with the same boundaries and values, each number as |
+|        | [TableMap](`timetoalign.maps.table.TableMap`) | given, and one more anchor one unit past the last boundary   |
+|        | [TableMap](`timetoalign.maps.table.TableMap`) | holding the last value.                                      |
 
 #### Raises {.doc-section .doc-section-raises}
 

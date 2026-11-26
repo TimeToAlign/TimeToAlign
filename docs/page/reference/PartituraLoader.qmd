@@ -1,13 +1,19 @@
 # PartituraLoader { #timetoalign.loader.score.PartituraLoader }
 
 ```python
-loader.score.PartituraLoader(force_note_ids=True, **kwargs)
+loader.score.PartituraLoader(**kwargs)
 ```
 
 Load symbolic scores using partitura.
 
 Supports MusicXML (fully typed) and MIDI (quantized).
 Returns ScoreStore with category-specific data.
+
+A note keeps the ID its file states (MusicXML ``id``, MEI ``xml:id``, a
+match file's score-note ID); a note without one, and every note of a
+format that states none (kern, MIDI), gets an ID minted by the
+loader's minter. Partitura's own numbering (``n0``, ``P1-s1-v1-el3``)
+is never an ID.
 
 All TTA timelines start at coordinate 0.  When partitura reports negative
 quarter-beat onsets (anacrusis notes that precede the first full measure),

@@ -2,12 +2,14 @@
 
 ```python
 ScalarMap(
-    scalar=1.0,
+    scalar=1,
     *,
     source_unit=None,
     target_unit=None,
     uid=None,
     name=None,
+    output_number_type=None,
+    seed=None,
 )
 ```
 
@@ -41,17 +43,7 @@ A simplified version of LinearMap with no offset.
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.ScalarMap.from_dict) | Deserialize from dictionary. |
 | [inverse](#timetoalign.ScalarMap.inverse) | Return the inverse map: y = x / a. |
-| [to_dict](#timetoalign.ScalarMap.to_dict) | Serialize to dictionary. |
-
-### from_dict { #timetoalign.ScalarMap.from_dict }
-
-```python
-ScalarMap.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### inverse { #timetoalign.ScalarMap.inverse }
 
@@ -60,11 +52,3 @@ ScalarMap.inverse()
 ```
 
 Return the inverse map: y = x / a.
-
-### to_dict { #timetoalign.ScalarMap.to_dict }
-
-```python
-ScalarMap.to_dict(minimal=False)
-```
-
-Serialize to dictionary.

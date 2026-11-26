@@ -1,7 +1,7 @@
 # MelodyLoader { #timetoalign.loader.MelodyLoader }
 
 ```python
-loader.MelodyLoader()
+loader.MelodyLoader(seed=None)
 ```
 
 Read MeLODy's Turtle and carry its triples as statements.

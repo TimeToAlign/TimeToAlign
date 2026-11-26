@@ -23,6 +23,13 @@ See ``PartituraLoader`` for the full rationale; both loaders apply the
 same convention so that score timelines built from either source are
 directly comparable and compatible with ``MatchfileLoader``.
 
+Known issue: music21 gives a measure without timed content no length
+(the empty measures of an MEI skeleton, which leaves out the measures it
+repeats unchanged), and its MEI reader leaves out ``<ending>`` measures
+holding nothing but measure rests. A source with such a measure states
+no measure positions through music21, and the load raises
+``ValueError`` naming them.
+
 ## Attributes
 
 | Name | Description |

@@ -13,9 +13,8 @@ them are tuples: the collection changes through :meth:`add`,
 :meth:`add_all`, :meth:`with_belief` and :meth:`with_beliefs` alone,
 and no element ever leaves it. Every element carries an ID unique
 within the registry and, once the registry belongs to a timeline,
-within that timeline's whole manifest: an element whose minted ID is
-taken is stored under a freshly minted ID, and one whose given ID is
-taken is refused. A manifest writes the registry as the timeline's
+within that timeline's whole manifest: an element whose ID, given or
+minted, is taken is refused. A manifest writes the registry as the timeline's
 ``flow_control`` array.
 
 The registry refuses what cannot be played: a second Jump at a
@@ -64,9 +63,10 @@ JumpTarget('segno' @ 16 quarters)
 ...     Jump(
 ...         Coordinate(64, "quarters"),
 ...         [JumpDestination(to="segno", repeat_count=1, reset=False)],
+...         id="ds",
 ...     )
 ... ).id
-'jump_1'
+'ds'
 >>> [element.role for element in registry.elements]
 ['jump_target', 'jump']
 >>> registry.place_of(registry.jumps[0].targets[0], registry.jumps[0])
@@ -131,12 +131,12 @@ entries) is read as the more critical of them.
 ```python
 >>> from timetoalign.core import Coordinate
 >>> registry = FlowControlRegistry(unit="quarters")
->>> barline = registry.add(Barline(Coordinate(8, "quarters")))
+>>> barline = registry.add(Barline(Coordinate(8, "quarters"), id="bar 2"))
 >>> _ = registry.with_belief(barline.id, "ana", "false", date="2026-11-25")
 >>> registry.elements, registry.active_elements()
-((Barline('barline_1' @ 8 quarters),), [])
+((Barline('bar 2' @ 8 quarters),), [])
 >>> registry.active_elements(believer="bea")
-[Barline('barline_1' @ 8 quarters)]
+[Barline('bar 2' @ 8 quarters)]
 ```
 
 ### add { #timetoalign.timelines.FlowControlRegistry.add }
@@ -160,10 +160,9 @@ together.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                         | Description                                                    |
-|--------|------------------------------------------------------------------------------|----------------------------------------------------------------|
-|        | [FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`) | The stored element, with its coordinate on the registry's axis |
-|        | [FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`) | and its ID as admitted.                                        |
+| Name   | Type                                                                         | Description                                                     |
+|--------|------------------------------------------------------------------------------|-----------------------------------------------------------------|
+|        | [FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`) | The stored element, with its coordinate on the registry's axis. |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -179,9 +178,7 @@ timelines.FlowControlRegistry.add_all(elements)
 
 Add several elements together, or none of them.
 
-The elements may name one another in any order. An element whose
-minted ID is taken is stored under a freshly minted ID, and the
-elements added with it name it by that ID.
+The elements may name one another in any order. Each keeps its ID.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -191,16 +188,16 @@ elements added with it name it by that ID.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                           | Description                                               |
-|--------|------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
-|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The stored elements in the order given, each with its     |
-|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | coordinate on the registry's axis and its ID as admitted. |
+| Name   | Type                                                                                           | Description                                           |
+|--------|------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The stored elements in the order given, each with its |
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | coordinate on the registry's axis.                    |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If an element's given ID is already taken, its unit is not the registry's, or an element that is not rejected cannot be played among those not rejected: a coordinate holds a second Jump, or a Jump lies at a position of the root's axis where a Jump of another timeline of the root's tree lies (:attr:`Timeline.tree_flow_control <timetoalign.timelines.Timeline.tree_flow_control>`), a ``to`` names neither a JumpTarget of the registry nor a place of its timeline, an ``after`` does not name exactly one destination of another Jump of the registry, or the element's coordinate or the place of one of its destinations lies before 0 or beyond the known length of the registry's timeline. Nothing has changed then. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an element's ID is already taken, its unit is not the registry's, or an element that is not rejected cannot be played among those not rejected: a coordinate holds a second Jump, or a Jump lies at a position of the root's axis where a Jump of another timeline of the root's tree lies (:attr:`Timeline.tree_flow_control <timetoalign.timelines.Timeline.tree_flow_control>`), a ``to`` names neither a JumpTarget of the registry nor a place of its timeline, an ``after`` does not name exactly one destination of another Jump of the registry, or the element's coordinate or the place of one of its destinations lies before 0 or beyond the known length of the registry's timeline. Nothing has changed then. |
 
 ### copy { #timetoalign.timelines.FlowControlRegistry.copy }
 
@@ -405,16 +402,16 @@ added afterwards.
 ```python
 >>> from timetoalign.core import Coordinate
 >>> registry = FlowControlRegistry(unit="quarters")
->>> wrong = registry.add(
-...     Jump(Coordinate(16, "quarters"), [JumpDestination(repeat_count=1)]))
+>>> wrong = registry.add(Jump(
+...     Coordinate(16, "quarters"), [JumpDestination(repeat_count=1)], id="wrong"))
 >>> registry.with_belief(wrong.id, "ana", "false").is_rejected
 True
->>> registry.add(
-...     Jump(Coordinate(16, "quarters"), [JumpDestination(by=-8, repeat_count=1)])
-... ).id
-'jump_2'
+>>> registry.add(Jump(
+...     Coordinate(16, "quarters"), [JumpDestination(by=-8, repeat_count=1)], id="right"
+... )).id
+'right'
 >>> registry.jump_at(16).id
-'jump_2'
+'right'
 ```
 
 ### with_beliefs { #timetoalign.timelines.FlowControlRegistry.with_beliefs }

@@ -1,7 +1,7 @@
 # ListenHereLoader { #timetoalign.loader.alignment.listen_here.ListenHereLoader }
 
 ```python
-loader.alignment.listen_here.ListenHereLoader()
+loader.alignment.listen_here.ListenHereLoader(seed=None)
 ```
 
 Load a Listen Here! alignment JSON file as one AlignmentBundle.
@@ -84,9 +84,9 @@ Return a single recording's samples timeline by its uid.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                 | Description                          | Default   |
-|--------|----------------------|--------------------------------------|-----------|
-| uid    | [str](`str`) \| None | A timeline uid (``"<stem>:dpt_1"``). | `None`    |
+| Name   | Type                 | Description                                                         | Default   |
+|--------|----------------------|---------------------------------------------------------------------|-----------|
+| uid    | [str](`str`) \| None | A timeline uid (``dpt_…``), as :meth:`create_timelines` lists them. | `None`    |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -158,9 +158,9 @@ Ingest one Listen Here! alignment JSON file.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                   | Description                          | Default    |
-|--------|----------------------------------------|--------------------------------------|------------|
-| source | [str](`str`) \| [Path](`pathlib.Path`) | Path to the ``alignment.json`` file. | _required_ |
+| Name   | Type                                                   | Description                                                                                                                                   | Default    |
+|--------|--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| source | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Path to the ``alignment.json`` file, or its member in a ZIP archive (recordings named relative to it are then looked up in the same archive). | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 

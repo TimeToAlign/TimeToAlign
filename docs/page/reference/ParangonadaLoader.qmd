@@ -1,7 +1,7 @@
 # ParangonadaLoader { #timetoalign.loader.alignment.parangonada.ParangonadaLoader }
 
 ```python
-loader.alignment.parangonada.ParangonadaLoader()
+loader.alignment.parangonada.ParangonadaLoader(seed=None)
 ```
 
 Load a parangonada CSV export as one multimodal AlignmentBundle.
@@ -72,9 +72,9 @@ Return a single timeline by its uid.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                 | Description                                                                                                                       | Default   |
-|--------|----------------------|-----------------------------------------------------------------------------------------------------------------------------------|-----------|
-| uid    | [str](`str`) \| None | A timeline uid — ``"score:clt1"``, ``"score:dlt1"``, or a performer timeline uid (``"perf:<key>:cpt1"`` / ``"perf:<key>:dpt1"``). | `None`    |
+| Name   | Type                 | Description                                                                                                                                                                       | Default   |
+|--------|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| uid    | [str](`str`) \| None | A timeline uid: one of the score's two timelines (``score:clt_…``, ``score:dlt_…``) or of a performer's (``perf:cpt_…``, ``perf:dpt_…``), as :meth:`create_timelines` lists them. | `None`    |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -107,9 +107,9 @@ Ingest a whole parangonada dataset directory.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                   | Description                                                                                         | Default    |
-|-------------|----------------------------------------|-----------------------------------------------------------------------------------------------------|------------|
-| dataset_dir | [str](`str`) \| [Path](`pathlib.Path`) | Path to the dataset directory (the one that contains the ``match/`` and ``audio/`` subdirectories). | _required_ |
+| Name        | Type                                                   | Description                                                                                                                                                          | Default    |
+|-------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| dataset_dir | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Source to the dataset directory (the one that contains the ``match/`` and ``audio/`` subdirectories), or that directory as a member of a ZIP archive, read in place. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 

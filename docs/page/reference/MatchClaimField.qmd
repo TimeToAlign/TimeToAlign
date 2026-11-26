@@ -31,9 +31,12 @@ field's provenance. Claims whose provenance differs, given to
 :meth:`from_claims`, carry it per row.
 
 A MatchClaim is addressed by its id alone: an id held twice is refused,
-and an id never changes. A field mints no id: a row without one keeps
-it missing until the :class:`~timetoalign.alignment.bundle.AlignmentBundle`
-it joins mints it.
+and an id never changes. A field never holds a row without an id: every
+constructor mints the missing ones (``claim_…``), from ``IdMinter(seed)``
+when given ``seed=``, from the minter given as ``minter=`` (a loader's),
+else from the content minter of the rows (every column but ``id``).
+Joining a :class:`~timetoalign.alignment.bundle.AlignmentBundle` mints
+nothing.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
@@ -273,8 +276,7 @@ Every kind of claim is a row: synchronous claims with their anchors
 Each row keeps every property of its claim, so every claim
 materialises equal to the one stored. A MatchClaim is addressed by
 its id alone: two claims under one id are refused (an id is never
-renamed), and a claim without an id keeps it missing (the bundle the
-field joins mints it).
+renamed); every claim holds its id from construction.
 
 If ``provenance`` is ``None`` and all claims share one equal
 :class:`~timetoalign.core.provenance.Provenance`, it is adopted as
@@ -317,6 +319,8 @@ alignment.MatchClaimField.from_columns(
     end_coordinate_b=None,
     certainty=1.0,
     provenance=None,
+    seed=None,
+    minter=None,
 )
 ```
 
@@ -331,10 +335,8 @@ Each row is a synchronous claim between two events: the timeline
 and event ids are filled from the inputs, and every coordinate is a
 position on its row's timeline, written in that timeline's unit and
 declared number type. With the two end columns, every row with an
-end on both sides is an interval claim. The ids are left null: the
-bundle the field joins mints them
-(:meth:`~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field`),
-so fields of several sources join one bundle. Names are left null,
+end on both sides is an interval claim. The ids are minted, in row
+order (:class:`MatchClaimField`). Names are left null,
 and so is the ``provenance`` column (the shared provenance is
 injected on read). The field is checked against the timelines
 (:meth:`check_on_timelines`).
@@ -354,6 +356,8 @@ injected on read). The field is checked against the timelines
 | end_coordinate_b | [Sequence](`collections.abc.Sequence`)\[[int](`int`) \| [float](`float`) \| [Fraction](`fractions.Fraction`) \| None\] \| [pa](`pyarrow`).[Array](`pyarrow.Array`) \| [pa](`pyarrow`).[ChunkedArray](`pyarrow.ChunkedArray`) \| None | The end of each event on timeline B.                                                                                        | `None`     |
 | certainty        | [float](`float`)                                                                                                                                                                                                                     | How certain every claim is, in [0, 1].                                                                                      | `1.0`      |
 | provenance       | [Provenance](`timetoalign.core.provenance.Provenance`) \| None                                                                                                                                                                       | Shared provenance for every claim in the field.                                                                             | `None`     |
+| seed             | [int](`int`) \| None                                                                                                                                                                                                                 | The seed of the minter of the ids.                                                                                          | `None`     |
+| minter           | [IdMinter](`timetoalign.core.ids.IdMinter`) \| None                                                                                                                                                                                  | The minter of the ids (a loader's).                                                                                         | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -365,12 +369,13 @@ injected on read). The field is checked against the timelines
 
 | Name   | Type                       | Description                                                                                                                                                                                                                                                 |
 |--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If both *seed* and *minter* are given.                                                                                                                                                                                                                      |
 |        | [ValueError](`ValueError`) | If the inputs do not all have the same length, a row names no event, a row names a timeline not among *timelines*, the end columns are given one without the other, a row gives an end on one side only, or a coordinate is a number no cell holds (a NaN). |
 
 ### from_dict { #timetoalign.alignment.MatchClaimField.from_dict }
 
 ```python
-alignment.MatchClaimField.from_dict(data)
+alignment.MatchClaimField.from_dict(data, *, seed=None, minter=None)
 ```
 
 Deserialize a field from a plain dictionary (inverse of :meth:`to_dict`).
@@ -383,13 +388,16 @@ and ``rows``: one mapping per claim whose keys are the
 :func:`~timetoalign.core.retrieval.coordinate_from_dict` and written
 into its storage cell as :meth:`from_claims` writes a claim's; every
 other cell is read as stored. A field built from claims therefore
-comes back with an equal table and equal claims.
+comes back with an equal table and equal claims. A row without an id
+is minted one (:class:`MatchClaimField`).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                | Description                             | Default    |
-|--------|-----------------------------------------------------|-----------------------------------------|------------|
-| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A mapping as :meth:`to_dict` writes it. | _required_ |
+| Name   | Type                                                | Description                                 | Default    |
+|--------|-----------------------------------------------------|---------------------------------------------|------------|
+| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A mapping as :meth:`to_dict` writes it.     | _required_ |
+| seed   | [int](`int`) \| None                                | The seed of the minter of the missing ids.  | `None`     |
+| minter | [IdMinter](`timetoalign.core.ids.IdMinter`) \| None | The minter of the missing ids (a loader's). | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -401,12 +409,13 @@ comes back with an equal table and equal claims.
 
 | Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                          |
 |--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If both *seed* and *minter* are given.                                                                                                                                                                                                                                                                                                               |
 |        | [ValueError](`ValueError`) | If a mapping, at any depth, lacks a key it must hold or holds an unknown one (the mapping itself, row, anchor, provenance, belief, coordinate), or a coordinate dict is invalid; if a row is not a MatchClaim (:meth:`_read`); if the mapping carries provenance both under its key ``provenance`` and in its rows; or if two rows hold the same id. |
 
 ### from_package_table { #timetoalign.alignment.MatchClaimField.from_package_table }
 
 ```python
-alignment.MatchClaimField.from_package_table(table)
+alignment.MatchClaimField.from_package_table(table, *, seed=None, minter=None)
 ```
 
 Read a field from a MatchClaim table in the package form.
@@ -419,9 +428,11 @@ its ``number_type`` says (an int ``(n, null, null)``, a fraction
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                     | Description                                                                                      | Default    |
-|--------|------------------------------------------|--------------------------------------------------------------------------------------------------|------------|
-| table  | [pa](`pyarrow`).[Table](`pyarrow.Table`) | A table as :attr:`package_table` gives it, or as read from a package's ``match_claims.parquet``. | _required_ |
+| Name   | Type                                                | Description                                                                                      | Default    |
+|--------|-----------------------------------------------------|--------------------------------------------------------------------------------------------------|------------|
+| table  | [pa](`pyarrow`).[Table](`pyarrow.Table`)            | A table as :attr:`package_table` gives it, or as read from a package's ``match_claims.parquet``. | _required_ |
+| seed   | [int](`int`) \| None                                | The seed of the minter of the missing ids.                                                       | `None`     |
+| minter | [IdMinter](`timetoalign.core.ids.IdMinter`) \| None | The minter of the missing ids (a loader's).                                                      | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -433,12 +444,19 @@ its ``number_type`` says (an int ``(n, null, null)``, a fraction
 
 | Name   | Type                       | Description                                                                            |
 |--------|----------------------------|----------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If both *seed* and *minter* are given.                                                 |
 |        | [ValueError](`ValueError`) | As :meth:`from_table`, or naming the column and row of a cell not in the package form. |
 
 ### from_parquet { #timetoalign.alignment.MatchClaimField.from_parquet }
 
 ```python
-alignment.MatchClaimField.from_parquet(path, *, timelines=None)
+alignment.MatchClaimField.from_parquet(
+    path,
+    *,
+    timelines=None,
+    seed=None,
+    minter=None,
+)
 ```
 
 Read the MatchClaim table from its Parquet file.
@@ -449,6 +467,8 @@ Read the MatchClaim table from its Parquet file.
 |-----------|----------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|------------|
 | path      | [str](`str`) \| [os](`os`).[PathLike](`os.PathLike`)\[[str](`str`)\]                                                                               | The file, or a directory holding :attr:`file_name` (``match_claims.parquet``).                                          | _required_ |
 | timelines | [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\] \| [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | Where given, the timelines the rows name (as :meth:`check_on_timelines` takes them); the field is checked against them. | `None`     |
+| seed      | [int](`int`) \| None                                                                                                                               | The seed of the minter of the missing ids.                                                                              | `None`     |
+| minter    | [IdMinter](`timetoalign.core.ids.IdMinter`) \| None                                                                                                | The minter of the missing ids (a loader's).                                                                             | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -460,12 +480,13 @@ Read the MatchClaim table from its Parquet file.
 
 | Name   | Type                       | Description                                              |
 |--------|----------------------------|----------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If both *seed* and *minter* are given.                   |
 |        | [ValueError](`ValueError`) | As :meth:`from_table`, or as :meth:`check_on_timelines`. |
 
 ### from_table { #timetoalign.alignment.MatchClaimField.from_table }
 
 ```python
-alignment.MatchClaimField.from_table(table)
+alignment.MatchClaimField.from_table(table, *, seed=None, minter=None)
 ```
 
 Read a field back from its Arrow table (inverse of :attr:`table`).
@@ -483,14 +504,16 @@ in the table's schema metadata under TimeToShare's key
 ``timetoshare:provenance`` (the JSON of
 :meth:`~timetoalign.core.provenance.Provenance.to_dict`); a table
 without that key gives a field whose provenance is ``None``. Every
-row is kept as stored; a row without an id keeps none (the bundle it
-joins mints it).
+row is kept as stored; a row without an id is minted one
+(:class:`MatchClaimField`).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                     | Description                          | Default    |
-|--------|------------------------------------------|--------------------------------------|------------|
-| table  | [pa](`pyarrow`).[Table](`pyarrow.Table`) | A table as written by :attr:`table`. | _required_ |
+| Name   | Type                                                | Description                                 | Default    |
+|--------|-----------------------------------------------------|---------------------------------------------|------------|
+| table  | [pa](`pyarrow`).[Table](`pyarrow.Table`)            | A table as written by :attr:`table`.        | _required_ |
+| seed   | [int](`int`) \| None                                | The seed of the minter of the missing ids.  | `None`     |
+| minter | [IdMinter](`timetoalign.core.ids.IdMinter`) \| None | The minter of the missing ids (a loader's). | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -502,6 +525,7 @@ joins mints it).
 
 | Name   | Type                       | Description                                                                                                                                                                                                                                                                                                 |
 |--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If both *seed* and *minter* are given.                                                                                                                                                                                                                                                                      |
 |        | [ValueError](`ValueError`) | If the table lacks a column of a ``MatchClaim`` property, or a column's type is not the property's; if a row is not a MatchClaim (:meth:`_read`); if the table carries provenance both in its schema metadata and in its rows; or if two rows hold the same id (a MatchClaim is addressed by its id alone). |
 
 ### to_claims { #timetoalign.alignment.MatchClaimField.to_claims }
@@ -556,6 +580,7 @@ as JSON or YAML.
 ...         "score": ("quarters", "fraction"),
 ...         "audio": ("seconds", "float"),
 ...     },
+...     seed=0,
 ... )
 >>> row = field.to_dict()["rows"][0]
 >>> row["start_anchor"]["coordinate_a"]
@@ -563,7 +588,7 @@ as JSON or YAML.
 >>> row["start_anchor"]["coordinate_b"]
 {'unit': 'seconds', 'number_type': 'float', 'value': 0.5}
 >>> row["id"], row["end_anchor"]
-(None, None)
+('claim_1be6k8ij6dzad', None)
 ```
 
 ### to_parquet { #timetoalign.alignment.MatchClaimField.to_parquet }
@@ -587,10 +612,7 @@ file is replaced whole, never in part: a write that fails leaves the
 file as it was and no temporary file.
 
 Every MatchClaim written holds an id, which a named MatchStamp may
-record: a field whose rows hold none (built from columns or from
-claims without ids) is written from the bundle it joined, which
-minted them (:attr:`AlignmentBundle.match_claim_table
-<timetoalign.alignment.bundle.AlignmentBundle.match_claim_table>`).
+record: a field holds an id in every row from its construction.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

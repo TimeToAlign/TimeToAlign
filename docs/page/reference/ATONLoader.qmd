@@ -1,7 +1,7 @@
 # ATONLoader { #timetoalign.loader.graphical.aton.ATONLoader }
 
 ```python
-loader.graphical.aton.ATONLoader()
+loader.graphical.aton.ATONLoader(seed=None)
 ```
 
 Load ATON format files (piano roll analysis data).
@@ -46,11 +46,9 @@ Coordinate(293119, pixels)
 | Name | Description |
 | --- | --- |
 | [create_timeline](#timetoalign.loader.graphical.aton.ATONLoader.create_timeline) | Create a timeline populated with hole events. |
-| [from_file](#timetoalign.loader.graphical.aton.ATONLoader.from_file) | Create a loader and load an ATON file in one step. |
 | [get_holes_by_tracker](#timetoalign.loader.graphical.aton.ATONLoader.get_holes_by_tracker) | Get all holes for a specific tracker bar position. |
 | [get_holes_in_range](#timetoalign.loader.graphical.aton.ATONLoader.get_holes_in_range) | Get holes within a pixel row range. |
 | [get_note_holes](#timetoalign.loader.graphical.aton.ATONLoader.get_note_holes) | Get holes that represent note attacks. |
-| [load](#timetoalign.loader.graphical.aton.ATONLoader.load) | Load and parse an ATON file. |
 
 ### create_timeline { #timetoalign.loader.graphical.aton.ATONLoader.create_timeline }
 
@@ -67,12 +65,21 @@ This is the primary timeline for the piano roll image. To get a relative
 coordinate view (first hole = 0), create an inherited
 DiscreteGraphicalTimeline child at ``first_hole``.
 
+Each event is named by its hole's ``@ID``, which is also its ID. The
+SUPRA analysis software gives every hole that is no note the key
+``0`` and counts per tracker-bar hole, so holes on different tracker
+holes can share one ``@ID`` (``K0_N1``). Such an ``@ID`` names no one
+hole: each hole holding it keeps it as its name and is given an ID
+minted from the loader's minter (``hole_…``). Two holes of one
+``@ID`` on one tracker hole are refused: the loader does not decide
+that a repeated block is one hole.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                 | Description                                                 | Default   |
-|--------|----------------------|-------------------------------------------------------------|-----------|
-| uid    | [str](`str`) \| None | Unique identifier for the timeline. Auto-generated if None. | `None`    |
-| name   | [str](`str`) \| None | Human-readable name. Uses source filename if None.          | `None`    |
+| Name   | Type                 | Description                                                                            | Default   |
+|--------|----------------------|----------------------------------------------------------------------------------------|-----------|
+| uid    | [str](`str`) \| None | Unique identifier for the timeline; minted ``dgt_…`` from the loader's minter if None. | `None`    |
+| name   | [str](`str`) \| None | Human-readable name. Uses source filename if None.                                     | `None`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -82,54 +89,25 @@ DiscreteGraphicalTimeline child at ``first_hole``.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                 |
-|--------|--------------------------------|-----------------------------|
-|        | [RuntimeError](`RuntimeError`) | If no data has been loaded. |
+| Name   | Type                           | Description                                          |
+|--------|--------------------------------|------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no data has been loaded.                          |
+|        | [ValueError](`ValueError`)     | If two holes of one ``@ID`` lie on one tracker hole. |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
 >>> loader = ATONLoader()
 >>> loader.load("analysis.txt")
->>> dgt1 = loader.create_timeline(uid="dgt1")
->>> dgt1.n_events
+>>> dgt_1 = loader.create_timeline(uid="dgt_1")
+>>> dgt_1.n_events
 30092
 >>> # Child inherits DiscreteGraphicalTimeline; its origin is the first hole
->>> dgt_holes = dgt1.create_child(
+>>> dgt_holes = dgt_1.create_child(
 ...     length=loader.musical_length,
 ...     offset=loader.first_hole,
 ...     uid="dgt_holes",
 ... )
-```
-
-### from_file { #timetoalign.loader.graphical.aton.ATONLoader.from_file }
-
-```python
-loader.graphical.aton.ATONLoader.from_file(path)
-```
-
-Create a loader and load an ATON file in one step.
-
-Convenience constructor for loading a single file.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                   | Description            | Default    |
-|--------|----------------------------------------|------------------------|------------|
-| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the ATON file. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                             | Description                                             |
-|--------|----------------------------------|---------------------------------------------------------|
-|        | [Self](`typing_extensions.Self`) | A new ATONLoader instance with the file already loaded. |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> loader = ATONLoader.from_file("analysis.txt")
->>> loader.musical_holes
-30092
 ```
 
 ### get_holes_by_tracker { #timetoalign.loader.graphical.aton.ATONLoader.get_holes_by_tracker }
@@ -186,30 +164,3 @@ Get holes that represent note attacks.
 | Name   | Type                                                                       | Description                         |
 |--------|----------------------------------------------------------------------------|-------------------------------------|
 |        | [list](`list`)\[[ATONHole](`timetoalign.loader.graphical.aton.ATONHole`)\] | List of holes with note_attack set. |
-
-### load { #timetoalign.loader.graphical.aton.ATONLoader.load }
-
-```python
-loader.graphical.aton.ATONLoader.load(path)
-```
-
-Load and parse an ATON file.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                   | Description            | Default    |
-|--------|----------------------------------------|------------------------|------------|
-| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the ATON file. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                             | Description                |
-|--------|----------------------------------|----------------------------|
-|        | [Self](`typing_extensions.Self`) | Self, for method chaining. |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type                                     | Description                    |
-|--------|------------------------------------------|--------------------------------|
-|        | [FileNotFoundError](`FileNotFoundError`) | If the file doesn't exist.     |
-|        | [ValueError](`ValueError`)               | If the file format is invalid. |

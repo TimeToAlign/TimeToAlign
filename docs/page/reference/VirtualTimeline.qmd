@@ -7,7 +7,7 @@ timelines.VirtualTimeline(
     length,
     *,
     id=None,
-    _minted=False,
+    seed=None,
     _unknown_keys=dict[str, Any](),
     through=None,
     name=None,
@@ -20,18 +20,19 @@ A virtual timeline exists only by applying the map: it has an ID, a
 unit, a number type and a length of its own, and nothing else of it is
 written. It holds no events, no children and no flow control. Its
 positions and those of the timeline it comes from convert through the
-map, in both directions (:meth:`unfold`, :meth:`fold`).
+map, in both directions (:meth:`unfold`, :meth:`fold`). It may be a
+member of a group (:meth:`as_member`).
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name     | Type                                        | Description                                                                                                   |
-|----------|---------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| map      | [str](`str`)                                | The ID of the map applied: a FlowMap, or a conversion map.                                                    |
-| timeline | [str](`str`)                                | The ID of the timeline the map is applied to, or of another virtual timeline.                                 |
-| length   | [Coordinate](`timetoalign.core.Coordinate`) | The end of the virtual timeline on its own axis, which states its unit and number type too.                   |
-| through  | [str](`str`) \| None                        | The ID of the group or conversion map that carries the map to ``timeline``; kept as read and never evaluated. |
-| name     | [str](`str`) \| None                        | Optional display name.                                                                                        |
-| id       | [str](`str`)                                | The virtual timeline's ID; minted in the ID kind of its unit (``clt_{N}`` on quarters), as a timeline's is.   |
+| Name     | Type                                        | Description                                                                                                                                                                                                                                                                                                         |
+|----------|---------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| map      | [str](`str`)                                | The ID of the map applied: a FlowMap, or a conversion map.                                                                                                                                                                                                                                                          |
+| timeline | [str](`str`)                                | The ID of the timeline the map is applied to, or of another virtual timeline.                                                                                                                                                                                                                                       |
+| length   | [Coordinate](`timetoalign.core.Coordinate`) | The end of the virtual timeline on its own axis, which states its unit and number type too.                                                                                                                                                                                                                         |
+| through  | [str](`str`) \| None                        | The ID of the group that carries the map to ``timeline``: the FlowMap is one of a member of the group, ``timeline`` another member or a timeline inside one, and a position goes from one to the other by the group's conversion between its members. The ID of a conversion map is kept as read and not evaluated. |
+| name     | [str](`str`) \| None                        | Optional display name.                                                                                                                                                                                                                                                                                              |
+| id       | [str](`str`)                                | The virtual timeline's ID; minted with the prefix of its unit (``clt`` on quarters), as a timeline's is.                                                                                                                                                                                                            |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -40,9 +41,10 @@ map, in both directions (:meth:`unfold`, :meth:`fold`).
 >>> score = ContinuousLogicalTimeline(length=24, uid="score")
 >>> a = score.create_region(0, 16, id="a")
 >>> b = score.create_region(16, 24, id="b")
->>> played = score.create_virtual_timeline(score.create_flow_map([a, a, b]))
+>>> twice = score.create_flow_map([a, a, b], id="twice")
+>>> played = score.create_virtual_timeline(twice, seed=7)
 >>> played.id, played.length
-('clt_1', Coordinate(Fraction(40, 1), quarters))
+('clt_1hvif5xc2r1fv', Coordinate(Fraction(40, 1), quarters))
 >>> played.unfold(4, score)
 [Coordinate(Fraction(4, 1), quarters), Coordinate(Fraction(20, 1), quarters)]
 >>> played.fold(20, score)
@@ -53,11 +55,70 @@ Coordinate(Fraction(4, 1), quarters)
 
 | Name | Description |
 | --- | --- |
-| [fold](#timetoalign.timelines.VirtualTimeline.fold) | Return the root position played at a position of this virtual timeline. |
+| [as_member](#timetoalign.timelines.VirtualTimeline.as_member) | Return this virtual timeline as a member of a group. |
+| [fold](#timetoalign.timelines.VirtualTimeline.fold) | Return the position on ``timeline`` played at a position of this virtual timeline. |
 | [from_dict](#timetoalign.timelines.VirtualTimeline.from_dict) | Restore a virtual timeline from its object in ``virtual_timelines``. |
 | [from_flow_map](#timetoalign.timelines.VirtualTimeline.from_flow_map) | State that *flow_map* was applied to its root timeline. |
 | [resolve](#timetoalign.timelines.VirtualTimeline.resolve) | Return the played order this virtual timeline is the axis of. |
-| [unfold](#timetoalign.timelines.VirtualTimeline.unfold) | Return every position of this virtual timeline a root position is played at. |
+| [unfold](#timetoalign.timelines.VirtualTimeline.unfold) | Return every position of this virtual timeline a position is played at. |
+
+### as_member { #timetoalign.timelines.VirtualTimeline.as_member }
+
+```python
+timelines.VirtualTimeline.as_member(timeline)
+```
+
+Return this virtual timeline as a member of a group.
+
+The member answers for the virtual timeline's axis, from 0 to its
+length in its unit and number type, and for nothing else: a group
+holding it reaches it with its timestamps, tabulates it and keeps it
+in its display order, a bundle holding the group admits MatchClaims
+naming it. Its ID stays the virtual timeline's, held in the manifest
+of the tree it comes from; written, the group names it among its
+``members``, and the virtual timeline stays one entry of
+``virtual_timelines``. One virtual timeline gives one member object.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                              | Description                                                          | Default    |
+|----------|---------------------------------------------------|----------------------------------------------------------------------|------------|
+| timeline | [Timeline](`timetoalign.timelines.base.Timeline`) | The root holding this virtual timeline, or any timeline of its tree. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                | Description                    |
+|--------|---------------------------------------------------------------------|--------------------------------|
+|        | [VirtualMember](`timetoalign.timelines.flow.virtual.VirtualMember`) | The member, to add to a group. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                    |
+|--------|----------------------------|----------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the tree of *timeline* does not hold this virtual timeline. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.timelines import (
+...     ContinuousLogicalTimeline,
+...     ContinuousPhysicalTimeline,
+...     TimelineGroup,
+... )
+>>> score = ContinuousLogicalTimeline(length=24, uid="score")
+>>> a = score.create_region(0, 16, id="a")
+>>> b = score.create_region(16, 24, id="b")
+>>> played = score.create_virtual_timeline(
+...     score.create_flow_map([a, a, b]), id="played"
+... )
+>>> recording = ContinuousPhysicalTimeline(length=80.0, uid="recording")
+>>> group = TimelineGroup(timelines=[played.as_member(score), recording])
+>>> stamp = group.get_timestamp_at(72.0, "recording")
+>>> stamp.get_coordinate_for("played", format="coordinate")
+Coordinate(Fraction(36, 1), quarters)
+>>> played.fold(36, score)
+Coordinate(Fraction(20, 1), quarters)
+```
 
 ### fold { #timetoalign.timelines.VirtualTimeline.fold }
 
@@ -65,9 +126,12 @@ Coordinate(Fraction(4, 1), quarters)
 timelines.VirtualTimeline.fold(coordinate, root)
 ```
 
-Return the root position played at a position of this virtual timeline.
+Return the position on ``timeline`` played at a position of this virtual timeline.
 
-See :meth:`ResolvedFlowMap.fold`.
+``timeline`` is *root* without ``through``. With ``through`` a group,
+the position the FlowMap gives on its own root is carried to
+``timeline`` by the group's conversion between its members, in
+``timeline``'s number type. See :meth:`ResolvedFlowMap.fold`.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -78,9 +142,9 @@ See :meth:`ResolvedFlowMap.fold`.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                | Description                                            |
-|--------|-----------------------------------------------------|--------------------------------------------------------|
-|        | [Coordinate](`timetoalign.core.Coordinate`) \| None | The position on the root's axis, or None inside a gap. |
+| Name   | Type                                                | Description                                         |
+|--------|-----------------------------------------------------|-----------------------------------------------------|
+|        | [Coordinate](`timetoalign.core.Coordinate`) \| None | The position on ``timeline``, or None inside a gap. |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -146,6 +210,10 @@ timelines.VirtualTimeline.resolve(root)
 
 Return the played order this virtual timeline is the axis of.
 
+The FlowMap's stretches on its own root: *root* when the virtual
+timeline applies a FlowMap of *root* to *root*; with ``through`` a
+group, the root among the group's members whose FlowMap it applies.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name   | Type                                              | Description                                     | Default    |
@@ -154,9 +222,9 @@ Return the played order this virtual timeline is the axis of.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                       |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the virtual timeline is not the FlowMap of *root* applied to *root*: it applies another map (a conversion map), is applied to another timeline, or goes ``through`` a group or conversion map. Such a statement is kept and written back, but its positions are not converted. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the virtual timeline applies another map (a conversion map), applies a FlowMap of *root* to another timeline than *root* without ``through``, or goes ``through`` a group that holds no timeline of *root*'s tree, holds no FlowMap of that ID among its members' trees, or has neither the FlowMap's root nor ``timeline`` among its members or inside one. Such a statement is kept and written back, but its positions are not converted. |
 
 ### unfold { #timetoalign.timelines.VirtualTimeline.unfold }
 
@@ -164,19 +232,53 @@ Return the played order this virtual timeline is the axis of.
 timelines.VirtualTimeline.unfold(coordinate, root)
 ```
 
-Return every position of this virtual timeline a root position is played at.
+Return every position of this virtual timeline a position is played at.
 
-See :meth:`ResolvedFlowMap.unfold`.
+The position lies on ``timeline``, which is *root* without
+``through``. With ``through`` a group, the position is first carried
+to the FlowMap's root by the group's conversion between its members
+(the group's own conversion between its members), in the
+root's number type. See :meth:`ResolvedFlowMap.unfold`.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name       | Type                                                                    | Description                                     | Default    |
-|------------|-------------------------------------------------------------------------|-------------------------------------------------|------------|
-| coordinate | [CoordinateInput](`timetoalign.timelines.flow.flowmap.CoordinateInput`) | A position on the root's axis.                  | _required_ |
-| root       | [Timeline](`timetoalign.timelines.base.Timeline`)                       | The root timeline holding the virtual timeline. | _required_ |
+| Name       | Type                                                                    | Description                                                                                       | Default    |
+|------------|-------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|------------|
+| coordinate | [CoordinateInput](`timetoalign.timelines.flow.flowmap.CoordinateInput`) | A position on ``timeline``: a bare value, a Coordinate in its unit, or an IdCoordinate naming it. | _required_ |
+| root       | [Timeline](`timetoalign.timelines.base.Timeline`)                       | The root timeline holding the virtual timeline.                                                   | _required_ |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                            |
-|--------|----------------------------|--------------------------------------------------------|
-|        | [ValueError](`ValueError`) | As :meth:`resolve` and :meth:`ResolvedFlowMap.unfold`. |
+| Name   | Type                       | Description                                                                                                       |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | As :meth:`resolve` and :meth:`ResolvedFlowMap.unfold`, or if the position lies outside ``timeline`` in its group. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+A reading of one score applied to another score of the same
+music, of another length, through their group:
+
+```python
+>>> from fractions import Fraction
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> from timetoalign.timelines import ContinuousLogicalTimeline, TimelineGroup
+>>> score = ContinuousLogicalTimeline(length=24, uid="score")
+>>> a = score.create_region(0, 16, id="a")
+>>> b = score.create_region(16, 24, id="b")
+>>> reading = score.create_flow_map([a, a, b], id="reading")
+>>> edition = ContinuousLogicalTimeline(length=30, uid="edition")
+>>> scores = TimelineGroup(id="scores", timelines=[score, edition])
+>>> on_edition = edition.add_virtual_timeline(
+...     VirtualTimeline(
+...         "reading",
+...         "edition",
+...         Coordinate(40, TimeUnit.quarters),
+...         through="scores",
+...         id="edition_played",
+...     )
+... )
+>>> on_edition.unfold(5, edition)
+[Coordinate(Fraction(4, 1), quarters), Coordinate(Fraction(20, 1), quarters)]
+>>> on_edition.fold(Fraction(37), edition)
+Coordinate(Fraction(105, 4), quarters)
+```

@@ -9,6 +9,7 @@ LinearMap(
     uid=None,
     name=None,
     output_number_type=None,
+    seed=None,
 )
 ```
 
@@ -86,7 +87,14 @@ y2 = a2*(a1*x + b1) + b2 = (a1*a2)*x + (a2*b1 + b2)
 ### from_pairs { #timetoalign.LinearMap.from_pairs }
 
 ```python
-LinearMap.from_pairs(pairs, *, source_unit, value_unit=None, origin=0)
+LinearMap.from_pairs(
+    pairs,
+    *,
+    source_unit,
+    value_unit=None,
+    origin=0,
+    seed=None,
+)
 ```
 
 Build the line through the first and the last pair by position.
@@ -113,6 +121,7 @@ the error of a position computed in doubles otherwise (see
 | source_unit | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                                          | The unit of the positions.                                                                                                                                            | _required_ |
 | value_unit  | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                                          | The unit of the values, the map's target unit. Needed when a value is a number; a coordinate value must be in it.                                                     | `None`     |
 | origin      | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) \| [Coordinate](`timetoalign.core.time.Coordinate`) | Where the source axis starts, in the coordinates of the positions.                                                                                                    | `0`        |
+| seed        | [int](`int`) \| None                                                                                           | The seed of the minter of the map's id; not stored.                                                                                                                   | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

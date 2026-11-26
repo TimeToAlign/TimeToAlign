@@ -47,7 +47,7 @@ properties for each TiLiA timeline type::
 7
 >>> loader.create_timeline("BEAT_TIMELINE_3").n_events
 1146
->>> loader.store.hierarchy._table.num_rows
+>>> loader.store.hierarchy.table.num_rows
 33
 ```
 
@@ -145,8 +145,8 @@ loader.alignment.tilia.TiliaJsonLoader.create_timeline(uid)
 
 Create a single ``ContinuousPhysicalTimeline`` by uid.
 
-The *uid* may be a type-based ID from ``timeline_ids`` (for example,
-``"cpt4"``), the original TiLiA source ID/title, or an integer index.
+The *uid* may be an ID from ``timeline_ids`` (``cpt_…``), the
+original TiLiA source ID/title, or an integer index.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

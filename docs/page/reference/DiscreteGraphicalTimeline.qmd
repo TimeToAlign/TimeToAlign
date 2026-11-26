@@ -5,11 +5,12 @@ timelines.DiscreteGraphicalTimeline(
     length=0,
     unit=None,
     number_type=None,
-    id_prefix='tl',
     uid=None,
     name=None,
     locked=False,
     meta=None,
+    *,
+    seed=None,
 )
 ```
 

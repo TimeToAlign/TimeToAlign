@@ -7,6 +7,7 @@ QuartersToMeasureNumber(
     source_unit=TimeUnit.quarters,
     uid=None,
     name=None,
+    seed=None,
 )
 ```
 
@@ -51,32 +52,23 @@ for split bars, or "0" for anacrusis).
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.QuartersToMeasureNumber.from_dict) | Deserialize from dictionary. |
 | [from_measure_data](#timetoalign.QuartersToMeasureNumber.from_measure_data) | Create from MeasureData (loaded from TSV/JSON). |
 | [from_metric_map](#timetoalign.QuartersToMeasureNumber.from_metric_map) | Create from a MetricMap. |
-| [to_dict](#timetoalign.QuartersToMeasureNumber.to_dict) | Serialize to dictionary. |
-
-### from_dict { #timetoalign.QuartersToMeasureNumber.from_dict }
-
-```python
-QuartersToMeasureNumber.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### from_measure_data { #timetoalign.QuartersToMeasureNumber.from_measure_data }
 
 ```python
-QuartersToMeasureNumber.from_measure_data(measures)
+QuartersToMeasureNumber.from_measure_data(measures, *, seed=None)
 ```
 
 Create from MeasureData (loaded from TSV/JSON).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                                  | Description                      | Default    |
-|----------|-----------------------------------------------------------------------|----------------------------------|------------|
-| measures | [MeasureData](`timetoalign.loader.score.stores.measures.MeasureData`) | MeasureData with measure events. | _required_ |
+| Name     | Type                                                                  | Description                                         | Default    |
+|----------|-----------------------------------------------------------------------|-----------------------------------------------------|------------|
+| measures | [MeasureData](`timetoalign.loader.score.stores.measures.MeasureData`) | MeasureData with measure events.                    | _required_ |
+| seed     | [int](`int`) \| None                                                  | The seed of the minter of the map's id; not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -87,27 +79,20 @@ Create from MeasureData (loaded from TSV/JSON).
 ### from_metric_map { #timetoalign.QuartersToMeasureNumber.from_metric_map }
 
 ```python
-QuartersToMeasureNumber.from_metric_map(meter)
+QuartersToMeasureNumber.from_metric_map(meter, *, seed=None)
 ```
 
 Create from a MetricMap.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                            | Description                                  | Default    |
-|--------|-------------------------------------------------|----------------------------------------------|------------|
-| meter  | [MetricMap](`timetoalign.maps.meter.MetricMap`) | MetricMap with measure boundary information. | _required_ |
+| Name   | Type                                            | Description                                         | Default    |
+|--------|-------------------------------------------------|-----------------------------------------------------|------------|
+| meter  | [MetricMap](`timetoalign.maps.meter.MetricMap`) | MetricMap with measure boundary information.        | _required_ |
+| seed   | [int](`int`) \| None                            | The seed of the minter of the map's id; not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
 | Name   | Type                                                                           | Description                  |
 |--------|--------------------------------------------------------------------------------|------------------------------|
 |        | [QuartersToMeasureNumber](`timetoalign.maps.interval.QuartersToMeasureNumber`) | QuartersToMeasureNumber map. |
-
-### to_dict { #timetoalign.QuartersToMeasureNumber.to_dict }
-
-```python
-QuartersToMeasureNumber.to_dict(minimal=False)
-```
-
-Serialize to dictionary.

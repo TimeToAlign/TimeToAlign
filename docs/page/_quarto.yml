@@ -207,7 +207,6 @@ quartodoc:
         - EventType
         - ColumnNaming
         - ColumnRole
-        - ScopedId
         - TimeStamp
         - TimeIntervalStamp
 

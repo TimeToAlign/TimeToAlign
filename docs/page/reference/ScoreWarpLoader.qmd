@@ -1,7 +1,7 @@
 # ScoreWarpLoader { #timetoalign.loader.graphical.ScoreWarpLoader }
 
 ```python
-loader.graphical.ScoreWarpLoader()
+loader.graphical.ScoreWarpLoader(seed=None)
 ```
 
 Load the time axis drawn into a ScoreWarp SVG.
@@ -68,17 +68,15 @@ one child is the axis: offset at the segment's start, length the
 segment's, named by the title label, with the C-Map from
 ``css_pixels`` to the title's unit through the labelled ticks.
 
-Both ids are minted ``cgt_N`` by this loader, the root first: its
-number is drawn even when *uid* names it, and a given *uid* is
-recorded among the loader's minted ids, so the child is never
-minted the root's id and successive timelines share none.
+Both ids are minted ``cgt_…`` from the loader's minter, the root
+first (unless *uid* names it), so successive timelines share none.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                 | Description                                                                                               | Default   |
-|--------|----------------------|-----------------------------------------------------------------------------------------------------------|-----------|
-| uid    | [str](`str`) \| None | Unique identifier for the timeline. ``None`` mints ``cgt_N``, a number this loader has not minted before. | `None`    |
-| name   | [str](`str`) \| None | Human-readable name. Uses the source file's stem if None.                                                 | `None`    |
+| Name   | Type                 | Description                                                   | Default   |
+|--------|----------------------|---------------------------------------------------------------|-----------|
+| uid    | [str](`str`) \| None | Unique identifier for the timeline. ``None`` mints ``cgt_…``. | `None`    |
+| name   | [str](`str`) \| None | Human-readable name. Uses the source file's stem if None.     | `None`    |
 
 #### Returns {.doc-section .doc-section-returns}
 

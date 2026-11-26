@@ -1,7 +1,7 @@
 # DmosLoader { #timetoalign.loader.graphical.DmosLoader }
 
 ```python
-loader.graphical.DmosLoader()
+loader.graphical.DmosLoader(seed=None)
 ```
 
 Load the pages, systems and measures of a DMOS JSON file.
@@ -28,7 +28,7 @@ and ``duration`` the measure's x extent, so the accolade's
 interval.
 
 Known limits: measures have no id and no number in DMOS, so their Boxes
-are minted ``box_N`` per system unless ``box_ids`` names them; DMOS
+are minted ``box_…`` unless ``box_ids`` names them; DMOS
 system ids repeat on some pages, so an accolade's name (its DMOS id)
 need not be unique, while its timeline id is. A measure whose x extent
 leaves its system's region, on the left or on the right, cannot be a Box
@@ -127,15 +127,15 @@ filled with :meth:`str.format` from ``page`` (the page's position
 among the pages created, from 1), ``accolade`` (its position on its
 page), ``box`` (its position in its accolade) and ``n`` (the running
 count of the kind over the call). ``box_ids="m{n}"`` numbers the
-measures through the score. Left out, timelines are minted ``dgt_N``
+measures through the score. Left out, timelines are minted ``dgt_…``
 (the volume, then each page followed by its accolades) and Boxes
-``box_N`` per accolade.
+``box_…``.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name         | Type                                             | Description                                  | Default   |
 |--------------|--------------------------------------------------|----------------------------------------------|-----------|
-| uid          | [str](`str`) \| None                             | The volume's id; minted ``dgt_N`` when None. | `None`    |
+| uid          | [str](`str`) \| None                             | The volume's id; minted ``dgt_…`` when None. | `None`    |
 | name         | [str](`str`) \| None                             | The volume's name.                           | `None`    |
 | page_ids     | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The pages' ids.                              | `None`    |
 | accolade_ids | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The accolades' ids.                          | `None`    |
@@ -180,16 +180,16 @@ without systems or all of whose systems are left out.
 
 | Name         | Type                                             | Description                                                               | Default   |
 |--------------|--------------------------------------------------|---------------------------------------------------------------------------|-----------|
-| page_ids     | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The pages' ids (see :meth:`create_timeline`); minted ``dgt_N`` when None. | `None`    |
-| accolade_ids | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The accolades' ids; minted ``dgt_N`` when None.                           | `None`    |
-| box_ids      | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The Boxes' ids; minted ``box_N`` per accolade when None.                  | `None`    |
+| page_ids     | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The pages' ids (see :meth:`create_timeline`); minted ``dgt_…`` when None. | `None`    |
+| accolade_ids | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The accolades' ids; minted ``dgt_…`` when None.                           | `None`    |
+| box_ids      | [Ids](`timetoalign.loader.graphical._pages.Ids`) | The Boxes' ids; minted ``box_…`` when None.                               | `None`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                             | Description                                 |
-|--------|--------------------------------------------------------------------------------------------------|---------------------------------------------|
-|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | The pages' timelines, each a                |
-|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | ``SegmentLine[DiscreteGraphicalTimeline]``. |
+| Name   | Type                                                                                                                                                                                                                                     | Description                                 |
+|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`) \| [SegmentLine](`timetoalign.timelines.SegmentLine`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\]\] | The pages' timelines, each a                |
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`) \| [SegmentLine](`timetoalign.timelines.SegmentLine`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\]\] | ``SegmentLine[DiscreteGraphicalTimeline]``. |
 
 #### Raises {.doc-section .doc-section-raises}
 

@@ -82,7 +82,7 @@ timetoalign.loader.base.Loader
 | [metadata](#timetoalign.loader.format.JsonLoader.metadata) | Aggregated metadata from all sources. |
 | [number_type](#timetoalign.loader.format.JsonLoader.number_type) | The number type for coordinates. |
 | [raw_data](#timetoalign.loader.format.JsonLoader.raw_data) | The raw parsed JSON data from the last loaded file. |
-| [sources](#timetoalign.loader.format.JsonLoader.sources) | List of loaded source file paths. |
+| [sources](#timetoalign.loader.format.JsonLoader.sources) | The loaded sources: ``Path`` objects and ZIP members (``zipfile.Path``). |
 | [store](#timetoalign.loader.format.JsonLoader.store) | The ``DictStore`` containing all normalised tables. |
 | [tables](#timetoalign.loader.format.JsonLoader.tables) | Dict mapping key names to normalised ``pa.Table`` objects. |
 | [unit](#timetoalign.loader.format.JsonLoader.unit) | The time unit for coordinates. |
@@ -100,12 +100,12 @@ timetoalign.loader.base.Loader
 | [create_timeline](#timetoalign.loader.format.JsonLoader.create_timeline) | Create a Timeline from the loaded events. |
 | [create_timelines](#timetoalign.loader.format.JsonLoader.create_timelines) | Create all timelines, optionally filtered by regex pattern. |
 | [event_summary](#timetoalign.loader.format.JsonLoader.event_summary) | Get a summary of loaded events. |
-| [from_file](#timetoalign.loader.format.JsonLoader.from_file) | Instantiate the loader, load *paths*, and return it. |
+| [from_file](#timetoalign.loader.format.JsonLoader.from_file) | Instantiate the loader with *kwargs*, load *paths*, and return it. |
 | [from_parquet](#timetoalign.loader.format.JsonLoader.from_parquet) | Load a Loader from a Parquet file. |
 | [get_events](#timetoalign.loader.format.JsonLoader.get_events) | Return an EventData assembled from loaded data. |
 | [get_table](#timetoalign.loader.format.JsonLoader.get_table) | Retrieve a normalised table by key name. |
 | [keys](#timetoalign.loader.format.JsonLoader.keys) | Return the names of the available tables. |
-| [load](#timetoalign.loader.format.JsonLoader.load) | Load one or more JSON files. |
+| [load](#timetoalign.loader.format.JsonLoader.load) | Load and accept one or more sources through the shared template. |
 | [load_dict](#timetoalign.loader.format.JsonLoader.load_dict) | Load from an already-parsed Python dict. |
 | [to_parquet](#timetoalign.loader.format.JsonLoader.to_parquet) | Save the loaded events to a Parquet file. |
 
@@ -181,12 +181,12 @@ Both fields must contain coordinate data (either core coordinates like
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name         | Type                   | Description                                                                                                                           | Default    |
-|--------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------|------------|
-| source_field | [str](`str`)           | Name of the source coordinate field.                                                                                                  | _required_ |
-| target_field | [str](`str`)           | Name of the target coordinate field.                                                                                                  | _required_ |
-| map_type     | [type](`type`) \| None | The map class to create. Defaults to TableMap. Supported: TableMap, LinearMap, ScalarMap.                                             | `None`     |
-| **kwargs     | [Any](`typing.Any`)    | Additional arguments passed to the map constructor. For TableMap: kind, extrapolate For LinearMap: (computed automatically from data) | `{}`       |
+| Name         | Type                   | Description                                                                                                                                                                                           | Default    |
+|--------------|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| source_field | [str](`str`)           | Name of the source coordinate field.                                                                                                                                                                  | _required_ |
+| target_field | [str](`str`)           | Name of the target coordinate field.                                                                                                                                                                  | _required_ |
+| map_type     | [type](`type`) \| None | The map class to create. Defaults to TableMap. Supported: TableMap, LinearMap, ScalarMap.                                                                                                             | `None`     |
+| **kwargs     | [Any](`typing.Any`)    | Additional arguments passed to the map constructor. For TableMap: kind, extrapolate For LinearMap: (computed automatically from data) Without ``uid``, the map's ID is minted by the loader's minter. | `{}`       |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -251,7 +251,8 @@ loader.format.JsonLoader.create_timeline(
 
 Create a Timeline from the loaded events.
 
-Convenience method that delegates to self.store.create_timeline().
+Builds the timeline from ``self.store``; every timeline ID it mints
+comes from the loader's minter.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -321,24 +322,43 @@ Get a summary of loaded events.
 loader.format.JsonLoader.from_file(*paths, **kwargs)
 ```
 
-Instantiate the loader, load *paths*, and return it.
+Instantiate the loader with *kwargs*, load *paths*, and return it.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                   | Description                                                                                   | Default   |
+|----------|--------------------------------------------------------|-----------------------------------------------------------------------------------------------|-----------|
+| *paths   | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Filesystem paths or members of ZIP archives (``zipfile.Path``), as :meth:`load` takes them.   | `()`      |
+| **kwargs | [Any](`typing.Any`)                                    | Passed to the loader's constructor, ``seed`` among them (the seed of the loader's ID minter). | `{}`      |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from zipfile import Path as ZipPath
+>>> member = ZipPath("corpus.zip", at="corpus/measures/piece.measures.tsv")
+>>> loader = Ms3Loader.from_file(member)
+```
 
 ### from_parquet { #timetoalign.loader.format.JsonLoader.from_parquet }
 
 ```python
-loader.format.JsonLoader.from_parquet(path)
+loader.format.JsonLoader.from_parquet(path, *, seed=None)
 ```
 
 Load a Loader from a Parquet file.
 
 Note: This creates a new Loader with the EventData loaded,
-but source paths may not be accessible for re-loading.
+but source paths may not be accessible for re-loading. The events
+keep their IDs; the loader's minter, for the timeline IDs it mints
+later, is ``IdMinter(seed)``, else seeded from the class name and
+the file's bytes.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                   | Description               | Default    |
-|--------|----------------------------------------|---------------------------|------------|
-| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the Parquet file. | _required_ |
+| Name   | Type                                   | Description                         | Default    |
+|--------|----------------------------------------|-------------------------------------|------------|
+| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the Parquet file.           | _required_ |
+| seed   | [int](`int`) \| None                   | The seed of the loader's ID minter. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -410,22 +430,33 @@ Return the names of the available tables.
 loader.format.JsonLoader.load(*sources)
 ```
 
-Load one or more JSON files.
+Load and accept one or more sources through the shared template.
 
-For multiple files the tables are concatenated (same keys) or
-added (new keys).
+Each source is a filesystem path (``Path`` or ``str``) or a member of
+a ZIP archive (``zipfile.Path``), which is read without extracting
+the archive. Its entry in ``metadata["sources"]`` records ``path``
+(for a member: the archive's absolute path, and ``member``, the
+member's path inside it) and ``loaded_at``.
 
-#### Parameters {.doc-section .doc-section-parameters}
+Every ID the loader mints (events, timelines, maps, MatchClaims,
+Projections) comes from its :class:`~timetoalign.core.ids.IdMinter`,
+in the order the loader builds them. Every ``load`` call seeds a
+new one: the first call after the loader is made or cleared from
+the loader's ``seed`` when one was given, else from
+:func:`~timetoalign.core.ids.seed_from` of the loader's class name,
+its configuration (the constructor arguments that shape the
+events) and the SHA-256 digests of the call's sources, in order;
+every later call from ``seed_from`` of the previous call's seed and
+its own sources' digests, so later sources count too. A fresh
+loader loading unchanged sources in the same calls mints the same
+IDs, in any process; IDs the source states are kept as they are.
 
-| Name     | Type                                   | Description          | Default   |
-|----------|----------------------------------------|----------------------|-----------|
-| *sources | [Path](`pathlib.Path`) \| [str](`str`) | Paths to JSON files. | `()`      |
+#### Raises {.doc-section .doc-section-raises}
 
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                             | Description                |
-|--------|----------------------------------|----------------------------|
-|        | [Self](`typing_extensions.Self`) | Self, for method chaining. |
+| Name   | Type                                     | Description                                                                                                                                                  |
+|--------|------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [FileNotFoundError](`FileNotFoundError`) | If a ``zipfile.Path`` names a member its archive does not hold.                                                                                              |
+|        | [ValueError](`ValueError`)               | If the loader reads one source and is given none or more than one, or any while it holds one (after ``clear()`` it reads one again). Nothing is parsed then. |
 
 ### load_dict { #timetoalign.loader.format.JsonLoader.load_dict }
 
@@ -436,6 +467,9 @@ loader.format.JsonLoader.load_dict(data)
 Load from an already-parsed Python dict.
 
 Convenient for programmatic use or testing.
+
+The loader's ID minter is seeded from the dict's JSON with sorted
+keys and no spaces (see ``Loader.load``).
 
 #### Parameters {.doc-section .doc-section-parameters}
 

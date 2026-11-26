@@ -9,6 +9,8 @@ timelines.DiscreteLogicalTimeline(
     name=None,
     locked=False,
     meta=None,
+    *,
+    seed=None,
 )
 ```
 

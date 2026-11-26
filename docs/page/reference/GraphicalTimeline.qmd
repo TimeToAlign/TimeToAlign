@@ -5,18 +5,20 @@ timelines.GraphicalTimeline(
     length=0,
     unit=None,
     number_type=None,
-    id_prefix='tl',
     uid=None,
     name=None,
     locked=False,
     meta=None,
+    *,
+    seed=None,
 )
 ```
 
 A timeline representing graphical/spatial coordinates.
 
 Graphical timelines measure visual positions for score
-visualization and plotting. They can be in pixels or
-physical measurements.
+visualization and plotting. They can be in pixels, physical
+measurements, CSS pixels, or a document's own user units.
 
-Allowed units: pixels, meters, centimeters, millimeters, inches, points.
+Allowed units: pixels, meters, centimeters, millimeters, inches, points,
+css_pixels, user_units.

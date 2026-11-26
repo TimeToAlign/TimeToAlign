@@ -5,11 +5,12 @@ timelines.ContinuousGraphicalTimeline(
     length=0,
     unit=None,
     number_type=None,
-    id_prefix='tl',
     uid=None,
     name=None,
     locked=False,
     meta=None,
+    *,
+    seed=None,
 )
 ```
 
@@ -20,4 +21,5 @@ Used for visualization where real-valued positions are needed
 
 Default unit: centimeters.
 Default number type: float.
-Allowed units: meters, centimeters, millimeters, inches, points.
+Allowed units: meters, centimeters, millimeters, inches, points,
+css_pixels, user_units.

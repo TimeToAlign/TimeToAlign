@@ -1,7 +1,7 @@
 # AudioLoader { #timetoalign.loader.AudioLoader }
 
 ```python
-loader.AudioLoader()
+loader.AudioLoader(seed=None)
 ```
 
 Load audio file metadata for creating physical timelines.
@@ -92,7 +92,6 @@ Coordinate(7938000, samples)
 | [create_continuous_timeline](#timetoalign.loader.AudioLoader.create_continuous_timeline) | Create a ContinuousPhysicalTimeline in seconds from the loaded audio. |
 | [create_samples_to_seconds_map](#timetoalign.loader.AudioLoader.create_samples_to_seconds_map) | Create a SamplesToSeconds conversion map for this audio. |
 | [create_timeline](#timetoalign.loader.AudioLoader.create_timeline) | Create a DiscretePhysicalTimeline in samples from the loaded audio. |
-| [from_file](#timetoalign.loader.AudioLoader.from_file) | Load an audio file and return the loader (convenience constructor). |
 
 ### create_continuous_timeline { #timetoalign.loader.AudioLoader.create_continuous_timeline }
 
@@ -114,11 +113,11 @@ The timeline is created with:
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                 | Description                                                                  | Default   |
-|-------------|----------------------|------------------------------------------------------------------------------|-----------|
-| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, uses filename.                  | `None`    |
-| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                 | `None`    |
-| attach_cmap | [bool](`bool`)       | If True, attach a SecondsToSamples conversion map at the file's sample rate. | `True`    |
+| Name        | Type                 | Description                                                                   | Default   |
+|-------------|----------------------|-------------------------------------------------------------------------------|-----------|
+| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, minted from the loader's minter. | `None`    |
+| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                  | `None`    |
+| attach_cmap | [bool](`bool`)       | If True, attach a SecondsToSamples conversion map at the file's sample rate.  | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -149,6 +148,8 @@ loader.AudioLoader.create_samples_to_seconds_map()
 
 Create a SamplesToSeconds conversion map for this audio.
 
+Its ID is minted from the loader's minter.
+
 #### Returns {.doc-section .doc-section-returns}
 
 | Name   | Type                 | Description                                                        |
@@ -177,11 +178,11 @@ The timeline is created with:
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                 | Description                                                                  | Default   |
-|-------------|----------------------|------------------------------------------------------------------------------|-----------|
-| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, uses filename.                  | `None`    |
-| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                 | `None`    |
-| attach_cmap | [bool](`bool`)       | If True, attach a SamplesToSeconds conversion map at the file's sample rate. | `True`    |
+| Name        | Type                 | Description                                                                   | Default   |
+|-------------|----------------------|-------------------------------------------------------------------------------|-----------|
+| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, minted from the loader's minter. | `None`    |
+| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                  | `None`    |
+| attach_cmap | [bool](`bool`)       | If True, attach a SamplesToSeconds conversion map at the file's sample rate.  | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -202,31 +203,4 @@ The timeline is created with:
 >>> timeline = loader.create_timeline()
 >>> timeline.unit
 <TimeUnit.samples: 'samples'>
-```
-
-### from_file { #timetoalign.loader.AudioLoader.from_file }
-
-```python
-loader.AudioLoader.from_file(path)
-```
-
-Load an audio file and return the loader (convenience constructor).
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                   | Description             | Default    |
-|--------|----------------------------------------|-------------------------|------------|
-| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the audio file. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type            | Description                                  |
-|--------|-----------------|----------------------------------------------|
-|        | \'AudioLoader\' | An AudioLoader with the file already loaded. |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> loader = AudioLoader.from_file("song.wav")
->>> print(loader.duration_seconds)
 ```

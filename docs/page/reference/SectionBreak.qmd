@@ -5,7 +5,7 @@ timelines.SectionBreak(
     coordinate,
     *,
     id=None,
-    _minted=False,
+    seed=None,
     _unknown_keys=dict[str, Any](),
     name=None,
     label=None,
@@ -31,4 +31,4 @@ begins again at the next section break.
 | label         | [str](`str`) \| None                                                                    | A human-readable label.                                                    |
 | meta          | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                     | Additional metadata.                                                       |
 | provenance    | [tuple](`tuple`)\[[Provenance](`timetoalign.core.provenance.Provenance`), ...\] \| None | How the element was made and who believes it: provenance entries, or None. |
-| id            | [str](`str`)                                                                            | The element's ID; minted as ``section_break_{N}`` when not given.          |
+| id            | [str](`str`)                                                                            | The element's ID; minted with the prefix ``section_break`` when not given. |

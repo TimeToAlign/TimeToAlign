@@ -8,7 +8,7 @@ timelines.Region(
     meta=dict(),
     *,
     id=None,
-    _minted=False,
+    seed=None,
     _unknown_keys=dict[str, Any](),
     _statement_state=dict(),
     _prefixes=dict(),
@@ -29,13 +29,13 @@ changed copy in the region's place with
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name   | Type                                                | Description                                               |
-|--------|-----------------------------------------------------|-----------------------------------------------------------|
-| start  | [Coordinate](`timetoalign.core.Coordinate`)         | Start coordinate of the region.                           |
-| end    | [Coordinate](`timetoalign.core.Coordinate`)         | End coordinate of the region.                             |
-| name   | [str](`str`) \| None                                | Optional display name (e.g., "Chorus"); names may repeat. |
-| meta   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata (e.g., traversal order labels).       |
-| id     | [str](`str`)                                        | The region's id; minted as ``region_{N}`` when not given. |
+| Name   | Type                                                | Description                                                                                                                                                                                                   |
+|--------|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| start  | [Coordinate](`timetoalign.core.Coordinate`)         | Start coordinate of the region.                                                                                                                                                                               |
+| end    | [Coordinate](`timetoalign.core.Coordinate`)         | End coordinate of the region.                                                                                                                                                                                 |
+| name   | [str](`str`) \| None                                | Optional display name (e.g., "Chorus"); names may repeat.                                                                                                                                                     |
+| meta   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata (e.g., traversal order labels).                                                                                                                                                           |
+| id     | [str](`str`)                                        | The region's id. When not given, one with the prefix ``region`` is minted when the region is built: from ``IdMinter(seed)`` with ``seed=``, else from the content minter of its complete form without the id. |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -43,9 +43,9 @@ changed copy in the region's place with
 >>> from timetoalign import Coordinate, TimeUnit
 >>> start = Coordinate(16.0, TimeUnit.quarters)
 >>> end = Coordinate(32.0, TimeUnit.quarters)
->>> region = Region(start, end, name="Chorus")
+>>> region = Region(start, end, name="Chorus", seed=7)
 >>> region.id
-'region_1'
+'region_1hvif5xc2r1fv'
 >>> region.duration
 Duration(Fraction(16, 1), quarters)
 >>> region.as_interval

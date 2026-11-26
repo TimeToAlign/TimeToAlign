@@ -1,7 +1,7 @@
 # MpmLoader { #timetoalign.loader.alignment.mpm.MpmLoader }
 
 ```python
-loader.alignment.mpm.MpmLoader()
+loader.alignment.mpm.MpmLoader(seed=None)
 ```
 
 Load an MPM-Toolbox MSM+MPM+MPR triple as one multimodal AlignmentBundle.
@@ -11,7 +11,7 @@ The loader is given the ``.mpr`` project file; it resolves the sibling
 score, the selected modelled performance's markup, and the observed
 alignment, and assembles a bundle with a shared logical ``"score"``
 group and a physical ``"perf"`` group — the latter also carrying the
-spectrogram's graphical pixel axis (``perf:dgt1``) when the project
+spectrogram's graphical pixel axis (``perf:dgt_…``) when the project
 ships one — linked by one synchronous :class:`MatchClaim` per score
 note.  The bundle thus spans the logical, physical, and (when a
 spectrogram is present) graphical domains.
@@ -79,16 +79,16 @@ Return a single timeline by its uid.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                 | Description                                                                                                                                                      | Default   |
-|--------|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| uid    | [str](`str`) \| None | One of ``"score:clt1"`` / ``"score:dlt1"`` / ``"perf:cpt1"`` / ``"perf:dpt1"`` / ``"perf:dgt1"`` (the last present only when the project carries a spectrogram). | `None`    |
+| Name   | Type                 | Description                                                                                                                                                                                  | Default   |
+|--------|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| uid    | [str](`str`) \| None | The ID of one of the timelines :meth:`create_timelines` lists (``score:clt_…``, ``score:dlt_…``, ``perf:cpt_…``, ``perf:dpt_…``, and ``perf:dgt_…`` when the project carries a spectrogram). | `None`    |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                            |
-|--------|--------------------------------|----------------------------------------|
-|        | [KeyError](`KeyError`)         | If no timeline matches.                |
-|        | [RuntimeError](`RuntimeError`) | If ``load()`` has not been called yet. |
+| Name   | Type                           | Description                                                 |
+|--------|--------------------------------|-------------------------------------------------------------|
+|        | [KeyError](`KeyError`)         | If no timeline matches.                                     |
+|        | [RuntimeError](`RuntimeError`) | If ``load()`` has not been called yet, or did not complete. |
 
 ### create_timelines { #timetoalign.loader.alignment.mpm.MpmLoader.create_timelines }
 
@@ -98,8 +98,8 @@ loader.alignment.mpm.MpmLoader.create_timelines(id_pattern=None)
 
 Return all loaded timelines: the two score, then the performance.
 
-The performance group always contributes ``perf:cpt1`` and
-``perf:dpt1``; ``perf:dgt1`` (the spectrogram graphical axis) is
+The performance group always contributes ``perf:cpt_…`` and
+``perf:dpt_…``; ``perf:dgt_…`` (the spectrogram graphical axis) is
 appended when the project carries a spectrogram.
 
 #### Parameters {.doc-section .doc-section-parameters}
@@ -118,10 +118,10 @@ Ingest a whole MPM-Toolbox project.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                   | Description                                                                                                                 | Default    |
-|-------------|----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|------------|
-| mpr_path    | [str](`str`) \| [Path](`pathlib.Path`) | Path to the ``.mpr`` project file.  The sibling ``.msm`` / ``.mpm`` are resolved from the bare filenames the project names. | _required_ |
-| performance | [str](`str`) \| None                   | Name of the ``<performance>`` block to use.  When ``None`` (the default), the first performance is selected.                | `None`     |
+| Name        | Type                                                   | Description                                                                                                                                                                                            | Default    |
+|-------------|--------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| mpr_path    | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Path to the ``.mpr`` project file, or its member in a ZIP archive.  The sibling ``.msm`` / ``.mpm`` are resolved from the bare filenames the project names (members of the same archive for a member). | _required_ |
+| performance | [str](`str`) \| None                                   | Name of the ``<performance>`` block to use.  When ``None`` (the default), the first performance is selected.                                                                                           | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

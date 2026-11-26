@@ -4,6 +4,8 @@
 loader.alignment.matchfile.MatchfileLoader(
     score_unit=TimeUnit.quarters,
     normalize_anacrusis=True,
+    *,
+    seed=None,
 )
 ```
 
@@ -63,6 +65,7 @@ timetoalign.AlignmentBundle
 |---------------------|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
 | score_unit          | [TimeUnit](`timetoalign.core.TimeUnit`) | Primary unit for the score timeline. Default ``TimeUnit.quarters``.                                                                                                                                                | `TimeUnit.quarters` |
 | normalize_anacrusis | [bool](`bool`)                          | If True (default), attach a ``ShiftMap`` that maps raw coordinates to normalised (non-negative) coordinates. Has no effect on the stored event coordinates, which are always the normalised (non-negative) values. | `True`              |
+| seed                | [int](`int`) \| None                    | The seed of the loader's ID minter (see ``Loader.load``).                                                                                                                                                          | `None`              |
 
 ## Attributes
 
@@ -77,9 +80,8 @@ timetoalign.AlignmentBundle
 | Name | Description |
 | --- | --- |
 | [create_bundle](#timetoalign.loader.alignment.matchfile.MatchfileLoader.create_bundle) | Assemble an AlignmentBundle from the loaded data. |
-| [create_timeline](#timetoalign.loader.alignment.matchfile.MatchfileLoader.create_timeline) | Return a single timeline by uid, role string, or partial/regex match. |
+| [create_timeline](#timetoalign.loader.alignment.matchfile.MatchfileLoader.create_timeline) | Return a single timeline by uid, role string, or regular expression. |
 | [create_timelines](#timetoalign.loader.alignment.matchfile.MatchfileLoader.create_timelines) | Return all timelines produced from loaded data. |
-| [load](#timetoalign.loader.alignment.matchfile.MatchfileLoader.load) | Load one or more .match files. |
 
 ### create_bundle { #timetoalign.loader.alignment.matchfile.MatchfileLoader.create_bundle }
 
@@ -144,7 +146,7 @@ coordinates are incompatible.
 loader.alignment.matchfile.MatchfileLoader.create_timeline(uid)
 ```
 
-Return a single timeline by uid, role string, or partial/regex match.
+Return a single timeline by uid, role string, or regular expression.
 
 Matching precedence:
 1. ``"score"`` — returns the shared score timeline.
@@ -152,13 +154,13 @@ Matching precedence:
 3. Exact match on performance timeline uid.
 4. ``"perf:N"`` (1-indexed) — returns the N-th performance timeline.
 5. ``"perf:pNN"`` — alternative syntax for performance indexing.
-6. Partial/regex match on any timeline uid.
+6. A regular expression matching a whole timeline uid.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type         | Description                                                                                                  | Default    |
-|--------|--------------|--------------------------------------------------------------------------------------------------------------|------------|
-| uid    | [str](`str`) | Timeline uid (e.g. ``"score:clt_1"``), role shorthand (``"score"``, ``"perf:1"``), or partial/regex pattern. | _required_ |
+| Name   | Type         | Description                                                                                                                               | Default    |
+|--------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| uid    | [str](`str`) | Timeline uid (``score:clt_…``, ``perf:dlt_…``), role shorthand (``"score"``, ``"perf:1"``), or a regular expression matching a whole uid. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -176,10 +178,9 @@ Matching precedence:
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> loader.create_timeline("score")               # -> score:clt_1
->>> loader.create_timeline("perf:1")              # First performance
->>> loader.create_timeline("perf:p01")            # Same shorthand
->>> loader.create_timeline(r"^perf:.*p01:dlt_1$")  # Stored-ID regex
+>>> loader.create_timeline("score")    # -> the score timeline
+>>> loader.create_timeline("perf:1")   # First performance
+>>> loader.create_timeline("perf:p01")  # Same shorthand
 ```
 
 ### create_timelines { #timetoalign.loader.alignment.matchfile.MatchfileLoader.create_timelines }
@@ -205,47 +206,3 @@ The score timeline is always first.
 |--------|--------------------------------|------------------------------------------------------------|
 |        | [list](`list`)\[\'Timeline\'\] | List of Timeline objects. Empty if ``load()`` has not been |
 |        | [list](`list`)\[\'Timeline\'\] | called yet.                                                |
-
-### load { #timetoalign.loader.alignment.matchfile.MatchfileLoader.load }
-
-```python
-loader.alignment.matchfile.MatchfileLoader.load(*sources)
-```
-
-Load one or more .match files.
-
-Parses each file via partitura, builds a shared score timeline
-from the first compatible file, and verifies subsequent files
-against it. Incompatible files are logged with a warning and
-tracked internally.
-
-This method can be called multiple times to add more files
-incrementally.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name     | Type                                   | Description                | Default   |
-|----------|----------------------------------------|----------------------------|-----------|
-| *sources | [Path](`pathlib.Path`) \| [str](`str`) | Paths to ``.match`` files. | `()`      |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                             | Description                |
-|--------|----------------------------------|----------------------------|
-|        | [Self](`typing_extensions.Self`) | Self, for method chaining. |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type                                     | Description                             |
-|--------|------------------------------------------|-----------------------------------------|
-|        | [FileNotFoundError](`FileNotFoundError`) | If any source path does not exist.      |
-|        | [ValueError](`ValueError`)               | If any source is not a ``.match`` file. |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> loader = MatchfileLoader()
->>> loader.load("Chopin_op10_no3_p01.match")
->>> # or load all at once
->>> loader.load(*sorted(data_dir.glob("*.match")))
-```

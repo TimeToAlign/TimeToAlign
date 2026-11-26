@@ -284,7 +284,7 @@ Return the cached inverse map with source and target swapped.
 ### materialise { #timetoalign.alignment.WarpMap.materialise }
 
 ```python
-alignment.WarpMap.materialise(source_timeline)
+alignment.WarpMap.materialise(source_timeline, *, seed=None)
 ```
 
 Produce a new Timeline with all contents warped to target coordinates.
@@ -300,11 +300,17 @@ map. The resulting timeline:
 - Contains warped copies of all regions
 - Carries an inverse WarpMap as a ConversionMap for traceability
 
+Every timeline and region of the copy holds an id of its own, so the
+copy may join a group or bundle holding its source. A region's id is
+minted from the source region's id and the id of the timeline
+holding the copy; events keep theirs.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type         | Description           | Default    |
-|-----------------|--------------|-----------------------|------------|
-| source_timeline | \'Timeline\' | The timeline to warp. | _required_ |
+| Name            | Type                 | Description                                                                                                                                                                                                                                                      | Default    |
+|-----------------|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| source_timeline | \'Timeline\'         | The timeline to warp.                                                                                                                                                                                                                                            | _required_ |
+| seed            | [int](`int`) \| None | The seed of one minter of every id the call mints, in the order built: the warped timeline, then each child's maps and warped copy (recursively), then the regions (:func:`~timetoalign.core.ids.minting_from`); without one, each from its content. Not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

@@ -1,7 +1,7 @@
 # ChainMap { #timetoalign.ChainMap }
 
 ```python
-ChainMap(maps, *, uid=None, name=None)
+ChainMap(maps, *, uid=None, name=None, output_number_type=None, seed=None)
 ```
 
 Composition of multiple maps: f(g(h(x))).
@@ -9,6 +9,8 @@ Composition of multiple maps: f(g(h(x))).
 The maps are applied in sequence from first to last.
 The output unit of one map must match the input unit of the next
 (if specified).
+
+The format's ``ChainMap`` type: ``maps`` in the order they apply.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
@@ -31,17 +33,7 @@ The output unit of one map must match the input unit of the next
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.ChainMap.from_dict) | Deserialize from dictionary. |
 | [inverse](#timetoalign.ChainMap.inverse) | Return the inverse chain. |
-| [to_dict](#timetoalign.ChainMap.to_dict) | Serialize to dictionary. |
-
-### from_dict { #timetoalign.ChainMap.from_dict }
-
-```python
-ChainMap.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### inverse { #timetoalign.ChainMap.inverse }
 
@@ -53,11 +45,3 @@ Return the inverse chain.
 
 This reverses the order of maps and inverts each one.
 (f(g(x)))^-1 = g^-1(f^-1(x))
-
-### to_dict { #timetoalign.ChainMap.to_dict }
-
-```python
-ChainMap.to_dict(minimal=False)
-```
-
-Serialize to dictionary.

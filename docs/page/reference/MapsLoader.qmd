@@ -1,7 +1,7 @@
 # MapsLoader { #timetoalign.loader.alignment.MapsLoader }
 
 ```python
-loader.alignment.MapsLoader()
+loader.alignment.MapsLoader(seed=None)
 ```
 
 Load a MAPS alignment file and state it as MatchClaims.

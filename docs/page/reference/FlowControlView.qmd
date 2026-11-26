@@ -50,11 +50,11 @@ refused too.
 ```python
 >>> from timetoalign.core import Coordinate
 >>> view = FlowControlView(
-...     [Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)])],
+...     [Jump(Coordinate(8, "quarters"), [JumpDestination(repeat_count=1)], id="j")],
 ...     unit="quarters",
 ... )
 >>> view.jumps
-(Jump('jump_1' @ 8 quarters, 1 destination),)
+(Jump('j' @ 8 quarters, 1 destination),)
 >>> view.place_of(view.jumps[0].targets[0], view.jumps[0])
 Coordinate(Fraction(0, 1), quarters)
 ```
@@ -111,12 +111,12 @@ entries) is read as the more critical of them.
 ```python
 >>> from timetoalign.core import Coordinate
 >>> registry = FlowControlRegistry(unit="quarters")
->>> barline = registry.add(Barline(Coordinate(8, "quarters")))
+>>> barline = registry.add(Barline(Coordinate(8, "quarters"), id="bar 2"))
 >>> _ = registry.with_belief(barline.id, "ana", "false", date="2026-11-25")
 >>> registry.elements, registry.active_elements()
-((Barline('barline_1' @ 8 quarters),), [])
+((Barline('bar 2' @ 8 quarters),), [])
 >>> registry.active_elements(believer="bea")
-[Barline('barline_1' @ 8 quarters)]
+[Barline('bar 2' @ 8 quarters)]
 ```
 
 ### destination_of { #timetoalign.timelines.FlowControlView.destination_of }

@@ -1,7 +1,7 @@
 # IIIFManifestLoader { #timetoalign.loader.graphical.IIIFManifestLoader }
 
 ```python
-loader.graphical.IIIFManifestLoader()
+loader.graphical.IIIFManifestLoader(seed=None)
 ```
 
 Load image metadata from IIIF Presentation API manifests.
@@ -97,7 +97,7 @@ id states nothing). This property is provisional: it may change.
 |--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
 | paths        | [Mapping](`collections.abc.Mapping`)\[[int](`int`) \| [str](`str`), [TimeAxisPath](`timetoalign.loader.graphical.paths.TimeAxisPath`)\] \| [TimeAxisPath](`timetoalign.loader.graphical.paths.TimeAxisPath`) | The time path of each selected canvas: a mapping from a canvas, named by its position from 0 (as :meth:`get_canvas`) or by its id, to its path; or one path, where exactly one canvas is selected. | _required_ |
 | canvases     | [Sequence](`collections.abc.Sequence`)\[[int](`int`) \| [str](`str`)\] \| None                                                                                                                               | The canvases to read, by position or id; they are read in manifest order whatever order they are named in. None selects every canvas that states a width and a height.                             | `None`     |
-| uid          | [str](`str`) \| None                                                                                                                                                                                         | The volume's id. Minted (``dgt_N``) if None.                                                                                                                                                       | `None`     |
+| uid          | [str](`str`) \| None                                                                                                                                                                                         | The volume's id. Minted (``dgt_…``) if None.                                                                                                                                                       | `None`     |
 | name         | [str](`str`) \| None                                                                                                                                                                                         | The volume's name. The manifest's label if None.                                                                                                                                                   | `None`     |
 | page_ids     | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| [str](`str`) \| None                                                                                                                               | The pages' ids: a sequence, one per page, or a template filled with ``page`` and ``n`` (``"p{page}"``). Minted if None.                                                                            | `None`     |
 | accolade_ids | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| [str](`str`) \| None                                                                                                                               | The accolades' ids: a sequence over the whole call, or a template filled with ``page``, ``accolade`` and ``n`` (``"p{page}_s{accolade}"``). Minted if None.                                        | `None`     |
@@ -189,10 +189,10 @@ x <= width``, ``0 <= y0`` and ``y1 <= height``).
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                             | Description                                                      |
-|--------|--------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
-|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | The pages in manifest order, each locked; an empty list where no |
-|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | canvas is selected.                                              |
+| Name   | Type                                                                                                                                                                                                                                     | Description                                                      |
+|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`) \| [SegmentLine](`timetoalign.timelines.SegmentLine`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\]\] | The pages in manifest order, each locked; an empty list where no |
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`) \| [SegmentLine](`timetoalign.timelines.SegmentLine`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\]\] | canvas is selected.                                              |
 
 #### Raises {.doc-section .doc-section-raises}
 

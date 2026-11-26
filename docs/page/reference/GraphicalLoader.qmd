@@ -1,13 +1,19 @@
 # GraphicalLoader { #timetoalign.loader.graphical.GraphicalLoader }
 
 ```python
-loader.graphical.GraphicalLoader(metadata=None)
+loader.graphical.GraphicalLoader(metadata=None, *, seed=None)
 ```
 
 Factory for building GraphicalStore objects.
 
 The loader accumulates sources and segments, then builds a store.
 This provides a fluent interface for constructing graphical timelines.
+
+Every addition is a door into the loader, like a ``load`` call: it seeds
+the loader's ID minter afresh from the previous seed and what it adds
+(an image file's bytes, an image's pixels, a segment's source, offset,
+name and geometry), so :meth:`create_timeline` mints an
+ID that follows the content (see ``Loader.load``).
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -46,7 +52,8 @@ This provides a fluent interface for constructing graphical timelines.
 | [add_segment](#timetoalign.loader.graphical.GraphicalLoader.add_segment) | Add a segment with arbitrary path. |
 | [add_vertical_segment](#timetoalign.loader.graphical.GraphicalLoader.add_vertical_segment) | Add a vertical line segment (convenience method). |
 | [build](#timetoalign.loader.graphical.GraphicalLoader.build) | Alias for :pyattr:`store`. |
-| [clear](#timetoalign.loader.graphical.GraphicalLoader.clear) | Clear all sources and segments. |
+| [clear](#timetoalign.loader.graphical.GraphicalLoader.clear) | Clear all sources and segments; the next addition seeds a new minter. |
+| [create_timeline](#timetoalign.loader.graphical.GraphicalLoader.create_timeline) | Create the timeline of the store the loader builds (:attr:`store`). |
 | [reset_offset](#timetoalign.loader.graphical.GraphicalLoader.reset_offset) | Reset the current offset for contiguous segment addition. |
 
 ### add_horizontal_segment { #timetoalign.loader.graphical.GraphicalLoader.add_horizontal_segment }
@@ -95,9 +102,9 @@ Add an image file as a source.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                   | Description             | Default    |
-|--------|----------------------------------------|-------------------------|------------|
-| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the image file. | _required_ |
+| Name   | Type                                                   | Description                                             | Default    |
+|--------|--------------------------------------------------------|---------------------------------------------------------|------------|
+| path   | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Path to the image file, or its member in a ZIP archive. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -263,7 +270,29 @@ Alias for :pyattr:`store`.
 loader.graphical.GraphicalLoader.clear()
 ```
 
-Clear all sources and segments.
+Clear all sources and segments; the next addition seeds a new minter.
+
+### create_timeline { #timetoalign.loader.graphical.GraphicalLoader.create_timeline }
+
+```python
+loader.graphical.GraphicalLoader.create_timeline(uid=None, name=None, **kwargs)
+```
+
+Create the timeline of the store the loader builds (:attr:`store`).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                 | Description                                                                                                              | Default   |
+|----------|----------------------|--------------------------------------------------------------------------------------------------------------------------|-----------|
+| uid      | [str](`str`) \| None | The timeline's ID; without one, it is minted by the loader's minter, seeded from what was added (see :meth:`add_image`). | `None`    |
+| name     | [str](`str`) \| None | Optional timeline name.                                                                                                  | `None`    |
+| **kwargs | [Any](`typing.Any`)  | Not used; named so the loader's signature is the base's.                                                                 | `{}`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                          | Description                                             |
+|--------|-------------------------------|---------------------------------------------------------|
+|        | \'DiscreteGraphicalTimeline\' | A DiscreteGraphicalTimeline with length = total_length. |
 
 ### reset_offset { #timetoalign.loader.graphical.GraphicalLoader.reset_offset }
 

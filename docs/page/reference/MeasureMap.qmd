@@ -1,7 +1,7 @@
 # MeasureMap { #timetoalign.timelines.MeasureMap }
 
 ```python
-timelines.MeasureMap(measures, *, id=None, name=None, meta=None)
+timelines.MeasureMap(measures, *, id=None, name=None, meta=None, seed=None)
 ```
 
 An immutable sequence of measures in printed order.
@@ -14,8 +14,8 @@ none.
 
 In a manifest a measure map is an entry of ``measure_maps``: an ``id``,
 an optional ``name`` and ``meta``, and its compressed ``rows``. A map
-built without an id mints ``measuremap_1``, which a manifest's writer
-mints again should it collide. Identity takes no part in equality, nor
+built without an id mints one with the prefix ``measure_map`` when it is
+built, which every manifest it is written in names. Identity takes no part in equality, nor
 do the keys of each row that the row form does not define, which a map
 read from a manifest keeps by measure and writes back in that measure's
 row: two maps are equal when their measures are.
@@ -151,7 +151,7 @@ with the entry.
 ### from_expanded_rows { #timetoalign.timelines.MeasureMap.from_expanded_rows }
 
 ```python
-timelines.MeasureMap.from_expanded_rows(rows)
+timelines.MeasureMap.from_expanded_rows(rows, *, id=None, seed=None)
 ```
 
 Build measures from full rows whose ``next`` holds row counts.
@@ -167,6 +167,8 @@ for that measure's row.
 | Name   | Type                                                                                                                | Description                                          | Default    |
 |--------|---------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|------------|
 | rows   | [Iterable](`collections.abc.Iterable`)\[[Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\]\] | Full rows with the keys :meth:`expand_rows` returns. | _required_ |
+| id     | [str](`str`) \| None                                                                                                | The map's id, as the constructor takes it.           | `None`     |
+| seed   | [int](`int`) \| None                                                                                                | The seed of the minter of the id when *id* is None.  | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -209,7 +211,13 @@ Build the canonical measure structure described by loaded rows.
 ### from_rows { #timetoalign.timelines.MeasureMap.from_rows }
 
 ```python
-timelines.MeasureMap.from_rows(rows, *, keep_unknown_keys=False)
+timelines.MeasureMap.from_rows(
+    rows,
+    *,
+    keep_unknown_keys=False,
+    id=None,
+    seed=None,
+)
 ```
 
 Build a measure map from Measure Map authoring rows.
@@ -220,6 +228,8 @@ Build a measure map from Measure Map authoring rows.
 |-------------------|---------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|------------|
 | rows              | [Iterable](`collections.abc.Iterable`)\[[Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\]\] | Compressed or full rows in their document form, without tempo extensions.                                | _required_ |
 | keep_unknown_keys | [bool](`bool`)                                                                                                      | Keep each row's keys outside the row form, written back in that measure's row, instead of refusing them. | `False`    |
+| id                | [str](`str`) \| None                                                                                                | The map's id, as the constructor takes it.                                                               | `None`     |
+| seed              | [int](`int`) \| None                                                                                                | The seed of the minter of the id when *id* is None.                                                      | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -236,7 +246,7 @@ Build a measure map from Measure Map authoring rows.
 ### get_slice { #timetoalign.timelines.MeasureMap.get_slice }
 
 ```python
-timelines.MeasureMap.get_slice(start, end)
+timelines.MeasureMap.get_slice(start, end, *, seed=None)
 ```
 
 Return the measures holding ``[start, end)``, re-based to *start*.
@@ -256,10 +266,11 @@ minted id.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                             | Description                                      | Default    |
-|--------|--------------------------------------------------|--------------------------------------------------|------------|
-| start  | [Fraction](`fractions.Fraction`) \| [int](`int`) | The first position of the range, in quarters.    | _required_ |
-| end    | [Fraction](`fractions.Fraction`) \| [int](`int`) | The position the range ends before, in quarters. | _required_ |
+| Name   | Type                                             | Description                                                                                               | Default    |
+|--------|--------------------------------------------------|-----------------------------------------------------------------------------------------------------------|------------|
+| start  | [Fraction](`fractions.Fraction`) \| [int](`int`) | The first position of the range, in quarters.                                                             | _required_ |
+| end    | [Fraction](`fractions.Fraction`) \| [int](`int`) | The position the range ends before, in quarters.                                                          | _required_ |
+| seed   | [int](`int`) \| None                             | The seed of the minter of the slice's id; without one, it is minted from the slice's content. Not stored. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

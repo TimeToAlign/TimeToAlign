@@ -1,7 +1,7 @@
 # MeiFacsimileLoader { #timetoalign.loader.graphical.MeiFacsimileLoader }
 
 ```python
-loader.graphical.MeiFacsimileLoader()
+loader.graphical.MeiFacsimileLoader(seed=None)
 ```
 
 Load the surfaces and zones of an MEI file's facsimile.
@@ -31,9 +31,9 @@ graphic's pixels); a graphic size in a unit other than pixels (``cm``,
 ``in``, ...) states no pixel size and is not read; MEI states no
 accolades, so they are found from the zones' left edges unless paths
 are given, and a page whose zones are not listed accolade by accolade
-needs a path; a zone without ``xml:id`` is minted ``box_N`` on its
-accolade and cannot be pointed to; an element without ``xml:id`` is
-left out of :attr:`facs`, and a zone stating no coordinates out of the
+needs a path; a zone without ``xml:id`` is minted ``box_…`` from the
+loader's minter and cannot be pointed to; an element without ``xml:id``
+is left out of :attr:`facs`, and a zone stating no coordinates out of the
 timelines (:attr:`zones_without_coordinates` lists those with an id). A
 zone whose ``@points`` are not four points bounding a convex area (five
 points, a concave or crossed outline) cannot be a
@@ -139,7 +139,7 @@ theirs. The volume is locked.
 
 | Name         | Type                                                                               | Description                                  | Default   |
 |--------------|------------------------------------------------------------------------------------|----------------------------------------------|-----------|
-| uid          | [str](`str`) \| None                                                               | The volume's id; minted ``dgt_N`` when None. | `None`    |
+| uid          | [str](`str`) \| None                                                               | The volume's id; minted ``dgt_…`` when None. | `None`    |
 | name         | [str](`str`) \| None                                                               | The volume's name.                           | `None`    |
 | paths        | [Paths](`timetoalign.loader.graphical.mei_facsimile.Paths`)                        | As :meth:`create_timelines`.                 | `None`    |
 | zone_types   | [str](`str`) \| [Collection](`collections.abc.Collection`)\[[str](`str`)\] \| None | As :meth:`create_timelines`.                 | `None`    |
@@ -179,7 +179,7 @@ Create one root timeline per surface, in document order.
 
 A surface's page is a locked segment line of its accolades, in
 ``pixels`` (``int``): its id the surface's ``xml:id`` (minted
-``dgt_N`` where it has none), its name the surface's ``@n``
+``dgt_…`` where it has none), its name the surface's ``@n``
 (``page_N`` by its position in the call, from 1, where it has
 none), its length the sum of its accolades', ``meta["image"]`` the
 graphic's ``@target``. It states no ``meta["box"]``: its axis is a
@@ -197,7 +197,7 @@ Each zone taking part is a Box event of its accolade: the one it was
 grouped into or, on a given path, the piece it lies on (the piece
 whose x extent holds the zone's and whose strip holds the zone's
 vertical centre; of several the nearest). Its id is the zone's
-``xml:id`` (minted ``box_N`` on its accolade where it has none); its
+``xml:id`` (minted ``box_…`` where it has none); its
 shape is the zone's coordinates as written; its start is the shape's
 least x less the accolade's ``x0``.
 
@@ -211,14 +211,14 @@ left out.
 | paths        | [Paths](`timetoalign.loader.graphical.mei_facsimile.Paths`)                        | Time paths replacing those made from the zones: one path where the file holds one surface, or a mapping from a surface's ``xml:id`` or position in the file (from 0) to its path. Where zones take part, a path is a ``HorizontalLinePath`` (the page is then one plain timeline along it) or a ``PiecewisePath``. | `None`    |
 | zone_types   | [str](`str`) \| [Collection](`collections.abc.Collection`)\[[str](`str`)\] \| None | The ``@type`` of the zones taking part (one, or several); None for every zone with coordinates.                                                                                                                                                                                                                    | `None`    |
 | page_ids     | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | The pages' ids, replacing the surfaces' ``xml:id``: one id per page in document order, or a template filled with ``str.format`` from ``page`` (the page's position in the call, from 1) and ``n`` (the running count).                                                                                             | `None`    |
-| accolade_ids | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | The accolades' ids (minted ``dgt_N`` when None): one id per accolade in document order, or a template filled from ``page``, ``accolade`` (its position on its page) and ``n``.                                                                                                                                     | `None`    |
+| accolade_ids | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | The accolades' ids (minted ``dgt_…`` when None): one id per accolade in document order, or a template filled from ``page``, ``accolade`` (its position on its page) and ``n``.                                                                                                                                     | `None`    |
 | box_ids      | [Ids](`timetoalign.loader.graphical._pages.Ids`)                                   | The Boxes' ids, replacing the zones' ``xml:id`` (see :attr:`facs`): one id per zone taking part in document order, or a template filled from ``page``, ``accolade``, ``box`` (its position in its accolade) and ``n`` (the zone's position among those taking part in the call): ``box_ids="m{n}"``.               | `None`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                             | Description           |
-|--------|--------------------------------------------------------------------------------------------------|-----------------------|
-|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\] | The pages' timelines. |
+| Name   | Type                                                                                                                                                                                                                                     | Description           |
+|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------|
+|        | [list](`list`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`) \| [SegmentLine](`timetoalign.timelines.SegmentLine`)\[[DiscreteGraphicalTimeline](`timetoalign.timelines.DiscreteGraphicalTimeline`)\]\] | The pages' timelines. |
 
 #### Raises {.doc-section .doc-section-raises}
 

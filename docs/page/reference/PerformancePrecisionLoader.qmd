@@ -4,6 +4,7 @@
 loader.alignment.performance_precision.PerformancePrecisionLoader(
     score_unit=TimeUnit.quarters,
     media_unit=TimeUnit.seconds,
+    seed=None,
 )
 ```
 
@@ -33,6 +34,7 @@ quarter-note positions.
 |------------|-----------------------------------------|-------------------------------------------------------------------|---------------------|
 | score_unit | [TimeUnit](`timetoalign.core.TimeUnit`) | Unit for the score timeline. Default ``TimeUnit.quarters``.       | `TimeUnit.quarters` |
 | media_unit | [TimeUnit](`timetoalign.core.TimeUnit`) | Unit for the performance timelines. Default ``TimeUnit.seconds``. | `TimeUnit.seconds`  |
+| seed       | [int](`int`) \| None                    | The seed of the loader's ID minter (see ``Loader.load``).         | `None`              |
 
 ## Attributes
 
@@ -107,9 +109,9 @@ Return a single timeline by uid, role, or performer key.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                 | Description                                                                                                                                                                | Default   |
-|--------|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| uid    | [str](`str`) \| None | ``"score"`` (or the score uid) for the score timeline; a performer key (``"Chopin_Ashkenazy"``) or its uid (``"perf:Chopin_Ashkenazy:cpt_1"``) for a performance timeline. | `None`    |
+| Name   | Type                 | Description                                                                                                                                                                                   | Default   |
+|--------|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| uid    | [str](`str`) \| None | ``"score"`` (or the score uid, ``score:clt_…``) for the score timeline; a performer key (``"Chopin_Ashkenazy"``, the timeline's name) or its uid (``perf:cpt_…``) for a performance timeline. | `None`    |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -146,9 +148,9 @@ Ingest a whole Performance Precision specimen directory.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name         | Type                                   | Description                                                                                                               | Default    |
-|--------------|----------------------------------------|---------------------------------------------------------------------------------------------------------------------------|------------|
-| specimen_dir | [str](`str`) \| [Path](`pathlib.Path`) | Path to the directory containing the ``.solo`` file, the Verovio timemap ``.json``, and the ``Alignments/`` subdirectory. | _required_ |
+| Name         | Type                                                   | Description                                                                                                                                                                                | Default    |
+|--------------|--------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| specimen_dir | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Source to the directory containing the ``.solo`` file, the Verovio timemap ``.json``, and the ``Alignments/`` subdirectory, or that directory as a member of a ZIP archive, read in place. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 

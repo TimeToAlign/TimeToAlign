@@ -1,7 +1,7 @@
 # RepoVizzLoader { #timetoalign.loader.RepoVizzLoader }
 
 ```python
-loader.RepoVizzLoader()
+loader.RepoVizzLoader(seed=None)
 ```
 
 Load RepoVizz XML manifests or single CSV files for creating physical timelines.
@@ -112,7 +112,7 @@ Create a TimelineGroup containing timelines.
 |------------|----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
 | category   | [str](`str`) \| None                   | Filter to a specific category ("audio", "mocap", etc.).                                                                                                                                          | `None`    |
 | entries    | [list](`list`)\[[str](`str`)\] \| None | Specific catalogue entries to include.                                                                                                                                                           | `None`    |
-| id         | [str](`str`) \| None                   | Custom ID for the TimelineGroup. Defaults to ``"repovizz:{category or 'all'}"``.                                                                                                                 | `None`    |
+| id         | [str](`str`) \| None                   | Custom ID for the TimelineGroup; minted ``group_…`` from the loader's minter when None.                                                                                                          | `None`    |
 | name       | [str](`str`) \| None                   | Custom name for the TimelineGroup. Defaults to the source filename stem.                                                                                                                         | `None`    |
 | with_notes | [bool](`bool`)                         | If True, add notes as a child of the first audio timeline using ``use_conversion_map=True``. This enables automatic coordinate transfer from seconds (notes) to samples (audio). Default: False. | `False`   |
 
@@ -297,9 +297,9 @@ This is the public API for accessing catalogue entries.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type         | Description                               | Default    |
-|--------|--------------|-------------------------------------------|------------|
-| id     | [str](`str`) | Entry identifier, name, or partial match. | _required_ |
+| Name   | Type         | Description                                                                         | Default    |
+|--------|--------------|-------------------------------------------------------------------------------------|------------|
+| id     | [str](`str`) | Entry identifier, name, shorthand, or a regular expression matching a whole xml_id. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -342,13 +342,14 @@ loader.RepoVizzLoader.load(*sources)
 Load one or more source files.
 
 If the source is an ``.xml`` file, uses XML manifest mode.
-Otherwise, falls back to legacy CSV mode.
+Otherwise, falls back to legacy CSV mode. A manifest that is a member
+of a ZIP archive finds its data files among the members beside it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                   | Description                         | Default   |
-|----------|----------------------------------------|-------------------------------------|-----------|
-| *sources | [Path](`pathlib.Path`) \| [str](`str`) | Paths to XML manifest or CSV files. | `()`      |
+| Name     | Type                                                   | Description                                                     | Default   |
+|----------|--------------------------------------------------------|-----------------------------------------------------------------|-----------|
+| *sources | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Paths to XML manifest or CSV files, or members of ZIP archives. | `()`      |
 
 #### Returns {.doc-section .doc-section-returns}
 

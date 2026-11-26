@@ -1,7 +1,7 @@
 # flow_control_from_measures { #timetoalign.timelines.flow.flow_control_from_measures }
 
 ```python
-timelines.flow.flow_control_from_measures(measures)
+timelines.flow.flow_control_from_measures(measures, *, seed=None)
 ```
 
 Return the flow control a measure map states.
@@ -35,14 +35,14 @@ key says where a bracket ends, so no element does.
 | Name     | Type                                                                                                                        | Description                                                                                                                                                                                                         | Default    |
 |----------|-----------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
 | measures | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) \| [Iterable](`collections.abc.Iterable`)\[[Any](`typing.Any`)\] | A :class:`~timetoalign.timelines.MeasureMap`, or full rows as :meth:`MeasureMap.expand_rows <timetoalign.timelines.MeasureMap.expand_rows>` returns them. In either, ``volta`` is a pass number or several of them. | _required_ |
+| seed     | [int](`int`) \| None                                                                                                        | The seed of the minter of the elements' IDs; None mints them from the content minter of the measures' rows.                                                                                                         | `None`     |
 
 ## Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                           | Description                                                          |
-|--------|------------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
-|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The elements by coordinate and then by ID, each with an ID of its    |
-|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | own (``jump_1``, ``jump_target_1``, ...) that a registry mints again |
-|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | where it is taken.                                                   |
+| Name   | Type                                                                                           | Description                                                       |
+|--------|------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | The elements by coordinate and then by ID, each with an ID of its |
+|        | [list](`list`)\[[FlowControlElement](`timetoalign.timelines.flowcontrol.FlowControlElement`)\] | own, its role the prefix, minted in the order written.            |
 
 ## Raises {.doc-section .doc-section-raises}
 
@@ -62,11 +62,11 @@ key says where a bracket ends, so no element does.
 ...         {"count": 4},
 ...     ]
 ... )
->>> start, repeat = flow_control_from_measures(bars)
+>>> start, repeat = flow_control_from_measures(bars, seed=7)
 >>> start
-JumpTarget('jump_target_1', repeat_start @ 4 quarters)
+JumpTarget('jump_target_1hvif5xc2r1fv', repeat_start @ 4 quarters)
 >>> repeat
-Jump('jump_1' @ 12 quarters, 1 destination)
+Jump('jump_0g2wfq87pa7jx' @ 12 quarters, 1 destination)
 >>> repeat.targets[0].to_dict()
-{'to': 'jump_target_1', 'repeat_count': 1, 'manifestation': 'repeat_end'}
+{'to': 'jump_target_1hvif5xc2r1fv', 'repeat_count': 1, 'manifestation': 'repeat_end'}
 ```

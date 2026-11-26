@@ -469,7 +469,7 @@ class TestParticipation:
             ("B689 (MTD 0807)", "EDM-alig MIDI"): [
                 (
                     "B689 (MTD 0807), EDM-alig MIDI, span of the excerpt",
-                    Fraction(2.8),
+                    Fraction(14, 5),
                     NumberType.fraction,
                 )
             ],
@@ -490,7 +490,7 @@ class TestParticipation:
             ("B926 (MTD 1044)", "EDM-alig MIDI"): [
                 (
                     "B926 (MTD 1044), EDM-alig MIDI, span of the excerpt",
-                    Fraction(7.9),
+                    Fraction(79, 10),
                     NumberType.fraction,
                 )
             ],
@@ -504,7 +504,7 @@ class TestParticipation:
             ("B962 (MTD 1080)", "EDM-alig MIDI"): [
                 (
                     "B962 (MTD 1080), EDM-alig MIDI, span of the excerpt",
-                    Fraction(5.55),
+                    Fraction(111, 20),
                     NumberType.fraction,
                 )
             ],
@@ -610,30 +610,34 @@ class TestGroups:
             assert bundle.groups[group.id].timeline_ids == group.timeline_ids
             assert bundle.groups[group.id].name == group.name
 
-    def test_a_position_converts_one_to_one(self, archive: Path) -> None:
+    def test_positions_convert_without_a_stretch(self, archive: Path) -> None:
         loader = MtdLoader.from_file(archive, themes=["MTD0807"])
         found = by_label(loader.create_timelines())
         excerpt = found["excerpt"]
         (span,) = children(found["EDM-alig MIDI"])
+        assert span.length.value == Fraction(14, 5)
+        assert excerpt.length.value == 2.8
         pair = TimelineGroup(id="pair", timelines=[excerpt, span])
-        assert pair.get_timestamp_at(1.0, excerpt.id).get_coordinate_for(
-            span.id, format="fraction"
-        ) == Fraction(1)
-        assert pair.get_timestamp_at(2.20401, excerpt.id).get_coordinate_for(
-            span.id, format="fraction"
-        ) == Fraction(2.20401)
-        assert (
-            pair.get_timestamp_at(Fraction(7, 3), span.id).get_coordinate_for(
-                excerpt.id, format="float"
-            )
-            == 7 / 3
-        )
-        assert (
-            pair.get_timestamp_at(2.8, excerpt.id).get_coordinate_for(
+
+        def quarters(seconds: float) -> Fraction:
+            return pair.get_timestamp_at(seconds, excerpt.id).get_coordinate_for(
                 span.id, format="fraction"
             )
-            == span.length.value
-        )
+
+        def seconds(quarter: Fraction) -> float:
+            return pair.get_timestamp_at(quarter, span.id).get_coordinate_for(
+                excerpt.id, format="float"
+            )
+
+        # Start and end meet exactly; a position between them carries the
+        # rounding of the float axis, never a stretch of either member.
+        assert quarters(0.0) == Fraction(0)
+        assert quarters(1.4) == Fraction(7, 5)
+        assert quarters(2.8) == Fraction(14, 5)
+        assert quarters(1.0) == Fraction(15762598695796736, 15762598695796735)
+        assert seconds(Fraction(14, 5)) == 2.8
+        assert seconds(Fraction(1)) == 0.9999999999999999
+        assert seconds(Fraction(7, 3)) == 2.333333333333333
 
     def test_a_member_of_unknown_length_stops_conversion(self, archive: Path) -> None:
         loader = MtdLoader.from_file(archive, themes=["MTD0807"])
@@ -802,10 +806,10 @@ class TestStatements:
             ],
         }
         assert {
-            entry["note"]
+            (entry["method"], tuple(entry["basis"]), entry["note"])
             for entry in excerpt.provenance
             if entry["property"] != "lrmoo:R7i_is_exemplified_by"
-        } == {f"MTD 1.0.0 data_META/{STEM_0807}.json"}
+        } == {("imported", (DOI,), f"MTD 1.0.0 data_META/{STEM_0807}.json")}
 
     def test_a_transposition_of_five_semitones(self, archive: Path) -> None:
         timelines = MtdLoader.from_file(archive, themes=["MTD1080"]).create_timelines()
@@ -1336,6 +1340,37 @@ class TestCreateTimeline:
         loader = MtdLoader.from_file(archive, themes=["MTD0807"])
         with pytest.raises(KeyError, match="cpt_unknown"):
             loader.create_timeline("cpt_unknown")
+
+    def test_a_derived_timeline_alone_is_not_written(self, archive: Path) -> None:
+        loader = MtdLoader.from_file(archive, themes=["MTD0807"])
+        found = by_label(loader.create_timelines())
+        midi, csv = found["EDM-corr MIDI"], found["EDM-corr CSV"]
+        for alone in (csv, loader.create_timeline(csv.id)):
+            with pytest.raises(timetoshare.SchemaValidationError, match=f"#{midi.id}"):
+                alone.to_dict()
+        bundle = loader.create_bundle()
+        written = bundle.get_timeline(csv.id).to_dict()
+        (entry,) = written["timelines"]
+        assert entry["statements"] == {
+            "lrmoo:R7i_is_exemplified_by": [item(MEMBERS_0807["EDM-corr CSV"])]
+        }
+
+    def test_a_group_with_a_derived_member_alone_is_not_written(
+        self, archive: Path
+    ) -> None:
+        loader = MtdLoader.from_file(archive, themes=["MTD0807"])
+        found = by_label(loader.create_timelines())
+        orig, corr, score, alig = loader.create_groups()
+        orig.to_dict()
+        score.to_dict()
+        with pytest.raises(
+            timetoshare.SchemaValidationError, match=f"#{found['EDM-orig MIDI'].id}"
+        ):
+            corr.to_dict()
+        with pytest.raises(
+            timetoshare.SchemaValidationError, match=f"#{found['EDM-corr MIDI'].id}"
+        ):
+            alig.to_dict()
 
 
 # endregion

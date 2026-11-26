@@ -82,9 +82,18 @@ alignment rows that become claims, in 25 themes, state a second outside
 their excerpt, 19 before its start (MTD1275: ``0.00000;-0.30000``) and 6
 after its end (MTD1063: ``7.75000;3.32070`` on an excerpt 3.3 seconds
 long). The claim holds that second on the excerpt's axis; since the excerpt
-is a child of its track and a child answers only within its span, a
-matchstamp at such a claim names the excerpt's coordinate and no coordinate
-of the track.
+is a child of its track and a child answers only within its span, in a
+bundle holding the claims without the groups a matchstamp at such a claim
+names the excerpt's coordinate and no coordinate of the track.
+
+Matchstamps of the bundle :meth:`MtdLoader.create_bundle` returns raise
+:exc:`~timetoalign.timelines.UnknownLengthError`, at every claim: each of
+a theme's four groups holds a member of unknown length (a CSV note list, a
+PDF or the Sibelius file), and a group converts no position while a
+member's length is unknown; ``within=`` does not avoid it. The claims are
+read through ``get_field(MatchClaim)`` or the bundle's MatchClaim table, and
+matchstamps through a bundle holding the timelines and claims without the
+groups.
 """
 
 from __future__ import annotations
@@ -452,8 +461,15 @@ class MtdLoader(AlignmentLoader):
     The notes keep their encoding's pitches; MTD's ``MidiTransposition``
     between the encodings and the recording is a comment on the excerpt. A
     claim whose second lies outside its excerpt (25 in MTD 1.0.0, see the
-    module) is stored as given; a matchstamp there names no coordinate of
-    the track.
+    module) is stored as given.
+
+    The bundle's groups each hold a member of unknown length, so every
+    matchstamp of the bundle :meth:`create_bundle` returns raises
+    :exc:`~timetoalign.timelines.UnknownLengthError`; the claims are read
+    through ``get_field(MatchClaim)`` or the bundle's MatchClaim table. In a
+    bundle holding the timelines and claims without the groups, a
+    matchstamp at a claim outside its excerpt names no coordinate of the
+    track.
 
     **Usage follows the standard loader two-phase pattern:**
 
@@ -720,7 +736,11 @@ class MtdLoader(AlignmentLoader):
             else:
                 files[file.label] = _File(file, minted(file), None)
 
-        # Exact extents: the excerpt's as META writes it, never its float.
+        # Exact extents: the excerpt's as META writes its decimals, never its
+        # float. They decide which member is longer, and the child of the
+        # longer takes the shorter's exact extent, written in the child's
+        # number type: on a fraction axis the decimal itself (2.8 seconds is
+        # 14/5 quarters, never the float's dyadic), on a float axis its float.
         extents: dict[str, Fraction | None] = {
             label: None if held.length is None else Fraction(held.length)
             for label, held in files.items()
@@ -732,15 +752,13 @@ class MtdLoader(AlignmentLoader):
             if one is None or other is None or one == other:
                 continue
             longer, shorter = (first, second) if one > other else (second, first)
-            stated = files[shorter].length
-            assert stated is not None
             whole = files[longer].file
             parts.append(
                 _Part(
                     whole=longer,
                     covers=shorter,
                     id=mint_timeline_id(_AXES[whole.kind][1], self._id_minter),
-                    length=express_as(stated, _AXES[whole.kind][2]),
+                    length=express_as(min(one, other), _AXES[whole.kind][2]),
                 )
             )
         group_ids = {
@@ -1027,6 +1045,14 @@ class MtdLoader(AlignmentLoader):
         timelines), every group of :meth:`create_groups` over them, and the
         MatchClaims of the alignments, columnar.
 
+        Note:
+            Every group holds a member of unknown length, so every
+            matchstamp of this bundle raises
+            :exc:`~timetoalign.timelines.UnknownLengthError`, ``within=``
+            or not. The claims are read through ``get_field(MatchClaim)``
+            or the bundle's MatchClaim table; a bundle holding the
+            timelines and claims without the groups gives matchstamps.
+
         Args:
             track_lengths: Lengths in seconds of CD tracks, keyed as
                 :attr:`tracks` lists them; a track not named, or named with
@@ -1081,10 +1107,20 @@ class MtdLoader(AlignmentLoader):
         of the excerpt). Call :meth:`create_groups` with the timelines
         returned to group them.
 
+        A timeline derived from another (``dcterms:source``) refuses
+        ``to_dict()`` when written alone: its derivation names a timeline
+        outside its one-timeline manifest. The same timeline taken from
+        the bundle of :meth:`create_bundle` writes while that bundle is
+        held, the reference left out.
+
         Args:
             id_pattern: Optional regular expression the IDs must match.
             track_lengths: Lengths in seconds of CD tracks (see
                 :meth:`create_bundle`).
+
+        Returns:
+            The CD tracks' timelines, then the file timelines theme by
+            theme.
 
         Raises:
             RuntimeError: If ``load()`` has not been called yet.
@@ -1115,6 +1151,16 @@ class MtdLoader(AlignmentLoader):
         MusicXML, MIDI, CSV, PDF} and EDM-alig {excerpt, MIDI, CSV}. A member
         is its file's timeline, or the child through which that timeline
         takes part where it is the longer of two members of known length.
+
+        Each group holds a member of unknown length (a CSV note list, a PDF
+        or the Sibelius file), so a group converts no position, and a
+        matchstamp of a bundle holding these groups raises
+        :exc:`~timetoalign.timelines.UnknownLengthError`; the claims are
+        read through ``get_field(MatchClaim)``. A group taken alone whose
+        member is derived from a timeline outside it (EDM-corr's MIDI from
+        EDM-orig's, EDM-alig's files from EDM-corr's MIDI) refuses
+        ``to_dict()``, its derivation naming a timeline outside its
+        manifest; the bundle writes it.
 
         Args:
             timelines: The timelines of :meth:`create_timelines` to group
@@ -1178,6 +1224,11 @@ class MtdLoader(AlignmentLoader):
             uid: A CD track's or a theme file's timeline ID.
             **kwargs: ``track_lengths``, as :meth:`create_timelines` takes
                 it; any other keyword is refused.
+
+        Returns:
+            The timeline with the ID, made afresh. Written alone, a
+            timeline derived from another refuses ``to_dict()`` (see
+            :meth:`create_timelines`).
 
         Raises:
             KeyError: If no timeline has the ID.

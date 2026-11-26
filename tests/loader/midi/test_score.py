@@ -520,10 +520,6 @@ class TestScoreMidiLoader:
             ScoreMidiLoader(parser="nonsense")
 
 
-if __name__ == "__main__":
-    pytest.main([__file__])
-
-
 def _write_two_tracks(path: Path, meta_end: int) -> Path:
     """A type-1 file: a meta track ending at *meta_end*, a note track at 1,441.
 
@@ -572,8 +568,34 @@ class TestEndOfTrack:
         assert loader.end_of_track == 1441
         assert loader.metadata["sources"][0]["end_of_track"] == 1441
 
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda: ScoreMidiLoader(),
+            lambda: ScoreMidiLoader(parser="mido"),
+            lambda: PerformanceMidiLoader(),
+        ],
+        ids=["partitura", "mido", "performance"],
+    )
+    def test_clear_forgets_the_file(
+        self,
+        make: Callable[[], ScoreMidiLoader | PerformanceMidiLoader],
+        tmp_path: Path,
+    ) -> None:
+        loader = make()
+        loader.load(_write_two_tracks(tmp_path / "theme.mid", meta_end=1))
+        assert (loader.end_of_track, loader.ticks_per_beat) == (1441, 480)
+        loader.clear()
+        assert (loader.end_of_track, loader.ticks_per_beat) == (None, None)
+        loader.load(_write_two_tracks(tmp_path / "other.mid", meta_end=2000))
+        assert (loader.end_of_track, loader.ticks_per_beat) == (2000, 480)
+
     def test_the_latest_track_decides(self, tmp_path: Path) -> None:
         loader = ScoreMidiLoader(parser="mido").load(
             _write_two_tracks(tmp_path / "theme.mid", meta_end=2000)
         )
         assert loader.end_of_track == 2000
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

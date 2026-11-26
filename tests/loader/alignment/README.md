@@ -673,10 +673,10 @@ folder.
   EDM-alig MIDI, and the MusicXML and the SCORE MIDI. In all four themes
   the EDM-alig MIDI ends after the excerpt, so the member is its child
   `B689 (MTD 0807), EDM-alig MIDI, span of the excerpt`, at offset 0, as
-  long as the excerpt in quarters: the exact value of the excerpt's float
-  (`Fraction(2.8)`, `Fraction(9, 2)`, `Fraction(7.9)`, `Fraction(5.55)`),
-  since only that value makes a group position on one convert onto the
-  other unchanged. MTD0807's MusicXML (9) takes part through its child
+  long as the excerpt in quarters: the excerpt's exact length as META's
+  decimals write it, `EndTime − StartTime` (`14/5`, `9/2`, `79/10`,
+  `111/20`), never the float of it rebuilt into a ratio (`Fraction(2.8)`
+  would be a dyadic the file never states). MTD0807's MusicXML (9) takes part through its child
   `…, SCORE MusicXML, span of the SCORE MIDI` of length 8; MTD1044's SCORE
   MIDI (5) through its child `…, SCORE MIDI, span of the SCORE MusicXML`
   of length `9/2`; MTD0808 and MTD1080 (equal) have no child. Two cases
@@ -695,17 +695,24 @@ folder.
   or its child, CSV}; each member is the object of the timelines passed
   (identity, not equality), so the groups and the roots form one set of
   trees. `create_bundle()` holds these roots and these groups.
-* **Positions convert one to one between the excerpt and the EDM-alig
-  MIDI.** Their group also holds the EDM-alig CSV, whose length is
+* **Positions convert between the excerpt and the EDM-alig MIDI without a
+  stretch.** Their group also holds the EDM-alig CSV, whose length is
   unknown, and a group converts no position while a member's length is
   unknown: the group's `get_timestamp_at` raises `UnknownLengthError`
   naming the CSV's timeline, and so does the bundle's matchstamp at any
   claim, since its closure passes through the excerpt's group. That is
   the library's rule for members of unknown length, pinned here so that
-  a change of it shows. The one-to-one conversion is tested on the two
-  members of known length grouped alone: `1.0` second is `1` quarter,
-  `2.20401` seconds the quarter `Fraction(2.20401)`, `7/3` quarters
-  `float(7/3)` seconds, and the end, `2.8` seconds, the child's end.
+  a change of it shows. The conversion is tested on the two members of
+  known length grouped alone: the excerpt (`2.8` seconds, float) and the
+  child (`14/5` quarters, fraction). Start and end meet exactly (`0.0` s
+  → `0`, `2.8` s → `14/5`, `14/5` → `2.8` s), and so does `1.4` s → `7/5`.
+  Between them a position carries the rounding of the float axis, which
+  holds `2.8` as a dyadic a little under `14/5`: `1.0` s →
+  `15762598695796736/15762598695796735` quarters, `1` quarter →
+  `0.9999999999999999` s, `7/3` quarters → `2.333333333333333` s. These
+  are the values the library returns, asserted exactly; they are float
+  arithmetic, not a stretch, and a child of `Fraction(2.8)` would hide
+  that rounding by inventing a length the file does not state.
 * **Each timeline names its file.** Every one of the fourteen timelines
   states `lrmoo:R7i_is_exemplified_by` an item `{"type": ["melod:Item"],
   "label": "MTD/<folder>/<stem>.<ext>", "schema:isPartOf": [{"id":
@@ -777,6 +784,20 @@ folder.
   (excerpt/EDM-alig pair first, then MusicXML/SCORE MIDI), the four groups
   (`group`); then the tracks (`cpt`); then the claims (`claim`).
 * **`create_timeline` gives one root by its ID and refuses the rest.**
+* **A derived timeline or group is written in its bundle, not alone.** A
+  `dcterms:source` names a timeline of the same manifest, and a timeline
+  or group written alone is a manifest of its own members only. So the
+  EDM-corr CSV timeline of `create_timelines()` or of
+  `create_timeline(uid)` refuses `to_dict()` with a
+  `timetoshare.SchemaValidationError` naming `#<EDM-corr MIDI id>`, and
+  so do the EDM-corr group (its MIDI names the EDM-orig MIDI) and the
+  EDM-alig group (its MIDI and CSV name the EDM-corr MIDI) of
+  `create_groups()`; the EDM-orig and SCORE groups, whose derivations
+  stay inside them, write. The same CSV timeline taken from the bundle of
+  `create_bundle()`, the bundle held, writes, its `statements` holding the item and no
+  `dcterms:source` (the library leaves out a reference into the
+  bundle's manifest when a timeline is written alone). Pinned so that a
+  change of either rule shows.
 * **The package round trip keeps it all.** The bundle written with
   `to_file(..., events=False)` validates with `timetoshare.validate`,
   reads back with 64 claims, every timeline's statements and length

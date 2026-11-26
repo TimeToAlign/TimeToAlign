@@ -104,6 +104,16 @@ class MidiLoader(EventLoader):
         """The MidiEventData containing all loaded events."""
         return cast(MidiEventData, self._events)
 
+    def clear(self) -> None:
+        """Clear all loaded sources and events, and the file read last's state.
+
+        :attr:`ticks_per_beat` and :attr:`end_of_track` answer None again,
+        as before a file is read.
+        """
+        super().clear()
+        self._ticks_per_beat = None
+        self._end_of_track = None
+
     def _parse_mido_source(
         self,
         source: Source,

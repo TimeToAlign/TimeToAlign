@@ -23,8 +23,10 @@ Loaders:
         by MEI ``xml:id`` and a performance timeline.
     MtdLoader: Musical Theme Dataset (MTD) themes, read from the archive or
         an extracted folder: per CD track a seconds timeline with an excerpt
-        per theme, per theme a quarters timeline of its encoding, and the
-        alignment as MatchClaims from the theme's notes to the excerpt.
+        per theme, a child of the track; per theme a timeline per MTD file,
+        grouped by encoding into four groups (the excerpt with EDM-alig);
+        and the alignment as MatchClaims from the EDM-corr notes to the
+        excerpt.
     Ieee1599Loader: IEEE 1599 XML documents (spine + logic / notational /
         audio layers) ingested as one multimodal AlignmentBundle in which
         every layer is aligned to the spine.

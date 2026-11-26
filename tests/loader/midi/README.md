@@ -140,6 +140,11 @@ track's end (1); the source metadata says 1,441 too. A loader that has read noth
 `None`. A second file whose meta track ends after its notes (at 2,000, the note again ending at
 1,440) answers 2,000: the latest track decides, whatever it holds.
 
+`clear()` forgets the file read last: each of the three loaders, having read the first file
+(1,441, 480 ticks per quarter), answers `None` for both `end_of_track` and `ticks_per_beat` after
+`clear()`, as one that has read nothing, and the file read next (the 2,000 one) answers its own
+2,000 and 480. A value surviving `clear()` would be the previous file's, stated of none.
+
 ## Score loader and stores
 
 The Beethoven score test pins 3,751 events, the tick resolution 480 the file header states, Partitura metadata with four

@@ -13,6 +13,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import timetoshare
+from timetoshare.tables import TableError, fixture_path
 
 from timetoalign import CHUNK, NOMATCH
 from timetoalign.alignment import (
@@ -21,7 +23,14 @@ from timetoalign.alignment import (
     MatchClaimField,
     MatchGraph,
 )
-from timetoalign.core import Coordinate, Projection, TimeUnit, validate_id
+from timetoalign.core import (
+    Coordinate,
+    EventReference,
+    Projection,
+    TimeUnit,
+    validate_id,
+)
+from timetoalign.timelines.manifest import read_projection_table
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -435,6 +444,110 @@ def test_text_renderings_name_the_sentinel() -> None:
     assert "<td colspan='2'>NOMATCH</td>" in nomatch._repr_html_()
 
 
+def _sentinel_id_message(where: str, sentinel: str) -> str:
+    """The one refusal of a sentinel given as the event a side names."""
+    return (
+        f"{where} names '{sentinel}' as an event, a string reserved for a "
+        f"sentinel: a CHUNK side is an event dict stating its position without "
+        f"'id', a NOMATCH side the constant NOMATCH."
+    )
+
+
+class TestASentinelNamesNoEvent:
+    """A reserved string as an event dict's id, or as the event a Projection stands for."""
+
+    @pytest.mark.parametrize("sentinel", [NOMATCH, CHUNK])
+    @pytest.mark.parametrize("synchronous", [True, False])
+    @pytest.mark.parametrize("side", ["event_a", "event_b"])
+    def test_from_events(self, sentinel: str, synchronous: bool, side: str) -> None:
+        score = ContinuousLogicalTimeline(length=16, uid="score")
+        audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
+        sides = {
+            "event_a": {"id": "n4", "start": 4},
+            "event_b": {"id": "o20", "start": 20.0},
+        }
+        sides[side] = {**sides[side], "id": sentinel}
+        with pytest.raises(ValueError) as caught:
+            MatchClaim.from_events(
+                sides["event_a"],
+                score,
+                sides["event_b"],
+                audio,
+                is_synchronous=synchronous,
+            )
+        assert str(caught.value) == _sentinel_id_message(side, sentinel)
+
+    @pytest.mark.parametrize("sentinel", [NOMATCH, CHUNK])
+    def test_nomatch(self, sentinel: str) -> None:
+        score = ContinuousLogicalTimeline(length=16, uid="score")
+        with pytest.raises(ValueError) as caught:
+            MatchClaim.nomatch({"id": sentinel}, score, "audio")
+        assert str(caught.value) == _sentinel_id_message("event", sentinel)
+
+    @pytest.mark.parametrize("sentinel", [NOMATCH, CHUNK])
+    def test_a_projection_of_a_sentinel(self, sentinel: str) -> None:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(f"Invalid id '{sentinel}': it is reserved for a sentinel"),
+        ):
+            Projection(
+                start=Coordinate(1, TimeUnit.quarters),
+                projection_of=EventReference(timeline_id="audio", event_id=sentinel),
+            )
+        message = (
+            f"A Projection stands for an event, never for a sentinel: its "
+            f"projection_of names '{sentinel}', a string reserved for a "
+            f"MatchClaim's side without an event"
+        )
+        reference = {"timeline_id": "audio", "event_id": sentinel}
+        score = ContinuousLogicalTimeline(length=16, uid="score")
+        with pytest.raises(ValueError) as caught:
+            score.add_events(
+                [{"event_type": "Projection", "instant": 1, "projection_of": reference}]
+            )
+        assert str(caught.value) == message
+        with pytest.raises(ValueError) as caught:
+            score.add_projections(
+                [{"event_type": "Projection", "start": 1, "projection_of": reference}]
+            )
+        assert str(caught.value) == message
+        assert score.n_events == 0
+
+    @pytest.mark.parametrize("sentinel", [NOMATCH, CHUNK])
+    def test_a_projections_table_naming_a_sentinel(
+        self, sentinel: str, tmp_path: Path
+    ) -> None:
+        """The fixture's first row, ``projection_10`` of ``onset_1``, now of a sentinel."""
+        table = pq.read_table(fixture_path("projections.parquet"))
+        manifest = timetoshare.loads(
+            fixture_path("manifest.yaml").read_text(encoding="utf-8")
+        )
+        reference = table.column("projection_of").combine_chunks()
+        event_ids = reference.field("event_id").to_pylist()
+        assert event_ids[0] == "onset_1"
+        changed = pa.StructArray.from_arrays(
+            [reference.field("timeline_id"), pa.array([sentinel] + event_ids[1:])],
+            fields=list(reference.type),
+            mask=reference.is_null(),
+        )
+        path = tmp_path / "projections.parquet"
+        pq.write_table(
+            table.set_column(
+                table.schema.get_field_index("projection_of"), "projection_of", changed
+            ),
+            path,
+        )
+        with pytest.raises(TableError) as caught:
+            read_projection_table(path, manifest)
+        problem = caught.value.problem
+        assert (problem.code, problem.row, problem.column, problem.message) == (
+            "invalid_projection_of",
+            0,
+            ("projection_of", "event_id"),
+            f"'{sentinel}' is reserved for a sentinel",
+        )
+
+
 class TestRefusedBeforeAnythingIsAdded:
     """Each refusal comes before the call's first Projection is added."""
 
@@ -443,9 +556,15 @@ class TestRefusedBeforeAnythingIsAdded:
         [
             (
                 (CHUNK, "score", {"start": 20.0}, "audio"),
-                "Pair 1: CHUNK_SENTINEL states no position. A CHUNK side is a "
-                "position where its timeline holds no event: give it as a dict "
-                "stating its 'start' (and 'end' for a span), without 'id'.",
+                _sentinel_id_message("Pair 1", CHUNK),
+            ),
+            (
+                ({"id": CHUNK, "start": 2}, "score", {"start": 10.0}, "audio"),
+                _sentinel_id_message("Pair 1", CHUNK),
+            ),
+            (
+                ("n8", "score", {"id": NOMATCH, "start": 10.0}, "audio"),
+                _sentinel_id_message("Pair 1", NOMATCH),
             ),
             (
                 ({"start": 2, "name": "bar 1"}, "score", {"start": 10.0}, "audio"),

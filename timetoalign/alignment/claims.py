@@ -400,9 +400,27 @@ def _event_coordinate(raw: Any) -> Any:
     return raw
 
 
+def _refuse_sentinel_id(event_id: object, where: str) -> None:
+    """Refuse a sentinel given as the id of the event a side names.
+
+    A sentinel is no event: a CHUNK side states its position without an
+    ``id``, a NOMATCH side is :data:`NOMATCH` itself.
+
+    Raises:
+        ValueError: If *event_id* is :data:`NOMATCH` or :data:`CHUNK`.
+    """
+    if event_id in SENTINELS:
+        raise ValueError(
+            f"{where} names {quote_id(str(event_id))} as an event, a string "
+            f"reserved for a sentinel: a CHUNK side is an event dict stating its "
+            f"position without 'id', a NOMATCH side the constant NOMATCH."
+        )
+
+
 def _event_id(event: dict[str, Any], where: str) -> str:
     """The id of the event a NOMATCH MatchClaim names, which it must state."""
     event_id = event.get("id")
+    _refuse_sentinel_id(event_id, where)
     if event_id is None:
         raise ValueError(
             f"{where} names no event id: a NOMATCH MatchClaim names the event "
@@ -418,8 +436,13 @@ def _side_id(event: dict[str, Any], where: str, *, synchronous: bool) -> str:
     A synchronous claim's side stating its position without an ``id`` is
     CHUNK: the anchor holds its coordinate and no event stands there. A
     claim that is not synchronous holds no anchor, so it names two events.
+
+    Raises:
+        ValueError: If the ``id`` is a sentinel, or the side names no event
+            on a claim that is not synchronous.
     """
     event_id = event.get("id")
+    _refuse_sentinel_id(event_id, where)
     if event_id is not None:
         return str(event_id)
     if synchronous:
@@ -1441,10 +1464,14 @@ class MatchClaim(BaseModel):
             synchronous.
 
         Raises:
-            ValueError: If an event dict names no id on a claim that is not
-                synchronous, a CHUNK side states a name, or a coordinate
-                cannot be placed on its timeline's axis.
+            ValueError: If an event dict's ``id`` is :data:`NOMATCH` or
+                :data:`CHUNK` (a sentinel is no event), an event dict names
+                no id on a claim that is not synchronous, a CHUNK side states
+                a name, or a coordinate cannot be placed on its timeline's
+                axis.
         """
+        event_a_id = _side_id(event_a, "event_a", synchronous=is_synchronous)
+        event_b_id = _side_id(event_b, "event_b", synchronous=is_synchronous)
         anchors: dict[str, AlignmentAnchor | None] = {
             "start_anchor": None,
             "end_anchor": None,
@@ -1478,9 +1505,9 @@ class MatchClaim(BaseModel):
             is_synchronous=is_synchronous,
             certainty=certainty,
             provenance=provenance,
-            event_a_id=_side_id(event_a, "event_a", synchronous=is_synchronous),
+            event_a_id=event_a_id,
             event_a_name=_event_name(event_a),
-            event_b_id=_side_id(event_b, "event_b", synchronous=is_synchronous),
+            event_b_id=event_b_id,
             event_b_name=_event_name(event_b),
             id=_given_or_seeded_claim_id(id, seed),
         )
@@ -1518,7 +1545,8 @@ class MatchClaim(BaseModel):
             A non-synchronous MatchClaim with no anchors.
 
         Raises:
-            ValueError: If the event names no id.
+            ValueError: If the event names no id, or names :data:`NOMATCH`
+                or :data:`CHUNK` (a sentinel is no event).
         """
         other_id = (
             other_timeline if isinstance(other_timeline, str) else other_timeline.id
@@ -4348,8 +4376,10 @@ def _claims_between_events(
     Raises:
         KeyError: If an id names no event of its timeline.
         ValueError: If both sides of a pair are :data:`NOMATCH`, a side is
+            :data:`CHUNK` or a dict whose ``id`` is :data:`NOMATCH` or
             :data:`CHUNK` (a CHUNK side is a position: a dict without
-            ``id``), a CHUNK side states a name, a pair with CHUNK on both
+            ``id``; a NOMATCH side is :data:`NOMATCH`), a CHUNK side states
+            a name, a pair with CHUNK on both
             sides states an end on one side only, a dict naming no held
             event states no ``start``, a position is a float on a
             samples axis, a span runs backwards, a position lies past where
@@ -4374,16 +4404,10 @@ def _claims_between_events(
                     f"Pair {index}: a side of a claimed pair is an event id, an "
                     f"event dict or {NOMATCH}, not {type(side).__name__}"
                 )
-            if side == CHUNK:
-                raise ValueError(
-                    f"Pair {index}: {CHUNK} states no position. A CHUNK side is "
-                    f"a position where its timeline holds no event: give it as a "
-                    f"dict stating its 'start' (and 'end' for a span), without "
-                    f"'id'."
-                )
             if side == NOMATCH:
                 continue
             event_id = side if isinstance(side, str) else side.get("id")
+            _refuse_sentinel_id(event_id, f"Pair {index}")
             if event_id is not None:
                 named.setdefault(id(timeline), (timeline, []))[1].append(str(event_id))
     held: dict[tuple[int, str], dict[str, Any] | None] = {}

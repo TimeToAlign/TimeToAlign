@@ -1145,11 +1145,11 @@ class TestTimeToShareFixturePackage:
         fixture = pq.read_table(_TABLES / "projections.parquet")
         known = bundle._known_timelines()
 
-        assert len(bundle.match_claim_table) == 16
+        assert len(bundle.match_claim_table) == 17
         assert {tid: known[tid].n_events for tid in sorted(known)} == {
             "clt_1": 0,
             "clt_2": 1,
-            "cpt_1": 1,
+            "cpt_1": 2,
             "dpt_1": 7,
         }
         assert projection_table(known[tid] for tid in sorted(known)).equals(fixture)

@@ -93,7 +93,9 @@ def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
 
     Raises:
         ValueError: If the row holds a value under another key, its
-            ``projection_of`` is not an event reference, or it names an
+            ``projection_of`` is not an event reference, names a sentinel
+            (:data:`~timetoalign.core.ids.NOMATCH`,
+            :data:`~timetoalign.core.ids.CHUNK`) as its event, or names an
             event of the timeline the Projection is added to.
     """
     extra = sorted(
@@ -109,6 +111,17 @@ def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
     reference = row.get("projection_of")
     if reference is None:
         return
+    event_id = (
+        reference.get("event_id")
+        if isinstance(reference, dict)
+        else getattr(reference, "event_id", None)
+    )
+    if event_id in SENTINELS:
+        raise ValueError(
+            f"A Projection stands for an event, never for a sentinel: its "
+            f"projection_of names {quote_id(str(event_id))}, a string reserved for "
+            f"a MatchClaim's side without an event"
+        )
     if not isinstance(reference, EventReference):
         try:
             reference = EventReference.model_validate(reference)

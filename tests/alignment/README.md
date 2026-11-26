@@ -1177,11 +1177,25 @@ What would prove CHUNK works and is not a renamed Projection:
   three synchronous rows, CHUNK rows included.
 - **The sentinels are no element IDs**: `validate_id`, an event added to a
   timeline and a Projection under either string are refused.
+- **A sentinel names no event a side or a Projection stands for.** A
+  reserved string given as an event dict's `id` is refused alike on every
+  path that takes event dicts, with one message saying what a sentinel side
+  is instead (a CHUNK side a dict without `id`, a NOMATCH side the constant
+  `NOMATCH`): `MatchClaim.from_events` (either side, synchronous or not),
+  `MatchClaim.nomatch`, and `create_match_claims`, which refuses the bare
+  `CHUNK` string with the same message (a CHUNK side is never named, it is
+  stated by its position). A Projection whose `projection_of` names either
+  string as its event is refused: built as a `Projection`, added to a
+  timeline as a row (`add_events`, `add_projections`), and read from a
+  Projections table whose `projection_of.event_id` cell holds it (the
+  table check's own message, code `invalid_projection_of`, column
+  `projection_of.event_id`); the timeline holds no event afterwards.
 - **Text renderings name the sentinel**: `repr` marks a CHUNK side
   `[CHUNK]` after its coordinate, `str` and the HTML card show `CHUNK` /
   `NOMATCH` as the event, never the reserved string.
 - **Refusals before anything is added**: `create_match_claims` refuses the
-  bare `CHUNK` string as a side (it states no position), a name on a CHUNK
+  bare `CHUNK` string as a side and either reserved string as a dict's
+  `id` (the one message above), a name on a CHUNK
   side, an end on one side only of a CHUNK–CHUNK pair (the anchors could
   hold one end only: an interval needs both), a CHUNK position no number
   cell stores (`nan`, the number cell's own message) and `NOMATCH` on both
@@ -1702,8 +1716,8 @@ TimeToShare's own artifacts:
   `COORDINATE_CELL_TYPE` cells.
 - **The fixture table, read and written back.** TimeToShare's fixture
   `fixtures/tables/<version>/match_claims.parquet` is read with
-  `MatchClaimField.from_parquet`: sixteen claims, `claim_1`–`claim_16`,
-  fourteen `event_match`, one `nomatch` (`claim_12`, naming `note_10` and
+  `MatchClaimField.from_parquet`: seventeen claims, `claim_1`–`claim_17`,
+  fifteen `event_match`, one `nomatch` (`claim_12`, naming `note_10` and
   `NOMATCH`, no anchor), one `conceptual` (`claim_14`); the sentinels
   read as the strings of the event ID columns, `CHUNK` on both sides of
   `claim_11` and on side A of `claim_16` (their `chunk_sides`
@@ -2330,13 +2344,13 @@ with the MatchClaims stating each and the expected potential MatchStamps.
 Those values are literal data written by hand in TimeToShare's emission
 script, never computed by a derivation, so they are an independent oracle.
 
-- `AlignmentBundle.from_file(manifest.yaml)` holds the sixteen MatchClaims
-  and the nine Projections (seven on `dpt_1`, one on `cpt_1`, one on
+- `AlignmentBundle.from_file(manifest.yaml)` holds the seventeen MatchClaims
+  and the ten Projections (seven on `dpt_1`, two on `cpt_1`, one on
   `clt_2`; `clt_1` holds none; the CHUNK sides of `claim_11` and `claim_16`
   hold none), so every timeline's events are its
   Projections alone; the bundle's Projections table equals the fixture's
   rows (the table is read from the bundle's timelines sorted by ID, each
-  timeline in its event order: `clt_2`, `cpt_1`, `dpt_1` ×7, the order
+  timeline in its event order: `clt_2`, `cpt_1` ×2, `dpt_1` ×7, the order
   the fixture holds them in). The Projections file is the fixture's byte
   for byte, as the MatchClaim file is.
 - Written to a fresh directory, `match_claims.parquet` and

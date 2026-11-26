@@ -320,12 +320,16 @@ FIXTURE_PROJECTIONS = [
         duration=Duration(Fraction(1, 2), TimeUnit.quarters),
         projection_of=EventReference(timeline_id="dpt_1", event_id="onset_1"),
     ),
-    Projection(id="projection_7", start=Coordinate(10.0, TimeUnit.seconds)),
     Projection(
         id="projection_11",
         start=Coordinate(12.5, TimeUnit.seconds),
         duration=Duration(0.75, TimeUnit.seconds),
         projection_of=EventReference(timeline_id="clt_1", event_id="note_16"),
+    ),
+    Projection(
+        id="projection_12",
+        start=Coordinate(11.25, TimeUnit.seconds),
+        projection_of=EventReference(timeline_id="clt_1", event_id="note_14"),
     ),
     Projection(
         id="projection_1",
@@ -353,7 +357,6 @@ FIXTURE_PROJECTIONS = [
         start=Coordinate(176400, TimeUnit.samples),
         projection_of=EventReference(timeline_id="clt_1", event_id="note_5"),
     ),
-    Projection(id="projection_6", start=Coordinate(441000, TimeUnit.samples)),
     Projection(
         id="projection_8",
         start=Coordinate(441000, TimeUnit.samples),
@@ -389,7 +392,7 @@ class TestTimeToShareFixture:
             "clt_2": [FIXTURE_PROJECTIONS[0]],
         }
         timelines = _fixture_projections().column("timeline_id").to_pylist()
-        assert timelines == ["clt_2"] + ["cpt_1"] * 2 + ["dpt_1"] * 8
+        assert timelines == ["clt_2"] + ["cpt_1"] * 2 + ["dpt_1"] * 7
 
         def types(projections: list[Projection]) -> list[tuple[type, type | None]]:
             return [
@@ -400,8 +403,8 @@ class TestTimeToShareFixture:
                 for p in projections
             ]
 
-        assert types(read["dpt_1"]) == [(int, None), (int, int)] + [(int, None)] * 6
-        assert types(read["cpt_1"]) == [(float, None), (float, float)]
+        assert types(read["dpt_1"]) == [(int, None), (int, int)] + [(int, None)] * 5
+        assert types(read["cpt_1"]) == [(float, float), (float, None)]
         assert types(read["clt_2"]) == [(Fraction, Fraction)]
 
     def test_the_field_in_the_package_form_is_the_fixture_table(self) -> None:

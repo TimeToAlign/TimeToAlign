@@ -452,8 +452,8 @@ def test_the_projection_table_is_read_from_what_parquet_reads() -> None:
     read = read_projection_table(str(path), manifest)
     assert {key: [p.id for p in value] for key, value in read.items()} == {
         "clt_2": ["projection_10"],
-        "cpt_1": ["projection_7", "projection_11"],
-        "dpt_1": [f"projection_{n}" for n in (1, 2, 3, 4, 5, 6, 8, 9)],
+        "cpt_1": ["projection_11", "projection_12"],
+        "dpt_1": [f"projection_{n}" for n in (1, 2, 3, 4, 5, 8, 9)],
     }
     for source in (path, io.BytesIO(data), pa.BufferReader(data)):
         assert read_projection_table(source, manifest) == read

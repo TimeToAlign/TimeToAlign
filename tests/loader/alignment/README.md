@@ -15,7 +15,7 @@ module level so the corpus is materialised once, before collection.
 |------|-------------------|
 | `test_ieee1599.py` | `Ieee1599Loader` against all six IEEE 1599 specimens — spine delta accumulation, the four projection layers, verbatim media references, and the spine-hub claim topology. Zero-tolerance counts and coordinates (see below). |
 | `test_ieee1599_structural.py` | The `<structural>` layer of the gymnopédie specimen — the segment ↔ Petri-net-place resolution and the `external_references` rows it produces on the spine. Exact row counts and exact resolutions (see below). |
-| `test_mtd.py` | `MtdLoader` on the `mtd` corpus (four themes of the Musical Theme Dataset in an archive of MTD's layout): the CD track with its excerpts, the theme encodings and their notes, one MatchClaim per aligned onset, the statements, the selection, the archive and an extracted folder alike, the package round trip, and every refusal (see below). |
+| `test_mtd.py` | `MtdLoader` on the `mtd` corpus (four themes of the Musical Theme Dataset in an archive of MTD's layout), completed with stand-ins for the files it lacks: one timeline per file and its length, the groups by encoding and the children through which a longer member takes part, the items, derivations and statements, the notes, one MatchClaim per aligned onset, the selection, the archive and an extracted folder alike, the package round trip, and every refusal (see below). |
 | `test_trompa_maps.py` | `MapsLoader` on a MEI score and a MAPS file the tests write — one claim per listed `xml:id`, both sides of every claim, retrieval through a bundle on a samples and on a seconds performance, and every refusal (see below). |
 
 Fast lane: gymnopédie, animals, khomus.  The three large specimens
@@ -600,102 +600,187 @@ in an otherwise valid fixture, so the refusal can only come from that change.
 ## `MtdLoader` validation logic
 
 Corpus: `mtd` — `MTD_sample.zip`, four themes of the Musical Theme Dataset
-in the archive's own layout (`MTD/data_META`, `MTD/data_ALIGNMENT`,
-`MTD/data_SCORE_MID`, `MTD/data_EDM-corr_MID`; the corpus README says why the
-last folder holds the files of the third):
+in the archive's own layout. It holds four of the sixteen files MTD ships
+per theme (`MTD/data_META`, `MTD/data_ALIGNMENT`, `MTD/data_SCORE_MID`,
+`MTD/data_EDM-corr_MID`; the corpus README says why the last folder holds
+the files of the third):
 
-| theme | movement | recording | excerpt | rows | notes |
-|---|---|---|---|---|---|
-| `MTD0807` (B689) | `Beethoven_Op002No1-01` (piano) | Brendel, CD 049, Track01 | `00:00.2`–`00:03` | 11 | 10 |
-| `MTD0808` (B690) | `Beethoven_Op002No1-01` | the same track | `01:24.7`–`01:29.2` | 17 | 16 |
-| `MTD1044` (B926) | `Beethoven_Op055-02` (orchestra) | Abbado, CD 007, Track06 | `04:07.1`–`04:15` | 11 | 10 |
-| `MTD1080` (B962) | `Beethoven_Op067-04` (orchestra) | Abbado, CD 009, Track04 | `01:00.75`–`01:06.3` | 29 | 28 |
+| theme | movement | recording | excerpt | rows | notes | `MidiTransposition` |
+|---|---|---|---|---|---|---|
+| `MTD0807` (B689) | `Beethoven_Op002No1-01` (piano) | Brendel, CD 049, Track01 | `00:00.2`–`00:03` | 11 | 10 | `0` |
+| `MTD0808` (B690) | `Beethoven_Op002No1-01` | the same track | `01:24.7`–`01:29.2` | 17 | 16 | `0` |
+| `MTD1044` (B926) | `Beethoven_Op055-02` (orchestra) | Abbado, CD 007, Track06 | `04:07.1`–`04:15` | 11 | 10 | `0` |
+| `MTD1080` (B962) | `Beethoven_Op067-04` (orchestra) | Abbado, CD 009, Track04 | `01:00.75`–`01:06.3` | 29 | 28 | `5` |
 
 Every expected value below is read off these files by hand (the MIDI files
-at 480 ticks per quarter, each note ending one tick before the next onset),
-never computed by the code under test.
+at 480 ticks per quarter, each note ending one tick before the next onset,
+the track one tick after the last note), or chosen by the test that writes
+a file, never computed by the code under test.
+
+### The twelve files the corpus lacks, written per test
+
+The loader refuses a theme missing any of its sixteen files, so the tests
+complete the sample: a module fixture extracts it once and writes, per
+theme, stand-ins with properties the tests choose. Nothing of MTD's own
+unlicensed files enters the repository.
+
+* `data_EDM-orig_MID`: the theme's notes (those of its `data_SCORE_MID`
+  file) as MTD's EDM-orig files hold them: type 0, tempo 500,000 µs per
+  quarter, the track ending at the last note's end. End of track: MTD0807
+  3839, MTD0808 7679, MTD1044 2399, MTD1080 7679 ticks.
+* `data_EDM-alig_MID`: as MTD's EDM-alig files are written: type 1, a meta
+  track (tempo 1,000,000 µs per quarter, so a quarter is a second) and a
+  note track, one note per alignment row but the last, from the row's
+  second to the next row's, in ticks (`round(seconds · 480)`), the last
+  ending at the last row's second, the track one tick later: MTD0807
+  `2.85 s` → 1368 + 1 = 1369, MTD0808 2185, MTD1044 3817, MTD1080 2689
+  ticks — the ends of MTD's own files, 0.05 seconds and a tick past the
+  excerpt.
+* `data_SCORE_XML`: a minimal MusicXML file (one part, divisions 12, a
+  whole-measure rest per measure) whose measures the test chooses:
+  MTD0807 three 3/4 measures (9 quarters, past its SCORE MIDI's 8),
+  MTD0808 four 4/4 (16, equal to its MIDI), MTD1044 three 3/8 (9/2, short
+  of its MIDI's 5), MTD1080 four 4/4 (16, equal).
+* the five CSVs, the three PDFs, the Sibelius file and the WAV: a few
+  bytes each, never parsed (a PDF stand-in is no PDF, the WAV no RIFF
+  file): the loader names these files and must not read them beyond the
+  bytes of the ID seed.
+
+A copy of the completed folder is zipped into an archive of MTD's layout,
+which most tests read; tests that change a file change a copy of the
+folder.
 
 ### What would prove the loader right
 
-* **The notes are the MIDI file's, in exact quarters.** MTD0807's theme
-  timeline holds 10 notes, onsets `0, 1, 2, 3, 4, 5, 13/2, 20/3, 41/6, 7`
-  (ticks `0 … 3360` over 480), pitches `60, 65, 68, 72, 77, 80, 79, 77, 76,
-  77`, the first ending at `479/480`, the last at `3839/480`, which is also
-  the timeline's length; number type fraction, unit quarters. A triplet
-  onset that a float could not hold (`20/3`) is the test that no float
-  passed between file and timeline.
-* **The default encoding is read in the shape MTD's EDM files have.** The
-  corpus's `data_EDM-corr_MID` holds copies of its `data_SCORE_MID` files
-  (one track, the default tempo); MTD's own EDM files are type 1 with a
-  meta track (tempo 1,000,000 µs per quarter, time and key signature) and a
-  note track (a program change, note-offs as note-ons of velocity 0). A
-  test writes MTD0807's notes in that shape with mido into an extracted
-  copy (velocity 60, as MTD writes it) and expects the same onsets, ends
-  and pitches, velocity 60, and the same ten claims at the same quarters
-  and seconds: tempo and the meta track change nothing in quarters.
+* **One timeline per file, fourteen per theme.** `create_timelines()` for
+  MTD0807 is the CD track (holding the excerpt as its child), then the 13
+  timelines of `THEME_FILES` in its order, named `B689 (MTD 0807), EDM-orig
+  MIDI` … `B689 (MTD 0807), EDM-alig CSV`; the excerpt keeps `Theme B689
+  (MTD 0807)`. MIDI, MusicXML and Sibelius timelines are quarters,
+  fraction (`clt`); CSVs and the excerpt seconds, float (`cpt`); PDFs
+  points, float (`cgt`). For all four themes: 1 + 4 × 13 roots in the
+  bundle's order of tracks first.
+* **Each timeline is as long as its file states.** MIDI: the end of track
+  in exact quarters (MTD0807: EDM-orig `3839/480`, EDM-corr and SCORE `8`,
+  EDM-alig `1369/480`; the other themes as listed above over 480); the
+  MusicXML: the end of its last measure (`9`, `16`, `9/2`, `16`); the
+  excerpt `EndTime − StartTime` from the decimal strings (`2.8`, `4.5`,
+  `7.9`, `5.55`, the last the float of `"5.55"`); every CSV, PDF and the
+  Sibelius file `None`. A length that is the last note's end and not the
+  end of track (`3839/480` for EDM-corr) would show the accessor unused.
+* **Unequal known lengths take part through a child, never stretched.**
+  The groups' members of known length that differ are the excerpt and the
+  EDM-alig MIDI, and the MusicXML and the SCORE MIDI. In all four themes
+  the EDM-alig MIDI ends after the excerpt, so the member is its child
+  `B689 (MTD 0807), EDM-alig MIDI, span of the excerpt`, at offset 0, as
+  long as the excerpt in quarters: the exact value of the excerpt's float
+  (`Fraction(2.8)`, `Fraction(9, 2)`, `Fraction(7.9)`, `Fraction(5.55)`),
+  since only that value makes a group position on one convert onto the
+  other unchanged. MTD0807's MusicXML (9) takes part through its child
+  `…, SCORE MusicXML, span of the SCORE MIDI` of length 8; MTD1044's SCORE
+  MIDI (5) through its child `…, SCORE MIDI, span of the SCORE MusicXML`
+  of length `9/2`; MTD0808 and MTD1080 (equal) have no child. Two cases
+  are made by editing a copy: MTD0807's `EndTime` `00:03` → `00:04` makes
+  the excerpt (3.8 s) the longer, and its child `Theme B689 (MTD 0807),
+  span of the EDM-alig MIDI` is `float(1369/480)` = `2.8520833333333333`
+  seconds long, the EDM-alig MIDI taking part whole; an EDM-alig MIDI
+  rewritten to end at tick 1344 (`14/5`, the excerpt's `2.8` exactly)
+  gives no child on either side. A child is never a derivation target and
+  never named by an item.
+* **Grouped by encoding.** `create_groups(timelines)` gives per theme four
+  groups, named `B689 (MTD 0807), EDM-orig`, `…, EDM-corr`, `…, SCORE`,
+  `…, EDM-alig`, with members in this order: EDM-orig {MIDI, CSV, PDF},
+  EDM-corr {MIDI, CSV, PDF}, SCORE {Sibelius, MusicXML or its child, MIDI
+  or its child, CSV, PDF}, EDM-alig {the excerpt or its child, the MIDI
+  or its child, CSV}; each member is the object of the timelines passed
+  (identity, not equality), so the groups and the roots form one set of
+  trees. `create_bundle()` holds these roots and these groups.
+* **Positions convert one to one between the excerpt and the EDM-alig
+  MIDI.** Their group also holds the EDM-alig CSV, whose length is
+  unknown, and a group converts no position while a member's length is
+  unknown: the group's `get_timestamp_at` raises `UnknownLengthError`
+  naming the CSV's timeline, and so does the bundle's matchstamp at any
+  claim, since its closure passes through the excerpt's group. That is
+  the library's rule for members of unknown length, pinned here so that
+  a change of it shows. The one-to-one conversion is tested on the two
+  members of known length grouped alone: `1.0` second is `1` quarter,
+  `2.20401` seconds the quarter `Fraction(2.20401)`, `7/3` quarters
+  `float(7/3)` seconds, and the end, `2.8` seconds, the child's end.
+* **Each timeline names its file.** Every one of the fourteen timelines
+  states `lrmoo:R7i_is_exemplified_by` an item `{"type": ["melod:Item"],
+  "label": "MTD/<folder>/<stem>.<ext>", "schema:isPartOf": [{"id":
+  "https://www.audiolabs-erlangen.de/resources/MIR/MTD/MTD_1.0.0.zip"}]}`
+  (the excerpt `MTD/data_AUDIO/<stem>.wav`), provenance `imported`, basis
+  the DOI, the note `MTD 1.0.0 MTD/<folder>/<stem>.<ext>`.
+* **Derivations only where MTD's paper states one.** `dcterms:source`
+  `{"id": "#<id>"}`: SCORE MusicXML, MIDI, CSV and PDF name the Sibelius
+  timeline; EDM-orig CSV and PDF the EDM-orig MIDI; EDM-corr MIDI the
+  EDM-orig MIDI; EDM-corr CSV and PDF the EDM-corr MIDI; EDM-alig MIDI and
+  CSV the EDM-corr MIDI, the note saying `aligned to the excerpt by
+  data_ALIGNMENT`. The EDM-orig MIDI, the Sibelius file and the excerpt
+  state none. The ID named is the file timeline's, also where a child of
+  it is the group member. The references survive the package round trip.
+* **The theme is stated on the derivation roots alone.** EDM-orig MIDI
+  and SCORE Sibelius state `schema:isPartOf` the movement and the MTD and
+  Barlow and Morgenstern identifiers, provenance note `MTD 1.0.0
+  data_META/<stem>.json`; no other file timeline states them.
+* **The excerpt states the transposition and the rights.** `rdfs:comment`
+  `MTD's MidiTransposition: 0 semitones, the recording against the
+  symbolic encodings` for MTD0807, `5 semitones` for MTD1080, `-1
+  semitone` after MTD0807's META is edited to `-1`; `dcterms:rights` In
+  Copyright and `dcterms:accessRights` COAR metadata-only access, as the
+  track has them; provenance note the theme's META file.
+* **The notes are the MIDI file's, in exact quarters.** MTD0807's EDM-corr
+  MIDI timeline holds 10 notes, onsets `0, 1, 2, 3, 4, 5, 13/2, 20/3,
+  41/6, 7` (ticks `0 … 3360` over 480), pitches `60, 65, 68, 72, 77, 80,
+  79, 77, 76, 77`, the first ending at `479/480`, the last at `3839/480`.
+  A triplet onset that a float could not hold (`20/3`) is the test that no
+  float passed between file and timeline. Every MIDI timeline holds its
+  file's notes (EDM-orig's the same ten, EDM-alig's ten at the rows'
+  ticks); `to_file(..., events=False)` writes none of them.
+* **The default encoding is read in the shape MTD's EDM files have.** A
+  test writes MTD0807's notes into `data_EDM-corr_MID` as MTD's own EDM
+  files are (type 1 with a meta track: tempo, time and key signature;
+  note-offs as note-ons of velocity 0, velocity 60) and expects the same
+  onsets, ends and pitches, velocity 60, and the same ten claims at the
+  same quarters and seconds.
 * **Each alignment row but the last is one claim, at the exact onset.**
   Claims per theme = rows − 1 (10, 16, 10, 28; 64 in all), because every
   onset of these themes holds one note. MTD0807's row `6.66667;2.20401` is
-  the claim from the note at `20/3` (pitch 77) to CHUNK on the excerpt,
-  anchored at exactly `Fraction(20, 3)` quarters and `2.20401` seconds; the
-  five decimals are never kept. MTD1044's `3.16667` is `19/6`. Side B of
-  every claim is the excerpt (not the track) and is CHUNK; the provenance
-  is `imported`, basis the MTD paper's DOI. A row meeting no onset within
-  half a tick is refused, so a matched claim proves the onset existed.
-* **The last row is checked, not kept.** A fixture whose last row is moved
-  by one tick's worth (`7.99792` → `8.00000`) is refused; the unchanged
-  files load, so the check passed on all four.
-* **The excerpt is a child of its track at StartTime.** Offsets and lengths
-  come from the decimal strings, exactly as written: MTD0807 at `0.2`,
-  `2.8` long; MTD1080 at `60.75`, `5.55` long (the float of `"5.55"`;
-  subtracting the floats would give `5.549999999999997`). Two themes of one
-  track are two children of one track timeline.
-* **The track is what MTD says of the recording, and no more.** Its length
-  is unknown (`None`) unless `track_lengths` gives it; its name is
-  `Beethoven Op002No1-01, Brendel (CD 49, track 1)`, and a track holding
-  themes of two movements (MTD has four, e.g. Bach BWV 872 prelude and
-  fugue in one track) is named after both: MTD0808's META edited to
-  `Op002No1-02` gives `Beethoven Op002No1-01 and Beethoven Op002No1-02,
-  Brendel (CD 49, track 1)`, `schema:recordingOf` both movements, and a
-  bundle named `MTD, 2 movements`; its statements are
-  exactly: type `schema:MusicRecording`, `schema:recordingOf` the movement
-  by label, `schema:inAlbum` the MusicBrainz release, three MeLODy
-  identifiers (`MTD CollectionID`, `MTD NameCD`, `MTD NameTrack`, the
-  strings as written), the performer `rel:prf` by label,
-  `dcterms:rights` In Copyright and `dcterms:accessRights` COAR
-  metadata-only access. The theme encoding states `schema:isPartOf` the
-  movement, its MTD and Barlow and Morgenstern identifiers and its source
-  (the corrected EDM encoding, or the score encoding when
-  `theme_midi="data_SCORE_MID"`). It is a root of its own, never the
-  excerpt's child.
-* **The selection reads what it names.** `movements=["Beethoven_Op002No1-01"]`
-  gives MTD0807 and MTD0808, one track, 26 claims; `themes=["MTD1044"]`
-  one theme; both together the union; no selection all four themes, three
-  movements, three tracks, 64 claims. A name the source does not hold raises
-  `KeyError`.
-* **Archive and folder are one source.** The archive's path, a
-  `zipfile.Path` of it, the extracted folder holding `MTD/` and `MTD/`
-  itself give equal timelines (`to_dict`) and equal MatchClaim tables, IDs
-  included: the minter is seeded from the bytes of the files read.
+  the claim from the note at `20/3` (pitch 77) of the EDM-corr MIDI
+  timeline to CHUNK on the excerpt, anchored at exactly `Fraction(20, 3)`
+  quarters and `2.20401` seconds. MTD1044's `3.16667` is `19/6`. With
+  `theme_midi="data_SCORE_MID"` the claims name the notes of the SCORE
+  MIDI timeline instead. Provenance `imported`, basis the DOI. A row
+  meeting no onset within half a tick is refused.
+* **The last row is checked, not kept.** A row moved by one tick's worth
+  (`7.99792` → `8.00000`) is refused.
+* **The excerpt is a child of its track at StartTime.** MTD0807 at `0.2`,
+  `2.8` long; MTD1080 at `60.75`, `5.55` long. Two themes of one track
+  are two children of one track timeline.
+* **The track is what MTD says of the recording, and no more.** As
+  before: unknown length unless `track_lengths` gives it (a track of
+  unknown length is never lengthened to its excerpts), named
+  `Beethoven Op002No1-01, Brendel (CD 49, track 1)` (after both movements
+  when it holds two), its statements exactly the type, the movements
+  recorded, the release, the three MeLODy identifiers, the performer and
+  the rights.
+* **The selection reads what it names**, **archive and folder are one
+  source** (the archive's path, a `zipfile.Path` of it, the folder
+  holding `MTD/` and `MTD/` itself give equal timelines, groups and
+  MatchClaim tables, IDs included), **two fresh loaders mint equal IDs**.
 * **IDs are the minter's.** With `seed=0` the IDs are those a fresh
   `IdMinter(0)` mints in the loader's order: per theme in file-name order
-  its notes (`note_…`), its excerpt (`cpt_…`), its theme encoding
-  (`clt_…`); then the tracks (`cpt_…`); then the claims (`claim_…`). Two
-  fresh loaders without a seed mint equal IDs.
-* **`create_timeline` gives one timeline by its ID and refuses the rest.**
-  The track's ID gives the track (with the length `track_lengths` names),
-  a theme encoding's ID that timeline; an ID the loader did not make
-  raises `KeyError`, a keyword other than `track_lengths` `TypeError`
-  (as `create_bundle` refuses one).
-* **`from_file` passes the selection to `load`.** `movements`, `themes`
-  and `theme_midi` are keyword-only parameters of `load`, so the base
-  `Loader.from_file` hands them to `load` and `seed` to the constructor;
-  every test reading through `from_file` with a selection, and the seeded
-  ID test, prove the split.
+  the notes of its MIDI files (EDM-orig, EDM-corr, SCORE, EDM-alig), the
+  excerpt (`cpt`), the 13 file timelines (`clt cpt cgt clt cpt cgt clt clt
+  clt cpt cgt clt cpt`), the children a longer member takes part through
+  (excerpt/EDM-alig pair first, then MusicXML/SCORE MIDI), the four groups
+  (`group`); then the tracks (`cpt`); then the claims (`claim`).
+* **`create_timeline` gives one root by its ID and refuses the rest.**
 * **The package round trip keeps it all.** The bundle written with
-  `to_file` validates with `timetoshare.validate`, reads back with
-  `from_file` with 64 claims and the statements unchanged, and a matchstamp
-  at MTD0807's onset `20/3` answers the excerpt's `2.20401` seconds.
+  `to_file(..., events=False)` validates with `timetoshare.validate`,
+  reads back with 64 claims, every timeline's statements and length
+  unchanged, the four groups per theme with their members.
 
 ### Known issues of the data, stored as given
 
@@ -706,26 +791,29 @@ second outside their excerpt: 19 before its start (MTD1275
 stores them as given: no clamp, no drop, no refusal. The claim's second is
 on the excerpt's axis, and the excerpt is a child of its track, which
 answers only within its span, so a matchstamp at such a claim holds the
-excerpt's coordinate and none of the track. None of the four sample themes
-has such a row, so two tests make one each in an extracted copy:
+excerpt's coordinate and none of the track. Since the bundle of
+`create_bundle` raises at every matchstamp through the excerpt (see
+above), the two tests ask a bundle holding the same timelines and claims
+without the groups:
 
 * MTD0807's first row `0.12855` → `-0.10000`: the claim's `coordinate_b`
-  is `-0.1` seconds, and the matchstamp at onset `0` holds the theme and
-  the excerpt (`-0.1`) but not the track; the matchstamp at onset `1`,
-  unchanged, holds all three.
+  is `-0.1` seconds, and the matchstamp at onset `0` holds the EDM-corr
+  MIDI timeline and the excerpt (`-0.1`) but not the track; the
+  matchstamp at onset `1`, unchanged, holds all three.
 * MTD0807's row `2.35321` (onset `7`) → `2.90000`, past the excerpt's
   `2.8` seconds: the claim's `coordinate_b` is `2.9`, and the matchstamp at
   onset `7` holds the excerpt but not the track.
 
 ### Refusals
 
-Each refusal changes one thing in an extracted copy of the corpus written to
-`tmp_path`: an alignment row moved off its onset (`6.66667` → `6.70000`;
-the message says that the alignment counts the quarters of
-`data_EDM-corr_MID` and names the folder the encoding was read from, also
-when `theme_midi="data_SCORE_MID"` is chosen),
-the last row moved, a `StartTime` not written `mm:ss`, an `EndTime` before
-the `StartTime`, a theme's MIDI file removed, a `theme_midi` that is no
-encoding folder, a folder holding no `MTD/data_META`, no source or two in one call, a
-second source while one is held, a keyword `create_bundle` or
-`create_timeline` does not take.
+Each refusal changes one thing in a copy of the completed folder: an
+alignment row moved off its onset (`6.66667` → `6.70000`; the message
+says that the alignment counts the quarters of `data_EDM-corr_MID` and
+names the folder matched against, also when
+`theme_midi="data_SCORE_MID"` is chosen), the last row moved, a
+`StartTime` not written `mm:ss`, an `EndTime` before the `StartTime`, a
+theme's EDM-corr MIDI file removed, its PDF and WAV removed (named both,
+the other themes still load), a `theme_midi` that is no encoding folder, a
+folder holding no `MTD/data_META`, no source or two in one call, a second
+source while one is held, a keyword `create_bundle` or `create_timeline`
+does not take, timelines given to `create_groups` lacking a member.

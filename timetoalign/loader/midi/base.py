@@ -49,22 +49,55 @@ def _read_midi_file(source: Source) -> mido.MidiFile:
         return mido.MidiFile(filename=describe_source(source), file=handle)
 
 
+def _end_of_track(mid: mido.MidiFile) -> int:
+    """The tick at which the last track of *mid* ends.
+
+    A track ends at its last message, the ``end_of_track`` meta message a
+    valid file closes it with: the sum of the track's delta times. The file
+    ends where its latest track ends; a file without tracks ends at 0.
+    """
+    return max(
+        (sum(message.time for message in track) for track in mid.tracks), default=0
+    )
+
+
 class MidiLoader(EventLoader):
     """Abstract base class for MIDI loaders.
 
     Subclasses must implement:
     - _load_source(): Parse MIDI file into event rows
     - ticks_per_beat: Property returning PPQ
+
+    Every parse records the file's end of track (:attr:`end_of_track`).
     """
 
     _default_unit: ClassVar[TimeUnit] = TimeUnit.ticks
     _event_data_class = MidiEventData
+
+    #: The end of track of the file read last, in ticks; None before a file is read.
+    _end_of_track: int | None = None
 
     @property
     @abstractmethod
     def ticks_per_beat(self) -> int | None:
         """Return the ticks per beat (PPQ) if available."""
         ...
+
+    @property
+    def end_of_track(self) -> int | None:
+        """The end of track of the MIDI file read last, in ticks.
+
+        The tick of the ``end_of_track`` message closing the file's latest
+        track: the extent the file states, which may lie after the last
+        note's end (MIDI files often close a track one tick after it) and
+        never before it. In quarter notes it is
+        ``Fraction(end_of_track, ticks_per_beat)``, exactly. Each source's
+        metadata records its own (``metadata["sources"][i]["end_of_track"]``).
+
+        Returns:
+            The tick, or None before a file is read.
+        """
+        return self._end_of_track
 
     @property
     def events(self) -> MidiEventData:
@@ -110,6 +143,7 @@ class MidiLoader(EventLoader):
             raise ValueError(f"Invalid MIDI file {describe_source(source)}: {e}") from e
 
         self._ticks_per_beat = mid.ticks_per_beat
+        self._end_of_track = _end_of_track(mid)
 
         events = []
 
@@ -227,6 +261,7 @@ class MidiLoader(EventLoader):
             "parser": "mido",
             "type": mid.type,
             "ticks_per_beat": mid.ticks_per_beat,
+            "end_of_track": self._end_of_track,
             "num_tracks": len(mid.tracks),
             "length_seconds": mid.length,
         }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 import mido
@@ -521,3 +522,58 @@ class TestScoreMidiLoader:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def _write_two_tracks(path: Path, meta_end: int) -> Path:
+    """A type-1 file: a meta track ending at *meta_end*, a note track at 1,441.
+
+    The note track holds one note from tick 0 to 1,440, its ``end_of_track``
+    one tick later.
+    """
+    meta = mido.MidiTrack(
+        [
+            mido.MetaMessage("set_tempo", tempo=500_000, time=0),
+            mido.MetaMessage("end_of_track", time=meta_end),
+        ]
+    )
+    notes = mido.MidiTrack(
+        [
+            mido.Message("note_on", note=60, velocity=64, time=0),
+            mido.Message("note_off", note=60, velocity=0, time=1440),
+            mido.MetaMessage("end_of_track", time=1),
+        ]
+    )
+    midi = mido.MidiFile(type=1, ticks_per_beat=480)
+    midi.tracks += [meta, notes]
+    midi.save(path)
+    return path
+
+
+class TestEndOfTrack:
+    """The file's extent: the tick at which its latest track ends."""
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda: ScoreMidiLoader(),
+            lambda: ScoreMidiLoader(parser="mido"),
+            lambda: PerformanceMidiLoader(),
+        ],
+        ids=["partitura", "mido", "performance"],
+    )
+    def test_one_tick_after_the_last_note(
+        self,
+        make: Callable[[], ScoreMidiLoader | PerformanceMidiLoader],
+        tmp_path: Path,
+    ) -> None:
+        loader = make()
+        assert loader.end_of_track is None
+        loader.load(_write_two_tracks(tmp_path / "theme.mid", meta_end=1))
+        assert loader.end_of_track == 1441
+        assert loader.metadata["sources"][0]["end_of_track"] == 1441
+
+    def test_the_latest_track_decides(self, tmp_path: Path) -> None:
+        loader = ScoreMidiLoader(parser="mido").load(
+            _write_two_tracks(tmp_path / "theme.mid", meta_end=2000)
+        )
+        assert loader.end_of_track == 2000

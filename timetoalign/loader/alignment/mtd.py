@@ -2,31 +2,30 @@
 
 The Musical Theme Dataset (Zalkow, Balke, Arifi-Müller and Müller, TISMIR
 2020, doi:10.5334/tismir.68) gives, for each of 2,067 themes (by MTD ID)
-from Barlow and Morgenstern's *A Dictionary of Musical Themes*, an encoding of
-the theme, an excerpt of a commercial recording of its movement, and an
-alignment between the two. One theme ``MTDxxxx_<ComposerID>_<WorkID>`` is three files of the
-archive's ``MTD/`` folder:
+from Barlow and Morgenstern's *A Dictionary of Musical Themes*, several
+encodings of the theme, an excerpt of a commercial recording of its
+movement, and an alignment between the two. One theme
+``MTDxxxx_<ComposerID>_<WorkID>`` is sixteen files of the archive's ``MTD/``
+folder:
 
 * ``data_META/<stem>.json``: the theme's identifiers (``MTDID``, ``BMID``),
   its movement (``ComposerID``, ``WorkID``), the recording (the MusicBrainz
   release ``MusicBrainzID``, the disc ``NameCD`` and track ``NameTrack`` in
-  the collection ``CollectionID``, the performer ``PerformanceID``) and the
+  the collection ``CollectionID``, the performer ``PerformanceID``), the
   excerpt's place in that track (``StartTime``, ``EndTime``, written
-  ``mm:ss.s``);
+  ``mm:ss.s``) and ``MidiTransposition``, the semitones by which the
+  recording sounds transposed against the symbolic encodings;
 * ``data_ALIGNMENT/<stem>.csv``: ``"MID";"WAV"`` rows, MID in quarter notes
-  of the theme encoding written with five decimals, WAV in seconds from the
-  excerpt's start; every row but the last is the onset of a note, the last
-  the end of the last note;
-* the theme encoding as a MIDI file: ``data_EDM-corr_MID/<stem>.mid``, MTD's
-  corrected encoding of the theme from the Electronic Dictionary of Musical
-  Themes (EDM), whose quarter notes the alignment counts. The engraved
-  theme's MIDI, ``data_SCORE_MID/<stem>.mid``, holds other notes for some
-  themes (ornaments written out, other note values), so its onsets do not
-  always meet the alignment's rows; it can be chosen with
-  ``theme_midi="data_SCORE_MID"``, which refuses 616 of the 2,067 themes of
-  MTD 1.0.0 (about 30 %: 498 with a row meeting no onset, 118 with a last
-  row that is not the end of the last note). One refused theme refuses the
-  whole ``load``, so read those themes from the default folder.
+  of ``data_EDM-corr_MID`` written with five decimals, WAV in seconds from
+  the excerpt's start; every row but the last is the onset of a note, the
+  last the end of the last note;
+* ``data_AUDIO/<stem>.wav``: the excerpt, ``EndTime - StartTime`` long;
+* four encodings of the theme (:data:`THEME_FILES`): EDM-orig, the theme as
+  the Electronic Dictionary of Musical Themes (EDM) gives it, and EDM-corr,
+  MTD's correction of it, each as MIDI, CSV note list and PDF; EDM-alig,
+  EDM-corr's MIDI aligned to the excerpt by the alignment (its quarter notes
+  are the excerpt's seconds), as MIDI and CSV; SCORE, the engraved theme,
+  as a Sibelius file and its exports to MusicXML, MIDI, CSV and PDF.
 
 The themes of one movement (one ``ComposerID`` and ``WorkID``) lie in one CD
 track. ``MtdLoader`` reads the archive in place, or an extracted folder, and
@@ -39,25 +38,44 @@ makes, for the movements or themes selected::
   (``cpt_…``, number type float) of unknown length, unless the caller gives
   it (MTD does not state it), with statements of what MTD says of the
   recording;
-* per theme, the excerpt: a child timeline of its track at ``StartTime``,
-  ``EndTime - StartTime`` long;
-* per theme, the theme encoding: a quarters
+* per theme, one timeline per file but META and the alignment, each naming
+  its file: the excerpt, a child of its track at ``StartTime``; a quarters
   :class:`~timetoalign.timelines.types.ContinuousLogicalTimeline`
-  (``clt_…``, number type fraction) holding its notes, each tick an exact
-  fraction of a quarter, with statements of the movement it is part of and
-  its identifiers; it is a timeline of its own, never a child of the
-  excerpt (the two are two manifestations of the theme, related by the
-  alignment);
+  (``clt_…``, number type fraction) per MIDI file, holding its notes, per
+  MusicXML file and for the Sibelius file; a seconds timeline per CSV note
+  list; a points
+  :class:`~timetoalign.timelines.types.ContinuousGraphicalTimeline`
+  (``cgt_…``, number type float) per PDF;
+* per theme, four :class:`~timetoalign.timelines.TimelineGroup` s, one per
+  encoding: EDM-orig, EDM-corr, SCORE, and EDM-alig with the excerpt;
 * per alignment row but the last, a synchronous
   :class:`~timetoalign.alignment.claims.MatchClaim` from each note at that
-  onset to :data:`~timetoalign.core.ids.CHUNK` on the excerpt, anchored at
-  the onset in quarters and the row's seconds.
+  onset of the EDM-corr MIDI timeline to :data:`~timetoalign.core.ids.CHUNK`
+  on the excerpt, anchored at the onset in quarters and the row's seconds.
+
+Each timeline is as long as its file states: a MIDI file its end of track,
+the MusicXML file the end of its last measure, the excerpt
+``EndTime - StartTime``. A CSV note list, a PDF and the Sibelius file state
+no end: their length is unknown. The members of a group share its start and
+end; where two members of known length differ, the longer takes part
+through a child of it, starting at 0 and as long as the shorter one, so
+that nothing is stretched. This is the case of the EDM-alig MIDI file,
+which ends after the excerpt (its last note ends 0.05 seconds after the
+excerpt's end, and its track one tick later), and of the MusicXML file of
+some themes, whose last measure ends after its MIDI export's end of track.
+
+Where MTD's paper states that one file was made from another, the file's
+timeline says so (``dcterms:source`` naming the other's timeline): the
+SCORE exports derive from the Sibelius file, an EDM encoding's CSV and PDF
+from its MIDI file, EDM-corr's MIDI file from EDM-orig's, and EDM-alig's
+files from EDM-corr's MIDI file. The theme's identifiers and its movement
+are stated on the timelines nothing is derived from: EDM-orig's MIDI file
+and the Sibelius file.
 
 The loader reads what MTD states; it fetches nothing. Track lengths, and
-MusicBrainz recording and track IDs, are the caller's to add. The pitches
-are the encoding's: META's ``MidiTransposition``, the interval by which the
-recording sounds transposed against the encoding (774 of the 2,067 themes,
-mostly an octave down), is not carried.
+MusicBrainz recording and track IDs, are the caller's to add. The notes
+keep their encoding's pitches; ``MidiTransposition`` is stated as a comment
+on the excerpt.
 
 Known issues of the data, stored as MTD gives them: in MTD 1.0.0, 25
 alignment rows that become claims, in 25 themes, state a second outside
@@ -75,7 +93,7 @@ import csv
 import io
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -89,6 +107,8 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import CHUNK, NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
+from timetoalign.core.ids import GROUP_PREFIX
+from timetoalign.core.time import express_as
 from timetoalign.display.html import code
 from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import (
@@ -103,7 +123,9 @@ from timetoalign.loader._sources import (
 )
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.timelines.factory import mint_timeline_id
+from timetoalign.timelines.groups import TimelineGroup
 from timetoalign.timelines.types import (
+    ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
 )
@@ -122,11 +144,14 @@ MTD_DOI = "https://doi.org/10.5334/tismir.68"
 #: it (the archive states no version of its own).
 MTD_VERSION = "MTD 1.0.0"
 
+#: The archive of that release, which every file a timeline names is part of.
+MTD_ARCHIVE_URL = "https://www.audiolabs-erlangen.de/resources/MIR/MTD/MTD_1.0.0.zip"
+
 #: The folder of the theme encoding whose quarter notes the alignment counts.
 DEFAULT_THEME_MIDI = "data_EDM-corr_MID"
 
-#: The folders a theme encoding can be read from, with how its statements
-#: name the encoding.
+#: The MIDI folders the alignment can be matched against, with how a message
+#: names the encoding.
 THEME_MIDI_FOLDERS: dict[str, str] = {
     "data_EDM-corr_MID": "MTD's corrected EDM encoding of the theme",
     "data_SCORE_MID": "MTD's encoding of the engraved theme",
@@ -146,6 +171,115 @@ _TIME = re.compile(r"(\d+):(\d{2}(?:\.\d+)?)")
 #: A theme file's stem: ``MTD<id>_<ComposerID>_<WorkID>``.
 _STEM = re.compile(r"(MTD[^_]+)_.+")
 
+
+@dataclass(frozen=True)
+class MtdFile:
+    """One file MTD ships per theme, as the loader makes a timeline of it.
+
+    Attributes:
+        folder: Its folder in ``MTD/`` (``data_SCORE_XML``).
+        extension: Its file name extension (``xml``).
+        encoding: The encoding it is part of: ``EDM-orig``, ``EDM-corr``,
+            ``SCORE`` or ``EDM-alig``; ``excerpt`` for the recording.
+        kind: What the file is: ``MIDI``, ``CSV``, ``PDF``, ``MusicXML``,
+            ``Sibelius`` or ``WAV``.
+    """
+
+    folder: str
+    extension: str
+    encoding: str
+    kind: str
+
+    @property
+    def label(self) -> str:
+        """The file as names say it: ``SCORE MusicXML``; the WAV ``excerpt``."""
+        return self.encoding if self.kind == "WAV" else f"{self.encoding} {self.kind}"
+
+    def member(self, stem: str) -> str:
+        """The file of the theme *stem*, relative to ``MTD/``."""
+        return f"{self.folder}/{stem}.{self.extension}"
+
+
+#: The excerpt's recording, a child of its CD track.
+EXCERPT_FILE = MtdFile("data_AUDIO", "wav", "excerpt", "WAV")
+
+#: The thirteen files of a theme beside META, the alignment and the excerpt,
+#: in the order :meth:`MtdLoader.create_timelines` returns their timelines:
+#: encoding by encoding, as :data:`ENCODINGS` orders them.
+THEME_FILES: tuple[MtdFile, ...] = (
+    MtdFile("data_EDM-orig_MID", "mid", "EDM-orig", "MIDI"),
+    MtdFile("data_EDM-orig_CSV", "csv", "EDM-orig", "CSV"),
+    MtdFile("data_EDM-orig_IMG", "pdf", "EDM-orig", "PDF"),
+    MtdFile("data_EDM-corr_MID", "mid", "EDM-corr", "MIDI"),
+    MtdFile("data_EDM-corr_CSV", "csv", "EDM-corr", "CSV"),
+    MtdFile("data_EDM-corr_IMG", "pdf", "EDM-corr", "PDF"),
+    MtdFile("data_SCORE_SIB", "sib", "SCORE", "Sibelius"),
+    MtdFile("data_SCORE_XML", "xml", "SCORE", "MusicXML"),
+    MtdFile("data_SCORE_MID", "mid", "SCORE", "MIDI"),
+    MtdFile("data_SCORE_CSV", "csv", "SCORE", "CSV"),
+    MtdFile("data_SCORE_IMG", "pdf", "SCORE", "PDF"),
+    MtdFile("data_EDM-alig_MID", "mid", "EDM-alig", "MIDI"),
+    MtdFile("data_EDM-alig_CSV", "csv", "EDM-alig", "CSV"),
+)
+
+#: The files by label.
+_BY_LABEL: dict[str, MtdFile] = {
+    file.label: file for file in (EXCERPT_FILE, *THEME_FILES)
+}
+
+#: The encodings, in the order of a theme's groups; the EDM-alig group holds
+#: the excerpt first, then EDM-alig's files.
+ENCODINGS: tuple[str, ...] = ("EDM-orig", "EDM-corr", "SCORE", "EDM-alig")
+
+#: The axis of each kind of file: timeline class, unit, number type.
+_AXES: dict[str, tuple[type[Timeline], TimeUnit, NumberType]] = {
+    "MIDI": (ContinuousLogicalTimeline, TimeUnit.quarters, NumberType.fraction),
+    "MusicXML": (ContinuousLogicalTimeline, TimeUnit.quarters, NumberType.fraction),
+    "Sibelius": (ContinuousLogicalTimeline, TimeUnit.quarters, NumberType.fraction),
+    "CSV": (ContinuousPhysicalTimeline, TimeUnit.seconds, NumberType.float),
+    "WAV": (ContinuousPhysicalTimeline, TimeUnit.seconds, NumberType.float),
+    "PDF": (ContinuousGraphicalTimeline, TimeUnit.points, NumberType.float),
+}
+
+_SCORE_EXPORT = "exported from the Sibelius file, as MTD's paper states"
+_EDM_RENDERING = "made from the encoding's MIDI file, as MTD's paper states"
+
+#: Which file each file was made from, by label, and the statement of MTD's
+#: paper saying so; no other relation between encodings is stated.
+_DERIVED_FROM: dict[str, tuple[str, str]] = {
+    "SCORE MusicXML": ("SCORE Sibelius", _SCORE_EXPORT),
+    "SCORE MIDI": ("SCORE Sibelius", _SCORE_EXPORT),
+    "SCORE CSV": ("SCORE Sibelius", _SCORE_EXPORT),
+    "SCORE PDF": ("SCORE Sibelius", _SCORE_EXPORT),
+    "EDM-orig CSV": ("EDM-orig MIDI", _EDM_RENDERING),
+    "EDM-orig PDF": ("EDM-orig MIDI", _EDM_RENDERING),
+    "EDM-corr MIDI": (
+        "EDM-orig MIDI",
+        "MTD's correction of the EDM encoding, as MTD's paper states",
+    ),
+    "EDM-corr CSV": ("EDM-corr MIDI", _EDM_RENDERING),
+    "EDM-corr PDF": ("EDM-corr MIDI", _EDM_RENDERING),
+    "EDM-alig MIDI": (
+        "EDM-corr MIDI",
+        "aligned to the excerpt by data_ALIGNMENT, as MTD's paper states",
+    ),
+    "EDM-alig CSV": (
+        "EDM-corr MIDI",
+        "aligned to the excerpt by data_ALIGNMENT, as MTD's paper states",
+    ),
+}
+
+#: The timelines stating the theme's identifiers and movement: those no
+#: other file is derived from.
+_THEME_STATED_ON: tuple[str, ...] = ("EDM-orig MIDI", "SCORE Sibelius")
+
+#: The pairs of group members whose known lengths are compared; the longer
+#: takes part through a child as long as the shorter.
+_COMPARED: tuple[tuple[str, str], ...] = (
+    ("excerpt", "EDM-alig MIDI"),
+    ("SCORE MusicXML", "SCORE MIDI"),
+)
+
 # endregion
 
 
@@ -154,13 +288,42 @@ _STEM = re.compile(r"(MTD[^_]+)_.+")
 
 @dataclass(frozen=True)
 class _Note:
-    """A note of a theme encoding, in ticks."""
+    """A note of a MIDI file, in ticks."""
 
     id: str
     start: int
     end: int
     pitch: int
     velocity: int | None
+
+
+@dataclass(frozen=True)
+class _File:
+    """One file of a theme as the loader holds it after ``load``.
+
+    ``length`` is the file's extent on its axis (``None`` when the file
+    states none); ``ppq`` and ``notes`` are those of a MIDI file.
+    """
+
+    file: MtdFile
+    id: str
+    length: Fraction | float | None
+    ppq: int | None = None
+    notes: tuple[_Note, ...] = ()
+
+
+@dataclass(frozen=True)
+class _Part:
+    """The child through which the longer of two group members takes part.
+
+    ``whole`` is the label of the member it is a child of, ``covers`` the
+    label of the shorter member whose span it covers.
+    """
+
+    whole: str
+    covers: str
+    id: str
+    length: Fraction | float
 
 
 @dataclass(frozen=True)
@@ -171,11 +334,11 @@ class _Theme:
     meta: dict[str, str]
     start: Decimal
     end: Decimal
-    ppq: int
-    notes: tuple[_Note, ...]
+    files: dict[str, _File]
+    parts: tuple[_Part, ...]
+    group_ids: dict[str, str]
+    claimed: str
     rows: tuple[tuple[Fraction, float], ...]
-    score_id: str
-    excerpt_id: str
 
     @property
     def movement(self) -> str:
@@ -186,6 +349,20 @@ class _Theme:
     def track(self) -> tuple[str, str, str]:
         """The CD track: MusicBrainz release, disc and track as MTD names them."""
         return (self.meta["MusicBrainzID"], self.meta["NameCD"], self.meta["NameTrack"])
+
+    @property
+    def name(self) -> str:
+        """The theme as names say it: ``B689 (MTD 0807)``."""
+        return f"{self.meta['BMID']} (MTD {self.meta['MTDID']})"
+
+    @property
+    def excerpt(self) -> _File:
+        """The excerpt."""
+        return self.files[EXCERPT_FILE.label]
+
+    def part_of(self, label: str) -> _Part | None:
+        """The child through which the member *label* takes part, if any."""
+        return next((part for part in self.parts if part.whole == label), None)
 
 
 def _seconds(text: str, field: str, stem: str) -> Decimal:
@@ -235,6 +412,24 @@ def _identifier(scheme: str, value: str) -> dict[str, Any]:
     }
 
 
+def _item(member: str) -> dict[str, Any]:
+    """The item a timeline is exemplified by: *member* of the MTD archive."""
+    return {
+        "type": ["melod:Item"],
+        "label": f"MTD/{member}",
+        "schema:isPartOf": [{"id": MTD_ARCHIVE_URL}],
+    }
+
+
+def _transposition(text: str) -> str:
+    """MTD's ``MidiTransposition`` as the excerpt's comment states it."""
+    unit = "semitone" if text.strip().lstrip("+-") == "1" else "semitones"
+    return (
+        f"MTD's MidiTransposition: {text.strip()} {unit}, the recording against "
+        "the symbolic encodings"
+    )
+
+
 # endregion
 
 
@@ -248,14 +443,17 @@ class MtdLoader(AlignmentLoader):
     ``zipfile.Path`` of it) or an extracted copy (the folder holding
     ``MTD/``, or ``MTD/`` itself), the movements or themes selected only.
     Per CD track it makes a seconds timeline with an excerpt child per
-    theme, per theme a quarters timeline of the theme encoding, and per
-    alignment row but the last a MatchClaim from each note at that onset to
+    theme; per theme a timeline per file of :data:`THEME_FILES`, each naming
+    its file, grouped by encoding (:data:`ENCODINGS`, the excerpt with
+    EDM-alig); and per alignment row but the last a MatchClaim from each
+    note at that onset of the EDM-corr MIDI timeline to
     :data:`~timetoalign.core.ids.CHUNK` on the excerpt.
 
-    The notes keep the encoding's pitches; MTD's ``MidiTransposition``
-    between encoding and recording is not carried. A claim whose second
-    lies outside its excerpt (25 in MTD 1.0.0, see the module) is stored as
-    given; a matchstamp there names no coordinate of the track.
+    The notes keep their encoding's pitches; MTD's ``MidiTransposition``
+    between the encodings and the recording is a comment on the excerpt. A
+    claim whose second lies outside its excerpt (25 in MTD 1.0.0, see the
+    module) is stored as given; a matchstamp there names no coordinate of
+    the track.
 
     **Usage follows the standard loader two-phase pattern:**
 
@@ -263,11 +461,11 @@ class MtdLoader(AlignmentLoader):
        selected themes.
     2. ``loader.create_bundle(track_lengths=...)`` — assemble the
        AlignmentBundle; ``create_timelines()`` / ``create_timeline(uid)``
-       give the timelines alone.
+       give the timelines alone, ``create_groups(timelines)`` their groups.
 
-    Every ID is minted at ``load`` from the bytes of the files read, so a
-    fresh loader reading the same themes mints the same IDs, from the
-    archive and from an extracted folder alike.
+    Every ID is minted at ``load`` from the bytes of every file of the
+    themes read, so a fresh loader reading the same themes mints the same
+    IDs, from the archive and from an extracted folder alike.
 
     A loader reads one source; ``clear()`` before reading another.
     """
@@ -307,16 +505,25 @@ class MtdLoader(AlignmentLoader):
         its movement (``<ComposerID>_<WorkID>`` as its META file states
         them, e.g. ``Beethoven_Op002No1-01``) is among *movements* or its
         MTD ID (the file name's ``MTD0807``) among *themes*. The META files
-        of every theme are read to find the movements; the alignment and the
-        MIDI file only of the themes selected.
+        of every theme are read to find the movements; the other files only
+        of the themes selected, each of which must hold all sixteen.
 
-        Each alignment row but the last is matched to the onset it writes:
-        the onset of the theme encoding within half a tick of the row's
-        five-decimal quarters (``6.66667`` is ``20/3``). The last row is
-        checked to be the end of the last note within half a tick; the
-        library has no place for the aligned span's end, so it is not kept
-        (its second lies 0.05 seconds past the excerpt's end in all but one
-        theme of MTD 1.0.0).
+        The four MIDI files are read with
+        :class:`~timetoalign.loader.midi.ScoreMidiLoader` (``parser="mido"``):
+        their notes and their end of track. The MusicXML file is read with
+        :class:`~timetoalign.loader.score.PartituraLoader`, which reads a
+        measure's length exactly from the file's divisions: the end of its
+        last measure is the sum of the lengths of its measures. The CSV
+        note lists, the PDFs, the Sibelius file and the WAV are named, not
+        parsed: their bytes enter the seed of the IDs only.
+
+        Each alignment row but the last is matched to the onset it writes
+        in the MIDI file of *theme_midi*: the onset within half a tick of
+        the row's five-decimal quarters (``6.66667`` is ``20/3``). The last
+        row is checked to be the end of the last note within half a tick;
+        the library has no place for the aligned span's end, so it is not
+        kept (its second lies 0.05 seconds past the excerpt's end in all but
+        one theme of MTD 1.0.0).
 
         :meth:`from_file` passes *movements*, *themes* and *theme_midi* to
         this method and ``seed`` to the constructor.
@@ -327,24 +534,26 @@ class MtdLoader(AlignmentLoader):
                 ``MTD/`` itself.
             movements: Movements to read, ``<ComposerID>_<WorkID>``.
             themes: Themes to read, by MTD ID (``MTD0807``).
-            theme_midi: The folder of the theme encodings, one of
-                :data:`THEME_MIDI_FOLDERS`; by default
+            theme_midi: The MIDI folder the alignment is matched against,
+                one of :data:`THEME_MIDI_FOLDERS`; by default
                 ``data_EDM-corr_MID``, whose quarter notes the alignment
-                counts.
+                counts. The claims name the notes of that file's timeline.
 
         Returns:
             Self, for method chaining.
 
         Raises:
             FileNotFoundError: If *source* holds no ``MTD/data_META`` folder,
-                or a selected theme lacks its alignment or MIDI file.
+                or a selected theme lacks one of its files (every missing
+                file is named).
             KeyError: If a movement or MTD ID asked for is not in *source*.
             ValueError: If *theme_midi* is no theme encoding folder; if not
-                one source is given, or the loader holds one already; if a time of META is not
-                ``mm:ss.s`` or the excerpt ends before it starts; if an
-                alignment row meets no onset of the theme encoding, or its
-                last row is not the end of the last note; if two themes of
-                one CD track name different performers.
+                one source is given, or the loader holds one already; if a
+                time of META is not ``mm:ss.s`` or the excerpt ends before
+                it starts; if a MIDI file states no ticks per quarter; if an
+                alignment row meets no onset of the MIDI file matched
+                against, or its last row is not the end of the last note; if
+                two themes of one CD track name different performers.
         """
         if theme_midi not in THEME_MIDI_FOLDERS:
             raise ValueError(
@@ -362,8 +571,9 @@ class MtdLoader(AlignmentLoader):
             members += [
                 join_source(root, f"data_META/{stem}.json"),
                 join_source(root, f"data_ALIGNMENT/{stem}.csv"),
-                join_source(root, f"{theme_midi}/{stem}.mid"),
+                join_source(root, EXCERPT_FILE.member(stem)),
             ]
+            members += [join_source(root, file.member(stem)) for file in THEME_FILES]
         missing = [
             describe_source(member) for member in members if not member.is_file()
         ]
@@ -467,7 +677,14 @@ class MtdLoader(AlignmentLoader):
         return sorted(chosen)
 
     def _read_theme(self, root: Source, stem: str, meta: dict[str, str]) -> _Theme:
-        """Read one theme's alignment and notes; mint its IDs."""
+        """Read one theme's files and alignment; mint its IDs.
+
+        The IDs are minted in this order: the notes of the MIDI files (in
+        the order of :data:`THEME_FILES`), the excerpt, the timelines of
+        :data:`THEME_FILES`, the children through which a longer member
+        takes part (in the order of :data:`_COMPARED`), the groups (in the
+        order of :data:`ENCODINGS`).
+        """
         start = _seconds(meta["StartTime"], "StartTime", stem)
         end = _seconds(meta["EndTime"], "EndTime", stem)
         if end <= start:
@@ -475,55 +692,120 @@ class MtdLoader(AlignmentLoader):
                 f"MTD theme {stem} ends ({meta['EndTime']}) before it starts "
                 f"({meta['StartTime']})"
             )
-        midi = join_source(root, f"{self._theme_midi}/{stem}.mid")
-        ppq, notes = self._read_notes(midi)
+        midis = {
+            file.label: self._read_midi(join_source(root, file.member(stem)))
+            for file in THEME_FILES
+            if file.kind == "MIDI"
+        }
+        score_length = self._read_score_length(
+            join_source(root, _BY_LABEL["SCORE MusicXML"].member(stem))
+        )
+
+        def minted(file: MtdFile) -> str:
+            return mint_timeline_id(_AXES[file.kind][1], self._id_minter)
+
+        files = {
+            EXCERPT_FILE.label: _File(
+                EXCERPT_FILE, minted(EXCERPT_FILE), float(end - start)
+            )
+        }
+        for file in THEME_FILES:
+            if file.kind == "MIDI":
+                ppq, end_of_track, notes = midis[file.label]
+                files[file.label] = _File(
+                    file, minted(file), Fraction(end_of_track, ppq), ppq, notes
+                )
+            elif file.kind == "MusicXML":
+                files[file.label] = _File(file, minted(file), score_length)
+            else:
+                files[file.label] = _File(file, minted(file), None)
+
+        # Exact extents: the excerpt's as META writes it, never its float.
+        extents: dict[str, Fraction | None] = {
+            label: None if held.length is None else Fraction(held.length)
+            for label, held in files.items()
+        }
+        extents[EXCERPT_FILE.label] = Fraction(end - start)
+        parts: list[_Part] = []
+        for first, second in _COMPARED:
+            one, other = extents[first], extents[second]
+            if one is None or other is None or one == other:
+                continue
+            longer, shorter = (first, second) if one > other else (second, first)
+            stated = files[shorter].length
+            assert stated is not None
+            whole = files[longer].file
+            parts.append(
+                _Part(
+                    whole=longer,
+                    covers=shorter,
+                    id=mint_timeline_id(_AXES[whole.kind][1], self._id_minter),
+                    length=express_as(stated, _AXES[whole.kind][2]),
+                )
+            )
+        group_ids = {
+            encoding: self._id_minter.mint(GROUP_PREFIX) for encoding in ENCODINGS
+        }
+
+        claimed = next(
+            file.label for file in THEME_FILES if file.folder == self._theme_midi
+        )
         alignment = join_source(root, f"data_ALIGNMENT/{stem}.csv")
-        rows = self._read_alignment(alignment)
-        matched = self._match_rows(rows, ppq, notes, alignment, midi, self._theme_midi)
-        excerpt_id = mint_timeline_id(TimeUnit.seconds, self._id_minter)
-        score_id = mint_timeline_id(TimeUnit.quarters, self._id_minter)
+        rows = self._match_rows(
+            self._read_alignment(alignment),
+            files[claimed],
+            alignment,
+            join_source(root, files[claimed].file.member(stem)),
+            self._theme_midi,
+        )
         return _Theme(
             stem=stem,
             meta=meta,
             start=start,
             end=end,
-            ppq=ppq,
-            notes=notes,
-            rows=matched,
-            score_id=score_id,
-            excerpt_id=excerpt_id,
+            files=files,
+            parts=tuple(parts),
+            group_ids=group_ids,
+            claimed=claimed,
+            rows=rows,
         )
 
-    def _read_notes(self, midi: Source) -> tuple[int, tuple[_Note, ...]]:
-        """The ticks per quarter and the notes of a theme encoding, IDs minted.
+    def _read_midi(self, midi: Source) -> tuple[int, int, tuple[_Note, ...]]:
+        """The ticks per quarter, end of track and notes of a MIDI file, IDs minted.
 
-        The MIDI file is read by :class:`~timetoalign.loader.midi.ScoreMidiLoader`
-        (``parser="mido"``), which pairs note-ons with note-offs; the notes
-        are ordered by onset, then pitch.
+        The file is read by :class:`~timetoalign.loader.midi.ScoreMidiLoader`
+        (``parser="mido"``), which pairs note-ons with note-offs and states
+        the file's end of track; the notes are ordered by onset, then pitch.
+
+        Raises:
+            ValueError: If the file states no ticks per quarter, or holds a
+                note without onset, end or pitch.
         """
-        from timetoalign.loader.midi.score import ScoreMidiLoader
+        from timetoalign.loader.midi import ScoreMidiLoader
 
         midi_loader = ScoreMidiLoader(parser="mido").load(midi)
         ppq = midi_loader.ticks_per_beat
-        if not ppq:
+        end_of_track = midi_loader.end_of_track
+        if not ppq or end_of_track is None:
             raise ValueError(f"{describe_source(midi)} states no ticks per quarter")
-        table = midi_loader.events.table
-        kinds = table.column("event_type").to_pylist()
-        starts = pc.struct_field(table.column("start"), "numerator").to_pylist()
-        ends = pc.struct_field(table.column("end"), "numerator").to_pylist()
-        pitches = table.column("pitch").to_pylist()
-        velocities = table.column("velocity").to_pylist()
         found: list[tuple[int, int, int, int | None]] = []
-        for kind, start, end, pitch, velocity in zip(
-            kinds, starts, ends, pitches, velocities, strict=True
-        ):
-            if kind != "Note":
-                continue
-            if start is None or end is None or pitch is None:
-                raise ValueError(
-                    f"{describe_source(midi)} holds a note without onset, end or pitch"
-                )
-            found.append((int(start), int(end), int(pitch), velocity))
+        if len(midi_loader):
+            table = midi_loader.events.table
+            kinds = table.column("event_type").to_pylist()
+            starts = pc.struct_field(table.column("start"), "numerator").to_pylist()
+            ends = pc.struct_field(table.column("end"), "numerator").to_pylist()
+            pitches = table.column("pitch").to_pylist()
+            velocities = table.column("velocity").to_pylist()
+            for kind, start, end, pitch, velocity in zip(
+                kinds, starts, ends, pitches, velocities, strict=True
+            ):
+                if kind != "Note":
+                    continue
+                if start is None or end is None or pitch is None:
+                    raise ValueError(
+                        f"{describe_source(midi)} holds a note without onset, end or pitch"
+                    )
+                found.append((int(start), int(end), int(pitch), velocity))
         found.sort(key=lambda note: (note[0], note[2]))
         rows: list[dict[str, Any]] = [{"event_type": "Note"} for _ in found]
         give_event_ids(rows, self._id_minter)
@@ -531,7 +813,25 @@ class MtdLoader(AlignmentLoader):
             _Note(row["id"], start, end, pitch, velocity)
             for row, (start, end, pitch, velocity) in zip(rows, found, strict=True)
         )
-        return ppq, notes
+        return ppq, end_of_track, notes
+
+    @staticmethod
+    def _read_score_length(musicxml: Source) -> Fraction | None:
+        """The end of the MusicXML file's last measure, in exact quarters.
+
+        Read with :class:`~timetoalign.loader.score.PartituraLoader`, whose
+        timeline's measure map states each measure's actual length from the
+        file's divisions; their sum is where the last measure ends. A file
+        whose measures leave a length unstated gives ``None``.
+        """
+        from timetoalign.loader.score import PartituraLoader
+
+        timeline = PartituraLoader().load(musicxml).create_timeline()
+        measure_map = timeline.measure_map
+        if measure_map is None:
+            return None
+        length = measure_map.total_actual_length
+        return None if length is None else Fraction(length)
 
     @staticmethod
     def _read_alignment(alignment: Source) -> list[tuple[str, str]]:
@@ -548,8 +848,7 @@ class MtdLoader(AlignmentLoader):
     @staticmethod
     def _match_rows(
         rows: list[tuple[str, str]],
-        ppq: int,
-        notes: tuple[_Note, ...],
+        midi_file: _File,
         alignment: Source,
         midi: Source,
         theme_midi: str,
@@ -569,8 +868,13 @@ class MtdLoader(AlignmentLoader):
             f" The alignment counts the quarters of {DEFAULT_THEME_MIDI}; this theme "
             f"encoding was read from {theme_midi}."
         )
+        ppq = midi_file.ppq
+        notes = midi_file.notes
+        assert ppq is not None
         if len(rows) < 2:
             raise ValueError(f"{describe_source(alignment)} holds fewer than two rows")
+        if not notes:
+            raise ValueError(f"{describe_source(midi)} holds no note." + reading)
         onsets = sorted({note.start for note in notes})
         matched: list[tuple[Fraction, float]] = []
         for mid, wav in rows[:-1]:
@@ -611,25 +915,28 @@ class MtdLoader(AlignmentLoader):
 
     def _build_claim_field(self) -> MatchClaimField:
         """One synchronous claim per note at an aligned onset, columnar."""
-        score_ids: list[str] = []
+        encoding_ids: list[str] = []
         excerpt_ids: list[str] = []
         note_ids: list[str] = []
         quarters: list[Fraction] = []
         seconds: list[float] = []
         axes: dict[str, tuple[TimeUnit, NumberType]] = {}
         for theme in self._themes:
-            axes[theme.score_id] = (TimeUnit.quarters, NumberType.fraction)
-            axes[theme.excerpt_id] = (TimeUnit.seconds, NumberType.float)
+            encoding = theme.files[theme.claimed]
+            excerpt = theme.excerpt
+            assert encoding.ppq is not None
+            axes[encoding.id] = (TimeUnit.quarters, NumberType.fraction)
+            axes[excerpt.id] = (TimeUnit.seconds, NumberType.float)
             for onset, wav in theme.rows:
-                for note in theme.notes:
-                    if Fraction(note.start, theme.ppq) == onset:
-                        score_ids.append(theme.score_id)
-                        excerpt_ids.append(theme.excerpt_id)
+                for note in encoding.notes:
+                    if Fraction(note.start, encoding.ppq) == onset:
+                        encoding_ids.append(encoding.id)
+                        excerpt_ids.append(excerpt.id)
                         note_ids.append(note.id)
                         quarters.append(onset)
                         seconds.append(wav)
         return MatchClaimField.from_columns(
-            score_ids,
+            encoding_ids,
             excerpt_ids,
             note_ids,
             pa.repeat(pa.scalar(CHUNK), len(note_ids)),
@@ -699,7 +1006,7 @@ class MtdLoader(AlignmentLoader):
 
     @property
     def theme_midi(self) -> str:
-        """The folder the theme encodings were read from."""
+        """The MIDI folder the alignment was matched against."""
         return self._theme_midi
 
     # endregion
@@ -715,8 +1022,9 @@ class MtdLoader(AlignmentLoader):
     ) -> "AlignmentBundle":
         """Assemble the AlignmentBundle of the themes read.
 
-        The bundle holds, ungrouped, every CD track's timeline (its
-        excerpts as children) and every theme encoding's timeline, and the
+        The bundle holds every timeline of :meth:`create_timelines` (the CD
+        tracks with their excerpts as children, then each theme's file
+        timelines), every group of :meth:`create_groups` over them, and the
         MatchClaims of the alignments, columnar.
 
         Args:
@@ -750,8 +1058,11 @@ class MtdLoader(AlignmentLoader):
                 else f"MTD, {len(movements)} movements"
             )
         bundle = AlignmentBundle(name=name)
-        for timeline in self.create_timelines(track_lengths=track_lengths):
+        timelines = self.create_timelines(track_lengths=track_lengths)
+        for timeline in timelines:
             bundle.add_timeline(timeline)
+        for group in self.create_groups(timelines):
+            bundle.add_group(group)
         bundle.add_match_claim_field(claims)
         return bundle
 
@@ -761,7 +1072,14 @@ class MtdLoader(AlignmentLoader):
         *,
         track_lengths: Mapping[tuple[str, str, str], float | None] | None = None,
     ) -> list["Timeline"]:
-        """The CD tracks' timelines (excerpts as children), then the themes'.
+        """The root timelines: the CD tracks', then per theme its files'.
+
+        A CD track holds its themes' excerpts as children. Per theme follow
+        the timelines of :data:`THEME_FILES`, in that order (13 per theme).
+        Where the longer of two group members takes part through a child,
+        that child is a child of its member's timeline (an excerpt's child
+        of the excerpt). Call :meth:`create_groups` with the timelines
+        returned to group them.
 
         Args:
             id_pattern: Optional regular expression the IDs must match.
@@ -782,14 +1100,82 @@ class MtdLoader(AlignmentLoader):
         timelines: list[Timeline] = [
             self._make_track(track, lengths.get(track)) for track in self._track_ids
         ]
-        timelines += [self._make_theme_score(theme) for theme in self._themes]
+        for theme in self._themes:
+            timelines += [self._make_file(theme, file) for file in THEME_FILES]
         return self._filter_timelines_by_id_pattern(timelines, id_pattern)
+
+    def create_groups(
+        self, timelines: Sequence["Timeline"] | None = None
+    ) -> list[TimelineGroup]:
+        """Group each theme's timelines by encoding, members as their timelines.
+
+        Per theme, in the order of :data:`ENCODINGS`, one group named after
+        the theme and the encoding (``B689 (MTD 0807), EDM-corr``): EDM-orig
+        {MIDI, CSV, PDF}, EDM-corr {MIDI, CSV, PDF}, SCORE {Sibelius,
+        MusicXML, MIDI, CSV, PDF} and EDM-alig {excerpt, MIDI, CSV}. A member
+        is its file's timeline, or the child through which that timeline
+        takes part where it is the longer of two members of known length.
+
+        Args:
+            timelines: The timelines of :meth:`create_timelines` to group
+                (their members are taken from them, so that groups and
+                timelines are the same objects). Without them, the
+                timelines are made afresh, every CD track of unknown length.
+
+        Returns:
+            The groups, theme by theme.
+
+        Raises:
+            RuntimeError: If ``load()`` has not been called yet.
+            KeyError: If *timelines* lack a timeline a group holds.
+        """
+        self._loaded()
+        if timelines is None:
+            timelines = self.create_timelines()
+        roots = {timeline.id: timeline for timeline in timelines}
+
+        def root(uid: str) -> Timeline:
+            if uid not in roots:
+                raise KeyError(
+                    f"The timelines given lack {uid!r}, which a group holds. "
+                    f"Available: {list(roots)}"
+                )
+            return roots[uid]
+
+        groups: list[TimelineGroup] = []
+        for theme in self._themes:
+            for encoding in ENCODINGS:
+                members: list[Timeline] = []
+                labels = [
+                    file.label for file in THEME_FILES if file.encoding == encoding
+                ]
+                if encoding == "EDM-alig":
+                    labels.insert(0, EXCERPT_FILE.label)
+                for label in labels:
+                    if label == EXCERPT_FILE.label:
+                        timeline = root(self._track_ids[theme.track]).get_child(
+                            theme.excerpt.id
+                        )
+                    else:
+                        timeline = root(theme.files[label].id)
+                    part = theme.part_of(label)
+                    members.append(
+                        timeline if part is None else timeline.get_child(part.id)
+                    )
+                groups.append(
+                    TimelineGroup(
+                        id=theme.group_ids[encoding],
+                        name=f"{theme.name}, {encoding}",
+                        timelines=members,
+                    )
+                )
+        return groups
 
     def create_timeline(self, uid: str | None = None, **kwargs: Any) -> "Timeline":
         """One timeline of :meth:`create_timelines` by its ID.
 
         Args:
-            uid: A CD track's or a theme encoding's timeline ID.
+            uid: A CD track's or a theme file's timeline ID.
             **kwargs: ``track_lengths``, as :meth:`create_timelines` takes
                 it; any other keyword is refused.
 
@@ -855,61 +1241,99 @@ class MtdLoader(AlignmentLoader):
         for property, value in pairs:
             timeline.add_statement(property, value, provenance=provenance)
         for theme in themes:
-            excerpt = ContinuousPhysicalTimeline(
-                length=float(theme.end - theme.start),
-                unit=TimeUnit.seconds,
-                number_type=NumberType.float,
-                uid=theme.excerpt_id,
-                name=f"Theme {theme.meta['BMID']} (MTD {theme.meta['MTDID']})",
-            )
-            timeline.add_child(excerpt, float(theme.start))
+            timeline.add_child(self._make_file(theme, EXCERPT_FILE), float(theme.start))
         return timeline
 
-    def _make_theme_score(self, theme: _Theme) -> ContinuousLogicalTimeline:
-        """A theme encoding's quarters timeline: its notes and statements."""
-        ppq = theme.ppq
-        timeline = ContinuousLogicalTimeline(
-            length=Fraction(max(note.end for note in theme.notes), ppq),
-            unit=TimeUnit.quarters,
-            number_type=NumberType.fraction,
-            uid=theme.score_id,
-            name=f"{theme.meta['BMID']} (MTD {theme.meta['MTDID']})",
+    def _make_file(self, theme: _Theme, file: MtdFile) -> Timeline:
+        """The timeline of one file of a theme, with the child it takes part through.
+
+        Every such timeline names its file and states what it was made
+        from; a MIDI file's holds its notes; the derivation roots state
+        the theme; the excerpt states MTD's transposition and the
+        recording's rights.
+        """
+        held = theme.files[file.label]
+        cls, unit, number_type = _AXES[file.kind]
+        timeline = cls(
+            length=held.length,
+            unit=unit,
+            number_type=number_type,
+            uid=held.id,
+            name=(
+                f"Theme {theme.name}"
+                if file is EXCERPT_FILE
+                else f"{theme.name}, {file.label}"
+            ),
         )
-        timeline.add_events(
-            [
-                {
-                    "id": note.id,
-                    "start": Fraction(note.start, ppq),
-                    "end": Fraction(note.end, ppq),
-                    "event_type": "Note",
-                    "pitch": {"midi_number": note.pitch},
-                    "velocity": note.velocity,
-                }
-                for note in theme.notes
-            ]
+        if held.notes:
+            ppq = held.ppq
+            assert ppq is not None
+            timeline.add_events(
+                [
+                    {
+                        "id": note.id,
+                        "start": Fraction(note.start, ppq),
+                        "end": Fraction(note.end, ppq),
+                        "event_type": "Note",
+                        "pitch": {"midi_number": note.pitch},
+                        "velocity": note.velocity,
+                    }
+                    for note in held.notes
+                ]
+            )
+        member = file.member(theme.stem)
+        timeline.add_statement(
+            "lrmoo:R7i_is_exemplified_by",
+            _item(member),
+            provenance=Provenance(
+                method="imported",
+                basis=(MTD_DOI,),
+                note=f"{MTD_VERSION} MTD/{member}",
+            ),
         )
-        provenance = Provenance(
+        if file.label in _DERIVED_FROM:
+            source, statement = _DERIVED_FROM[file.label]
+            timeline.add_statement(
+                "dcterms:source",
+                {"id": f"#{theme.files[source].id}"},
+                provenance=Provenance(
+                    method="imported", basis=(MTD_DOI,), note=statement
+                ),
+            )
+        meta = Provenance(
             method="imported",
             basis=(MTD_DOI,),
             note=f"{MTD_VERSION} data_META/{theme.stem}.json",
         )
-        pairs: list[tuple[str, Any]] = [
-            ("schema:isPartOf", {"label": _movement_label(theme.movement)}),
-            ("melod:hasIdentifier", _identifier("MTD", theme.meta["MTDID"])),
-            (
-                "melod:hasIdentifier",
-                _identifier("Barlow and Morgenstern", theme.meta["BMID"]),
-            ),
-            (
-                "dcterms:source",
-                {
-                    "label": f"{THEME_MIDI_FOLDERS[self._theme_midi]}, "
-                    f"{MTD_VERSION} {self._theme_midi}/{theme.stem}.mid"
-                },
-            ),
-        ]
+        pairs: list[tuple[str, Any]] = []
+        if file.label in _THEME_STATED_ON:
+            pairs += [
+                ("schema:isPartOf", {"label": _movement_label(theme.movement)}),
+                ("melod:hasIdentifier", _identifier("MTD", theme.meta["MTDID"])),
+                (
+                    "melod:hasIdentifier",
+                    _identifier("Barlow and Morgenstern", theme.meta["BMID"]),
+                ),
+            ]
+        if file is EXCERPT_FILE:
+            pairs += [
+                ("rdfs:comment", _transposition(theme.meta["MidiTransposition"])),
+                ("dcterms:rights", {"id": IN_COPYRIGHT}),
+                ("dcterms:accessRights", {"id": METADATA_ONLY_ACCESS}),
+            ]
         for property, value in pairs:
-            timeline.add_statement(property, value, provenance=provenance)
+            timeline.add_statement(property, value, provenance=meta)
+        part = theme.part_of(file.label)
+        if part is not None:
+            covered = theme.files[part.covers].file
+            child = cls(
+                length=part.length,
+                unit=unit,
+                number_type=number_type,
+                uid=part.id,
+                name=f"{timeline.name}, span of the {covered.label}",
+            )
+            timeline.add_child(child, express_as(0, number_type))
         return timeline
 
     # endregion
@@ -928,7 +1352,7 @@ class MtdLoader(AlignmentLoader):
         )
         rows.append(("Themes", str(len(self._themes))))
         rows.append(("CD tracks", str(len(self._track_ids))))
-        rows.append(("Theme encodings", code(self._theme_midi)))
+        rows.append(("Claims matched against", code(self._theme_midi)))
         return rows
 
     # endregion

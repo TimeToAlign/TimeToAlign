@@ -15,7 +15,7 @@ contain those three score-only columns.
 |---|---|
 | `test_performance.py` | Performance-file event-type and extent golds, plus synthetic loader coverage. |
 | `test_harmonization.py` | Canonical same-file comparisons between performance and score loaders. |
-| `test_score.py` | Beethoven score loading, empty-file failure, and the wider score schema. |
+| `test_score.py` | Beethoven score loading, empty-file failure, the wider score schema, and the end of track of both parsers. |
 | `test_store.py` | Base and score event-data schemas, nullability, construction, and inheritance. |
 | `test_bundle.py` | `MidiStore` splitting, empty stores, extension, mapping protocol, summaries, and timelines. |
 | `conftest.py` | Downloaded MIDI specimen paths and synthetic shared event data. |
@@ -124,6 +124,21 @@ consecutive notes agree in onset, pitch and duration. It asserts:
   asserted to have these three values, so the literal is tied to the file and not to the
   loader's message alone. Every row's ID is minted (`note_…`): a MIDI file states no note IDs,
   and Partitura's numbering serves the velocity join only, whichever parser reads the file.
+
+## End of track
+
+A MIDI file states its extent in the `end_of_track` message closing each track: the tick at which
+the track ends, the sum of its delta times. The file ends where its latest track ends, which may
+lie after the last note's end (many files close a track one tick after it) and never before it.
+Every MIDI loader exposes that tick as `end_of_track`, and each source's metadata records it.
+
+The test writes a type-1 file with mido whose two tracks end at ticks the test chooses: a meta
+track closed at tick 1, a note track whose only note (tick 0 to 1,440) is followed by its
+`end_of_track` one tick later, at 1,441. Both `ScoreMidiLoader` parsers (Partitura and mido) and
+`PerformanceMidiLoader` must answer 1,441, not the last note's end (1,440) and not the first
+track's end (1); the source metadata says 1,441 too. A loader that has read nothing answers
+`None`. A second file whose meta track ends after its notes (at 2,000, the note again ending at
+1,440) answers 2,000: the latest track decides, whatever it holds.
 
 ## Score loader and stores
 

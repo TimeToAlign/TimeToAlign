@@ -22,7 +22,7 @@ from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source, describe_source
 from timetoalign.loader.base import LoadSourceResult
 
-from .base import MidiLoader, _read_midi_file
+from .base import MidiLoader, _end_of_track, _read_midi_file
 from .constants import MidiEventType
 from .events import MidiEventData, ScoreMidiEventData
 
@@ -264,6 +264,7 @@ class ScoreMidiLoader(MidiLoader):
         # messages give the velocities partitura's score parse leaves out.
         # Note: partitura can return Score, Part, PartGroup, or list
         mid = _read_midi_file(source)
+        self._end_of_track = _end_of_track(mid)
         with suppressed_backend_warnings():
             score_data = pt.load_score_midi(
                 mid,
@@ -303,7 +304,12 @@ class ScoreMidiLoader(MidiLoader):
 
         if not parts:
             # Empty score
-            return {"format": "midi", "parser": "partitura", "parts": 0}, {}
+            return {
+                "format": "midi",
+                "parser": "partitura",
+                "parts": 0,
+                "end_of_track": self._end_of_track,
+            }, {}
 
         # Get PPQ from the first part (partitura stores this in quarter_map logic usually,
         # but for MIDI loading, it's often implicit or stored in the score object if available)
@@ -366,6 +372,7 @@ class ScoreMidiLoader(MidiLoader):
             "part_voice_assign_mode": self._part_voice_assign_mode,
             "parts": len(parts),
             "ticks_per_beat": self._ticks_per_beat,
+            "end_of_track": self._end_of_track,
         }
 
         if not events:

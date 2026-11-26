@@ -396,7 +396,7 @@ for the track ``01. See Me Coming``), the display name as ``name``, the
 Rekordbox key as ``meta["TrackID"]``.
 
 **Validation logic.** A synthetic track whose ``Location`` basename **differs**
-from its ``Name`` separates the lanes: the created timeline's **id** is the
+from its ``Name`` separates ID, name and file name: the created timeline's **id** is the
 first ID the loader's minter gives (``seed=`` fixes it: a ``cpt`` ID, minted
 before the track's conversion maps), its **name** remains the XML ``Name`` and
 its ``meta["Location"]`` the attribute as written. A track carrying **no**

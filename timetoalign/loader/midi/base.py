@@ -135,7 +135,6 @@ class MidiLoader(EventLoader):
                     if is_note_on:
                         # Start of a note
                         note_event = {
-                            "id": f"n{i}_{absolute_time}_{note}_{channel}",
                             "temporal_type": "interval",
                             "event_type": MidiEventType.NOTE,
                             "start": absolute_time,
@@ -175,7 +174,6 @@ class MidiLoader(EventLoader):
                 # Handle Control Changes
                 elif msg.type == "control_change" and include_controls:
                     cc_event = {
-                        "id": f"cc{i}_{absolute_time}_{msg.control}",
                         "temporal_type": "instant",
                         "event_type": MidiEventType.CONTROL_CHANGE,
                         "start": None,
@@ -196,7 +194,6 @@ class MidiLoader(EventLoader):
                 # Handle Program Changes
                 elif msg.type == "program_change" and include_program_changes:
                     pc_event = {
-                        "id": f"pc{i}_{absolute_time}",
                         "temporal_type": "instant",
                         "event_type": MidiEventType.PROGRAM_CHANGE,
                         "start": None,

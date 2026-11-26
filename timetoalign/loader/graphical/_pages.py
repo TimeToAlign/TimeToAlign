@@ -44,13 +44,11 @@ functions:
 - :func:`build_pages` ``(owner, pages, *, page_ids=None, accolade_ids=None,
   box_ids=None)``: one locked root per page.
 
-``owner`` is the loader: minted timeline ids (``dgt_N``) are drawn from it
-in document order (the volume, then each page followed by its accolades), a
-named timeline taking its number all the same. The numbers of the ids a call
-is given are set aside before its first id is minted, so no timeline is
-minted an id the call gives another (``page_ids=["p1", "dgt_3"]``: the
-volume is ``dgt_4``). A page for which the loader can make no path is simply
-not handed over.
+``owner`` is the loader: every id the call mints (timelines ``dgt_…``,
+Boxes ``box_…``) is drawn from its minter in document order (the volume,
+then each page followed by its accolades, each accolade followed by its
+Boxes); a timeline or Box the call names takes none. A page for which the
+loader can make no path is simply not handed over.
 
 Identity
 --------
@@ -59,8 +57,8 @@ Identity
 their kind in the call and replace the ids the source states. Each is
 
 - ``None``: a page and a Box take their ``source_id`` where the source has
-  one; everything else is minted (timelines ``dgt_N``, Boxes ``box_N`` per
-  accolade);
+  one; everything else is minted from the loader's minter (timelines
+  ``dgt_…``, Boxes ``box_…``);
 - a sequence of ids in document order over the whole call; or
 - a template string filled with :meth:`str.format` from ``page`` (the
   page's position in the call, from 1), ``accolade`` (its position on its
@@ -106,9 +104,9 @@ Examples:
             ],
         )
         volume = build_volume(loader, [page], uid="scan", box_ids="m{n}")
-        # volume 'scan' (length 1620) > page '1' (dgt_2, length 1620)
-        #   > accolade_1 (dgt_3, length 800, Boxes m1 at 0 and m2 at 380)
-        #   > accolade_2 (dgt_4, offset 800, length 820)
+        # volume 'scan' (length 1620) > page '1' (dgt_…, length 1620)
+        #   > accolade_1 (dgt_…, length 800, Boxes m1 at 0 and m2 at 380)
+        #   > accolade_2 (dgt_…, offset 800, length 820)
 
     A facsimile page whose areas name no accolade::
 
@@ -128,7 +126,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from string import Formatter
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from timetoalign.core import (
     BoundingBox,
@@ -148,8 +146,14 @@ from timetoalign.loader.graphical.paths import (
 )
 from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine, Timeline
 
+if TYPE_CHECKING:
+    from timetoalign.loader.base import Loader
+
 #: The axis of every timeline built here.
 _UNIT = TimeUnit.pixels
+
+#: The prefix of a minted Box id: its event type in lower case.
+_BOX_PREFIX = "box"
 _TimelineT = TypeVar("_TimelineT", bound=Timeline)
 
 #: An ids argument: nothing, one id per element in document order, or a template.
@@ -546,21 +550,21 @@ def _plan(
 
 
 def _timeline(
-    owner: object,
+    owner: Loader[Any],
     cls: type[_TimelineT],
     uid: str | None,
     **arguments: Any,
 ) -> _TimelineT:
-    """Make one timeline for *owner*, its id *uid* or minted
+    """Make one timeline for *owner*, its id *uid* or minted from its minter
     (:func:`~timetoalign.timelines.factory.mint_timeline_id`)."""
     from timetoalign.timelines.factory import mint_timeline_id
 
-    timeline_id = mint_timeline_id(_UNIT) if uid is None else uid
+    timeline_id = mint_timeline_id(_UNIT, owner._id_minter) if uid is None else uid
     return cls(unit=_UNIT, number_type=NumberType.int, uid=timeline_id, **arguments)
 
 
 def _build_line(
-    owner: object, plan: _AccoladePlan, image: str | None
+    owner: Loader[Any], plan: _AccoladePlan, image: str | None
 ) -> DiscreteGraphicalTimeline:
     """Build the timeline along one piece, with its area and its Boxes."""
     meta: dict[str, Any] = {}
@@ -580,7 +584,11 @@ def _build_line(
         assert plan.area is not None
         timeline.add_events(
             [
-                Box.from_shape(box.shape, origin=plan.area.x_min, id=box_id)
+                Box.from_shape(
+                    box.shape,
+                    origin=plan.area.x_min,
+                    id=owner._id_minter.mint(_BOX_PREFIX) if box_id is None else box_id,
+                )
                 for box, box_id in zip(plan.boxes, plan.box_ids)
             ]
         )
@@ -588,7 +596,7 @@ def _build_line(
 
 
 def _build_page(
-    owner: object, plan: _PagePlan
+    owner: Loader[Any], plan: _PagePlan
 ) -> DiscreteGraphicalTimeline | SegmentLine[DiscreteGraphicalTimeline]:
     """Build one page: a segment line of its accolades, or its one line."""
     image = plan.page.image
@@ -614,7 +622,7 @@ def _build_page(
 
 
 def build_pages(
-    owner: object,
+    owner: Loader[Any],
     pages: Iterable[Page],
     *,
     page_ids: Ids = None,
@@ -624,7 +632,7 @@ def build_pages(
     """Build one root timeline per page, in the order given.
 
     Args:
-        owner: The loader the minted timeline ids are drawn from.
+        owner: The loader whose minter the minted ids are drawn from.
         pages: The pages; each has a path.
         page_ids: The pages' ids (see "Identity" in the module docstring).
         accolade_ids: The accolades' ids, likewise.
@@ -658,7 +666,7 @@ def build_pages(
 
 
 def build_volume(
-    owner: object,
+    owner: Loader[Any],
     pages: Iterable[Page],
     *,
     uid: str | None = None,
@@ -672,10 +680,10 @@ def build_volume(
     """Build the volume: a locked segment line of the pages, in the order given.
 
     Args:
-        owner: The loader the minted timeline ids are drawn from.
+        owner: The loader whose minter the minted ids are drawn from.
         pages: The pages, at least one; all built of accolades (each path a
             ``PiecewisePath``) or none.
-        uid: The volume's id; minted ``dgt_N`` when None.
+        uid: The volume's id; minted ``dgt_…`` when None.
         name: The volume's name (the source's title).
         image: A reference to the volume's images as a whole, where the
             source writes one (``meta["image"]``).

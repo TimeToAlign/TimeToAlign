@@ -1,4 +1,4 @@
-"""VerovioLoader's minted timeline ids beside a given root id (validation logic: README.md)."""
+"""VerovioLoader's minted timeline ids, given root or not (validation logic: README.md)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import pytest
 
 pytest.importorskip("verovio")
 
+from tests.loader.minting import minted  # noqa: E402
 from timetoalign.loader.score import VerovioLoader  # noqa: E402
 
 
@@ -42,27 +43,36 @@ def mei(tmp_path: Path) -> Path:
     return path
 
 
-@pytest.mark.parametrize(
-    ("uid", "root", "movements"),
-    [
-        (None, "score:clt_1", ["score:clt_2", "score:clt_3"]),
-        ("score:clt_2", "score:clt_2", ["score:clt_3", "score:clt_4"]),
-        ("perf:clt_2", "perf:clt_2", ["score:clt_3", "score:clt_4"]),
-        ("score", "score", ["score:clt_2", "score:clt_3"]),
-    ],
-    ids=["minted", "given-minted-shape", "given-other-role", "given-other-shape"],
-)
-def test_movements_never_take_the_root_id(
-    mei: Path, uid: str | None, root: str, movements: list[str]
-) -> None:
-    timeline = VerovioLoader.from_file(mei).create_timeline(uid=uid)
+def test_minted_root_then_movements(mei: Path) -> None:
+    timeline = VerovioLoader.from_file(mei, seed=0).create_timeline()
+    root, first, second = (f"score:{id_}" for id_ in minted(0, "clt", "clt", "clt"))
     assert timeline.id == root
-    assert timeline.list_children() == movements
+    assert timeline.list_children() == [first, second]
 
 
-def test_rendered_movements_never_take_the_root_id(mei: Path) -> None:
-    timeline = VerovioLoader.from_file(mei).create_physical_timeline(
-        uid="rendered:cpt_2"
+@pytest.mark.parametrize("uid", ["score", "perf:clt_2", "anything"])
+def test_a_given_root_draws_no_id(mei: Path, uid: str) -> None:
+    timeline = VerovioLoader.from_file(mei, seed=0).create_timeline(uid=uid)
+    assert timeline.id == uid
+    assert timeline.list_children() == [
+        f"score:{id_}" for id_ in minted(0, "clt", "clt")
+    ]
+
+
+def test_rendered_movements_follow_the_cmap(mei: Path) -> None:
+    timeline = VerovioLoader.from_file(mei, seed=0).create_physical_timeline(
+        uid="rendered:x"
     )
-    assert timeline.id == "rendered:cpt_2"
-    assert timeline.list_children() == ["rendered:cpt_3", "rendered:cpt_4"]
+    _, first, second = minted(0, "cmap", "cpt", "cpt")
+    assert timeline.id == "rendered:x"
+    assert timeline.list_children() == [f"rendered:{first}", f"rendered:{second}"]
+
+
+def test_the_seed_comes_from_the_bytes_read(mei: Path, tmp_path: Path) -> None:
+    once = VerovioLoader.from_file(mei).create_timeline()
+    again = VerovioLoader.from_file(mei).create_timeline()
+    assert [once.id, *once.list_children()] == [again.id, *again.list_children()]
+    other = tmp_path / "other.mei"
+    other.write_text(MEI.replace("Two movements", "Two Movements"), encoding="utf-8")
+    changed = VerovioLoader.from_file(other).create_timeline()
+    assert changed.id != once.id

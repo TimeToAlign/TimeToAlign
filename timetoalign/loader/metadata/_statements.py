@@ -21,8 +21,10 @@ from typing import Any
 import timetoshare
 
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.core.ids import mint_id
+from timetoalign.core import TimeUnit
+from timetoalign.core.ids import IdMinter, seed_from
 from timetoalign.timelines.base import Timeline
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.statements import (
     MutableStatementsMixin,
     NodePath,
@@ -134,16 +136,20 @@ class Plan:
     untouched. :meth:`commit` then changes the bundle.
     """
 
-    def __init__(self, bundle: AlignmentBundle) -> None:
+    def __init__(self, bundle: AlignmentBundle, minter: IdMinter) -> None:
         self.bundle = bundle
+        self.minter = minter
         self.bundle_target = Target(
             bundle.id, bundle, name=bundle._statement_holder_name()
         )
         self._scratches: dict[tuple[int, str | None], tuple[Target, _Scratch]] = {}
         self._new: list[tuple[str, Timeline]] = []
         # A provisional ID is no ID of the bundle, so that no reference the
-        # holders' statements hold already can name it.
+        # holders' statements hold already can name it. It is drawn from a
+        # minter seeded by the IDs the bundle holds, so a plan is the same
+        # on every run.
         self._taken: set[str] = set(bundle._scope_ids())
+        self._provisional = IdMinter(seed_from("new", sorted(self._taken)))
 
     # region Targets
 
@@ -172,9 +178,15 @@ class Plan:
             f"region of {self.bundle._statement_holder_name()}"
         )
 
+    def timeline_id(self, unit: TimeUnit) -> str:
+        """The ID of a timeline the import makes, minted from the loader's minter."""
+        return mint_timeline_id(unit, self.minter)
+
     def new_timeline(self, timeline: Timeline, entity: str) -> Target:
         """A timeline :meth:`commit` adds to the bundle, standing for *entity*."""
-        provisional = mint_id("new", self._taken)
+        provisional = self._provisional.mint("new")
+        while provisional in self._taken:
+            provisional = self._provisional.mint("new")
         self._taken.add(provisional)
         self._new.append((provisional, timeline))
         return Target(provisional, timeline, name=f"the new timeline of {entity}")

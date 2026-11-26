@@ -20,6 +20,7 @@ from __future__ import annotations
 import pyarrow as pa
 import pytest
 
+from tests.loader.minting import minted
 from timetoalign.loader.alignment.tilia import TiliaDictStore, TiliaJsonLoader
 from timetoalign.testdata import ensure_data
 
@@ -61,15 +62,8 @@ EXPECTED_TIMELINE_NAMES = [
 
 EXPECTED_COMPONENT_COUNTS = [33, 14, 5, 1146, 12, 11, 19]
 
-EXPECTED_TIMELINE_IDS = [
-    "cpt_1",
-    "cpt_2",
-    "cpt_3",
-    "cpt_4",
-    "cpt_5",
-    "cpt_6",
-    "cpt_7",
-]
+#: The loader (seed 0) mints the timeline ids first, in source order.
+EXPECTED_TIMELINE_IDS = minted(0, *["cpt"] * 7)
 
 EXPECTED_SOURCE_TIMELINE_IDS = [
     "HIERARCHY_TIMELINE_0",
@@ -90,7 +84,7 @@ EXPECTED_SOURCE_TIMELINE_IDS = [
 @pytest.fixture
 def bruckner_loader() -> TiliaJsonLoader:
     """TiliaJsonLoader loaded with Bruckner5_Scherzo.json."""
-    loader = TiliaJsonLoader()
+    loader = TiliaJsonLoader(seed=0)
     loader.load(BRUCKNER_PATH)
     return loader
 
@@ -239,16 +233,16 @@ class TestTiliaTimelineCreation:
 
     def test_create_timeline_by_id(self, bruckner_loader: TiliaJsonLoader) -> None:
         tl = bruckner_loader.create_timeline("BEAT_TIMELINE_3")
-        assert tl.id == "cpt_4"
+        assert tl.id == EXPECTED_TIMELINE_IDS[3]
         assert tl.name == "Takte"
 
     def test_create_timeline_by_name(self, bruckner_loader: TiliaJsonLoader) -> None:
         tl = bruckner_loader.create_timeline("Takte")
-        assert tl.id == "cpt_4"
+        assert tl.id == EXPECTED_TIMELINE_IDS[3]
 
     def test_create_timeline_by_index(self, bruckner_loader: TiliaJsonLoader) -> None:
         tl = bruckner_loader.create_timeline(0)
-        assert tl.id == "cpt_1"
+        assert tl.id == EXPECTED_TIMELINE_IDS[0]
 
     def test_create_timeline_event_counts(
         self, bruckner_loader: TiliaJsonLoader
@@ -271,8 +265,8 @@ class TestTiliaTimelineCreation:
         subset_ids = ["BEAT_TIMELINE_3", "HIERARCHY_TIMELINE_0"]
         timelines = bruckner_loader.create_timelines(uids=subset_ids)
         assert len(timelines) == 2
-        assert timelines[0].id == "cpt_4"
-        assert timelines[1].id == "cpt_1"
+        assert timelines[0].id == EXPECTED_TIMELINE_IDS[3]
+        assert timelines[1].id == EXPECTED_TIMELINE_IDS[0]
 
     def test_timeline_length_matches_media(
         self, bruckner_loader: TiliaJsonLoader
@@ -386,7 +380,7 @@ class TestTiliaErrorHandling:
     def test_repr_after_load(self, bruckner_loader: TiliaJsonLoader) -> None:
         r = repr(bruckner_loader)
         assert "TiliaJsonLoader(" in r
-        assert "cpt_4" in r
+        assert EXPECTED_TIMELINE_IDS[3] in r
 
 
 # endregion

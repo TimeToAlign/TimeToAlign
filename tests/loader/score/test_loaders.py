@@ -105,15 +105,15 @@ class TestMs3Loader:
     def test_measure_coordinates_preserve_exact_fractions(self):
         """Known MS3 measures retain exact starts, durations, and ends."""
         loader = Ms3Loader.from_file(WOO71_MEASURES)
-        rows = {row["id"]: row for row in loader.store.measures}
+        rows = {row["mc"]: row for row in loader.store.measures}
         expected = {
-            "mc:00001": (Fraction(0), Fraction(1), Fraction(1)),
-            "mc:00002": (Fraction(1), Fraction(2), Fraction(3)),
-            "mc:00003": (Fraction(3), Fraction(2), Fraction(5)),
+            1: (Fraction(0), Fraction(1), Fraction(1)),
+            2: (Fraction(1), Fraction(2), Fraction(3)),
+            3: (Fraction(3), Fraction(2), Fraction(5)),
         }
 
-        for measure_id, (start, duration, end) in expected.items():
-            row = rows[measure_id]
+        for mc, (start, duration, end) in expected.items():
+            row = rows[mc]
             assert (
                 Fraction(row["start"]["numerator"], row["start"]["denominator"])
                 == start

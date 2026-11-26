@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import timetoshare
 
+from tests.loader.minting import minted
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.loader import MeiHeadLoader
@@ -21,6 +22,9 @@ from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     Region,
 )
+
+#: The timeline IDs an import by a loader of seed 0 mints first.
+NEW = minted(0, "cgt", "cgt")
 
 DATE = "2026-11-19"
 AGENT = "https://timetoalign.github.io/"
@@ -255,7 +259,7 @@ ITEM_PAIRS = {
 ITEM = {"id": "cnw0133.xml#item_1", **ITEM_PAIRS}
 KEEPER = "cidoc:P50_has_current_keeper"
 EDITOR = "https://example.org/people/editor"
-AGAIN = {"source_1": "cgt_1", "source_2": "cgt_2"}
+AGAIN = {"source_1": NEW[0], "source_2": NEW[1]}
 """The second import maps each manifestation to the timeline the first gave it."""
 
 
@@ -414,10 +418,10 @@ class TestNewBundle:
     """A header imported into a new bundle (rows a–l, MEI 5.1)."""
 
     def test_bundle(self, cnw0133: Path) -> None:
-        bundle = MeiHeadLoader.from_file(cnw0133).create_bundle(date=DATE)
+        bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(date=DATE)
         assert bundle.id == "cnw0133"
         assert bundle.name is None
-        assert bundle.timeline_ids == ["cgt_1", "cgt_2"]
+        assert bundle.timeline_ids == [NEW[0], NEW[1]]
         assert bundle.groups == {}
         assert bundle.statements == {
             "rdfs:seeAlso": [{"id": "cnw0133.xml"}],
@@ -429,8 +433,8 @@ class TestNewBundle:
         ]
 
     def test_manifestations(self, cnw0133: Path) -> None:
-        bundle = MeiHeadLoader.from_file(cnw0133).create_bundle(date=DATE)
-        printed, autograph = bundle.get_timeline("cgt_1"), bundle.get_timeline("cgt_2")
+        bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(date=DATE)
+        printed, autograph = bundle.get_timeline(NEW[0]), bundle.get_timeline(NEW[1])
         for timeline, name in (
             (printed, "Score, print"),
             (autograph, "Score, autograph"),
@@ -445,13 +449,13 @@ class TestNewBundle:
         assert autograph.provenance == AUTOGRAPH_PROVENANCE
 
     def test_manifest_written(self, cnw0133: Path) -> None:
-        bundle = MeiHeadLoader.from_file(cnw0133).create_bundle(date=DATE)
+        bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(date=DATE)
         manifest = assert_written(bundle)
         assert context_prefixes(manifest) == sorted(PREFIXES)
 
     def test_stated_by(self, cnw0133: Path) -> None:
         agents = ["https://example.org/people/editor", "https://example.org/agents/x"]
-        bundle = MeiHeadLoader.from_file(cnw0133).create_bundle(
+        bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(
             stated_by=agents, date=DATE
         )
         assert [e["stated_by"] for e in bundle.provenance] == [agents, agents]
@@ -472,21 +476,21 @@ class TestVariants:
 
     def test_has_embodiment(self, tmp_path: Path) -> None:
         path = write_header(tmp_path / "variant", HAS_EMBODIMENT)
-        bundle = MeiHeadLoader.from_file(path).create_bundle(date=DATE)
-        assert bundle.timeline_ids == ["cgt_1", "cgt_2"]
+        bundle = MeiHeadLoader.from_file(path, seed=0).create_bundle(date=DATE)
+        assert bundle.timeline_ids == [NEW[0], NEW[1]]
         assert bundle.statements == {
             "rdfs:seeAlso": [{"id": "cnw0133.xml"}],
             "schema:about": [work_node()],
         }
-        printed = bundle.get_timeline("cgt_1")
+        printed = bundle.get_timeline(NEW[0])
         assert printed.statements == print_statements()
         assert printed.provenance == print_provenance(relation="relation_3")
         assert_written(bundle)
 
     def test_two_items_of_equal_content(self, tmp_path: Path) -> None:
         path = write_header(tmp_path / "variant", TWO_ITEMS)
-        bundle = MeiHeadLoader.from_file(path).create_bundle(date=DATE)
-        autograph = bundle.get_timeline("cgt_2")
+        bundle = MeiHeadLoader.from_file(path, seed=0).create_bundle(date=DATE)
+        autograph = bundle.get_timeline(NEW[1])
         assert autograph.statements["lrmoo:R7i_is_exemplified_by"] == [
             {
                 **ITEM,
@@ -512,7 +516,7 @@ class TestSecondHeader:
     an expression no manifestation embodies, a singleton manifestation."""
 
     def test_work(self, andante: Path) -> None:
-        bundle = MeiHeadLoader.from_file(andante).create_bundle(date=DATE)
+        bundle = MeiHeadLoader.from_file(andante, seed=0).create_bundle(date=DATE)
         base = "andante.xml"
         opus = {
             "type": ["melod:Identifier"],
@@ -619,7 +623,7 @@ class TestSecondHeader:
         ]
 
     def test_singleton_manifestation(self, andante: Path) -> None:
-        bundle = MeiHeadLoader.from_file(andante).create_bundle(date=DATE)
+        bundle = MeiHeadLoader.from_file(andante, seed=0).create_bundle(date=DATE)
         base = "andante.xml"
         published = {
             "type": ["melod:ExactDate"],
@@ -632,8 +636,8 @@ class TestSecondHeader:
             KEEPER: [{"id": "viaf:123", "label": "Bibliothek"}],
         }
         part = {"id": "https://example.org/parts/1"}
-        assert bundle.timeline_ids == ["cgt_1"]
-        autograph = bundle.get_timeline("cgt_1")
+        assert bundle.timeline_ids == [NEW[0]]
+        autograph = bundle.get_timeline(NEW[0])
         assert autograph.name == "Autograph"
         assert autograph.statements == {
             "type": ["melod:Manifestation"],
@@ -654,7 +658,7 @@ class TestSecondHeader:
 
     def test_manifest_written(self, andante: Path) -> None:
         manifest = assert_written(
-            MeiHeadLoader.from_file(andante).create_bundle(date=DATE)
+            MeiHeadLoader.from_file(andante, seed=0).create_bundle(date=DATE)
         )
         assert context_prefixes(manifest) == sorted(
             "cidoc dcterms gnd lrmoo melod melodTerms mus owl rdf rdfs rel schema skos "
@@ -667,12 +671,12 @@ class TestInto:
 
     def test_manifestation_mapped(self, cnw0133: Path) -> None:
         bundle = layerit()
-        loader = MeiHeadLoader.from_file(cnw0133)
+        loader = MeiHeadLoader.from_file(cnw0133, seed=0)
         result = loader.create_bundle(
             into=bundle, subjects={"source_1": "cgt_6"}, date=DATE
         )
         assert result is bundle
-        assert bundle.timeline_ids == ["clt_6", "cgt_6", "cgt_1"]
+        assert bundle.timeline_ids == ["clt_6", "cgt_6", NEW[0]]
         assert bundle.statements == {
             "rdfs:seeAlso": [{"id": "cnw0133.xml"}],
             "schema:about": [work_node()],
@@ -682,18 +686,18 @@ class TestInto:
         assert scan.statements == print_statements()
         assert scan.provenance == print_provenance()
         assert scan.get_region("region_1").statements == {}
-        autograph = bundle.get_timeline("cgt_1")
+        autograph = bundle.get_timeline(NEW[0])
         assert autograph.name == "Score, autograph"
         assert autograph.statements == AUTOGRAPH_STATEMENTS
         written = assert_written(bundle)
 
-        again = {"source_1": "cgt_6", "source_2": "cgt_1"}
+        again = {"source_1": "cgt_6", "source_2": NEW[0]}
         loader.create_bundle(into=bundle, subjects=again, date="2026-11-20")
         assert bundle.to_dict() == written
 
     def test_item_mapped_to_region(self, cnw0133: Path) -> None:
         bundle = layerit()
-        MeiHeadLoader.from_file(cnw0133).create_bundle(
+        MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(
             into=bundle, subjects={"source_1": "cgt_6", "item_1": "region_1"}, date=DATE
         )
         region = bundle.get_timeline("cgt_6").get_region("region_1")
@@ -708,7 +712,7 @@ class TestInto:
             stated("melod:hasShelfmark", "CNS 342e", "identifier_3"),
             candidate(KEEPER, {"label": "DK-Kk"}, "corpName_1"),
         ]
-        autograph = bundle.get_timeline("cgt_1")
+        autograph = bundle.get_timeline(NEW[0])
         assert autograph.statements["lrmoo:R7i_is_exemplified_by"] == [
             {"id": "#region_1"}
         ]
@@ -720,7 +724,7 @@ class TestInto:
     def test_a_candidate_believed_false_is_not_offered_again(
         self, cnw0133: Path
     ) -> None:
-        loader = MeiHeadLoader.from_file(cnw0133)
+        loader = MeiHeadLoader.from_file(cnw0133, seed=0)
         bundle = loader.create_bundle(date=DATE)
         work = ("schema:about", 0)
         bundle.add_belief(
@@ -754,7 +758,7 @@ class TestDecisionsKept:
     """A decision taken on a value node survives a second import."""
 
     def test_work_believed_false(self, cnw0133: Path) -> None:
-        loader = MeiHeadLoader.from_file(cnw0133)
+        loader = MeiHeadLoader.from_file(cnw0133, seed=0)
         bundle = loader.create_bundle(date=DATE)
         statements = bundle.statements
         bundle.add_belief(
@@ -779,9 +783,9 @@ class TestDecisionsKept:
         assert bundle.get_provenance(believer=EDITOR) == [see_also]
 
     def test_embodiment_withdrawn(self, cnw0133: Path) -> None:
-        loader = MeiHeadLoader.from_file(cnw0133)
+        loader = MeiHeadLoader.from_file(cnw0133, seed=0)
         bundle = loader.create_bundle(date=DATE)
-        printed = bundle.get_timeline("cgt_1")
+        printed = bundle.get_timeline(NEW[0])
         embodies = ("lrmoo:R4_embodies", {"id": EXPRESSION})
         printed.remove_statement(*embodies)
         printed.add_belief(*embodies, actor=EDITOR, belief="false", date="2026-11-20")
@@ -799,9 +803,9 @@ class TestDecisionsKept:
         assert printed.get_candidates(believer=EDITOR) == []
 
     def test_keeper_stated_in_an_item(self, cnw0133: Path) -> None:
-        loader = MeiHeadLoader.from_file(cnw0133)
+        loader = MeiHeadLoader.from_file(cnw0133, seed=0)
         bundle = loader.create_bundle(date=DATE)
-        autograph = bundle.get_timeline("cgt_2")
+        autograph = bundle.get_timeline(NEW[1])
         item = ("lrmoo:R7i_is_exemplified_by", 0)
         autograph.add_statement(
             KEEPER, {"label": "DK-Kk"}, actor=EDITOR, date="2026-11-20", node=item
@@ -827,7 +831,9 @@ class TestDecisionsKept:
 class TestBase:
     def test_absolute_base(self, cnw0133: Path) -> None:
         base = "https://www.kb.dk/dcm/cnw/document.xq?doc=cnw0133.xml"
-        bundle = MeiHeadLoader.from_file(cnw0133).create_bundle(base=base, date=DATE)
+        bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(
+            base=base, date=DATE
+        )
         related = "https://www.kb.dk/dcm/cnw/cnw0007.xml"
         assert bundle.statements == {
             "rdfs:seeAlso": [{"id": base}],
@@ -837,13 +843,13 @@ class TestBase:
             stated("schema:about", {"id": f"{base}#work_1"}, "work_1", base),
             stated("rdfs:seeAlso", {"id": base}, None, base),
         ]
-        assert bundle.get_timeline("cgt_1").statements == print_statements(base)
+        assert bundle.get_timeline(NEW[0]).statements == print_statements(base)
         assert_written(bundle)
 
     def test_file_name_with_space(self, tmp_path: Path) -> None:
         path = tmp_path / "clair-de-lune M6-basic.mei"
         path.write_text(CNW0133, encoding="utf-8")
-        bundle = MeiHeadLoader.from_file(path).create_bundle(date=DATE)
+        bundle = MeiHeadLoader.from_file(path, seed=0).create_bundle(date=DATE)
         assert bundle.id == "clair-de-lune_M6-basic"
         assert bundle.statements["rdfs:seeAlso"] == [
             {"id": "clair-de-lune%20M6-basic.mei"}
@@ -854,7 +860,9 @@ class TestBase:
         )
 
     def test_id_given(self, cnw0133: Path) -> None:
-        bundle = MeiHeadLoader.from_file(cnw0133).create_bundle(id="nielsen", date=DATE)
+        bundle = MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(
+            id="nielsen", date=DATE
+        )
         assert bundle.id == "nielsen"
 
 
@@ -893,7 +901,7 @@ class TestRefusals:
     ) -> None:
         bundle = layerit()
         before = bundle.to_dict()
-        loader = MeiHeadLoader.from_file(cnw0133)
+        loader = MeiHeadLoader.from_file(cnw0133, seed=0)
         with pytest.raises(ValueError) as raised:
             loader.create_bundle(into=bundle, date=DATE, **kwargs)
         assert str(raised.value) == message
@@ -904,7 +912,7 @@ class TestRefusals:
         bundle = layerit()
         before = bundle.to_dict()
         with pytest.raises(ValueError) as raised:
-            MeiHeadLoader.from_file(path).create_bundle(into=bundle, date=DATE)
+            MeiHeadLoader.from_file(path, seed=0).create_bundle(into=bundle, date=DATE)
         assert str(raised.value) == (
             "the prefix 'doi' is declared neither by the catalogue nor on the new "
             "timeline of manifestation 'source_2'"
@@ -914,8 +922,8 @@ class TestRefusals:
 
     def test_subjects_without_into(self, cnw0133: Path) -> None:
         with pytest.raises(ValueError) as raised:
-            MeiHeadLoader.from_file(cnw0133).create_bundle(
-                subjects={"source_1": "cgt_1"}
+            MeiHeadLoader.from_file(cnw0133, seed=0).create_bundle(
+                subjects={"source_1": NEW[0]}
             )
         assert str(raised.value) == (
             "subjects needs into: a new bundle holds no element to map to"
@@ -927,7 +935,7 @@ class TestRefusals:
         bundle = layerit()
         before = bundle.to_dict()
         with pytest.raises(ValueError) as raised:
-            MeiHeadLoader.from_file(path).create_bundle(into=bundle)
+            MeiHeadLoader.from_file(path, seed=0).create_bundle(into=bundle)
         assert (
             str(raised.value) == "the meiHead holds 2 works; a bundle is about one work"
         )
@@ -940,7 +948,7 @@ class TestRefusals:
             encoding="utf-8",
         )
         with pytest.raises(ValueError) as raised:
-            MeiHeadLoader.from_file(path)
+            MeiHeadLoader.from_file(path, seed=0)
         assert str(raised.value) == f"{path} holds no meiHead"
 
     def test_reads_one_source(self, cnw0133: Path, andante: Path) -> None:

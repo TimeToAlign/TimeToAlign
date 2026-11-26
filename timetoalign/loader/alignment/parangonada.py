@@ -37,7 +37,7 @@ rest are ``..._measure``):
 These are *measured* per-beat features (variable tempo and dynamics
 extracted from the recording), not a synthesised tempo curve; they are
 added as ``Beat`` and ``Dynamics`` events to the performance's seconds
-timeline (``perf:<key>:cpt_1``), alongside its ``Note`` events.  The
+timeline (``perf:cpt_…``, named ``<key>``), alongside its ``Note`` events.  The
 ``.dyn`` rows have no onset of their own, so each is joined to the
 ``.beats`` row sharing its ``(measure_number, beat)`` key (the two
 files are 1:1 on that key) to recover its ``onset_sec``.
@@ -51,16 +51,16 @@ expressing the work across the logical and physical domains:
 
 * a shared ``"score"`` group with the same notes in two logical units —
   a quarter-note :class:`~timetoalign.timelines.types.ContinuousLogicalTimeline`
-  (``score:clt_1``) and a division-grid
+  (``score:clt_…``) and a division-grid
   :class:`~timetoalign.timelines.types.DiscreteLogicalTimeline`
-  (``score:dlt_1``) carrying a divs→quarters
+  (``score:dlt_…``) carrying a divs→quarters
   :class:`~timetoalign.maps.linear.LinearMap`;
 * one ``perf:<key>`` group per performance with the performed notes in
   two physical units — a seconds
   :class:`~timetoalign.timelines.types.ContinuousPhysicalTimeline`
-  (``perf:<key>:cpt_1``) and a samples
+  (``perf:cpt_…``) and a samples
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``perf:<key>:dpt_1``) carrying a
+  (``perf:dpt_…``), both named ``<key>``, the latter carrying a
   :class:`~timetoalign.maps.convenience.SamplesToSeconds` map; and
 * a cross-group :class:`~timetoalign.alignment.claims.MatchClaim` per
   ``align.csv`` row, naming the notes the row names on the two timelines
@@ -89,7 +89,9 @@ from typing_extensions import Self
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
+from timetoalign.core.ids import IdMinter
 from timetoalign.display.html import code
+from timetoalign.loader._ids import CLAIM_PREFIX, CMAP_PREFIX, give_event_ids
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
@@ -101,6 +103,7 @@ from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds
 from timetoalign.maps.linear import LinearMap
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -116,10 +119,6 @@ module_logger = logging.getLogger(__name__)
 
 
 # region Constants
-
-#: Score-group timeline uids (type-based ids, role prefix).
-_SCORE_CLT_ID = "score:clt_1"
-_SCORE_DLT_ID = "score:dlt_1"
 
 #: Group id for the shared score timelines.
 _SCORE_GROUP = "score"
@@ -168,8 +167,8 @@ class ParangonadaLoader(AlignmentLoader):
     The loader reads existing alignments; it never runs an aligner.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        super().__init__(seed=seed)
 
         self._score_clt: ContinuousLogicalTimeline | None = None
         self._score_dlt: DiscreteLogicalTimeline | None = None
@@ -225,6 +224,11 @@ class ParangonadaLoader(AlignmentLoader):
         features_dir = directory / _FEATURES_DIR
 
         performers = self._discover_performers(match_dir)
+        # The minter is seeded from what is read: the CSVs under match/ and
+        # the beat features (the recordings are read for their lengths only).
+        self._start_minter(
+            match_dir, *([features_dir] if features_dir.is_dir() else [])
+        )
         self._sources = [match_dir]
         self._name = directory.name
 
@@ -315,7 +319,7 @@ class ParangonadaLoader(AlignmentLoader):
         score_clt = ContinuousLogicalTimeline(
             length=max_quarter_end,
             unit=TimeUnit.quarters,
-            uid=_SCORE_CLT_ID,
+            uid=mint_timeline_id(TimeUnit.quarters, self._id_minter, role="score"),
             name=self._name,
         )
         score_clt.add_events(
@@ -337,7 +341,7 @@ class ParangonadaLoader(AlignmentLoader):
         score_dlt = DiscreteLogicalTimeline(
             length=max_div_end,
             unit=TimeUnit.ticks,
-            uid=_SCORE_DLT_ID,
+            uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="score"),
             name=self._name,
         )
         score_dlt.add_events(
@@ -360,6 +364,7 @@ class ParangonadaLoader(AlignmentLoader):
                 offset=Fraction(-1, 2),
                 source_unit=TimeUnit.ticks,
                 target_unit=TimeUnit.quarters,
+                uid=self._id_minter.mint(CMAP_PREFIX),
             )
         )
 
@@ -401,13 +406,10 @@ class ParangonadaLoader(AlignmentLoader):
             else int(round(seconds_length * sample_rate))
         )
 
-        cpt_id = f"perf:{performer_key}:cpt_1"
-        dpt_id = f"perf:{performer_key}:dpt_1"
-
         perf_cpt = ContinuousPhysicalTimeline(
             length=seconds_length,
             unit=TimeUnit.seconds,
-            uid=cpt_id,
+            uid=mint_timeline_id(TimeUnit.seconds, self._id_minter, role="perf"),
             name=performer_key,
         )
         perf_cpt.add_events(
@@ -427,12 +429,12 @@ class ParangonadaLoader(AlignmentLoader):
         # the seconds timeline with Beat / Dynamics events.  The schema
         # grows (new columns) per successive add_events call; absent
         # columns are null-filled.
-        self._add_feature_events(performer_key, features_dir, perf_cpt)
+        self._add_feature_events(performer_key, features_dir, perf_cpt, self._id_minter)
 
         perf_dpt = DiscretePhysicalTimeline(
             length=samples_length,
             unit=TimeUnit.samples,
-            uid=dpt_id,
+            uid=mint_timeline_id(TimeUnit.samples, self._id_minter, role="perf"),
             name=performer_key,
         )
         perf_dpt.add_events(
@@ -447,7 +449,11 @@ class ParangonadaLoader(AlignmentLoader):
                 for row in ppart_rows
             ]
         )
-        perf_dpt.add_conversion_map(SamplesToSeconds(sample_rate=sample_rate))
+        perf_dpt.add_conversion_map(
+            SamplesToSeconds(
+                sample_rate=sample_rate, uid=self._id_minter.mint(CMAP_PREFIX)
+            )
+        )
 
         self._perf_cpt[performer_key] = perf_cpt
         self._perf_dpt[performer_key] = perf_dpt
@@ -460,6 +466,7 @@ class ParangonadaLoader(AlignmentLoader):
         performer_key: str,
         features_dir: Source,
         perf_cpt: ContinuousPhysicalTimeline,
+        minter: IdMinter,
     ) -> None:
         """Add measured ``Beat`` / ``Dynamics`` events to the seconds timeline.
 
@@ -479,9 +486,10 @@ class ParangonadaLoader(AlignmentLoader):
             performer_key: The stripped performer key (the feature-file
                 stem prefix).
             features_dir: The dataset's ``features/`` directory.
-            perf_cpt: The performer's seconds (``cpt_1``) timeline, already
+            perf_cpt: The performer's seconds (``cpt``) timeline, already
                 holding its ``Note`` events; feature events are appended in
                 place via ``add_events(..., allow_expansion=True)``.
+            minter: The loader's minter, which the events' IDs come from.
         """
         beats_path = cls._glob_feature_file(features_dir, performer_key, "beats")
         dyn_path = cls._glob_feature_file(features_dir, performer_key, "dyn")
@@ -512,7 +520,6 @@ class ParangonadaLoader(AlignmentLoader):
 
         beat_events = [
             {
-                "id": f"{performer_key}:beat:{i}",
                 "start": float(row["onset_sec"]),
                 "event_type": "Beat",
                 "measure_number": int(row["measure_number"]),
@@ -521,11 +528,10 @@ class ParangonadaLoader(AlignmentLoader):
                 "interp": int(row["interp"]),
                 "swap": int(row["swap"]),
             }
-            for i, row in enumerate(beats_rows)
+            for row in beats_rows
         ]
         dyn_events = [
             {
-                "id": f"{performer_key}:dyn:{i}",
                 "start": onset_by_key[(row["measure_number"], row["beat"])],
                 "event_type": "Dynamics",
                 "measure_number": int(row["measure_number"]),
@@ -534,8 +540,10 @@ class ParangonadaLoader(AlignmentLoader):
                 "velocity_max": float(row["velocity_max"]),
                 "interp": int(row["interp"]),
             }
-            for i, row in enumerate(dyn_rows)
+            for row in dyn_rows
         ]
+        give_event_ids(beat_events, minter)
+        give_event_ids(dyn_events, minter)
 
         perf_cpt.add_events(beat_events, allow_expansion=True)
         perf_cpt.add_events(dyn_events, allow_expansion=True)
@@ -574,8 +582,8 @@ class ParangonadaLoader(AlignmentLoader):
         """Emit one cross-group MatchClaim per ``align.csv`` row (faithfully).
 
         Every row names its notes by the ids of ``part.csv`` (``partid``) and
-        ``ppart.csv`` (``ppartid``), which are the ids of the notes on
-        ``score:clt_1`` and on the performer's seconds timeline, so every
+        ``ppart.csv`` (``ppartid``), which are the ids of the notes on the
+        score's quarters timeline and on the performer's seconds timeline, so every
         claim names those events at their coordinates there.  A matchtype-0
         row yields a synchronous claim between the two notes; matchtype-1
         (score-only) and matchtype-2 (performance-only) rows yield NOMATCH
@@ -597,18 +605,27 @@ class ParangonadaLoader(AlignmentLoader):
                         perf_notes[row["ppartid"]],
                         perf_cpt,
                         provenance=meta,
+                        id=self._id_minter.mint(CLAIM_PREFIX),
                     )
                 )
             elif matchtype == _SCORE_ONLY:
                 self._claims.append(
                     MatchClaim.nomatch(
-                        score_notes[row["partid"]], score, perf_cpt, provenance=meta
+                        score_notes[row["partid"]],
+                        score,
+                        perf_cpt,
+                        provenance=meta,
+                        id=self._id_minter.mint(CLAIM_PREFIX),
                     )
                 )
             elif matchtype == _PERF_ONLY:
                 self._claims.append(
                     MatchClaim.nomatch(
-                        perf_notes[row["ppartid"]], perf_cpt, score, provenance=meta
+                        perf_notes[row["ppartid"]],
+                        perf_cpt,
+                        score,
+                        provenance=meta,
+                        id=self._id_minter.mint(CLAIM_PREFIX),
                     )
                 )
 
@@ -619,7 +636,7 @@ class ParangonadaLoader(AlignmentLoader):
         The starts are the stored cells, read column-wise, so a claim names
         each note at its own coordinate on the timeline's axis.
         """
-        table = timeline.get_events(include_children=False)._table
+        table = timeline.get_events(include_children=False).table
         notes = table.filter(pc.equal(table.column("event_type"), pa.scalar("Note")))
         return {
             event_id: {"id": event_id, "start": start}
@@ -718,9 +735,10 @@ class ParangonadaLoader(AlignmentLoader):
         """Return a single timeline by its uid.
 
         Args:
-            uid: A timeline uid — ``"score:clt_1"``, ``"score:dlt_1"``, or a
-                performer timeline uid (``"perf:<key>:cpt_1"`` /
-                ``"perf:<key>:dpt_1"``).
+            uid: A timeline uid: one of the score's two timelines
+                (``score:clt_…``, ``score:dlt_…``) or of a performer's
+                (``perf:cpt_…``, ``perf:dpt_…``), as :meth:`create_timelines`
+                lists them.
 
         Raises:
             KeyError: If no timeline matches.
@@ -731,23 +749,13 @@ class ParangonadaLoader(AlignmentLoader):
                 "No dataset loaded yet. Call load() before create_timeline()."
             )
 
-        if uid == _SCORE_CLT_ID:
-            return self._score_clt
-        if uid == _SCORE_DLT_ID:
-            return self._score_dlt
-        for performer_key, cpt in self._perf_cpt.items():
-            if uid == cpt.id:
-                return cpt
-            if uid == self._perf_dpt[performer_key].id:
-                return self._perf_dpt[performer_key]
-
-        available = [_SCORE_CLT_ID, _SCORE_DLT_ID]
-        for performer_key in self._perf_cpt:
-            available.append(f"perf:{performer_key}:cpt_1")
-            available.append(f"perf:{performer_key}:dpt_1")
+        timelines = self.create_timelines()
+        for timeline in timelines:
+            if uid == timeline.id:
+                return timeline
         raise KeyError(
             f"No timeline with uid '{uid}'. Available: "
-            + ", ".join(f"'{uid}'" for uid in available)
+            + ", ".join(f"'{timeline.id}'" for timeline in timelines)
         )
 
     # endregion

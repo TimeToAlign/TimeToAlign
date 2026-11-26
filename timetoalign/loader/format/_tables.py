@@ -35,7 +35,7 @@ class NormalisedTablesLoader(EventLoader):
             KeyError: If no table is named *name*.
         """
         try:
-            return self._store[name]._table
+            return self._store[name].table
         except KeyError:
             raise KeyError(
                 f"No table for {kind} {name!r}. Available: {list(self._store.keys())}"

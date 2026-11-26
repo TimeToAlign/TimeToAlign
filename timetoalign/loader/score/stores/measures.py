@@ -33,6 +33,8 @@ from typing_extensions import Self
 
 from timetoalign.core import IntervalPolicy, NumberType, TimeUnit
 from timetoalign.core.fields import ONE_OR_SEVERAL_SUFFIX, split_row_member
+from timetoalign.core.ids import IdMinter
+from timetoalign.loader._ids import give_event_ids, minter_of
 from timetoalign.storage.events import EventData
 
 if TYPE_CHECKING:
@@ -242,6 +244,8 @@ class MeasureData(EventData):
         number_type: NumberType | None = None,
         *,
         interval_policy: IntervalPolicy = IntervalPolicy.warn,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
     ) -> Self:
         """Create from dicts.
 
@@ -252,9 +256,17 @@ class MeasureData(EventData):
             unit: Time unit (default: quarters).
             number_type: Number type for coordinates.
             interval_policy: How to handle end/duration inconsistencies.
+            seed: The seed of a fresh minter for the IDs of rows without one.
+            minter: The minter of those IDs (a loader's); with neither, the
+                content minter of the event types
+                (:func:`~timetoalign.storage.mint_event_ids`). A stated
+                ``id`` is kept.
 
         Returns:
             MeasureData instance.
+
+        Raises:
+            TypeError: If both *seed* and *minter* are given.
         """
         if not rows:
             return cls.empty(unit, number_type)
@@ -268,16 +280,8 @@ class MeasureData(EventData):
         schema = schema.with_metadata(metadata)
 
         processed_rows = []
-        type_counters: dict[str, int] = {}
         for row in rows:
             processed = dict(row)
-
-            # Auto-generate id if missing (mirrors the row-based EventData constructor logic)
-            if "id" not in processed or processed["id"] is None:
-                etype = str(processed.get("event_type", "event")).lower()
-                type_counters.setdefault(etype, 0)
-                type_counters[etype] += 1
-                processed["id"] = f"{etype}:{type_counters[etype]:06d}"
 
             # ===== Map MeasureMap JSON fields to schema =====
             # MeasureMap uses "count" for MC, "number" for MN as int
@@ -354,6 +358,7 @@ class MeasureData(EventData):
 
             processed_rows.append(processed)
 
+        give_event_ids(processed_rows, minter_of(seed, minter))
         table = pa.Table.from_pylist(processed_rows, schema=schema)
         return cls(table, unit, number_type)
 

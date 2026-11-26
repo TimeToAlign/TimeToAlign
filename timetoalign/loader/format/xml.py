@@ -318,6 +318,7 @@ class XmlLoader(NormalisedTablesLoader):
             Default ``True``.
         propagate_ancestors: Whether to propagate ancestor attributes.
             Default ``True``.
+        seed: The seed of the loader's ID minter (see ``Loader.load``).
 
     Examples:
         Auto-detect all repeated tags::
@@ -348,8 +349,9 @@ class XmlLoader(NormalisedTablesLoader):
         sep: str = ".",
         include_text: bool = True,
         propagate_ancestors: bool = True,
+        seed: int | None = None,
     ) -> None:
-        super().__init__(unit=TimeUnit.seconds, number_type=NumberType.float)
+        super().__init__(unit=TimeUnit.seconds, number_type=NumberType.float, seed=seed)
         self._principal_tags = principal_tags
         self._sep = sep
         self._include_text = include_text
@@ -380,7 +382,7 @@ class XmlLoader(NormalisedTablesLoader):
         Convenience accessor that unwraps the raw PyArrow tables from
         the ``EventData`` wrappers in the store.
         """
-        return {name: ed._table for name, ed in self._store.items()}
+        return {name: ed.table for name, ed in self._store.items()}
 
     @property
     def raw_root(self) -> ET.Element | None:
@@ -421,12 +423,16 @@ class XmlLoader(NormalisedTablesLoader):
 
         Convenient for programmatic use or testing.
 
+        The loader's ID minter is seeded from the string's text (see
+        ``Loader.load``).
+
         Args:
             xml_string: A valid XML string.
 
         Returns:
             Self, for method chaining.
         """
+        self._start_minter(xml_string)
         root = ET.fromstring(xml_string)
         self._raw_root = root
         self._process_xml(root)
@@ -437,20 +443,23 @@ class XmlLoader(NormalisedTablesLoader):
 
         Convenient for programmatic use or testing.
 
+        The loader's ID minter is seeded from the element serialized
+        (``xml.etree.ElementTree.tostring``; see ``Loader.load``).
+
         Args:
             root: An XML Element.
 
         Returns:
             Self, for method chaining.
         """
+        self._start_minter(ET.tostring(root))
         self._raw_root = root
         self._process_xml(root)
         return self
 
     def clear(self) -> None:
         """Clear all loaded data."""
-        self._sources.clear()
-        self._source_metadata.clear()
+        super().clear()
         self._store = DictStore()
         self._file_metadata.clear()
         self._raw_root = None
@@ -521,7 +530,7 @@ class XmlLoader(NormalisedTablesLoader):
 
                 # Accumulate or replace
                 if tag in self._store:
-                    existing_table = self._store[tag]._table
+                    existing_table = self._store[tag].table
                     merged = pa.concat_tables(
                         [existing_table, table],
                         promote_options="default",
@@ -554,7 +563,7 @@ class XmlLoader(NormalisedTablesLoader):
 
     def __repr__(self) -> str:
         entries = ", ".join(
-            f"{k}={ed._table.num_rows} rows" for k, ed in self._store.items()
+            f"{k}={ed.table.num_rows} rows" for k, ed in self._store.items()
         )
         return f"XmlLoader({entries})"
 

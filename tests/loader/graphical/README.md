@@ -136,19 +136,18 @@ returns and compare it with the numbers above:
 4. **Names and minted ids.** Pages are named by `no_page`, accolades by
    DMOS's system id as a string. DMOS output repeats a system id on some
    pages, so two systems numbered 1 give two accolades named `"1"` with
-   distinct ids. Minted ids follow document order: for the volume `dgt_1`,
-   then page 1 `dgt_2`, its accolades `dgt_3` to `dgt_6`, page 2 `dgt_7`;
-   for `create_timelines()` page 1 is `dgt_1`, its accolades `dgt_2` to
-   `dgt_5`, page 2 `dgt_6`. Boxes are minted `box_1`, `box_2` per accolade.
-5. **Identity given at creation.** `uid="scan"` names the volume and page 1
-   is still `dgt_2`. `box_ids="m{n}"` numbers the scan's four measures
+   distinct ids. Minted ids come from the loader's minter in the page
+   builder's order (pinned in "Time paths and pages"); here each is checked
+   by its shape (`dgt_…`, Boxes `box_…`: prefix and 13 base-36 characters).
+5. **Identity given at creation.** `uid="scan"` names the volume; the pages
+   are minted. `box_ids="m{n}"` numbers the scan's four measures
    through the pages: `m1`, `m2` on page 1's first accolade, `m3` on its
    second, `m4` on page 2's first. `accolade_ids="p{page}_s{accolade}"`
    gives `p1_s1` … `p1_s4`, `p2_s1` … `p4_s4`; `page_ids` as a sequence
    names the four pages in document order; a `box_ids` sequence of four
    names the measures in document order. Refusals come before anything is
    built, which the tests prove by creating again from the same loader and
-   finding the first number, `dgt_1`, not drawn: three ids for four Boxes, a
+   finding the id a fresh loader of the file mints first, not drawn: three ids for four Boxes, a
    template field that does not exist (`{system}`), an id holding a control
    character, and `uid` equal to a page id.
 6. **A page without systems is left out.** A file whose page 2 of three has
@@ -180,7 +179,7 @@ which leaves its system's region, spanning x 1221 to 4101.`; measure 2 at
 `[[3500,1589],[4110,1589],[3500,2266],[4120,2266]]` after measure 1 (x 3500
 to 4120, right of it) gives the same sentence for `measure 2` and `3500 to
 4120`. A measure spanning the system exactly (x 1221 to 4101, corners those
-of system 1 in measure order) loads as `box_1`, start 0, duration 2880: both
+of system 1 in measure order) loads as `box_…`, start 0, duration 2880: both
 edges are inside.
 
 **A system without width.** DMOS output holds, on some pages, a system
@@ -213,11 +212,11 @@ line. By hand:
 - paths: keys 1 and 3; page 1 the two pieces (1221, 4101, 3855/2, 677/2)
   and (971, 4112, 5685/2, 699/2) at offsets 0 and 2880; page 3 the one
   piece of system 2;
-- pages: `dgt_1` named `"1"`, length 2880 + 3141 = 6021, its accolades
-  `dgt_2` (name `"1"`, 2880) and `dgt_3` (name `"2"`, 3141) at 0 and 2880,
-  each with its `box_1`; then `dgt_4` named `"3"`, length 3141, its
-  accolade `dgt_5`. A reader that kept the line as a zero-length accolade
-  mints `dgt_3` for it and names two accolades `"1"`;
+- pages: `dgt_…` named `"1"`, length 2880 + 3141 = 6021, its accolades
+  `dgt_…` (name `"1"`, 2880) and `dgt_…` (name `"2"`, 3141) at 0 and 2880,
+  each with its `box_…`; then `dgt_…` named `"3"`, length 3141, its
+  accolade `dgt_…`. A reader that kept the line as a zero-length accolade
+  mints `dgt_…` for it and names two accolades `"1"`;
 - volume: length 6021 + 3141 = 9162, pages `"1"` and `"3"` at 0 and 6021;
   with `accolade_ids="p{page}_s{accolade}"` and `box_ids="m{n}"` the
   accolades are `p1_s1` (`m1`), `p1_s2` (`m2`) and `p2_s1` (no Box): page 3
@@ -242,16 +241,16 @@ warning names that one (`page 1, system 2`) alone.
 `package/package.yaml`; the directory then holds exactly `boxes.parquet`
 and `package.yaml`. Read back, every value is one derived above: the volume
 `scan` is a locked segment line of length 53123 stating the
-`score_image_url`; its pages `dgt_2`, `dgt_7`, `dgt_13`, `dgt_18` (each
+`score_image_url`; its pages `dgt_…`, `dgt_…`, `dgt_…`, `dgt_…` (each
 page's number follows its predecessor's accolades: 4, 5 and 4 of them),
 named `"1"` to `"4"`, of lengths 12311, 15690, 12562, 12560 at offsets 0,
 12311, 28001, 40563, each stating its `page_url` only; page 1's accolades
-`dgt_3` to `dgt_6` of lengths 2880, 3141, 3142, 3148 at 0, 2880, 6021,
+`dgt_…` to `dgt_…` of lengths 2880, 3141, 3142, 3148 at 0, 2880, 6021,
 9163; the `meta["box"]` of the first two the regions of systems 1 and 2 in
 canonical order, corner for corner (bottom right (4101, 2266) and (4112,
 3192)). The four Boxes are compared whole (id, start, duration and the four
-corners): `m1` [0, 940) and `m2` [930, 1554) on `dgt_3`, `m3` [0, 974) on
-`dgt_4`, `m4` [0, 1003) on `dgt_8`, page 2's first accolade. The 17
+corners): `m1` [0, 940) and `m2` [930, 1554) on `dgt_…`, `m3` [0, 974) on
+`dgt_…`, `m4` [0, 1003) on `dgt_…`, page 2's first accolade. The 17
 accolades hold four Boxes together, volume and pages none, and the
 image-space invariant holds over the tree read.
 
@@ -299,8 +298,8 @@ other numbers.
   `"15"`, length 2806 + 2804 = 5610 (not the graphic's 4000), `meta ==
   {"image": "facsimile/20251230_180023.jpg"}`: a page states no
   `meta["box"]`, the graphic's size is on no timeline.
-- **The accolades** are its segments: `accolade_1` (`dgt_2`) at offset 0,
-  length 2806, `meta["box"]` (490, 344, 2806, 572); `accolade_2` (`dgt_3`)
+- **The accolades** are its segments: `accolade_1` (`dgt_…`) at offset 0,
+  length 2806, `meta["box"]` (490, 344, 2806, 572); `accolade_2` (`dgt_…`)
   at offset 2806, length 2804, `meta["box"]` (498, 858, 2804, 529); both
   state the page's image. The given page id takes number 1 of the minted
   ids.
@@ -322,8 +321,8 @@ other numbers.
   a loader placing grouped zones by the nearest line puts it on accolade 2.
 - **The volume** (`create_timeline()`) is a locked
   `SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]` of the pages: id
-  `dgt_1` (or the given `uid`, with `name`), page as above, accolades then
-  `dgt_3`, `dgt_4`. With a second surface holding one zone (100, 50, 400,
+  `dgt_…` (or the given `uid`, with `name`), page as above, accolades then
+  `dgt_…`, `dgt_…`. With a second surface holding one zone (100, 50, 400,
   90) its length is 5610 + 300 = 5910 and the second page lies at offset
   5610.
 - **Which zones take part.** A surface holds, in this order, a `staff` zone
@@ -354,8 +353,8 @@ other numbers.
   both accolades; `accolade_ids="p{page}_s{accolade}"` gives `p1_s1`,
   `p1_s2`; `page_ids=["folio"]` replaces the surface's id. `facs` is the
   file's and unchanged by `box_ids`. A sequence of eight Box ids for nine
-  zones is refused. A surface without `xml:id` is minted `dgt_1` and, without
-  `@n`, named `page_1`; a zone without `xml:id` is `box_1` on its accolade.
+  zones is refused. A surface without `xml:id` is minted `dgt_…` and, without
+  `@n`, named `page_1`; a zone without `xml:id` is `box_…` on its accolade.
 - **`facs`** maps `m-43` to `("zone_01M7DF2D8RNCKHKF6SMCWB94Z5",)` and `m-57`
   to `("zone_01M7DF2D8R00HP8JYGXRTE13G3",)`, the leading `#` of each
   reference dropped; an element pointing to two zones keeps both in the
@@ -406,8 +405,8 @@ other numbers.
   read back. Every value is one derived above: the volume `chorale` is a
   locked segment line of length 5610 with empty `meta`; its one page has the
   surface's `xml:id`, name `"15"`, length 5610, `meta` the image alone and
-  no event; the accolades `dgt_3` (`accolade_1`, offset 0, length 2806,
-  `meta["box"]` (490, 344, 2806, 572)) and `dgt_4` (`accolade_2`, offset
+  no event; the accolades `dgt_…` (`accolade_1`, offset 0, length 2806,
+  `meta["box"]` (490, 344, 2806, 572)) and `dgt_…` (`accolade_2`, offset
   2806, length 2804, (498, 858, 2804, 529)) state the image; all nine Boxes
   are compared whole with the table of starts, durations and bounding boxes
   above (zone 6 at 0 on accolade 2), under their zones' `xml:id`s.
@@ -464,11 +463,12 @@ system k of its page is placed at y = 1000 k with half-breadth 300 (strip
    an accolade states the same `meta["image"]` and its strip as
    `meta["box"]` (page 1: `{x: 1221, y: 1589, width: 2880, height: 677}`
    and `{x: 971, y: 1700, width: 3141, height: 600}`), and no statement.
-4. *Identity.* Minted ids follow document order: volume `dgt_1`, page 1
-   `dgt_2` and its four accolades `dgt_3` to `dgt_6`, page 2 `dgt_7` (five
-   accolades, `dgt_8` to `dgt_12`), page 3 `dgt_13`, page 4 `dgt_18`. `uid`,
-   `name`, `page_ids` (a template) and `accolade_ids` (a template) replace
-   them; the values expected are spelled out.
+4. *Identity.* Every timeline id is minted from the loader's minter (a
+   `dgt_…`, checked by its shape: prefix and 13 base-36 characters; the
+   order of minting is the page builder's, pinned in "Time paths and
+   pages"). `uid`, `name`, `page_ids` (a template) and `accolade_ids` (a
+   template) replace them; the values expected are spelled out. The file
+   read back holds the very ids written.
 5. *The file.* Written with the manifest file writer and read back, the
    volume has the same class, ids, offsets, lengths, names, `meta` and
    statements on all three levels, so the canvas of every page survives in
@@ -476,8 +476,7 @@ system k of its page is placed at y = 1000 k with half-breadth 300 (strip
 
 `create_timelines` with the same arguments answers the four pages as roots:
 the same lengths, names, `meta` and statements, each locked, and nothing
-states the manifest (there is no volume); ids `dgt_1` (page 1), `dgt_6`,
-`dgt_12`, `dgt_17`.
+states the manifest (there is no volume); each page's id a minted `dgt_…`.
 
 **What proves the selection.** Each case is decided by which canvases'
 labels and `@id`s come back, in which order:
@@ -501,7 +500,8 @@ labels and `@id`s come back, in which order:
   long, which a loader reading the canvas's height would not give.
 
 **Refusals**, each asserted whole, and each followed by the proof that
-nothing was built: the next successful call still mints `dgt_1`.
+nothing was built: the next successful call mints the id a fresh loader of
+the same file mints first.
 
 - Gallica with the four paths and no `canvases`: `canvases 0, 5 have no time
   path: give each one or leave them out with canvases=`; one canvas missing
@@ -667,9 +667,17 @@ against the hand-derived numbers above:
 4. *Boxes*: each Box sits on the right accolade with `start = x_min − x0` and
    `duration = x_max − x_min` (chorale zone 2: 454 and 579; zone 6: 0 and
    998), and its stored shape is the source's.
-5. *Identity*: minted ids follow document order (volume, page, its
-   accolades), a named timeline taking its number all the same (`scan`, then
-   `dgt_2`, `dgt_3`); source ids are used unless the argument replaces them;
+5. *Identity*: every id the call mints comes from the loader's one minter
+   in document order (the volume, then each page followed by its
+   accolades, each accolade followed by its Boxes without id), and a
+   timeline or Box the call names draws none. The test loader holds
+   `IdMinter(0)`, so the expected ids are the minter's own sequence,
+   computed by a fresh `IdMinter(0)` in the test, never typed: scan volume
+   `scan` given, page 1 is the 1st id, its accolades the 2nd–5th, page 2
+   the 6th, …; chorale page `surface_15` given, its accolades are the 1st
+   and 2nd; without a source id the page is the 1st, accolade 1 the 2nd,
+   its five Boxes the 3rd–7th (`box_…`), accolade 2 the 8th, its Boxes the
+   9th–12th. Source ids are used unless the argument replaces them;
    sequences are read in document order and templates filled from `page`,
    `accolade`, `box`, `n` (`m{n}` numbers the scan's measures through the
    pages; with zones given in an order that alternates between accolades, a
@@ -682,26 +690,18 @@ against the hand-derived numbers above:
    `accolade_1` of page `15` (a page along one line is named itself), while
    `box_ids="m{box}"` gives `m1`–`m5` on the first accolade and `m1`–`m4`
    on the second.
-   *No timeline is minted an id the call was given.* The numbers of all
-   given timeline ids are set aside before the first id is minted, and a
-   minted id is numbered above every number held, so the expected ids
-   follow by counting. Chorale page without a source id, `accolade_ids=
-   ["dgt_1", "x"]`: `dgt_1` is held, the page is minted `dgt_2`, the two
-   named accolades take `dgt_3` and `dgt_4`, and the next id minted from
-   the loader is `dgt_5`. Scan volume with `page_ids=["p1", "dgt_3", "p3",
-   "p4"]`: the volume is `dgt_4`, page `p1` takes `dgt_5` and its four
-   accolades are `dgt_6`–`dgt_9`, page `dgt_3` takes `dgt_10` and its five
-   accolades are `dgt_11`–`dgt_15`, `p3` takes `dgt_16` (`dgt_17`–`dgt_20`),
-   `p4` takes `dgt_21` (`dgt_22`–`dgt_25`). A builder that set a given id's
-   number aside only on reaching its timeline would mint the volume
-   `dgt_1` and the first accolade of `p1` `dgt_3`, the id of page 2.
+   *Given ids draw nothing.* A call naming every timeline mints nothing
+   (the loader's next id is the minter's first); with page ids given, the
+   volume is the 1st id and the accolades of the four pages the 2nd–5th,
+   6th–10th, 11th–14th and 15th–18th, so a builder that drew an id for a
+   named page would be off by one from page 2 on.
 6. *Nothing happens on a refusal*: each refusal (wrong sequence length,
    unknown template field, invalid id, one id for two timelines, one id for
    two Boxes of an accolade, a Box on no
    piece, a Box leaving its accolade, a stated area that is not its piece's x
    extent, a length that is no whole pixel, pages of two kinds in one volume,
-   no page) is asserted whole, and after it the next timeline minted from the
-   same loader still gets the first number, so no id was drawn.
+   no page) is asserted whole, and after it the next id minted from the
+   same loader is still the minter's first, so no id was drawn.
 
 A diagonal of length 500.0 (300, 400) is a page of 500 pixels; one of length
 141.42… (100, 100) is refused: lengths are never rounded.

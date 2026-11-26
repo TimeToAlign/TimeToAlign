@@ -339,7 +339,6 @@ class PartituraLoader(ScoreLoader):
                     qb_start = cached_beat_coordinate(rep.start.t)
                     control_rows.append(
                         {
-                            "id": f"repeat_start_{start_mc}",
                             "name": "RepeatStart",
                             "temporal_type": "instant",
                             "event_type": "RepeatStart",
@@ -372,7 +371,6 @@ class PartituraLoader(ScoreLoader):
                         qb_end = cached_beat_coordinate(rep.end.t)
                         control_rows.append(
                             {
-                                "id": f"repeat_end_{last_mc_in_repeat}",
                                 "name": "RepeatEnd",
                                 "temporal_type": "instant",
                                 "event_type": "RepeatEnd",
@@ -456,7 +454,6 @@ class PartituraLoader(ScoreLoader):
 
                 control_rows.append(
                     {
-                        "id": f"{type(obj).__name__.lower()}_{marker_mc}",
                         "name": type(obj).__name__,
                         "temporal_type": "instant",
                         "event_type": type(obj).__name__,
@@ -515,8 +512,6 @@ class PartituraLoader(ScoreLoader):
 
                 measure_rows.append(
                     {
-                        # mc:NNNNN format based on measure count
-                        "id": f"mc:{mc:05d}",
                         "name": str(m.number),
                         "temporal_type": "interval",
                         "event_type": "Measure",
@@ -701,6 +696,7 @@ class PartituraLoader(ScoreLoader):
             note_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
             has_rests=has_rests,
         )
 
@@ -709,6 +705,7 @@ class PartituraLoader(ScoreLoader):
                 measure_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
+                minter=self._id_minter,
             )
             if measure_rows
             else MeasureData.empty()
@@ -719,6 +716,7 @@ class PartituraLoader(ScoreLoader):
                 control_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
+                minter=self._id_minter,
             )
             if control_rows
             else ControlEventData.empty()
@@ -729,6 +727,7 @@ class PartituraLoader(ScoreLoader):
                 annotation_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
+                minter=self._id_minter,
             )
             if annotation_rows
             else AnnotationEventData.empty()

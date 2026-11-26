@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlparse
 
 from timetoalign.alignment import AlignmentBundle
+from timetoalign.loader._ids import CMAP_PREFIX, MEASURE_MAP_PREFIX
 from timetoalign.loader._sources import Source, describe_source, readable
 from timetoalign.loader.base import Loader
 
@@ -55,8 +56,8 @@ class RekordboxTrack:
 class RekordboxLoader(Loader[list[RekordboxTrack]]):
     """Parse the collection tracks in a Rekordbox XML export."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        super().__init__(seed=seed)
         self._tracks: list[RekordboxTrack] = []
 
     @property
@@ -165,7 +166,10 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         Raises:
             ValueError: If a track's grids reach no downbeat.
         """
-        return [self._track_measures(track)[1] for track in self._loaded_tracks()]
+        return [
+            self._track_measures(track, self._id_minter.mint(MEASURE_MAP_PREFIX))[1]
+            for track in self._loaded_tracks()
+        ]
 
     def create_measure_map(self) -> MeasureMap:
         """Create the only loaded track's measure map.
@@ -173,7 +177,10 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         Raises:
             ValueError: If the track's grids reach no downbeat.
         """
-        return self._track_measures(self._only_track("create_measure_map"))[1]
+        return self._track_measures(
+            self._only_track("create_measure_map"),
+            self._id_minter.mint(MEASURE_MAP_PREFIX),
+        )[1]
 
     def create_bundle(self) -> AlignmentBundle:
         """Create an alignment bundle containing every collection track."""
@@ -199,9 +206,13 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
 
     @classmethod
     def _track_measures(
-        cls, track: RekordboxTrack
+        cls, track: RekordboxTrack, measure_map_id: str | None = None
     ) -> tuple[BeatGrid, MeasureMap, list[tuple[Fraction, BeatGridSegment]]]:
-        """Return the track's grid, the measure map it generates, and its downbeats."""
+        """Return the track's grid, the measure map it generates, and its downbeats.
+
+        The measure map takes *measure_map_id* (the loader mints one for a
+        map it hands out); without one it mints its own.
+        """
         from timetoalign.timelines import MeasureMap
 
         grid = cls._beat_grid(track)
@@ -210,16 +221,16 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
             for beat in grid.iter_beats()
             if beat.is_downbeat
         ]
-        return grid, MeasureMap(cls._measure_map(grid, downbeats)), downbeats
+        measure_map = MeasureMap(cls._measure_map(grid, downbeats), id=measure_map_id)
+        return grid, measure_map, downbeats
 
-    @classmethod
-    def _create_track_timeline(cls, track: RekordboxTrack) -> Any:
+    def _create_track_timeline(self, track: RekordboxTrack) -> Any:
         from timetoalign.core import NumberType, TimeUnit
         from timetoalign.maps import SecondsToSamples, TableMap
         from timetoalign.timelines import ContinuousPhysicalTimeline
 
-        grid, measure_map, downbeats = cls._track_measures(track)
-        seconds, floating_measures = cls._conversion_anchors(
+        grid, measure_map, downbeats = self._track_measures(track)
+        seconds, floating_measures = self._conversion_anchors(
             track, grid, downbeats, measure_map
         )
 
@@ -227,7 +238,7 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
             length=float(track.total_time),
             unit=TimeUnit.seconds,
             number_type=NumberType.float,
-            uid=cls._track_uid(track),
+            uid=self._track_uid(track),
             name=track.name,
             meta={
                 "TrackID": track.track_id,
@@ -244,10 +255,16 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
                 source_unit=TimeUnit.seconds,
                 target_unit=TimeUnit.floating_measures,
                 name="rekordbox_floating_measures",
+                uid=self._id_minter.mint(CMAP_PREFIX),
             )
         )
         if track.sample_rate is not None:
-            timeline.add_conversion_map(SecondsToSamples(sample_rate=track.sample_rate))
+            timeline.add_conversion_map(
+                SecondsToSamples(
+                    sample_rate=track.sample_rate,
+                    uid=self._id_minter.mint(CMAP_PREFIX),
+                )
+            )
         return timeline
 
     @staticmethod

@@ -53,13 +53,14 @@ class GraphicalLoader(Loader[GraphicalStore]):
         metadata: Optional metadata dictionary attached to the store.
     """
 
-    def __init__(self, metadata: dict | None = None):
+    def __init__(self, metadata: dict | None = None, *, seed: int | None = None):
         """Initialize the loader.
 
         Args:
             metadata: Optional metadata to attach to the store.
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
         """
-        super().__init__()
+        super().__init__(seed=seed)
         self._sources: list[ImageSource] = []
         self._segments: list[GraphicalSegment] = []
         self._current_offset: float = 0.0

@@ -259,9 +259,9 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
     ``in``, ...) states no pixel size and is not read; MEI states no
     accolades, so they are found from the zones' left edges unless paths
     are given, and a page whose zones are not listed accolade by accolade
-    needs a path; a zone without ``xml:id`` is minted ``box_N`` on its
-    accolade and cannot be pointed to; an element without ``xml:id`` is
-    left out of :attr:`facs`, and a zone stating no coordinates out of the
+    needs a path; a zone without ``xml:id`` is minted ``box_…`` from the
+    loader's minter and cannot be pointed to; an element without ``xml:id``
+    is left out of :attr:`facs`, and a zone stating no coordinates out of the
     timelines (:attr:`zones_without_coordinates` lists those with an id). A
     zone whose ``@points`` are not four points bounding a convex area (five
     points, a concave or crossed outline) cannot be a
@@ -283,9 +283,13 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
     #: One loader reads one MEI file.
     _single_source: ClassVar[bool] = True
 
-    def __init__(self) -> None:
-        """Initialize the loader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the loader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._facsimile: _MeiFacsimile | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
@@ -502,7 +506,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
         theirs. The volume is locked.
 
         Args:
-            uid: The volume's id; minted ``dgt_N`` when None.
+            uid: The volume's id; minted ``dgt_…`` when None.
             name: The volume's name.
             paths: As :meth:`create_timelines`.
             zone_types: As :meth:`create_timelines`.
@@ -545,7 +549,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
 
         A surface's page is a locked segment line of its accolades, in
         ``pixels`` (``int``): its id the surface's ``xml:id`` (minted
-        ``dgt_N`` where it has none), its name the surface's ``@n``
+        ``dgt_…`` where it has none), its name the surface's ``@n``
         (``page_N`` by its position in the call, from 1, where it has
         none), its length the sum of its accolades', ``meta["image"]`` the
         graphic's ``@target``. It states no ``meta["box"]``: its axis is a
@@ -563,7 +567,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
         grouped into or, on a given path, the piece it lies on (the piece
         whose x extent holds the zone's and whose strip holds the zone's
         vertical centre; of several the nearest). Its id is the zone's
-        ``xml:id`` (minted ``box_N`` on its accolade where it has none); its
+        ``xml:id`` (minted ``box_…`` where it has none); its
         shape is the zone's coordinates as written; its start is the shape's
         least x less the accolade's ``x0``.
 
@@ -583,7 +587,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
                 one id per page in document order, or a template filled
                 with ``str.format`` from ``page`` (the page's position in
                 the call, from 1) and ``n`` (the running count).
-            accolade_ids: The accolades' ids (minted ``dgt_N`` when None):
+            accolade_ids: The accolades' ids (minted ``dgt_…`` when None):
                 one id per accolade in document order, or a template filled
                 from ``page``, ``accolade`` (its position on its page) and
                 ``n``.

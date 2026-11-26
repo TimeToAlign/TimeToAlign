@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader.minting import shape, shapes
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
     BoundingBox,
@@ -237,13 +238,13 @@ class TestPage:
         first, second = _segments(page)
         assert _offsets(page) == [0, 2806]
         assert [type(first), type(second)] == [DiscreteGraphicalTimeline] * 2
-        assert (first.id, first.name, first.length.value) == (
-            "dgt_2",
+        assert (shape(first.id), first.name, first.length.value) == (
+            "dgt",
             "accolade_1",
             2806,
         )
-        assert (second.id, second.name, second.length.value) == (
-            "dgt_3",
+        assert (shape(second.id), second.name, second.length.value) == (
+            "dgt",
             "accolade_2",
             2804,
         )
@@ -252,10 +253,10 @@ class TestPage:
 
     def test_a_surface_without_id_and_n(self, tmp_path: Path) -> None:
         (page,) = _load(tmp_path, _surface(SMALL_ZONE)).create_timelines()
-        assert (page.id, page.name, page.length.value) == ("dgt_1", "page_1", 300)
+        assert (shape(page.id), page.name, page.length.value) == ("dgt", "page_1", 300)
         assert page.meta == {}
         (accolade,) = _segments(page)
-        assert accolade.id == "dgt_2"
+        assert shape(accolade.id) == "dgt"
         assert accolade.meta == {"box": {"x": 100, "y": 50, "width": 300, "height": 40}}
 
     def test_a_surface_without_zones_is_left_out(self, tmp_path: Path) -> None:
@@ -273,18 +274,20 @@ class TestPage:
             + _surface(SMALL_ZONE, graphic=CANVAS, attributes=' n="16"'),
         )
         pages = loader.create_timelines()
-        assert [(page.id, page.name, page.length.value) for page in pages] == [
-            (SURFACE, "15", 5610),
-            ("dgt_4", "16", 300),
+        assert [page.id for page in pages][0] == SURFACE
+        assert shape(pages[1].id) == "dgt"
+        assert [(page.name, page.length.value) for page in pages] == [
+            ("15", 5610),
+            ("16", 300),
         ]
-        assert [accolade.id for accolade in _segments(pages[1])] == ["dgt_5"]
+        assert shapes([accolade.id for accolade in _segments(pages[1])]) == ["dgt"] * 1
 
 
 class TestVolume:
     def test_the_volume_is_a_segment_line_of_pages(self, source: Path) -> None:
         volume = MeiFacsimileLoader.from_file(source).create_timeline()
         assert type(volume) is SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]
-        assert volume.id == "dgt_1"
+        assert shape(volume.id) == "dgt"
         assert volume.length.value == 5610
         assert volume.is_locked
         assert volume.meta == {}
@@ -292,7 +295,7 @@ class TestVolume:
         assert type(page) is SegmentLine[DiscreteGraphicalTimeline]
         assert (page.id, page.name, page.length.value) == (SURFACE, "15", 5610)
         assert page.meta == {"image": IMAGE}
-        assert [accolade.id for accolade in _segments(page)] == ["dgt_3", "dgt_4"]
+        assert shapes([accolade.id for accolade in _segments(page)]) == ["dgt"] * 2
         assert _expected(ACCOLADE_2_ZONES) == _boxes(_segments(page)[1])
 
     def test_uid_and_name(self, source: Path) -> None:
@@ -412,7 +415,7 @@ class TestZones:
         zone = '<zone ulx="520" uly="390" lrx="874" lry="1019"/>'
         (page,) = _load(tmp_path, _surface(zone, graphic=CANVAS)).create_timelines()
         (accolade,) = _segments(page)
-        assert [box.id for box in _boxes(accolade)] == ["box_1"]
+        assert shapes([box.id for box in _boxes(accolade)]) == ["box"] * 1
 
 
 TYPED_ZONES = (
@@ -521,7 +524,7 @@ class TestGivenPaths:
         line = HorizontalLinePath(x0=0, x1=1000, y=70, tolerance=30)
         (page,) = loader.create_timelines(paths=line)
         assert type(page) is DiscreteGraphicalTimeline
-        assert (page.id, page.name, page.length.value) == ("dgt_1", "3", 1000)
+        assert (shape(page.id), page.name, page.length.value) == ("dgt", "3", 1000)
         assert page.is_locked
         assert page.meta == {
             "box": {"x": 0, "y": 40, "width": 1000, "height": 60},
@@ -721,9 +724,9 @@ class TestPackageRoundTrip:
         assert len(page.get_events(include_children=False)) == 0
         accolades = [page.get_child(uid) for uid in page.list_children()]
         assert [
-            (a.id, a.name, page.get_child_offset(a.id).value, a.length.value)
+            (shape(a.id), a.name, page.get_child_offset(a.id).value, a.length.value)
             for a in accolades
-        ] == [("dgt_3", "accolade_1", 0, 2806), ("dgt_4", "accolade_2", 2806, 2804)]
+        ] == [("dgt", "accolade_1", 0, 2806), ("dgt", "accolade_2", 2806, 2804)]
         assert [a.meta for a in accolades] == [
             {"box": ACCOLADE_1_BOX, "image": IMAGE},
             {"box": ACCOLADE_2_BOX, "image": IMAGE},

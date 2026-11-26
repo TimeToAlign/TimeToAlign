@@ -399,7 +399,7 @@ class JsonLoader(NormalisedTablesLoader):
         Convenience accessor that unwraps the raw PyArrow tables from
         the ``EventData`` wrappers in the store.
         """
-        return {name: ed._table for name, ed in self._store.items()}
+        return {name: ed.table for name, ed in self._store.items()}
 
     @property
     def raw_data(self) -> dict[str, Any] | None:
@@ -440,20 +440,23 @@ class JsonLoader(NormalisedTablesLoader):
 
         Convenient for programmatic use or testing.
 
+        The loader's ID minter is seeded from the dict's JSON with sorted
+        keys and no spaces (see ``Loader.load``).
+
         Args:
             data: A parsed JSON structure (dict).
 
         Returns:
             Self, for method chaining.
         """
+        self._start_minter(json.dumps(data, sort_keys=True, separators=(",", ":")))
         self._raw_data = data
         self._process_json(data)
         return self
 
     def clear(self) -> None:
         """Clear all loaded data."""
-        self._sources.clear()
-        self._source_metadata.clear()
+        super().clear()
         self._store = DictStore()
         self._file_metadata.clear()
         self._raw_data = None
@@ -535,7 +538,7 @@ class JsonLoader(NormalisedTablesLoader):
 
                 # Accumulate or replace
                 if key in self._store:
-                    existing_table = self._store[key]._table
+                    existing_table = self._store[key].table
                     merged = pa.concat_tables(
                         [existing_table, table],
                         promote_options="default",
@@ -683,7 +686,7 @@ class JsonLoader(NormalisedTablesLoader):
 
     def __repr__(self) -> str:
         entries = ", ".join(
-            f"{k}={ed._table.num_rows} rows" for k, ed in self._store.items()
+            f"{k}={ed.table.num_rows} rows" for k, ed in self._store.items()
         )
         return f"JsonLoader({entries})"
 

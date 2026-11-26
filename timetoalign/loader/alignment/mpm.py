@@ -32,31 +32,31 @@ graphical):
 
 * a shared ``"score"`` group holding the score in two logical units — a
   tick :class:`~timetoalign.timelines.types.DiscreteLogicalTimeline`
-  (``score:dlt_1``) carrying the notes *and* every MPM markup event
+  (``score:dlt_…``) carrying the notes *and* every MPM markup event
   (tempo / dynamics / articulation / asynchrony / …), and a quarter-note
   :class:`~timetoalign.timelines.types.ContinuousLogicalTimeline`
-  (``score:clt_1``) carrying the notes.  ``score:dlt_1`` carries a
+  (``score:clt_…``) carrying the notes.  ``score:dlt_…`` carries a
   ticks→quarters :class:`~timetoalign.maps.convenience.TicksToQuarters`
-  map; ``score:clt_1`` carries a modelled quarters→seconds
+  map; ``score:clt_…`` carries a modelled quarters→seconds
   :class:`~timetoalign.maps.table.TableMap` integrated from the
   performance's ``tempoMap``;
 * a ``"perf"`` group holding the observed onsets in two physical units —
   a seconds :class:`~timetoalign.timelines.types.ContinuousPhysicalTimeline`
-  (``perf:cpt_1``) and a samples
+  (``perf:cpt_…``) and a samples
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``perf:dpt_1``) carrying a
+  (``perf:dpt_…``) carrying a
   :class:`~timetoalign.maps.convenience.SamplesToSeconds` map (sample
   rate read from the recording's ``.wav``) — plus, when the project
   carries one, a third graphical timeline: the spectrogram's frame-column
   x-axis as a pixels
   :class:`~timetoalign.timelines.types.DiscreteGraphicalTimeline`
-  (``perf:dgt_1``).  It carries no events — it is a graphical axis whose
+  (``perf:dgt_…``).  It carries no events — it is a graphical axis whose
   length is the spectrogram ``.png``'s width in frame columns — and a
   px→seconds :class:`~timetoalign.maps.linear.ScalarMap`
   (``seconds = px * hopSize / sample_rate``); and
 * a cross-group :class:`~timetoalign.alignment.claims.MatchClaim` per
-  score note — a synchronous claim between the note on ``score:clt_1``
-  (quarters) and its observed onset on ``perf:cpt_1`` (seconds), both
+  score note — a synchronous claim between the note on ``score:clt_…``
+  (quarters) and its observed onset on ``perf:cpt_…`` (seconds), both
   events under the same id, joined ``xml:id == ref``.
 
 The ``ref`` → ``xml:id`` correspondence is a bijection (every score note
@@ -90,6 +90,7 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.display.html import code
+from timetoalign.loader._ids import CLAIM_PREFIX, CMAP_PREFIX, give_event_ids
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
@@ -106,6 +107,7 @@ from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds, TicksToQuarters
 from timetoalign.maps.linear import ScalarMap
 from timetoalign.maps.table import TableMap
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -122,15 +124,6 @@ module_logger = logging.getLogger(__name__)
 
 
 # region Constants
-
-#: Score-group timeline uids (type-based ids, role prefix).
-_SCORE_CLT_ID = "score:clt_1"
-_SCORE_DLT_ID = "score:dlt_1"
-
-#: Performance-group timeline uids.
-_PERF_CPT_ID = "perf:cpt_1"
-_PERF_DPT_ID = "perf:dpt_1"
-_PERF_DGT_ID = "perf:dgt_1"
 
 #: Group ids.
 _SCORE_GROUP = "score"
@@ -206,7 +199,7 @@ class MpmLoader(AlignmentLoader):
     score, the selected modelled performance's markup, and the observed
     alignment, and assembles a bundle with a shared logical ``"score"``
     group and a physical ``"perf"`` group — the latter also carrying the
-    spectrogram's graphical pixel axis (``perf:dgt_1``) when the project
+    spectrogram's graphical pixel axis (``perf:dgt_…``) when the project
     ships one — linked by one synchronous :class:`MatchClaim` per score
     note.  The bundle thus spans the logical, physical, and (when a
     spectrogram is present) graphical domains.
@@ -225,8 +218,8 @@ class MpmLoader(AlignmentLoader):
     it never runs an aligner.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        super().__init__(seed=seed)
 
         self._score_clt: ContinuousLogicalTimeline | None = None
         self._score_dlt: DiscreteLogicalTimeline | None = None
@@ -304,6 +297,7 @@ class MpmLoader(AlignmentLoader):
         msm_path, mpm_path = self._resolve_siblings(mpr, mpr_root)
 
         self._sources = [mpr, msm_path, mpm_path]
+        self._start_minter(mpr, msm_path, mpm_path)
         self._name = mpr.stem
 
         msm_root = self._parse_xml(msm_path)
@@ -544,7 +538,8 @@ class MpmLoader(AlignmentLoader):
         """Parse every map entry in the performance into a markup-event dict.
 
         One dict per entry, keyed for the discrete logical timeline:
-        ``start`` (int ticks), ``id`` (the entry's ``xml:id``),
+        ``start`` (int ticks), ``id`` (the entry's ``xml:id``; None for an
+        entry without one, minted when the events are added),
         ``event_type`` (the entry element's capitalised local-name), and
         type-specific resolved columns (see the per-type helpers).  Any
         unrecognised entry type is emitted generically with its raw
@@ -552,14 +547,12 @@ class MpmLoader(AlignmentLoader):
         """
         styles = self._build_style_lookup(performance)
         events: list[dict[str, Any]] = []
-        for index, (map_localname, element, style_ref) in enumerate(
-            self._iter_map_entries(performance)
-        ):
+        for map_localname, element, style_ref in self._iter_map_entries(performance):
             tag = _localname(element)
             event_type = tag[:1].upper() + tag[1:]
             date = int(float(element.get("date")))
             event: dict[str, Any] = {
-                "id": element.get(XML_ID) or f"{event_type.lower()}:{index}",
+                "id": element.get(XML_ID),
                 "start": date,
                 "event_type": event_type,
             }
@@ -805,9 +798,9 @@ class MpmLoader(AlignmentLoader):
     ) -> None:
         """Build the two shared logical score timelines.
 
-        ``score:dlt_1`` (ticks) holds the Note events *and* every MPM markup
+        ``score:dlt_…`` (ticks) holds the Note events *and* every MPM markup
         event, plus a ticks→quarters :class:`TicksToQuarters` map.
-        ``score:clt_1`` (quarters) holds the Note events plus the modelled
+        ``score:clt_…`` (quarters) holds the Note events plus the modelled
         quarters→seconds :class:`TableMap`.
         """
         ppq = self._ppq
@@ -826,7 +819,7 @@ class MpmLoader(AlignmentLoader):
         score_dlt = DiscreteLogicalTimeline(
             length=dlt_length,
             unit=TimeUnit.ticks,
-            uid=_SCORE_DLT_ID,
+            uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="score"),
             name=self._name,
         )
         score_dlt.add_events(
@@ -841,14 +834,17 @@ class MpmLoader(AlignmentLoader):
         # articulation / asynchrony / …); add_events with allow_expansion
         # null-fills the columns absent from the Note batch.
         if markup_events:
+            give_event_ids(markup_events, self._id_minter)
             score_dlt.add_events(markup_events, allow_expansion=True)
-        score_dlt.add_conversion_map(TicksToQuarters(ppq=ppq))
+        score_dlt.add_conversion_map(
+            TicksToQuarters(ppq=ppq, uid=self._id_minter.mint(CMAP_PREFIX))
+        )
 
         # Continuous logical timeline: notes in quarters.
         score_clt = ContinuousLogicalTimeline(
             length=max_quarter_end,
             unit=TimeUnit.quarters,
-            uid=_SCORE_CLT_ID,
+            uid=mint_timeline_id(TimeUnit.quarters, self._id_minter, role="score"),
             name=self._name,
         )
         score_clt.add_events(
@@ -919,6 +915,7 @@ class MpmLoader(AlignmentLoader):
             kind="linear",
             source_unit=TimeUnit.quarters,
             target_unit=TimeUnit.seconds,
+            uid=self._id_minter.mint(CMAP_PREFIX),
         )
 
     def _build_performance_timelines(
@@ -928,8 +925,8 @@ class MpmLoader(AlignmentLoader):
     ) -> None:
         """Build the two physical performance timelines from the onsets.
 
-        ``perf:cpt_1`` (seconds) holds one Note event per observed onset
-        (``milliseconds.date / 1000``); ``perf:dpt_1`` (samples) holds the
+        ``perf:cpt_…`` (seconds) holds one Note event per observed onset
+        (``milliseconds.date / 1000``); ``perf:dpt_…`` (samples) holds the
         same onsets scaled by the sample rate, with a
         :class:`SamplesToSeconds` map.
         """
@@ -940,7 +937,7 @@ class MpmLoader(AlignmentLoader):
         perf_cpt = ContinuousPhysicalTimeline(
             length=max_seconds,
             unit=TimeUnit.seconds,
-            uid=_PERF_CPT_ID,
+            uid=mint_timeline_id(TimeUnit.seconds, self._id_minter, role="perf"),
             name=self._name,
         )
         perf_cpt.add_events(
@@ -961,7 +958,7 @@ class MpmLoader(AlignmentLoader):
         perf_dpt = DiscretePhysicalTimeline(
             length=max_samples,
             unit=TimeUnit.samples,
-            uid=_PERF_DPT_ID,
+            uid=mint_timeline_id(TimeUnit.samples, self._id_minter, role="perf"),
             name=self._name,
         )
         perf_dpt.add_events(
@@ -978,7 +975,11 @@ class MpmLoader(AlignmentLoader):
                 for note in alignment_notes
             ]
         )
-        perf_dpt.add_conversion_map(SamplesToSeconds(sample_rate=sample_rate))
+        perf_dpt.add_conversion_map(
+            SamplesToSeconds(
+                sample_rate=sample_rate, uid=self._id_minter.mint(CMAP_PREFIX)
+            )
+        )
 
         self._perf_cpt = perf_cpt
         self._perf_dpt = perf_dpt
@@ -990,7 +991,7 @@ class MpmLoader(AlignmentLoader):
     ) -> None:
         """Build the graphical performance timeline from the spectrogram.
 
-        ``perf:dgt_1`` (pixels) is the spectrogram's frame-column x-axis: a
+        ``perf:dgt_…`` (pixels) is the spectrogram's frame-column x-axis: a
         :class:`DiscreteGraphicalTimeline` whose length is the number of
         frame columns (the ``.png``'s pixel width).  It carries **no
         events** — the columns are a graphical axis, not events — and a
@@ -1008,7 +1009,7 @@ class MpmLoader(AlignmentLoader):
         perf_dgt = DiscreteGraphicalTimeline(
             length=spectrogram["n_columns"],
             unit=TimeUnit.pixels,
-            uid=_PERF_DGT_ID,
+            uid=mint_timeline_id(TimeUnit.pixels, self._id_minter, role="perf"),
             name=self._name,
         )
         perf_dgt.add_conversion_map(
@@ -1016,6 +1017,7 @@ class MpmLoader(AlignmentLoader):
                 scalar=Fraction(spectrogram["hop_size"], sample_rate),
                 source_unit=TimeUnit.pixels,
                 target_unit=TimeUnit.seconds,
+                uid=self._id_minter.mint(CMAP_PREFIX),
             )
         )
         self._perf_dgt = perf_dgt
@@ -1028,8 +1030,8 @@ class MpmLoader(AlignmentLoader):
         """Emit one synchronous cross-group MatchClaim per aligned score note.
 
         A score note (``xml:id``) and its observed onset (``ref``) are both
-        events, under the same id, of ``score:clt_1`` (quarters) and
-        ``perf:cpt_1`` (seconds); the join ``xml_id == ref`` pairs them, and
+        events, under the same id, of ``score:clt_…`` (quarters) and
+        ``perf:cpt_…`` (seconds); the join ``xml_id == ref`` pairs them, and
         each claim names the two notes at their coordinates there.  An
         observed onset naming no score note gives no claim.
         """
@@ -1052,6 +1054,7 @@ class MpmLoader(AlignmentLoader):
                     {"id": ref, "start": seconds},
                     self._perf_cpt,
                     provenance=meta,
+                    id=self._id_minter.mint(CLAIM_PREFIX),
                 )
             )
 
@@ -1096,8 +1099,8 @@ class MpmLoader(AlignmentLoader):
     def create_timelines(self, id_pattern: str | None = None) -> list["Timeline"]:
         """Return all loaded timelines: the two score, then the performance.
 
-        The performance group always contributes ``perf:cpt_1`` and
-        ``perf:dpt_1``; ``perf:dgt_1`` (the spectrogram graphical axis) is
+        The performance group always contributes ``perf:cpt_…`` and
+        ``perf:dpt_…``; ``perf:dgt_…`` (the spectrogram graphical axis) is
         appended when the project carries a spectrogram.
 
         Args:
@@ -1124,9 +1127,10 @@ class MpmLoader(AlignmentLoader):
         """Return a single timeline by its uid.
 
         Args:
-            uid: One of ``"score:clt_1"`` / ``"score:dlt_1"`` / ``"perf:cpt_1"``
-                / ``"perf:dpt_1"`` / ``"perf:dgt_1"`` (the last present only
-                when the project carries a spectrogram).
+            uid: The ID of one of the timelines :meth:`create_timelines`
+                lists (``score:clt_…``, ``score:dlt_…``, ``perf:cpt_…``,
+                ``perf:dpt_…``, and ``perf:dgt_…`` when the project carries
+                a spectrogram).
 
         Raises:
             KeyError: If no timeline matches.
@@ -1143,13 +1147,8 @@ class MpmLoader(AlignmentLoader):
                 "No project loaded yet. Call load() before create_timeline()."
             )
         mapping: dict[str, "Timeline"] = {
-            _SCORE_CLT_ID: self._score_clt,
-            _SCORE_DLT_ID: self._score_dlt,
-            _PERF_CPT_ID: self._perf_cpt,
-            _PERF_DPT_ID: self._perf_dpt,
+            timeline.id: timeline for timeline in self.create_timelines()
         }
-        if self._perf_dgt is not None:
-            mapping[_PERF_DGT_ID] = self._perf_dgt
         if uid in mapping:
             return mapping[uid]
         raise KeyError(

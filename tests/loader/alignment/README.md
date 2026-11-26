@@ -80,12 +80,19 @@ what `event_ref` resolves against.
 
 | layer | timeline | unit |
 |---|---|---|
-| `<spine>` | `spine:dlt_1` (`DiscreteLogicalTimeline`) | ticks, int |
-| `<los>` notes/rests/lyrics | `los:dlt_2` (`DiscreteLogicalTimeline`) | ticks, int |
-| each `<graphic_instance_group>` | `<role>:dgt_<n>` (`SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]`) | pixels, int |
-| each `<track>` | `<role>:cpt_<n>` (`ContinuousPhysicalTimeline`) | seconds, float |
+| `<spine>` | `spine:dlt_…` (`DiscreteLogicalTimeline`) | ticks, int |
+| `<los>` notes/rests/lyrics | `los:dlt_…` (`DiscreteLogicalTimeline`) | ticks, int |
+| each `<graphic_instance_group>` | `<role>:dgt_…` (`SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]`) | pixels, int |
+| each `<track>` | `<role>:cpt_…` (`ContinuousPhysicalTimeline`) | seconds, float |
 
-Roles are asserted exactly, because they encode the sanitisation rule
+Every id is minted from the loader's minter (seeded from the document's
+bytes), so a uid is its role and prefix followed by 13 random base-36
+characters. The tests compare a uid's *shape*, the uid without its suffix
+(`spine:dlt`), after checking the suffix is 13 base-36 characters, and look a
+timeline up by a regular expression matching its whole uid
+(`create_timeline("spine:dlt_.*")`, which the loader resolves). Two layers of
+one label share a role; the random suffix tells them apart (there is no
+numeric disambiguation). Roles are asserted exactly, because they encode the sanitisation rule
 (accent folding, lowercasing, every run outside `[a-z0-9_]` collapsing to one
 `_`): the gymnopédie edition `"eng:Montréal: Les Éditions Outremontaises
 (2006)"` becomes `eng_montreal_les_editions_outremontaises_2006`, and the track
@@ -113,12 +120,9 @@ An edition nests two levels, because a page is the unit that owns a pixel
 origin: the edition line's segments are its pages (one per
 `<graphic_instance>`, named `page_<n>`), and a page's segments are the
 accolades engraved on it (named `accolade_<k>`, numbered within their page).
-Positions are names, not ids: page and accolade ids are minted in the
-edition's manifest, and the gymnopédie test pins both (pages `dgt_1`, `dgt_7`,
-`dgt_12`, `dgt_18`; the first page's accolades `dgt_2` … `dgt_5`). The order
-of minting follows the library's join rule — a page's subtree is planned as a
-whole when it joins the edition — which is why the numbers are not
-consecutive across pages.  Accolades are found by the half-span rule — within a page, a
+Positions are names, not ids: page and accolade ids are minted from the
+loader's minter when the edition is built, and the gymnopédie test asserts
+that each is a minted `dgt_…` and that all are distinct.  Accolades are found by the half-span rule — within a page, a
 drop in `upper_left_x` greater than half that page's observed x-span starts a
 new accolade — and every page restarts the rule, so an accolade never straddles
 two images.  The nesting is asserted three ways: the page/accolade counts of
@@ -180,16 +184,18 @@ object per row.  The three layers are measured in ticks, pixels and seconds
 respectively, which one field can hold because the coordinate storage carries a
 unit *per row*; the tests materialise the first claim of each layer and assert
 its `coordinate_a.unit` (ticks / pixels / seconds) against `coordinate_b.unit`
-(always ticks, always `spine:dlt_1`).  Per-layer row counts are recovered by
+(always ticks, always the spine's uid).  Per-layer row counts are recovered by
 counting the field's `timeline_a_id` column against the loader's `los_uid` /
 `edition_uids` / `track_uids`, which is what the arithmetic above is asserted
 through.  The bundle's MatchClaim table (`len(bundle.match_claim_table)`)
 holds the totals above.
 
 **Every claim names its two events.** The document names spine events only, so
-the loader gives each layer event the id its timeline would mint
-(`{event type in lower case}_{N}`, counted per type in document order:
-animals' LOS timeline holds `rest_1`…`rest_8`, `syllable_1`…`syllable_8`).
+the loader gives each layer event an id minted from its minter at the parse
+(`{event type in lower case}_…`, one batch per type in document order:
+loaded with `seed=0`, animals' LOS timeline holds the 3rd to 10th ids of a
+fresh `IdMinter(0)` as `rest_…` and the 11th to 18th as `syllable_…`, the
+spine's and the LOS's timeline ids being the 1st and 2nd).
 For animals and khomus the test builds every timeline and checks, claim by
 claim: `(timeline_a_id, event_a_id)` is exactly one layer event (the set of
 claimed events equals the set of layer events, children included, so none is
@@ -362,7 +368,7 @@ appear as `14.25`.
 The loader accepts exactly one document (one spine, one bundle) and refuses a
 second by whichever door it arrives at — `load()`, and equally the inherited
 `load_string()` and `load_element()`, which would otherwise re-enter the parse
-and suffix a second document's timelines onto the first's.  All three raise the
+and join a second document's timelines to the first's.  All three raise the
 loaders' shared single-source `ValueError` (`tests/loader/README.md`,
 "Single-source loaders"), whose message names the held file, and a test drives
 each of them; two paths in one call are refused before either is parsed.  `create_timeline(uid)`
@@ -459,14 +465,13 @@ stated all the same.
   `xml:id` as `event_a_id`; the score coordinate, a `Fraction` in quarters,
   equal to the table above (`Fraction(1, 2)` for all four ids of row 1,
   `Fraction(15, 2)` for row 7); the performance timeline's id and
-  `projection_<n>` as `event_b_id` (`n` counting the claims, as the timeline
-  mints them); the performance coordinate **on the performance timeline's
+  the Projection's minted ID (`projection_…`) as `event_b_id`; the performance coordinate **on the performance timeline's
   own axis**: on the samples timeline the integer sample of the table (the
   onset converted through `SamplesToSeconds(44100)` before the claim
   exists), on the seconds timeline the onset as a float. A claim keeping
   seconds on a samples timeline, or naming no event, fails.
 * **The Projections** (both timelines): the performance timeline holds
-  exactly 13 events, `projection_1` … `projection_13` in claim order, each of
+  exactly 13 events, one minted `projection_…` per claim, in claim order, each of
   event type `Projection`, its `projection_of` `{timeline_id: <score id>,
   event_id: <xml:id>}` of the score note it stands for, and its start the
   same sample (or seconds) as its claim.
@@ -481,7 +486,7 @@ stated all the same.
 * **Before the first anchor**: quarter 1/4 lies on the score but before the
   first anchor (1/2); under the bundle's default `omit` policy the stamp holds
   the score and its one child alone, so the performance does not resolve. The
-  child is `score:clt_2`, the movement `mdiv1` (named `I`, so it is a child) holding the
+  child is the score's one child, the movement `mdiv1` (named `I`, so it is a child) holding the
   notes, at offset 0 over
   the whole score: it covers 1/4, so the score's offsets carry the query onto
   it at 1/4.
@@ -497,8 +502,8 @@ stated all the same.
   * claim 15, synchronous, `n7` at quarter `Fraction(15, 2)` and 5.5 s: the
     repeated id gives its own claim, not a refusal and not a merge;
   * claims 16 and 17, NOMATCH from the performance: timeline a the
-    performance and b the score, `event_a_id` `projection_15` and
-    `projection_16`, Projections standing for no score note (`projection_of`
+    performance and b the score, `event_a_id` two minted `projection_…`,
+    Projections standing for no score note (`projection_of`
     null) at 2.75 and 4.75 seconds (the Projections' `start`, as floats; the
     claims hold no coordinate). The file
     gives both notes one id, which can name neither event, so the timeline
@@ -522,24 +527,21 @@ stated all the same.
   sample 55125, 15/4 → 121275 interpolated): the NOMATCH claims add no
   anchor, so the WarpMap is unchanged by them.
 * **The bundle's package is written and read back.** The score first holds
-  a Projection of its own, given while it belongs to no bundle (at quarter
-  3/2, standing for no event: `projection_1` on the score). `create_bundle`
-  on the second fixture with a samples timeline joins both timelines
-  before it makes the claims, so the performance's 16 Projections are
-  minted above the score's: `projection_2` … `projection_17` in claim
-  order, the inserted notes' claims 16 and 17 naming `projection_16` and
-  `projection_17`. Projecting before the join would mint the performance
-  its own `projection_1` … `projection_16`, and writing would refuse
-  `projection_1` on two timelines. `to_file` writes the package to
-  `tmp_path`; its Projections table holds the 17 IDs, `projection_1` on the
-  score and the 16 others on the performance; `AlignmentBundle.from_file`
-  reads it back with the 17 claims stating the same events and anchors.
+  a Projection of its own, added while it belongs to no bundle (at quarter
+  3/2, standing for no event). `create_bundle` on the second fixture with a
+  samples timeline joins both timelines before it makes the claims; the
+  performance's 16 Projections (claims 2–15 and the inserted notes' claims
+  16 and 17) hold 16 distinct minted IDs, none the score's. `to_file` writes
+  the package to `tmp_path`; its Projections table holds the 17 IDs, the
+  score's own on the score and the 16 others on the performance;
+  `AlignmentBundle.from_file` reads it back with the 17 claims stating the
+  same events and anchors.
 * **A second call reuses every Projection.** The loader makes its claims
   through the library's one projection operation, which keeps one Projection
   per score note and position on the performance timeline. Calling
   `create_match_claims` twice on the second fixture with one samples
   timeline gives claims stating the same events and anchors both times
-  (`projection_1` … `projection_16` named alike), and the performance
+  (the 16 Projections named alike), and the performance
   timeline holds the same 16 rows after the second call as after the first.
   The same holds with row 11 left out, so that the inserted id is given once
   and kept: 15 rows, and both calls' last claim names
@@ -554,7 +556,7 @@ in an otherwise valid fixture, so the refusal can only come from that change.
 
 * **An id not on the score**: a row naming `zz9` → `KeyError` naming the id
   and the pair it is in (`Pair 8: no event with id 'zz9' on timeline
-  'score:clt_1' or its children ...`: the pairs count the listed ids of rows
+  '<score id>' or its children ...`: the pairs count the listed ids of rows
   1–4 from 0); the performance timeline holds no event afterwards, though
   rows 1–3 were read first (every lookup runs before a Projection is
   added).

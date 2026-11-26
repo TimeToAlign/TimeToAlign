@@ -93,8 +93,8 @@ class MapsLoader(AlignmentLoader):
 
     _single_source: ClassVar[bool] = True
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        super().__init__(seed=seed)
         self._rows: list[dict[str, Any]] | None = None
 
     # region Loading

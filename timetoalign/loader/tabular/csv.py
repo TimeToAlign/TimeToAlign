@@ -30,7 +30,7 @@ class CsvLoader(TabularLoader):
         - Delimiter: comma (,)
         - Start column: "start"
         - End column: "end" (if present)
-        - ID column: "id" (if present, else auto-generated)
+        - ID column: "id" (if present, else minted)
         - Coordinate unit: seconds
         - Coordinate type: float
 
@@ -77,7 +77,7 @@ class TsvLoader(TabularLoader):
         - Delimiter: tab (\\t)
         - Start column: "start"
         - End column: "end" (if present)
-        - ID column: "id" (if present, else auto-generated)
+        - ID column: "id" (if present, else minted)
         - Coordinate unit: seconds
         - Coordinate type: float
 

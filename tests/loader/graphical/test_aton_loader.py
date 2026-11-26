@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader.minting import minted, shape, shapes
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.core.events import BoundingBox
 from timetoalign.loader.graphical.aton import ATONHole, ATONLoader
@@ -431,9 +432,10 @@ class TestMinimalATONTimeline:
 
     def test_create_timeline_with_uid(self, loaded_minimal_loader: ATONLoader) -> None:
         """create_timeline() accepts custom uid."""
-        timeline = loaded_minimal_loader.create_timeline(uid="dgt_1")
+        timeline = loaded_minimal_loader.create_timeline(uid="roll")
 
-        assert timeline.id == "dgt_1"
+        assert timeline.id == "roll"
+        assert shape(loaded_minimal_loader.create_timeline().id) == "dgt"
 
 
 # endregion
@@ -531,78 +533,53 @@ def _event_ids_and_names(timeline: DiscreteGraphicalTimeline) -> tuple[list, lis
 class TestHoleEventIds:
     """Event IDs of holes (see README "ATONLoader event IDs")."""
 
-    def test_holes_sharing_an_id_are_told_apart_by_tracker_hole(
-        self, tmp_path: Path
-    ) -> None:
+    def test_holes_sharing_an_id_are_minted(self, tmp_path: Path) -> None:
         """The colliding SUPRA rows give six distinct IDs, the names as written."""
         path = _write_aton(tmp_path / "first_six.txt", SUPRA_FIRST_SIX_HOLES)
-        timeline = ATONLoader.from_file(path).create_timeline(uid="dgt_1")
+        timeline = ATONLoader.from_file(path, seed=0).create_timeline(uid="roll")
 
         ids, names = _event_ids_and_names(timeline)
-        assert ids == [
-            "hole_K0_N1_tracker12",
-            "hole_K0_N2",
-            "hole_K88_N1",
-            "hole_K86_N1",
-            "hole_K0_N1_tracker6",
-            "hole_K0_N1_tracker8",
-        ]
+        first, second, third = minted(0, "hole", "hole", "hole")
+        assert ids == [first, "K0_N2", "K88_N1", "K86_N1", second, third]
         assert names == ["K0_N1", "K0_N2", "K88_N1", "K86_N1", "K0_N1", "K0_N1"]
 
-    def test_ids_that_do_not_collide_are_unchanged(
+    def test_ids_that_do_not_collide_are_the_source_ids(
         self, loaded_minimal_loader: ATONLoader
     ) -> None:
-        """minimal.aton's five distinct IDs keep the form hole_<ID>."""
+        """minimal.aton's five distinct IDs are kept as written."""
         ids, names = _event_ids_and_names(loaded_minimal_loader.create_timeline())
-        assert ids == [
-            "hole_H1_N1",
-            "hole_H2_N2",
-            "hole_H3_N3",
-            "hole_H4_N4",
-            "hole_H5_N5",
-        ]
+        assert ids == ["H1_N1", "H2_N2", "H3_N3", "H4_N4", "H5_N5"]
         assert names == ["H1_N1", "H2_N2", "H3_N3", "H4_N4", "H5_N5"]
 
     def test_a_hole_stated_twice_is_refused(self, tmp_path: Path) -> None:
-        """One @ID twice on one tracker hole derives one ID twice: refused."""
+        """One @ID twice on one tracker hole: refused."""
         holes = [("K0_N1", 15638, 216, 6, -1), ("K0_N1", 15638, 216, 6, -1)]
         loader = ATONLoader.from_file(_write_aton(tmp_path / "twice.txt", holes))
 
         with pytest.raises(ValueError) as raised:
-            loader.create_timeline(uid="dgt_1")
+            loader.create_timeline(uid="roll")
         assert str(raised.value) == (
-            "Event id 'hole_K0_N1_tracker6' is given twice in one call to "
-            "add_events on timeline 'dgt_1'"
+            "ATON hole 'K0_N1' is stated twice on tracker hole 6: the file names "
+            "one hole twice, or two holes alike."
         )
 
     @pytest.mark.slow
     def test_supra_roll_loads_whole(self, loaded_supra_loader: ATONLoader) -> None:
-        """30092 events, 30092 IDs; the 992 holes of shared @IDs carry a tracker."""
-        timeline = loaded_supra_loader.create_timeline(uid="dgt_1")
+        """30092 events, 30092 IDs; the 992 holes of shared @IDs are minted."""
+        timeline = loaded_supra_loader.create_timeline(uid="roll")
         ids, names = _event_ids_and_names(timeline)
 
         assert timeline.n_events == 30092
         assert len(set(ids)) == 30092
         holes = loaded_supra_loader.holes
-        with_tracker = [
-            event_id == f"hole_{hole.id}_tracker{hole.tracker_hole}"
-            for event_id, hole in zip(ids, holes, strict=True)
+        stated = [
+            event_id == hole.id for event_id, hole in zip(ids, holes, strict=True)
         ]
-        plain = [
-            event_id == f"hole_{hole.id}"
-            for event_id, hole in zip(ids, holes, strict=True)
-        ]
-        assert sum(with_tracker) == 992
-        assert sum(plain) == 29100
+        minted_ids = [event_id for event_id in ids if event_id.startswith("hole_")]
+        assert sum(stated) == 29100
+        assert len(minted_ids) == 992
+        assert shapes(minted_ids) == ["hole"] * 992
         assert names == [hole.id for hole in holes]
-        assert ids[:6] == [
-            "hole_K0_N1_tracker12",
-            "hole_K0_N2_tracker12",
-            "hole_K88_N1",
-            "hole_K86_N1",
-            "hole_K0_N1_tracker6",
-            "hole_K0_N1_tracker8",
-        ]
 
 
 # endregion

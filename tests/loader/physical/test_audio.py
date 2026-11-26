@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader.minting import minted, shape
 from timetoalign.core import IdCoordinate, NumberType, TimeUnit
 from timetoalign.loader.physical import AudioInfo, AudioLoader
 from timetoalign.loader.physical import audio as audio_module
@@ -323,12 +324,16 @@ class TestAudioLoaderTimeline:
         assert timeline.id == "my_audio"
         assert timeline.name == "My Audio File"
 
-    def test_create_timeline_default_uid_from_filename(self, wav_file: Path):
-        """Test that uid defaults to filename stem."""
-        loader = AudioLoader().load(wav_file)
+    def test_create_timeline_default_uid_is_minted(self, wav_file: Path):
+        """Without a uid, the timeline's id is minted from the loader's minter.
+
+        The C-Map is attached after the timeline is made, so the timeline
+        takes the minter's first id; the name is the file's.
+        """
+        loader = AudioLoader(seed=0).load(wav_file)
         timeline = loader.create_timeline()
 
-        assert timeline.id == "test"  # From "test.wav"
+        assert timeline.id == minted(0, "dpt")[0]
         assert timeline.name == "test.wav"
 
     def test_create_timeline_with_cmap(self, wav_file: Path):
@@ -359,7 +364,7 @@ class TestAudioLoaderTimeline:
         assert timeline.unit == TimeUnit.seconds
         assert timeline.number_type == NumberType.float
         assert timeline.length.value == 2.0
-        assert timeline.id == "stereo"
+        assert shape(timeline.id) == "cpt"
         assert timeline.name == "stereo.wav"
 
     def test_create_continuous_timeline_with_cmap(self, stereo_wav_file: Path):
@@ -426,7 +431,7 @@ class TestAudioLoaderIntegration:
 
         stamp = timeline.get_timestamp_at(22050)
         assert stamp.get_unit(TimeUnit.seconds) == IdCoordinate(
-            0.5, TimeUnit.seconds, "test"
+            0.5, TimeUnit.seconds, timeline.id
         )
 
     def test_both_timelines_span_the_same_file(self, stereo_wav_file: Path):
@@ -776,7 +781,7 @@ class TestAudioLoaderSpecimen:
         assert timeline.unit == TimeUnit.samples
         assert timeline.number_type == NumberType.int
         assert timeline.length.value == 10188800
-        assert timeline.id == "Bass Kick"
+        assert shape(timeline.id) == "dpt"
         assert timeline.name == "Bass Kick.mp3"
         end = timeline.get_conversion_map(TimeUnit.seconds)(10188800)
         assert end == 231.03854875283446

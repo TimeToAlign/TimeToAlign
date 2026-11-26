@@ -13,6 +13,36 @@ vectorized loader contract directly. Row dictionaries remain covered by the
 storage constructor tests, but are intentionally not accepted by
 `Loader.load()`.
 
+## IDs a loader mints (`test_loader_ids.py`)
+
+Every ID a loader mints (events, timelines, C-Maps, groups, MatchClaims)
+comes from one `IdMinter` per load: seeded with the constructor's `seed=`
+when given (`from_file(..., seed=)` reaches it), else with `seed_from` of the
+loader's class name and the SHA-256 digests of the first `load` call's
+sources, in order; later `load` calls go on minting from it, `clear()` starts
+afresh. An ID the source states is kept. What proves it, on a CSV without an
+`id` column (`CsvLoader`, two `Event` rows and one `Note` row) and on a DCML
+notes table (`Ms3Loader`):
+
+1. *`seed=` gives the minter's IDs in build order.* With `seed=7` the CSV's
+   events are the first three IDs a fresh `IdMinter(7)` mints, one batch per
+   event type in order of first row (`event_…`, `event_…`, then `note_…`),
+   and the timeline `create_timeline()` returns takes the fourth (`cpt_…`).
+   The expected values are computed by the minter in the test, never typed.
+2. *A fresh loader reloading an unchanged source mints the same IDs*, events
+   and timeline alike, without a seed; so does a loader after `clear()`.
+3. *Another source mints other IDs*: the CSV with one byte changed (a start
+   `0.5` for `0.25`) gives other event IDs.
+4. *Stated IDs are kept*: the same CSV with an `id` column keeps `a`, `b`,
+   `c`, and mints only the timeline.
+5. *One minter per load*: with `seed=7`, `load(first); load(second)` and
+   `load(first, second)` both mint the first six IDs of `IdMinter(7)`, each
+   source one batch per event type (the second call goes on minting, it
+   does not start again); the Ms3 notes of `seed=0` are the first IDs of
+   `IdMinter(0)` (`note_…` in row order).
+6. *The seed is the bytes', not the path's*: the same CSV copied under
+   another name mints the same IDs.
+
 ## Single-source loaders
 
 A loader that reads one source sets `_single_source` on its class, and one
@@ -111,6 +141,7 @@ is `float`, so an explicit choice is stated as given.
 | File / Subdirectory | What it validates |
 |---------------------|-------------------|
 | `test_loader.py` | Generic loader smoke tests and contract checks |
+| `test_loader_ids.py` | The IDs a loader mints: one seeded minter per load (see "IDs a loader mints") |
 | `test_base_loaders.py` | The `EventLoader` / `ManifestLoader` / `AlignmentLoader` ABCs; `AlignmentStore` holds events, C-Maps and metadata only (exact `event_count`, `cmap_count`, the whole `summary()` dict): MatchClaims live in the MatchClaim table, never in a store |
 | `test_bundle.py` | `AlignmentBundle` produced by alignment loaders |
 | `test_error_handling.py` | Faulty-input behaviour across loaders |
@@ -183,7 +214,7 @@ logic is the section `IIIFManifestLoader` of `graphical/README.md`.
 
 A matchfile names both notes of every alignment line, so each MatchClaim
 names them: a `snote(<id>,…)-note(<id>,…)` line is a synchronous interval
-claim between the score note on `score:clt_1` and the performed note on the
+claim between the score note on `score:clt_…` and the performed note on the
 performance timeline, a `snote(<id>,…)-deletion.` line a NOMATCH claim from
 the score note. The test reads the expected id pairs from the file's text
 with two regular expressions (never from the loader), compares them with
@@ -222,13 +253,16 @@ positions use their timeline's discrete unit. The migration assertions add unit 
 exact-value checks without changing any established coordinate value, claim count,
 or NOMATCH count.
 
-Timeline identity assertions use the library's type-based grammar rather than
-source labels. Matchfile score/performance timelines are stored as
-``score:clt_1`` and ``perf:<source-stem>:dlt_1``; Performance Precision uses
-``score:clt_1`` and ``perf:<performer-key>:cpt_1``. TiLiA timelines are numbered
-``cpt_1``, ``cpt_2``, ... in source order. Source filenames, performer keys, and
-TiLiA IDs/titles remain human-readable metadata and lookup inputs, so changing
-these expected IDs tests identity semantics without changing parsed content.
+Timeline IDs are minted from the loader's minter (see "IDs a loader mints"),
+led by the loader's role: Matchfile ``score:clt_…`` and ``perf:dlt_…``,
+Performance Precision ``score:clt_…`` and ``perf:cpt_…``, Parangonada and
+MPM ``score:``/``perf:`` likewise; TiLiA timelines are ``cpt_…`` in source
+order. Source filenames, performer keys and TiLiA IDs/titles are the
+timelines' names and lookup inputs, never part of an ID. The tests reach a
+timeline through its role or name (``create_timeline("perf:1")``, a
+performer key) and assert a minted ID by its shape (the ID without its
+random suffix, after checking the suffix is 13 base-36 characters;
+``tests/loader/minting.py``), or by the ID the timeline holds.
 
 The tabular schema tests retain ``Field`` and ``ComputedField`` because
 ``TabularLoader`` uses them for nested coordinate selection and computed
@@ -338,21 +372,18 @@ alone (after `create_bundle`):
 **The bundle's package is written and read back** (`tmp_path`). A
 Projection's ID is unique among all Projections of a package, and the
 loader adds every Projection while its timeline is in the bundle, so each
-is minted above every Projection ID the bundle holds: the Projections
-table holds 6447 rows, 3815 on the score and 376 on each performer, and
-its IDs are exactly `projection_1` … `projection_6447`, each once (no gap:
-nothing else mints a Projection ID in the bundle). Ashkenazy's first
-note-level claim (the first claim stated) names the score's `projection_1`.
-`AlignmentBundle.from_file` reads the package back with the same 6769
-claims. A loader projecting onto each free timeline would give the score
-`projection_1` … `projection_3815` and every performer `projection_1` …
-`projection_376`: writing would refuse `projection_1` on two timelines.
+is minted by the bundle: the Projections table holds 6447 rows, 3815 on
+the score and 376 on each performer, its IDs all distinct and each a minted
+`projection_…` (checked by its shape). Ashkenazy's first note-level claim
+(the first claim stated) names one of them. `AlignmentBundle.from_file`
+reads the package back with the same 6769 claims.
 
 **Coordinate spot-check:** Ashkenazy's bar-level claim for LABEL `1+0/1`
 joins a score Projection at `Fraction(1, 2)` (0.5 quarters) to a
 performance Projection at `10.272` seconds; its first aligned note-level
 claim joins the score Projection at quarter `0` (the pickup, `0+11/8`) to
-the Note event `Chopin_Ashkenazy:0`.
+the performer's first Note event (its ID minted from the loader's
+minter, read from the timeline).
 
 **Provenance:** every claim records `Provenance(method="imported",
 note="performance_precision <granularity>")` with granularity `note`,
@@ -426,10 +457,10 @@ The per-performer ``.beats`` / ``.dyn`` files under the dataset's
 One shared **score group** ``"score"`` (the same 251 notes in two
 logical units):
 
-* ``score:clt_1`` — `ContinuousLogicalTimeline`, quarters, 251 note
+* ``score:clt_…`` — `ContinuousLogicalTimeline`, quarters, 251 note
   events with ``start = onset_quarter`` (exact `Fraction`), carrying
   ``pitch`` (MIDI int) and ``voice`` (int).
-* ``score:dlt_1`` — `DiscreteLogicalTimeline`, ticks (``divs``), the
+* ``score:dlt_…`` — `DiscreteLogicalTimeline`, ticks (``divs``), the
   same 251 notes with ``start = onset_div`` (int). A divs→quarters
   C-Map ``LinearMap(scalar=Fraction(1,32), offset=Fraction(-1,2))`` is
   attached (``scalar`` / ``offset`` are the constructor's real
@@ -440,12 +471,12 @@ logical units):
 Per performer, a **performance group** ``perf:<key>`` (the same
 performed notes in two physical units):
 
-* ``perf:<key>:cpt_1`` — `ContinuousPhysicalTimeline`, seconds, one note
+* ``perf:cpt_…`` — `ContinuousPhysicalTimeline`, seconds, one note
   event per ``ppart.csv`` row with ``start = onset_sec`` (float),
   carrying ``pitch`` and ``velocity``; **plus** the measured beat
   features (see "Feature events" below) as ``Beat`` and ``Dynamics``
   events on the same timeline.
-* ``perf:<key>:dpt_1`` — `DiscretePhysicalTimeline`, samples, the same
+* ``perf:dpt_…`` — `DiscretePhysicalTimeline`, samples, the same
   notes with ``start = round(onset_sec * sample_rate)``. A
   ``SamplesToSeconds(sample_rate=44100)`` C-Map is attached
   (``sample_rate`` read from the performer's 44100 Hz stereo ``.wav``
@@ -462,16 +493,16 @@ the other four are ``<key>_measure.{beats,dyn}``. All ten files have
 
 * ``.beats`` (7 columns) — header
   ``measure_number  beat  onset_beat  onset_sec  BPM  interp  swap``.
-  Each row becomes a ``Beat`` event on ``perf:<key>:cpt_1`` at
+  Each row becomes a ``Beat`` event on ``perf:cpt_…`` at
   ``start = onset_sec``, carrying ``measure_number`` / ``beat`` /
-  ``bpm`` (from ``BPM``) / ``interp`` / ``swap``. Event id
-  ``<key>:beat:<i>``.
+  ``bpm`` (from ``BPM``) / ``interp`` / ``swap``. Its ID is minted
+  from the loader's minter (``beat_…``).
 * ``.dyn`` (6 columns) — header
   ``measure_number  beat  onset_beat  velocity_mean  velocity_max
   interp`` (**no** ``onset_sec``, **no** ``swap``). Each row becomes a
-  ``Dynamics`` event on ``perf:<key>:cpt_1`` carrying ``measure_number``
-  / ``beat`` / ``velocity_mean`` / ``velocity_max`` / ``interp``. Event
-  id ``<key>:dyn:<i>``.
+  ``Dynamics`` event on ``perf:cpt_…`` carrying ``measure_number``
+  / ``beat`` / ``velocity_mean`` / ``velocity_max`` / ``interp``. Its
+  ID is minted (``dynamics_…``).
 
 Because the ``.dyn`` rows have no onset, each is joined to the
 ``.beats`` row sharing its ``(measure_number, beat)`` key to recover
@@ -482,14 +513,14 @@ are *measured* per-beat features (variable tempo + dynamics from the
 recording); no tempo curve is synthesised (no ``BeatGrid.from_tempo``).
 
 The events are added to the **existing** seconds timeline (not a new
-timeline, not on ``dpt_1``) via ``add_events(rows,
-allow_expansion=True)``. The ``cpt_1`` schema already holds ``Note``
+timeline, not on ``dpt``) via ``add_events(rows,
+allow_expansion=True)``. The ``cpt`` schema already holds ``Note``
 columns (``pitch`` / ``velocity``); the ``Beat`` / ``Dynamics`` rows
 introduce new columns (``bpm`` / ``measure_number`` / ``beat`` /
 ``velocity_mean`` / …). Successive ``add_events`` calls grow the schema
 via ``pyarrow.concat_tables(promote_options="default")``, so the
 heterogeneous ``Note`` / ``Beat`` / ``Dynamics`` table round-trips with
-absent columns null-filled. After ingestion each ``perf:<key>:cpt_1``
+absent columns null-filled. After ingestion each ``perf:cpt_…``
 holds its ppart ``Note`` events (the per-performer count above) **plus
 63 ``Beat`` and 63 ``Dynamics``** events.
 
@@ -512,19 +543,19 @@ counts, timeline count (12), and group count (6) are derived from
 One claim per ``align.csv`` row, per performer, faithfully (no
 deduplication). Every row names its notes by the ids of ``part.csv``
 (``partid``) and ``ppart.csv`` (``ppartid``), and those are the ids of the
-Note events on ``score:clt_1`` and on ``perf:<key>:cpt_1``, so every claim
+Note events on ``score:clt_…`` and on ``perf:cpt_…``, so every claim
 names two events (or one and the NOMATCH sentinel) and no Projection is
 needed:
 
 * **matchtype 0** → a synchronous claim between ``partid`` on
-  ``score:clt_1`` (timeline A) and ``ppartid`` on ``perf:<key>:cpt_1``;
+  ``score:clt_…`` (timeline A) and ``ppartid`` on ``perf:cpt_…``;
   its anchor holds the part note's ``onset_quarter`` and the ppart note's
   ``onset_sec``.
 * **matchtype 1** (score-only) → a NOMATCH claim naming ``partid`` on
-  ``score:clt_1``, timeline B ``perf:<key>:cpt_1``, source coordinate the
+  ``score:clt_…``, timeline B ``perf:cpt_…``, source coordinate the
   ``onset_quarter``.
 * **matchtype 2** (performance-only) → a NOMATCH claim naming ``ppartid``
-  on ``perf:<key>:cpt_1``, timeline B ``score:clt_1``, source coordinate
+  on ``perf:cpt_…``, timeline B ``score:clt_…``, source coordinate
   the ``onset_sec``.
 
 What proves it: for every performer, the claims read in order against the
@@ -547,13 +578,13 @@ per-performer key lives in the note) and have ``certainty=1.0``.
 | **Total** |     | **1275** | **1208** | **67** |
 
 The bundle holds **12** timelines and **6** groups (1 ``score`` + 5
-``perf:<key>``). ``score:clt_1`` and ``score:dlt_1`` each carry 251
+``perf:<key>``). ``score:clt_…`` and ``score:dlt_…`` each carry 251
 events.
 
 **Coordinate spot-check:** Szegedi's ``align.csv`` row at ``idx 0`` is
 ``0,0,ngx1f26,n149``. It produces a synchronous claim between the note
-``ngx1f26`` of ``score:clt_1`` and the note ``n149`` of
-``perf:1966_Szegedi:cpt_1``, whose anchor holds ``40`` quarters (the part
+``ngx1f26`` of ``score:clt_…`` and the note ``n149`` of
+``perf:cpt_…``, whose anchor holds ``40`` quarters (the part
 note's exact ``onset_quarter``) and ``38.183334`` seconds (the ppart
 note's ``onset_sec``).
 
@@ -566,7 +597,7 @@ asserts the duplicate is present in the raw ``align.csv`` so a future
 reader knows it is data, not a loader fault. The loader does **not**
 deduplicate.
 
-**C-Map round-trip:** ``SamplesToSeconds(44100)`` on a ``dpt_1`` timeline
+**C-Map round-trip:** ``SamplesToSeconds(44100)`` on a ``dpt`` timeline
 converts ``44100`` samples to ``1.0`` seconds (and ``sample / 44100``
 generally).
 
@@ -589,24 +620,24 @@ parametrized over both specimens:
 carry a spectrogram, so the graphical axis is always present here):
 
 - a shared ``"score"`` group:
-  - ``score:dlt_1`` — a ``DiscreteLogicalTimeline`` in ticks holding the
+  - ``score:dlt_…`` — a ``DiscreteLogicalTimeline`` in ticks holding the
     MSM ``Note`` events *and* every MPM markup event (``Tempo`` /
     ``Dynamics`` / ``Articulation`` / ``Asynchrony`` / any other map
     type), carrying a ticks→quarters ``TicksToQuarters(ppq)`` map;
-  - ``score:clt_1`` — a ``ContinuousLogicalTimeline`` in quarters holding
+  - ``score:clt_…`` — a ``ContinuousLogicalTimeline`` in quarters holding
     the same ``Note`` events (onset ``date / ppq`` as an exact
     ``Fraction``), carrying a modelled quarters→seconds ``TableMap``;
 - a ``"perf"`` group (3 timelines):
-  - ``perf:cpt_1`` — a ``ContinuousPhysicalTimeline`` in seconds, one
+  - ``perf:cpt_…`` — a ``ContinuousPhysicalTimeline`` in seconds, one
     ``Note`` event per observed onset (``milliseconds.date / 1000``);
-  - ``perf:dpt_1`` — a ``DiscretePhysicalTimeline`` in samples, the same
+  - ``perf:dpt_…`` — a ``DiscretePhysicalTimeline`` in samples, the same
     onsets scaled by the sample rate, carrying ``SamplesToSeconds``;
-  - ``perf:dgt_1`` — a ``DiscreteGraphicalTimeline`` in pixels: the
+  - ``perf:dgt_…`` — a ``DiscreteGraphicalTimeline`` in pixels: the
     spectrogram's frame-column x-axis (see *Spectrogram graphical axis*
     below). It carries **no events** — it is a graphical axis, not an
     event timeline — and a px→seconds ``ScalarMap``;
 - one synchronous cross-group ``MatchClaim`` per score note, projecting
-  ``score:clt_1`` (quarters) onto ``perf:cpt_1`` (seconds).
+  ``score:clt_…`` (quarters) onto ``perf:cpt_…`` (seconds).
 
 The bundle therefore spans all **three domains**: logical (quarters /
 ticks), physical (seconds / samples), and graphical (pixels). A test
@@ -651,7 +682,7 @@ directory). The width is read directly from the PNG IHDR header (bytes
 is added. The pinned widths are **Beethoven 26469** and **Reger 1587**
 frame columns.
 
-``perf:dgt_1`` is built as ``DiscreteGraphicalTimeline(length=<png width>,
+``perf:dgt_…`` is built as ``DiscreteGraphicalTimeline(length=<png width>,
 unit=TimeUnit.pixels)`` and carries **0 events** (the columns are an axis,
 not events). Its only attachment is a px→seconds ``ScalarMap`` with the
 exact scalar ``Fraction(hopSize, sample_rate)`` (so ``seconds = px *
@@ -672,7 +703,7 @@ The map is pulled off the timeline via
 concern — per-event 2-D graphical storage does not exist yet).
 
 When a project carries no ``<spectrogram>`` (or its ``.png`` is missing),
-``perf:dgt_1`` is simply absent and the bundle holds 4 timelines; the
+``perf:dgt_…`` is simply absent and the bundle holds 4 timelines; the
 loader does not crash. Both specimens here have one.
 
 #### No-spectrogram fallback
@@ -680,7 +711,7 @@ loader does not crash. Both specimens here have one.
 ``_parse_spectrogram`` returns ``None`` whenever the project carries no
 ``<spectrogram>`` element (or its ``hopSize`` / ``file`` attribute is
 missing, or the referenced ``.png`` is absent / unreadable). In that case
-``perf:dgt_1`` is never built: the graphical timeline reference is left
+``perf:dgt_…`` is never built: the graphical timeline reference is left
 ``None`` and the bundle simply omits the graphical domain. Both corpus
 specimens ship a complete spectrogram, so this branch never executes when
 the loader is driven against the real files — it cannot be reached by
@@ -697,14 +728,14 @@ parity) and pin the exact 4-timeline shape:
 - after ``load``, ``loader._perf_dgt is None``;
 - ``create_bundle()`` yields ``n_timelines == 4``, ``n_groups == 2``,
   ``group_ids == ["score", "perf"]``, and ``timeline_ids ==
-  [score:clt_1, score:dlt_1, perf:cpt_1, perf:dpt_1]`` (no ``perf:dgt_1``);
-  the ``perf`` group holds exactly ``{perf:cpt_1, perf:dpt_1}``; the claim
+  [score:clt_…, score:dlt_…, perf:cpt_…, perf:dpt_…]`` (no ``perf:dgt_…``);
+  the ``perf`` group holds exactly ``{perf:cpt_…, perf:dpt_…}``; the claim
   count is unchanged (one synchronous claim per note); and the bundle's
   timeline-unit domains are exactly ``{logical, physical}`` — the
   graphical domain is **absent** (the converse of the three-domain test);
 - ``create_timelines()`` returns exactly the four non-graphical timelines
   by ``.id``;
-- ``create_timeline("perf:dgt_1")`` raises ``KeyError`` (matching ``No
+- ``create_timeline("perf:dgt_…")`` raises ``KeyError`` (matching ``No
   timeline with uid``) because that timeline was never registered;
 - ``_repr_html_()`` reports ``"4 in 2 group(s) (score, perf)"`` and never
   ``"5 in 2 group(s)"``.
@@ -741,7 +772,7 @@ NOMATCH). Tests assert the bijection (0 orphans, 0 unaligned) and that
 the claim count equals the MSM note count.
 
 Both sides of the join are events under the same id: the MSM note on
-``score:clt_1`` and its observed onset on ``perf:cpt_1``. Every claim
+``score:clt_…`` and its observed onset on ``perf:cpt_…``. Every claim
 therefore names that id on both sides, and no Projection is added. The
 test reads the ids back from the claims and requires them to be exactly
 the bijection's id set, each claim naming the same id on both sides; the
@@ -774,36 +805,36 @@ beat-length, spq 2.4) advances 0.5 quarter to ``map(40.0) == 24.9``.
 |----------|-----------|-------|
 | PPQ | 720 | 720 |
 | MSM notes | 251 | 92 |
-| ``score:clt_1`` events (notes) | 251 | 92 |
+| ``score:clt_…`` events (notes) | 251 | 92 |
 | Tempo events (default perf) | 7 | 1 |
 | Dynamics events (default perf) | 34 | 11 |
 | Articulation events (default perf) | 207 | 80 |
 | Asynchrony events (default perf) | 0 | 0 |
 | Other markup (default perf) | 0 | 1 (Ornament) |
-| ``score:dlt_1`` events (notes + markup) | 499 | 185 |
+| ``score:dlt_…`` events (notes + markup) | 499 | 185 |
 | Alignment notes | 251 | 92 |
-| ``perf:cpt_1`` / ``perf:dpt_1`` events | 251 | 92 |
+| ``perf:cpt_…`` / ``perf:dpt_…`` events | 251 | 92 |
 | Synchronous claims | 251 | 92 |
 | NOMATCH claims | 0 | 0 |
 | Tempo-map anchors | 8 | 2 |
 | Sample rate (Hz) | 44100 | 48000 |
-| ``perf:dgt_1`` length (frame columns / pixels) | 26469 | 1587 |
-| ``perf:dgt_1`` events | 0 | 0 |
+| ``perf:dgt_…`` length (frame columns / pixels) | 26469 | 1587 |
+| ``perf:dgt_…`` events | 0 | 0 |
 | Spectrogram ``hopSize`` | 128 | 512 |
 | px→seconds ``ScalarMap`` scalar | ``Fraction(32, 11025)`` | ``Fraction(4, 375)`` |
 
-The bundle holds **5 timelines** (``score:clt_1`` / ``score:dlt_1`` /
-``perf:cpt_1`` / ``perf:dpt_1`` / ``perf:dgt_1``) and **2 groups**
+The bundle holds **5 timelines** (``score:clt_…`` / ``score:dlt_…`` /
+``perf:cpt_…`` / ``perf:dpt_…`` / ``perf:dgt_…``) and **2 groups**
 (``score`` / ``perf``) for both specimens; the ``perf`` group holds 3
 timelines. The timeline units across the bundle span all three
 ``Domain``s: logical, physical, and graphical.
 
-**C-Map spot-check (``TicksToQuarters``):** on ``score:dlt_1``, tick
+**C-Map spot-check (``TicksToQuarters``):** on ``score:dlt_…``, tick
 ``360`` resolves to ``0.5`` quarters and ``720`` to ``1.0`` (queried via
 ``timeline.get_timestamp(tick).get_unit(TimeUnit.quarters)``).
 
 **Onset spot-check:** Beethoven note ``nbwxzb1`` has
-``milliseconds.date == 828.0190259247195``, so its ``perf:cpt_1`` onset
+``milliseconds.date == 828.0190259247195``, so its ``perf:cpt_…`` onset
 and its claim target coordinate are ``828.0190259247195 / 1000.0``
 seconds (the loader divides by 1000; the test pins the same Python
 expression, so the IEEE-754 double matches exactly). Its source
@@ -821,7 +852,7 @@ pitchname ``"e"``, accidentals ``-1``, octave ``4``, date ``360`` ticks.
 **Performance selector:** Beethoven
 ``load(mpr, performance="Curzon_1971_DECCA-SXL6523_audio")`` reaches a
 different performance whose inline-numeric bpm values resolve directly —
-its ``score:dlt_1`` then carries **25** Asynchrony events (vs 0 in the
+its ``score:dlt_…`` then carries **25** Asynchrony events (vs 0 in the
 default) and **123** Tempo events.
 
 **A load that did not complete builds no timeline.** `load()` builds the score timelines
@@ -831,7 +862,7 @@ score timelines set and the performance ones unset. `create_timelines()` then re
 The test copies the Reger project into `tmp_path` with the first `milliseconds.date` of the
 alignment set to `inf` (it parses as a float, so the performance block fails only when it is
 built: `OverflowError` converting the infinite length to samples). After that `load()` raises,
-`create_timeline` of `score:clt_1`, `perf:cpt_1` and `perf:dpt_1` each raises `RuntimeError`
+`create_timeline` of `score:clt_…`, `perf:cpt_…` and `perf:dpt_…` each raises `RuntimeError`
 with exactly `No project loaded yet. Call load() before create_timeline().` (before, the
 performance uids returned `None`), and `create_timelines()` is `[]`.
 
@@ -959,7 +990,7 @@ The tests pin, with exact `midi_number` values and no ranges:
   materialised on read, not stamped onto the column).
 - **`Timeline.add_events` level.** A timeline whose events store is a
   `MidiEventData` (built via `SingleStore(midi_data).create_timeline()`,
-  which preserves the concrete EventData class through `prefix_ids`)
+  which preserves the concrete EventData class)
   receives note events with bare-int pitch across **multiple**
   `add_events` calls — each routing through `_add_events_unchecked` →
   `from_dicts` → `extend`.  After each call the timeline's
@@ -976,13 +1007,16 @@ onto a shared **equidistant reference grid**.  Per recording, ``body.audio``
 holds a ``times`` array whose ``i``-th entry is that recording's clock-time
 (seconds) at reference-grid column ``i``; the arrays are parallel and equal
 length, so together they are a dense alignment matrix.  ``ListenHereLoader``
-reads it into one audio-to-audio ``AlignmentBundle``:
+reads it into one audio-to-audio ``AlignmentBundle``. Every ID is minted from
+the loader's minter, in this order: the recordings' timelines (sorted keys),
+their C-Maps, the grid's points, the claims; the tests load with ``seed=0``
+and name the IDs a fresh ``IdMinter(0)`` mints, never typed:
 
-* one samples ``DiscretePhysicalTimeline`` (``<stem>:dpt_1``) per
-  recording, each in its **own** group named by the recording stem;
-  ``length`` is that recording's stored ``duration`` in samples; it holds
-  one ``ListenHerePoint`` event per grid column, column ``i`` under the id
-  ``listenherepoint_<i+1>`` (the same id on every recording), at
+* one samples ``DiscretePhysicalTimeline`` (``dpt_…``, named after the
+  recording stem) per recording, each in its **own** group named by the
+  stem; ``length`` is that recording's stored ``duration`` in samples; it
+  holds one ``ListenHerePoint`` event per grid column, column ``i`` under
+  the ``i``-th point ID the load mints (the same ID on every recording), at
   ``rint(times[i] × sample_rate)`` with the source ``seconds`` kept;
 * the **complete pairwise topology** — for every unordered pair of recordings
   ``(a, b)`` and every grid column ``i``, one synchronous instant claim
@@ -1040,14 +1074,14 @@ bundle previously left unanswered, all with exact values:
 
 | Test | Validates |
 |------|-----------|
-| `test_bundle_claim_count` | the bundle's MatchClaim table holds the 15 rows, ids `claim_1`–`claim_15` minted by the bundle (the loader's field holds none: a field built from columns mints no id, so fields of several loaders join one bundle) |
+| `test_bundle_claim_count` | the bundle's MatchClaim table holds the 15 rows, ids minted by the loader in row order |
 | `test_bundle_get_match_claims` | 15 claims, all synchronous |
-| `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:dpt_1"` → 10; `between=("rec-a:dpt_1","rec-b:dpt_1")` → 5 |
+| `test_bundle_get_match_claims_filtered` | `timeline_id=` the `rec-a` timeline → 10; `between=` `rec-a` and `rec-b` → 5 |
 | `test_bundle_get_claim_field` | the vectorized accessor `get_claim_field` selects 15 / 10 rows, and 0 for an unknown UID |
 | `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, exactly two filled cells per row |
 | `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, exact coordinates, ordered by the `rec-a` coordinate |
 | `test_bundle_are_commensurable` | all recording pairs commensurable; an absent ID is not |
-| `test_bundle_transfer` | `transfer(882, "rec-a:dpt_1", "rec-b:dpt_1") == 441` — the `MatchLine` → `WarpMap` path over the columnar store |
+| `test_bundle_transfer` | `transfer(882, <rec-a>, <rec-b>) == 441` — the `MatchLine` → `WarpMap` path over the columnar store |
 | `test_bundle_diagram_reports_claim_count` | `diagram()` reports `MatchClaims: 15` |
 
 
@@ -1149,21 +1183,17 @@ cases are mutated copies of the same text.
 * **The child is the segment.** Offset 76.70371459980326, length
   855.5289364103584 (the double difference of the ends), named by the title
   label, with an id minted from its unit.
-* **The loader mints every id of the tree.** Two ``create_timeline()`` calls
-  on one loader give the roots ``cgt_1`` and ``cgt_3`` with the axis
-  children ``cgt_2`` and ``cgt_4``. A child minted in its own timeline's
-  scope would give ``cgt_2`` twice, and the second root ``cgt_2`` with child
-  ``cgt_1``, since each new timeline is its own empty scope. A given root id
-  (``drawing``, after the first drawing) is kept while the loader still draws
-  the root's number, ``cgt_3``, so its child is ``cgt_4``, as
-  ``VerovioLoader`` does for a given root.
-* **A given root id of the minted shape reserves its number, with or without
-  a role.** On a fresh loader, ``uid="cgt_2"`` and ``uid="drawing:cgt_2"``
-  both give the child ``cgt_3``: the root draws ``cgt_1``, the given id
-  holds ``cgt_2``. Without the reservation the child is ``cgt_2``; reserving
-  the role-led id verbatim would not hold the number either. This is the
+* **The loader mints every id of the tree** from its one minter: loaded with
+  `seed=0`, two ``create_timeline()`` calls give the roots the minter's 1st
+  and 3rd ``cgt_…`` ids with the axis children its 2nd and 4th (computed by a
+  fresh `IdMinter(0)`). A child minted in its own timeline's scope would
+  repeat an id. After the first drawing, a given root id (``drawing``) draws
+  nothing, so its child is the 3rd.
+* **A given root id draws no id, whatever its shape.** On a fresh loader,
+  ``uid="drawing"`` and ``uid="drawing:cgt_2"`` both give the child the
+  minter's 1st id: nothing is reserved or parsed from a given id. This is the
   rule ``VerovioLoader`` follows (``tests/loader/score/README.md``, "Ids of a
-  given root"), one helper for both loaders.
+  given root").
 * **The map is the line through the pairs, in float arithmetic.** The
   positions are floats, so the map is a float map: scalar
   ``40 / 855.5289364103584 == 0.04675470144567245``, offset ``0.0``.
@@ -1201,8 +1231,8 @@ minutes, so the axis held is provably the new file's.
 
 ## `ATONLoader` event IDs — validation logic
 
-`ATONLoader.create_timeline` turns every hole block into an event whose ID is
-derived from the block's `@ID`: `hole_<ID>`. The SUPRA analysis software
+`ATONLoader.create_timeline` turns every hole block into an event named by
+the block's `@ID`. The SUPRA analysis software
 does not give every hole an ID of its own. It writes `K<key>_N<n>`, counting
 `n` per tracker-bar hole, and it writes key `0` for every hole that is no
 note (the expression tracks, `MIDI_KEY -1`), so holes on different tracker
@@ -1213,11 +1243,10 @@ them are the first rows of the roll at row 15638: `K0_N1` on tracker hole 6
 punches. No ID is held twice on one tracker hole, and no two hole blocks are
 identical, so the file states distinct holes, never one hole twice.
 
-What tells such holes apart is what the file states beside the ID: the
-tracker hole. A hole whose `@ID` no other hole of the file holds keeps
-`hole_<ID>`; every hole whose `@ID` another hole holds too gets
-`hole_<ID>_tracker<TRACKER_HOLE>`. The event's `name` stays the `@ID` as
-written.
+An `@ID` that one hole holds identifies it: the event's ID is the `@ID`
+verbatim. An `@ID` several holes hold names no one hole: each of them keeps
+it as its `name` and is given an ID minted from the loader's minter
+(`hole_…`). IDs are never composed from the `@ID` and the tracker hole.
 
 What proves it (`test_aton_loader.py`, class `TestHoleEventIds`):
 
@@ -1225,26 +1254,23 @@ What proves it (`test_aton_loader.py`, class `TestHoleEventIds`):
   six hole blocks of the SUPRA roll, their `@ID`, origin and tracker hole
   as the file states them (`K0_N1` on
   tracker hole 12, `K0_N2` on 12, `K88_N1` on 99, `K86_N1` on 97, `K0_N1` on 6
-  and `K0_N1` on 8: `K0_N1` three times). The event IDs are, in
-  file order, exactly `hole_K0_N1_tracker12`, `hole_K0_N2`, `hole_K88_N1`,
-  `hole_K86_N1`, `hole_K0_N1_tracker6`, `hole_K0_N1_tracker8`; the names
-  are the six `@ID`s as written. The rule is decided by the file, not by the
-  key `0`: `K0_N2`, held once, keeps its plain ID.
-* **IDs that did not collide do not change.** `minimal.aton`, whose five IDs
-  are distinct, gives exactly `hole_H1_N1` … `hole_H5_N5`, as before.
+  and `K0_N1` on 8: `K0_N1` three times). Loaded with `seed=0`, the event
+  IDs are, in file order, the minter's 1st `hole_…` ID, `K0_N2`, `K88_N1`,
+  `K86_N1`, its 2nd and its 3rd (the minted ones computed by a fresh
+  `IdMinter(0)`); the names are the six `@ID`s as written. The rule is
+  decided by the file, not by the key `0`: `K0_N2`, held once, keeps it.
+* **IDs that do not collide are the `@ID`s.** `minimal.aton`, whose five IDs
+  are distinct, gives exactly `H1_N1` … `H5_N5`.
 * **The SUPRA roll loads whole** (slow). `create_timeline` gives 30092
-  events with 30092 distinct IDs; exactly 992 of them end in
-  `_tracker<n>`, which is the number of holes whose `@ID` is shared, and the
-  other 29100 are `hole_<ID>` of their block; the names are the `@ID`s in
-  file order. In the whole roll `K0_N2` is shared too, so the first six IDs
-  are `hole_K0_N1_tracker12`, `hole_K0_N2_tracker12`, `hole_K88_N1`,
-  `hole_K86_N1`, `hole_K0_N1_tracker6`, `hole_K0_N1_tracker8`: the same
-  holes, decided by the file they are read from.
-* **A hole stated twice is still refused.** Two blocks with the same `@ID`
-  on the same tracker hole derive one ID twice; `add_events` refuses it
-  (`Event id 'hole_K0_N1_tracker6' is given twice in one call to add_events
-  on timeline 'dgt_1'`). The loader does not decide that a repeated block
-  is one hole.
+  events with 30092 distinct IDs; exactly 992 of them are minted (`hole_…`,
+  13 base-36 characters), which is the number of holes whose `@ID` is
+  shared, and the other 29100 are the `@ID` of their block; the names are
+  the `@ID`s in file order.
+* **A hole stated twice is refused.** Two blocks with the same `@ID` on the
+  same tracker hole are refused when the timeline is made (`ATON hole
+  'K0_N1' is stated twice on tracker hole 6: the file names one hole twice,
+  or two holes alike.`). The loader does not decide that a repeated block is
+  one hole.
 
 ## `ATONLoader` unreadable values — validation logic
 

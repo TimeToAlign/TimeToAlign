@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from timetoalign.core import TimeUnit
 from timetoalign.core.events import BoundingBox
+from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import Source, describe_source
 from timetoalign.loader.base import Loader
 from timetoalign.timelines import DiscreteGraphicalTimeline
@@ -122,9 +123,13 @@ class ATONLoader(Loader[list[ATONHole]]):
         holes: List of parsed ATONHole objects.
     """
 
-    def __init__(self) -> None:
-        """Initialize the loader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the loader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._rollinfo: dict[str, Any] = {}
         self._holes: list[ATONHole] = []
         self._source_path: Source | None = None
@@ -476,16 +481,18 @@ class ATONLoader(Loader[list[ATONHole]]):
         coordinate view (first hole = 0), create an inherited
         DiscreteGraphicalTimeline child at ``first_hole``.
 
-        Each event is named by its hole's ``@ID`` and identified as
-        ``hole_<ID>``. The SUPRA analysis software gives every hole that is no
-        note the key ``0`` and counts per tracker-bar hole, so holes on
-        different tracker holes can share one ``@ID`` (``K0_N1``). A hole
-        whose ``@ID`` another hole of the file holds too is identified as
-        ``hole_<ID>_tracker<TRACKER_HOLE>`` instead; every other hole keeps
-        ``hole_<ID>``.
+        Each event is named by its hole's ``@ID``, which is also its ID. The
+        SUPRA analysis software gives every hole that is no note the key
+        ``0`` and counts per tracker-bar hole, so holes on different tracker
+        holes can share one ``@ID`` (``K0_N1``). Such an ``@ID`` names no one
+        hole: each hole holding it keeps it as its name and is given an ID
+        minted from the loader's minter (``hole_…``). Two holes of one
+        ``@ID`` on one tracker hole are refused: the loader does not decide
+        that a repeated block is one hole.
 
         Args:
-            uid: Unique identifier for the timeline. Auto-generated if None.
+            uid: Unique identifier for the timeline; minted ``dgt_…`` from
+                the loader's minter if None.
             name: Human-readable name. Uses source filename if None.
 
         Returns:
@@ -493,6 +500,7 @@ class ATONLoader(Loader[list[ATONHole]]):
 
         Raises:
             RuntimeError: If no data has been loaded.
+            ValueError: If two holes of one ``@ID`` lie on one tracker hole.
 
         Examples:
             >>> loader = ATONLoader()
@@ -510,23 +518,33 @@ class ATONLoader(Loader[list[ATONHole]]):
         if not self._holes:
             raise RuntimeError("No data loaded. Call load() first.")
 
+        from timetoalign.timelines.factory import mint_timeline_id
+
         # Create timeline spanning full image
         timeline = DiscreteGraphicalTimeline(
             length=self.image_dimensions["height"],
             unit=TimeUnit.pixels,
-            uid=uid,
+            uid=(
+                mint_timeline_id(TimeUnit.pixels, self._id_minter)
+                if uid is None
+                else uid
+            ),
             name=name or self.name,
         )
 
         # Add holes as InstantEvents at absolute pixel coordinates
+        stated = Counter((hole.id, hole.tracker_hole) for hole in self._holes)
+        twice = [key for key, count in stated.items() if count > 1]
+        if twice:
+            hole_id, tracker_hole = twice[0]
+            raise ValueError(
+                f"ATON hole {hole_id!r} is stated twice on tracker hole "
+                f"{tracker_hole}: the file names one hole twice, or two holes alike."
+            )
         id_counts = Counter(hole.id for hole in self._holes)
         hole_events = [
             {
-                "id": (
-                    f"hole_{hole.id}"
-                    if id_counts[hole.id] == 1
-                    else f"hole_{hole.id}_tracker{hole.tracker_hole}"
-                ),
+                "id": hole.id if id_counts[hole.id] == 1 else None,
                 "name": hole.id,
                 "temporal_type": "instant",
                 "event_type": "Hole",
@@ -534,6 +552,7 @@ class ATONLoader(Loader[list[ATONHole]]):
             }
             for hole in self._holes
         ]
+        give_event_ids(hole_events, self._id_minter)
         timeline.add_events(hole_events)
 
         return timeline

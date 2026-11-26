@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterator, Literal, TypeVar
 
+from timetoalign.loader._ids import CMAP_PREFIX
 from timetoalign.loader._optional import optional_module
 from timetoalign.loader._sources import Source, describe_source, readable
 from timetoalign.loader.base import Loader
@@ -425,9 +426,13 @@ class AudioLoader(Loader[AudioInfo]):
         audio_info: Parsed audio metadata (after loading).
     """
 
-    def __init__(self) -> None:
-        """Initialize the loader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the loader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._audio_info: AudioInfo | None = None
         self._source_path: Source | None = None
         self._logger = module_logger.getChild("AudioLoader")
@@ -865,7 +870,8 @@ class AudioLoader(Loader[AudioInfo]):
         - a SamplesToSeconds C-map, unless ``attach_cmap`` is False
 
         Args:
-            uid: Unique identifier for the timeline. If None, uses filename.
+            uid: Unique identifier for the timeline. If None, minted from the
+                loader's minter.
             name: Human-readable name. If None, uses filename.
             attach_cmap: If True, attach a SamplesToSeconds conversion map at
                 the file's sample rate.
@@ -912,7 +918,8 @@ class AudioLoader(Loader[AudioInfo]):
         - a SecondsToSamples C-map, unless ``attach_cmap`` is False
 
         Args:
-            uid: Unique identifier for the timeline. If None, uses filename.
+            uid: Unique identifier for the timeline. If None, minted from the
+                loader's minter.
             name: Human-readable name. If None, uses filename.
             attach_cmap: If True, attach a SecondsToSamples conversion map at
                 the file's sample rate.
@@ -947,6 +954,8 @@ class AudioLoader(Loader[AudioInfo]):
     def create_samples_to_seconds_map(self) -> "SamplesToSeconds":
         """Create a SamplesToSeconds conversion map for this audio.
 
+        Its ID is minted from the loader's minter.
+
         Returns:
             A SamplesToSeconds C-map configured with this audio's sample rate.
 
@@ -955,7 +964,10 @@ class AudioLoader(Loader[AudioInfo]):
         """
         from timetoalign.maps import SamplesToSeconds
 
-        return SamplesToSeconds(sample_rate=self.audio_info.sample_rate)
+        return SamplesToSeconds(
+            sample_rate=self.audio_info.sample_rate,
+            uid=self._id_minter.mint(CMAP_PREFIX),
+        )
 
     def _create_audio_timeline(
         self,
@@ -977,16 +989,19 @@ class AudioLoader(Loader[AudioInfo]):
             length: Length of the timeline in ``unit``.
             unit: Unit of the timeline's axis.
             number_type: Number type of the timeline's axis.
-            uid: Unique identifier for the timeline. If None, uses filename.
+            uid: Unique identifier for the timeline. If None, minted from the
+                loader's minter.
             name: Human-readable name. If None, uses filename.
 
         Returns:
             The timeline. The file's metadata, the backend that read it
             included, stays on :attr:`audio_info`.
         """
+        from timetoalign.timelines.factory import mint_timeline_id
+
         info = self.audio_info
-        if uid is None and info.source_path is not None:
-            uid = info.source_path.stem
+        if uid is None:
+            uid = mint_timeline_id(unit, self._id_minter)
         if name is None and info.source_path is not None:
             name = info.source_path.name
 

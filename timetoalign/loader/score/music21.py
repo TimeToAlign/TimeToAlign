@@ -220,7 +220,6 @@ class Music21Loader(ScoreLoader):
             for i, info in enumerate(measure_info):
                 measure_rows.append(
                     {
-                        "id": f"measure_{i+1}",
                         "name": info["mn"],
                         "temporal_type": "interval",
                         "event_type": "Measure",
@@ -298,9 +297,7 @@ class Music21Loader(ScoreLoader):
                 ):
                     control_rows.append(
                         {
-                            "id": (
-                                str(obj.id) if hasattr(obj, "id") else f"ctrl_{offset}"
-                            ),
+                            "id": _stated_id(obj),
                             "name": obj.__class__.__name__,
                             "temporal_type": "instant",
                             "event_type": obj.__class__.__name__,
@@ -327,9 +324,7 @@ class Music21Loader(ScoreLoader):
                 elif isinstance(obj, m21.expressions.TextExpression):
                     annotation_rows.append(
                         {
-                            "id": (
-                                str(obj.id) if hasattr(obj, "id") else f"ann_{offset}"
-                            ),
+                            "id": _stated_id(obj),
                             "name": getattr(obj, "content", str(obj)),
                             "temporal_type": "instant",
                             "event_type": "TextExpression",
@@ -360,6 +355,7 @@ class Music21Loader(ScoreLoader):
             note_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
             has_rests=has_rests,
         )
 
@@ -368,6 +364,7 @@ class Music21Loader(ScoreLoader):
                 measure_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
+                minter=self._id_minter,
             )
             if measure_rows
             else MeasureData.empty()
@@ -378,6 +375,7 @@ class Music21Loader(ScoreLoader):
                 control_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
+                minter=self._id_minter,
             )
             if control_rows
             else ControlEventData.empty()
@@ -388,6 +386,7 @@ class Music21Loader(ScoreLoader):
                 annotation_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
+                minter=self._id_minter,
             )
             if annotation_rows
             else AnnotationEventData.empty()
@@ -690,3 +689,14 @@ class Music21Loader(ScoreLoader):
                         expanded.append(synthetic)
 
         return expanded
+
+
+def _stated_id(obj: Any) -> str | None:
+    """The ID the source gives *obj*, or None for one the loader mints.
+
+    music21 keeps a stated ``xml:id`` / ``id`` as a string; an object the
+    source gives none answers its memory address, an ``int`` that differs
+    between runs and is no ID of the source.
+    """
+    stated = getattr(obj, "id", None)
+    return stated if isinstance(stated, str) and stated else None

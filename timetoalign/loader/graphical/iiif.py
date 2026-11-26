@@ -133,9 +133,13 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
         manifest_info: Parsed manifest information (after loading).
     """
 
-    def __init__(self) -> None:
-        """Initialize the loader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the loader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._manifest_info: IIIFManifestInfo | None = None
         self._source_path: Source | None = None
         self._logger = module_logger.getChild("IIIFManifestLoader")
@@ -498,7 +502,7 @@ class IIIFManifestLoader(Loader[IIIFManifestInfo]):
             canvases: The canvases to read, by position or id; they are read
                 in manifest order whatever order they are named in. None
                 selects every canvas that states a width and a height.
-            uid: The volume's id. Minted (``dgt_N``) if None.
+            uid: The volume's id. Minted (``dgt_…``) if None.
             name: The volume's name. The manifest's label if None.
             page_ids: The pages' ids: a sequence, one per page, or a
                 template filled with ``page`` and ``n`` (``"p{page}"``).

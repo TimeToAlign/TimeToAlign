@@ -833,7 +833,6 @@ def test_a_da_capo_beside_a_repeat_end_without_start_names_the_timeline(
             {},
         )
     assert caplog.records == []
-    assert timeline.id == "clt_1"
     assert timeline.flow_control.to_dict() == [
         {"id": "section_break_1", "role": "section_break", "coordinate": [4, 1]},
         {
@@ -843,7 +842,7 @@ def test_a_da_capo_beside_a_repeat_end_without_start_names_the_timeline(
             "targets": [
                 {"repeat_count": 1, "manifestation": "repeat_end"},
                 {
-                    "to": "clt_1",
+                    "to": timeline.id,
                     "repeat_count": 1,
                     "reset": False,
                     "manifestation": "da_capo",
@@ -862,20 +861,19 @@ def test_a_da_capo_beside_a_repeat_end_without_start_names_the_timeline(
     timetoshare.validate(timeline.to_dict())
 
 
-def test_a_da_capo_naming_the_timeline_follows_its_id(tmp_path: Path) -> None:
+def test_a_da_capo_naming_the_timeline_names_its_own(tmp_path: Path) -> None:
     rows = ({}, {"repeats": "end", "jump_bwd": "start"})
     for name in ("a", "b"):
         (tmp_path / name).mkdir()
     first = _table(tmp_path / "a", *rows)
-    second = _table(tmp_path / "b", *rows)
-    assert (first.id, second.id) == ("clt_1", "clt_1")
+    second = _table(tmp_path / "b", {}, *rows)
+    assert first.id != second.id
     TimelineGroup(timelines=[first, second])
-    assert (first.id, second.id) == ("clt_1", "clt_2")
     assert [
         [destination.to for destination in timeline.flow_control.jumps[0].targets]
         for timeline in (first, second)
-    ] == [[None, "clt_1"], [None, "clt_2"]]
-    assert _runs(second) == [(0, 8), (0, 8), (0, 8)]
+    ] == [[None, first.id], [None, second.id]]
+    assert _runs(first) == [(0, 8), (0, 8), (0, 8)]
 
 
 LEFT_OUT = [

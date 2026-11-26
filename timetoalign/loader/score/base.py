@@ -225,7 +225,7 @@ class ScoreLoader(EventLoader):
         from timetoalign.timelines.factory import mint_timeline_id
 
         if uid is None:
-            uid = mint_timeline_id(self._unit)
+            uid = mint_timeline_id(self._unit, self._id_minter)
         timeline = self.store.create_timeline(
             uid=uid,
             store_filters=store_filters,
@@ -234,6 +234,7 @@ class ScoreLoader(EventLoader):
             flatten=flatten,
             ppq=ppq,
             attach_cmaps=attach_cmaps,
+            minter=self._id_minter,
         )
         self._populate_timeline_structure(timeline)
         return timeline
@@ -581,10 +582,10 @@ class ScoreLoader(EventLoader):
         from timetoalign.timelines.flow import measure_order_from_successors
 
         measures = self._store.measures
-        if len(measures) == 0 or "next" not in measures._table.column_names:
+        if len(measures) == 0 or "next" not in measures.table.column_names:
             return None
-        counts = measures._table.column("mc").to_pylist()
-        stated = measures._table.column("next").to_pylist()
+        counts = measures.table.column("mc").to_pylist()
+        stated = measures.table.column("next").to_pylist()
         if all(cell is None or str(cell).strip() == "" for cell in stated):
             return None
         successors = {
@@ -620,7 +621,9 @@ class ScoreLoader(EventLoader):
         """Load a ScoreLoader from a directory of Parquet files.
 
         Reconstructs the internal ``ScoreStore`` from the facet files
-        produced by :meth:`to_parquet`.
+        produced by :meth:`to_parquet`. The events keep their IDs; the
+        loader's minter, for the IDs it mints later, is seeded from the
+        directory's files.
 
         Args:
             path: Directory containing the facet Parquet files.
@@ -637,6 +640,10 @@ class ScoreLoader(EventLoader):
         loader._source_metadata = []
         loader._events = cls._event_data_class.empty(loader._unit, loader._number_type)
         loader._store = store
+        loader._seed = None
+        loader._minter = None
+        loader._minter_parts = None
+        loader._start_minter(Path(path))
         return loader
 
     # endregion

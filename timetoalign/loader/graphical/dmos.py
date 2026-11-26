@@ -277,7 +277,7 @@ class DmosLoader(Loader[_DmosDocument]):
     interval.
 
     Known limits: measures have no id and no number in DMOS, so their Boxes
-    are minted ``box_N`` per system unless ``box_ids`` names them; DMOS
+    are minted ``box_…`` unless ``box_ids`` names them; DMOS
     system ids repeat on some pages, so an accolade's name (its DMOS id)
     need not be unique, while its timeline id is. A measure whose x extent
     leaves its system's region, on the left or on the right, cannot be a Box
@@ -307,9 +307,13 @@ class DmosLoader(Loader[_DmosDocument]):
     #: One loader reads one DMOS file.
     _single_source: ClassVar[bool] = True
 
-    def __init__(self) -> None:
-        """Initialize the loader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the loader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._document: _DmosDocument | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
@@ -452,12 +456,12 @@ class DmosLoader(Loader[_DmosDocument]):
         among the pages created, from 1), ``accolade`` (its position on its
         page), ``box`` (its position in its accolade) and ``n`` (the running
         count of the kind over the call). ``box_ids="m{n}"`` numbers the
-        measures through the score. Left out, timelines are minted ``dgt_N``
+        measures through the score. Left out, timelines are minted ``dgt_…``
         (the volume, then each page followed by its accolades) and Boxes
-        ``box_N`` per accolade.
+        ``box_…``.
 
         Args:
-            uid: The volume's id; minted ``dgt_N`` when None.
+            uid: The volume's id; minted ``dgt_…`` when None.
             name: The volume's name.
             page_ids: The pages' ids.
             accolade_ids: The accolades' ids.
@@ -508,9 +512,9 @@ class DmosLoader(Loader[_DmosDocument]):
 
         Args:
             page_ids: The pages' ids (see :meth:`create_timeline`); minted
-                ``dgt_N`` when None.
-            accolade_ids: The accolades' ids; minted ``dgt_N`` when None.
-            box_ids: The Boxes' ids; minted ``box_N`` per accolade when None.
+                ``dgt_…`` when None.
+            accolade_ids: The accolades' ids; minted ``dgt_…`` when None.
+            box_ids: The Boxes' ids; minted ``box_…`` when None.
 
         Returns:
             The pages' timelines, each a

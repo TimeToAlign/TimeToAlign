@@ -289,9 +289,13 @@ class MeiHeadLoader(Loader[MeiHead]):
 
     _single_source: ClassVar[bool] = True
 
-    def __init__(self) -> None:
-        """Create a loader holding no header."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Create a loader holding no header.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._head: MeiHead | None = None
 
     def _load_source(self, source: Source) -> MeiHead:
@@ -391,7 +395,7 @@ class MeiHeadLoader(Loader[MeiHead]):
             day=day(date),
         )
         bundle = into if into is not None else AlignmentBundle(id=id or _stem_id(path))
-        plan = Plan(bundle)
+        plan = Plan(bundle, self._id_minter)
         mapped = run.check(plan, dict(subjects or {}))
         run.plan(plan, mapped)
         plan.commit()
@@ -488,6 +492,7 @@ class _Import:
                 timeline = ContinuousGraphicalTimeline(
                     length=None,
                     unit=TimeUnit.millimeters,
+                    uid=plan.timeline_id(TimeUnit.millimeters),
                     name=_text(titles[0]) if titles else None,
                 )
                 entity = f"'{xml_id}'" if xml_id is not None else str(number)

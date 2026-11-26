@@ -683,11 +683,11 @@ accepting the manifest:
   without a place, and the destinations of one Jump are distinct places; the D.C.
   therefore names the timeline itself (`to` its ID), which is its start. Four bars, a
   section break after the first, repeat end and D.C. on the third: one Jump at 12 holding
-  the repeat end (no place) and the D.C. (`to: clt_1`). The two places differ, which the
+  the repeat end (no place) and the D.C. (`to` the timeline's ID). The two places differ, which the
   section break makes visible: the repeat goes back to its section's start (4), the D.C.
   to the timeline's (0). The restoring destination is taken first, so the flow is
-  [0, 12) [4, 12) [0, 16). The ID named follows the timeline: of two such timelines
-  joining one group, the second is minted `clt_2` and its D.C. names `clt_2`.
+  [0, 12) [4, 12) [0, 16). The ID named is the timeline's own, whatever the loader
+  minted it.
 
 **What cannot be written is left out and logged.** Seven tables each state one sign the
 elements cannot express, and each must give exactly one warning with its text and exactly the
@@ -783,7 +783,10 @@ A `<tempo xml:id="tempo1" tstamp="1">Andante très expressif</tempo>` sits in m1
   fixture) plus one generated id; rests are `r1`, `r2`; the tempo indication is `tempo1` at 0 with
   its text verbatim. `notated_id` equals `id` on every event (nothing is expanded). The generated
   id is the same in two loads, and with 6.4.1 it is `s3clx4n` (seeded by `xmlIdChecksum`).
-- **Structure.** The root is one `ContinuousLogicalTimeline` `score:clt_1` in quarters, length
+- **Structure.** Timeline ids are minted from the loader's minter (`score:clt_…`, the root
+  first, then the movements in document order; `rendered:cpt_…` after the C-Map's `cmap_…` on
+  the physical tree). The tests load with `seed=0` and compare with a fresh `IdMinter(0)`'s ids;
+  "Ids of a given root" below states the rule. The root is one `ContinuousLogicalTimeline` in quarters, length
   9. The `<mdiv>` has no name, so it makes no child (see "Named and unnamed `<mdiv>`s" below):
   the root has no children and holds all 13 events itself (10 notes, 2 rests, 1 tempo
   indication): its own events are every event of the tree. The
@@ -798,14 +801,14 @@ A `<tempo xml:id="tempo1" tstamp="1">Andante très expressif</tempo>` sits in m1
   `F♯3`, MIDI pitch 54. For every note the MIDI pitch Verovio reports equals
   `12 × (octave + 1) + step + alter` of the stored spelling (two independent readings agree).
 - **Physical timeline.** `create_physical_timeline()` is a `ContinuousPhysicalTimeline`
-  `rendered:cpt_1` in seconds, number type `Fraction`, length 9/2, `meta["provenance"] ==
+  `rendered:cpt_…` in seconds, number type `Fraction`, length 9/2, `meta["provenance"] ==
   "verovio_rendered"`, no child. Every event lies at half its quarter
   position (`d2` 9/8–3/2, `t3` 3–9/2, `tempo1` 0). Its events carry `mc` (1 and 2) but no
   in-measure offset: those are quarters, which have no place on a seconds axis. The logical timeline's C-Map, built with output number type `fraction`, maps
   9/4 quarters to exactly `Fraction(9, 8)` seconds, and the physical timeline's C-Map maps 9/8 back
   to exactly `Fraction(9, 4)`. `attach_cmap=False` attaches none.
 - **Two-phase contract and options.** `from_file` and `load` give the same events;
-  `create_timeline(uid="clt_1", name="Fixture")` keeps both and still has no child. The store
+  `create_timeline(uid="fixture", name="Fixture")` keeps both and still has no child. The store
   metadata records the version and the options the toolkit ran with,
   `{"xmlIdChecksum": True, "mdivAll": True}`. A second source raises.
 
@@ -862,16 +865,16 @@ the printed score).
 `n3` E4 half) and `mov2` (`n=2`, `label=II`, 3/4: `n4` F4 dotted half, `<tempo midi.bpm="60">`
 `t2`). Verovio continues the second movement where the first ends: one timemap entry at 4 holds
 the end of `n3`, the measure start of `m3` and the onset of `n4`; seconds continue (2 s).
-Expected: root length 7; both `<mdiv>`s are named, so the children are `score:clt_2` [0, 4) and
-`score:clt_3` [4, 7) (the same with `uid="score"`), named `I`, `II`, with `meta` holding `count`
+Expected: root length 7; both `<mdiv>`s are named, so the children are `score:clt_…` [0, 4) and
+`score:clt_…` [4, 7) (the same with `uid="score"`), named `I`, `II`, with `meta` holding `count`
 (1, 2), `xml_id`, `n`, `label` verbatim and `element` `mdiv`. `n4` is at 0 in its child and
 at 4 on the root; `t2` belongs to the second child. The root's `MeasureMap` (measures at 0, 2, 4)
 and C-Map serve the children through the root: the root's timestamp table gives `n4` 2 seconds;
 a child carries neither. On the physical timeline the second child starts at 2 s and lasts 3 s
-(three quarters at 60 per minute); the children are `rendered:cpt_2` and `rendered:cpt_3`. Both C-Maps
+(three quarters at 60 per minute); the children are `rendered:cpt_…` and `rendered:cpt_…`. Both C-Maps
 are exact between anchors as well: 10/3 quarters are exactly 5/3 seconds and 13/3 quarters 7/3
 seconds (the second across the tempo change), and back. With `options={"mdivXPathQuery": "./mdiv[2]"}` only the second
-movement is loaded: one child `score:clt_2` whose `meta["count"]` is still 2 (`count` numbers every
+movement is loaded: one child `score:clt_…` whose `meta["count"]` is still 2 (`count` numbers every
 `<mdiv>` of the file), at 0 with length 3.
 
 **Named and unnamed `<mdiv>`s.** An `<mdiv>` is a child timeline only when it has a name, its
@@ -888,19 +891,19 @@ is 2/4, one half note `{measure}n` per measure, so measure `mK` starts at `2(K-1
 
 - `basic.mei` (one unnamed `<mdiv>`): no child; the root holds every event (above).
 - `named.mei`: one `<mdiv xml:id="solo" label="Rondo">` with `m1`, `m2`. Root length 4, one child
-  `score:clt_2` named `Rondo`, offset 0, length 4, meta `{"count": 1, "xml_id": "solo", "label":
+  `score:clt_…` named `Rondo`, offset 0, length 4, meta `{"count": 1, "xml_id": "solo", "label":
   "Rondo", "element": "mdiv"}`, holding `m1n` at 0 and `m2n` at 2; the root holds no event. The
-  physical timeline has the same tree, `rendered:cpt_2` of length 2 seconds.
+  physical timeline has the same tree, `rendered:cpt_…` of length 2 seconds.
 - `siblings.mei`: `<mdiv xml:id="first" label="I">` (`m1`, `m2`), then an unnamed `<mdiv
-  xml:id="second">` (`m3`). Root length 6, one child `score:clt_2` named `I` at offset 0, length 4
+  xml:id="second">` (`m3`). Root length 6, one child `score:clt_…` named `I` at offset 0, length 4
   (its own measures only, not the unnamed sibling's), meta count 1, holding `m1n`, `m2n` at 0 and
   2; the root holds `m3n` at 4. On the root, `m1n`, `m2n`, `m3n` are at 0, 2, 4.
 - `nested.mei`: an unnamed `<mdiv xml:id="work">` holds a named `<mdiv xml:id="set"
   label="Variationen">` and an unnamed `<mdiv xml:id="coda">` (`m4`); `set` holds an unnamed
   `<mdiv xml:id="group">`, which holds a named `<mdiv xml:id="v1" label="Var. 1">` (`m1`, `m2`)
   and an unnamed `<mdiv xml:id="v2">` (`m3`). Document order counts `work` 1, `set` 2, `group`
-  3, `v1` 4, `v2` 5, `coda` 6. Expected: root length 8 with one child `score:clt_2`
-  `Variationen` (count 2) at offset 0, length 6; that child has one child `score:clt_3` `Var. 1`
+  3, `v1` 4, `v2` 5, `coda` 6. Expected: root length 8 with one child `score:clt_…`
+  `Variationen` (count 2) at offset 0, length 6; that child has one child `score:clt_…` `Var. 1`
   (count 4) at offset 0, length 4: the unnamed `work` and `group` are skipped, and `v1` nests
   under `set`. `Var. 1` holds `m1n`, `m2n` (0, 2); `Variationen` holds `m3n` (at 4 in it, from the
   unnamed `v2` within the unnamed `group`); the root holds `m4n` (at 6, from the unnamed `coda`
@@ -988,7 +991,7 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
 - **Nested movements** (`parangonar/Beethoven_Eroica_op35-cpjku/score.mei`): `<mdiv
   xml:id="Eroica-Variationen">`, which has no `@label`, holds `<mdiv xml:id="Var_14" n="18"
   label="Var. XIV.">`. The outer `<mdiv>` makes no child; the inner one is the root's one child
-  `score:clt_2`, named `Var. XIV.`, meta `{"count": 2, "xml_id": "Var_14", "n": "18", "label":
+  `score:clt_…`, named `Var. XIV.`, meta `{"count": 2, "xml_id": "Var_14", "n": "18", "label":
   "Var. XIV.", "element": "mdiv"}`, spanning [0, 129/2) like the root. The 297 notes, 36 rests
   and 2 tempo indications live in that child, none in the root. The `MeasureMap` holds 33
   measures. No provisioned file has two sibling movements; `two_movements.mei` covers that case.
@@ -1062,27 +1065,23 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
 ### Ids of a given root
 
 `test_verovio_ids.py` writes one MEI with two named `<mdiv>`s (one 2/4 measure
-each, `@label` `I` and `II`, so each is a child) and asks for the ids of the root and its two movement children. The loader
-mints `{role}:{prefix}_N`, the root's number first. A given root id of that
-same shape names a number the movements could be minted; the loader takes it
-from them, so:
+each, `@label` `I` and `II`, so each is a child) and asks for the ids of the
+root and its two movement children. Every timeline id the loader mints comes
+from its one minter (`{role}:{prefix}_…`), the root first unless it is given,
+then the movements in document order. Loaded with `seed=0`, the expected ids
+are a fresh `IdMinter(0)`'s, computed in the test, so:
 
-* `create_timeline()` gives the root `score:clt_1` and movements
-  `score:clt_2`, `score:clt_3`;
-* `create_timeline(uid="score:clt_2")` gives the root `score:clt_2` and
-  movements `score:clt_3`, `score:clt_4`. Without the reservation the first
-  movement is minted `score:clt_2`, collides with the root and is re-minted
-  on joining as `clt_1`, losing its role; the exact list tells the two apart;
-* a given id led by another role (`uid="perf:clt_2"`) reserves its number
-  too, since the number counts every timeline of the prefix whatever its
-  role: the movements are `score:clt_3`, `score:clt_4`. The rule strips any
-  role, not only the loader's own; it is the one rule `ScoreWarpLoader`
-  follows as well (`tests/loader/README.md`, "`ScoreWarpLoader` validation
-  logic");
-* a given id of another shape (`uid="score"`) reserves nothing a movement
-  could take: the movements stay `score:clt_2`, `score:clt_3`;
-* `create_physical_timeline(uid="rendered:cpt_2")` gives movements
-  `rendered:cpt_3`, `rendered:cpt_4`: the same rule on the seconds tree.
+* `create_timeline()` gives the root the minter's 1st `clt` id and the
+  movements its 2nd and 3rd, all led by `score:`;
+* a given root id (`"score"`, or any other) draws nothing: the movements are
+  the minter's 1st and 2nd, so a loader that drew a number for a named root
+  is off by one;
+* `create_physical_timeline(uid="rendered:x")` mints its C-Map's `cmap` id
+  first, so the movements are the minter's 2nd and 3rd (`cpt`, led by
+  `rendered:`): the same rule on the seconds tree;
+* the same file loaded twice by fresh loaders without a seed gives the same
+  ids, and a file differing in one byte gives other ids: the seed comes from
+  the bytes read.
 
 Each case uses a fresh loader, since a loader's minted ids count across its
 calls.

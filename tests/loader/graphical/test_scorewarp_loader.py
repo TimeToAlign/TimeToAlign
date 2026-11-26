@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader.minting import minted
 from timetoalign import ScoreWarpLoader
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.timelines import ContinuousGraphicalTimeline
@@ -79,7 +80,7 @@ def _write(tmp_path: Path, text: str) -> Path:
 @pytest.fixture
 def loader(tmp_path: Path) -> ScoreWarpLoader:
     """The loader with the fixture SVG loaded."""
-    return ScoreWarpLoader.from_file(_write(tmp_path, _svg()))
+    return ScoreWarpLoader.from_file(_write(tmp_path, _svg()), seed=0)
 
 
 @pytest.fixture
@@ -152,28 +153,30 @@ def test_timeline_meta_holds_size_strings(drawing):
 
 def test_timeline_name_and_id(drawing, loader):
     assert drawing.name == "warped"
-    assert drawing.id == "cgt_1"
+    assert drawing.id == minted(0, "cgt")[0]
     named = loader.create_timeline(uid="drawing", name="Drawing")
     assert (named.id, named.name) == ("drawing", "Drawing")
-    assert named.list_children() == ["cgt_4"]
+    assert named.list_children() == [minted(0, "cgt", "cgt", "cgt")[2]]
 
 
-@pytest.mark.parametrize("uid", ["cgt_2", "drawing:cgt_2"], ids=["bare", "role-led"])
-def test_given_root_id_reserves_its_number(loader, uid):
+@pytest.mark.parametrize("uid", ["drawing", "drawing:cgt_2"], ids=["bare", "role-led"])
+def test_a_given_root_id_draws_no_id(loader, uid):
     timeline = loader.create_timeline(uid=uid)
-    assert (timeline.id, timeline.list_children()) == (uid, ["cgt_3"])
+    assert (timeline.id, timeline.list_children()) == (uid, minted(0, "cgt"))
 
 
 def test_successive_timelines_get_distinct_ids(loader):
     first, second = loader.create_timeline(), loader.create_timeline()
-    assert (first.id, first.list_children()) == ("cgt_1", ["cgt_2"])
-    assert (second.id, second.list_children()) == ("cgt_3", ["cgt_4"])
+    ids = minted(0, "cgt", "cgt", "cgt", "cgt")
+    assert (first.id, first.list_children()) == (ids[0], [ids[1]])
+    assert (second.id, second.list_children()) == (ids[2], [ids[3]])
 
 
 def test_axis_child(drawing):
-    assert drawing.list_children() == ["cgt_2"]
-    child = drawing.get_child("cgt_2")
-    assert drawing.get_child_offset("cgt_2") == Coordinate(
+    (axis,) = drawing.list_children()
+    assert axis == minted(0, "cgt", "cgt")[1]
+    child = drawing.get_child(axis)
+    assert drawing.get_child_offset(axis) == Coordinate(
         76.70371459980326, TimeUnit.css_pixels
     )
     assert child.length == Coordinate(855.5289364103584, TimeUnit.css_pixels)
@@ -182,7 +185,7 @@ def test_axis_child(drawing):
 
 
 def test_axis_map(drawing):
-    cmap = drawing.get_child("cgt_2").get_conversion_map("seconds")
+    cmap = drawing.get_child(drawing.list_children()[0]).get_conversion_map("seconds")
     assert cmap.source_unit == TimeUnit.css_pixels
     assert cmap.target_unit == TimeUnit.seconds
     assert cmap.scalar == 0.04675470144567245
@@ -192,10 +195,11 @@ def test_axis_map(drawing):
 
 
 def test_map_reads_the_ten_tick(drawing):
-    child = drawing.get_child("cgt_2")
+    (axis,) = drawing.list_children()
+    child = drawing.get_child(axis)
     cmap = child.get_conversion_map("seconds")
     stamp = drawing.get_timestamp_at(MAJOR_TICKS[1])
-    position = stamp.get_coordinate("cgt_2")
+    position = stamp.get_coordinate(axis)
     assert (position.value, position.unit) == (213.88223410258962, TimeUnit.css_pixels)
 
     # The line through the end ticks, evaluated in exact rational arithmetic on

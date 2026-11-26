@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader.minting import shape
 from timetoalign.core import TimeUnit
 from timetoalign.loader.physical.repovizz import RepoVizzInfo, RepoVizzLoader
 from timetoalign.loader.physical.repovizz_catalogue import CatalogueEntry
@@ -232,7 +233,7 @@ class TestRepoVizzLoaderXmlMode:
         # Get audio group if available
         if audio_timeline_group is not None:
             group = audio_timeline_group
-            assert group.id == "repovizz:audio"
+            assert shape(group.id) == "group"
             assert len(group) > 0
 
     def test_create_group_entries(self, xml_manifest_path: Path) -> None:

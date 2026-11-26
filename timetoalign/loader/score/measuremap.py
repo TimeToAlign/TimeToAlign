@@ -186,6 +186,7 @@ class MeasureMapLoader(ScoreLoader):
             rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
         )
 
         return ScoreStore(
@@ -303,8 +304,6 @@ class MeasureMapLoader(ScoreLoader):
             end_qstamp = qstamp + actual_length
 
             row: dict[str, Any] = {
-                # Identity
-                "id": f"measure_{bar['count']}",
                 "name": f"M{bar['name']}",
                 "temporal_type": "interval",
                 "event_type": "Measure",

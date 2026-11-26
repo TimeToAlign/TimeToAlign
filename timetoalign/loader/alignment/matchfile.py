@@ -34,9 +34,11 @@ with suppressed_backend_warnings():
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit, resolve_id
+from timetoalign.loader._ids import CLAIM_PREFIX, CMAP_PREFIX
 from timetoalign.loader._sources import Source, describe_source, on_disk
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     DiscreteLogicalTimeline,
@@ -144,14 +146,17 @@ class MatchfileLoader(AlignmentLoader):
             maps raw coordinates to normalised (non-negative) coordinates.
             Has no effect on the stored event coordinates, which are always
             the normalised (non-negative) values.
+        seed: The seed of the loader's ID minter (see ``Loader.load``).
     """
 
     def __init__(
         self,
         score_unit: TimeUnit = TimeUnit.quarters,
         normalize_anacrusis: bool = True,
+        *,
+        seed: int | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(seed=seed)
         self._score_unit = score_unit
         self._normalize_anacrusis = normalize_anacrusis
         self._logger = module_logger.getChild("MatchfileLoader")
@@ -410,7 +415,7 @@ class MatchfileLoader(AlignmentLoader):
             self._score_timeline = ContinuousLogicalTimeline(
                 length=timeline_length,
                 unit=self._score_unit,
-                uid="score:clt_1",
+                uid=mint_timeline_id(self._score_unit, self._id_minter, role="score"),
                 name=piece_name,
             )
 
@@ -440,7 +445,7 @@ class MatchfileLoader(AlignmentLoader):
                     offset=-offset,
                     source_unit=self._score_unit,
                     target_unit=self._score_unit,
-                    uid="raw_quarters",
+                    uid=self._id_minter.mint(CMAP_PREFIX),
                     name="raw_quarters",
                 )
                 self._score_timeline.add_conversion_map(shift_map)
@@ -450,7 +455,7 @@ class MatchfileLoader(AlignmentLoader):
                 scalar=midi_clock_units,
                 source_unit=TimeUnit.quarters,
                 target_unit=TimeUnit.ticks,
-                uid="quarters_to_divs",
+                uid=self._id_minter.mint(CMAP_PREFIX),
                 name="quarters_to_divs",
             )
             self._score_timeline.add_conversion_map(divs_map)
@@ -497,7 +502,7 @@ class MatchfileLoader(AlignmentLoader):
         perf_tl = DiscreteLogicalTimeline(
             length=perf_max,
             unit=TimeUnit.ticks,
-            uid=f"perf:{perf_stem}:dlt_1",
+            uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="perf"),
             name=perf_stem,
         )
         perf_tl.add_events(perf_event_dicts)
@@ -508,7 +513,7 @@ class MatchfileLoader(AlignmentLoader):
             scalar=seconds_per_tick,
             source_unit=TimeUnit.ticks,
             target_unit=TimeUnit.seconds,
-            uid=f"ticks_to_seconds:{perf_stem}",
+            uid=self._id_minter.mint(CMAP_PREFIX),
             name="ticks_to_seconds",
         )
         perf_tl.add_conversion_map(ticks_to_secs)
@@ -555,6 +560,7 @@ class MatchfileLoader(AlignmentLoader):
                 perf_tl,
                 end_coord_key="end",
                 provenance=MATCH_META,
+                id=self._id_minter.mint(CLAIM_PREFIX),
             )
             self._claims.append(claim)
 
@@ -576,6 +582,7 @@ class MatchfileLoader(AlignmentLoader):
                 self._score_timeline,
                 perf_tl,
                 provenance=MATCH_META,
+                id=self._id_minter.mint(CLAIM_PREFIX),
             )
             self._claims.append(claim)
 
@@ -762,7 +769,7 @@ class MatchfileLoader(AlignmentLoader):
         return bundle
 
     def create_timeline(self, uid: str) -> "Timeline":
-        """Return a single timeline by uid, role string, or partial/regex match.
+        """Return a single timeline by uid, role string, or regular expression.
 
         Matching precedence:
         1. ``"score"`` — returns the shared score timeline.
@@ -770,12 +777,12 @@ class MatchfileLoader(AlignmentLoader):
         3. Exact match on performance timeline uid.
         4. ``"perf:N"`` (1-indexed) — returns the N-th performance timeline.
         5. ``"perf:pNN"`` — alternative syntax for performance indexing.
-        6. Partial/regex match on any timeline uid.
+        6. A regular expression matching a whole timeline uid.
 
         Args:
-            uid: Timeline uid (e.g. ``"score:clt_1"``), role
-                shorthand (``"score"``, ``"perf:1"``), or partial/regex
-                pattern.
+            uid: Timeline uid (``score:clt_…``, ``perf:dlt_…``), role
+                shorthand (``"score"``, ``"perf:1"``), or a regular
+                expression matching a whole uid.
 
         Returns:
             The matching Timeline.
@@ -785,10 +792,9 @@ class MatchfileLoader(AlignmentLoader):
             RuntimeError: If ``load()`` has not been called yet.
 
         Examples:
-            >>> loader.create_timeline("score")               # -> score:clt_1
-            >>> loader.create_timeline("perf:1")              # First performance
-            >>> loader.create_timeline("perf:p01")            # Same shorthand
-            >>> loader.create_timeline(r"^perf:.*p01:dlt_1$")  # Stored-ID regex
+            >>> loader.create_timeline("score")    # -> the score timeline
+            >>> loader.create_timeline("perf:1")   # First performance
+            >>> loader.create_timeline("perf:p01")  # Same shorthand
         """
         if self._score_timeline is None:
             raise RuntimeError(
@@ -828,7 +834,7 @@ class MatchfileLoader(AlignmentLoader):
             except ValueError:
                 pass
 
-        # Fallback: partial/regex match on all timeline IDs
+        # Fallback: a regular expression matching a whole timeline ID
         all_ids = [self._score_timeline.id] + [
             tl.id for tl in self._performance_timelines
         ]

@@ -125,8 +125,8 @@ class TabularLoader(EventLoader):
     Configuration Attributes:
         delimiter: Field delimiter character (default: ``,``).
         header_row: Row index containing column headers (default: 0).
-        id_column: Source column name for event IDs (auto-generated if
-            ``None``).
+        id_column: Source column name for event IDs, kept as stated;
+            without one, IDs are minted from the loader's minter.
         name_column: Source column name for event names (optional).
         start_column: Source column name for start coordinate (required).
         end_column: Source column name for end coordinate (None for
@@ -783,11 +783,10 @@ class TabularLoader(EventLoader):
                             )
                         )
 
-        # ID column (vectorized generation if not present)
+        # ID column: stated ids are kept; without one the events are given
+        # ids minted from the loader's minter when they are accepted.
         if self.id_column and self.id_column in df.columns:
             columns["id"] = df[self.id_column].astype(str).to_numpy()
-        else:
-            columns["id"] = np.array([f"e{i:06d}" for i in range(n)])
 
         # Name column (vectorized extraction)
         if self.name_column and self.name_column in df.columns:

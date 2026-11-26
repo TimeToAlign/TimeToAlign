@@ -49,9 +49,9 @@ way back out.
 **Projected layers.**  Every LOS, graphic and track event carries its raw
 ``event_ref`` as a field *and* contributes one synchronous claim between
 itself, at its own coordinate, and the referenced spine event, at its VTU
-coordinate.  The document names no layer event, so each is given the id its
-timeline would mint for it (``note_1``, ``graphicevent_1``,
-``trackevent_1``, counted per event type in document order).  LOS events sit at
+coordinate.  The document names no layer event, so each is given an id
+minted from the loader's minter (``note_…``, ``graphicevent_…``,
+``trackevent_…``, one batch per event type in document order).  LOS events sit at
 the VTU coordinate of the event they reference (that reference *is* their
 temporal position); graphic events are integer-pixel interval events in their
 edition SegmentLine; track events are instants at ``start_time`` seconds.
@@ -130,15 +130,22 @@ import numpy as np
 import pyarrow as pa
 
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
-from timetoalign.core import NumberType, Provenance, TimeScalarValue, TimeUnit
+from timetoalign.core import (
+    NumberType,
+    Provenance,
+    TimeScalarValue,
+    TimeUnit,
+    resolve_id,
+)
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
+from timetoalign.loader._ids import CMAP_PREFIX, give_event_ids
 from timetoalign.loader._sources import Source
 from timetoalign.loader.base import LoadSourceResult
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap
-from timetoalign.storage.events import EventData, mint_event_ids
+from timetoalign.storage.events import EventData
 from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousPhysicalTimeline,
@@ -186,7 +193,6 @@ class _EditionSpec:
     """One ``<graphic_instance_group>``: an edition of the engraved score."""
 
     uid: str
-    role: str
     description: str
     pages: list[_GraphicPageSpec] = field(default_factory=list)
     rows: list[dict[str, Any]] = field(default_factory=list)
@@ -213,7 +219,6 @@ class _TrackSpec:
     """One ``<track>``: an audio (or video) rendition of the work."""
 
     uid: str
-    role: str
     file_name: str
     attributes: dict[str, Any] = field(default_factory=dict)
     performers: list[dict[str, Any]] = field(default_factory=list)
@@ -285,24 +290,16 @@ def _prune_columns(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{key: row[key] for key in kept} for row in rows]
 
 
-def _give_event_ids(rows: list[dict[str, Any]]) -> None:
-    """Give each row the id its timeline would mint for it, in place.
+def _role(label: str) -> str:
+    """The role leading the timeline ids of an edition or a track: its label.
 
-    The document names no layer event (only the spine's), so each row of a
-    layer is given ``{event type in lower case}_{N}``, counted per type in
-    document order, by the one event-ID minter
-    (:func:`~timetoalign.storage.events.mint_event_ids`, nothing taken). The
-    id is fixed before any timeline exists, so that the claim naming the
-    event and the event itself agree wherever and whenever the timeline is
-    built.
-
-    Args:
-        rows: The rows of one timeline (an edition's rows span its pages and
-            accolades, so its ids are unique over the whole edition).
+    Accents are folded to their base letters, the result is lowercased and
+    every run of characters outside ``[a-z0-9_]`` becomes a single ``_``. Two
+    layers of one label share the role; their minted ids tell them apart.
     """
-    ids = mint_event_ids([row["event_type"] for row in rows])
-    for row, event_id in zip(rows, ids.to_pylist(), strict=True):
-        row["id"] = event_id
+    normalised = unicodedata.normalize("NFKD", label)
+    folded = "".join(ch for ch in normalised if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9_]+", "_", folded.lower()).strip("_") or "unnamed"
 
 
 def _table_from_rows(rows: list[dict[str, Any]]) -> pa.Table:
@@ -440,15 +437,14 @@ class Ieee1599Loader(XmlLoader):
     _default_unit = TimeUnit.ticks
     _single_source: ClassVar[bool] = True
 
-    def __init__(self) -> None:
-        super().__init__(principal_tags=[])
+    def __init__(self, *, seed: int | None = None) -> None:
+        super().__init__(principal_tags=[], seed=seed)
         # The spine is the loader's frame of reference: VTU ticks, integers.
         self._unit = TimeUnit.ticks
         self._number_type = NumberType.int
         self._events = EventData.empty(self._unit, self._number_type)
         self._logger = module_logger.getChild(self.__class__.__name__)
 
-        self._used_roles: set[str] = set()
         self._spine_uid: str | None = None
         self._los_uid: str | None = None
         #: Spine event id -> cumulative VTU coordinate.
@@ -515,8 +511,8 @@ class Ieee1599Loader(XmlLoader):
 
         Every door into the parse (a path, a string, an element) asks this,
         so a second document is refused however it arrives: parsed into the
-        same loader, it would suffix its timeline uids onto the first one's
-        and claim against the wrong spine.
+        same loader, its timelines would join the first one's and its
+        claims name the wrong spine.
         """
         if self._spine_uid is None:
             return None
@@ -525,7 +521,6 @@ class Ieee1599Loader(XmlLoader):
     def clear(self) -> None:
         """Discard the loaded document and every derived artefact."""
         super().clear()
-        self._used_roles.clear()
         self._spine_uid = None
         self._los_uid = None
         self._spine_coordinates.clear()
@@ -538,7 +533,6 @@ class Ieee1599Loader(XmlLoader):
         self._claim_field = None
         self._timeline_cache.clear()
         self._name = None
-        self._minted_timeline_ids.clear()
 
     def _process_xml(self, root: ET.Element) -> None:
         """Parse one ``<ieee1599>`` root into curated tables and claim fields.
@@ -590,7 +584,7 @@ class Ieee1599Loader(XmlLoader):
         simultaneous carry ``timing="0"`` and so share a coordinate.
         """
         self._spine_uid = mint_timeline_id(
-            TimeUnit.ticks, role=self._claim_role("spine")
+            TimeUnit.ticks, self._id_minter, role="spine"
         )
         timing = 0
         hpos = 0
@@ -621,7 +615,7 @@ class Ieee1599Loader(XmlLoader):
         recoverable by grouping on ``event_ref`` and ordering by
         ``notehead_index``.
         """
-        self._los_uid = mint_timeline_id(TimeUnit.ticks, role=self._claim_role("los"))
+        self._los_uid = mint_timeline_id(TimeUnit.ticks, self._id_minter, role="los")
         los = root.find("./logic/los")
         if los is None:
             return
@@ -658,7 +652,7 @@ class Ieee1599Loader(XmlLoader):
             for syllable in lyrics.findall("syllable"):
                 self._read_syllable(syllable, context)
 
-        _give_event_ids(self._los_rows)
+        give_event_ids(self._los_rows, self._id_minter)
         self._los_rows = _prune_columns(self._los_rows)
         self._staff_rows = _prune_columns(self._staff_rows)
 
@@ -824,17 +818,17 @@ class Ieee1599Loader(XmlLoader):
         """
         for group in root.findall("./notational/graphic_instance_group"):
             description = group.get("description") or "edition"
-            role = self._claim_role(description)
             spec = _EditionSpec(
-                uid=mint_timeline_id(TimeUnit.pixels, role=role),
-                role=role,
+                uid=mint_timeline_id(
+                    TimeUnit.pixels, self._id_minter, role=_role(description)
+                ),
                 description=description,
                 pages=[],
                 rows=[],
             )
             for instance in group.findall("graphic_instance"):
                 self._read_graphic_instance(instance, spec)
-            _give_event_ids(spec.rows)
+            give_event_ids(spec.rows, self._id_minter)
             self._set_graphic_claim_coordinates(spec)
             spec.rows = _prune_columns(spec.rows)
             if spec.rows:
@@ -950,12 +944,11 @@ class Ieee1599Loader(XmlLoader):
         """
         for track in root.findall("./audio/track"):
             file_name = track.get("file_name") or "track"
-            role = self._claim_role(Path(file_name).stem)
+            role = _role(Path(file_name).stem)
             general = track.find("track_general")
             notes = None if general is None else general.find("notes")
             spec = _TrackSpec(
-                uid=mint_timeline_id(TimeUnit.seconds, role=role),
-                role=role,
+                uid=mint_timeline_id(TimeUnit.seconds, self._id_minter, role=role),
                 file_name=file_name,
                 attributes={
                     "encoding_format": track.get("encoding_format"),
@@ -996,7 +989,7 @@ class Ieee1599Loader(XmlLoader):
                             "file_name": file_name,
                         }
                     )
-            _give_event_ids(spec.rows)
+            give_event_ids(spec.rows, self._id_minter)
             spec.rows = _prune_columns(spec.rows)
             self._tracks.append(spec)
 
@@ -1124,24 +1117,6 @@ class Ieee1599Loader(XmlLoader):
             )
         return coordinate
 
-    def _claim_role(self, label: str) -> str:
-        """Sanitise *label* into a unique timeline-uid role.
-
-        Accents are folded to their base letters, the result is lowercased,
-        every run of characters outside ``[a-z0-9_]`` becomes a single ``_``,
-        and a numeric suffix disambiguates a role already in use.
-        """
-        normalised = unicodedata.normalize("NFKD", label)
-        folded = "".join(ch for ch in normalised if not unicodedata.combining(ch))
-        role = re.sub(r"[^a-z0-9_]+", "_", folded.lower()).strip("_") or "unnamed"
-        candidate = role
-        suffix = 1
-        while candidate in self._used_roles:
-            suffix += 1
-            candidate = f"{role}_{suffix}"
-        self._used_roles.add(candidate)
-        return candidate
-
     # endregion
 
     # region Curated tables
@@ -1225,7 +1200,7 @@ class Ieee1599Loader(XmlLoader):
         which is one synchronous claim between the two events: the layer
         event, at its coordinate on its layer's timeline, and the spine
         event, at its VTU.  Both are events of the package (the layer events
-        under the ids :func:`_give_event_ids` fixed; a graphic event lives on
+        under the ids minted at the parse; a graphic event lives on
         an accolade of its edition and is named on the edition at its
         edition-wide x), so no claim needs a Projection.  All three layers go
         into one field: the alignment they express is one alignment,
@@ -1314,6 +1289,7 @@ class Ieee1599Loader(XmlLoader):
             ),
             timelines=axes,
             provenance=provenance,
+            minter=self._id_minter,
         )
 
     def get_field(
@@ -1445,7 +1421,9 @@ class Ieee1599Loader(XmlLoader):
         """Return one timeline by uid, building it once and caching it.
 
         Args:
-            uid: A timeline uid.  Defaults to the spine's.
+            uid: A timeline uid, or a regular expression matching one whole
+                (``"spine:.*"``, ``"farm_picture:dgt_.*"``).  Defaults to the
+                spine's.
 
         Returns:
             The built `Timeline`.
@@ -1460,6 +1438,11 @@ class Ieee1599Loader(XmlLoader):
             )
         if uid is None:
             uid = self._spine_uid
+        elif uid not in self.timeline_uids:
+            try:
+                uid = resolve_id(uid, self.timeline_uids, warn_multiple=True)
+            except KeyError:
+                pass
         if uid in self._timeline_cache:
             return self._timeline_cache[uid]
 
@@ -1552,14 +1535,15 @@ class Ieee1599Loader(XmlLoader):
             ]
             if not accolade_specs:
                 continue
-            # Pages and accolades are named by position; their ids are
-            # minted in the edition's manifest.
+            # Pages and accolades are named by position; their ids come
+            # from the loader's minter.
             page: SegmentLine[DiscreteGraphicalTimeline] = SegmentLine[
                 DiscreteGraphicalTimeline
             ](
                 length=0,
                 unit=_GRAPHIC_UNIT,
                 number_type=NumberType.int,
+                uid=mint_timeline_id(_GRAPHIC_UNIT, self._id_minter),
                 name=f"page_{page_index}",
                 meta={"page": page_spec.page},
             )
@@ -1568,6 +1552,7 @@ class Ieee1599Loader(XmlLoader):
                     length=max(row["end"] for row in segment_spec.rows),
                     unit=_GRAPHIC_UNIT,
                     number_type=NumberType.int,
+                    uid=mint_timeline_id(_GRAPHIC_UNIT, self._id_minter),
                     name=f"accolade_{accolade_index}",
                 )
                 accolade.add_events(segment_spec.rows)
@@ -1591,6 +1576,7 @@ class Ieee1599Loader(XmlLoader):
                     ),
                     source_unit=_GRAPHIC_UNIT,
                     name="file_name",
+                    uid=self._id_minter.mint(CMAP_PREFIX),
                 )
             )
         return timeline

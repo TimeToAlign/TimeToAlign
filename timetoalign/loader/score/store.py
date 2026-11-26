@@ -10,7 +10,9 @@ from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from timetoalign.core.ids import IdMinter
 from timetoalign.core.time import number_from_json, number_to_json
+from timetoalign.loader._ids import CMAP_PREFIX
 from timetoalign.loader.score.stores.annotations import AnnotationEventData
 from timetoalign.loader.score.stores.controls import ControlEventData
 from timetoalign.loader.score.stores.measures import MeasureData
@@ -221,6 +223,8 @@ class ScoreStore(EventStore):
         flatten: bool = False,
         ppq: int | None = None,
         attach_cmaps: bool = True,
+        *,
+        minter: IdMinter | None = None,
     ) -> "Timeline":
         """Create a Timeline from this ScoreStore.
 
@@ -242,6 +246,8 @@ class ScoreStore(EventStore):
                 :meth:`get_cmaps` (seconds from tempo markings, floating
                 measures from the measure table, ticks when ``ppq`` is
                 given), plus a ShiftMap for the anacrusis offset.
+            minter: The minter of every timeline and C-Map ID the call mints
+                (a loader's); without one, each is minted by its class.
 
         Returns:
             A Timeline with attached C-Maps.
@@ -255,10 +261,11 @@ class ScoreStore(EventStore):
             include_stores=include_stores,
             exclude_stores=exclude_stores,
             flatten=flatten,
+            minter=minter,
         )
 
         if attach_cmaps:
-            cmaps = self.get_cmaps(ppq=ppq)
+            cmaps = self.get_cmaps(ppq=ppq, minter=minter)
             for cmap in cmaps.values():
                 timeline.add_conversion_map(cmap)
 
@@ -271,14 +278,16 @@ class ScoreStore(EventStore):
                     offset=-offset,  # TTA coord - offset = raw coord
                     source_unit="quarters",
                     target_unit="quarters",
-                    uid="raw_quarters",
+                    uid=None if minter is None else minter.mint(CMAP_PREFIX),
                     name="raw_quarters",
                 )
                 timeline.add_conversion_map(shift_map)
 
         return timeline
 
-    def get_cmaps(self, ppq: int | None = None) -> dict[str, ConversionMap]:
+    def get_cmaps(
+        self, ppq: int | None = None, *, minter: IdMinter | None = None
+    ) -> dict[str, ConversionMap]:
         """Get the ConversionMaps the score's data states.
 
         Returns C-Maps based on what the source states:
@@ -305,6 +314,8 @@ class ScoreStore(EventStore):
             ppq: Pulses per quarter note. Given, the result holds a
                 quarters -> ticks ``ScalarMap`` at this resolution; ``None``
                 (default) adds none.
+            minter: The minter of the maps' IDs (a loader's); without one,
+                each map mints its own.
 
         Returns:
             Dict mapping target unit name to ConversionMap.
@@ -334,12 +345,13 @@ class ScoreStore(EventStore):
                 scalar=ppq,
                 source_unit="quarters",
                 target_unit="ticks",
+                uid=None if minter is None else minter.mint(CMAP_PREFIX),
             )
 
         # Check for tempo markings to build quarters -> seconds map
         tempo_events = self._extract_tempo_markings()
         if tempo_events:
-            cmaps["seconds"] = self._create_tempo_map(tempo_events)
+            cmaps["seconds"] = self._create_tempo_map(tempo_events, minter)
 
         # Floating-measure conversion is derived from the structure described
         # by the rows, never from printed labels.
@@ -389,12 +401,13 @@ class ScoreStore(EventStore):
         return tempo_events
 
     def _create_tempo_map(
-        self, tempo_events: list[tuple[float, float]]
+        self, tempo_events: list[tuple[float, float]], minter: IdMinter | None = None
     ) -> ConversionMap:
         """Create a quarters -> seconds ConversionMap from tempo markings.
 
         Args:
             tempo_events: List of (quarter_position, bpm) tuples.
+            minter: The minter of the map's ID, or None.
 
         Returns:
             A TableMap for quarters -> seconds conversion.
@@ -435,6 +448,7 @@ class ScoreStore(EventStore):
             y_values=second_positions,
             source_unit="quarters",
             target_unit="seconds",
+            uid=None if minter is None else minter.mint(CMAP_PREFIX),
         )
 
     def __repr__(self) -> str:

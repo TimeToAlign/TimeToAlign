@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from timetoalign.core import TimeUnit, resolve_id
+from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader.format.json import JsonLoader, _normalise_array
 from timetoalign.storage.events import EventData
 from timetoalign.storage.store import DictStore
@@ -62,6 +63,25 @@ module_logger = logging.getLogger(__name__)
 
 
 # region Component-to-event mapping
+
+
+#: The keys a component states its ID under: the key of a v2 file's
+#: ``components`` dict (kept as ``_comp_id``), else an ``id`` field.
+_ID_KEYS = ("_comp_id", "id")
+
+
+def _component_id(component: dict[str, Any]) -> str | None:
+    """The ID the file gives *component*, or None for one the loader mints.
+
+    A TiLiA v2 file keys its components by ID; that ID is the event's,
+    verbatim. A component without one is given an ID minted from the
+    loader's minter when its timeline is built.
+    """
+    for key in _ID_KEYS:
+        stated = component.get(key)
+        if stated is not None and str(stated) != "":
+            return str(stated)
+    return None
 
 
 def _hierarchy_to_events(
@@ -81,9 +101,9 @@ def _hierarchy_to_events(
         List of event dicts suitable for ``Timeline.add_events()``.
     """
     events: list[dict[str, Any]] = []
-    for i, comp in enumerate(components):
+    for comp in components:
         event: dict[str, Any] = {
-            "id": f"h{i:04d}",
+            "id": _component_id(comp),
             "start": float(comp["start"]),
             "end": float(comp["end"]),
             "event_type": "Hierarchy",
@@ -93,7 +113,7 @@ def _hierarchy_to_events(
             event["name"] = comp["label"]
         # Include ALL other fields from the JSON component
         for key, value in comp.items():
-            if key not in ("start", "end", "label"):
+            if key not in ("start", "end", "label", *_ID_KEYS):
                 event[key] = value
         events.append(event)
     return events
@@ -115,9 +135,9 @@ def _marker_to_events(
         List of event dicts suitable for ``Timeline.add_events()``.
     """
     events: list[dict[str, Any]] = []
-    for i, comp in enumerate(components):
+    for comp in components:
         event: dict[str, Any] = {
-            "id": f"m{i:04d}",
+            "id": _component_id(comp),
             "instant": float(comp["time"]),
             "event_type": "Marker",
         }
@@ -126,7 +146,7 @@ def _marker_to_events(
             event["name"] = comp["label"]
         # Include ALL other fields from the JSON component
         for key, value in comp.items():
-            if key not in ("time", "label"):
+            if key not in ("time", "label", *_ID_KEYS):
                 event[key] = value
         events.append(event)
     return events
@@ -148,9 +168,9 @@ def _beat_to_events(
         List of event dicts suitable for ``Timeline.add_events()``.
     """
     events: list[dict[str, Any]] = []
-    for i, comp in enumerate(components):
+    for comp in components:
         event: dict[str, Any] = {
-            "id": f"b{i:04d}",
+            "id": _component_id(comp),
             "instant": float(comp["time"]),
             "event_type": "Beat",
         }
@@ -159,7 +179,7 @@ def _beat_to_events(
             event["name"] = comp["label"]
         # Include ALL other fields from the JSON component
         for key, value in comp.items():
-            if key not in ("time", "label"):
+            if key not in ("time", "label", *_ID_KEYS):
                 event[key] = value
         events.append(event)
     return events
@@ -181,9 +201,9 @@ def _pdf_marker_to_events(
         List of event dicts suitable for ``Timeline.add_events()``.
     """
     events: list[dict[str, Any]] = []
-    for i, comp in enumerate(components):
+    for comp in components:
         event: dict[str, Any] = {
-            "id": f"p{i:04d}",
+            "id": _component_id(comp),
             "instant": float(comp["time"]),
             "event_type": "PdfMarker",
         }
@@ -192,7 +212,7 @@ def _pdf_marker_to_events(
             event["name"] = comp["label"]
         # Include ALL other fields from the JSON component
         for key, value in comp.items():
-            if key not in ("time", "label"):
+            if key not in ("time", "label", *_ID_KEYS):
                 event[key] = value
         events.append(event)
     return events
@@ -218,7 +238,7 @@ def _generic_to_events(
     for i, comp in enumerate(components):
         if "start" in comp and "end" in comp:
             event: dict[str, Any] = {
-                "id": f"g{i:04d}",
+                "id": _component_id(comp),
                 "start": float(comp["start"]),
                 "end": float(comp["end"]),
                 "event_type": comp.get("kind", "Unknown"),
@@ -228,12 +248,12 @@ def _generic_to_events(
                 event["name"] = comp["label"]
             # Include ALL other fields from the JSON component
             for key, value in comp.items():
-                if key not in ("start", "end", "kind", "label"):
+                if key not in ("start", "end", "kind", "label", *_ID_KEYS):
                     event[key] = value
             events.append(event)
         elif "time" in comp:
             event = {
-                "id": f"g{i:04d}",
+                "id": _component_id(comp),
                 "instant": float(comp["time"]),
                 "event_type": comp.get("kind", "Unknown"),
             }
@@ -242,7 +262,7 @@ def _generic_to_events(
                 event["name"] = comp["label"]
             # Include ALL other fields from the JSON component
             for key, value in comp.items():
-                if key not in ("time", "kind", "label"):
+                if key not in ("time", "kind", "label", *_ID_KEYS):
                     event[key] = value
             events.append(event)
         else:
@@ -360,7 +380,7 @@ class TiliaDictStore(DictStore):
             return matching[0]
 
         # Concatenate all matching tables
-        tables = [ed._table for ed in matching]
+        tables = [ed.table for ed in matching]
         merged = pa.concat_tables(tables, promote_options="default")
         return EventData(merged, matching[0]._unit, matching[0]._number_type)
 
@@ -484,7 +504,7 @@ class TiliaJsonLoader(JsonLoader):
         7
         >>> loader.create_timeline("BEAT_TIMELINE_3").n_events
         1146
-        >>> loader.store.hierarchy._table.num_rows
+        >>> loader.store.hierarchy.table.num_rows
         33
 
     See Also:
@@ -604,7 +624,6 @@ class TiliaJsonLoader(JsonLoader):
 
         self._timeline_specs = []
         self._timelines_cache = {}
-        self._minted_timeline_ids: set[str] = set()
 
         for idx, tl_obj in enumerate(timelines_array):
             if not isinstance(tl_obj, dict):
@@ -626,7 +645,7 @@ class TiliaJsonLoader(JsonLoader):
 
             # Use tilia_id if available (from v2 format conversion)
             source_id = tl_obj.get("_tilia_id", f"{kind}_{idx}")
-            tl_id = mint_timeline_id(TimeUnit.seconds)
+            tl_id = mint_timeline_id(self._media_unit, self._id_minter)
             timeline_name = name or source_id
 
             # Normalise components into a pa.Table
@@ -672,8 +691,8 @@ class TiliaJsonLoader(JsonLoader):
     def create_timeline(self, uid: str | int) -> "Timeline":
         """Create a single ``ContinuousPhysicalTimeline`` by uid.
 
-        The *uid* may be a type-based ID from ``timeline_ids`` (for example,
-        ``"cpt_4"``), the original TiLiA source ID/title, or an integer index.
+        The *uid* may be an ID from ``timeline_ids`` (``cpt_…``), the
+        original TiLiA source ID/title, or an integer index.
 
         Args:
             uid: Timeline identifier or integer index.
@@ -748,7 +767,7 @@ class TiliaJsonLoader(JsonLoader):
             group_name = self._sources[-1].stem
 
         group = TimelineGroup(
-            id=f"tilia:{group_name or 'group'}",
+            id=self._id_minter.mint("group"),
             name=group_name,
             timelines=timelines,
         )
@@ -786,7 +805,6 @@ class TiliaJsonLoader(JsonLoader):
         """Clear all loaded data, including timeline specs and cache."""
         super().clear()
         self._timeline_specs = []
-        self._minted_timeline_ids = set()
         self._timelines_cache = {}
         self._media_length = 0.0
         # Re-create a fresh TiliaDictStore
@@ -805,8 +823,8 @@ class TiliaJsonLoader(JsonLoader):
         3. Exact match on spec ``"id"`` field.
         4. Exact match on the source ID.
         5. Exact match on spec ``"name"`` field.
-        6. Partial/regex match on stored ID or source ID.
-        7. Partial/regex match on spec ``"name"`` field.
+        6. A regular expression matching a whole stored ID or source ID.
+        7. A regular expression matching a whole spec ``"name"``.
 
         Args:
             uid: Timeline identifier, name, or integer index.
@@ -849,7 +867,7 @@ class TiliaJsonLoader(JsonLoader):
             if spec["name"] == uid:
                 return spec
 
-        # Try partial/regex match by id
+        # Try a regular expression matching a whole id
         all_ids = [s["id"] for s in self._timeline_specs]
         all_source_ids = [s["source_id"] for s in self._timeline_specs]
         try:
@@ -860,7 +878,7 @@ class TiliaJsonLoader(JsonLoader):
         except KeyError:
             pass
 
-        # Try partial/regex match by name
+        # Try a regular expression matching a whole name
         all_names = [s["name"] for s in self._timeline_specs]
         try:
             resolved_name = resolve_id(uid, all_names, warn_multiple=True)
@@ -910,13 +928,12 @@ class TiliaJsonLoader(JsonLoader):
             uid=tl_id,
             name=name,
         )
-        # The loader minted the id, so a scope that already holds it mints
-        # it again rather than refusing the timeline.
-        tl._set_id(tl_id, minted=True)
 
-        # Convert components to events using the appropriate converter
+        # Convert components to events using the appropriate converter; a
+        # component the file names keeps its ID, any other is minted.
         converter = _EVENT_CONVERTERS.get(kind, _generic_to_events)
         events = converter(components)
+        give_event_ids(events, self._id_minter)
 
         if events:
             tl.add_events(events)

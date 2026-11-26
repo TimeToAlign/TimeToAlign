@@ -218,9 +218,13 @@ class MelodyLoader(Loader[MelodyRecord]):
         ['work.ttl']
     """
 
-    def __init__(self) -> None:
-        """Initialise a loader holding no source."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialise a loader holding no source.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._records: list[MelodyRecord] = []
 
     def _load_source(self, source: Source) -> MelodyRecord:
@@ -356,7 +360,7 @@ class MelodyLoader(Loader[MelodyRecord]):
         )
         items = {m: graph.subjects(_EXEMPLIFIES, m) for m in manifestations}
         bundle = into if into is not None else AlignmentBundle(id=id or "")
-        plan = Plan(bundle)
+        plan = Plan(bundle, self._id_minter)
         targets = self._mapped_elements(
             graph, work_iri, manifestations, items, subjects or {}, plan
         )
@@ -380,6 +384,7 @@ class MelodyLoader(Loader[MelodyRecord]):
                 timeline = ContinuousGraphicalTimeline(
                     length=None,
                     unit=TimeUnit.millimeters,
+                    uid=plan.timeline_id(TimeUnit.millimeters),
                     name=importer.timeline_name(manifestation),
                 )
                 targets[manifestation] = plan.new_timeline(

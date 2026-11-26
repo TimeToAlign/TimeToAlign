@@ -11,11 +11,11 @@ the ``mpm_toolbox`` corpus:
 It verifies, parametrized over both specimens unless noted:
 
 - the score (PPQ, MSM note count) and the two logical score timelines
-  (``score:clt_1`` notes; ``score:dlt_1`` notes + per-type MPM markup);
+  (``score:clt_…`` notes; ``score:dlt_…`` notes + per-type MPM markup);
 - the ``TicksToQuarters`` and modelled quarters→seconds ``TableMap``
   C-Maps;
 - the two physical performance timelines and an onset spot-check;
-- the spectrogram graphical timeline (``perf:dgt_1``): its pixel length
+- the spectrogram graphical timeline (``perf:dgt_…``): its pixel length
   (= the spectrogram ``.png``'s frame-column width), its 0 events, and
   its px→seconds ``ScalarMap``;
 - the cross-group claims (count, all synchronous, no NOMATCH) and the
@@ -42,12 +42,14 @@ from typing import Any
 import pytest
 from lxml import etree
 
+from tests.loader.minting import shape, shapes
 from timetoalign.core import Domain, TimeUnit
 from timetoalign.loader._xml import XML_ID
 from timetoalign.loader.alignment import MpmLoader
 from timetoalign.maps.linear import ScalarMap
 from timetoalign.maps.table import TableMap
 from timetoalign.testdata import ensure_data
+from timetoalign.timelines.base import Timeline
 
 ROOT = ensure_data("mpm_toolbox")
 
@@ -57,11 +59,18 @@ BEETHOVEN_MPR = BEETHOVEN_DIR / "Beethoven_op35_1971Curzon_Var14only.mpr"
 REGER_DIR = ROOT / "Max Reger - Moment Musical (MPM Toolbox Tutorial)"
 REGER_MPR = REGER_DIR / "Reger - Moment Musical op 13 no 4.mpr"
 
-SCORE_CLT_ID = "score:clt_1"
-SCORE_DLT_ID = "score:dlt_1"
-PERF_CPT_ID = "perf:cpt_1"
-PERF_DPT_ID = "perf:dpt_1"
-PERF_DGT_ID = "perf:dgt_1"
+#: The shapes of the timelines' minted ids (role and prefix, without the suffix).
+SCORE_CLT = "score:clt"
+SCORE_DLT = "score:dlt"
+PERF_CPT = "perf:cpt"
+PERF_DPT = "perf:dpt"
+PERF_DGT = "perf:dgt"
+
+
+def _timeline(loader: MpmLoader, kind: str) -> Timeline:
+    """The loader's one timeline whose minted id has the shape *kind*."""
+    (found,) = [tl for tl in loader.create_timelines() if shape(tl.id) == kind]
+    return found
 
 
 #: Per-specimen expectations.  ``markup`` is the per-type Counter of MPM
@@ -167,18 +176,18 @@ def test_from_file_matches_load(specimen: dict[str, Any]) -> None:
 
 
 def test_score_clt_holds_only_notes(specimen: dict[str, Any]) -> None:
-    """``score:clt_1`` holds exactly the MSM notes (no markup)."""
+    """``score:clt_…`` holds exactly the MSM notes (no markup)."""
     loader = _loaded(specimen["mpr"])
-    clt = loader.create_timeline(SCORE_CLT_ID)
+    clt = _timeline(loader, SCORE_CLT)
     counts = _event_type_counts(clt)
     assert clt.events._table.num_rows == specimen["msm_notes"]
     assert dict(counts) == {"Note": specimen["msm_notes"]}
 
 
 def test_score_dlt_markup_counts(specimen: dict[str, Any]) -> None:
-    """``score:dlt_1`` holds the notes plus the per-type MPM markup events."""
+    """``score:dlt_…`` holds the notes plus the per-type MPM markup events."""
     loader = _loaded(specimen["mpr"])
-    dlt = loader.create_timeline(SCORE_DLT_ID)
+    dlt = _timeline(loader, SCORE_DLT)
     counts = _event_type_counts(dlt)
 
     expected = {"Note": specimen["msm_notes"], **specimen["markup"]}
@@ -195,9 +204,9 @@ def test_score_dlt_markup_counts(specimen: dict[str, Any]) -> None:
 
 
 def test_ticks_to_quarters_cmap(specimen: dict[str, Any]) -> None:
-    """The ticks→quarters C-Map on ``score:dlt_1`` resolves 360→0.5, 720→1.0."""
+    """The ticks→quarters C-Map on ``score:dlt_…`` resolves 360→0.5, 720→1.0."""
     loader = _loaded(specimen["mpr"])
-    dlt = loader.create_timeline(SCORE_DLT_ID)
+    dlt = _timeline(loader, SCORE_DLT)
     assert dlt.get_timestamp(360).get_unit(TimeUnit.quarters, format="float") == 0.5
     assert dlt.get_timestamp(720).get_unit(TimeUnit.quarters, format="float") == 1.0
 
@@ -244,8 +253,8 @@ def test_beethoven_tempo_map_anchor() -> None:
 def test_perf_timeline_event_counts(specimen: dict[str, Any]) -> None:
     """Both physical timelines hold one Note per observed onset."""
     loader = _loaded(specimen["mpr"])
-    cpt = loader.create_timeline(PERF_CPT_ID)
-    dpt = loader.create_timeline(PERF_DPT_ID)
+    cpt = _timeline(loader, PERF_CPT)
+    dpt = _timeline(loader, PERF_DPT)
     assert cpt.events._table.num_rows == specimen["alignment_notes"]
     assert dpt.events._table.num_rows == specimen["alignment_notes"]
     assert dict(_event_type_counts(cpt)) == {"Note": specimen["alignment_notes"]}
@@ -253,9 +262,9 @@ def test_perf_timeline_event_counts(specimen: dict[str, Any]) -> None:
 
 
 def test_samples_to_seconds_cmap(specimen: dict[str, Any]) -> None:
-    """``perf:dpt_1`` carries a SamplesToSeconds map at the recording's rate."""
+    """``perf:dpt_…`` carries a SamplesToSeconds map at the recording's rate."""
     loader = _loaded(specimen["mpr"])
-    dpt = loader.create_timeline(PERF_DPT_ID)
+    dpt = _timeline(loader, PERF_DPT)
     rate = specimen["sample_rate"]
     assert dpt.get_timestamp(rate).get_unit(TimeUnit.seconds, format="float") == 1.0
 
@@ -263,14 +272,14 @@ def test_samples_to_seconds_cmap(specimen: dict[str, Any]) -> None:
 def test_beethoven_onset_spot_check() -> None:
     """Beethoven ``nbwxzb1`` onset is ``828.0190259247195 / 1000`` seconds."""
     loader = _loaded(BEETHOVEN_MPR)
-    cpt = loader.create_timeline(PERF_CPT_ID)
+    cpt = _timeline(loader, PERF_CPT)
     expected = 828.0190259247195 / 1000.0
     onset = next(r for r in _event_rows(cpt) if r["id"] == "nbwxzb1")
     assert onset["start"]["value"] == expected
 
 
 def test_beethoven_note_pitch_spot_check() -> None:
-    """Beethoven ``nbwxzb1`` carries the MSM number + verbatim spelling on dlt_1.
+    """Beethoven ``nbwxzb1`` carries the MSM number + verbatim spelling on the dlt.
 
     A number-only-plus-inconsistent-spelling source represents pitch as
     its most-expressive faithful type, EnharmonicPitch, carried as a
@@ -281,7 +290,7 @@ def test_beethoven_note_pitch_spot_check() -> None:
     coordinate, so it round-trips numerically.
     """
     loader = _loaded(BEETHOVEN_MPR)
-    dlt = loader.create_timeline(SCORE_DLT_ID)
+    dlt = _timeline(loader, SCORE_DLT)
     note = next(r for r in _event_rows(dlt) if r["id"] == "nbwxzb1")
     assert note["pitch"] == {"midi_number": 75}
     assert note["pitchname"] == "e"
@@ -297,7 +306,7 @@ def test_beethoven_note_pitch_spot_check() -> None:
 
 
 def test_spectrogram_timeline_is_pixels_axis(specimen: dict[str, Any]) -> None:
-    """``perf:dgt_1`` is a pixels axis of the .png's frame-column width, 0 events.
+    """``perf:dgt_…`` is a pixels axis of the .png's frame-column width, 0 events.
 
     The spectrogram x-axis is time in frame columns; the column count is the
     pixel width of the spectrogram ``.png`` (read from its IHDR header).  The
@@ -305,14 +314,14 @@ def test_spectrogram_timeline_is_pixels_axis(specimen: dict[str, Any]) -> None:
     timeline.
     """
     loader = _loaded(specimen["mpr"])
-    dgt = loader.create_timeline(PERF_DGT_ID)
+    dgt = _timeline(loader, PERF_DGT)
     assert dgt.unit == TimeUnit.pixels
     assert dgt.length.value == specimen["spectrogram_columns"]
     assert dgt.events._table.num_rows == 0
 
 
 def test_spectrogram_px_to_seconds_cmap(specimen: dict[str, Any]) -> None:
-    """``perf:dgt_1`` carries a px→seconds ``ScalarMap`` of ``hopSize/rate``.
+    """``perf:dgt_…`` carries a px→seconds ``ScalarMap`` of ``hopSize/rate``.
 
     Each frame column advances ``hopSize`` audio samples, so
     ``seconds = px * hopSize / sample_rate``.  The map is a ``ScalarMap``
@@ -321,7 +330,7 @@ def test_spectrogram_px_to_seconds_cmap(specimen: dict[str, Any]) -> None:
     onto the seconds axis, to the double Python's division gives.
     """
     loader = _loaded(specimen["mpr"])
-    dgt = loader.create_timeline(PERF_DGT_ID)
+    dgt = _timeline(loader, PERF_DGT)
     expected_scalar = specimen["hop_size"] / specimen["sample_rate"]
 
     cmap = dgt.get_conversion_map(TimeUnit.seconds)
@@ -343,7 +352,7 @@ def test_beethoven_spectrogram_duration() -> None:
     column's onset = the spectrogram's total time span).
     """
     loader = _loaded(BEETHOVEN_MPR)
-    dgt = loader.create_timeline(PERF_DGT_ID)
+    dgt = _timeline(loader, PERF_DGT)
     expected = 26469 * 128 / 44100
     assert (
         dgt.get_timestamp(26469).get_unit(TimeUnit.seconds, format="float") == expected
@@ -353,7 +362,7 @@ def test_beethoven_spectrogram_duration() -> None:
 def test_reger_spectrogram_first_column() -> None:
     """Reger's first spectrogram column maps to ``512 / 48000`` seconds."""
     loader = _loaded(REGER_MPR)
-    dgt = loader.create_timeline(PERF_DGT_ID)
+    dgt = _timeline(loader, PERF_DGT)
     assert (
         dgt.get_timestamp(1).get_unit(TimeUnit.seconds, format="float") == 512 / 48000
     )
@@ -362,7 +371,7 @@ def test_reger_spectrogram_first_column() -> None:
 def test_bundle_spans_three_domains(specimen: dict[str, Any]) -> None:
     """The bundle's timeline units span logical, physical, and graphical.
 
-    Adding ``perf:dgt_1`` (pixels) completes the third domain: the bundle now
+    Adding ``perf:dgt_…`` (pixels) completes the third domain: the bundle now
     carries a logical member (quarters / ticks), a physical member (seconds
     / samples), and a graphical member (pixels).
     """
@@ -381,26 +390,26 @@ def test_bundle_spans_three_domains(specimen: dict[str, Any]) -> None:
 def test_bundle_shape(specimen: dict[str, Any]) -> None:
     """The bundle holds 5 timelines in 2 groups (score, perf).
 
-    The ``perf`` group holds three timelines (``perf:cpt_1`` / ``perf:dpt_1``
-    / ``perf:dgt_1``); both specimens carry a spectrogram, so the graphical
+    The ``perf`` group holds three timelines (``perf:cpt_…`` / ``perf:dpt_…``
+    / ``perf:dgt_…``); both specimens carry a spectrogram, so the graphical
     axis is always present.
     """
     loader = _loaded(specimen["mpr"])
     bundle = loader.create_bundle()
     assert bundle.n_timelines == 5
     assert bundle.n_groups == 2
-    assert bundle.group_ids == ["group_1", "group_2"]
+    assert len(set(bundle.group_ids)) == 2
     assert [group.name for group in bundle.groups.values()] == ["score", "perf"]
-    assert bundle.timeline_ids == [
-        SCORE_CLT_ID,
-        SCORE_DLT_ID,
-        PERF_CPT_ID,
-        PERF_DPT_ID,
-        PERF_DGT_ID,
+    assert shapes(bundle.timeline_ids) == [
+        SCORE_CLT,
+        SCORE_DLT,
+        PERF_CPT,
+        PERF_DPT,
+        PERF_DGT,
     ]
     # The perf group now holds three timelines.
-    perf_group = bundle.get_group_for_timeline(PERF_CPT_ID)
-    assert set(perf_group.timeline_ids) == {PERF_CPT_ID, PERF_DPT_ID, PERF_DGT_ID}
+    perf_group = bundle.get_group_for_timeline(_timeline(loader, PERF_CPT).id)
+    assert set(shapes(perf_group.timeline_ids)) == {PERF_CPT, PERF_DPT, PERF_DGT}
 
 
 def test_claims_all_synchronous(specimen: dict[str, Any]) -> None:
@@ -413,11 +422,13 @@ def test_claims_all_synchronous(specimen: dict[str, Any]) -> None:
     assert len(bundle.get_match_claims(nomatch_only=True)) == 0
     # All claims connect score:clt1 (quarters) -> perf:cpt1 (seconds), each
     # naming one note id on both timelines, every note once.
+    score_id = _timeline(loader, SCORE_CLT).id
+    perf_id = _timeline(loader, PERF_CPT).id
     for claim in claims:
         assert claim.is_synchronous
-        assert claim.connects_both(SCORE_CLT_ID, PERF_CPT_ID)
+        assert claim.connects_both(score_id, perf_id)
         assert claim.event_a_id == claim.event_b_id
-    score_ids = loader.create_timeline(SCORE_CLT_ID).events._table.column("id")
+    score_ids = _timeline(loader, SCORE_CLT).events.table.column("id")
     assert sorted(claim.event_a_id for claim in claims) == sorted(score_ids.to_pylist())
 
 
@@ -481,7 +492,7 @@ def test_beethoven_style_resolution() -> None:
     exact comparison (the convention shared with the other loader tests).
     """
     loader = _loaded(BEETHOVEN_MPR)
-    rows = _event_rows(loader.create_timeline(SCORE_DLT_ID))
+    rows = _event_rows(_timeline(loader, SCORE_DLT))
 
     p_dynamics = [
         r for r in rows if r["event_type"] == "Dynamics" and r["volume_label"] == "p"
@@ -509,7 +520,7 @@ def test_beethoven_style_resolution() -> None:
 def test_reger_style_resolution() -> None:
     """Reger dynamics / tempo styles resolve to numbers."""
     loader = _loaded(REGER_MPR)
-    rows = _event_rows(loader.create_timeline(SCORE_DLT_ID))
+    rows = _event_rows(_timeline(loader, SCORE_DLT))
 
     dolciss = [
         r
@@ -529,7 +540,7 @@ def test_reger_style_resolution() -> None:
 def test_reger_ornament_emitted_generically() -> None:
     """Reger's lone Ornament entry is emitted with its raw attributes."""
     loader = _loaded(REGER_MPR)
-    rows = _event_rows(loader.create_timeline(SCORE_DLT_ID))
+    rows = _event_rows(_timeline(loader, SCORE_DLT))
     ornaments = [r for r in rows if r["event_type"] == "Ornament"]
     assert len(ornaments) == 1
     ornament = ornaments[0]
@@ -547,16 +558,16 @@ def test_performance_selector_reaches_audio_performance() -> None:
     """Selecting the audio performance reaches different markup counts.
 
     The ``Curzon_1971_DECCA-SXL6523_audio`` performance stores inline
-    numeric bpm values; its dlt_1 carries 25 Asynchrony events (vs 0 in the
+    numeric bpm values; its dlt carries 25 Asynchrony events (vs 0 in the
     default) and 123 Tempo events.
     """
     loader = _loaded(BEETHOVEN_MPR, performance="Curzon_1971_DECCA-SXL6523_audio")
     assert loader.performance_name == "Curzon_1971_DECCA-SXL6523_audio"
-    counts = _event_type_counts(loader.create_timeline(SCORE_DLT_ID))
+    counts = _event_type_counts(_timeline(loader, SCORE_DLT))
     assert counts["Asynchrony"] == 25
     assert counts["Tempo"] == 123
     # The audio performance's inline bpm resolves to a numeric value.
-    rows = _event_rows(loader.create_timeline(SCORE_DLT_ID))
+    rows = _event_rows(_timeline(loader, SCORE_DLT))
     tempos = [r for r in rows if r["event_type"] == "Tempo"]
     assert all(r["bpm"] is not None for r in tempos)
 
@@ -596,7 +607,7 @@ def test_a_load_that_did_not_complete_builds_no_timeline(tmp_path: Path) -> None
     loader = MpmLoader()
     with pytest.raises(OverflowError):
         loader.load(mpr)
-    for uid in (SCORE_CLT_ID, PERF_CPT_ID, PERF_DPT_ID):
+    for uid in (SCORE_CLT, PERF_CPT, PERF_DPT):
         with pytest.raises(RuntimeError) as excinfo:
             loader.create_timeline(uid)
         assert str(excinfo.value) == (
@@ -609,12 +620,12 @@ def test_create_timelines_returns_all(specimen: dict[str, Any]) -> None:
     """``create_timelines`` returns the five timelines in canonical order."""
     loader = _loaded(specimen["mpr"])
     timelines = loader.create_timelines()
-    assert [tl.id for tl in timelines] == [
-        SCORE_CLT_ID,
-        SCORE_DLT_ID,
-        PERF_CPT_ID,
-        PERF_DPT_ID,
-        PERF_DGT_ID,
+    assert shapes(tl.id for tl in timelines) == [
+        SCORE_CLT,
+        SCORE_DLT,
+        PERF_CPT,
+        PERF_DPT,
+        PERF_DGT,
     ]
 
 
@@ -648,7 +659,7 @@ def test_create_timelines_id_pattern_no_match(specimen: dict[str, Any]) -> None:
 def test_no_spectrogram_perf_dgt_is_none(
     specimen: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With ``_parse_spectrogram`` stubbed to ``None``, ``perf:dgt_1`` is absent."""
+    """With ``_parse_spectrogram`` stubbed to ``None``, ``perf:dgt_…`` is absent."""
     monkeypatch.setattr(
         MpmLoader, "_parse_spectrogram", staticmethod(lambda *a, **k: None)
     )
@@ -661,7 +672,7 @@ def test_no_spectrogram_bundle_shape(
 ) -> None:
     """Without a spectrogram the bundle holds 4 timelines, 2 groups, no graphical.
 
-    The ``perf`` group drops to two timelines (``perf:cpt_1`` / ``perf:dpt_1``);
+    The ``perf`` group drops to two timelines (``perf:cpt_…`` / ``perf:dpt_…``);
     the claim count is unchanged (one synchronous claim per note); and the
     bundle's timeline-unit domains are exactly logical + physical — the
     graphical domain is absent (the converse of
@@ -675,16 +686,16 @@ def test_no_spectrogram_bundle_shape(
 
     assert bundle.n_timelines == 4
     assert bundle.n_groups == 2
-    assert bundle.group_ids == ["group_1", "group_2"]
+    assert len(set(bundle.group_ids)) == 2
     assert [group.name for group in bundle.groups.values()] == ["score", "perf"]
-    assert bundle.timeline_ids == [
-        SCORE_CLT_ID,
-        SCORE_DLT_ID,
-        PERF_CPT_ID,
-        PERF_DPT_ID,
+    assert shapes(bundle.timeline_ids) == [
+        SCORE_CLT,
+        SCORE_DLT,
+        PERF_CPT,
+        PERF_DPT,
     ]
-    perf_group = bundle.get_group_for_timeline(PERF_CPT_ID)
-    assert set(perf_group.timeline_ids) == {PERF_CPT_ID, PERF_DPT_ID}
+    perf_group = bundle.get_group_for_timeline(_timeline(loader, PERF_CPT).id)
+    assert set(shapes(perf_group.timeline_ids)) == {PERF_CPT, PERF_DPT}
 
     assert len(bundle.get_match_claims()) == specimen["claims"]
 
@@ -701,24 +712,24 @@ def test_no_spectrogram_create_timelines_omits_graphical(
     )
     loader = _loaded(specimen["mpr"])
     timelines = loader.create_timelines()
-    assert [tl.id for tl in timelines] == [
-        SCORE_CLT_ID,
-        SCORE_DLT_ID,
-        PERF_CPT_ID,
-        PERF_DPT_ID,
+    assert shapes(tl.id for tl in timelines) == [
+        SCORE_CLT,
+        SCORE_DLT,
+        PERF_CPT,
+        PERF_DPT,
     ]
 
 
 def test_no_spectrogram_create_timeline_dgt_raises(
     specimen: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``create_timeline('perf:dgt_1')`` raises KeyError — it was never built."""
+    """A graphical uid raises KeyError — it was never built."""
     monkeypatch.setattr(
         MpmLoader, "_parse_spectrogram", staticmethod(lambda *a, **k: None)
     )
     loader = _loaded(specimen["mpr"])
     with pytest.raises(KeyError, match="No timeline with uid"):
-        loader.create_timeline(PERF_DGT_ID)
+        loader.create_timeline("perf:dgt_" + "0" * 13)
 
 
 def test_no_spectrogram_repr_html_reports_four(

@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from tests.loader.minting import minted
 from timetoalign.core import (
     BoundingBox,
     Coordinate,
@@ -20,6 +21,7 @@ from timetoalign.core import (
     Shape,
     TimeUnit,
 )
+from timetoalign.core.ids import IdMinter
 from timetoalign.loader.graphical import (
     DiagonalLinePath,
     HorizontalLinePath,
@@ -35,7 +37,6 @@ from timetoalign.loader.graphical._pages import (
     build_volume,
 )
 from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine, Timeline
-from timetoalign.timelines.factory import _mint_timeline_id
 
 #: Per page of the scan: its image, and per system (x0, x1, y0, y1).
 SCAN = {
@@ -99,7 +100,23 @@ CHORALE_IMAGE = "facsimile/20251230_180023.jpg"
 
 
 class _Loader:
-    """Stands for the loader the timeline ids are minted from."""
+    """Stands for the loader the ids are minted from: its minter, seed 0."""
+
+    def __init__(self) -> None:
+        self._id_minter = IdMinter(0)
+
+
+def _dgt(count: int) -> list[str]:
+    """The first *count* timeline ids a fresh test loader mints."""
+    return minted(0, *["dgt"] * count)
+
+
+def _tree_ids(root: Timeline) -> list[str]:
+    """The ids of *root* and of every timeline below it, depth first."""
+    ids = [root.id]
+    for _, child in _segments(root) if isinstance(root, SegmentLine) else []:
+        ids.extend(_tree_ids(child))
+    return ids
 
 
 def _quad(corners: list[tuple[int, int]]) -> Quadrilateral:
@@ -187,8 +204,8 @@ def _assert_invariant(accolade: Timeline) -> int:
 
 
 def _assert_nothing_minted(loader: _Loader) -> None:
-    """The next timeline id drawn from *loader* is the first."""
-    assert _mint_timeline_id(loader, TimeUnit.pixels) == "dgt_1"
+    """The next id drawn from *loader* is its minter's first."""
+    assert loader._id_minter.mint("dgt") == _dgt(1)[0]
 
 
 class TestScanVolume:
@@ -209,7 +226,8 @@ class TestScanVolume:
         assert [offset for offset, _ in pages] == [0, 12311, 28001, 40563]
         assert [page.length.value for _, page in pages] == [12311, 15690, 12562, 12560]
         assert [page.name for _, page in pages] == ["1", "2", "3", "4"]
-        assert [page.id for _, page in pages] == ["dgt_2", "dgt_7", "dgt_13", "dgt_18"]
+        ids = _dgt(21)
+        assert [page.id for _, page in pages] == [ids[0], ids[5], ids[11], ids[16]]
         for (_, page), (image, _) in zip(pages, SCAN.values()):
             assert type(page) is SegmentLine[DiscreteGraphicalTimeline]
             assert page.is_locked
@@ -221,7 +239,7 @@ class TestScanVolume:
         assert [offset for offset, _ in accolades] == [0, 2880, 6021, 9163]
         assert [a.length.value for _, a in accolades] == [2880, 3141, 3142, 3148]
         assert [a.name for _, a in accolades] == ["1", "2", "3", "4"]
-        assert [a.id for _, a in accolades] == ["dgt_3", "dgt_4", "dgt_5", "dgt_6"]
+        assert [a.id for _, a in accolades] == _dgt(5)[1:5]
         image = SCAN["1"][0]
         for _, accolade in accolades:
             assert type(accolade) is DiscreteGraphicalTimeline
@@ -251,12 +269,7 @@ class TestScanVolume:
             "3": [3147, 3136, 3138, 3141],
             "4": [3142, 3139, 3140, 3139],
         }
-        assert [a.id for _, a in _segments(_segments(volume)[3][1])] == [
-            "dgt_19",
-            "dgt_20",
-            "dgt_21",
-            "dgt_22",
-        ]
+        assert [a.id for _, a in _segments(_segments(volume)[3][1])] == _dgt(21)[17:21]
 
     def test_the_measures_are_boxes_of_their_accolade(
         self, volume: SegmentLine
@@ -282,7 +295,7 @@ class TestScanVolume:
     ) -> None:
         # Page 2 starts at 12311; its second accolade at 3142 on the page.
         stamp = volume.get_timestamp_at(12311 + 3142 + 5)
-        coordinate = stamp.get_coordinate_for("dgt_9")
+        coordinate = stamp.get_coordinate_for(_dgt(8)[7])
         assert (coordinate.value, coordinate.unit) == (5, TimeUnit.pixels)
 
 
@@ -304,7 +317,7 @@ class TestChoralePage:
         assert (first_offset, second_offset) == (0, 2806)
         assert (first.length.value, second.length.value) == (2806, 2804)
         assert (first.name, second.name) == ("accolade_1", "accolade_2")
-        assert (first.id, second.id) == ("dgt_2", "dgt_3")
+        assert [first.id, second.id] == _dgt(2)
         assert not first.is_locked and not second.is_locked
         assert first.meta == {
             "box": {"x": 490, "y": 344, "width": 2806, "height": 572},
@@ -339,14 +352,15 @@ class TestChoralePage:
             "height": {"value": 496.0, "numerator": 496, "denominator": 1},
         }
 
-    def test_boxes_without_source_ids_are_minted_per_accolade(self) -> None:
+    def test_boxes_without_source_ids_are_minted_in_document_order(self) -> None:
         zones = [PageBox(_rect(*zone)) for zone in CHORALE_ZONES]
         (page,) = build_pages(_Loader(), [_chorale_page(boxes=zones, source_id=None)])
-        assert page.id == "dgt_1"
+        ids = minted(0, "dgt", "dgt", *["box"] * 5, "dgt", *["box"] * 4)
+        assert page.id == ids[0]
         (_, first), (_, second) = _segments(page)
-        assert (first.id, second.id) == ("dgt_2", "dgt_3")
-        assert [box[0] for box in _boxes(first)] == [f"box_{n}" for n in range(1, 6)]
-        assert [box[0] for box in _boxes(second)] == [f"box_{n}" for n in range(1, 5)]
+        assert (first.id, second.id) == (ids[1], ids[7])
+        assert [box[0] for box in _boxes(first)] == ids[2:7]
+        assert [box[0] for box in _boxes(second)] == ids[8:12]
 
     def test_a_page_without_name_or_image(self) -> None:
         (page,) = build_pages(_Loader(), [_chorale_page(name=None, image=None)])
@@ -396,7 +410,7 @@ class TestIdentity:
             accolade_ids="p{page}_s{accolade}_{n}",
             box_ids="p{page}s{accolade}b{box}",
         )
-        assert volume.id == "dgt_1"
+        assert volume.id == _dgt(1)[0]
         pages = [page for _, page in _segments(volume)]
         assert [page.id for page in pages] == ["page1", "page2", "page3", "page4"]
         assert [a.id for _, a in _segments(pages[0])] == [
@@ -463,12 +477,11 @@ class TestIdentity:
             "n8_b4",
         ]
 
-    def test_a_named_timeline_takes_its_number_all_the_same(self) -> None:
-        (page,) = build_pages(_Loader(), [_chorale_page()], accolade_ids=["upper", "x"])
-        assert page.id == "surface_15"
+    def test_a_named_timeline_draws_no_id(self) -> None:
         loader = _Loader()
-        build_pages(loader, [_chorale_page()], accolade_ids=["upper", "x"])
-        assert _mint_timeline_id(loader, TimeUnit.pixels) == "dgt_4"
+        (page,) = build_pages(loader, [_chorale_page()], accolade_ids=["upper", "x"])
+        assert page.id == "surface_15"
+        _assert_nothing_minted(loader)
 
     @pytest.mark.parametrize(
         ("arguments", "message"),
@@ -570,28 +583,36 @@ class TestIdentity:
         assert [box[0] for box in _boxes(first)] == ["m1", "m2", "m3", "m4", "m5"]
         assert [box[0] for box in _boxes(second)] == ["m1", "m2", "m3", "m4"]
 
-    def test_no_accolade_is_minted_a_given_id(self) -> None:
+    def test_given_accolade_ids_draw_no_id(self) -> None:
         loader = _Loader()
         (page,) = build_pages(
-            loader, [_chorale_page(source_id=None)], accolade_ids=["dgt_1", "x"]
+            loader, [_chorale_page(source_id=None)], accolade_ids=["upper", "x"]
         )
-        assert page.id == "dgt_2"
-        assert [accolade.id for _, accolade in _segments(page)] == ["dgt_1", "x"]
-        assert _mint_timeline_id(loader, TimeUnit.pixels) == "dgt_5"
+        first, second = _dgt(2)
+        assert page.id == first
+        assert [accolade.id for _, accolade in _segments(page)] == ["upper", "x"]
+        assert loader._id_minter.mint("dgt") == second
 
-    def test_no_timeline_is_minted_a_given_page_id(self) -> None:
+    def test_given_page_ids_draw_no_id(self) -> None:
         volume = build_volume(
-            _Loader(), _scan_pages(), page_ids=["p1", "dgt_3", "p3", "p4"]
+            _Loader(), _scan_pages(), page_ids=["p1", "p2", "p3", "p4"], box_ids="m{n}"
         )
-        assert volume.id == "dgt_4"
+        ids = _dgt(18)
+        assert volume.id == ids[0]
         pages = [page for _, page in _segments(volume)]
-        assert [page.id for page in pages] == ["p1", "dgt_3", "p3", "p4"]
+        assert [page.id for page in pages] == ["p1", "p2", "p3", "p4"]
         assert [[a.id for _, a in _segments(page)] for page in pages] == [
-            ["dgt_6", "dgt_7", "dgt_8", "dgt_9"],
-            ["dgt_11", "dgt_12", "dgt_13", "dgt_14", "dgt_15"],
-            ["dgt_17", "dgt_18", "dgt_19", "dgt_20"],
-            ["dgt_22", "dgt_23", "dgt_24", "dgt_25"],
+            ids[1:5],
+            ids[5:10],
+            ids[10:14],
+            ids[14:18],
         ]
+
+    def test_one_seed_mints_the_same_ids(self) -> None:
+        first = build_volume(_Loader(), _scan_pages())
+        second = build_volume(_Loader(), _scan_pages())
+        assert _tree_ids(first) == _tree_ids(second)
+        assert _tree_ids(first)[0] == _dgt(1)[0]
 
 
 class TestOtherPaths:
@@ -599,7 +620,7 @@ class TestOtherPaths:
         path = VerticalLinePath(x=2048, y0=0, y1=299400, tolerance=2048)
         (roll,) = build_pages(_Loader(), [Page(name="roll", image="canvas", path=path)])
         assert type(roll) is DiscreteGraphicalTimeline
-        assert (roll.id, roll.name) == ("dgt_1", "roll")
+        assert (roll.id, roll.name) == (_dgt(1)[0], "roll")
         assert roll.length == Coordinate(299400, TimeUnit.pixels)
         assert roll.is_locked
         assert roll.meta == {"image": "canvas"}
@@ -650,7 +671,7 @@ class TestOtherPaths:
         assert volume.is_locked
         segments = _segments(volume)
         assert [offset for offset, _ in segments] == [0, 700]
-        assert [page.id for _, page in segments] == ["dgt_2", "dgt_3"]
+        assert [volume.id] + [page.id for _, page in segments] == _dgt(3)
         assert [page.is_locked for _, page in segments] == [False, False]
 
     def test_a_piece_that_is_no_horizontal_line_states_no_area(self) -> None:

@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from tests.loader.minting import shape, shapes
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
     Box,
@@ -201,6 +202,11 @@ def _boxes(timeline: Timeline) -> list[Box]:
     ]
 
 
+def _minted_boxes(timeline: Timeline) -> list[Box]:
+    """The Boxes of *timeline*, each id minted and read as its shape (``box``)."""
+    return [box.model_copy(update={"id": shape(box.id)}) for box in _boxes(timeline)]
+
+
 def _assert_image_space_invariant(timeline: Timeline) -> None:
     """start = x_min - o(T) and duration = x_max - x_min, on T and its subtree."""
     stated = timeline.meta.get("box")
@@ -263,7 +269,7 @@ class TestVolume:
     def test_the_volume_is_the_pages_in_a_row(self, scan: Path) -> None:
         volume = DmosLoader.from_file(scan).create_timeline()
         assert type(volume) is SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]
-        assert volume.id == "dgt_1"
+        assert shape(volume.id) == "dgt"
         assert volume.unit is TimeUnit.pixels
         assert volume.number_type is NumberType.int
         assert volume.length.value == 53123
@@ -272,7 +278,7 @@ class TestVolume:
         assert len(volume.get_events(include_children=False)) == 0
 
         pages = _segments(volume)
-        assert [page.id for page in pages] == ["dgt_2", "dgt_7", "dgt_13", "dgt_18"]
+        assert shapes([page.id for page in pages]) == ["dgt"] * 4
         assert [page.name for page in pages] == ["1", "2", "3", "4"]
         assert _offsets(volume) == [0, 12311, 28001, 40563]
         assert [page.length.value for page in pages] == [12311, 15690, 12562, 12560]
@@ -282,16 +288,10 @@ class TestVolume:
             assert page.meta == {"image": f"{SCORE_URL}/f{n}"}
 
         first, second = pages[0], pages[1]
-        assert first.list_children() == ["dgt_3", "dgt_4", "dgt_5", "dgt_6"]
+        assert shapes(first.list_children()) == ["dgt"] * 4
         assert _offsets(first) == [0, 2880, 6021, 9163]
         assert [a.length.value for a in _segments(first)] == [2880, 3141, 3142, 3148]
-        assert second.list_children() == [
-            "dgt_8",
-            "dgt_9",
-            "dgt_10",
-            "dgt_11",
-            "dgt_12",
-        ]
+        assert shapes(second.list_children()) == ["dgt"] * 5
         assert _offsets(second) == [0, 3142, 6279, 9416, 12551]
         assert [a.length.value for a in _segments(second)] == [
             3142,
@@ -313,7 +313,7 @@ class TestVolume:
             uid="scan", name="Aimons-nous"
         )
         assert (volume.id, volume.name) == ("scan", "Aimons-nous")
-        assert volume.list_children() == ["dgt_2", "dgt_7", "dgt_13", "dgt_18"]
+        assert shapes(volume.list_children()) == ["dgt"] * 4
 
     def test_a_file_without_a_score_image(self, source: Path) -> None:
         document = json.loads(source.read_text(encoding="utf-8"))
@@ -351,7 +351,7 @@ class TestVolume:
 class TestPages:
     def test_one_root_per_page(self, scan: Path) -> None:
         pages = DmosLoader.from_file(scan).create_timelines()
-        assert [page.id for page in pages] == ["dgt_1", "dgt_6", "dgt_12", "dgt_17"]
+        assert shapes([page.id for page in pages]) == ["dgt"] * 4
         assert [page.name for page in pages] == ["1", "2", "3", "4"]
         assert [page.length.value for page in pages] == [12311, 15690, 12562, 12560]
         for n, page in enumerate(pages, start=2):
@@ -361,7 +361,7 @@ class TestPages:
             assert page.is_locked
             assert page.meta == {"image": f"{SCORE_URL}/f{n}"}
             assert len(page.get_events(include_children=False)) == 0
-        assert pages[0].list_children() == ["dgt_2", "dgt_3", "dgt_4", "dgt_5"]
+        assert shapes(pages[0].list_children()) == ["dgt"] * 4
         assert _offsets(pages[0]) == [0, 2880, 6021, 9163]
 
     def test_no_argument_takes_an_image_size(self, source: Path) -> None:
@@ -374,7 +374,7 @@ class TestSystems:
     def test_systems_are_accolades_one_after_the_other(self, source: Path) -> None:
         (page,) = DmosLoader.from_file(source).create_timelines()
         assert page.length.value == 6021
-        assert page.list_children() == ["dgt_2", "dgt_3"]
+        assert shapes(page.list_children()) == ["dgt"] * 2
         first, second = _segments(page)
         assert [first.name, second.name] == ["1", "2"]
         assert _offsets(page) == [0, 2880]
@@ -405,9 +405,9 @@ class TestSystems:
         )
         (page,) = DmosLoader.from_file(source).create_timelines()
         accolades = _segments(page)
-        assert [(accolade.id, accolade.name) for accolade in accolades] == [
-            ("dgt_2", "1"),
-            ("dgt_3", "1"),
+        assert [(shape(accolade.id), accolade.name) for accolade in accolades] == [
+            ("dgt", "1"),
+            ("dgt", "1"),
         ]
         assert [len(_boxes(accolade)) for accolade in accolades] == [1, 0]
 
@@ -483,18 +483,21 @@ class TestSystemWithoutWidth:
 
     def test_the_pages_leave_them_out(self, source: Path) -> None:
         pages = DmosLoader.from_file(source).create_timelines()
-        assert [(page.id, page.name, page.length.value) for page in pages] == [
-            ("dgt_1", "1", 6021),
-            ("dgt_4", "3", 3141),
+        assert [(shape(page.id), page.name, page.length.value) for page in pages] == [
+            ("dgt", "1", 6021),
+            ("dgt", "3", 3141),
         ]
         accolades = _segments(pages[0])
-        assert [(a.id, a.name, a.length.value) for a in accolades] == [
-            ("dgt_2", "1", 2880),
-            ("dgt_3", "2", 3141),
+        assert [(shape(a.id), a.name, a.length.value) for a in accolades] == [
+            ("dgt", "1", 2880),
+            ("dgt", "2", 3141),
         ]
         assert _offsets(pages[0]) == [0, 2880]
-        assert [_box_ids(accolade) for accolade in accolades] == [["box_1"], ["box_1"]]
-        assert [(a.id, a.name) for a in _segments(pages[1])] == [("dgt_5", "1")]
+        assert [shapes(_box_ids(accolade)) for accolade in accolades] == [
+            ["box"],
+            ["box"],
+        ]
+        assert [(shape(a.id), a.name) for a in _segments(pages[1])] == [("dgt", "1")]
 
     def test_the_volume_leaves_them_out(self, source: Path) -> None:
         volume = DmosLoader.from_file(source).create_timeline(
@@ -555,12 +558,12 @@ class TestSystemWithoutWidth:
 class TestMeasures:
     def test_measures_are_boxes_of_their_system(self, source: Path) -> None:
         (page,) = DmosLoader.from_file(source).create_timelines()
-        system = page.get_child("dgt_2")
+        system = _segments(page)[0]
         m1 = _canonical((1221, 1589), (2151, 1589), (2161, 2266), (1221, 2266))
         m2 = _canonical((2151, 1589), (2766, 1589), (2775, 2266), (2161, 2266))
-        assert _boxes(system) == [
-            Box(id="box_1", start=_px(0), duration=_extent(940), quadrilateral=m1),
-            Box(id="box_2", start=_px(930), duration=_extent(624), quadrilateral=m2),
+        assert _minted_boxes(system) == [
+            Box(id="box", start=_px(0), duration=_extent(940), quadrilateral=m1),
+            Box(id="box", start=_px(930), duration=_extent(624), quadrilateral=m2),
         ]
         assert m1.bounding_box.to_dict() == {
             "x": 1221,
@@ -571,10 +574,10 @@ class TestMeasures:
 
     def test_boxes_start_anew_on_every_accolade(self, scan: Path) -> None:
         pages = DmosLoader.from_file(scan).create_timelines()
-        second = pages[0].get_child("dgt_3")
-        assert _boxes(second) == [
+        second = _segments(pages[0])[1]
+        assert _minted_boxes(second) == [
             Box(
-                id="box_1",
+                id="box",
                 start=_px(0),
                 duration=_extent(974),
                 quadrilateral=_canonical(
@@ -582,9 +585,9 @@ class TestMeasures:
                 ),
             )
         ]
-        assert _boxes(pages[1].get_child("dgt_7")) == [
+        assert _minted_boxes(_segments(pages[1])[0]) == [
             Box(
-                id="box_1",
+                id="box",
                 start=_px(0),
                 duration=_extent(1003),
                 quadrilateral=_canonical(
@@ -598,8 +601,8 @@ class TestMeasures:
     def test_headers_and_voices_leave_no_trace(self, source: Path) -> None:
         (page,) = DmosLoader.from_file(source).create_timelines()
         assert len(page.get_events(include_children=False)) == 0
-        assert len(page.get_child("dgt_3").get_events()) == 0
-        system = page.get_child("dgt_2").get_events().table
+        assert len(_segments(page)[1].get_events()) == 0
+        system = _segments(page)[0].get_events().table
         assert system.column("event_type").to_pylist() == ["Box", "Box"]
         assert system.column_names == [
             "id",
@@ -660,11 +663,11 @@ class TestIdentity:
     ) -> None:
         volume = DmosLoader.from_file(scan).create_timeline(uid="scan", box_ids="m{n}")
         first, second = _segments(volume)[:2]
-        assert first.id == "dgt_2"
-        assert _box_ids(first.get_child("dgt_3")) == ["m1", "m2"]
-        assert _box_ids(first.get_child("dgt_4")) == ["m3"]
-        assert _box_ids(second.get_child("dgt_8")) == ["m4"]
-        m2 = _boxes(first.get_child("dgt_3"))[1]
+        assert shape(first.id) == "dgt"
+        assert _box_ids(_segments(first)[0]) == ["m1", "m2"]
+        assert _box_ids(_segments(first)[1]) == ["m3"]
+        assert _box_ids(_segments(second)[0]) == ["m4"]
+        m2 = _boxes(_segments(first)[0])[1]
         assert (m2.id, m2.start.value, m2.duration.value) == ("m2", 930, 624)
 
     def test_a_template_of_positions(self, scan: Path) -> None:
@@ -690,7 +693,7 @@ class TestIdentity:
             accolade_ids=[f"system_{n}" for n in range(1, 18)],
             box_ids=["a", "b", "c", "d"],
         )
-        assert volume.id == "dgt_1"
+        assert shape(volume.id) == "dgt"
         assert volume.list_children() == ["f2", "f3", "f4", "f5"]
         first, second = _segments(volume)[:2]
         assert first.list_children() == [
@@ -737,7 +740,8 @@ class TestIdentity:
         with pytest.raises(ValueError) as raised:
             loader.create_timeline(**arguments)
         assert str(raised.value) == message
-        assert loader.create_timeline().id == "dgt_1"
+        fresh = DmosLoader.from_file(scan).create_timeline()
+        assert loader.create_timeline().id == fresh.id
 
 
 class TestMeasuresLeavingTheirSystem:
@@ -771,10 +775,10 @@ class TestMeasuresLeavingTheirSystem:
         source = _write(tmp_path, _document([_system(1, SYSTEM_1, [_measure(whole)])]))
         (page,) = DmosLoader.from_file(source).create_timelines()
         assert page.length.value == 2880
-        system = page.get_child("dgt_2")
-        assert _boxes(system) == [
+        system = _segments(page)[0]
+        assert _minted_boxes(system) == [
             Box(
-                id="box_1",
+                id="box",
                 start=_px(0),
                 duration=_extent(2880),
                 quadrilateral=_canonical(
@@ -805,11 +809,11 @@ class TestPackageRoundTrip:
         assert read.length == _px(53123)
         assert read.meta == {"image": SCORE_URL}
         pages = _segments(read)
-        assert [(page.id, page.name, page.length.value) for page in pages] == [
-            ("dgt_2", "1", 12311),
-            ("dgt_7", "2", 15690),
-            ("dgt_13", "3", 12562),
-            ("dgt_18", "4", 12560),
+        assert [(shape(page.id), page.name, page.length.value) for page in pages] == [
+            ("dgt", "1", 12311),
+            ("dgt", "2", 15690),
+            ("dgt", "3", 12562),
+            ("dgt", "4", 12560),
         ]
         assert _offsets(read) == [0, 12311, 28001, 40563]
         assert [type(page).__name__ for page in pages] == [
@@ -819,11 +823,11 @@ class TestPackageRoundTrip:
             {"image": f"{SCORE_URL}/f{n}"} for n in (2, 3, 4, 5)
         ]
         accolades = _segments(pages[0])
-        assert [(a.id, a.name, a.length.value) for a in accolades] == [
-            ("dgt_3", "1", 2880),
-            ("dgt_4", "2", 3141),
-            ("dgt_5", "3", 3142),
-            ("dgt_6", "4", 3148),
+        assert [(shape(a.id), a.name, a.length.value) for a in accolades] == [
+            ("dgt", "1", 2880),
+            ("dgt", "2", 3141),
+            ("dgt", "3", 3142),
+            ("dgt", "4", 3148),
         ]
         assert _offsets(pages[0]) == [0, 2880, 6021, 9163]
         assert accolades[0].meta == {
@@ -873,7 +877,7 @@ class TestPackageRoundTrip:
             )
         ]
         page_2 = _segments(pages[1])
-        assert page_2[0].id == "dgt_8"
+        assert shape(page_2[0].id) == "dgt"
         assert _boxes(page_2[0]) == [
             Box(
                 id="m4",

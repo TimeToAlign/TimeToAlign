@@ -43,6 +43,7 @@ from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit, resolve_id
 from timetoalign.display.html import code
+from timetoalign.loader._ids import CMAP_PREFIX, GROUP_PREFIX
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
@@ -162,9 +163,13 @@ class RepoVizzLoader(ManifestLoader):
         timetoalign.loader.physical.eep_notes.EepNotesLoader
     """
 
-    def __init__(self) -> None:
-        """Initialize the loader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the loader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         # XML mode state
         self._store: RepovizzDictStore = RepovizzDictStore()
         self._timeline_specs: list[dict[str, Any]] = []
@@ -197,9 +202,9 @@ class RepoVizzLoader(ManifestLoader):
             FileNotFoundError: If any source doesn't exist.
             ValueError: If any source is invalid.
         """
-        for source in sources:
-            path = as_source(source)
-
+        held = [as_source(source) for source in sources]
+        self._start_minter(*held)
+        for path in held:
             if path.suffix.lower() == ".xml":
                 self._load_xml(path)
             else:
@@ -488,11 +493,12 @@ class RepoVizzLoader(ManifestLoader):
     ) -> "DiscretePhysicalTimeline":
         """Create timeline from legacy CSV (backwards compatible)."""
         from timetoalign.timelines import DiscretePhysicalTimeline
+        from timetoalign.timelines.factory import mint_timeline_id
 
         info = self.info
 
-        if uid is None and info.source_path is not None:
-            uid = info.source_path.stem
+        if uid is None:
+            uid = mint_timeline_id(TimeUnit.samples, self._id_minter)
         if name is None and info.source_path is not None:
             name = info.source_path.name
 
@@ -507,7 +513,9 @@ class RepoVizzLoader(ManifestLoader):
         if attach_cmap:
             from timetoalign.maps import SamplesToSeconds
 
-            cmap = SamplesToSeconds(sample_rate=info.frame_rate)
+            cmap = SamplesToSeconds(
+                sample_rate=info.frame_rate, uid=self._id_minter.mint(CMAP_PREFIX)
+            )
             timeline.add_conversion_map(cmap)
 
         return timeline
@@ -622,7 +630,9 @@ class RepoVizzLoader(ManifestLoader):
         if attach_cmap and sample_rate > 0:
             from timetoalign.maps import SamplesToSeconds
 
-            cmap = SamplesToSeconds(sample_rate=int(sample_rate))
+            cmap = SamplesToSeconds(
+                sample_rate=int(sample_rate), uid=self._id_minter.mint(CMAP_PREFIX)
+            )
             timeline.add_conversion_map(cmap)
 
         self._timeline_cache[cache_key] = timeline
@@ -673,8 +683,8 @@ class RepoVizzLoader(ManifestLoader):
         Args:
             category: Filter to a specific category ("audio", "mocap", etc.).
             entries: Specific catalogue entries to include.
-            id: Custom ID for the TimelineGroup. Defaults to
-                ``"repovizz:{category or 'all'}"``.
+            id: Custom ID for the TimelineGroup; minted ``group_…`` from
+                the loader's minter when None.
             name: Custom name for the TimelineGroup. Defaults to
                 the source filename stem.
             with_notes: If True, add notes as a child of the first audio
@@ -702,7 +712,7 @@ class RepoVizzLoader(ManifestLoader):
             if self._info and self._info.source_path:
                 default_name = self._info.source_path.stem
             return TimelineGroup(
-                id=id or "repovizz:csv",
+                id=id or self._id_minter.mint(GROUP_PREFIX),
                 name=name or default_name,
                 timelines=list(self.create_timelines()),
             )
@@ -761,7 +771,9 @@ class RepoVizzLoader(ManifestLoader):
 
                 # Create the notes timeline from the stored notes EventData.
                 # "notes" is its name; its events keep their ids.
-                notes_tl = create_timeline_from_event_data(self._store.notes)
+                notes_tl = create_timeline_from_event_data(
+                    self._store.notes, minter=self._id_minter
+                )
                 notes_tl.name = "notes"
 
                 # Add as child with automatic unit conversion (seconds -> samples)
@@ -773,7 +785,7 @@ class RepoVizzLoader(ManifestLoader):
             default_name = self._sources[-1].stem
 
         return TimelineGroup(
-            id=id or f"repovizz:{category or 'all'}",
+            id=id or self._id_minter.mint(GROUP_PREFIX),
             name=name or default_name,
             timelines=timelines,
         )
@@ -790,7 +802,7 @@ class RepoVizzLoader(ManifestLoader):
         2. Exact name match
         3. Audio shorthand: "mono", "binaural", "pickup_vln1", etc.
         4. Descriptor pattern: "tonal.ChordsStrength.mono", "lowlevel.Dissonance.binaural"
-        5. Partial/regex match on xml_id
+        5. A regular expression matching a whole xml_id
 
         Args:
             id: Entry identifier, name, shorthand, or pattern.
@@ -824,7 +836,7 @@ class RepoVizzLoader(ManifestLoader):
                 if desc_id:
                     return self.catalogue[desc_id]
 
-        # 5. Partial/regex match by id
+        # 5. A regular expression matching a whole id
         all_ids = list(self.catalogue.keys())
         try:
             resolved_id = resolve_id(id, all_ids, warn_multiple=True)
@@ -845,7 +857,8 @@ class RepoVizzLoader(ManifestLoader):
         This is the public API for accessing catalogue entries.
 
         Args:
-            id: Entry identifier, name, or partial match.
+            id: Entry identifier, name, shorthand, or a regular expression
+                matching a whole xml_id.
 
         Returns:
             The CatalogueEntry.

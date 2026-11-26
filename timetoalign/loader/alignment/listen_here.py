@@ -28,9 +28,10 @@ and produces a single :class:`~timetoalign.alignment.bundle.AlignmentBundle`:
 
 * one samples
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``<stem>:dpt_1``) per recording, each in its **own** group, with
-  ``length`` converted from that recording's stored ``duration``.  The recordings
-  carry one point event for each source-grid time.  Its integer sample
+  (``dpt_…``, named after the recording's stem) per recording, each in its
+  **own** group, with ``length`` converted from that recording's stored
+  ``duration``.  The recordings carry one point event for each source-grid
+  time, the point of one grid column under one ID on every recording.  Its integer sample
   coordinate supports the alignment, while its ``seconds`` field preserves the
   verbatim JSON value; all pairwise alignment lives in the cross-group claim
   field; and
@@ -70,8 +71,8 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
-from timetoalign.core.ids import IdMinter, seed_from
 from timetoalign.display.html import code
+from timetoalign.loader._ids import CMAP_PREFIX
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
@@ -82,7 +83,8 @@ from timetoalign.loader._sources import (
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps import SamplesToSeconds
-from timetoalign.storage.events import mint_event_ids
+from timetoalign.storage import mint_event_ids
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import DiscretePhysicalTimeline
 
 if TYPE_CHECKING:
@@ -105,20 +107,6 @@ _DEFAULT_SAMPLE_RATE = 44100
 
 #: Event type of a recording's point on the shared reference grid.
 _POINT_EVENT_TYPE = "ListenHerePoint"
-
-
-def _point_ids(n_columns: int) -> pa.Array:
-    """The ids of a recording's points, one per reference grid column, in order.
-
-    Every recording holds one point per grid column under the same id,
-    minted by :func:`~timetoalign.storage.events.mint_event_ids` from a
-    minter seeded by the number of columns, so every recording of one grid
-    gets the same ids.
-    """
-    return mint_event_ids(
-        pa.repeat(pa.scalar(_POINT_EVENT_TYPE), n_columns),
-        IdMinter(seed_from(_POINT_EVENT_TYPE, n_columns)),
-    )
 
 
 # endregion
@@ -146,8 +134,8 @@ class ListenHereLoader(AlignmentLoader):
     The loader reads the existing alignment; it never runs an aligner.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        super().__init__(seed=seed)
 
         # Sorted audio keys (file names / URLs from ``body.audio``).
         self._keys: list[str] = []
@@ -159,6 +147,12 @@ class ListenHereLoader(AlignmentLoader):
         self._sample_rate_provenance: dict[str, str] = {}
         self._times_by_key: dict[str, list[float]] = {}
         self._claim_field: MatchClaimField | None = None
+        # IDs minted once per load, so that every timeline built from the
+        # loader holds them: each recording's timeline and C-Map, and the
+        # grid's points, one per column, the same on every recording.
+        self._uid_by_key: dict[str, str] = {}
+        self._cmap_uid_by_key: dict[str, str] = {}
+        self._point_ids: pa.Array = pa.array([], pa.string())
         self._name: str | None = None
         # The reference recording key (``header.ref``): the grid origin.
         self._ref: str | None = None
@@ -199,6 +193,7 @@ class ListenHereLoader(AlignmentLoader):
                 length.
         """
         path = as_source(source)
+        self._start_minter(path)
         with path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
 
@@ -238,6 +233,17 @@ class ListenHereLoader(AlignmentLoader):
 
         self._keys = keys
         self._times_by_key = times_by_key
+        minter = self._id_minter
+        self._uid_by_key = {
+            key: mint_timeline_id(TimeUnit.samples, minter) for key in keys
+        }
+        self._cmap_uid_by_key = {key: minter.mint(CMAP_PREFIX) for key in keys}
+        # One point per grid column, under one ID on every recording: the
+        # claims join the recordings by these IDs.
+        self._point_ids = mint_event_ids(
+            pa.repeat(pa.scalar(_POINT_EVENT_TYPE), len(times_by_key[keys[0]])),
+            minter,
+        )
         self._name = path.stem
         self._ref = ref
         agent = header.get("createdBy", _DEFAULT_AGENT)
@@ -304,8 +310,8 @@ class ListenHereLoader(AlignmentLoader):
         """Build the complete-topology pairwise claim field, vectorized.
 
         Every recording's timeline holds one ``ListenHerePoint`` event per
-        reference grid column, the point column ``i`` under the id
-        :func:`_point_ids` gives (the same on every recording).  For every
+        reference grid column, the point of column ``i`` under the ``i``-th
+        of the loader's point IDs (the same on every recording).  For every
         unordered pair of recordings ``(a, b)`` and every column ``i``, a
         synchronous instant claim joins the point ``i`` of ``a``, at
         ``times_a[i]`` in samples, to the point ``i`` of ``b``.  The parallel
@@ -329,7 +335,7 @@ class ListenHereLoader(AlignmentLoader):
             ).astype(np.int64)
             for key in keys
         }
-        uid_by_key = {key: self._timeline_uid(key) for key in keys}
+        uid_by_key = self._uid_by_key
         ncols = len(next(iter(coord_arrays.values()))) if keys else 0
 
         a_id_blocks: list[list[str]] = []
@@ -355,9 +361,9 @@ class ListenHereLoader(AlignmentLoader):
             if coord_b_blocks
             else np.empty(0, dtype=np.int64)
         )
-        # Grid column i is the point event ``_point_ids(ncols)[i]`` of every
+        # Grid column i is the point event ``self._point_ids[i]`` of every
         # recording, so both sides of each claim name the same point id.
-        point_ids = _point_ids(ncols)
+        point_ids = self._point_ids
         n_pairs = len(a_id_blocks)
         event_ids = (
             pa.concat_arrays([point_ids] * n_pairs)
@@ -377,13 +383,8 @@ class ListenHereLoader(AlignmentLoader):
                 uid: (TimeUnit.samples, NumberType.int) for uid in uid_by_key.values()
             },
             provenance=provenance,
+            minter=self._id_minter,
         )
-
-    @staticmethod
-    def _timeline_uid(key: str) -> str:
-        """The samples-timeline uid for an audio key: ``<stem>:dpt_1``."""
-        stem = os.path.splitext(os.path.basename(key))[0]
-        return f"{stem}:dpt_1"
 
     @staticmethod
     def _human_name(stem: str) -> str:
@@ -506,7 +507,8 @@ class ListenHereLoader(AlignmentLoader):
         """Return a single recording's samples timeline by its uid.
 
         Args:
-            uid: A timeline uid (``"<stem>:dpt_1"``).
+            uid: A timeline uid (``dpt_…``), as :meth:`create_timelines`
+                lists them.
 
         Raises:
             KeyError: If no recording matches.
@@ -518,10 +520,10 @@ class ListenHereLoader(AlignmentLoader):
             )
 
         for key in self._keys:
-            if uid == self._timeline_uid(key):
+            if uid == self._uid_by_key[key]:
                 return self._make_timeline(key)
 
-        available = [self._timeline_uid(key) for key in self._keys]
+        available = [self._uid_by_key[key] for key in self._keys]
         raise KeyError(
             f"No timeline with uid '{uid}'. Available: "
             + ", ".join(f"'{uid}'" for uid in available)
@@ -534,7 +536,7 @@ class ListenHereLoader(AlignmentLoader):
         timeline = DiscretePhysicalTimeline(
             length=int(round(self._durations[key] * sample_rate)),
             unit=TimeUnit.samples,
-            uid=self._timeline_uid(key),
+            uid=self._uid_by_key[key],
             name=self._human_name(stem),
             meta={
                 "sample_rate": sample_rate,
@@ -551,11 +553,13 @@ class ListenHereLoader(AlignmentLoader):
                     "seconds": np.float64(seconds),
                 }
                 for point_id, seconds in zip(
-                    _point_ids(len(times)).to_pylist(), times, strict=True
+                    self._point_ids.to_pylist(), times, strict=True
                 )
             ]
         )
-        timeline.add_conversion_map(SamplesToSeconds(sample_rate=sample_rate))
+        timeline.add_conversion_map(
+            SamplesToSeconds(sample_rate=sample_rate, uid=self._cmap_uid_by_key[key])
+        )
         return timeline
 
     # endregion

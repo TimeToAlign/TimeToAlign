@@ -8,6 +8,8 @@ import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import IntervalPolicy, NumberType, TimeUnit
+from timetoalign.core.ids import IdMinter
+from timetoalign.loader._ids import give_event_ids, minter_of
 from timetoalign.storage.events import EventData
 from timetoalign.storage.mixins import HarmonyAccessMixin
 from timetoalign.storage.schema import make_rational_field
@@ -62,8 +64,16 @@ class AnnotationEventData(EventData, HarmonyAccessMixin):
         number_type: NumberType | None = None,
         *,
         interval_policy: IntervalPolicy = IntervalPolicy.warn,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
     ) -> Self:
-        """Create from dicts."""
+        """Create from dicts.
+
+        A row without an ``id`` gets one minted from *minter* (a loader's),
+        else from ``IdMinter(seed)``, else from the content minter of the
+        event types (:func:`~timetoalign.storage.mint_event_ids`); a stated
+        ``id`` is kept. Giving both *seed* and *minter* raises ``TypeError``.
+        """
         if not rows:
             return cls.empty(unit, number_type)
 
@@ -76,16 +86,8 @@ class AnnotationEventData(EventData, HarmonyAccessMixin):
         schema = schema.with_metadata(metadata)
 
         processed_rows = []
-        type_counters: dict[str, int] = {}
         for row in rows:
             processed = dict(row)
-
-            # Auto-generate id if missing (mirrors the row-based EventData constructor logic)
-            if "id" not in processed or processed["id"] is None:
-                etype = str(processed.get("event_type", "event")).lower()
-                type_counters.setdefault(etype, 0)
-                type_counters[etype] += 1
-                processed["id"] = f"{etype}:{type_counters[etype]:06d}"
 
             # Ensure name field exists
             if "name" not in processed:
@@ -111,5 +113,6 @@ class AnnotationEventData(EventData, HarmonyAccessMixin):
 
             processed_rows.append(processed)
 
+        give_event_ids(processed_rows, minter_of(seed, minter))
         table = pa.Table.from_pylist(processed_rows, schema=schema)
         return cls(table, unit, number_type)

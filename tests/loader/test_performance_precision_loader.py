@@ -32,6 +32,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 
+from tests.loader.minting import shape, shapes
 from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
@@ -53,8 +54,6 @@ PERFORMERS = [
     "Chopin_Rachmaninoff",
     "Chopin_Rubinstein",
 ]
-
-SCORE_TL_ID = "score:clt_1"
 
 
 @pytest.fixture
@@ -233,8 +232,18 @@ def test_total_claim_counts(bundle) -> None:
     assert nomatch == 553
 
 
+def _performer_id(bundle, performer_key: str) -> str:
+    """The id of the performer's timeline in *bundle*, found by its name."""
+    (found,) = [
+        timeline_id
+        for timeline_id, timeline in bundle.timelines.items()
+        if timeline.name == performer_key
+    ]
+    return found
+
+
 def _performer_claims(bundle, performer_key: str) -> list[MatchClaim]:
-    perf_tl_id = f"perf:{performer_key}:cpt_1"
+    perf_tl_id = _performer_id(bundle, performer_key)
     return [c for c in bundle.get_match_claims() if c.timeline_b_id == perf_tl_id]
 
 
@@ -320,34 +329,40 @@ def test_every_claim_names_its_events(loader, bundle, performer_key: str) -> Non
 
 
 def test_ashkenazy_first_note_claim(bundle, loader) -> None:
-    """The pickup (LABEL 0+11/8, 9.472 s) joins quarter 0 to Note ':0'."""
+    """The pickup (LABEL 0+11/8, 9.472 s) joins quarter 0 to the first Note."""
     note_claims = _by_granularity(_performer_claims(bundle, "Chopin_Ashkenazy"), "note")
     first = note_claims[0]
-    assert first.event_b_id == "Chopin_Ashkenazy:0"
+    performer = loader.create_timeline("Chopin_Ashkenazy")
+    assert first.event_b_id == performer.events.table.column("id")[0].as_py()
     assert first.start_anchor.coordinate_a.value == Fraction(0)
     assert first.start_anchor.coordinate_b.value == 9.472
     score = _events_by_id(loader.create_timeline("score"))
     assert score[first.event_a_id]["projection_of"] == {
-        "timeline_id": "perf:Chopin_Ashkenazy:cpt_1",
-        "event_id": "Chopin_Ashkenazy:0",
+        "timeline_id": performer.id,
+        "event_id": first.event_b_id,
     }
 
 
 def test_the_bundle_s_package_is_written_and_read_back(bundle, tmp_path: Path) -> None:
-    """Every Projection is minted in the bundle: one ID each, no gap."""
+    """Every Projection is minted in the bundle: one ID each, all distinct."""
     first = _by_granularity(_performer_claims(bundle, "Chopin_Ashkenazy"), "note")[0]
-    assert first.event_a_id == "projection_1"
+    assert shape(first.event_a_id) == "projection"
 
     bundle.to_file(tmp_path / "package.yaml")
     table = pq.read_table(tmp_path / "projections.parquet")
     ids = table.column("id").to_pylist()
-    assert sorted(ids, key=lambda event_id: int(event_id.split("_")[1])) == [
-        f"projection_{n}" for n in range(1, 6448)
-    ]
+    assert len(set(ids)) == len(ids) == 6447
+    assert set(shapes(ids)) == {"projection"}
+    assert first.event_a_id in ids
     counts = pc.value_counts(table.column("timeline_id")).to_pylist()
+    (score_id,) = [
+        timeline_id
+        for timeline_id in bundle.timelines
+        if shape(timeline_id) == "score:clt"
+    ]
     assert {row["values"]: row["counts"] for row in counts} == {
-        SCORE_TL_ID: 3815,
-        **{f"perf:{key}:cpt_1": 376 for key in PERFORMERS},
+        score_id: 3815,
+        **{_performer_id(bundle, key): 376 for key in PERFORMERS},
     }
     read = AlignmentBundle.from_file(tmp_path / "package.yaml")
     assert read.match_claim_table == bundle.match_claim_table
@@ -383,7 +398,7 @@ def test_ashkenazy_bar_spot_check(bundle) -> None:
 def test_create_timelines_returns_eight(loader: PerformancePrecisionLoader) -> None:
     timelines = loader.create_timelines()
     assert len(timelines) == 8
-    assert timelines[0].id == SCORE_TL_ID
+    assert shape(timelines[0].id) == "score:clt"
 
 
 def test_create_timelines_id_pattern_filters(
@@ -402,14 +417,18 @@ def test_create_timelines_id_pattern_no_match(
 
 
 def test_create_timeline_by_score_role(loader: PerformancePrecisionLoader) -> None:
-    assert loader.create_timeline("score").id == SCORE_TL_ID
+    score = loader.create_timeline("score")
+    assert score is loader.create_timelines()[0]
+    assert shape(score.id) == "score:clt"
 
 
 def test_create_timeline_by_performer_uid(
     loader: PerformancePrecisionLoader,
 ) -> None:
-    tl = loader.create_timeline("perf:Chopin_Ashkenazy:cpt_1")
-    assert tl.id == "perf:Chopin_Ashkenazy:cpt_1"
+    by_key = loader.create_timeline("Chopin_Ashkenazy")
+    tl = loader.create_timeline(by_key.id)
+    assert tl is by_key
+    assert shape(tl.id) == "perf:cpt"
     assert tl.name == "Chopin_Ashkenazy"
 
 

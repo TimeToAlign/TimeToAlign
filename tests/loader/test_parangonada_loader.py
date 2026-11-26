@@ -10,7 +10,7 @@ It verifies:
 
 - discovery of exactly 5 performers from non-uniformly-suffixed
   directories (only two carry ``_parangonada``);
-- the shared score timelines (``score:clt_1`` / ``score:dlt_1``, 251 notes
+- the shared score timelines (``score:clt_…`` / ``score:dlt_…``, 251 notes
   each) and the divs→quarters ``LinearMap`` reproducing every
   ``onset_quarter`` exactly;
 - per-performer performance-timeline event counts and MatchClaim counts;
@@ -30,16 +30,19 @@ Policy.  Validation logic is documented in ``tests/loader/README.md``.
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
+from tests.loader.minting import shape
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.maps.convenience import SamplesToSeconds
 from timetoalign.testdata import ensure_data
+from timetoalign.timelines.base import Timeline
 
 DATASET_DIR = ensure_data("parangonar") / "Beethoven_Eroica_op35-cpjku"
 MATCH_DIR = DATASET_DIR / "match" / "match_transkun"
@@ -48,8 +51,6 @@ FEATURES_DIR = DATASET_DIR / "features"
 #: Each performer's .beats / .dyn files hold exactly this many data rows.
 FEATURE_ROW_COUNT = 63
 
-SCORE_CLT_ID = "score:clt_1"
-SCORE_DLT_ID = "score:dlt_1"
 
 # Performers in chronological (sorted-key) order, with their on-disk
 # subdirectory names — note only two carry the ``_parangonada`` suffix.
@@ -100,9 +101,21 @@ def _read_tsv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f, delimiter="\t"))
 
 
+def _find(
+    timelines: Iterable[Timeline], kind: str, name: str | None = None
+) -> Timeline:
+    """The one timeline whose minted id has the shape *kind* (and the *name*)."""
+    (found,) = [
+        timeline
+        for timeline in timelines
+        if shape(timeline.id) == kind and (name is None or timeline.name == name)
+    ]
+    return found
+
+
 def _performer_claims(bundle, performer_key: str) -> list[MatchClaim]:
-    """Claims touching this performer's cpt_1 timeline (either orientation)."""
-    cpt_id = f"perf:{performer_key}:cpt_1"
+    """Claims touching this performer's seconds timeline (either orientation)."""
+    cpt_id = _find(bundle.timelines.values(), "perf:cpt", performer_key).id
     return [c for c in bundle.get_match_claims() if c.connects(cpt_id)]
 
 
@@ -151,13 +164,13 @@ def test_repr_html_shows_claims_not_zero_events(loader: ParangonadaLoader) -> No
 
 
 def test_score_clt_event_count(loader: ParangonadaLoader) -> None:
-    score = loader.create_timeline(SCORE_CLT_ID)
+    score = _find(loader.create_timelines(), "score:clt")
     assert len(score.events) == 251
     assert score.unit == TimeUnit.quarters
 
 
 def test_score_dlt_event_count(loader: ParangonadaLoader) -> None:
-    score = loader.create_timeline(SCORE_DLT_ID)
+    score = _find(loader.create_timelines(), "score:dlt")
     assert len(score.events) == 251
     assert score.unit == TimeUnit.ticks
 
@@ -169,7 +182,7 @@ def test_score_clt_carries_pitch_and_voice(loader: ParangonadaLoader) -> None:
     type, EnharmonicPitch, carried as a ``{midi_number}`` struct; the
     keystone preserves it as a real struct column (never a JSON string).
     """
-    score = loader.create_timeline(SCORE_CLT_ID)
+    score = _find(loader.create_timelines(), "score:clt")
     table = score.events._table
     ids = table.column("id").to_pylist()
     pitches = table.column("pitch").to_pylist()
@@ -187,7 +200,7 @@ def test_divs_to_quarters_cmap_reproduces_all_onsets(
     Asserts exact Fraction equality for all 251 notes: quarters =
     div / 32 - 1/2.
     """
-    dlt = loader.create_timeline(SCORE_DLT_ID)
+    dlt = _find(loader.create_timelines(), "score:dlt")
     cmap = dlt.get_conversion_map(TimeUnit.quarters)
     with open(_subdir("1971_Curzon") / "part.csv", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
@@ -208,14 +221,14 @@ def test_divs_to_quarters_cmap_reproduces_all_onsets(
 def test_performance_timeline_event_counts(
     loader: ParangonadaLoader, performer_key: str
 ) -> None:
-    """cpt_1 and dpt_1 each hold one *Note* event per ppart.csv row.
+    """The seconds and samples timelines each hold one *Note* event per ppart.csv row.
 
-    ``cpt_1`` additionally holds Beat/Dynamics feature events, so the Note
-    count is filtered explicitly; ``dpt_1`` carries notes only.
+    The seconds timeline additionally holds Beat/Dynamics feature events, so
+    the Note count is filtered explicitly; the samples one carries notes only.
     """
     expected = PERFORMER_COUNTS[performer_key]["ppart"]
-    cpt = loader.create_timeline(f"perf:{performer_key}:cpt_1")
-    dpt = loader.create_timeline(f"perf:{performer_key}:dpt_1")
+    cpt = _find(loader.create_timelines(), "perf:cpt", performer_key)
+    dpt = _find(loader.create_timelines(), "perf:dpt", performer_key)
     assert cpt.unit == TimeUnit.seconds
     assert dpt.unit == TimeUnit.samples
     assert len(cpt.events.filter(event_type="Note")) == expected
@@ -254,14 +267,15 @@ def test_claim_provenance(bundle) -> None:
 @pytest.mark.parametrize("performer_key", PERFORMER_KEYS)
 def test_claims_name_the_rows_notes(bundle, performer_key: str) -> None:
     """Each claim names the notes its align.csv row names, in row order."""
-    cpt_id = f"perf:{performer_key}:cpt_1"
+    cpt_id = _find(bundle.timelines.values(), "perf:cpt", performer_key).id
+    score_id = _find(bundle.timelines.values(), "score:clt").id
     with open(_subdir(performer_key) / "align.csv", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     expected = [
         {
-            "0": (SCORE_CLT_ID, row["partid"], cpt_id, row["ppartid"]),
-            "1": (SCORE_CLT_ID, row["partid"], cpt_id, None),
-            "2": (cpt_id, row["ppartid"], SCORE_CLT_ID, None),
+            "0": (score_id, row["partid"], cpt_id, row["ppartid"]),
+            "1": (score_id, row["partid"], cpt_id, None),
+            "2": (cpt_id, row["ppartid"], score_id, None),
         }[row["matchtype"]]
         for row in rows
     ]
@@ -279,8 +293,8 @@ def test_claims_name_the_rows_notes(bundle, performer_key: str) -> None:
 
 @pytest.mark.parametrize("performer_key", PERFORMER_KEYS)
 def test_feature_event_counts(loader: ParangonadaLoader, performer_key: str) -> None:
-    """Each cpt_1 holds exactly 63 Beat and 63 Dynamics feature events."""
-    cpt = loader.create_timeline(f"perf:{performer_key}:cpt_1")
+    """Each seconds timeline holds exactly 63 Beat and 63 Dynamics feature events."""
+    cpt = _find(loader.create_timelines(), "perf:cpt", performer_key)
     assert len(cpt.events.filter(event_type="Beat")) == FEATURE_ROW_COUNT
     assert len(cpt.events.filter(event_type="Dynamics")) == FEATURE_ROW_COUNT
 
@@ -289,8 +303,8 @@ def test_feature_event_counts(loader: ParangonadaLoader, performer_key: str) -> 
 def test_feature_events_only_on_cpt(
     loader: ParangonadaLoader, performer_key: str
 ) -> None:
-    """Beat/Dynamics events live on cpt_1 (seconds) only, never on dpt_1."""
-    dpt = loader.create_timeline(f"perf:{performer_key}:dpt_1")
+    """Beat/Dynamics events live on the seconds timeline only, never on samples."""
+    dpt = _find(loader.create_timelines(), "perf:dpt", performer_key)
     assert len(dpt.events.filter(event_type="Beat")) == 0
     assert len(dpt.events.filter(event_type="Dynamics")) == 0
 
@@ -325,7 +339,7 @@ def test_szegedi_beat_spot_check(loader: ParangonadaLoader) -> None:
     ``beat`` as ints, ``bpm`` as a float); ``start`` is the coordinate
     struct.
     """
-    cpt = loader.create_timeline("perf:1966_Szegedi:cpt_1")
+    cpt = _find(loader.create_timelines(), "perf:cpt", "1966_Szegedi")
     beats = cpt.events.filter(event_type="Beat").table.to_pylist()
     matching = [
         r
@@ -345,7 +359,7 @@ def test_szegedi_dynamics_spot_check(loader: ParangonadaLoader) -> None:
     recovered from the .beats row with the same ``(1, 1)`` key.  Carried
     scalar columns keep their native PyArrow types.
     """
-    cpt = loader.create_timeline("perf:1966_Szegedi:cpt_1")
+    cpt = _find(loader.create_timelines(), "perf:cpt", "1966_Szegedi")
     dyns = cpt.events.filter(event_type="Dynamics").table.to_pylist()
     matching = [
         r
@@ -381,14 +395,15 @@ def test_szegedi_align_row_zero_spot_check(bundle) -> None:
     It names the notes ngx1f26 and n149; its anchor holds the part note's
     onset (40 quarters) and the ppart note's (38.183334 s).
     """
-    cpt_id = "perf:1966_Szegedi:cpt_1"
+    cpt_id = _find(bundle.timelines.values(), "perf:cpt", "1966_Szegedi").id
+    score_id = _find(bundle.timelines.values(), "score:clt").id
     matching = [
         c
         for c in bundle.get_match_claims()
         if c.is_synchronous
         and (c.event_a_id, c.event_b_id) == ("ngx1f26", "n149")
         and c.start_anchor is not None
-        and c.start_anchor.timeline_a_id == SCORE_CLT_ID
+        and c.start_anchor.timeline_a_id == score_id
         and c.start_anchor.timeline_b_id == cpt_id
         and c.start_anchor.coordinate_a.value == 40.0
         and c.start_anchor.coordinate_a.unit is TimeUnit.quarters
@@ -436,7 +451,8 @@ def test_duplicate_matchtype0_row_is_present_in_source(
 
 def test_duplicate_row_yields_duplicate_claim(bundle) -> None:
     """The duplicated Brendel row produces two identical synchronous claims."""
-    cpt_id = "perf:1985_Brendel:cpt_1"
+    cpt_id = _find(bundle.timelines.values(), "perf:cpt", "1985_Brendel").id
+    score_id = _find(bundle.timelines.values(), "score:clt").id
     # part note n1qocvw7 onset_quarter and ppart note n65 onset_sec.
     with open(_subdir("1985_Brendel") / "part.csv", encoding="utf-8", newline="") as f:
         part = {r["id"]: r for r in csv.DictReader(f)}
@@ -450,7 +466,7 @@ def test_duplicate_row_yields_duplicate_claim(bundle) -> None:
         for c in bundle.get_match_claims()
         if c.is_synchronous
         and c.start_anchor is not None
-        and c.start_anchor.timeline_a_id == SCORE_CLT_ID
+        and c.start_anchor.timeline_a_id == score_id
         and c.start_anchor.timeline_b_id == cpt_id
         and c.start_anchor.coordinate_a.value == src
         and c.start_anchor.coordinate_a.unit is TimeUnit.quarters
@@ -467,8 +483,8 @@ def test_duplicate_row_yields_duplicate_claim(bundle) -> None:
 
 
 def test_samples_to_seconds_cmap_on_dpt(loader: ParangonadaLoader) -> None:
-    """The dpt_1 timeline's SamplesToSeconds map converts 44100 → 1.0 s."""
-    dpt = loader.create_timeline("perf:1966_Szegedi:dpt_1")
+    """The samples timeline's SamplesToSeconds map converts 44100 → 1.0 s."""
+    dpt = _find(loader.create_timelines(), "perf:dpt", "1966_Szegedi")
     cmap = dpt.get_conversion_map(TimeUnit.seconds)
     assert isinstance(cmap, SamplesToSeconds)
     assert cmap.sample_rate == 44100
@@ -485,8 +501,8 @@ def test_samples_to_seconds_cmap_on_dpt(loader: ParangonadaLoader) -> None:
 def test_create_timelines_returns_twelve(loader: ParangonadaLoader) -> None:
     timelines = loader.create_timelines()
     assert len(timelines) == 12
-    assert timelines[0].id == SCORE_CLT_ID
-    assert timelines[1].id == SCORE_DLT_ID
+    assert shape(timelines[0].id) == "score:clt"
+    assert shape(timelines[1].id) == "score:dlt"
 
 
 def test_create_timelines_id_pattern_filters(loader: ParangonadaLoader) -> None:

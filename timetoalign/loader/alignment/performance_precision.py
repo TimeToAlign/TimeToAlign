@@ -67,6 +67,7 @@ from typing_extensions import Self
 
 from timetoalign.alignment.claims import ClaimSide
 from timetoalign.core import Provenance, TimeUnit
+from timetoalign.loader._ids import CMAP_PREFIX, give_event_ids
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
@@ -79,6 +80,7 @@ from timetoalign.loader._sources import (
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -92,9 +94,6 @@ module_logger = logging.getLogger(__name__)
 
 
 # region Constants
-
-#: Score timeline uid (type-based id with role prefix).
-_SCORE_TL_ID = "score:clt_1"
 
 #: Sentinel for an alignment row the aligner could not locate in audio.
 _DANGLING = "N"
@@ -140,6 +139,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
             ``TimeUnit.quarters``.
         media_unit: Unit for the performance timelines. Default
             ``TimeUnit.seconds``.
+        seed: The seed of the loader's ID minter (see ``Loader.load``).
     """
 
     def __init__(
@@ -147,8 +147,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
         *,
         score_unit: TimeUnit = TimeUnit.quarters,
         media_unit: TimeUnit = TimeUnit.seconds,
+        seed: int | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(seed=seed)
         self._score_unit = score_unit
         self._media_unit = media_unit
 
@@ -230,13 +231,18 @@ class PerformancePrecisionLoader(AlignmentLoader):
             )
 
         self._sources = [solo_path, timemap_path, alignments_dir]
+        self._start_minter(solo_path, timemap_path, alignments_dir)
         self._name = solo_path.stem
 
         # Measure structure first — needed to resolve every label.
         # The timemap reader takes a file on disk: a member is read from its copy.
         with on_disk(timemap_path) as timemap_file:
-            self._metric_map = MetricMap.from_verovio_timemap(timemap_file)
-        self._metrical_position_map = MetricalPositionMap(self._metric_map)
+            self._metric_map = MetricMap.from_verovio_timemap(
+                timemap_file, uid=self._id_minter.mint(CMAP_PREFIX)
+            )
+        self._metrical_position_map = MetricalPositionMap(
+            self._metric_map, uid=self._id_minter.mint(CMAP_PREFIX)
+        )
         first_meter_quarters = self._first_meter_quarters(timemap_path)
         starts, m0_downbeat = self._build_measure_lookup(
             self._metric_map, first_meter_quarters
@@ -358,7 +364,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         — no per-event scalar materialisation on the hot path.
         """
         solo = SoloLoader.from_file(solo_path)
-        table = solo.events._table
+        table = solo.events.table
 
         measures = [int(r["mn"]) for r in table.column("measure_number").to_pylist()]
         onsets = [
@@ -381,7 +387,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         score_tl = ContinuousLogicalTimeline(
             length=self.metric_map.total_length,
             unit=self._score_unit,
-            uid=_SCORE_TL_ID,
+            uid=mint_timeline_id(self._score_unit, self._id_minter, role="score"),
             name=self._name,
         )
 
@@ -389,7 +395,6 @@ class PerformancePrecisionLoader(AlignmentLoader):
         for i, q in enumerate(abs_quarters):
             rows.append(
                 {
-                    "id": f"score:{i}",
                     "start": q,
                     "event_type": "Note",
                     "pitch": pitches[i],
@@ -398,6 +403,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                     "measure_number": measures[i],
                 }
             )
+        give_event_ids(rows, self._id_minter)
         score_tl.add_events(rows)
 
         # Expose the measure/beat conversion on the timeline.  The
@@ -440,7 +446,6 @@ class PerformancePrecisionLoader(AlignmentLoader):
         all three granularities are resolved to their two sides
         (:meth:`_resolve_rows`), stated as claims by :meth:`create_bundle`.
         """
-        perf_tl_id = f"perf:{performer_key}:cpt_1"
         stem = note_file.stem
 
         # Read all three granularity files up front.
@@ -460,18 +465,18 @@ class PerformancePrecisionLoader(AlignmentLoader):
         perf_tl = ContinuousPhysicalTimeline(
             length=perf_length,
             unit=self._media_unit,
-            uid=perf_tl_id,
+            uid=mint_timeline_id(self._media_unit, self._id_minter, role="perf"),
             name=performer_key,
         )
         perf_events = [
             {
-                "id": f"{performer_key}:{i}",
                 "start": float(time_str),
                 "event_type": "Note",
             }
-            for i, (_m, _off, time_str) in enumerate(granularity_rows["note"])
+            for _m, _off, time_str in granularity_rows["note"]
             if time_str != _DANGLING
         ]
+        give_event_ids(perf_events, self._id_minter)
         perf_note_ids = perf_tl.add_events(perf_events)
         self._performance_timelines[performer_key] = perf_tl
         self._resolve_rows(
@@ -623,9 +628,10 @@ class PerformancePrecisionLoader(AlignmentLoader):
         """Return a single timeline by uid, role, or performer key.
 
         Args:
-            uid: ``"score"`` (or the score uid) for the score timeline; a
-                performer key (``"Chopin_Ashkenazy"``) or its uid
-                (``"perf:Chopin_Ashkenazy:cpt_1"``) for a performance timeline.
+            uid: ``"score"`` (or the score uid, ``score:clt_…``) for the
+                score timeline; a performer key (``"Chopin_Ashkenazy"``, the
+                timeline's name) or its uid (``perf:cpt_…``) for a
+                performance timeline.
 
         Raises:
             KeyError: If no timeline matches.
@@ -636,7 +642,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                 "No specimen loaded yet. Call load() before create_timeline()."
             )
 
-        if uid in ("score", _SCORE_TL_ID):
+        if uid in ("score", self._score_timeline.id):
             return self._score_timeline
 
         if uid in self._performance_timelines:

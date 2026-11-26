@@ -740,6 +740,7 @@ class Ms3Loader(ScoreLoader):
             note_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
             has_rests=has_rests,
         )
 
@@ -801,6 +802,7 @@ class Ms3Loader(ScoreLoader):
             The score timeline.
         """
         from timetoalign.timelines import ContinuousLogicalTimeline
+        from timetoalign.timelines.factory import mint_timeline_id
 
         has_measures = len(self.store.measures) > 0
         if has_measures and all(
@@ -811,12 +813,18 @@ class Ms3Loader(ScoreLoader):
                 length=0,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
-                uid=uid,
+                uid=(
+                    mint_timeline_id(TimeUnit.quarters, self._id_minter)
+                    if uid is None
+                    else uid
+                ),
                 name=name,
             )
             self._populate_timeline_structure(timeline)
             if attach_cmaps:
-                for cmap in self.store.get_cmaps(ppq=ppq).values():
+                for cmap in self.store.get_cmaps(
+                    ppq=ppq, minter=self._id_minter
+                ).values():
                     timeline.add_conversion_map(cmap)
         else:
             excluded = list(kwargs.pop("exclude_stores", []) or [])
@@ -1007,8 +1015,6 @@ class Ms3Loader(ScoreLoader):
             # ===== Build row =====
             measure_rows.append(
                 {
-                    # Identity - mc:NNNNN format based on measure count
-                    "id": f"mc:{mc:05d}",
                     "name": f"M{mn}",
                     "temporal_type": "interval",
                     "event_type": "Measure",
@@ -1058,6 +1064,7 @@ class Ms3Loader(ScoreLoader):
             measure_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
         )
         return ScoreStore(
             notes=NoteEventData.empty(),
@@ -1173,6 +1180,7 @@ class Ms3Loader(ScoreLoader):
             annotation_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
         )
 
         return ScoreStore(
@@ -1284,6 +1292,7 @@ class Ms3Loader(ScoreLoader):
             control_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
         )
 
         return ScoreStore(

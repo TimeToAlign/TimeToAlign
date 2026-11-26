@@ -17,6 +17,7 @@ from .conftest import FLOW_CONTROL_DIR, PARANGONAR_DIR, SCORE_DIR, VIENNA_DIR
 
 verovio = pytest.importorskip("verovio")
 
+from tests.loader.minting import minted  # noqa: E402
 from timetoalign.core.events import Note, ScoreNote  # noqa: E402
 from timetoalign.core.time import struct_to_rational  # noqa: E402
 from timetoalign.loader._xml import XML_ID  # noqa: E402
@@ -420,7 +421,11 @@ def mei(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
 
 @pytest.fixture(scope="module")
 def loader(mei: dict[str, Path]) -> VerovioLoader:
-    return VerovioLoader.from_file(mei["basic"])
+    return VerovioLoader.from_file(mei["basic"], seed=0)
+
+
+#: The first three score timeline ids a loader of seed 0 mints.
+SCORE = [f"score:{id_}" for id_ in minted(0, "clt", "clt", "clt")]
 
 
 @pytest.fixture(scope="module")
@@ -457,7 +462,7 @@ class TestTimeline:
         self, timeline: ContinuousLogicalTimeline, events: dict[str, dict]
     ) -> None:
         assert type(timeline) is ContinuousLogicalTimeline
-        assert timeline.id == "score:clt_1"
+        assert timeline.id == SCORE[0]
         assert str(timeline.unit) == "quarters"
         assert str(timeline.number_type) == "fraction"
         assert timeline.length.value == Fraction(9)
@@ -475,9 +480,9 @@ class TestTimeline:
 
     def test_uid_and_name_kept(self, mei: dict[str, Path]) -> None:
         timeline = VerovioLoader.from_file(mei["basic"]).create_timeline(
-            uid="clt_1", name="Fixture"
+            uid="fixture", name="Fixture"
         )
-        assert (timeline.id, timeline.name) == ("clt_1", "Fixture")
+        assert (timeline.id, timeline.name) == ("fixture", "Fixture")
         assert timeline.list_children() == []
 
     def test_options_recorded(self, loader: VerovioLoader) -> None:
@@ -683,12 +688,14 @@ class TestStaffAndPitch:
 
 class TestPhysicalTimeline:
     @pytest.fixture(scope="class")
-    def physical(self, loader: VerovioLoader) -> ContinuousPhysicalTimeline:
+    def physical(self, mei: dict[str, Path]) -> ContinuousPhysicalTimeline:
+        loader = VerovioLoader.from_file(mei["basic"], seed=0)
         return loader.create_physical_timeline()
 
     def test_root(self, physical: ContinuousPhysicalTimeline) -> None:
         assert type(physical) is ContinuousPhysicalTimeline
-        assert physical.id == "rendered:cpt_1"
+        # The call mints its C-Map's id first, then the timeline's.
+        assert physical.id == "rendered:" + minted(0, "cmap", "cpt")[1]
         assert str(physical.unit) == "seconds"
         assert str(physical.number_type) == "fraction"
         assert physical.length.value == Fraction(9, 2)
@@ -1123,12 +1130,12 @@ def _flow(loader: VerovioLoader) -> list[int]:
 class TestMovements:
     @pytest.fixture
     def movements(self, mei: dict[str, Path]) -> VerovioLoader:
-        return VerovioLoader.from_file(mei["two_movements"])
+        return VerovioLoader.from_file(mei["two_movements"], seed=0)
 
     def test_children(self, movements: VerovioLoader) -> None:
         root = movements.create_timeline()
         assert root.length.value == Fraction(7)
-        assert root.list_children() == ["score:clt_2", "score:clt_3"]
+        assert [root.id, *root.list_children()] == SCORE
         first, second = (root.get_child(c) for c in root.list_children())
         assert (first.name, first.length.value) == ("I", Fraction(4))
         assert (second.name, second.length.value) == ("II", Fraction(3))
@@ -1162,34 +1169,35 @@ class TestMovements:
         ]
         table = root.get_timestamp_table(format="dataframe")
         assert table.loc["n4", "quarters_to_seconds (seconds)"] == 2
-        assert root.list_children() == ["score:clt_2", "score:clt_3"]
-        child = root.get_child("score:clt_3")
+        assert root.list_children() == SCORE[:2]
+        child = root.get_child(SCORE[1])
         assert (child.measure_map, child.n_conversion_maps) == (None, 0)
 
     def test_physical_children(self, movements: VerovioLoader) -> None:
         physical = movements.create_physical_timeline(uid="rendered")
         assert physical.length.value == Fraction(5)
-        assert physical.list_children() == ["rendered:cpt_2", "rendered:cpt_3"]
-        second = physical.get_child("rendered:cpt_3")
+        children = [f"rendered:{id_}" for id_ in minted(0, "cmap", "cpt", "cpt")[1:]]
+        assert physical.list_children() == children
+        second = physical.get_child(children[1])
         assert physical.get_coordinate_for("n4").value == Fraction(2)
         assert second.length.value == Fraction(3)
 
     def test_selected_movement(self, mei: dict[str, Path]) -> None:
         loader = VerovioLoader.from_file(
-            mei["two_movements"], options={"mdivXPathQuery": "./mdiv[2]"}
+            mei["two_movements"], options={"mdivXPathQuery": "./mdiv[2]"}, seed=0
         )
         root = loader.create_timeline()
-        assert root.list_children() == ["score:clt_2"]
-        assert root.get_child("score:clt_2").meta["count"] == 2
+        assert root.list_children() == [SCORE[1]]
+        assert root.get_child(SCORE[1]).meta["count"] == 2
         assert root.length.value == Fraction(3)
         assert root.get_coordinate_for("n4").value == Fraction(0)
 
     def test_nested_movements(self) -> None:
         path = PARANGONAR_DIR / "Beethoven_Eroica_op35-cpjku" / "score.mei"
-        root = VerovioLoader.from_file(path).create_timeline()
+        root = VerovioLoader.from_file(path, seed=0).create_timeline()
         assert root.length.value == Fraction(129, 2)
-        assert root.list_children() == ["score:clt_2"]
-        inner = root.get_child("score:clt_2")
+        assert root.list_children() == [SCORE[1]]
+        inner = root.get_child(SCORE[1])
         assert (inner.name, inner.list_children()) == ("Var. XIV.", [])
         assert inner.meta == {
             "count": 2,
@@ -1198,7 +1206,7 @@ class TestMovements:
             "label": "Var. XIV.",
             "element": "mdiv",
         }
-        assert root.get_child_offset("score:clt_2").value == 0
+        assert root.get_child_offset(SCORE[1]).value == 0
         assert inner.length.value == Fraction(129, 2)
         assert len(list(root.get_events(include_children=False))) == 0
         assert Counter(
@@ -1242,14 +1250,14 @@ class TestNamedMovements:
     """Only a named ``<mdiv>`` (``@label``) is a child (validation logic: README.md)."""
 
     def test_named_single(self, mei: dict[str, Path]) -> None:
-        loader = VerovioLoader.from_file(mei["named"])
+        loader = VerovioLoader.from_file(mei["named"], seed=0)
         root = loader.create_timeline()
         assert _tree(root) == {
-            "name": "score:clt_1",
+            "name": SCORE[0],
             "length": Fraction(4),
             "events": {},
             "children": {
-                "score:clt_2": {
+                SCORE[1]: {
                     "offset": Fraction(0),
                     "meta": {
                         "count": 1,
@@ -1265,19 +1273,19 @@ class TestNamedMovements:
             },
         }
         physical = loader.create_physical_timeline()
-        assert physical.list_children() == ["rendered:cpt_2"]
-        child = physical.get_child("rendered:cpt_2")
+        (child_id,) = physical.list_children()
+        child = physical.get_child(child_id)
         assert (child.name, child.length.value) == ("Rondo", Fraction(2))
         assert child.meta["element"] == "mdiv"
 
     def test_named_and_unnamed_siblings(self, mei: dict[str, Path]) -> None:
-        root = VerovioLoader.from_file(mei["siblings"]).create_timeline()
+        root = VerovioLoader.from_file(mei["siblings"], seed=0).create_timeline()
         assert _tree(root) == {
-            "name": "score:clt_1",
+            "name": SCORE[0],
             "length": Fraction(6),
             "events": {"m3n": Fraction(4)},
             "children": {
-                "score:clt_2": {
+                SCORE[1]: {
                     "offset": Fraction(0),
                     "meta": {
                         "count": 1,
@@ -1299,13 +1307,13 @@ class TestNamedMovements:
         }
 
     def test_named_nested_in_unnamed(self, mei: dict[str, Path]) -> None:
-        root = VerovioLoader.from_file(mei["nested"]).create_timeline()
+        root = VerovioLoader.from_file(mei["nested"], seed=0).create_timeline()
         assert _tree(root) == {
-            "name": "score:clt_1",
+            "name": SCORE[0],
             "length": Fraction(8),
             "events": {"m4n": Fraction(6)},
             "children": {
-                "score:clt_2": {
+                SCORE[1]: {
                     "offset": Fraction(0),
                     "meta": {
                         "count": 2,
@@ -1317,7 +1325,7 @@ class TestNamedMovements:
                     "length": Fraction(6),
                     "events": {"m3n": Fraction(4)},
                     "children": {
-                        "score:clt_3": {
+                        SCORE[2]: {
                             "offset": Fraction(0),
                             "meta": {
                                 "count": 4,

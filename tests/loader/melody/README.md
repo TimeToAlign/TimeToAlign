@@ -63,18 +63,22 @@ library's reader and writer keep it.
 
 ## Cases
 
+The loader mints the ID of every timeline it adds from its minter
+(`cgt_…`); the tests load with `seed=0`, so the first new timeline is the
+first `cgt` ID of a fresh `IdMinter(0)`, written `cgt_…` below.
+
 1. **Main repository** (`works/1.ttl`, `expressions/2.ttl`,
    `persons/3.ttl`, `manifestations/4.ttl`, `items/5.ttl`,
    `indexes/works.ttl`), `create_bundle(id="clair_de_lune",
-   date="2026-11-19")`: timelines `["cgt_1"]`; bundle and `cgt_1` statements
-   and provenance exact; `cgt_1` in millimetres, length unknown, named
+   date="2026-11-19")`: timelines `["cgt_…"]`; bundle and `cgt_…` statements
+   and provenance exact; `cgt_…` in millimetres, length unknown, named
    "Suite bergamasque, first edition"; the written manifest validates
    without warnings, its `@context` prefixes are exactly `dcterms lrmoo melod
    melodTerms owl rdf rdfs schema wd xsd`, and it round-trips.
 2. **Re-import** into the bundle of case 1 with the manifestation mapped to
-   `cgt_1`: `to_dict()` unchanged.
+   `cgt_…`: `to_dict()` unchanged.
 3. **A pair believed `false`** keeps its belief: an editor believes the
-   manifestation's title on `cgt_1` `false`; a re-import leaves `to_dict()`
+   manifestation's title on `cgt_…` `false`; a re-import leaves `to_dict()`
    unchanged, the title stated (a belief never removes a pair), its entry
    the import's members plus the editor's belief, and the editor's filtered
    provenance (`get_provenance(believer=)`) without the title's entry.

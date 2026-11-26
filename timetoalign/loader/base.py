@@ -39,11 +39,19 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
+from timetoalign.core.ids import IdMinter, seed_from
 from timetoalign.core.time import struct_to_coordinate
 from timetoalign.display.html import affordance_html, code
 from timetoalign.storage import EventData
 
-from ._sources import Source, SourceLike, as_source, describe_source, source_record
+from ._sources import (
+    Source,
+    SourceLike,
+    as_source,
+    describe_source,
+    source_digest,
+    source_record,
+)
 
 # Event loaders return source metadata and a vectorized field dictionary. Other
 # payload families return their payload directly and use ``_accept_source``.
@@ -63,6 +71,11 @@ module_logger = logging.getLogger(__name__)
 PayloadT = TypeVar("PayloadT")
 
 
+def _source_part(source: Source) -> bytes | str:
+    """What a source contributes to a loader's seed: its digest, else its name."""
+    return source_digest(source) if source.exists() else describe_source(source)
+
+
 class Loader(ABC, Generic[PayloadT]):
     """Shared lifecycle for all loader families.
 
@@ -76,11 +89,18 @@ class Loader(ABC, Generic[PayloadT]):
     #: source, in the same call or a later one, until ``clear()``.
     _single_source: ClassVar[bool] = False
 
-    def __init__(self) -> None:
-        """Initialize shared loader state."""
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize shared loader state.
+
+        Args:
+            seed: The seed of the loader's ID minter; without one, the
+                minter is seeded from the sources (see :meth:`load`).
+        """
         self._sources: list[Source] = []
         self._source_metadata: list[dict[str, Any]] = []
-        self._minted_timeline_ids: set[str] = set()
+        self._seed = seed
+        self._minter: IdMinter | None = None
+        self._minter_parts: tuple[Source | bytes | str, ...] | None = None
 
     @abstractmethod
     def _load_source(self, source: Source) -> PayloadT:
@@ -155,6 +175,17 @@ class Loader(ABC, Generic[PayloadT]):
         (for a member: the archive's absolute path, and ``member``, the
         member's path inside it) and ``loaded_at``.
 
+        Every ID the loader mints (events, timelines, maps, MatchClaims,
+        Projections) comes from one :class:`~timetoalign.core.ids.IdMinter`,
+        in the order the loader builds them. It is seeded with the
+        loader's ``seed`` when one was given, else with
+        :func:`~timetoalign.core.ids.seed_from` of the loader's class name
+        and the SHA-256 digests of the sources of the first ``load`` after
+        the loader is made or cleared, in order; later ``load`` calls go on
+        minting from it. A fresh loader loading unchanged sources in the
+        same calls mints the same IDs, in any process; IDs the source
+        states are kept as they are.
+
         Raises:
             FileNotFoundError: If a ``zipfile.Path`` names a member its
                 archive does not hold.
@@ -163,13 +194,47 @@ class Loader(ABC, Generic[PayloadT]):
                 it reads one again). Nothing is parsed then.
         """
         self._refuse_further_source(*sources)
-        for source in sources:
-            held = as_source(source)
+        held_sources = [as_source(source) for source in sources]
+        self._start_minter(*held_sources)
+        for held in held_sources:
             source_meta, payload = self._unpack_source_result(self._load_source(held))
             source_meta.update(source_record(held))
             source_meta["loaded_at"] = datetime.now(timezone.utc).isoformat()
             self._accept_source(held, source_meta, payload)
         return self
+
+    def _start_minter(self, *parts: Source | bytes | str) -> None:
+        """Name what the loader's ID minter is seeded from, unless it has a seed.
+
+        The first call after the loader is made or cleared counts; the
+        minter itself is made when the first ID is minted
+        (:attr:`_id_minter`), so a loader that mints nothing reads nothing
+        twice. Its seed is the loader's ``seed`` when one was given, else
+        :func:`~timetoalign.core.ids.seed_from` of the class name and
+        *parts*: a source stands for the SHA-256 digest of its bytes (a
+        folder for its files', a source that does not exist for its name,
+        so that its parser reports it), bytes and text for themselves. A
+        loader reading in-memory content passes a canonical serialization
+        of it.
+        """
+        if self._minter is None and self._minter_parts is None:
+            self._minter_parts = parts
+
+    @property
+    def _id_minter(self) -> IdMinter:
+        """The loader's ID minter, made from what :meth:`_start_minter` named."""
+        if self._minter is None:
+            seed = self._seed
+            if seed is None:
+                seed = seed_from(
+                    type(self).__name__,
+                    *(
+                        part if isinstance(part, (bytes, str)) else _source_part(part)
+                        for part in self._minter_parts or ()
+                    ),
+                )
+            self._minter = IdMinter(seed)
+        return self._minter
 
     @classmethod
     def from_file(cls, *paths: SourceLike, **kwargs: Any) -> Self:
@@ -178,7 +243,8 @@ class Loader(ABC, Generic[PayloadT]):
         Args:
             *paths: Filesystem paths or members of ZIP archives
                 (``zipfile.Path``), as :meth:`load` takes them.
-            **kwargs: Passed to the loader's constructor.
+            **kwargs: Passed to the loader's constructor, ``seed`` among
+                them (the seed of the loader's ID minter).
 
         Examples:
             >>> from zipfile import Path as ZipPath
@@ -204,9 +270,11 @@ class Loader(ABC, Generic[PayloadT]):
         }
 
     def clear(self) -> None:
-        """Clear shared source state."""
+        """Clear shared source state; the next ``load`` makes a new minter."""
         self._sources.clear()
         self._source_metadata.clear()
+        self._minter = None
+        self._minter_parts = None
 
     def create_timeline(self, uid: str | None = None, **kwargs: Any) -> "Timeline":
         """Create a timeline from the loaded payload.
@@ -283,6 +351,8 @@ class EventLoader(Loader[LoadSourceResult]):
         unit: TimeUnit | None = None,
         number_type: NumberType | None = None,
         interval_policy: IntervalPolicy | str = IntervalPolicy.warn,
+        *,
+        seed: int | None = None,
     ) -> None:
         """Initialize the Loader.
 
@@ -295,8 +365,9 @@ class EventLoader(Loader[LoadSourceResult]):
                 a string (``"warn"``, ``"prefer_end"``, ``"prefer_duration"``,
                 ``"strict"``).  Default: ``"warn"`` -- prefer ``end``, warn
                 on discrepancies.
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
         """
-        super().__init__()
+        super().__init__(seed=seed)
         self._unit = unit or self._default_unit
         self._number_type = self._unit.resolve_number_type(number_type)
         self._interval_policy = IntervalPolicy(interval_policy)
@@ -388,7 +459,8 @@ class EventLoader(Loader[LoadSourceResult]):
     ) -> "Timeline":
         """Create a Timeline from the loaded events.
 
-        Convenience method that delegates to self.store.create_timeline().
+        Builds the timeline from ``self.store``; every timeline ID it mints
+        comes from the loader's minter.
 
         Args:
             uid: Unique ID for the parent timeline. Auto-generated if None.
@@ -406,12 +478,16 @@ class EventLoader(Loader[LoadSourceResult]):
             >>> loader.load("notes.tsv")
             >>> timeline = loader.create_timeline(uid="my_score")
         """
-        return self.store.create_timeline(
+        from timetoalign.timelines.factory import create_timeline_from_bundle
+
+        return create_timeline_from_bundle(
+            self.store,
             uid=uid,
             store_filters=store_filters,
             include_stores=include_stores,
             exclude_stores=exclude_stores,
             flatten=flatten,
+            minter=self._id_minter,
         )
 
     def create_timelines(
@@ -529,7 +605,7 @@ class EventLoader(Loader[LoadSourceResult]):
         if len(events) == 0:
             return events
 
-        table = events._table
+        table = events.table
         all_names = set(table.column_names)
 
         # Core fields always included
@@ -602,6 +678,7 @@ class EventLoader(Loader[LoadSourceResult]):
             validate=getattr(self, "_validate_vectorized", True),
             extra_fields=extra_fields,
             interval_policy=self._interval_policy,
+            minter=self._id_minter,
         )
         if len(self._events) == 0:
             self._events = new_data
@@ -795,7 +872,7 @@ class EventLoader(Loader[LoadSourceResult]):
         Raises:
             ValueError: If field doesn't exist or isn't a coordinate field.
         """
-        table = self._events._table
+        table = self._events.table
 
         if field_name not in table.column_names:
             raise ValueError(
@@ -841,7 +918,7 @@ class EventLoader(Loader[LoadSourceResult]):
         Returns:
             The unit string, or None if not specified.
         """
-        table = self._events._table
+        table = self._events.table
         schema = table.schema
 
         field_idx = schema.get_field_index(field_name)
@@ -864,7 +941,7 @@ class EventLoader(Loader[LoadSourceResult]):
         Falls back to the loader's own, which is what an unannotated core
         coordinate column is written in.
         """
-        schema = self._events._table.schema
+        schema = self._events.table.schema
         field_idx = schema.get_field_index(field_name)
         if field_idx >= 0:
             declared = field_metadata(schema.field(field_idx)).get("number_type")
@@ -956,7 +1033,9 @@ class EventLoader(Loader[LoadSourceResult]):
         """Load a Loader from a Parquet file.
 
         Note: This creates a new Loader with the EventData loaded,
-        but source paths may not be accessible for re-loading.
+        but source paths may not be accessible for re-loading. The events
+        keep their IDs; the loader's minter, for the timeline IDs it mints
+        later, is seeded from the file's bytes.
 
         Args:
             path: Path to the Parquet file.
@@ -971,6 +1050,10 @@ class EventLoader(Loader[LoadSourceResult]):
         loader._events = events
         loader._sources = []
         loader._source_metadata = []
+        loader._seed = None
+        loader._minter = None
+        loader._minter_parts = None
+        loader._start_minter(Path(path))
         return loader
 
     # endregion
@@ -1050,9 +1133,13 @@ class ManifestLoader(Loader[ManifestData]):
         ...         )
     """
 
-    def __init__(self) -> None:
-        """Initialize the ManifestLoader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the ManifestLoader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._manifests: list[ManifestData] = []
         self._logger = module_logger.getChild(self.__class__.__name__)
 
@@ -1235,9 +1322,13 @@ class AlignmentLoader(Loader["AlignmentStore"]):
         >>> bundle = loader.create_bundle()
     """
 
-    def __init__(self) -> None:
-        """Initialize the AlignmentLoader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the AlignmentLoader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._store: AlignmentStore | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 

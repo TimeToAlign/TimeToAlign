@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import timetoshare
 
+from tests.loader.minting import minted
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import TimeUnit
 from timetoalign.timelines import ContinuousLogicalTimeline
@@ -18,6 +19,9 @@ from timetoalign.timelines.statements import LIBRARY_AGENT
 rdflib = pytest.importorskip("rdflib")
 
 from timetoalign.loader.metadata.melody import MelodyLoader  # noqa: E402
+
+#: The timeline IDs an import by a loader of seed 0 mints first.
+NEW = minted(0, "cgt", "cgt")
 
 PREFIXES = """\
 @prefix melod: <https://lod.academy/melod/vocab/ontology#> .
@@ -278,7 +282,7 @@ def assert_valid_round_trip(bundle: AlignmentBundle) -> dict[str, Any]:
 
 class TestRepository:
     def test_the_entity_files_are_read_and_the_others_are_not(self, repo: Path) -> None:
-        loader = MelodyLoader.from_file(repo)
+        loader = MelodyLoader.from_file(repo, seed=0)
         assert [relative for relative, _ in loader.records[0].files] == [
             "expressions/2.ttl",
             "items/5.ttl",
@@ -288,7 +292,7 @@ class TestRepository:
         ]
 
     def test_the_bundle_is_about_the_work(self, repo: Path) -> None:
-        bundle = MelodyLoader.from_file(repo).create_bundle(
+        bundle = MelodyLoader.from_file(repo, seed=0).create_bundle(
             id="clair_de_lune", date=DATE
         )
         assert bundle.id == "clair_de_lune"
@@ -302,21 +306,21 @@ class TestRepository:
     def test_the_manifestation_is_a_timeline_and_the_rest_values(
         self, repo: Path
     ) -> None:
-        bundle = MelodyLoader.from_file(repo).create_bundle(
+        bundle = MelodyLoader.from_file(repo, seed=0).create_bundle(
             id="clair_de_lune", date=DATE
         )
-        assert list(bundle.timelines) == ["cgt_1"]
-        edition = bundle.timelines["cgt_1"]
+        assert list(bundle.timelines) == [NEW[0]]
+        edition = bundle.timelines[NEW[0]]
         assert edition.unit == TimeUnit.millimeters
         assert edition.length is None
         assert edition.name == "Suite bergamasque, first edition"
-        assert edition.statements == manifestation_statements(item_node("cgt_1"))
+        assert edition.statements == manifestation_statements(item_node(NEW[0]))
         assert edition.provenance == manifestation_provenance(
             {"id": "urn:uuid:items/5"}
         )
 
     def test_the_manifest_validates_and_round_trips(self, repo: Path) -> None:
-        bundle = MelodyLoader.from_file(repo).create_bundle(
+        bundle = MelodyLoader.from_file(repo, seed=0).create_bundle(
             id="clair_de_lune", date=DATE
         )
         written = assert_valid_round_trip(bundle)
@@ -336,37 +340,37 @@ class TestRepository:
     def test_without_id_the_bundle_id_is_minted_and_not_written(
         self, repo: Path
     ) -> None:
-        bundle = MelodyLoader.from_file(repo).create_bundle(date=DATE)
+        bundle = MelodyLoader.from_file(repo, seed=0).create_bundle(date=DATE)
         assert bundle.id == "bundle_1"
         assert "id" not in bundle.to_dict()
 
     def test_importing_again_adds_nothing(self, repo: Path) -> None:
-        loader = MelodyLoader.from_file(repo)
+        loader = MelodyLoader.from_file(repo, seed=0)
         bundle = loader.create_bundle(id="clair_de_lune", date=DATE)
         written = bundle.to_dict()
         again = loader.create_bundle(
             into=bundle,
-            subjects={"urn:uuid:manifestations/4": "cgt_1"},
+            subjects={"urn:uuid:manifestations/4": NEW[0]},
             date="2026-11-21",
         )
         assert again is bundle
         assert bundle.to_dict() == written
 
     def test_a_pair_believed_false_keeps_its_belief(self, repo: Path) -> None:
-        loader = MelodyLoader.from_file(repo)
+        loader = MelodyLoader.from_file(repo, seed=0)
         bundle = loader.create_bundle(id="clair_de_lune", date=DATE)
-        edition = bundle.timelines["cgt_1"]
+        edition = bundle.timelines[NEW[0]]
         edition.add_belief(
             "melod:hasTitle", TITLE, actor=EDITOR, belief="false", date="2026-11-20"
         )
         written = bundle.to_dict()
         loader.create_bundle(
             into=bundle,
-            subjects={"urn:uuid:manifestations/4": "cgt_1"},
+            subjects={"urn:uuid:manifestations/4": NEW[0]},
             date="2026-11-21",
         )
         assert bundle.to_dict() == written
-        assert edition.statements == manifestation_statements(item_node("cgt_1"))
+        assert edition.statements == manifestation_statements(item_node(NEW[0]))
         provenance = manifestation_provenance({"id": "urn:uuid:items/5"})
         believed = {"actor": EDITOR, "belief": "false", "date": "2026-11-20"}
         assert edition.provenance == [
@@ -385,7 +389,7 @@ class TestMappedElements:
         self, two_works: Path, layerit: AlignmentBundle
     ) -> None:
         name = layerit.timelines["clt_6"].name
-        result = MelodyLoader.from_file(two_works).create_bundle(
+        result = MelodyLoader.from_file(two_works, seed=0).create_bundle(
             work="urn:uuid:works/1",
             into=layerit,
             subjects={
@@ -473,7 +477,7 @@ class TestErrors:
         if arguments and "work" not in arguments:
             arguments = {"work": "urn:uuid:works/1", **arguments}
         before = layerit.to_dict()
-        loader = MelodyLoader.from_file(two_works)
+        loader = MelodyLoader.from_file(two_works, seed=0)
         with pytest.raises(ValueError) as raised:
             loader.create_bundle(into=layerit, date=DATE, **arguments)
         assert str(raised.value) == message
@@ -481,7 +485,7 @@ class TestErrors:
 
     def test_subjects_needs_into(self, repo: Path) -> None:
         with pytest.raises(ValueError) as raised:
-            MelodyLoader.from_file(repo).create_bundle(
+            MelodyLoader.from_file(repo, seed=0).create_bundle(
                 subjects={"urn:uuid:items/5": "region_1"}
             )
         assert str(raised.value) == (
@@ -490,7 +494,7 @@ class TestErrors:
 
     def test_a_graph_without_a_work(self, repo: Path) -> None:
         with pytest.raises(ValueError) as raised:
-            MelodyLoader.from_file(repo / "persons" / "3.ttl").create_bundle()
+            MelodyLoader.from_file(repo / "persons" / "3.ttl", seed=0).create_bundle()
         assert str(raised.value) == "the graph holds no melod:Work"
 
     def test_a_blank_node_containing_itself(
@@ -499,7 +503,9 @@ class TestErrors:
         folder = write(tmp_path / "repo", {"works/1.ttl": CYCLE})
         before = layerit.to_dict()
         with pytest.raises(ValueError) as raised:
-            MelodyLoader.from_file(folder).create_bundle(into=layerit, date=DATE)
+            MelodyLoader.from_file(folder, seed=0).create_bundle(
+                into=layerit, date=DATE
+            )
         assert str(raised.value) == "a blank node of works/1.ttl contains itself"
         assert layerit.to_dict() == before
 
@@ -514,7 +520,9 @@ class TestErrors:
         )
         before = layerit.to_dict()
         with pytest.raises(ValueError) as raised:
-            MelodyLoader.from_file(folder).create_bundle(into=layerit, date=DATE)
+            MelodyLoader.from_file(folder, seed=0).create_bundle(
+                into=layerit, date=DATE
+            )
         assert str(raised.value) == (
             "the prefix 'doi' is declared neither by the catalogue nor on the new "
             "timeline of manifestation 'urn:uuid:manifestations/4'"
@@ -528,13 +536,13 @@ class TestErrors:
         with pytest.raises(Exception) as oracle:
             rdflib.Graph().parse(path, format="turtle")
         with pytest.raises(ValueError) as raised:
-            MelodyLoader.from_file(path)
+            MelodyLoader.from_file(path, seed=0)
         assert str(raised.value) == f"{path}: {oracle.value}"
 
     def test_rdflib_missing(self, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(sys.modules, "rdflib", None)
         with pytest.raises(ImportError) as raised:
-            MelodyLoader.from_file(repo)
+            MelodyLoader.from_file(repo, seed=0)
         assert str(raised.value) == (
             'MelodyLoader needs rdflib: pip install "timetoalign[rdf]"'
         )
@@ -543,7 +551,7 @@ class TestErrors:
 class TestKinds:
     def test_files_given_directly(self, repo: Path) -> None:
         bundle = MelodyLoader.from_file(
-            repo / "works" / "1.ttl", repo / "expressions" / "2.ttl"
+            repo / "works" / "1.ttl", repo / "expressions" / "2.ttl", seed=0
         ).create_bundle(date=DATE)
         unembodied = {
             **WORK_NODE,
@@ -558,18 +566,18 @@ class TestKinds:
     def test_two_files_of_one_name_given_directly(self, tmp_path: Path) -> None:
         first = write(tmp_path / "a", {"x.ttl": WORK}) / "x.ttl"
         second = write(tmp_path / "b", {"x.ttl": EXPRESSION + MANIFESTATION + PERSON})
-        loader = MelodyLoader.from_file(first, second / "x.ttl")
+        loader = MelodyLoader.from_file(first, second / "x.ttl", seed=0)
         assert [[name for name, _ in record.files] for record in loader.records] == [
             ["x.ttl"],
             ["x.ttl"],
         ]
         bundle = loader.create_bundle(id="clair_de_lune", date=DATE)
-        assert list(bundle.timelines) == ["cgt_1"]
+        assert list(bundle.timelines) == [NEW[0]]
         assert bundle.statements == {"schema:about": [WORK_NODE]}
         assert bundle.provenance == [
             C("schema:about", {"id": "urn:uuid:works/1"}, "x.ttl")
         ]
-        edition = bundle.timelines["cgt_1"]
+        edition = bundle.timelines[NEW[0]]
         assert edition.statements == {
             "type": ["melod:Manifestation"],
             "owl:sameAs": [{"id": "urn:uuid:manifestations/4"}],
@@ -603,7 +611,7 @@ class TestKinds:
             tmp_path / "repo",
             {"works/nocturne 1.ttl": KINDS, "expressions/2.ttl": KINDS_EXPRESSION},
         )
-        bundle = MelodyLoader.from_file(folder).create_bundle(
+        bundle = MelodyLoader.from_file(folder, seed=0).create_bundle(
             id="nocturne", base=base, date=DATE
         )
         assert bundle.statements == {

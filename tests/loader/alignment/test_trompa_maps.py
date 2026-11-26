@@ -13,6 +13,7 @@ import pytest
 
 pytest.importorskip("verovio")
 
+from tests.loader.minting import shape, shapes  # noqa: E402
 from timetoalign import MapsLoader  # noqa: E402
 from timetoalign.alignment.bundle import AlignmentBundle  # noqa: E402
 from timetoalign.alignment.claims import MatchClaim  # noqa: E402
@@ -171,6 +172,8 @@ def test_one_claim_per_listed_id(
         for xml_id in ids
     ]
     assert len(claims) == 13
+    projections = performance.events.table.column("id").to_pylist()
+    assert shapes(projections) == ["projection"] * 13
     for n, (claim, (xml_id, quarter, position)) in enumerate(
         zip(claims, expected, strict=True), start=1
     ):
@@ -178,7 +181,7 @@ def test_one_claim_per_listed_id(
         assert claim.is_synchronous
         assert claim.end_anchor is None
         assert claim.event_a_id == xml_id
-        assert claim.event_b_id == f"projection_{n}"
+        assert claim.event_b_id == projections[n - 1]
         assert (claim.timeline_a_id, claim.timeline_b_id) == (score.id, performance.id)
         assert anchor.coordinate_a.unit == TimeUnit.quarters
         assert type(anchor.coordinate_a.value) is Fraction
@@ -196,15 +199,12 @@ def test_projections_stand_for_the_score_notes(
     performance = make_performance()
     MapsLoader.from_file(maps_path).create_match_claims(score, performance)
     rows = performance.events.table.to_pylist()
-    assert [(row["id"], row["event_type"], row["projection_of"]) for row in rows] == [
-        (
-            f"projection_{n}",
-            "Projection",
-            {"timeline_id": score.id, "event_id": xml_id},
-        )
-        for n, xml_id in enumerate(
-            (xml_id for _, ids, _, _ in ROWS for xml_id in ids), start=1
-        )
+    assert [
+        (shape(row["id"]), row["event_type"], row["projection_of"]) for row in rows
+    ] == [
+        ("projection", "Projection", {"timeline_id": score.id, "event_id": xml_id})
+        for _, ids, _, _ in ROWS
+        for xml_id in ids
     ]
     starts = [
         (
@@ -257,11 +257,14 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         for xml_id in ids
     ]
     aligned.append(("n7", Fraction(15, 2), 5.5))
+    projections = performance.events.table.to_pylist()
+    ids = [row["id"] for row in projections]
+    assert shapes(ids) == ["projection"] * 16
     for n, (claim, (xml_id, quarter, seconds)) in enumerate(
         zip(claims[1:15], aligned, strict=True), start=1
     ):
         assert claim.is_synchronous
-        assert (claim.event_a_id, claim.event_b_id) == (xml_id, f"projection_{n}")
+        assert (claim.event_a_id, claim.event_b_id) == (xml_id, ids[n - 1])
         assert claim.start_anchor.coordinate_a == Coordinate(quarter, TimeUnit.quarters)
         assert claim.start_anchor.coordinate_b == Coordinate(seconds, TimeUnit.seconds)
 
@@ -271,11 +274,10 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         assert claim.is_synchronous is False
         assert (claim.start_anchor, claim.end_anchor) == (None, None)
         assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)
-        assert (claim.event_a_id, claim.event_b_id) == (f"projection_{n}", None)
+        assert (claim.event_a_id, claim.event_b_id) == (ids[n - 1], None)
         assert claim.event_a_name == INSERTED
 
     # One Projection per performed note: 14 of score notes, 2 of none.
-    projections = performance.events.table.to_pylist()
     assert len(projections) == 16
     assert [row["projection_of"] for row in projections[14:]] == [None, None]
     assert [row["start"]["value"] for row in projections[14:]] == [2.75, 4.75]
@@ -377,28 +379,28 @@ def test_create_bundle(score: Timeline, stated_path: Path) -> None:
 def test_the_bundle_s_package_is_written_and_read_back(
     score: Timeline, stated_path: Path, tmp_path: Path
 ) -> None:
-    """The performance's Projections are minted above the score's own."""
-    assert score.add_projections(
+    """The performance's Projections hold IDs the score's own does not."""
+    (own,) = score.add_projections(
         Projection(start=Coordinate(Fraction(3, 2), TimeUnit.quarters))
-    ) == ["projection_1"]
+    )
     performance = _samples_timeline()
     bundle = MapsLoader.from_file(stated_path).create_bundle(score, performance)
     claims = bundle.get_match_claims()
-    assert [claim.event_a_id for claim in claims[15:]] == [
-        "projection_16",
-        "projection_17",
+    projected = [claim.event_b_id for claim in claims[1:15]] + [
+        claim.event_a_id for claim in claims[15:]
     ]
-    assert [claim.event_b_id for claim in claims[1:15]] == [
-        f"projection_{n}" for n in range(2, 16)
-    ]
+    assert len(set(projected)) == 16
+    assert own not in projected
+    assert set(shapes([own, *projected])) == {"projection"}
 
     bundle.to_file(tmp_path / "package" / "package.yaml")
     table = pq.read_table(tmp_path / "package" / "projections.parquet")
-    assert list(
+    written = list(
         zip(table.column("timeline_id").to_pylist(), table.column("id").to_pylist())
-    ) == [(performance.id, f"projection_{n}") for n in range(2, 18)] + [
-        (score.id, "projection_1")
-    ]
+    )
+    assert sorted(written) == sorted(
+        [(performance.id, event_id) for event_id in projected] + [(score.id, own)]
+    )
     read = AlignmentBundle.from_file(tmp_path / "package" / "package.yaml")
     assert [_stated(claim) for claim in read.get_match_claims()] == [
         _stated(claim) for claim in claims
@@ -449,9 +451,9 @@ def test_quarter_before_the_first_anchor_does_not_resolve(
     stamp = _bundle(score, performance, maps_path).get_matchstamp_at(
         Fraction(1, 4), score.id
     )
-    assert score.list_children() == ["score:clt_2"]
-    assert stamp.present_timelines == [score.id, "score:clt_2"]
-    assert stamp.get_coordinate_for("score:clt_2").value == Fraction(1, 4)
+    (movement,) = score.list_children()
+    assert stamp.present_timelines == [score.id, movement]
+    assert stamp.get_coordinate_for(movement).value == Fraction(1, 4)
     with pytest.raises(KeyError):
         stamp.get_coordinate_for(performance.id)
 
@@ -469,7 +471,7 @@ def test_unknown_id_is_refused(score: Timeline, tmp_path: Path) -> None:
     with pytest.raises(KeyError) as raised:
         loader.create_match_claims(score, performance)
     assert raised.value.args[0] == (
-        "Pair 8: no event with id 'zz9' on timeline 'score:clt_1' or its children "
+        f"Pair 8: no event with id 'zz9' on timeline '{score.id}' or its children "
         "(0 events of its own)"
     )
     # Rows 1-3 were read before the refusal; none of their Projections stays.

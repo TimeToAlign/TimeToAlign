@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader.minting import shape
 from timetoalign.core import TimeUnit
 from timetoalign.loader.tabular import LabLoader
 from timetoalign.testdata import ensure_data
@@ -233,15 +234,15 @@ class TestTimelineCreation:
         timeline = loaded_regions_loader.create_timeline()
 
         assert timeline is not None
-        assert timeline.id == "cpt_1"
+        assert shape(timeline.id) == "cpt"
         assert timeline.unit == TimeUnit.seconds
         assert timeline.n_events == 6
 
     def test_create_timeline_with_uid(self, loaded_regions_loader: LabLoader) -> None:
         """create_timeline() accepts custom uid."""
-        timeline = loaded_regions_loader.create_timeline(uid="cpt_1")
+        timeline = loaded_regions_loader.create_timeline(uid="regions")
 
-        assert timeline.id == "cpt_1"
+        assert timeline.id == "regions"
 
     def test_create_timelines(self, loaded_regions_loader: LabLoader) -> None:
         """create_timelines() returns list with one timeline."""

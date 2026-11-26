@@ -207,6 +207,44 @@ def readable(source: Source) -> Iterator[Path | IO[bytes]]:
         yield handle
 
 
+def source_digest(source: Source) -> bytes:
+    """The SHA-256 digest of what *source* holds, read in blocks.
+
+    A file gives the digest of its bytes. A folder gives the digest of its
+    files' relative POSIX paths and digests, in sorted order, so a folder
+    read as a whole is identified by everything in it.
+
+    Args:
+        source: A filesystem path or a member of a ZIP archive.
+
+    Returns:
+        The 32-byte digest.
+
+    Raises:
+        FileNotFoundError: If *source* does not exist.
+    """
+    digest = hashlib.sha256()
+    if source.is_dir():
+        for member in sorted(_files_below(source), key=lambda pair: pair[0]):
+            digest.update(member[0].encode())
+            digest.update(source_digest(member[1]))
+        return digest.digest()
+    with source.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.digest()
+
+
+def _files_below(folder: Source, prefix: str = "") -> Iterator[tuple[str, Source]]:
+    """Every file below *folder*, with its POSIX path relative to it."""
+    for child in folder.iterdir():
+        relative = f"{prefix}{child.name}"
+        if child.is_dir():
+            yield from _files_below(child, f"{relative}/")
+        else:
+            yield relative, child
+
+
 # endregion
 
 # region Navigation

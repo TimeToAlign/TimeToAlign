@@ -252,9 +252,13 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
     #: One loader reads one SVG: one drawing, one axis.
     _single_source: ClassVar[bool] = True
 
-    def __init__(self) -> None:
-        """Initialize the loader."""
-        super().__init__()
+    def __init__(self, *, seed: int | None = None) -> None:
+        """Initialize the loader.
+
+        Args:
+            seed: The seed of the loader's ID minter (see ``Loader.load``).
+        """
+        super().__init__(seed=seed)
         self._axis: _ScoreWarpAxis | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
@@ -350,14 +354,12 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
         segment's, named by the title label, with the C-Map from
         ``css_pixels`` to the title's unit through the labelled ticks.
 
-        Both ids are minted ``cgt_N`` by this loader, the root first: its
-        number is drawn even when *uid* names it, and a given *uid* is
-        recorded among the loader's minted ids, so the child is never
-        minted the root's id and successive timelines share none.
+        Both ids are minted ``cgt_…`` from the loader's minter, the root
+        first (unless *uid* names it), so successive timelines share none.
 
         Args:
             uid: Unique identifier for the timeline. ``None`` mints
-                ``cgt_N``, a number this loader has not minted before.
+                ``cgt_…``.
             name: Human-readable name. Uses the source file's stem if None.
 
         Returns:
@@ -372,7 +374,7 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
 
         axis = self._require_axis()
         if uid is None:
-            uid = mint_timeline_id(TimeUnit.css_pixels)
+            uid = mint_timeline_id(TimeUnit.css_pixels, self._id_minter)
         timeline = ContinuousGraphicalTimeline(
             length=axis.extent,
             unit=TimeUnit.css_pixels,
@@ -384,7 +386,7 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
             axis.end - axis.start,
             axis.start,
             [(x, Coordinate(value, axis.unit)) for x, value in axis.calibration],
-            uid=mint_timeline_id(TimeUnit.css_pixels),
+            uid=mint_timeline_id(TimeUnit.css_pixels, self._id_minter),
             name=axis.title,
         )
         return timeline

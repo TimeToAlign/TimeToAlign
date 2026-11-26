@@ -18,6 +18,7 @@ import verovio
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.enums import ExtrapolationPolicy, FlowManifestation
 from timetoalign.core.time import build_number_struct_array, rational_to_struct
+from timetoalign.loader._ids import CMAP_PREFIX
 from timetoalign.loader._sources import (
     Source,
     describe_source,
@@ -474,9 +475,8 @@ class VerovioLoader(ScoreLoader):
 
     **Movements.** Every named ``<mdiv>`` Verovio loads (one with a
     non-blank ``@label``) is a child timeline, in document order, its id
-    minted by the loader after the root's (``score:clt_2``,
-    ``rendered:cpt_2``, …; a number a given root id such as ``score:clt_2``
-    holds is skipped): placed at its first position, as long as its
+    minted from the loader's minter after the root's (``score:clt_…``,
+    ``rendered:cpt_…``): placed at its first position, as long as its
     measures, named by its ``label``, with ``meta`` holding ``count`` (its
     place among all ``<mdiv>``s of the file, from 1), its ``xml:id``, ``n``
     and ``label`` verbatim, and ``element`` ``"mdiv"``. A named ``<mdiv>``
@@ -758,6 +758,7 @@ class VerovioLoader(ScoreLoader):
             ],
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
+            minter=self._id_minter,
         )
         return ScoreStore(
             notes=notes,
@@ -814,6 +815,7 @@ class VerovioLoader(ScoreLoader):
             source_unit=TimeUnit.quarters,
             target_unit=TimeUnit.seconds,
             output_number_type=NumberType.fraction,
+            uid=self._id_minter.mint(CMAP_PREFIX),
         )
 
     def create_timeline(  # type: ignore[override]
@@ -831,7 +833,7 @@ class VerovioLoader(ScoreLoader):
         root holds those of no named ``<mdiv>``.
 
         Args:
-            uid: The timeline id. ``None`` mints ``score:clt_N``.
+            uid: The timeline id. ``None`` mints ``score:clt_…``.
             name: The timeline's display name.
             attach_cmap: If True, attach the quarters → seconds C-Map.
 
@@ -877,7 +879,7 @@ class VerovioLoader(ScoreLoader):
         quarter-based ``MeasureMap`` has no place on a seconds axis.
 
         Args:
-            uid: The timeline id. ``None`` mints ``rendered:cpt_N``.
+            uid: The timeline id. ``None`` mints ``rendered:cpt_…``.
             name: The timeline's display name.
             attach_cmap: If True, attach the seconds → quarters C-Map.
 
@@ -933,23 +935,21 @@ class VerovioLoader(ScoreLoader):
         Args:
             timeline_cls: The timeline type of the root and its children.
             convert: Maps a position in quarters to the timeline's axis.
-            uid: The root's id, or ``None`` to mint ``{role}:{prefix}_N``.
+            uid: The root's id, or ``None`` to mint ``{role}:{prefix}_…``.
             name: The root's display name.
             role: The role of the minted ids.
             meta: The root's metadata.
 
-        Every timeline of the tree is minted ``{role}:{prefix}_N`` by this
-        loader, the root first: its number is drawn even when *uid* names
-        it. A given *uid* also takes its own number from the loader's
-        minted ids, so no movement is minted the root's id (``score:clt_2``
-        given, the movements are ``score:clt_3``, …).
+        Every timeline ID the tree needs is minted ``{role}:{prefix}_…``
+        from the loader's minter, the root first (unless *uid* names it),
+        then the movements in document order.
         """
         from timetoalign.timelines.factory import mint_timeline_id
 
         rendering = self._require_rendering()
         unit = TimeUnit.quarters if role == "score" else TimeUnit.seconds
         if uid is None:
-            uid = mint_timeline_id(unit, role=role)
+            uid = mint_timeline_id(unit, self._id_minter, role=role)
         by_movement: dict[int | None, list[dict[str, Any]]] = {}
         for row in rendering.rows:
             by_movement.setdefault(rendering.movement[row["id"]], []).append(row)
@@ -982,7 +982,7 @@ class VerovioLoader(ScoreLoader):
                 index,
                 span_start,
                 span_end,
-                uid=mint_timeline_id(unit, role=role),
+                uid=mint_timeline_id(unit, self._id_minter, role=role),
                 name=movement.label,
                 meta={
                     key: value
@@ -1078,7 +1078,10 @@ class VerovioLoader(ScoreLoader):
         timeline.add_measure_map(
             MeasureMap.from_measure_data(
                 MeasureData.from_dicts(
-                    rows, unit=TimeUnit.quarters, number_type=NumberType.fraction
+                    rows,
+                    unit=TimeUnit.quarters,
+                    number_type=NumberType.fraction,
+                    minter=self._id_minter,
                 )
             )
         )

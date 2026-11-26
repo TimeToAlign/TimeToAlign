@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from tests.loader.minting import shape
 from timetoalign.loader.graphical.iiif import (
     IIIFCanvasInfo,
     IIIFManifestLoader,
@@ -152,7 +153,7 @@ class TestSUPRAManifestDimensions:
         (roll,) = timelines
         assert type(roll) is DiscreteGraphicalTimeline
         assert roll.unit.value == "pixels"
-        assert roll.id == "dgt_1"
+        assert shape(roll.id) == "dgt"
         assert roll.name == "display image"
         assert roll.length.value == 299400
         assert type(roll.length.value) is int
@@ -683,6 +684,11 @@ def _layout(line: Timeline) -> list[tuple[str, int, int, str]]:
     ]
 
 
+def _minted_layout(line: Timeline) -> list[tuple[str, int, int, str]]:
+    """:func:`_layout`, each segment's id minted and read as its shape."""
+    return [(shape(id_), *rest) for id_, *rest in _layout(line)]
+
+
 def _source(iri: str) -> dict[str, list[dict[str, str]]]:
     return {"dcterms:source": [{"id": iri}]}
 
@@ -751,23 +757,23 @@ class TestVolumeAlongPaths:
 
         assert volume.unit.value == "pixels"
         assert volume.length.value == 53123
-        assert _layout(volume) == [
-            ("dgt_2", 0, 12311, "2"),
-            ("dgt_7", 12311, 15690, "3"),
-            ("dgt_13", 28001, 12562, "4"),
-            ("dgt_18", 40563, 12560, "5"),
+        assert _minted_layout(volume) == [
+            ("dgt", 0, 12311, "2"),
+            ("dgt", 12311, 15690, "3"),
+            ("dgt", 28001, 12562, "4"),
+            ("dgt", 40563, 12560, "5"),
         ]
         pages = [page for _, _, page in volume.iter_segments()]
-        assert _layout(pages[0]) == [
-            (f"dgt_{3 + k}", offset, length, name)
-            for k, (name, offset, length, _) in enumerate(PAGE_1_ACCOLADES)
+        assert _minted_layout(pages[0]) == [
+            ("dgt", offset, length, name)
+            for name, offset, length, _ in PAGE_1_ACCOLADES
         ]
-        assert _layout(pages[1]) == [
-            ("dgt_8", 0, 3142, "accolade_1"),
-            ("dgt_9", 3142, 3137, "accolade_2"),
-            ("dgt_10", 6279, 3137, "accolade_3"),
-            ("dgt_11", 9416, 3135, "accolade_4"),
-            ("dgt_12", 12551, 3139, "accolade_5"),
+        assert _minted_layout(pages[1]) == [
+            ("dgt", 0, 3142, "accolade_1"),
+            ("dgt", 3142, 3137, "accolade_2"),
+            ("dgt", 6279, 3137, "accolade_3"),
+            ("dgt", 9416, 3135, "accolade_4"),
+            ("dgt", 12551, 3139, "accolade_5"),
         ]
         assert [length for _, _, length, _ in _layout(pages[2])] == [
             3147,
@@ -801,14 +807,14 @@ class TestVolumeAlongPaths:
             SCAN_PATHS, canvases=[1, 2, 3, 4]
         )
 
-        assert volume.id == "dgt_1"
+        assert shape(volume.id) == "dgt"
         assert volume.name == GALLICA_LABEL
         assert volume.meta == {}
         assert volume.statements == _source(GALLICA_MANIFEST_ID)
         assert _stated(volume) == [
             ({"image": canvas}, _source(canvas)) for canvas in (F2, F3, F4, F5)
         ]
-        page_1 = volume.get_child("dgt_2")
+        page_1 = volume.get_child(volume.list_children()[0])
         assert _stated(page_1) == [
             ({"box": box, "image": F2}, {}) for _, _, _, box in PAGE_1_ACCOLADES
         ]
@@ -852,7 +858,7 @@ class TestVolumeAlongPaths:
         read = Timeline.from_file(path)
 
         assert type(read) is SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]
-        assert read.id == "dgt_1"
+        assert shape(read.id) == "dgt"
         assert read.name == GALLICA_LABEL
         assert read.length.value == 53123
         assert read.is_locked is True
@@ -865,8 +871,10 @@ class TestVolumeAlongPaths:
             assert type(page_read) is SegmentLine[DiscreteGraphicalTimeline]
             assert page_read.is_locked is True
             assert _layout(page_read) == _layout(page)
+            assert page_read.list_children() == page.list_children()
             assert _stated(page_read) == _stated(page)
-        assert _stated(read.get_child("dgt_2"))[0] == (
+        assert read.list_children() == volume.list_children()
+        assert _stated(read.get_child(read.list_children()[0]))[0] == (
             {"box": _strip(1221, 1589, 2880, 677), "image": F2},
             {},
         )
@@ -890,13 +898,13 @@ class TestPagesAsRoots:
         )
 
         assert [
-            (type(page), page.id, page.name, page.length.value, page.is_locked)
+            (type(page), shape(page.id), page.name, page.length.value, page.is_locked)
             for page in pages
         ] == [
-            (SegmentLine[DiscreteGraphicalTimeline], "dgt_1", "2", 12311, True),
-            (SegmentLine[DiscreteGraphicalTimeline], "dgt_6", "3", 15690, True),
-            (SegmentLine[DiscreteGraphicalTimeline], "dgt_12", "4", 12562, True),
-            (SegmentLine[DiscreteGraphicalTimeline], "dgt_17", "5", 12560, True),
+            (SegmentLine[DiscreteGraphicalTimeline], "dgt", "2", 12311, True),
+            (SegmentLine[DiscreteGraphicalTimeline], "dgt", "3", 15690, True),
+            (SegmentLine[DiscreteGraphicalTimeline], "dgt", "4", 12562, True),
+            (SegmentLine[DiscreteGraphicalTimeline], "dgt", "5", 12560, True),
         ]
         assert [(page.meta, page.statements) for page in pages] == [
             ({"image": canvas}, _source(canvas)) for canvas in (F2, F3, F4, F5)
@@ -956,11 +964,11 @@ class TestCanvasSelection:
         assert volume.name == "4 Mélodies classiques"
         assert volume.length.value == 11017
         assert volume.statements == _source(BNF_MANIFEST_ID)
-        assert _layout(volume) == [
-            ("dgt_2", 0, 2500, "5"),
-            ("dgt_3", 2500, 2677, "6"),
-            ("dgt_4", 5177, 2940, "recto"),
-            ("dgt_5", 8117, 2900, "verso"),
+        assert _minted_layout(volume) == [
+            ("dgt", 0, 2500, "5"),
+            ("dgt", 2500, 2677, "6"),
+            ("dgt", 5177, 2940, "recto"),
+            ("dgt", 8117, 2900, "verso"),
         ]
         assert _stated(volume) == [
             (
@@ -983,8 +991,11 @@ class TestRefusals:
 
     @staticmethod
     def _nothing_was_built(loader: IIIFManifestLoader) -> None:
+        """The loader mints what a fresh loader of its file mints first."""
         (page,) = loader.create_timelines(_line(), canvases=[1])
-        assert page.id == "dgt_1"
+        fresh = IIIFManifestLoader().load(*loader.sources)
+        (first,) = fresh.create_timelines(_line(), canvases=[1])
+        assert page.id == first.id
 
     def test_selected_canvases_without_a_path(self, gallica_path: Path) -> None:
         loader = _gallica(gallica_path)

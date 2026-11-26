@@ -59,8 +59,10 @@ another basis fails.
   embodies is written in full under the work's `lrmoo:R3_is_realised_in`
   (the second header proves this branch).
 * Each **manifestation** becomes a new graphical timeline in millimetres of
-  unknown length, named by its first title, added to the bundle before any
-  statement, so a value naming it (`{"id": "#cgt_1"}`) carries its final ID.
+  unknown length, named by its first title, its ID minted from the loader's
+  minter (`cgt_…`; the tests load with `seed=0` and name the IDs a fresh
+  `IdMinter(0)` mints), so a value naming it (`{"id": "#cgt_…"}`) carries its
+  final ID.
 * An **item** is a value node under its manifestation's
   `lrmoo:R7i_is_exemplified_by`, its pairs stated inside the node; a
   repository without an IRI is a candidate inside the node. An item with an

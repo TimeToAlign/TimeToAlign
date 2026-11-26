@@ -65,7 +65,9 @@ library's reader and writer keep it.
 
 The loader mints the ID of every timeline it adds from its minter
 (`cgt_…`); the tests load with `seed=0`, so the first new timeline is the
-first `cgt` ID of a fresh `IdMinter(0)`, written `cgt_…` below.
+first `cgt` ID of a fresh `IdMinter(0)`, written `cgt_…` below. A bundle
+created without `id=` takes its ID from the same minter (built first, it is
+`IdMinter(0)`'s first ID, `bundle_…`) and does not write it.
 
 1. **Main repository** (`works/1.ttl`, `expressions/2.ttl`,
    `persons/3.ttl`, `manifestations/4.ttl`, `items/5.ttl`,

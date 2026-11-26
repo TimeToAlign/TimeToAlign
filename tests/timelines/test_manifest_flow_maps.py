@@ -34,6 +34,23 @@ def q(value: Any) -> Coordinate:
     return Coordinate(Fraction(value), Q)
 
 
+def _region_ids(score: Timeline) -> list[str]:
+    """The IDs of the regions A, B, C the fixture states (minted: read by name)."""
+    named = {
+        score.get_region(region_id).name: region_id
+        for region_id in score.list_regions()
+    }
+    return [named["A"], named["B"], named["C"]]
+
+
+def _flow_map_ids(score: Timeline) -> dict[str, str]:
+    """The IDs of the fixture's FlowMaps by convention (minted: read from the objects)."""
+    return {
+        str(score.get_flow_map(flow_map_id).convention): flow_map_id
+        for flow_map_id in score.list_flow_maps()
+    }
+
+
 class TestFixtures:
     """The format's own manifests are read into objects and written back."""
 
@@ -60,38 +77,45 @@ class TestFixtures:
     def test_the_exposition_is_read_into_objects(self, name: str) -> None:
         score = Timeline.from_file(FIXTURES / name)
         inferred = (Provenance(method="inferred"),)
-        assert [
-            score.get_flow_map(flow_map_id) for flow_map_id in score.list_flow_maps()
-        ] == [
+        a, b, c = _region_ids(score)
+        by_convention = _flow_map_ids(score)
+        flow_maps = [
             FlowMap(
                 "score",
-                ("region_1", "region_2", "region_1", "region_3"),
+                (a, b, a, c),
                 convention=FlowConvention.default,
                 provenance=inferred,
-                id="flow_map_1",
+                id=by_convention["default"],
             ),
             FlowMap(
                 "score",
-                ("region_1", "region_3"),
+                (a, c),
                 convention=FlowConvention.single,
                 provenance=inferred,
-                id="flow_map_2",
+                id=by_convention["single"],
             ),
             FlowMap(
                 "score",
-                ("region_1", "region_2", "region_3"),
+                (a, b, c),
                 convention=FlowConvention.printed,
                 provenance=inferred,
-                id="flow_map_3",
+                id=by_convention["printed"],
             ),
         ]
+        assert [
+            score.get_flow_map(flow_map_id) for flow_map_id in score.list_flow_maps()
+        ] == sorted(flow_maps, key=lambda flow_map: flow_map.id)
         assert all(
             score.get_flow_map(flow_map_id).is_computed
             for flow_map_id in score.list_flow_maps()
         )
         virtual = score.get_virtual_timeline("virtual_1")
         assert virtual == VirtualTimeline(
-            "flow_map_1", "score", q(36), name="Score, as played", id="virtual_1"
+            by_convention["default"],
+            "score",
+            q(36),
+            name="Score, as played",
+            id="virtual_1",
         )
         assert score.list_virtual_timelines() == ["virtual_1"]
         # A 12 + B 4 + A 12 + C 8: the stated length is the FlowMap's.
@@ -130,7 +154,8 @@ class TestFixtures:
     def test_a_bundle_hands_the_flow_maps_to_their_roots(self) -> None:
         bundle = AlignmentBundle.from_file(FIXTURES / "sonata_exposition.yaml")
         score = bundle.timelines["score"]
-        assert score.list_flow_maps() == ["flow_map_1", "flow_map_2", "flow_map_3"]
+        assert score.list_flow_maps() == sorted(_flow_map_ids(score).values())
+        assert len(score.list_flow_maps()) == 3
         assert score.list_virtual_timelines() == ["virtual_1"]
 
 

@@ -156,7 +156,9 @@ def test_timeline_name_and_id(drawing, loader):
     assert drawing.id == minted(0, "cgt")[0]
     named = loader.create_timeline(uid="drawing", name="Drawing")
     assert (named.id, named.name) == ("drawing", "Drawing")
-    assert named.list_children() == [minted(0, "cgt", "cgt", "cgt")[2]]
+    ids = minted(0, "cgt", "cgt", "cmap", "cgt", "cmap")
+    assert named.list_children() == [ids[3]]
+    assert list(named.get_child(ids[3])._conversion_maps) == [ids[4]]
 
 
 @pytest.mark.parametrize("uid", ["drawing", "drawing:cgt_2"], ids=["bare", "role-led"])
@@ -167,9 +169,13 @@ def test_a_given_root_id_draws_no_id(loader, uid):
 
 def test_successive_timelines_get_distinct_ids(loader):
     first, second = loader.create_timeline(), loader.create_timeline()
-    ids = minted(0, "cgt", "cgt", "cgt", "cgt")
+    ids = minted(0, "cgt", "cgt", "cmap", "cgt", "cgt", "cmap")
     assert (first.id, first.list_children()) == (ids[0], [ids[1]])
-    assert (second.id, second.list_children()) == (ids[2], [ids[3]])
+    assert (second.id, second.list_children()) == (ids[3], [ids[4]])
+    assert [
+        list(timeline.get_child(child)._conversion_maps)
+        for timeline, child in ((first, ids[1]), (second, ids[4]))
+    ] == [[ids[2]], [ids[5]]]
 
 
 def test_axis_child(drawing):

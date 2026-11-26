@@ -1091,13 +1091,13 @@ def test_arguments_matching_no_timeline_override_the_one_root(
         (
             FAMILY,
             "intro",
-            "root timeline 'ex' cannot take the id 'intro': it is already held by "
+            "root timeline 'ex' cannot join: its id 'intro' is already held by "
             "region 'intro' of timeline 'ex_child'",
         ),
         (
             {**FAMILY, "id": "op35"},
             "op35",
-            "root timeline 'ex' cannot take the id 'op35': it is already held by the manifest",
+            "root timeline 'ex' cannot join: its id 'op35' is already held by the manifest",
         ),
     ],
     ids=["descendant_region", "manifest"],
@@ -1278,7 +1278,8 @@ def test_a_group_never_takes_the_id_of_a_descendant_timeline(
     with pytest.raises(ValueError) as refused:
         TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="ex_child")
     assert str(refused.value) == (
-        "group id 'ex_child' is already held by timeline 'ex_child'"
+        "group 'ex_child' cannot join: its id 'ex_child' is already held by "
+        "timeline 'ex_child'"
     )
 
 

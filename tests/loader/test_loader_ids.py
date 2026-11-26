@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree
 
 import pytest
@@ -27,6 +28,7 @@ from timetoalign.loader.tabular import CsvLoader
 from timetoalign.testdata import ensure_data
 
 WOO71_NOTES = ensure_data("score") / "beethoven_woo71" / "WoO71.notes.tsv"
+MUSETTE = ensure_data("score") / "couperin_concerts"
 BEETHOVEN_MIDI = ensure_data("midi") / "score" / "beethoven_op18.mid"
 CURZON = ensure_data("mpm_toolbox") / "MPRproject_1971Curzon_VariationXIV"
 CURZON_STEM = "Beethoven_op35_1971Curzon_Var14only"
@@ -248,3 +250,81 @@ def test_score_stores_mint_after_the_table_is_built(store, rows) -> None:
     assert store.from_dicts(moved).table.column("id").to_pylist() != first
     reset_content_minters()
     assert store.from_dicts(rows).table.column("id").to_pylist() == first
+
+
+def _mpm_built() -> dict[str, Any]:
+    """Every ID of the bundle a fresh MPM loader builds from the Curzon project."""
+    bundle = MpmLoader.from_file(CURZON / f"{CURZON_STEM}.mpr").create_bundle()
+    return {
+        "manifest": bundle.to_dict(),
+        "events": {
+            timeline.id: timeline.events.table.column("id").to_pylist()
+            for timeline in bundle.timelines.values()
+        },
+        "claims": [claim.id for claim in bundle.get_match_claims()],
+    }
+
+
+def _ms3_built() -> dict[str, Any]:
+    """Every ID of the timeline a fresh ms3 loader builds from the Musette's measures."""
+    loader = Ms3Loader.from_file(
+        MUSETTE / "c05n05_musete.measures.tsv", MUSETTE / "c05n05_musete.notes.tsv"
+    )
+    timeline = loader.create_timeline()
+    loader.create_stated_flow_map(timeline)
+    return {
+        "manifest": timeline.to_dict(),
+        "events": timeline.events.table.column("id").to_pylist(),
+    }
+
+
+def _id_shapes(value: Any) -> set[str]:
+    """The shapes of every minted ``id`` a manifest states, at any depth."""
+    if isinstance(value, dict):
+        stated = value.get("id")
+        found = (
+            {shape(stated.removeprefix("#"))} if stated not in (None, "@id") else set()
+        )
+        return found.union(*(_id_shapes(member) for member in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_id_shapes(member) for member in value))
+    return set()
+
+
+def test_a_fresh_loader_builds_everything_with_the_same_ids() -> None:
+    mpm = _mpm_built()
+    # The first build advanced every minter the process keeps for objects built
+    # in code; a loader draws from none of them.
+    assert _mpm_built() == mpm
+    assert _id_shapes(mpm["manifest"]) == {
+        "group",
+        "cmap",
+        "score:clt",
+        "score:dlt",
+        "perf:cpt",
+        "perf:dpt",
+        "perf:dgt",
+    }
+    assert {shape(key): len(ids) for key, ids in mpm["events"].items()} == {
+        "score:clt": 251,
+        "score:dlt": 499,
+        "perf:cpt": 251,
+        "perf:dpt": 251,
+        "perf:dgt": 0,
+    }
+    assert len(set(mpm["claims"])) == 251
+
+    ms3 = _ms3_built()
+    assert _ms3_built() == ms3
+    assert _id_shapes(ms3["manifest"]) == {
+        "clt",
+        "cmap",
+        "measure_map",
+        "jump",
+        "jump_target",
+        "break",
+        "region",
+        "flow",
+    }
+    assert len(set(ms3["events"])) == 530
+    assert len(ms3["manifest"]["measure_maps"]) == 1

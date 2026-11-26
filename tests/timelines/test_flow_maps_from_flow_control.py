@@ -790,25 +790,24 @@ class TestAnotherOrigin:
 
     def test_the_format_s_computed_exposition_is_written_again_unchanged(self) -> None:
         score = Timeline.from_file(FIXTURES / "flow" / "sonata_exposition.yaml")
+        # The file's minted IDs, read from the objects: regions by name,
+        # FlowMaps by convention.
+        named = {score.get_region(i).name: i for i in score.list_regions()}
+        a, b, c = named["A"], named["B"], named["C"]
+        stated = {
+            str(score.get_flow_map(i).convention): i for i in score.list_flow_maps()
+        }
         before = _state(score)
         written = score.create_flow_maps_from_flow_control()
         assert _sections(written) == [
-            ("region_1", "A", q(0), q(12)),
-            ("region_2", "B", q(12), q(16)),
-            ("region_3", "C", q(16), q(24)),
+            (a, "A", q(0), q(12)),
+            (b, "B", q(12), q(16)),
+            (c, "C", q(16), q(24)),
         ]
         assert _flow_maps(written) == [
-            (
-                "flow_map_1",
-                FlowConvention.default,
-                ("region_1", "region_2", "region_1", "region_3"),
-            ),
-            ("flow_map_2", FlowConvention.single, ("region_1", "region_3")),
-            (
-                "flow_map_3",
-                FlowConvention.printed,
-                ("region_1", "region_2", "region_3"),
-            ),
+            (stated["default"], FlowConvention.default, (a, b, a, c)),
+            (stated["single"], FlowConvention.single, (a, c)),
+            (stated["printed"], FlowConvention.printed, (a, b, c)),
         ]
         assert _state(score) == before
 

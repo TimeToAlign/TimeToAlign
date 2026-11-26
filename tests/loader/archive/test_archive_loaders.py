@@ -462,9 +462,11 @@ class TestTabularJsonAndMaps:
 
             score = VerovioLoader.from_file(mei).create_timeline()
             performance = DiscretePhysicalTimeline(
-                length=4 * 44100, unit=TimeUnit.samples
+                length=4 * 44100, unit=TimeUnit.samples, uid="performance"
             )
-            performance.add_conversion_map(SamplesToSeconds(sample_rate=44100))
+            performance.add_conversion_map(
+                SamplesToSeconds(sample_rate=44100, uid="samples_to_seconds")
+            )
             return loader.create_bundle(score, performance).to_dict()
 
         archived = MapsLoader.from_file(source)

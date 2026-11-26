@@ -345,7 +345,9 @@ def test_table_follows() -> None:
     table = bundle.get_matchstamp_table([Fraction(27, 2)], "clt_4")
     frame = bundle.get_matchstamp_table([Fraction(27, 2)], "clt_4", format="dataframe")
 
-    assert table.column_names == ["clt_1", "clt_4", "clt_6", "clt_7", "cpt_1"]
+    # Registered timelines in registration order, then the descendant clt_4.
+    assert bundle.timeline_ids == ["clt_7", "clt_1", "clt_6", "cpt_1"]
+    assert table.column_names == ["clt_7", "clt_1", "clt_6", "cpt_1", "clt_4"]
     assert table.column("clt_4").to_pylist() == [
         {"value": 13.5, "numerator": 27, "denominator": 2}
     ]

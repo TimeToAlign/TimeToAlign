@@ -133,8 +133,11 @@ def test_bundle_group_count(bundle) -> None:
 
 
 def test_bundle_group_ids(bundle) -> None:
-    """Group ids are minted in creation order; the labels are the group names."""
-    assert bundle.group_ids == [f"group_{n}" for n in range(1, 7)]
+    """Group ids are the loader's: six distinct, a fresh loader's the same; labels are names."""
+    again = ParangonadaLoader.from_file(DATASET_DIR).create_bundle()
+    assert again.group_ids == bundle.group_ids
+    assert len(set(bundle.group_ids)) == 6
+    assert {group_id.rsplit("_", 1)[0] for group_id in bundle.group_ids} == {"group"}
     assert [group.name for group in bundle.groups.values()] == ["score"] + [
         f"perf:{key}" for key in PERFORMER_KEYS
     ]

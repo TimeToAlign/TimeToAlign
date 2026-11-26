@@ -1134,9 +1134,13 @@ class TestNestedMaps:
         timeline.add_conversion_map(constant)
         timeline.add_conversion_map(combination)
         payload = bare(timeline.to_dict())
+        # Written in canonical order, by ID.
         assert [
             _map_ids(cmap) for cmap in payload["timelines"][0]["conversion_maps"]
-        ] == [constant.id, expected]
+        ] == [
+            {constant.id: constant.id, combination.id: expected}[map_id]
+            for map_id in sorted([constant.id, combination.id])
+        ]
         text = json.dumps(payload)
         assert (
             json.dumps(bare(Timeline.from_dict(filed(json.loads(text))).to_dict()))

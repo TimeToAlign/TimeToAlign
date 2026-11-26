@@ -10,11 +10,13 @@ each naming the reason. See ``README.md``, "Parsing matrix".
 
 from __future__ import annotations
 
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from tests.loader.minting import named_flow_control
 from timetoalign.timelines.flow import (
     flow_control_from_measures,
     measure_keys_from_flow_control,
@@ -401,17 +403,22 @@ class TestMeasureMapLoaderValidation:
         """
         from timetoalign.loader.score import MeasureMapLoader
 
-        loader = MeasureMapLoader().load(
+        loader = MeasureMapLoader(seed=1).load(
             get_specimen_path(SPECIMENS[specimen_name], "mm_json")
         )
         timeline = loader.create_timeline()
         ranges, result = played_ranges(timeline)
         assert [(row.start, row.end) for row in ranges] == expected
         assert result.findings == ()
-        assert timeline.flow_control.to_dict() == [
+        translated = [
             element.to_dict()
-            for element in flow_control_from_measures(timeline.measure_map)
+            for element in flow_control_from_measures(timeline.measure_map, seed=2)
         ]
+        assert named_flow_control(
+            timeline.flow_control.to_dict(), 1
+        ) == named_flow_control(
+            sorted(translated, key=lambda e: (Fraction(*e["coordinate"]), e["id"])), 2
+        )
 
 
 # A MusicXML score of several parts gives Music21Loader and PartituraLoader one
@@ -909,26 +916,42 @@ class TestVerovioLoaderMEI:
         ranges, result = played_ranges(timeline)
         expected, expected_result = played_ranges(from_table)
         assert ranges == expected == gold["default"][:4]
-        assert result.findings == expected_result.findings
+
+        def findings(found: Any, held: Any) -> list[tuple[Any, ...]]:
+            """The findings, each element ID in a message replaced by its role."""
+            parts = []
+            for finding in found.findings:
+                message = finding.message
+                for element in held.flow_control.elements:
+                    message = message.replace(f"'{element.id}'", element.role)
+                parts.append((finding.kind, finding.coordinate, finding.end, message))
+            return parts
+
+        assert findings(result, timeline) == findings(expected_result, from_table)
         assert atomic_ranges(timeline) == gold["atomic"]
 
         def signs(held: Any) -> list[tuple[Any, ...]]:
-            return [
-                (element.role, element.coordinate.value, element.manifestation)
+            return sorted(
+                (element.role, element.coordinate.value, str(element.manifestation))
                 for element in held.flow_control.elements
                 if element.role in {"jump_target", "break", "section_break"}
-            ]
+            )
 
         assert signs(timeline) == signs(from_table)
+
+        def targets(held: Any) -> list[tuple[Any, ...]]:
+            return sorted(
+                (target.coordinate.value, str(target.manifestation), target.name or "")
+                for target in held.flow_control.jump_targets
+            )
+
         # Verovio counts a second coda; the measures table names MuseScore's.
         assert [
-            (target.name, named.name)
+            (target[2], named[2])
             for target, named in zip(
-                timeline.flow_control.jump_targets,
-                from_table.flow_control.jump_targets,
-                strict=True,
+                targets(timeline), targets(from_table), strict=True
             )
-            if target.name != named.name
+            if target != named
         ] == [("coda2", "codab")]
         repaired, result = played_ranges(
             timeline, registry=repaired_stress_score(timeline)

@@ -20,6 +20,7 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
+from tests.loader.minting import named_flow_control
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import MeasureMap
 
@@ -369,7 +370,7 @@ class TestVoltaBrackets:
 
         path = tmp_path / "brackets.mm.json"
         path.write_text(json.dumps(rows), encoding="utf-8")
-        return MeasureMapLoader().load(path)
+        return MeasureMapLoader(seed=1).load(path)
 
     def test_a_bracket_for_several_passes_reaches_the_timeline(self, tmp_path):
         loader = self._loaded(tmp_path, self._rows([1, 3], [2]))
@@ -398,7 +399,7 @@ class TestVoltaBrackets:
             [1, 3],
             [2],
         ]
-        assert timeline.flow_control.to_dict() == [
+        assert named_flow_control(timeline.flow_control.to_dict(), 1) == [
             {
                 "id": "jump_1",
                 "role": "jump",

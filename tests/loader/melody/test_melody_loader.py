@@ -341,7 +341,7 @@ class TestRepository:
         self, repo: Path
     ) -> None:
         bundle = MelodyLoader.from_file(repo, seed=0).create_bundle(date=DATE)
-        assert bundle.id == "bundle_1"
+        assert bundle.id == minted(0, "bundle")[0]
         assert "id" not in bundle.to_dict()
 
     def test_importing_again_adds_nothing(self, repo: Path) -> None:

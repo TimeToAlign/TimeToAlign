@@ -431,7 +431,9 @@ def test_a_group_whose_id_the_bundle_holds_is_refused() -> None:
     bundle = AlignmentBundle().add_group(TimelineGroup(timelines=[p], seed=7))
     group = TimelineGroup(timelines=[s], seed=7)
     _raises(
-        f"Group '{group.id}' already exists in bundle", lambda: bundle.add_group(group)
+        f"group '{group.id}' cannot join bundle '{bundle.id}': its id '{group.id}' "
+        f"is already held by group '{group.id}'",
+        lambda: bundle.add_group(group),
     )
     assert list(bundle.groups) == [group.id]
     assert bundle.groups[group.id].timeline_ids == ["p"]
@@ -439,9 +441,13 @@ def test_a_group_whose_id_the_bundle_holds_is_refused() -> None:
         AlignmentBundle().add_group(TimelineGroup(timelines=[_quarters(t)], seed=7))
         for t in ("a", "b")
     ]
-    _raises(
-        f"Group '{group.id}' already exists in bundle",
-        lambda: AlignmentBundle.from_bundles(sources),
+    # The merged bundle's id is minted: the message names it in its place.
+    with pytest.raises(ValueError) as refused:
+        AlignmentBundle.from_bundles(sources)
+    assert re.fullmatch(
+        f"group '{group.id}' cannot join bundle 'bundle_[0-9a-z]{{13}}': its id "
+        f"'{group.id}' is already held by group '{group.id}'",
+        str(refused.value),
     )
 
 

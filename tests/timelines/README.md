@@ -883,16 +883,16 @@ entry, with literal manifests written from the format's rules.
   refused on reading with `the id '<id>' is held twice in the manifest: by
   <first> and by <second>` (the manifest first, then the measure maps, the
   trees, the groups); writing a measure map whose given id a timeline holds
-  is refused with `measure map 'score' cannot be written: its id is already
-  held by timeline 'score'`, and so is a minted id a timeline holds (the
+  is refused with `measure map 'score' cannot join: its id 'score' is
+  already held by timeline 'score'`, and so is a minted id a timeline holds (the
   timeline given the map's minted id as its own): nothing is minted again.
   A view naming an id no entry has is refused naming it.
 - **Measure-derived maps name the measure map they derive from.** On a score
   timeline, the floating-measure map the loader attaches is a
-  `FloatingMeasureMap` over an equal, separately built map with an ID of
-  its own: it names that entry, so the manifest holds two entries of equal
-  rows, each named by its map, and reads back with each view over its own
-  entry (equal maps, not one object). A
+  `FloatingMeasureMap` over the timeline's own measure map (the same
+  object): the manifest holds one entry, which the MeasureRecordMap and the
+  floating-measure view both name, and reads back with both views over the
+  timeline's measure map. A
   `QuartersToFloatingMeasures`, `QuartersToMeasureNumber` and `MetricMap`
   built from the timeline's measures name the own entry too; ones built from
   other data each write an entry of their own built from their data, which
@@ -1634,7 +1634,8 @@ it a speaking id.
   the three objects hold; added to a timeline holding other maps it writes
   the same ids; a `CombinationMap` of a `ChainMap` (with a
   `MeasureRecordMap`) and a `ConstantMap` round-trips text-identically
-  through JSON with every nested id; an `IntervalToConstantMap` with an end
+  through JSON with every nested id, beside another `ConstantMap` on one
+  timeline written in canonical order, by id; an `IntervalToConstantMap` with an end
   writes the ids of its two `ConstantMap`s. Refusals, each atomic (the
   timeline's maps and the joining map's ids unchanged): two nested maps
   given one id; two nested maps built with one seed (a minted collision);
@@ -1843,7 +1844,8 @@ places a reference can stand, value, entry value and basis item:
     staying free;
   - `from_bundles` of two sources sharing a timeline ID, the sources
     unchanged; of two sources holding groups made with one seed, and
-    `add_group` of such a group, `Group 'x' already exists in bundle`;
+    `add_group` of such a group, `group 'x' cannot join bundle '<bundle
+    id>': its id 'x' is already held by group 'x'`;
   - a given ID equal to a minted group's ID, as a timeline joining the
     bundle or the group, or as a region added to a member (`... its id 'x'
     is already held by group 'x'`): the group keeps its ID and what names
@@ -5320,8 +5322,10 @@ are written beside them under three new IDs, `default` (A, A, B),
 `single` (A, B) and `printed` (A, B). The format's own fixture `flow/sonata_exposition`
 states its sections and its FlowMaps as computed (`inferred`): computing
 them again from its flow control gives the same three sections ([0, 12),
-[12, 16), [16, 24)) and the same three FlowMaps under the same IDs
-((1, 2, 1, 3), (1, 3), (1, 2, 3)) and changes nothing in the timeline,
+[12, 16), [16, 24)) under the IDs the file gives them, and the same three
+FlowMaps under the file's IDs ((A, B, A, C), (A, C), (A, B, C); the IDs
+read from the timeline by region name and convention, never typed) and
+changes nothing in the timeline,
 which shows that what the library writes is the form the format states.
 A Jump going on at a section (`to:` the ID of B, added after the first
 call) keeps landing at 8 after the sections were computed again.
@@ -5338,7 +5342,9 @@ written.
   `flow/sonata_exposition` and `flow/flow_map_by_hand`, each in the
   complete and the minimal form, through `Timeline` and through
   `AlignmentBundle`. That alone would also hold for keys kept unread, so
-  the objects read are compared with literals as well: the three FlowMaps
+  the objects read are compared with literals as well (the fixture's
+  minted IDs read from the objects, regions by name, FlowMaps by
+  convention, listed in canonical order by ID): the three FlowMaps
   of the exposition with their conventions, their chunks and the
   provenance `inferred` that says they were computed from its flow control
   (`is_computed`), its virtual timeline
@@ -5566,8 +5572,9 @@ mints in the documented order: `get_slice` (the slice, then each copied
 map), `create_regions_by_splitting` (regions in coordinate order),
 `create_segment_line` (the line, then each segment), `derive` (the derived
 timeline, then its inverse map; `uid=` given, the inverse map first),
-`MeasureMap.get_slice` (the slice). A second call with the same seed gives
-the same ids.
+`MeasureMap.get_slice` (the slice), `create_calibrated_child` (the map it
+builds from the pairs, then the child; `uid=` given, the map alone). A
+second call with the same seed gives the same ids.
 
 `append_child(uid=, name=)` applies the id and name before `add_child`
 checks the child; a refused child (its new id held in the parent's

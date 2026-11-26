@@ -6,7 +6,11 @@ import pytest
 
 from timetoalign.core.ids import IdMinter
 from timetoalign.maps import LinearMap
-from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
+from timetoalign.timelines import (
+    ContinuousGraphicalTimeline,
+    ContinuousLogicalTimeline,
+    MeasureMap,
+)
 from timetoalign.timelines.types import ContinuousPhysicalTimeline
 
 
@@ -92,3 +96,18 @@ def test_a_refused_appended_child_keeps_its_id_and_name() -> None:
         parent.append_child(child, uid="taken", name="Renamed")
     assert (child.id, child.name) == ("child", "Child")
     assert parent.list_children() == []
+
+
+def test_create_calibrated_child_mints_the_map_then_the_child() -> None:
+    for _ in range(2):
+        page = ContinuousGraphicalTimeline(length=100, unit="points", uid="page")
+        _built_before()
+        child = page.create_calibrated_child(
+            80, 10, [(10, 0), (90, 4)], value_unit="seconds", seed=8
+        )
+        assert [*child._conversion_maps, child.id] == _expected(8, "cmap", "cgt")
+    page = ContinuousGraphicalTimeline(length=100, unit="points", uid="page")
+    named = page.create_calibrated_child(
+        80, 10, [(10, 0), (90, 4)], value_unit="seconds", uid="axis", seed=8
+    )
+    assert [*named._conversion_maps, named.id] == [*_expected(8, "cmap"), "axis"]

@@ -585,14 +585,17 @@ class TestMaterialise:
 
         assert len(warped._regions) == 2
 
-        # Each warped region keeps its source region's id and name.
-        verse = warped.get_region("verse")
-        assert verse.name == "Verse"
+        # Each warped region keeps its source region's name; its id is its own.
+        by_name = {
+            warped.get_region(region_id).name: warped.get_region(region_id)
+            for region_id in warped.list_regions()
+        }
+        assert set(warped.list_regions()).isdisjoint(["verse", "chorus"])
+        verse = by_name["Verse"]
         assert float(verse.start.value) == 0.0
         assert float(verse.end.value) == 50.0
 
-        chorus = warped.get_region("chorus")
-        assert chorus.name == "Chorus"
+        chorus = by_name["Chorus"]
         assert float(chorus.start.value) == 50.0
         assert float(chorus.end.value) == 100.0
 

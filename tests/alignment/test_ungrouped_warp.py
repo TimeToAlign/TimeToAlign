@@ -151,7 +151,8 @@ def test_table_matches_the_warp_map() -> None:
     table = bundle.get_matchstamp_table(positions, SCORE)
     frame = bundle.get_matchstamp_table(positions, SCORE, format="dataframe")
 
-    assert table.column_names == [RECORDING, SCORE]
+    # In registration order (see README, "MatchStamp table order").
+    assert table.column_names == [SCORE, RECORDING]
     assert table.to_pylist() == [
         {
             RECORDING: {
@@ -167,7 +168,7 @@ def test_table_matches_the_warp_map() -> None:
         }
         for quarters, samples in BETWEEN
     ]
-    assert list(frame.columns) == ["recording (samples)", "score (quarters)"]
+    assert list(frame.columns) == ["score (quarters)", "recording (samples)"]
     assert frame["recording (samples)"].tolist() == [s for _, s in BETWEEN]
     assert frame["score (quarters)"].tolist() == positions
 

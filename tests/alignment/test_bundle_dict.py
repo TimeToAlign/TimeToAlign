@@ -698,10 +698,15 @@ def test_given_group_id_collision_raises() -> None:
     bundle.add_group(
         TimelineGroup(id="g", timelines=[ContinuousLogicalTimeline(length=4)])
     )
-    with pytest.raises(ValueError, match="Group 'g' already exists in bundle"):
+    message = (
+        f"group 'g' cannot join bundle '{bundle.id}': its id 'g' is already held "
+        "by group 'g'"
+    )
+    with pytest.raises(ValueError) as held:
         bundle.add_group(
             TimelineGroup(id="g", timelines=[ContinuousPhysicalTimeline(length=4.0)])
         )
+    assert str(held.value) == message
 
     minted = TimelineGroup(timelines=[ContinuousPhysicalTimeline(length=4.0)])
     other = TimelineGroup(timelines=[ContinuousPhysicalTimeline(length=2.0)])
@@ -775,8 +780,12 @@ def test_refused_group_keeps_its_member_ids() -> None:
     member_id = member.id
     refused = TimelineGroup(id="g", timelines=[member])
 
-    with pytest.raises(ValueError, match="Group 'g' already exists in bundle"):
+    with pytest.raises(ValueError) as held:
         bundle.add_group(refused)
+    assert str(held.value) == (
+        f"group 'g' cannot join bundle '{bundle.id}': its id 'g' is already held "
+        "by group 'g'"
+    )
     assert (refused.id, member.id) == ("g", member_id)
     assert refused.timeline_ids == [member_id]
 
@@ -828,7 +837,9 @@ def test_from_bundles_keeps_minted_group_ids() -> None:
     assert seeded.group_ids == again.group_ids == [shared]
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_bundles([seeded, again])
-    assert str(refused.value) == f"Group '{shared}' already exists in bundle"
+    message = str(refused.value)
+    assert message.startswith(f"group '{shared}' cannot join bundle 'bundle_")
+    assert message.endswith(f"': its id '{shared}' is already held by group '{shared}'")
     assert (seeded.group_ids, again.group_ids) == ([shared], [shared])
 
 

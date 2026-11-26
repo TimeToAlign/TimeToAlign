@@ -72,6 +72,21 @@ per seed kind:
     given minter, and, without one, from the content of every column but
     `id`: two note tables of equal length and event types but different
     pitches mint different IDs in a fresh run.
+11. *Everything a loader builds takes its ID from the loader's minter,
+    whatever ran before in the process.* Every `load`, `load_*` and
+    `create_*` method draws the IDs of what it builds without one of its
+    own (groups, bundles, C-Maps, measure maps, flow control, FlowMaps)
+    from the loader's minter, never from the minters the process keeps for
+    objects built in code, which count on from one build to the next. Two
+    fresh loaders loading one unchanged source one after the other in one
+    test (the first load advances every such process minter the second
+    would draw from) give equal IDs for everything: for the MPM project
+    (Curzon) the bundle's whole manifest (timelines, groups, C-Maps), the
+    IDs of every timeline's events and of every MatchClaim; for the
+    Musette's ms3 measures table the timeline's whole manifest (measure
+    map, flow control, C-Maps and the FlowMap `create_stated_flow_map`
+    writes) and its events' IDs. Each comparison also holds a minted ID
+    of each kind named, so the equality is not one of empty lists.
 
 ## Single-source loaders
 
@@ -1215,10 +1230,11 @@ cases are mutated copies of the same text.
   label, with an id minted from its unit.
 * **The loader mints every id of the tree** from its one minter: loaded with
   `seed=0`, two ``create_timeline()`` calls give the roots the minter's 1st
-  and 3rd ``cgt_…`` ids with the axis children its 2nd and 4th (computed by a
-  fresh `IdMinter(0)`). A child minted in its own timeline's scope would
-  repeat an id. After the first drawing, a given root id (``drawing``) draws
-  nothing, so its child is the 3rd.
+  and 4th ids (``cgt_…``), the axis children its 2nd and 5th and the
+  children's calibrated maps its 3rd and 6th (``cmap_…``; computed by a fresh
+  `IdMinter(0)`). A child minted in its own timeline's scope would repeat an
+  id. After the first drawing, a given root id (``drawing``) draws nothing,
+  so its child is the 4th and its map the 5th.
 * **A given root id draws no id, whatever its shape.** On a fresh loader,
   ``uid="drawing"`` and ``uid="drawing:cgt_2"`` both give the child the
   minter's 1st id: nothing is reserved or parsed from a given id. This is the

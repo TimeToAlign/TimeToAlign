@@ -63,7 +63,8 @@ on a wrong reading, since the file is the third party.
   table, measure by measure. The two Couperin pieces pin what such a timeline plays: the
   repeats and nothing else, `[(1, 17), (1, 32), (17, 59), (32, 59)]` and
   `[(1, 10), (1, 19), (10, 28), (19, 61), (28, 61)]`, and its elements are exactly the
-  translation of its own measure map. What the file knows beyond the repeats is its `next`,
+  translation of its own measure map (`flow_control_from_measures`, seeded otherwise:
+  both named by the order they were minted, see "Signs written as flow control"). What the file knows beyond the repeats is its `next`,
   which stays with the measures (`MeasureMap` and the measure table) and is no flow control.
 
 `TestVerovioLoaderMEI` reads each matrix score's MEI with `VerovioLoader` (`expandNever`: the
@@ -72,8 +73,10 @@ flow-control files) and requires the folded count and the target `default` flow 
 timeline's flow control. `polyrhythm_only` matches exactly. `flow_only` has a test of its own:
 the MEI's marks give the signs the ms3 table gives (every jump target, break and section
 break at the same coordinate with the same manifestation; Verovio names the second coda
-`coda2`, the table `codab`), so the flow ends at the second of three brackets as the table's
-does, the atomic sections are the target's, and with the same repair the flow is the
+`coda2`, the table `codab`; compared as sets, since the order of elements sharing a
+coordinate follows their random IDs), so the flow ends at the second of three brackets as the
+table's does, with the same findings (their messages naming each element by its role, the
+IDs of the two loads differing), the atomic sections are the target's, and with the same repair the flow is the
 target's `default` flow (see "Gold flows"). Each residue is a strict `xfail` naming what the
 MEI states:
 
@@ -552,7 +555,9 @@ timeline. So every station is compared with what the file states:
   rows: one Jump at 8 with the destinations `by` 0 on the passes `[1, 3]`
   and `to` the jump target at 12 on the passes `[2]`; at 12 the Break and
   the jump target of the second bracket and the first bracket's repeat end;
-  at 16 the second bracket's repeat end with `reset: false`;
+  at 16 the second bracket's repeat end with `reset: false` (compared as
+  "Signs written as flow control" says: canonical order asserted, each
+  element named by the order the loader, seeded, minted it);
 - the same file with the integers `1` and `2` in place of the lists gives
   the measures `1` and `2`, the column `volta` `[None, None, 1, 2]` and an
   empty `volta_list`: a number is never read as a list.
@@ -643,6 +648,16 @@ columns of the measure table that each loader fills from its source: `markers`, 
 `jump_fwd`, `play_until`, `breaks`, `barline`. `test_flow_gold.py` proves that writing on two
 kinds of table.
 
+**How the elements are compared.** The loader mints every element's ID from its own minter
+(seeded here, `seed=1`), in the order it writes them; the array is written in canonical order,
+by coordinate and then by ID, and a Jump's destinations by place, a destination `to` an
+element by that element's ID. A random ID decides the order of elements that share a
+coordinate, so each test first asserts that the array stands in that canonical order. It then
+names each element `<role>_<k>`, the k-th element of its role the loader minted (the position
+of an ID in the minter's sequence is read off `IdMinter(1)`), renames every reference with
+it, and compares the array, sorted by coordinate and name, with the expected one. A reference
+to the wrong element therefore fails, whatever the IDs are spelled.
+
 **On the corpus**, where the expected elements are read off the table by hand:
 
 - The Musette's whole `flow_control` array, nine elements, each commented with the cell it
@@ -713,15 +728,17 @@ no. 4 and WoO 71, loaded from their ms3 tables:
   (20 and 10 chunks for Op. 18 no. 4, 37 and 25 for WoO 71; the file's rows end at section
   breaks, which does not change the sequence of letters);
 - the timeline's whole manifest, with measure map, flow control, the Regions and the three
-  FlowMaps, is accepted by `timetoshare.validate`; read back it holds equal Regions, FlowMaps
-  and flow control and writes the same manifest again.
+  FlowMaps, is accepted by `timetoshare.validate`, lists the FlowMaps in canonical order, by
+  ID; read back it holds equal Regions, FlowMaps and flow control and writes the same manifest
+  again.
 
 ## The order a source states
 
 Two kinds of source state the order of their measures beside the signs: an ms3 measures table
 and a Measure Map file list each measure's successors (`next`), and Verovio writes an
 expansion out. `loader.create_stated_flow_map(timeline)` writes that order as a FlowMap of the
-score's timeline (provenance method `imported`, no convention) and says where the default flow
+score's timeline (provenance method `imported`, no convention, its ID minted by the loader,
+the timeline's only FlowMap) and says where the default flow
 of the timeline's flow control differs from it. The walk and the writing are proved on
 synthetic measures (`tests/timelines/README.md`, "Measures and flow control"); here the
 question is whether real sources agree with the engine, and each expected value has an oracle

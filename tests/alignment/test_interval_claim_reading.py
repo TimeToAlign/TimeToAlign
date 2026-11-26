@@ -273,7 +273,8 @@ class TestReadingFromAGroupSibling:
     def test_table_on_the_sibling(self) -> None:
         table = _bundle().get_matchstamp_table([2088, 2000], "track_hi")
 
-        assert table.column_names == ["scan", "score", "track", "track_hi"]
+        # In registration order (see README, "MatchStamp table order").
+        assert table.column_names == ["track", "track_hi", "score", "scan"]
         assert table.to_pylist() == [
             {
                 "scan": {"value": 32.0, "numerator": 32, "denominator": 1},

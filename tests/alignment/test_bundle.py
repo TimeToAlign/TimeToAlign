@@ -2211,8 +2211,12 @@ class TestAddGroup:
 
         tl2 = Timeline(length=200, uid="g2")
         group2 = TimelineGroup(id="my_group", timelines=[tl2])
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError) as held:
             bundle.add_group(group2)
+        assert str(held.value) == (
+            "group 'my_group' cannot join bundle 'test': its id 'my_group' is "
+            "already held by group 'my_group'"
+        )
 
     def test_add_group_cross_group_transfer(self) -> None:
         """Cross-group transfer works with add_group API."""

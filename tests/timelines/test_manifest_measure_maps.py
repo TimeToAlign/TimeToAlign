@@ -622,8 +622,8 @@ def test_a_minted_measure_map_id_held_by_a_timeline_is_refused_on_writing() -> N
     with pytest.raises(ValueError) as refused:
         bare(score.to_dict())
     assert str(refused.value) == (
-        f"measure map '{bars.id}' cannot be written: its id is already held by "
-        f"timeline '{bars.id}'"
+        f"measure map '{bars.id}' cannot join: its id '{bars.id}' is already held "
+        f"by timeline '{bars.id}'"
     )
 
 
@@ -633,7 +633,7 @@ def test_a_given_measure_map_id_held_by_a_timeline_is_refused_on_writing() -> No
     with pytest.raises(ValueError) as refused:
         bare(score.to_dict())
     assert str(refused.value) == (
-        "measure map 'score' cannot be written: its id is already held by "
+        "measure map 'score' cannot join: its id 'score' is already held by "
         "timeline 'score'"
     )
 
@@ -658,7 +658,7 @@ def test_two_different_measure_maps_of_one_given_id_are_refused_on_writing() -> 
 # region Measure-derived maps
 
 
-def test_a_score_s_floating_measure_map_names_an_entry_of_its_own() -> None:
+def test_a_score_s_floating_measure_map_reads_the_timeline_s_own() -> None:
     score = (
         Ms3Loader()
         .load(SCORE / "flow_control/full/out_of_the_flow_experience-full.measures.tsv")
@@ -670,27 +670,23 @@ def test_a_score_s_floating_measure_map_names_an_entry_of_its_own() -> None:
         if isinstance(cmap, FloatingMeasureMap)
     ]
     assert len(floating) == 1
-    own, other = score.measure_map, floating[0].measure_map
-    assert other is not own and other == own and other.id != own.id
+    own = score.measure_map
+    assert floating[0].measure_map is own
     record = score._measure_record_map
     assert record is not None
 
-    # An equal map under another ID is another entry: nothing is merged.
+    # One measure map, one entry, named by both views.
     written = bare(score.to_dict(minimal=True))
-    assert _entries(written) == sorted([own.id, other.id])
-    rows = {entry["id"]: entry["rows"] for entry in written["measure_maps"]}
-    assert rows[own.id] == rows[other.id]
+    assert _entries(written) == [own.id]
     views = {
         cmap["id"]: cmap["measure_map"]
         for cmap in written["timelines"][0]["conversion_maps"]
         if "measure_map" in cmap
     }
-    assert views == {record.id: own.id, floating[0].id: other.id}
+    assert views == {record.id: own.id, floating[0].id: own.id}
     read = Timeline.from_dict(filed(json.loads(json.dumps(written))))
     read_floating = read.get_conversion_map(floating[0].id)
-    assert read_floating.measure_map.id == other.id
-    assert read_floating.measure_map == read.measure_map
-    assert read_floating.measure_map is not read.measure_map
+    assert read_floating.measure_map is read.measure_map
     assert bare(read.to_dict(minimal=True)) == written
 
 

@@ -397,8 +397,10 @@ Rekordbox key as ``meta["TrackID"]``.
 
 **Validation logic.** A synthetic track whose ``Location`` basename **differs**
 from its ``Name`` separates ID, name and file name: the created timeline's **id** is the
-first ID the loader's minter gives (``seed=`` fixes it: a ``cpt`` ID, minted
-before the track's conversion maps), its **name** remains the XML ``Name`` and
+fourth ID the loader's minter gives (``seed=`` fixes it: a ``cpt`` ID, minted
+after the measure map and the floating-measure map, with its own measure map,
+that the loader builds to anchor the track's floating measures, and before
+the track's two conversion maps, which take the fifth and sixth), its **name** remains the XML ``Name`` and
 its ``meta["Location"]`` the attribute as written. A track carrying **no**
 ``Location`` gets a minted ID as well — never its ``Name`` — and
 ``meta["Location"]`` is ``None``. The proof requires the ``Name`` and the

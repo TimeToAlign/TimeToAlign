@@ -732,8 +732,9 @@ other descendants depth-first; a filter keeps that order. Quarters values are
 The key getter is pinned with an event stored on `clt_4` at 27/2: the root
 finds it among its children, so the root owns it, and the stamp is the root's
 query at 1363/2, `clt_4` included. The table at `clt_4` 27/2 has the columns
-`clt_1`, `clt_4`, `clt_6`, `clt_7`, `cpt_1`, the `clt_4` column naming its
-timeline in the field metadata.
+`clt_7`, `clt_1`, `clt_6`, `cpt_1`, `clt_4` (the registered timelines in
+registration order, then the descendant `clt_4`: see "MatchStamp table
+order"), the `clt_4` column naming its timeline in the field metadata.
 
 ### The Walk Up Starts on the Queried Timeline
 
@@ -2354,14 +2355,16 @@ from every assertion here.
    `IdMinter(1).mint("clt")`; the second is refused, keeps it, and the
    bundle writes what it wrote before). A refused newcomer keeps its ids,
    its minted descendants' included; a group refused for its given id
-   leaves its member's minted id as it was. A given group id refuses a
+   (`group 'g' cannot join bundle '<bundle id>': its id 'g' is already held
+   by group 'g'`) leaves its member's minted id as it was. A given group id refuses a
    timeline that carries it (`timeline 'g' cannot join bundle '<bundle
    id>': its id 'g' is already held by group 'g'`); so does a *minted*
    group id, the group and its members unchanged. Groups given no id join
    under their minted ids (`group_ids` is `["g", <first>, <second>]`).
    `from_bundles` keeps every group's id (`[x, y]` as the sources hold
    them), and two sources holding one group id (each built with `seed=1`)
-   are refused (`Group '<id>' already exists in bundle`), the sources
+   are refused (`group '<id>' cannot join bundle '<merged bundle id>': its
+   id '<id>' is already held by group '<id>'`), the sources
    keeping their groups. A merge locks nothing and
    changes no source: a bundle read from a manifest whose group `g` holds a
    segment line `line` (segments 4 and 2 quarters) stating `locked: false`
@@ -3466,7 +3469,7 @@ exact pixel `2438` on `dgt_1` for all three coordinate forms.
 | `test_materialise_warps_instant_events` | Instant event coordinates warped correctly (reads `start` struct dict, not `instant`) |
 | `test_materialise_warps_interval_events` | Start/end/duration all warped; duration uses `forward(start+dur) - forward(start)` for non-linear correctness |
 | `test_materialise_warps_children` | Child offsets converted, child count preserved |
-| `test_materialise_warps_regions` | Region boundaries converted; each warped region keeps its source region's id (`verse`, `chorus`) and name |
+| `test_materialise_warps_regions` | Region boundaries converted; each warped region keeps its source region's name (`Verse`, `Chorus`) and holds an id of its own (see "Warped copies" below) |
 | `test_type_conversion_clt_to_cpt` | Source CLT (quarters) → target CPT (seconds): correct type and unit |
 | `test_full_pipeline` | Three claims `score`↔`audio` at (0, 0), (100, 50), (200, 100) → MatchLine → WarpMap: forward 50 → 25.0, inverse 75 → 150.0 |
 

@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 import timetoshare
 
+from tests.loader.minting import named_flow_control
 from timetoalign.core import Coordinate, Interval
 from timetoalign.core.enums import (
     FlowFindingCause,
@@ -48,10 +49,19 @@ from .conftest import (
 # region Helpers
 
 
+#: The seed of every loader whose flow control a test compares element by element.
+SEED = 1
+
+
 def _timeline(specimen: str) -> Timeline:
     """The timeline of a specimen's ms3 measures table."""
     path = get_specimen_path(SPECIMENS[specimen], "tsv")
-    return Ms3Loader().load(path).create_timeline()
+    return Ms3Loader(seed=SEED).load(path).create_timeline()
+
+
+def _named(timeline: Timeline) -> list[dict[str, Any]]:
+    """The timeline's flow control, each element named by the order it was minted."""
+    return named_flow_control(timeline.flow_control.to_dict(), SEED)
 
 
 def _left_out(gold: dict[str, tuple[MeasureRange, ...]]) -> list[tuple[Any, ...]]:
@@ -267,15 +277,14 @@ def test_the_flows_written_for_a_loaded_score_are_the_gold_file_s(
     manifest = timeline.to_dict()
     timetoshare.validate(manifest)
     assert [flow_map["convention"] for flow_map in manifest["flow_maps"]] == [
-        "default",
-        "single",
-        "printed",
+        str(flow_map.convention)
+        for flow_map in sorted(written.flow_maps, key=lambda flow_map: flow_map.id)
     ]
     again = Timeline.from_dict(manifest)
     assert again.to_dict() == manifest
     assert [again.get_region(id) for id in again.list_regions()] == list(sections)
-    assert [again.get_flow_map(id) for id in again.list_flow_maps()] == list(
-        written.flow_maps
+    assert [again.get_flow_map(id) for id in again.list_flow_maps()] == sorted(
+        written.flow_maps, key=lambda flow_map: flow_map.id
     )
     assert again.flow_control.to_dict() == timeline.flow_control.to_dict()
 
@@ -311,13 +320,14 @@ def test_the_successors_of_an_ms3_table_state_the_gold_flow(
     ]
     assert stated.differs_at is None
     assert caplog.records == []
+    assert stated.flow_map.id.startswith("flow_")
     assert stated.flow_map.to_dict() == {
-        "id": "flow_map_1",
+        "id": stated.flow_map.id,
         "timeline": timeline.id,
         "chunks": list(stated.flow_map.chunks),
         "provenance": [{"method": "imported"}],
     }
-    assert timeline.list_flow_maps() == ["flow_map_1"]
+    assert timeline.list_flow_maps() == [stated.flow_map.id]
 
 
 def test_the_stress_score_s_successors_state_another_flow_than_its_signs(
@@ -379,7 +389,7 @@ def test_a_source_without_successors_states_no_order() -> None:
 def test_the_musette_states_two_dal_segno_and_one_fine() -> None:
     """Every element of the Musette, and the column of the table it is read from."""
     timeline = _timeline("c05n05_musete")
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         # markers "segno" (MC 6), named by jump_bwd
         {
             "id": "jump_target_3",
@@ -491,7 +501,12 @@ def test_a_marker_only_played_until_is_no_jump_target() -> None:
     ]
     refrain_end = registry.jump_at(12)
     assert refrain_end is not None
-    assert [destination.to_dict() for destination in refrain_end.targets] == [
+    (named,) = [
+        element
+        for element in _named(timeline)
+        if element["role"] == "jump" and element["coordinate"] == [12, 1]
+    ]
+    assert named["targets"] == [
         {"repeat_count": 1, "manifestation": "repeat_end"},
         {"to": "jump_target_5", "after": {"jump": "jump_2"}, "label": "segno"},
         {"to": "jump_target_6", "after": {"jump": "jump_3"}, "label": "segno"},
@@ -580,7 +595,7 @@ def _table(directory: Path, *rows: dict[str, Any]) -> Timeline:
         lines.append("\t".join(str(cells.get(column, "")) for column in COLUMNS))
     path = directory / "piece.measures.tsv"
     path.write_text("\n".join(lines) + "\n")
-    return Ms3Loader().load(path).create_timeline()
+    return Ms3Loader(seed=SEED).load(path).create_timeline()
 
 
 def _runs(timeline: Timeline) -> list[tuple[Any, Any]]:
@@ -603,7 +618,7 @@ def test_a_dal_segno_al_coda_names_its_leap(tmp_path: Path) -> None:
         },
         {"markers": "codab", "breaks": "section"},
     )
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         {
             "id": "jump_target_1",
             "role": "jump_target",
@@ -673,7 +688,7 @@ def test_a_da_capo_al_fine_is_a_break_that_ends_after_it(tmp_path: Path) -> None
         {"markers": "fine"},
         {"jump_bwd": "start", "play_until": "fine", "barline": "end"},
     )
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         {
             "id": "break_1",
             "role": "break",
@@ -709,7 +724,7 @@ def test_two_leaps_playing_until_one_fine_give_one_break_each(tmp_path: Path) ->
         {},
         {"jump_bwd": "start", "play_until": "fine"},
     )
-    assert [element.to_dict() for element in timeline.flow_control.breaks] == [
+    assert [element for element in _named(timeline) if element["role"] == "break"] == [
         {
             "id": "break_1",
             "role": "break",
@@ -733,7 +748,7 @@ def test_two_leaps_playing_until_one_fine_give_one_break_each(tmp_path: Path) ->
 
 def test_both_repeat_signs_on_one_measure_are_read(tmp_path: Path) -> None:
     timeline = _table(tmp_path, {}, {"repeats": "startend"}, {})
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         {
             "id": "jump_target_1",
             "role": "jump_target",
@@ -763,7 +778,7 @@ def test_only_a_section_break_ends_a_section(tmp_path: Path) -> None:
         {"breaks": "section & page"},
         {"breaks": "section"},
     )
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         {"id": "section_break_1", "role": "section_break", "coordinate": [8, 1]},
         {"id": "section_break_2", "role": "section_break", "coordinate": [12, 1]},
     ]
@@ -771,7 +786,7 @@ def test_only_a_section_break_ends_a_section(tmp_path: Path) -> None:
 
 def test_a_sign_no_row_names_is_a_jump_target(tmp_path: Path) -> None:
     timeline = _table(tmp_path, {}, {"markers": "segno & coda2"}, {})
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         {
             "id": "jump_target_1",
             "role": "jump_target",
@@ -795,7 +810,7 @@ def test_a_fine_no_leap_names_ends_the_flow_from_its_second_arrival(
     with caplog.at_level(logging.WARNING, logger="timetoalign.loader.score.base"):
         timeline = _table(tmp_path, {}, {"markers": "fine"}, {})
     assert caplog.records == []
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         {
             "id": "break_1",
             "role": "break",
@@ -833,7 +848,7 @@ def test_a_da_capo_beside_a_repeat_end_without_start_names_the_timeline(
             {},
         )
     assert caplog.records == []
-    assert timeline.flow_control.to_dict() == [
+    assert _named(timeline) == [
         {"id": "section_break_1", "role": "section_break", "coordinate": [4, 1]},
         {
             "id": "jump_1",

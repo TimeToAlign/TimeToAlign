@@ -369,8 +369,9 @@ def test_timeline_id_is_minted_and_names_are_kept(tmp_path: Path) -> None:
     )
     timeline = RekordboxLoader.from_file(path, seed=7).create_timeline()
 
-    # The timeline's ID is minted first, before its conversion maps.
-    assert timeline.id == minted(7, "cpt")[0]
+    # The anchoring maps first, then the timeline, then its conversion maps.
+    ids = minted(7, "measure_map", "cmap", "measure_map", "cpt", "cmap", "cmap")
+    assert [timeline.id, *timeline._conversion_maps] == ids[3:]
     assert timeline.name == "Habstrakt - Tonight FREE DL"
     assert timeline.meta["Location"] == location
     assert timeline.meta["TrackID"] == "1"
@@ -380,7 +381,7 @@ def test_timeline_id_is_minted_without_location(tmp_path: Path) -> None:
     path = _write_collection(tmp_path, _track_xml("1", "Display Only", location=None))
     timeline = RekordboxLoader.from_file(path, seed=7).create_timeline()
 
-    assert timeline.id == minted(7, "cpt")[0]
+    assert timeline.id == minted(7, "measure_map", "cmap", "measure_map", "cpt")[3]
     assert timeline.name == "Display Only"
     assert timeline.meta["Location"] is None
 

@@ -173,7 +173,7 @@ def test_a_jump_puts_its_distances_on_its_axis() -> None:
     assert [d.goes_on for d in jump.targets] == [False, True]
     assert jump.targets[0].after == after("x", by=Duration(F(-1), "quarters"))
     assert _refused(lambda: Jump(_q(8), [D(by=Duration(1, "seconds"))])) == (
-        "a `by` of jump (unnamed) is a distance in seconds on an axis in quarters"
+        "a `by` of jump at 8 quarters is a distance in seconds on an axis in quarters"
     )
 
 
@@ -186,23 +186,23 @@ def test_a_single_destination_may_be_given_bare() -> None:
     [
         (
             lambda: Jump(_q(8), []),
-            "jump (unnamed) has no destination: `targets` lists at least one",
+            "jump at 8 quarters has no destination: `targets` lists at least one",
         ),
         (
             lambda: Jump(_q(8), [D(to="a"), D(to="a", repeat_count=1)]),
-            "jump (unnamed) has 2 destinations with `to: a`: the destinations of one "
+            "jump at 8 quarters has 2 destinations with `to: a`: the destinations of one "
             "jump are distinct places",
         ),
         (
             lambda: Jump(_q(8), [D(), D(repeat_count=1, reset=False)]),
-            "jump (unnamed) has 2 destinations with no place: the destinations of "
+            "jump at 8 quarters has 2 destinations with no place: the destinations of "
             "one jump are distinct places",
         ),
         (
             lambda: Jump(
                 Coordinate(8.0, "seconds"), [D(by=1), D(by=Duration(1.0, "seconds"))]
             ),
-            "jump (unnamed) has 2 destinations with `by: 1.0`: the destinations of "
+            "jump at 8 seconds has 2 destinations with `by: 1.0`: the destinations of "
             "one jump are distinct places",
         ),
         (
@@ -218,12 +218,12 @@ def test_a_single_destination_may_be_given_bare() -> None:
         (lambda: PassesFrom(0), "passes from 0: passes are counted from 1"),
         (
             lambda: Break(_q(8), ends=FlowCondition()),
-            "the `ends` of break (unnamed) states no condition: leave `ends` out "
+            "the `ends` of break at 8 quarters states no condition: leave `ends` out "
             "for a break that always ends the flow",
         ),
         (
             lambda: Break(_q(8), ends=D(repeat_count=1)),
-            "the `ends` of break (unnamed) is a FlowCondition, not JumpDestination",
+            "the `ends` of break at 8 quarters is a FlowCondition, not JumpDestination",
         ),
         (
             lambda: after("j", to="a", by=1),
@@ -232,7 +232,7 @@ def test_a_single_destination_may_be_given_bare() -> None:
         ),
         (
             lambda: Break(_q(8), manifestation=FlowManifestation.segno),
-            "break (unnamed) is one of ['fine', 'volta'] or a word outside the "
+            "break at 8 quarters is one of ['fine', 'volta'] or a word outside the "
             "vocabulary, not 'segno'",
         ),
     ],

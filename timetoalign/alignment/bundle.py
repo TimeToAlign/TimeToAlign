@@ -85,6 +85,7 @@ from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.engines.events import _refusal_of
 from timetoalign.timelines.groups import (
     _groups_by_timeline,
+    _held_ids,
     _IdScope,
     _nested,
     _root,
@@ -271,6 +272,58 @@ def _refuse_shared_claim_ids(bundles: Sequence["AlignmentBundle"]) -> None:
         f"merge): a MatchClaim is addressed by its id alone, so the two merge "
         f"once one of them states its MatchClaims under other ids."
     )
+
+
+def _merged_resources(
+    bundles: Sequence["AlignmentBundle"], merged: "AlignmentBundle"
+) -> list[Resource]:
+    """The resources a merge of *bundles* into *merged* names, every id kept.
+
+    Every source's resources are carried as they stand, in source order,
+    with one exception: the merge holds one table of each type (its
+    MatchClaim table holds every source's MatchClaims, the Projections and
+    Boxes lie on the timelines they travel with), and a manifest names at
+    most one resource of each table type, so the first source's entry of a
+    type names the merged table and a later source's entry of that type is
+    not carried. :meth:`AlignmentBundle.to_file` writes the merged table at
+    that entry's URL under its ID.
+
+    Raises:
+        ValueError: If the id of a resource carried is held in the merge
+            already, by a resource of another source, an element of a
+            source's timeline trees, a source's group or *merged* itself,
+            naming the id and both holders, before anything is merged.
+    """
+    carried: list[tuple[AlignmentBundle, Resource]] = []
+    table_types: set[str] = set()
+    for bundle in bundles:
+        for resource in bundle.resources:
+            if resource.type in TABLE_RESOURCE_TYPES:
+                if resource.type in table_types:
+                    continue
+                table_types.add(resource.type)
+            carried.append((bundle, resource))
+    if not carried:
+        return []
+    taken = _held_ids(
+        member for bundle in bundles for member in bundle._scope_members()
+    )
+    for bundle in bundles:
+        for group_id in bundle.groups:
+            taken.setdefault(group_id, f"group {quote_id(group_id)}")
+    taken.setdefault(merged.id, f"bundle {quote_id(merged.id)}")
+    _refuse_held_ids(
+        [
+            (
+                resource.id,
+                f"resource {quote_id(resource.id)} of bundle {quote_id(bundle.id)}",
+            )
+            for bundle, resource in carried
+        ],
+        taken,
+        scope=f"bundle {quote_id(merged.id)}",
+    )
+    return [resource for _, resource in carried]
 
 
 # region AlignmentBundle
@@ -544,7 +597,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         name: str | None = None,
         seed: int | None = None,
     ) -> "AlignmentBundle":
-        """Merge multiple bundles' groups, standalone timelines, and claims.
+        """Merge multiple bundles' groups, standalone timelines, claims and resources.
 
         Registers every group and standalone timeline from each source
         bundle into a new bundle, and carries over every ``MatchClaim``
@@ -555,7 +608,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         ids first). The statements of the
         timelines and regions travel with them, and their prefixes; the
         source bundles' own statements describe their manifests and are not
-        carried. Each source group is entered as
+        carried. The sources' :attr:`resources` are carried, each under
+        its own ID and as it stands: the merge has one MatchClaim table, one
+        Projections table and one Box table, so the first source's entry of
+        each table type names the merged table (:meth:`to_file` writes it
+        there under that entry's ID) and a later source's entry of that type
+        is not carried; every other resource, such as an audio file a
+        resource names, is. Each source group is entered as
         a new group with the same id, members, name and meta, each member
         keeping its own lock. Groups from
         different source bundles remain distinct — merging does not itself
@@ -574,13 +633,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Returns:
             A new AlignmentBundle containing every group, standalone
-            timeline, and MatchClaim from ``bundles``.
+            timeline, MatchClaim and resource from ``bundles``.
 
         Raises:
             ValueError: If two source bundles share a group ID, a timeline
-                ID collision would occur across bundles, or
+                ID collision would occur across bundles,
                 two source bundles hold a MatchClaim under one id (the message
-                names the id and both bundles).
+                names the id and both bundles), or the ID of a resource
+                carried is held by a resource of another source, by an
+                element of a source's timelines or groups or by the merged
+                bundle (the message names the ID and both holders); nothing
+                is merged then.
 
         Examples:
             >>> from timetoalign.alignment import AlignmentBundle
@@ -604,6 +667,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """
         _refuse_shared_claim_ids(bundles)
         merged = cls(id=id, name=name, seed=seed)
+        merged.resources = _merged_resources(bundles, merged)
         for bundle in bundles:
             for group in bundle.groups.values():
                 rebuilt = TimelineGroup(

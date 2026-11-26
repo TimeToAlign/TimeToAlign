@@ -2283,6 +2283,79 @@ script, never computed by a derivation, so they are an independent oracle.
 
 ---
 
+## A Merge Keeps Its Sources' Resources (`test_from_bundles_resources.py`)
+
+### What We're Validating
+
+`AlignmentBundle.from_bundles` carries every source bundle's `resources`
+into the merged bundle. A resource is an element of the manifest with an
+ID, and a merge renames nothing, so each resource keeps its ID and every
+field as it stands, and an ID that two sources hold, or that a source's
+timeline, region or group or the merged bundle holds, is refused before
+anything is merged. The format names at most one resource per table type
+and the merge holds one table of each type — its MatchClaim table holds
+every source's MatchClaims, the Projections and Boxes lie on the timelines
+they travel with — so the first source's entry of a table type names the
+merged table, under its ID and at its URL, and a later source's entry of
+that type is not carried. What would show the feature broken: a merged
+bundle without the sources' resources, a resource whose ID or any field
+changed, two entries of one table type (a manifest the format refuses), a
+merged table written under a new minted ID instead of the kept one, a
+resource ID held twice that is not refused or is refused only once the
+groups and timelines were joined, a resource lost on the way through the
+file.
+
+### Specimen
+
+Two sources, `source_a` and `source_b`. Each holds a score timeline
+(`a_score`, `b_score`: quarters, 16, the Note `n1` at 0) and a samples
+timeline (`a_pcm`, `b_pcm`: 705600, the onset `o1` at 0), and one
+MatchClaim `n1` ↔ `o1` given the ID `claim_a` / `claim_b`. Each names a
+recording, a resource of its own type `Audio` (`a_take` naming `a_pcm`,
+url `a_take.wav`, media type `audio/wav`; `b_take` likewise), which no
+table reader opens and the writer never writes.
+
+### What proves it
+
+- **Kept with their IDs and fields, from packages.** Each source is
+  written as a package (`to_file`, which names its MatchClaim table under
+  a minted ID) and read back (`from_file`); the merge's `resources` equal
+  `source_a`'s resources as read, in their order, followed by `b_take`
+  exactly as constructed: `source_b`'s MatchClaim entry is not among them
+  (its ID absent), while the merged MatchClaim table holds `claim_a` and
+  `claim_b`. The IDs are read from the objects, never typed.
+- **The one-table rule, for each table type** (`MatchClaim`,
+  `Projection`, `Box`), on bundles built in code: `source_a` names
+  `a_table` of the type and `source_b` `b_table`; the merge names exactly
+  `[a_table, a_take, b_take]`. When both entries hold one ID (`table`),
+  nothing is refused (the later entry is not in the merge) and the merge
+  names `[source_a's table, a_take, b_take]`.
+- **A shared ID is refused, nothing merged.** `source_b`'s recording given
+  the ID `a_take` is refused with the message, exactly, `resource 'a_take'
+  of bundle 'source_b' cannot join bundle 'merged': its id 'a_take' is
+  already held by resource 'a_take' of bundle 'source_a'`. The resource
+  check runs before the groups join: `source_b` also holds a group whose ID
+  `source_a`'s group holds (the refusal the merge gives when it reaches
+  `source_b`'s groups: `group 'pair' cannot join bundle 'merged': its id
+  'pair' is already held by group 'pair'`, raised once `source_b`'s
+  recording takes its own ID), and the refusal raised is the resource one. Each
+  source's resources, timelines and groups are those it held before, and
+  every timeline's live scopes are its source bundle and its source group
+  alone. A resource ID that a timeline of another source holds (`b_take`
+  renamed `a_score`) and one equal to the merged bundle's given ID (`id=
+  "a_take"`) are refused each with its exact message.
+- **The merged package writes and reads back.** `source_a` names its
+  MatchClaim table `a_claims` at `tables/a_claims.parquet`, `source_b`
+  `b_claims` at `b_claims.parquet`. The merge written with `to_file` lies
+  in exactly `package.yaml` and `tables/a_claims.parquet`: the merged
+  table is written at the kept entry's URL, under its ID `a_claims`,
+  naming the four timelines (sorted), with the file's own size and
+  SHA-256 digest and the Parquet media type, and the two recordings stand
+  as constructed. `from_file` of the package reads back the same
+  resources (by ID) and both MatchClaims, `claim_a` and `claim_b`.
+
+---
+
 ## AlignmentBundle Dictionary Form and Identity (`test_bundle_dict.py`)
 
 ### What We're Validating
@@ -3590,6 +3663,7 @@ python -m pytest tests/alignment/ -v
 |------|-------|-------------|
 | `conftest.py` | — | Shared fixtures and constants: Thoresen timeline fixtures (`dgt1_timeline`, `dgt2_timeline`, `audio_timeline`, `thoresen_segment_claims`), DGT1/DGT2 coordinate constants, `autouse` ID reset fixture, graphical bundle fixtures |
 | `test_bundle.py` | 131 | AlignmentBundle: linear alignment, a child joining with its root, cross-group transfer, timestamps, commensurability, caching, the MatchClaim table and its entry checks, Projections, the belief filter, coordinate-type parity (raw/Coordinate/IdCoordinate) |
+| `test_from_bundles_resources.py` | — | A merge keeps its sources' resources: IDs and fields kept, one entry per table type, a shared ID refused before anything is merged, the merged package written and read back |
 | `test_bundle_dict.py` | — | AlignmentBundle dictionary form and identity: round trips of direct constructions and of every alignment loader's bundle, minted ids, collisions, a child bringing its root, refusals |
 | `test_anchors.py` | 62 | AlignmentAnchor, MatchClaim (incl. NOMATCH coordinate preservation + repr), Provenance |
 | `test_graph.py` | 93 | MatchGraph operations (inferred edges, filtering, the belief filter, stamps); imports Thoresen fixtures from conftest |

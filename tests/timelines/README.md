@@ -1349,8 +1349,8 @@ the named timeline's flow control and length and compares, exactly:
   A file without findings for a convention fails, so a convention cannot
   go uncompared.
 
-The nine case names are asserted, so that a directory not found cannot
-pass as nine cases agreeing. A case whose file is known to differ from the
+The ten case names are asserted, so that a directory not found cannot
+pass as ten cases agreeing. A case whose file is known to differ from the
 rules is listed with the exact difference and runs as a strict expected
 failure, never skipped: at present none.
 

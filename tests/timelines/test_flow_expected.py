@@ -33,7 +33,7 @@ KNOWN_DIFFERENCES: dict[str, str] = {}
 """Cases whose file differs from the rules, each with the exact difference."""
 
 
-def test_the_nine_cases_are_found() -> None:
+def test_the_ten_cases_are_found() -> None:
     assert CASES == [
         "da_capo_al_fine",
         "dal_segno_al_coda",
@@ -43,6 +43,7 @@ def test_the_nine_cases_are_found() -> None:
         "repeat_end_and_dal_segno",
         "sections",
         "sonata_exposition",
+        "virtual_cards",
         "volta_passes",
     ]
     assert set(KNOWN_DIFFERENCES) <= set(CASES)

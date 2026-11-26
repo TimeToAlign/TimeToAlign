@@ -4918,6 +4918,108 @@ built with one seed hold the same IDs: the second is refused by the bundle
 (`timeline 'x' cannot join bundle 'rec': its id 'x' is already held by
 timeline 'x'`), which keeps the first alone. Nothing is renamed.
 
+### Virtual timelines in groups (`test_virtual_members.py`)
+
+A virtual timeline has an ID, a unit, a number type and a length, and
+nothing else. As a member of a group it must answer exactly for these: a
+group's timestamps reach it, its column stands in the group's table, it
+keeps its place in the display order, a bundle holding the group admits a
+MatchClaim naming it; it is written as one entry of `virtual_timelines`
+named among the group's `members`, never as a timeline. What would prove
+it wrong: a position on it that the group converts otherwise than between
+two timelines of the same lengths, a manifest that does not come back as
+it was written, the virtual timeline written into `timelines`, a MatchClaim
+naming it refused. Every expected value below is worked out by hand from
+the stated lengths and chunks.
+
+**The exposition** (the format's fixture `flow/sonata_exposition`): the
+score holds A [0, 12), B [12, 16), C [16, 24); its `default` FlowMap plays
+A B A C and the virtual timeline `virtual_1` applying it has the length
+12 + 4 + 12 + 8 = 36. On its axis the chunks lie at A [0, 12), B [12, 16),
+A [16, 28), C [28, 36). It is grouped with a recording of 90.0 seconds:
+a position p on `virtual_1` is p · 90/36 = p · 5/2 seconds.
+
+| `virtual_1` | recording | `fold` on the score |
+|---|---|---|
+| 0 | 0.0 | 0 |
+| 12 | 30.0 | 12 (B) |
+| 16 | 40.0 | 0 (A again) |
+| 28 | 70.0 | 16 (C) |
+| 36 | 90.0 | refused (the end of the virtual axis) |
+
+The stamps hold exactly the two members (the virtual member has no
+children), each in its own number type (a `Fraction` on `virtual_1`, a
+float on the recording), interpolated except at the common start and end.
+The other way, 70.0 seconds is the Fraction 28 on `virtual_1`, and
+`fold(28)` = 16 on the score: from the recording to the written score.
+The group's stored table holds the rows (0, 0.0) and (36, 90.0), and
+`get_interval_for("virtual_1")` is [0, 36). Display order is the order of
+addition, `virtual_1` first. A position past 36 on `virtual_1` is refused
+as on any member.
+
+**One virtual timeline, one member.** `as_member` gives the same object
+each time, so adding it twice to a group is refused as for a timeline; a
+tree that does not hold the virtual timeline gives none. The member's ID
+is held in the manifest of the tree it comes from: a newcomer with the
+given ID `virtual_1` is refused by the group. The member holds nothing:
+asking it for anything an empty axis does not answer (adding events) and
+setting its length or name raise `AttributeError`.
+
+**The manifest.** The manifest literal is the format's fixture with a
+recording timeline (`{id, unit: seconds, length: 90.0}`), the group
+`{id: performance, members: [recording, virtual_1]}` and its display order
+`[virtual_1, recording]` added; read as a bundle and written back, it is
+the same literal. The group, written by itself in the minimal and the
+complete form, holds the timelines `recording` and `score` only,
+`virtual_timelines` holds `virtual_1` once, and the group read back from
+either form writes the same manifest, with `virtual_1` a member answering
+the table above.
+
+**`through` a group** (the FlowMap of one member applied to another). The
+score has length 24 with `a` [0, 16) and `b` [16, 24); the FlowMap
+`reading` plays `a a b`: `a` [0, 16), `a` [16, 32), `b` [32, 40), length
+40. The virtual timeline `edition_played` applies `reading` to `edition`
+(length 30) through the group `scores` of the two: a position x on the
+edition is x · 24/30 = x · 4/5 on the score.
+
+| `unfold` on the edition | on the score | on `edition_played` |
+|---|---|---|
+| 0 | 0 | [0, 16] |
+| 5 | 4 | [4, 20] |
+| 15 | 12 | [12, 28] |
+| 20 | 16 | [32] |
+| 30 | 24 | [] (the end of `b` is excluded) |
+
+| `fold` on `edition_played` | on the score | on the edition (· 5/4) |
+|---|---|---|
+| 0 | 0 | 0 |
+| 20 | 4 | 5 |
+| 32 | 16 | 20 |
+| 37 | 21 | 105/4 |
+| 39 | 23 | 115/4 |
+
+Every value is a `Fraction`. With the edition a child of `volume`
+(length 40) at offset 5, and the group `scores` of the score and `volume`,
+a position x on the edition is x + 5 on `volume` and (x + 5) · 24/40 on the
+score: `unfold(5)` = [6, 22]; `fold(22)` = 6 on the score, 10 on `volume`,
+5 on the edition; `fold(36)` = 20 on the score, 100/3 on `volume`, 85/3 on
+the edition. With a recording of 60.0 seconds in place of the edition, the
+recording's number type governs what is carried back: `unfold(15.0)` =
+[6, 22] (Fractions: 15.0 seconds is 6 on the score) and `fold(33)` = 17 on
+the score = 42.5 seconds, a float. Written as a manifest with its group
+and read back, minimal and complete, the virtual timeline with `through`
+unfolds as before. Refused: a virtual timeline going through a group of
+an ID that holds no timeline of its tree, and a FlowMap chunk naming a
+virtual timeline that goes through a group (its stretches lie on another
+axis).
+
+**A MatchClaim naming a virtual timeline.** In a bundle holding the
+exposition's group, a MatchClaim between `virtual_1` at 28 and the
+recording at 72.0 seconds (two seconds later than the group's own
+conversion, so that a stamp read from the group could not be mistaken for
+it) is admitted, listed for `virtual_1`, and the MatchStamp at 28 on
+`virtual_1` holds the recording at 72.0, stated.
+
 ### Atomic sections and computed FlowMaps (`test_flow_maps_from_flow_control.py`)
 
 `Timeline.create_flow_maps_from_flow_control()` plays the timeline's flow

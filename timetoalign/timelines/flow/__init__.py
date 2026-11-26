@@ -43,6 +43,7 @@ from .measures import (
     read_flow_csv,
     repeat_end_findings,
 )
+from .virtual import VirtualMember
 
 __all__ = [
     "AtomicSection",
@@ -70,6 +71,7 @@ __all__ = [
     "ResolvedFlowMap",
     "SectionBreak",
     "StatedFlow",
+    "VirtualMember",
     "VirtualTimeline",
     "atomic_sections",
     "flow_control_from_measures",

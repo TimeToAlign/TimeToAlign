@@ -72,9 +72,11 @@ from ..manifest import (
     require_object,
 )
 from .engine import FlowFinding
+from .virtual import VirtualMember, _carry_through, _through_group
 
 if TYPE_CHECKING:
     from ..base import Timeline
+    from ..groups import TimelineGroup
     from ..regions import Region
 
 _Number = int | float | Fraction
@@ -650,6 +652,12 @@ def _resolve(
                 f"{virtual.unit}; the axis of its root {quote_id(root.id)} is in "
                 f"{root.unit}"
             )
+        if virtual.through is not None:
+            raise ValueError(
+                f"chunk {quote_id(chunk)} of {what} is a virtual timeline going "
+                f"through {quote_id(virtual.through)}: its stretches lie on another "
+                f"axis than that of its root {quote_id(root.id)}"
+            )
         stretches.extend(
             placed.source if isinstance(placed, PlacedChunk) else placed.length
             for placed in virtual._resolved(root, visiting).chunks
@@ -788,7 +796,8 @@ class VirtualTimeline(_IdentifiedElement):
     unit, a number type and a length of its own, and nothing else of it is
     written. It holds no events, no children and no flow control. Its
     positions and those of the timeline it comes from convert through the
-    map, in both directions (:meth:`unfold`, :meth:`fold`).
+    map, in both directions (:meth:`unfold`, :meth:`fold`). It may be a
+    member of a group (:meth:`as_member`).
 
     Attributes:
         map: The ID of the map applied: a FlowMap, or a conversion map.
@@ -796,8 +805,11 @@ class VirtualTimeline(_IdentifiedElement):
             another virtual timeline.
         length: The end of the virtual timeline on its own axis, which
             states its unit and number type too.
-        through: The ID of the group or conversion map that carries the map
-            to ``timeline``; kept as read and never evaluated.
+        through: The ID of the group that carries the map to ``timeline``:
+            the FlowMap is one of a member of the group, ``timeline`` another
+            member or a timeline inside one, and a position goes from one to
+            the other by the group's conversion between its members. The ID
+            of a conversion map is kept as read and not evaluated.
         name: Optional display name.
         id: The virtual timeline's ID; minted with the prefix of its unit
             (``clt`` on quarters), as a timeline's is.
@@ -926,39 +938,139 @@ class VirtualTimeline(_IdentifiedElement):
         """The number type of the virtual timeline's axis."""
         return self.length.number_type
 
+    def as_member(self, timeline: Timeline) -> VirtualMember:
+        """Return this virtual timeline as a member of a group.
+
+        The member answers for the virtual timeline's axis, from 0 to its
+        length in its unit and number type, and for nothing else: a group
+        holding it reaches it with its timestamps, tabulates it and keeps it
+        in its display order, a bundle holding the group admits MatchClaims
+        naming it. Its ID stays the virtual timeline's, held in the manifest
+        of the tree it comes from; written, the group names it among its
+        ``members``, and the virtual timeline stays one entry of
+        ``virtual_timelines``. One virtual timeline gives one member object.
+
+        Args:
+            timeline: The root holding this virtual timeline, or any
+                timeline of its tree.
+
+        Returns:
+            The member, to add to a group.
+
+        Raises:
+            ValueError: If the tree of *timeline* does not hold this virtual
+                timeline.
+
+        Examples:
+            >>> from timetoalign.timelines import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ...     TimelineGroup,
+            ... )
+            >>> score = ContinuousLogicalTimeline(length=24, uid="score")
+            >>> a = score.create_region(0, 16, id="a")
+            >>> b = score.create_region(16, 24, id="b")
+            >>> played = score.create_virtual_timeline(
+            ...     score.create_flow_map([a, a, b]), id="played"
+            ... )
+            >>> recording = ContinuousPhysicalTimeline(length=80.0, uid="recording")
+            >>> group = TimelineGroup(timelines=[played.as_member(score), recording])
+            >>> stamp = group.get_timestamp_at(72.0, "recording")
+            >>> stamp.get_coordinate_for("played", format="coordinate")
+            Coordinate(Fraction(36, 1), quarters)
+            >>> played.fold(36, score)
+            Coordinate(Fraction(20, 1), quarters)
+        """
+        root = timeline._tree_root()
+        if root._virtual_timelines.get(self.id) != self:
+            raise ValueError(
+                f"virtual timeline {quote_id(self.id)} is not held by the tree of "
+                f"{quote_id(root.id)}"
+            )
+        return VirtualMember.of(self.id, root)
+
     def resolve(self, root: Timeline) -> ResolvedFlowMap:
         """Return the played order this virtual timeline is the axis of.
+
+        The FlowMap's stretches on its own root: *root* when the virtual
+        timeline applies a FlowMap of *root* to *root*; with ``through`` a
+        group, the root among the group's members whose FlowMap it applies.
 
         Args:
             root: The root timeline holding the virtual timeline.
 
         Raises:
-            ValueError: If the virtual timeline is not the FlowMap of
-                *root* applied to *root*: it applies another map (a
-                conversion map), is applied to another timeline, or goes
-                ``through`` a group or conversion map. Such a statement is
-                kept and written back, but its positions are not converted.
+            ValueError: If the virtual timeline applies another map (a
+                conversion map), applies a FlowMap of *root* to another
+                timeline than *root* without ``through``, or goes ``through``
+                a group that holds no timeline of *root*'s tree, holds no
+                FlowMap of that ID among its members' trees, or has neither
+                the FlowMap's root nor ``timeline`` among its members or
+                inside one. Such a statement is kept and written back, but
+                its positions are not converted.
         """
         return self._resolved(root, ())
 
     def unfold(self, coordinate: CoordinateInput, root: Timeline) -> list[Coordinate]:
-        """Return every position of this virtual timeline a root position is played at.
+        """Return every position of this virtual timeline a position is played at.
 
-        See :meth:`ResolvedFlowMap.unfold`.
+        The position lies on ``timeline``, which is *root* without
+        ``through``. With ``through`` a group, the position is first carried
+        to the FlowMap's root by the group's conversion between its members
+        (the group's own conversion between its members), in the
+        root's number type. See :meth:`ResolvedFlowMap.unfold`.
 
         Args:
-            coordinate: A position on the root's axis.
+            coordinate: A position on ``timeline``: a bare value, a
+                Coordinate in its unit, or an IdCoordinate naming it.
             root: The root timeline holding the virtual timeline.
 
         Raises:
-            ValueError: As :meth:`resolve` and :meth:`ResolvedFlowMap.unfold`.
+            ValueError: As :meth:`resolve` and :meth:`ResolvedFlowMap.unfold`,
+                or if the position lies outside ``timeline`` in its group.
+
+        Examples:
+            A reading of one score applied to another score of the same
+            music, of another length, through their group:
+
+            >>> from fractions import Fraction
+            >>> from timetoalign.core import Coordinate, TimeUnit
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline, TimelineGroup
+            >>> score = ContinuousLogicalTimeline(length=24, uid="score")
+            >>> a = score.create_region(0, 16, id="a")
+            >>> b = score.create_region(16, 24, id="b")
+            >>> reading = score.create_flow_map([a, a, b], id="reading")
+            >>> edition = ContinuousLogicalTimeline(length=30, uid="edition")
+            >>> scores = TimelineGroup(id="scores", timelines=[score, edition])
+            >>> on_edition = edition.add_virtual_timeline(
+            ...     VirtualTimeline(
+            ...         "reading",
+            ...         "edition",
+            ...         Coordinate(40, TimeUnit.quarters),
+            ...         through="scores",
+            ...         id="edition_played",
+            ...     )
+            ... )
+            >>> on_edition.unfold(5, edition)
+            [Coordinate(Fraction(4, 1), quarters), Coordinate(Fraction(20, 1), quarters)]
+            >>> on_edition.fold(Fraction(37), edition)
+            Coordinate(Fraction(105, 4), quarters)
         """
-        return self.resolve(root).unfold(coordinate)
+        if self.through is None:
+            return self.resolve(root).unfold(coordinate)
+        group, flow_root = self._route(root)
+        resolved = self._resolved(root, ())
+        return resolved.unfold(
+            _carry_through(group, coordinate, self.timeline, flow_root.id)
+        )
 
     def fold(self, coordinate: CoordinateInput, root: Timeline) -> Coordinate | None:
-        """Return the root position played at a position of this virtual timeline.
+        """Return the position on ``timeline`` played at a position of this virtual timeline.
 
-        See :meth:`ResolvedFlowMap.fold`.
+        ``timeline`` is *root* without ``through``. With ``through`` a group,
+        the position the FlowMap gives on its own root is carried to
+        ``timeline`` by the group's conversion between its members, in
+        ``timeline``'s number type. See :meth:`ResolvedFlowMap.fold`.
 
         Args:
             coordinate: A position on this virtual timeline's axis: a bare
@@ -967,7 +1079,7 @@ class VirtualTimeline(_IdentifiedElement):
             root: The root timeline holding the virtual timeline.
 
         Returns:
-            The position on the root's axis, or None inside a gap.
+            The position on ``timeline``, or None inside a gap.
 
         Raises:
             ValueError: As :meth:`resolve` and :meth:`ResolvedFlowMap.fold`,
@@ -977,11 +1089,56 @@ class VirtualTimeline(_IdentifiedElement):
             raise ValueError(
                 f"{coordinate!r} is no position of virtual timeline {quote_id(self.id)}"
             )
-        return self.resolve(root).fold(coordinate)
+        if self.through is None:
+            return self.resolve(root).fold(coordinate)
+        group, flow_root = self._route(root)
+        written = self._resolved(root, ()).fold(coordinate)
+        if written is None:
+            return None
+        return _carry_through(group, written, flow_root.id, self.timeline)
+
+    def _route(self, root: Timeline) -> tuple[TimelineGroup, Timeline]:
+        """Return the group this virtual timeline goes through and the
+        member root whose FlowMap it applies.
+
+        Raises:
+            ValueError: As :meth:`resolve`.
+        """
+        what = f"virtual timeline {quote_id(self.id)}"
+        through = self.through
+        assert through is not None
+        group = _through_group(root, through, what)
+        flow_root = next(
+            (
+                member_root
+                for member_root in group._member_roots()
+                if self.map in member_root._flow_maps
+            ),
+            None,
+        )
+        if flow_root is None:
+            raise ValueError(
+                f"{what} applies {quote_id(self.map)}, which is no FlowMap of a "
+                f"timeline of group {quote_id(group.id)}: its positions are not "
+                "converted"
+            )
+        for timeline_id in (flow_root.id, self.timeline):
+            try:
+                group._resolve_member(timeline_id)
+            except KeyError:
+                raise ValueError(
+                    f"{what} goes through group {quote_id(group.id)}, of which "
+                    f"{quote_id(timeline_id)} is neither a member nor inside one. "
+                    f"Members: {group.timeline_ids}"
+                ) from None
+        return group, flow_root
 
     def _resolved(self, root: Timeline, visiting: tuple[str, ...]) -> ResolvedFlowMap:
         """:meth:`resolve`, inside the FlowMaps *visiting* being resolved."""
         what = f"virtual timeline {quote_id(self.id)}"
+        if self.through is not None:
+            _group, flow_root = self._route(root)
+            return _resolve(flow_root._flow_maps[self.map], flow_root, visiting)
         flow_map = root._flow_maps.get(self.map)
         if flow_map is None:
             raise ValueError(
@@ -989,17 +1146,12 @@ class VirtualTimeline(_IdentifiedElement):
                 f"timeline {quote_id(root.id)}: its positions are not converted. "
                 f"FlowMaps of the timeline: {list(root._flow_maps)}"
             )
-        if self.through is not None or self.timeline != flow_map.timeline:
+        if self.timeline != flow_map.timeline:
             raise ValueError(
                 f"{what} applies FlowMap {quote_id(flow_map.id)} to "
-                f"{quote_id(self.timeline)}"
-                + (
-                    f" through {quote_id(self.through)}"
-                    if self.through is not None
-                    else ""
-                )
-                + f", not to the FlowMap's own timeline {quote_id(flow_map.timeline)}: "
-                "carrying a FlowMap to another axis is not supported yet"
+                f"{quote_id(self.timeline)}, not to the FlowMap's own timeline "
+                f"{quote_id(flow_map.timeline)}: without through, a FlowMap is "
+                "applied to its own root"
             )
         return _resolve(flow_map, root, visiting)
 

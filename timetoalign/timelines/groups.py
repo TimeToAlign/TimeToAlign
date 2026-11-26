@@ -82,6 +82,7 @@ from timetoalign.core.timestamp import (
 from timetoalign.storage import EventData
 
 from .engines.tabular import conversion_map_column
+from .flow.virtual import _member_named
 from .manifest import (
     Manifest,
     ManifestFileMixin,
@@ -105,10 +106,11 @@ module_logger = logging.getLogger(__name__)
 
 
 def _root(timeline: "Timeline") -> "Timeline":
-    """Return the root of the manifest tree *timeline* belongs to."""
-    while timeline._parent is not None:
-        timeline = timeline._parent
-    return timeline
+    """Return the root of the manifest tree *timeline* belongs to.
+
+    A virtual timeline's member belongs to the tree it comes from.
+    """
+    return timeline._tree_root()
 
 
 def _tree(root: "Timeline") -> list["Timeline"]:
@@ -542,7 +544,9 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         Args:
             data: ``{"id", "name"?, "meta"?, "members"}``.
             timelines: Every timeline of the manifest, roots and descendants,
-                by id.
+                by id. A member naming a virtual timeline of a root joins as
+                its member (:meth:`VirtualTimeline.as_member
+                <timetoalign.timelines.flow.VirtualTimeline.as_member>`).
             order: The members' display order, or None for ``members`` order.
 
         The manifest holding *data* was admitted by the format's validator
@@ -559,7 +563,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         )
         # Members keep the lock the manifest states.
         for member in order:
-            group._admit_member(timelines[member])
+            group._admit_member(_member_named(timelines, member))
         group._keep_unknown_keys(data)
         return group
 

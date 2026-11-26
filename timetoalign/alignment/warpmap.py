@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from timetoalign.alignment.claims import AlignmentAnchor
+from timetoalign.alignment.anchors import AlignmentAnchor
 from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.ids import REGION_PREFIX, content_minter, minting_from
 from timetoalign.core.retrieval import (

@@ -18,35 +18,28 @@ from __future__ import annotations
 
 import datetime
 import logging
-import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import InitVar, dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, TypeGuard, overload
+from typing import TYPE_CHECKING, Any, ClassVar, overload
 
 import pandas as pd
 import pyarrow as pa
-import pyarrow.compute as pc
-from pydantic import ValidationError
-from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
+from timetoshare import DEFAULT_BELIEFS, BeliefState
 
 from timetoalign.core import (
     Box,
     Coordinate,
     CoordinateSpec,
     CoordinateValue,
-    IdCoordinate,
     Interval,
     Provenance,
     SupportPolicy,
     TimeUnit,
     express_as,
-    resolve_coordinate_spec,
     resolve_id,
 )
-from timetoalign.core.enums import NumberType
-from timetoalign.core.fields import _compared, _filled, _struct_child
 from timetoalign.core.ids import (
     BUNDLE_PREFIX,
     IdMinter,
@@ -56,7 +49,7 @@ from timetoalign.core.ids import (
     quote_id,
     validate_id,
 )
-from timetoalign.core.provenance import Belief, BeliefValue
+from timetoalign.core.provenance import BeliefValue
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -65,62 +58,46 @@ from timetoalign.core.retrieval import (
     KeyCollection,
     Rounding,
     TableFormat,
-    collection_values,
-    dispatch_retrieval,
-    format_coordinates,
-    is_coordinate_input,
-    reject_dataframe_options,
-    resolve_key_collection,
-    validate_coordinate_collection,
-    validate_key_collection,
-    validate_table_format,
 )
-from timetoalign.core.time import (
-    cell_coordinate,
-    exact_coordinate_value,
-    shift_number,
-)
-from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
-from timetoalign.timelines import TimelineGroup, UnknownLengthError
-from timetoalign.timelines.engines.events import _refusal_of
+from timetoalign.timelines import TimelineGroup
 from timetoalign.timelines.groups import (
     _groups_by_timeline,
-    _held_ids,
     _IdScope,
     _nested,
     _root,
-    _tree,
 )
 from timetoalign.timelines.manifest import (
-    BOXES_FILE_NAME,
-    PROJECTIONS_FILE_NAME,
-    TABLE_RESOURCE_TYPES,
-    Manifest,
     ManifestFileMixin,
     Resource,
     event_table,
     projection_table,
-    read_event_table,
-    read_projection_table,
-    resource_path,
-    write_event_table,
 )
 from timetoalign.timelines.statements import (
     MutableStatementsMixin,
-    _day,
 )
 
+from . import claim_events, claim_store, closure, package, stamp_table
+from .claim_store import (  # noqa: F401
+    _ALL_BELIEFS,
+    _belief_key,
+    _BeliefKey,
+    _refuse_shared_claim_ids,
+)
 from .claims import (
     MatchClaim,
     MatchClaimField,
-    _believed_entry,
-    _claims_between_events,
-    _join_claims,
 )
-from .filters import ClaimFilter, belief_context, believed, meet
+from .closure import (  # noqa: F401
+    _all_keys,
+    _all_positions,
+    _resolve_coordinate_and_timeline,
+)
+from .filters import ClaimFilter
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
 from .matchline import MatchLine
-from .warpmap import AmbiguousWarpMapError, WarpMap
+from .package import _merged_resources  # noqa: F401
+from .stamp_table import _table_anchors  # noqa: F401
+from .warpmap import WarpMap
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -135,195 +112,6 @@ if TYPE_CHECKING:
     from timetoalign.timelines import Timeline
 
 module_logger = logging.getLogger(__name__)
-
-#: A belief filter as the bundle's caches key it: ``(believer, beliefs)``,
-#: the states a frozen set (:func:`_belief_key`).
-_BeliefKey = tuple["str | None", frozenset[BeliefState]]
-#: The belief filter that filters nothing (no believer).
-_ALL_BELIEFS: _BeliefKey = (None, frozenset(DEFAULT_BELIEFS))
-
-
-def _belief_key(believer: str | None, beliefs: Collection[str]) -> _BeliefKey:
-    """The cache key of a belief filter, its states checked.
-
-    Without a believer nothing is filtered, whatever the states, so every
-    such filter is :data:`_ALL_BELIEFS`.
-
-    Raises:
-        ValueError: If *beliefs* is not a collection of belief states.
-    """
-    states = check_belief_filter(beliefs)
-    return _ALL_BELIEFS if believer is None else (believer, states)
-
-
-def _resolve_coordinate_and_timeline(
-    coordinate: CoordinateSpec,
-    timeline_id: str | None,
-) -> tuple[int | float | Fraction, str | None, "TimeUnit | None"]:
-    """Decompose a coordinate specification and resolve its timeline.
-
-    Accepts the three canonical coordinate forms and returns the underlying
-    value, unit, and timeline the coordinate lives on. When the coordinate is
-    an ``IdCoordinate`` it carries its own ``timeline_id``, which fills an
-    omitted ``timeline_id`` argument.
-
-    Args:
-        coordinate: The query coordinate. One of:
-
-            - int/float/Fraction: Raw value, ``timeline_id`` required.
-            - Coordinate: Value with unit, ``timeline_id`` required.
-            - IdCoordinate: Value, unit AND timeline_id (``timeline_id`` param
-              optional).
-        timeline_id: Explicit timeline id, or None to take it from an
-            ``IdCoordinate``.
-
-    Returns:
-        A ``(coord_value, timeline_id, unit)`` tuple. ``timeline_id`` may
-        still be None if a non-Id coordinate was passed without one; callers
-        decide whether that is an error.
-
-    Raises:
-        TypeError: If ``coordinate`` is not one of the accepted forms.
-    """
-    resolved = resolve_coordinate_spec(coordinate, timeline_id=timeline_id)
-    return resolved.value, resolved.timeline_id, resolved.unit
-
-
-def _table_anchors(
-    rows: MatchClaimField,
-) -> list[tuple[str, Coordinate, str, Coordinate]]:
-    """The alignment anchors of a MatchClaim table, read column by column.
-
-    Per row its start anchor, then its end anchor where it has one; a row
-    without anchors gives none. Each coordinate is read from its cell
-    (:func:`~timetoalign.core.time.cell_coordinate`) in the number type the
-    cell declares, on its row's timeline of that side; no claim is
-    materialised.
-
-    Returns:
-        ``(timeline_a_id, coordinate_a, timeline_b_id, coordinate_b)`` per
-        anchor, in row order.
-    """
-    data = rows._struct_array()
-    anchors: list[tuple[str, Coordinate, str, Coordinate]] = []
-    for timeline_a_id, timeline_b_id, start, end in zip(
-        data.field("timeline_a_id").to_pylist(),
-        data.field("timeline_b_id").to_pylist(),
-        data.field("start_anchor").to_pylist(),
-        data.field("end_anchor").to_pylist(),
-        strict=True,
-    ):
-        for anchor in (start, end):
-            if anchor is None:
-                continue
-            anchors.append(
-                (
-                    timeline_a_id,
-                    cell_coordinate(anchor["coordinate_a"]),
-                    timeline_b_id,
-                    cell_coordinate(anchor["coordinate_b"]),
-                )
-            )
-    return anchors
-
-
-def _all_keys(values: list[object]) -> TypeGuard[list[str]]:
-    """Whether every value of a collection is a key (an event id)."""
-    return all(isinstance(value, str) for value in values)
-
-
-def _all_positions(values: list[object]) -> TypeGuard[list[CoordinateInput | Interval]]:
-    """Whether every value of a collection is a coordinate input or an Interval."""
-    return all(
-        is_coordinate_input(value) or isinstance(value, Interval) for value in values
-    )
-
-
-def _refuse_shared_claim_ids(bundles: Sequence["AlignmentBundle"]) -> None:
-    """Refuse bundles to merge two of which hold a MatchClaim under one id.
-
-    A MatchClaim is addressed by its id alone, so the merge of two bundles
-    each holding ``claim_1`` would hold two MatchClaims under one address.
-    Vectorized: one hash count over every id.
-
-    Raises:
-        ValueError: Naming the first id held twice and the two bundles
-            holding it, by id and by their place in *bundles*.
-    """
-    held = [bundle.match_claim_table._ids for bundle in bundles]
-    if sum(len(ids) for ids in held) < 2:
-        return
-    ids = pc.cast(pa.concat_arrays(held), pa.string())
-    counts = pc.value_counts(ids.filter(pc.is_valid(ids)))
-    repeated = counts.filter(_compared("greater", _struct_child(counts, "counts"), 1))
-    if not len(repeated):
-        return
-    claim_id = repeated.field("values")[0].as_py()
-    places = [
-        index
-        for index, ids in enumerate(held)
-        if pc.any(_filled(pc.equal(ids, claim_id), pa.scalar(False))).as_py()
-    ]
-    first, second = places[0], places[1]
-    raise ValueError(
-        f"MatchClaim id {quote_id(claim_id)} is held by bundle "
-        f"{quote_id(bundles[first].id)} and by bundle "
-        f"{quote_id(bundles[second].id)} (bundles {first} and {second} of the "
-        f"merge): a MatchClaim is addressed by its id alone, so the two merge "
-        f"once one of them states its MatchClaims under other ids."
-    )
-
-
-def _merged_resources(
-    bundles: Sequence["AlignmentBundle"], merged: "AlignmentBundle"
-) -> list[Resource]:
-    """The resources a merge of *bundles* into *merged* names, every id kept.
-
-    Every source's resources are carried as they stand, in source order,
-    with one exception: the merge holds one table of each type (its
-    MatchClaim table holds every source's MatchClaims, the Projections and
-    Boxes lie on the timelines they travel with), and a manifest names at
-    most one resource of each table type, so the first source's entry of a
-    type names the merged table and a later source's entry of that type is
-    not carried. :meth:`AlignmentBundle.to_file` writes the merged table at
-    that entry's URL under its ID.
-
-    Raises:
-        ValueError: If the id of a resource carried is held in the merge
-            already, by a resource of another source, an element of a
-            source's timeline trees, a source's group or *merged* itself,
-            naming the id and both holders, before anything is merged.
-    """
-    carried: list[tuple[AlignmentBundle, Resource]] = []
-    table_types: set[str] = set()
-    for bundle in bundles:
-        for resource in bundle.resources:
-            if resource.type in TABLE_RESOURCE_TYPES:
-                if resource.type in table_types:
-                    continue
-                table_types.add(resource.type)
-            carried.append((bundle, resource))
-    if not carried:
-        return []
-    taken = _held_ids(
-        member for bundle in bundles for member in bundle._scope_members()
-    )
-    for bundle in bundles:
-        for group_id in bundle.groups:
-            taken.setdefault(group_id, f"group {quote_id(group_id)}")
-    taken.setdefault(merged.id, f"bundle {quote_id(merged.id)}")
-    _refuse_held_ids(
-        [
-            (
-                resource.id,
-                f"resource {quote_id(resource.id)} of bundle {quote_id(bundle.id)}",
-            )
-            for bundle, resource in carried
-        ],
-        taken,
-        scope=f"bundle {quote_id(merged.id)}",
-    )
-    return [resource for _, resource in carried]
 
 
 # region AlignmentBundle
@@ -561,32 +349,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> AlignmentBundle.from_dict(data).to_dict() == data
             True
         """
-        manifest, content = Manifest.read(data)
-        bundle = cls(
-            id=manifest.id or "",
-            name=manifest.name,
-            meta=manifest.meta,
-            styling=manifest.styling,
-            resources=manifest.resources,
-        )
-        bundle._unknown_keys = manifest._unknown_keys
-        bundle._has_graphical = manifest.has_graphical
-        bundle._band_orders = manifest.band_orders
-        bundle._measure_maps = manifest.measure_maps
-        bundle._set_statement_state(manifest.statement_state, manifest.prefixes)
-        for group_data in content.groups:
-            group = TimelineGroup._from_group_object(
-                group_data, content.timelines, content.order.get(group_data["id"])
-            )
-            bundle.add_group(group)
-        # Manifest.read found every id of the manifest unique, the groups'
-        # included, and a group read holds its given id: admitting a root
-        # (``add_timeline``) would rename nothing and refuse nothing, at the
-        # cost of a pass over the bundle's trees per root.
-        for root in content.roots:
-            if bundle.timelines.get(root.id) is not root:
-                bundle._register(root)
-        return bundle
+        return package._from_dict(cls, data)
 
     @classmethod
     def from_bundles(
@@ -665,29 +428,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> sorted(merged.timelines)
             ['audio', 'score']
         """
-        _refuse_shared_claim_ids(bundles)
-        merged = cls(id=id, name=name, seed=seed)
-        merged.resources = _merged_resources(bundles, merged)
-        for bundle in bundles:
-            for group in bundle.groups.values():
-                rebuilt = TimelineGroup(
-                    id=group.id,
-                    name=group.name,
-                    meta=group.meta,
-                )
-                # A member keeps its own lock: merging locks nothing.
-                for member in group:
-                    rebuilt._admit_member(member)
-                merged._take_group(rebuilt)
-            grouped = bundle.timeline_to_groups
-            for timeline_id, timeline in bundle.timelines.items():
-                if timeline_id in grouped:
-                    continue
-                if merged.timelines.get(timeline.id) is timeline:
-                    continue
-                merged.add_timeline(timeline)
-            merged._take_claims_of(bundle)
-        return merged
+        return package._from_bundles(cls, bundles, id=id, name=name, seed=seed)
 
     # region Timeline Management
 
@@ -1181,18 +922,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         rather than tried on every step of the closure. The claims are those
         in force under the belief filter *belief_key*.
         """
-        membership = self.timeline_to_groups
-        claimed = self._claims_in_force(belief_key).timeline_ids
-        units: list[tuple[TimelineGroup | None, tuple[str, ...]]] = [
-            (group, tuple(group.timeline_ids)) for group in self.groups.values()
-        ]
-        units.extend(
-            (None, (timeline_id,))
-            for timeline_id in self._known_timelines()
-            if timeline_id not in membership
-            and (timeline_id in self.timelines or timeline_id in claimed)
-        )
-        return units
+        return closure._warp_units(self, belief_key)
 
     def _group_component(self, timeline_id: str) -> set[str]:
         """Return the timelines reached from one through shared groups.
@@ -1201,16 +931,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         belongs to is reached, and so on through those members' groups. The
         timeline itself is included.
         """
-        membership = self.timeline_to_groups
-        reached = {timeline_id}
-        pending = [timeline_id]
-        while pending:
-            for group_id in membership.get(pending.pop(), ()):
-                for member_id in self.groups[group_id].timeline_ids:
-                    if member_id not in reached:
-                        reached.add(member_id)
-                        pending.append(member_id)
-        return reached
+        return closure._group_component(self, timeline_id)
 
     def get_timelines(self, ids: list[str]) -> list["Timeline"]:
         """Get multiple timelines by their IDs.
@@ -1306,170 +1027,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
     # region Coordinate Transfer
 
-    def transfer(
-        self,
-        coord: CoordinateSpec,
-        from_timeline: str,
-        to_timeline: str,
-        *,
-        believer: str | None = None,
-        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
-    ) -> float | None:
-        """Transfer a coordinate from one timeline to another.
-
-        Automatically determines the conversion path:
-
-        1. If both timelines are in the same group: typed group retrieval.
-        2. If in different groups with MatchClaims: builds a ``MatchLine``
-           and a cached ``WarpMap`` and calls it to
-           interpolate the coordinate.
-        3. If no path exists: returns ``None``.
-
-        Low-level coordinate transfer utility. For user-facing coordinate
-        queries, use ``get_matchstamp_at()`` which returns a full cross-section
-        as a MatchStamp.
-
-        Args:
-            coord: The coordinate value to transfer.
-            from_timeline: ID of the source timeline.
-            to_timeline: ID of the target timeline.
-            believer: The actor whose beliefs filter the MatchClaims read
-                (the belief filter); ``None`` reads every claim.
-            beliefs: The states read for the believer (``"true"``,
-                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
-                but ``"false"``.
-
-        Returns:
-            The transferred coordinate, or None if no path exists.
-
-        Raises:
-            KeyError: If either id names no timeline of the bundle's trees.
-            ValueError: If *beliefs* is not a collection of belief states.
-        """
-        belief_key = _belief_key(believer, beliefs)
-        source_timeline = self._require_known_timeline(
-            from_timeline, role="Source timeline"
-        )
-        self._require_known_timeline(to_timeline, role="Target timeline")
-
-        coord_value, _resolved_timeline_id, _unit = _resolve_coordinate_and_timeline(
-            coord, from_timeline
-        )
-        if isinstance(coord, IdCoordinate):
-            query_input = coord.to_coordinate()
-        elif isinstance(coord, Coordinate):
-            query_input = coord
-        else:
-            query_input = Coordinate(
-                coord_value,
-                source_timeline.unit,
-                number_type=source_timeline.number_type,
-            )
-        query_coordinate = source_timeline.get_coordinate_at(
-            query_input,
-            format="coordinate",
-        )
-        assert isinstance(query_coordinate, Coordinate)
-        coord = float(query_coordinate.value)
-
-        # Same timeline: no conversion needed
-        if from_timeline == to_timeline:
-            return coord
-
-        # Within a group: direct conversion. Every group the two share
-        # converts alike, so the first by id serves.
-        group = self._shared_group(from_timeline, to_timeline)
-        if group is not None:
-            converted = group.get_coordinate_at(
-                IdCoordinate(
-                    coord,
-                    self.get_timeline(from_timeline).unit,
-                    from_timeline,
-                ),
-                timeline_id=to_timeline,
-                format="float",
-            )
-            return float(converted)
-
-        # Cross-group transfer via MatchLine/WarpMap pipeline
-        warp = self._get_or_build_warp_map(from_timeline, to_timeline, belief_key)
-        if warp is not None:
-            try:
-                return warp._interpolate_float(coord)
-            except ValueError as e:
-                self._logger.warning(
-                    "WarpMap forward failed for %s -> %s at %s: %s",
-                    from_timeline,
-                    to_timeline,
-                    coord,
-                    e,
-                )
-                return None
-
-        # Try indirect via a SOURCE group: convert within it, then warp
-        for source_group in self.get_groups_for_timeline(from_timeline):
-            for src_other_tl_id in source_group.timeline_ids:
-                if src_other_tl_id == from_timeline:
-                    continue
-                warp = self._get_or_build_warp_map(
-                    src_other_tl_id, to_timeline, belief_key
-                )
-                if warp is None:
-                    continue
-                try:
-                    intermediate = source_group.get_coordinate_at(
-                        IdCoordinate(
-                            coord,
-                            self.get_timeline(from_timeline).unit,
-                            from_timeline,
-                        ),
-                        timeline_id=src_other_tl_id,
-                        format="coordinate",
-                    )
-                    assert isinstance(intermediate, Coordinate)
-                    return warp._interpolate_float(intermediate.value)
-                except (KeyError, ValueError):
-                    continue
-
-        # Try indirect via a TARGET group: warp to a reachable group member,
-        # then convert within that group.
-        for target_group in self.get_groups_for_timeline(to_timeline):
-            for tgt_other_tl_id in target_group.timeline_ids:
-                if tgt_other_tl_id == to_timeline:
-                    continue
-                warp = self._get_or_build_warp_map(
-                    from_timeline, tgt_other_tl_id, belief_key
-                )
-                if warp is None:
-                    continue
-                try:
-                    warped = warp._interpolate_float(coord)
-                    target_source = self.get_timeline(tgt_other_tl_id)
-                    result = target_group.get_coordinate_at(
-                        IdCoordinate(warped, target_source.unit, tgt_other_tl_id),
-                        timeline_id=to_timeline,
-                        format="coordinate",
-                    )
-                    assert isinstance(result, Coordinate)
-                    return float(result.value)
-                except (KeyError, ValueError):
-                    continue
-
-        # A single exact claim cannot construct a WarpMap, but it is still a
-        # direct reachability edge. Reuse the match-stamp closure for that
-        # exact-anchor case, including chains through standalone timelines.
-        stamp = self.get_matchstamp_at(
-            query_coordinate, from_timeline, believer=believer, beliefs=beliefs
-        )
-        if isinstance(stamp, MatchStamp) and to_timeline in stamp.coordinates:
-            return float(stamp.coordinates[to_timeline].value)
-
-        self._logger.debug(
-            "No transfer path between '%s' and '%s'",
-            from_timeline,
-            to_timeline,
-        )
-        return None
+    transfer = closure.transfer
 
     def transfer_interval(
         self,
@@ -1499,38 +1057,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             Tuple of (start, end) in target timeline, or None if no path.
         """
-        start_value, _start_timeline_id, start_unit = _resolve_coordinate_and_timeline(
-            start, from_timeline
+        return closure._transfer_interval(
+            self,
+            start,
+            end,
+            from_timeline,
+            to_timeline,
+            believer=believer,
+            beliefs=beliefs,
         )
-        end_value, _end_timeline_id, end_unit = _resolve_coordinate_and_timeline(
-            end, from_timeline
-        )
-        source_timeline = self.get_timeline(from_timeline)
-        start = float(
-            source_timeline.get_coordinate_at(
-                Coordinate(start_value, start_unit), format="coordinate"
-            ).value
-            if start_unit is not None
-            else start_value
-        )
-        end = float(
-            source_timeline.get_coordinate_at(
-                Coordinate(end_value, end_unit), format="coordinate"
-            ).value
-            if end_unit is not None
-            else end_value
-        )
-        transferred_start = self.transfer(
-            start, from_timeline, to_timeline, believer=believer, beliefs=beliefs
-        )
-        transferred_end = self.transfer(
-            end, from_timeline, to_timeline, believer=believer, beliefs=beliefs
-        )
-
-        if transferred_start is None or transferred_end is None:
-            return None
-
-        return (transferred_start, transferred_end)
 
     def are_commensurable(
         self,
@@ -1730,36 +1265,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> stated[0].provenance.beliefs[0].belief
             'true'
         """
-        if actor is None:
-            if date is not None:
-                raise ValueError(
-                    "a date dates the belief of the actor stating the MatchClaims; "
-                    "give actor="
-                )
-        else:
-            provenance = _believed_entry(
-                provenance,
-                Belief(actor=actor, belief="true", date=_day(date)),
-                belief_context(self),
-            )
-        timelines = {
-            timeline_id: self._require_known_timeline(timeline_id)
-            for _, tl_a, _, tl_b in event_pairs
-            for timeline_id in (tl_a, tl_b)
-        }
-        claims = _claims_between_events(
-            [
-                (event_a, timelines[tl_a], event_b, timelines[tl_b])
-                for event_a, tl_a, event_b, tl_b in event_pairs
-            ],
+        return claim_events._create_match_claims(
+            self,
+            event_pairs,
             synchronous=synchronous,
             certainty=certainty,
             provenance=provenance,
-            earlier=self.match_claim_table,
+            actor=actor,
+            date=date,
         )
-        if claims:
-            self.add_match_claims(claims)
-        return claims
 
     def add_match_claims(self, claims: Iterable[MatchClaim]) -> "AlignmentBundle":
         """Add MatchClaims to the bundle's MatchClaim table.
@@ -1796,20 +1310,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 bundle or by two of the claims, or a coordinate is not on
                 its timeline's axis.
         """
-        claims = list(claims)
-        for claim in claims:
-            if not isinstance(claim, MatchClaim):
-                raise TypeError(
-                    f"add_match_claims takes MatchClaims, not {type(claim).__name__}"
-                )
-        if not claims:
-            return self
-        self._check_rows(MatchClaimField.from_claims(claims))
-        joined = _join_claims(claims, self.match_claim_table._ids, holder="bundle")
-        for claim in joined:
-            claim.set_bundle(self)
-        self._append_rows(MatchClaimField.from_claims(joined))
-        return self
+        return claim_store._add_match_claims(self, claims)
 
     def add_match_claim_field(self, claim_field: MatchClaimField) -> "AlignmentBundle":
         """Add the rows of a :class:`MatchClaimField` to the bundle's table.
@@ -1896,23 +1397,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> len(bundle.get_match_claims(believer="https://orcid.org/0000-0001"))
             0
         """
-        held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
-        table = self.match_claim_table
-        held_rows = pc.indices_nonzero(
-            _filled(_compared("equal", table._ids, claim_id), pa.scalar(False))
+        return claim_store._add_match_claim_belief(
+            self, claim_id, actor=actor, belief=belief, date=date, note=note
         )
-        # An index is never null.
-        rows = [row for row in held_rows.to_pylist() if row is not None]
-        if not rows:
-            raise KeyError(
-                f"Bundle {quote_id(self.id)} holds no MatchClaim "
-                f"{quote_id(claim_id)} ({len(table)} MatchClaims)."
-            )
-        self.match_claim_table = table._with_belief_at(
-            rows[0], held, belief_context(self)
-        )
-        self._invalidate_warp_cache()
-        return self
 
     def _check_rows(self, rows: MatchClaimField) -> None:
         """Refuse rows naming a timeline the bundle lacks or one off its axis.
@@ -1921,17 +1408,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             KeyError: Naming the timelines the bundle does not hold.
             ValueError: If a coordinate is not on its timeline's axis.
         """
-        known = self._known_timelines()
-        named = rows.timeline_ids
-        unknown = sorted(named.difference(known))
-        if unknown:
-            raise KeyError(
-                f"MatchClaims name timeline(s) {unknown} that this bundle does "
-                f"not hold. Available timelines: {list(known)}"
-            )
-        rows.check_on_timelines(
-            {timeline_id: known[timeline_id] for timeline_id in named}
-        )
+        return claim_store._check_rows(self, rows)
 
     def _append_rows(self, rows: MatchClaimField) -> None:
         """Append checked, admitted rows to the table."""
@@ -1970,18 +1447,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             belief_key: ``(believer, beliefs)`` (:func:`_belief_key`); no
                 believer keeps every claim.
         """
-        if belief_key == _ALL_BELIEFS:
-            return self.match_claim_table
-        in_force = self._in_force_cache.get(belief_key)
-        if in_force is None:
-            believer, beliefs = belief_key
-            in_force = self.match_claim_table.filter(
-                believer=believer,
-                beliefs=beliefs,
-                context=belief_context(self),
-            )
-            self._in_force_cache[belief_key] = in_force
-        return in_force
+        return claim_store._claims_in_force(self, belief_key)
 
     def _claims_naming(
         self, timeline_id: str, belief_key: _BeliefKey = _ALL_BELIEFS
@@ -2012,19 +1478,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         (:meth:`_known_timelines`), so it is rewritten as an exact
         alternation of the known ids it matches.
         """
-        if id_pattern is None:
-            return None
-
-        pattern = re.compile(id_pattern)
-        matched = {
-            timeline_id
-            for timeline_id in self._known_timelines()
-            if pattern.search(timeline_id)
-        }
-        if not matched:
-            return r"(?!)"
-        alternatives = "|".join(re.escape(timeline_id) for timeline_id in matched)
-        return rf"^(?:{alternatives})\Z"
+        return claim_store._known_id_pattern(self, id_pattern)
 
     def get_match_claims(
         self,
@@ -2120,20 +1574,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 >>> len(nomatches)
                 1
         """
-        return self._materialized(
-            self.get_claim_field(
-                timeline_id=timeline_id,
-                timeline_ids=timeline_ids,
-                id_pattern=id_pattern,
-                between=between,
-                within=within,
-                synchronous_only=synchronous_only,
-                nomatch_only=nomatch_only,
-                include_domains=include_domains,
-                include_units=include_units,
-                believer=believer,
-                beliefs=beliefs,
-            )
+        return claim_store._get_match_claims(
+            self,
+            timeline_id=timeline_id,
+            timeline_ids=timeline_ids,
+            id_pattern=id_pattern,
+            between=between,
+            within=within,
+            synchronous_only=synchronous_only,
+            nomatch_only=nomatch_only,
+            include_domains=include_domains,
+            include_units=include_units,
+            believer=believer,
+            beliefs=beliefs,
         )
 
     def get_claim_field(
@@ -2202,7 +1655,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> len(bundle.get_claim_field(timeline_id="rec-a:cpt_1"))
             3
         """
-        filt = self._claim_filter(
+        return claim_store._get_claim_field(
+            self,
             timeline_id=timeline_id,
             timeline_ids=timeline_ids,
             id_pattern=id_pattern,
@@ -2214,21 +1668,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units=include_units,
             believer=believer,
             beliefs=beliefs,
-        )
-        if filt is None:
-            return self.match_claim_table._empty()
-        # The belief filter is the one shared point's; the rest filters what
-        # it keeps.
-        return self._claims_in_force(_belief_key(filt.believer, filt.beliefs)).filter(
-            timeline_id=filt.timeline_id,
-            timeline_ids=filt.timeline_ids,
-            id_pattern=filt.id_pattern,
-            between=filt.between,
-            within=meet(
-                filt.within, filt.domain_unit_timeline_ids(self._known_timelines())
-            ),
-            synchronous_only=filt.synchronous_only,
-            nomatch_only=filt.nomatch_only,
         )
 
     def _claim_filter(
@@ -2255,21 +1694,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             The filter, or ``None`` when a required timeline is unknown to the
             bundle and no claim can possibly match.
         """
-        known = self._known_timelines()
-        if timeline_id is not None and timeline_id not in known:
-            return None
-        if between is not None and any(
-            between_id not in known for between_id in between
-        ):
-            return None
-        return ClaimFilter.from_kwargs(
+        return claim_store._claim_filter(
+            self,
             timeline_id=timeline_id,
-            timeline_ids=(
-                {selected for selected in timeline_ids if selected in known}
-                if timeline_ids is not None
-                else None
-            ),
-            id_pattern=self._known_id_pattern(id_pattern),
+            timeline_ids=timeline_ids,
+            id_pattern=id_pattern,
             between=between,
             within=within,
             synchronous_only=synchronous_only,
@@ -2335,28 +1764,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             The queried timeline first, then each member reached, in that
             order.
         """
-        positions = {timeline_id: query}
-        pending = [timeline_id]
-        while pending:
-            member_id = pending.pop(0)
-            for group in self.get_groups_for_timeline(member_id):
-                if len(group.timeline_ids) < 2:
-                    continue
-                converted = self._get_group_timestamp(
-                    group,
-                    positions[member_id].value,
-                    member_id,
-                    conversion_maps=False,
-                )
-                for other_id, value in converted.items():
-                    if other_id in positions or value is None:
-                        continue
-                    other = self.get_timeline(other_id)
-                    positions[other_id] = Coordinate(
-                        value, other.unit, number_type=other.number_type
-                    )
-                    pending.append(other_id)
-        return positions
+        return closure._group_positions(self, timeline_id, query)
 
     @staticmethod
     def _interval_claim_reading(
@@ -2371,16 +1779,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Raises:
             ValueError: If no position is held by the claim.
         """
-        for member_id, position in positions.items():
-            if member_id not in claim.timelines:
-                continue
-            span = claim.get_interval_for(member_id)
-            if span.start.value <= position.value <= span.end.value:
-                return member_id, position
-        raise ValueError(
-            f"Interval claim {claim.id!r} holds none of the positions "
-            f"{list(positions)}"
-        )
+        return closure._interval_claim_reading(claim, positions)
 
     def _interval_readings(
         self,
@@ -2404,28 +1803,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ``(claim, timeline_id, position)`` per claim: the timeline the
             claim is read on and the query's position there.
         """
-
-        def names_interval_claims(member_id: str) -> bool:
-            """Return whether a claim naming *member_id* under the belief filter is an interval."""
-            rows = self._claims_naming(member_id, belief_key)._struct_array()
-            return rows.field("end_anchor").null_count < len(rows)
-
-        positions: dict[str, Coordinate] = {timeline_id: query}
-        if any(
-            names_interval_claims(member_id)
-            for member_id in self._group_component(timeline_id)
-            if member_id != timeline_id
-        ):
-            positions = self._group_positions(timeline_id, query)
-        readings: list[tuple[MatchClaim, str, Coordinate]] = []
-        read: set[str | None] = set()
-        for member_id, position in positions.items():
-            for claim in self._relevant_claims_at(member_id, position, belief_key):
-                if not claim.is_interval or claim.id in read:
-                    continue
-                read.add(claim.id)
-                readings.append((claim, member_id, position))
-        return readings
+        return closure._interval_readings(self, timeline_id, query, belief_key)
 
     def _interval_claim_candidate(
         self,
@@ -2448,68 +1826,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             Counterpart timeline ID, mapped coordinate or ``None``, and whether
             the query is one of the claim's stored anchors.
         """
-        if not claim.is_interval or queried_timeline_id not in claim.timelines:
-            raise ValueError("Interval claim does not contain the queried timeline")
-        queried_interval = claim.get_interval_for(queried_timeline_id)
-        counterpart_id = (
-            claim.timeline_b_id
-            if queried_timeline_id == claim.timeline_a_id
-            else claim.timeline_a_id
-        )
-        counterpart_interval = claim.get_interval_for(counterpart_id)
-        query_value = query.value
-        queried_start = queried_interval.start.value
-        queried_end = queried_interval.end.value
-        counterpart_start = counterpart_interval.start.value
-        counterpart_end = counterpart_interval.end.value
-        is_anchor = query_value == queried_start or query_value == queried_end
-
-        if queried_start == queried_end:
-            if counterpart_start != counterpart_end:
-                return counterpart_id, None, is_anchor
-            mapped = counterpart_start
-        elif query_value == queried_start:
-            mapped = counterpart_start
-        elif query_value == queried_end:
-            mapped = counterpart_end
-        else:
-            operands = (
-                query_value,
-                queried_start,
-                queried_end,
-                counterpart_start,
-                counterpart_end,
-            )
-            exact_query, exact_start, exact_end, exact_from, exact_to = (
-                exact_coordinate_value(operand) for operand in operands
-            )
-            if (
-                exact_query is not None
-                and exact_start is not None
-                and exact_end is not None
-                and exact_from is not None
-                and exact_to is not None
-            ):
-                query_value, queried_start, queried_end = (
-                    exact_query,
-                    exact_start,
-                    exact_end,
-                )
-                counterpart_start, counterpart_end = exact_from, exact_to
-            mapped = counterpart_start + (
-                (query_value - queried_start) / (queried_end - queried_start)
-            ) * (counterpart_end - counterpart_start)
-
-        timeline = self.get_timeline(counterpart_id)
-        canonical = self._axis_on(mapped, counterpart_id)
-        return (
-            counterpart_id,
-            Coordinate(
-                canonical,
-                timeline.unit,
-                number_type=timeline.number_type,
-            ),
-            is_anchor,
+        return closure._interval_claim_candidate(
+            self, claim, queried_timeline_id, query
         )
 
     def _get_or_build_matchgraph(
@@ -2538,40 +1856,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Raises:
             ValueError: If no synchronous claims touch this node.
         """
-        key = (belief_key, timeline_id, coordinate)
-        if key in self._matchgraph_cache:
-            return self._matchgraph_cache[key]
-
-        timeline = self.get_timeline(timeline_id)
-        query = Coordinate(coordinate, timeline.unit, number_type=timeline.number_type)
-        relevant_claims = [
-            claim
-            for claim in self._relevant_claims_at(timeline_id, query, belief_key)
-            if not claim.is_interval
-        ]
-
-        if not relevant_claims:
-            raise ValueError(
-                f"No synchronous claims touch ({timeline_id!r}, {coordinate}) "
-                f"in this bundle."
-            )
-
-        # Build graph — transitive closure connects all timelines at
-        # this coordinate
-        mg = MatchGraph(
-            claims=relevant_claims,
-            units=self._get_unit_map(),
-            axis=self._axis_on(coordinate, timeline_id),
-            source=self,
-            source_id=timeline_id,
+        return closure._get_or_build_matchgraph(
+            self, timeline_id, coordinate, belief_key
         )
-
-        # Cache keyed by ALL nodes in the graph
-        for node in mg._graph.nodes():
-            node_tl, node_coord = node
-            self._matchgraph_cache[(belief_key, node_tl, node_coord)] = mg
-
-        return mg
 
     def get_coordinate_at(
         self,
@@ -2603,47 +1890,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             One coordinate projection or a length-one Series.
         """
-        check_belief_filter(beliefs)
-        if not (
-            not isinstance(at, bool)
-            and isinstance(at, (int, float, Fraction, Coordinate))
-        ):
-            raise TypeError("get_coordinate_at requires one scalar coordinate input")
-        if isinstance(at, IdCoordinate):
-            source_id = at.timeline_id
-            result_id = timeline_id or source_id
-        else:
-            if timeline_id is None:
-                raise ValueError(
-                    "timeline_id is required for raw or plain bundle coordinate queries"
-                )
-            source_id = timeline_id
-            result_id = timeline_id
-        if self._known_timeline(source_id) is None:
-            raise KeyError(f"Unknown source timeline ID {source_id!r} in {self.id!r}")
-        if self._known_timeline(result_id) is None:
-            raise KeyError(f"Unknown result timeline ID {result_id!r} in {self.id!r}")
-        if source_id == result_id:
-            plain = at.to_coordinate() if isinstance(at, IdCoordinate) else at
-            result = self.get_timeline(result_id).get_coordinate_at(
-                plain,
-                timeline_id=self.get_timeline(result_id).id,
-                format="coordinate",
-                rounding=rounding,
-            )
-            assert isinstance(result, Coordinate)
-            identified = IdCoordinate.from_coordinate(result, result_id)
-            return format_coordinates(
-                [identified],
-                format=format,
-                rounding=rounding,
-                scalar=True,
-                series_name=result_id,
-            )
-        stamp = self.get_matchstamp_at(
-            at, source_id, believer=believer, beliefs=beliefs
+        return closure._get_coordinate_at(
+            self,
+            at,
+            timeline_id,
+            format=format,
+            rounding=rounding,
+            believer=believer,
+            beliefs=beliefs,
         )
-        return stamp.get_coordinate_for(result_id, format=format, rounding=rounding)
 
     def get_coordinates_at(
         self,
@@ -2671,44 +1926,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             A list of projections or canonical-value Series.
         """
-        check_belief_filter(beliefs)
-        values, index = validate_coordinate_collection(at)
-        if not values and timeline_id is None:
-            raise ValueError("timeline_id is required for an empty bundle query")
-        if timeline_id is not None and self._known_timeline(timeline_id) is None:
-            raise KeyError(f"Unknown result timeline ID {timeline_id!r} in {self.id!r}")
-        results: list[IdCoordinate] = []
-        for value in values:
-            result = self.get_coordinate_at(
-                value,
-                timeline_id=timeline_id,
-                format="id_coordinate",
-                rounding=rounding,
-                believer=believer,
-                beliefs=beliefs,
-            )
-            assert isinstance(result, IdCoordinate)
-            results.append(result)
-        return format_coordinates(
-            results,
+        return closure._get_coordinates_at(
+            self,
+            at,
+            timeline_id,
             format=format,
             rounding=rounding,
-            scalar=False,
-            index=index,
-            series_name=timeline_id
-            or (
-                results[0].timeline_id
-                if results
-                and all(
-                    result.timeline_id == results[0].timeline_id for result in results
-                )
-                else "coordinate"
-            ),
-            empty_number_type=(
-                self.get_timeline(timeline_id).number_type
-                if timeline_id is not None
-                else None
-            ),
+            believer=believer,
+            beliefs=beliefs,
         )
 
     def _event_owners(self, key: str) -> list[str]:
@@ -2745,35 +1970,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             One event-start projection or a length-one Series.
         """
-        check_belief_filter(beliefs)
-        if not isinstance(key, str):
-            raise TypeError("get_coordinate_for requires an event-ID string")
-        owners = self._event_owners(key)
-        if not owners:
-            raise KeyError(f"Event {key!r} not found in bundle {self.id!r}")
-        if len(owners) != 1:
-            raise ValueError(f"Event {key!r} has competing owners {owners}")
-        owner = owners[0]
-        source = self.get_timeline(owner).get_coordinate_for(
-            key, format="coordinate", rounding=rounding
-        )
-        assert isinstance(source, Coordinate)
-        result = self.get_coordinate_at(
-            IdCoordinate.from_coordinate(source, owner),
-            timeline_id=timeline_id or owner,
-            format="id_coordinate",
+        return closure._get_coordinate_for(
+            self,
+            key,
+            timeline_id,
+            format=format,
             rounding=rounding,
             believer=believer,
             beliefs=beliefs,
-        )
-        assert isinstance(result, IdCoordinate)
-        return format_coordinates(
-            [result],
-            format=format,
-            rounding=rounding,
-            scalar=True,
-            index=pd.Index([key]) if format == "series" else None,
-            series_name="coordinate",
         )
 
     def get_coordinates_for(
@@ -2802,34 +2006,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             A list of projections or canonical-value Series.
         """
-        check_belief_filter(beliefs)
-        values, index = validate_key_collection(keys)
-        results: list[IdCoordinate] = []
-        for key in values:
-            result = self.get_coordinate_for(
-                key,
-                timeline_id=timeline_id,
-                format="id_coordinate",
-                rounding=rounding,
-                believer=believer,
-                beliefs=beliefs,
-            )
-            assert isinstance(result, IdCoordinate)
-            results.append(result)
-        if format == "series" and index is None:
-            index = pd.Index(values)
-        return format_coordinates(
-            results,
+        return closure._get_coordinates_for(
+            self,
+            keys,
+            timeline_id,
             format=format,
             rounding=rounding,
-            scalar=False,
-            index=index,
-            series_name="coordinate",
-            empty_number_type=(
-                self.get_timeline(timeline_id).number_type
-                if timeline_id is not None
-                else None
-            ),
+            believer=believer,
+            beliefs=beliefs,
         )
 
     def get_coordinate(
@@ -2858,10 +2042,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             The selected precise-getter result.
         """
-        return dispatch_retrieval(
+        return closure._get_coordinate(
             self,
-            "get_coordinate",
-            "get_coordinates",
             at,
             timeline_id,
             format=format,
@@ -3023,189 +2205,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> ms.get_coordinate_for("perf:cpt_2", format="float")
             20.0
         """
-        if isinstance(at, Interval):
-            if timeline_id is None:
-                raise ValueError(
-                    "timeline_id is required unless coordinate is an IdCoordinate"
-                )
-            start_stamp = self.get_matchstamp_at(
-                at.start,
-                timeline_id,
-                support_policy=support_policy,
-                conversion_maps=conversion_maps,
-                within=within,
-                id_pattern=id_pattern,
-                include_domains=include_domains,
-                include_units=include_units,
-                believer=believer,
-                beliefs=beliefs,
-            )
-            end_stamp = self.get_matchstamp_at(
-                at.end,
-                timeline_id,
-                support_policy=support_policy,
-                conversion_maps=conversion_maps,
-                within=within,
-                id_pattern=id_pattern,
-                include_domains=include_domains,
-                include_units=include_units,
-                believer=believer,
-                beliefs=beliefs,
-            )
-            assert type(start_stamp) is MatchStamp
-            assert type(end_stamp) is MatchStamp
-            queried_interval = Interval(
-                start_stamp.coordinates[timeline_id],
-                end_stamp.coordinates[timeline_id],
-            )
-            return MatchIntervalStamp(
-                source_id=timeline_id,
-                interval=queried_interval,
-                start_stamp=start_stamp,
-                end_stamp=end_stamp,
-            )
-
-        coordinate_value, timeline_id, _unit = _resolve_coordinate_and_timeline(
-            at, timeline_id
-        )
-        if timeline_id is None:
-            raise ValueError(
-                "timeline_id is required unless coordinate is an IdCoordinate"
-            )
-
-        source_timeline = self._require_known_timeline(timeline_id)
-        known = self._known_timelines()
-        if isinstance(at, IdCoordinate):
-            query_input = at.to_coordinate()
-        elif isinstance(at, Coordinate):
-            query_input = at
-        else:
-            query_input = Coordinate(
-                coordinate_value,
-                source_timeline.unit,
-                number_type=source_timeline.number_type,
-            )
-        query_coordinate = source_timeline.get_coordinate_at(
-            query_input,
-            format="coordinate",
-        )
-        assert isinstance(query_coordinate, Coordinate)
-        queried = query_coordinate.value
-
-        belief_key = _belief_key(believer, beliefs)
-        readings = self._interval_readings(timeline_id, query_coordinate, belief_key)
-        interval_claims = [claim for claim, _, _ in readings]
-        candidate_groups: dict[str, list[tuple[str, Coordinate | None, bool]]] = {}
-        for claim, read_id, read_at in readings:
-            target_id, candidate, is_anchor = self._interval_claim_candidate(
-                claim, read_id, read_at
-            )
-            candidate_groups.setdefault(target_id, []).append(
-                (read_id, candidate, is_anchor)
-            )
-
-        interval_coordinates: dict[str, CoordinateValue] = {}
-        interval_stated_pairs: list[tuple[str, str]] = []
-        interval_inferred_pairs: list[tuple[str, str]] = []
-        for target_id, candidates in candidate_groups.items():
-            values = [candidate for _, candidate, _ in candidates]
-            if any(candidate is None for candidate in values):
-                continue
-            unique: list[Coordinate] = []
-            for candidate in values:
-                assert candidate is not None
-                if candidate not in unique:
-                    unique.append(candidate)
-            if len(unique) != 1:
-                continue
-            interval_coordinates[target_id] = unique[0].value
-            # One edge per timeline the claims were read on: the queried
-            # timeline, or a member of its groups.
-            for read_id in dict.fromkeys(read_id for read_id, _, _ in candidates):
-                edge = (read_id, target_id)
-                if any(
-                    is_anchor
-                    for candidate_read_id, _, is_anchor in candidates
-                    if candidate_read_id == read_id
-                ):
-                    interval_stated_pairs.append(edge)
-                else:
-                    interval_inferred_pairs.append(edge)
-
-        policy = (
-            self.support_policy
-            if support_policy is None
-            else self._coerce_support_policy(support_policy)
-        )
-
-        coordinates, stated_pairs, inferred_pairs, query_has_anchor = (
-            self._assemble_matchstamp(
-                queried,
-                timeline_id,
-                support_policy=policy,
-                conversion_maps=conversion_maps,
-                belief_key=belief_key,
-                interval_coordinates=interval_coordinates,
-                interval_stated_pairs=interval_stated_pairs,
-                interval_inferred_pairs=interval_inferred_pairs,
-                interval_withheld=set(candidate_groups).difference(
-                    interval_coordinates
-                ),
-                query_has_interval_anchor=any(
-                    is_anchor
-                    for candidates in candidate_groups.values()
-                    for read_id, _, is_anchor in candidates
-                    if read_id == timeline_id
-                ),
-            )
-        )
-
-        values = {
-            coordinate_id: value
-            for coordinate_id, value in coordinates.items()
-            if value is not None
-        }
-        declared = [held for held in known if held in values]
-        ordered_ids = [timeline_id]
-        ordered_ids.extend(held for held in declared if held != timeline_id)
-        ordered_ids.extend(sorted(set(values).difference(ordered_ids)))
-        typed_coordinates: dict[str, Coordinate] = {}
-        for ordered_id in ordered_ids:
-            value = queried if ordered_id == timeline_id else values[ordered_id]
-            timeline = self.get_timeline(ordered_id)
-            typed_coordinates[ordered_id] = Coordinate(
-                value,
-                timeline.unit,
-                number_type=timeline.number_type,
-            )
-        stamp = MatchStamp(
-            coordinates=typed_coordinates,
-            source_id=timeline_id,
-            stated_pairs=list(stated_pairs),
-            inferred_pairs=list(inferred_pairs),
-            source=self,
-            is_interpolated=not query_has_anchor,
+        return closure._get_matchstamp_at(
+            self,
+            at,
+            timeline_id,
+            support_policy=support_policy,
             conversion_maps=conversion_maps,
-            interval_claims=list(interval_claims),
+            within=within,
+            id_pattern=id_pattern,
+            include_domains=include_domains,
+            include_units=include_units,
+            believer=believer,
+            beliefs=beliefs,
         )
-
-        # Apply post-hoc filtering if requested
-        has_filter = (
-            within is not None
-            or id_pattern is not None
-            or include_domains is not None
-            or include_units is not None
-        )
-        if has_filter:
-            filt = ClaimFilter.from_kwargs(
-                within=within,
-                id_pattern=self._known_id_pattern(id_pattern),
-                include_domains=include_domains,
-                include_units=include_units,
-            )
-            stamp = stamp._narrowed(filt, timelines=known)
-
-        return stamp
 
     @staticmethod
     def _coerce_support_policy(
@@ -3284,28 +2296,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> stamps[1].get_coordinate_for("perf:cpt_1", format="float")
             100.0
         """
-        values, _ = collection_values(at)
-        for position, value in enumerate(values):
-            if not is_coordinate_input(value) and not isinstance(value, Interval):
-                raise TypeError(
-                    f"Matchstamp collection element {position} has unsupported "
-                    f"type {type(value).__name__}"
-                )
-        return [
-            self.get_matchstamp_at(
-                value,
-                timeline_id,
-                support_policy=support_policy,
-                conversion_maps=conversion_maps,
-                within=within,
-                id_pattern=id_pattern,
-                include_domains=include_domains,
-                include_units=include_units,
-                believer=believer,
-                beliefs=beliefs,
-            )
-            for value in values
-        ]
+        return closure._get_matchstamps_at(
+            self,
+            at,
+            timeline_id,
+            support_policy=support_policy,
+            conversion_maps=conversion_maps,
+            within=within,
+            id_pattern=id_pattern,
+            include_domains=include_domains,
+            include_units=include_units,
+            believer=believer,
+            beliefs=beliefs,
+        )
 
     def get_matchstamp_for(
         self,
@@ -3374,19 +2377,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> ms.get_coordinate_for("perf:cpt_1", format="float")
             10.0
         """
-        if not isinstance(key, str):
-            raise TypeError("get_matchstamp_for requires an event-ID string")
-        owners = self._event_owners(key)
-        if not owners:
-            raise KeyError(f"Event {key!r} not found in bundle {self.id!r}")
-        if len(owners) != 1:
-            raise ValueError(f"Event {key!r} has competing owners {owners}")
-        owner = owners[0]
-        source = self.get_timeline(owner).get_coordinate_for(key, format="coordinate")
-        assert isinstance(source, Coordinate)
-        return self.get_matchstamp_at(
-            IdCoordinate.from_coordinate(source, owner),
-            timeline_id or owner,
+        return closure._get_matchstamp_for(
+            self,
+            key,
+            timeline_id,
             support_policy=support_policy,
             conversion_maps=conversion_maps,
             within=within,
@@ -3440,22 +2434,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             KeyError: If any key is unknown. The batch answers completely or
                 not at all.
         """
-        stamps, _ = resolve_key_collection(
+        return closure._get_matchstamps_for(
+            self,
             keys,
-            lambda key: self.get_matchstamp_for(
-                key,
-                timeline_id,
-                support_policy=support_policy,
-                conversion_maps=conversion_maps,
-                within=within,
-                id_pattern=id_pattern,
-                include_domains=include_domains,
-                include_units=include_units,
-                believer=believer,
-                beliefs=beliefs,
-            ),
+            timeline_id,
+            support_policy=support_policy,
+            conversion_maps=conversion_maps,
+            within=within,
+            id_pattern=id_pattern,
+            include_domains=include_domains,
+            include_units=include_units,
+            believer=believer,
+            beliefs=beliefs,
         )
-        return stamps
 
     def get_matchstamp(
         self,
@@ -3510,28 +2501,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             TypeError: If ``at`` mixes keys with position forms or is an
                 unsupported runtime form.
         """
-        options = {
-            "support_policy": support_policy,
-            "conversion_maps": conversion_maps,
-            "within": within,
-            "id_pattern": id_pattern,
-            "include_domains": include_domains,
-            "include_units": include_units,
-            "believer": believer,
-            "beliefs": beliefs,
-        }
-        if isinstance(at, str):
-            return self.get_matchstamp_for(at, timeline_id, **options)
-        if is_coordinate_input(at) or isinstance(at, Interval):
-            return self.get_matchstamp_at(at, timeline_id, **options)
-        values, _ = collection_values(at)
-        if _all_keys(values):
-            return self.get_matchstamps_for(values, timeline_id, **options)
-        if _all_positions(values):
-            return self.get_matchstamps_at(values, timeline_id, **options)
-        raise TypeError(
-            "Matchstamp dispatcher collections must contain only string keys or "
-            "coordinate and Interval positions"
+        return closure._get_matchstamp(
+            self,
+            at,
+            timeline_id,
+            support_policy=support_policy,
+            conversion_maps=conversion_maps,
+            within=within,
+            id_pattern=id_pattern,
+            include_domains=include_domains,
+            include_units=include_units,
+            believer=believer,
+            beliefs=beliefs,
         )
 
     def _assemble_matchstamp(
@@ -3585,167 +2566,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ``query_has_anchor`` is True when the query node carries an
             anchor a claim states (making the stamp non-interpolated).
         """
-        coordinates: dict[str, CoordinateValue | None] = {}
-        stated_pairs: list[tuple[str, str]] = []
-        inferred_pairs: list[tuple[str, str]] = []
-
-        def add_inferred_pair(timeline_a: str, timeline_b: str) -> None:
-            """Record an inferred relationship once, regardless of orientation."""
-            if timeline_a == timeline_b:
-                return
-            if (timeline_a, timeline_b) in inferred_pairs:
-                return
-            if (timeline_b, timeline_a) in inferred_pairs:
-                return
-            if (timeline_a, timeline_b) in stated_pairs:
-                return
-            if (timeline_b, timeline_a) in stated_pairs:
-                return
-            inferred_pairs.append((timeline_a, timeline_b))
-
-        # 1. Exact-anchor seed: the query's connected component of stated
-        #    claims (and any graph-inferred edges).
-        try:
-            mg = self._get_or_build_matchgraph(
-                actual_timeline_id, coordinate, belief_key
-            )
-        except ValueError as error:
-            if "No synchronous claims touch" not in str(error):
-                raise
-            mg = None
-
-        query_has_anchor = mg is not None or query_has_interval_anchor
-        if query_has_anchor:
-            if mg is not None:
-                graph_stamp = mg.get_matchstamp()
-                coordinates.update(
-                    {
-                        timeline_id: stored.value
-                        for timeline_id, stored in graph_stamp.coordinates.items()
-                    }
-                )
-                stated_pairs.extend(graph_stamp.stated_pairs)
-                inferred_pairs.extend(graph_stamp.inferred_pairs)
-        for timeline_id, value in (interval_coordinates or {}).items():
-            coordinates.setdefault(timeline_id, value)
-        for timeline_id in interval_withheld or ():
-            coordinates.setdefault(timeline_id, None)
-        for edge in interval_stated_pairs or []:
-            if edge not in stated_pairs and edge[::-1] not in stated_pairs:
-                stated_pairs.append(edge)
-        for edge in interval_inferred_pairs or []:
-            add_inferred_pair(*edge)
-        # The query timeline's coordinate is authoritative and never altered.
-        coordinates[actual_timeline_id] = coordinate
-
-        # 2. Transitive closure across groups (BFS worklist).
-        worklist: list[str] = [
-            timeline_id
-            for timeline_id, value in coordinates.items()
-            if value is not None
-        ]
-        processed: set[str] = set()
-        tree_reached: set[str] = set()
-        units = self._warp_units(belief_key)
-
-        while worklist:
-            node_id = worklist.pop()
-            if node_id in processed:
-                continue
-            processed.add(node_id)
-            node_coordinate = coordinates[node_id]
-            assert node_coordinate is not None
-            node_timeline = self.get_timeline(node_id)
-
-            # Direct instant claims are reachability edges in their own right.
-            # This precedes group handling so standalone timelines participate
-            # in the same transitive closure.
-            query = Coordinate(
-                node_coordinate,
-                node_timeline.unit,
-                number_type=node_timeline.number_type,
-            )
-            for claim in self._relevant_claims_at(node_id, query, belief_key):
-                if claim.is_interval:
-                    continue
-                anchor = claim.start_anchor
-                assert anchor is not None
-                if anchor.timeline_a_id == node_id:
-                    target_id = anchor.timeline_b_id
-                    target_coordinate = anchor.coordinate_b.value
-                else:
-                    target_id = anchor.timeline_a_id
-                    target_coordinate = anchor.coordinate_a.value
-                if (node_id, target_id) not in stated_pairs and (
-                    target_id,
-                    node_id,
-                ) not in stated_pairs:
-                    stated_pairs.append((node_id, target_id))
-                if target_id in coordinates:
-                    continue
-                coordinates[target_id] = target_coordinate
-                worklist.append(target_id)
-
-            # Every timeline reaches the others of its manifest tree (its root
-            # and the root's descendants) by exact offsets. A timeline given
-            # its coordinate that way has no relatives the first one lacked,
-            # so its tree is not walked again from it.
-            if node_id not in tree_reached:
-                for relative_id, relative_coordinate in self._manifest_relatives(
-                    node_timeline, node_coordinate
-                ).items():
-                    if relative_id in coordinates:
-                        continue
-                    coordinates[relative_id] = relative_coordinate
-                    tree_reached.add(relative_id)
-                    add_inferred_pair(node_id, relative_id)
-                    worklist.append(relative_id)
-
-            # The node's units: each of its groups, or the node alone when it
-            # is ungrouped, registered or not.
-            for source_group, _ in (unit for unit in units if node_id in unit[1]):
-                # 2a. Within-group conversion to the members of each group of
-                # the node: exact, and always within each member, since
-                # members share one start and one end.
-                if source_group is not None and len(source_group.timeline_ids) > 1:
-                    grouped = self._get_group_timestamp(
-                        source_group,
-                        node_coordinate,
-                        node_id,
-                        conversion_maps=conversion_maps,
-                    )
-                    for member_id, member_coordinate in grouped.items():
-                        if member_id in coordinates or member_coordinate is None:
-                            continue
-                        coordinates[member_id] = member_coordinate
-                        add_inferred_pair(node_id, member_id)
-                        worklist.append(member_id)
-
-                # 2b. Cross-group warp into every not-yet-reached unit the
-                # node is no member of.
-                for _, target_ids in units:
-                    if node_id in target_ids:
-                        continue
-                    if all(member_id in coordinates for member_id in target_ids):
-                        continue
-                    transferred = self._transfer_to_group(
-                        float(node_coordinate),
-                        node_id,
-                        source_group,
-                        target_ids,
-                        support_policy,
-                        belief_key,
-                    )
-                    if transferred is None:
-                        continue
-                    target_id, target_coordinate = transferred
-                    if target_id in coordinates:
-                        continue
-                    coordinates[target_id] = target_coordinate
-                    add_inferred_pair(node_id, target_id)
-                    worklist.append(target_id)
-
-        return coordinates, stated_pairs, inferred_pairs, query_has_anchor
+        return closure._assemble_matchstamp(
+            self,
+            coordinate,
+            actual_timeline_id,
+            support_policy=support_policy,
+            conversion_maps=conversion_maps,
+            belief_key=belief_key,
+            interval_coordinates=interval_coordinates,
+            interval_stated_pairs=interval_stated_pairs,
+            interval_inferred_pairs=interval_inferred_pairs,
+            interval_withheld=interval_withheld,
+            query_has_interval_anchor=query_has_interval_anchor,
+        )
 
     def get_matchstamps(
         self,
@@ -3813,30 +2646,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> stamps[0].n_timelines  # score + 2 performers
             3
         """
-        if claims is None:
-            claims = self.get_match_claims(believer=believer, beliefs=beliefs)
-        else:
-            claims = believed(claims, believer, beliefs, context=belief_context(self))
-
-        stamps = []
-        for claim in claims:
-            if not claim.is_synchronous or claim.start_anchor is None:
-                continue
-            if not from_graph:
-                stamp = claim.get_matchstamp(
-                    bundle=self, from_graph=False, conversion_maps=conversion_maps
-                )
-            else:
-                stamp = self.get_matchstamp_at(
-                    claim.start_anchor.get_coordinate_for(claim.timeline_a_id),
-                    conversion_maps=conversion_maps,
-                    believer=believer,
-                    beliefs=beliefs,
-                )
-            assert isinstance(stamp, MatchStamp)
-            stamps.append(stamp)
-
-        return stamps
+        return closure._get_matchstamps(
+            self,
+            claims,
+            from_graph=from_graph,
+            conversion_maps=conversion_maps,
+            believer=believer,
+            beliefs=beliefs,
+        )
 
     def get_matchstamp_table(
         self,
@@ -3983,84 +2800,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> bundle.get_matchstamp_table([0, 8], "score:clt_1").num_rows
             2
         """
-        validate_table_format(format)
-        reject_dataframe_options(format, fields=fields, units=units)
-        if at is not None:
-            if claims is not None:
-                raise ValueError("Pass either claims or at, not both")
-            resolved = self.get_matchstamp(
-                at,
-                timeline_id,
-                conversion_maps=conversion_maps,
-                believer=believer,
-                beliefs=beliefs,
-            )
-            stamps = resolved if isinstance(resolved, list) else [resolved]
-            if any(isinstance(stamp, MatchIntervalStamp) for stamp in stamps):
-                raise NotImplementedError(
-                    "get_matchstamp_table does not support Interval queries; "
-                    "there is no interval table form"
-                )
-            match_stamps: list[MatchStamp] = []
-            for stamp in stamps:
-                assert isinstance(stamp, MatchStamp)
-                ambiguous = stamp._ambiguous_interval_candidates()
-                if ambiguous:
-                    raise ValueError(
-                        "get_matchstamp_table cannot materialize ambiguous "
-                        "interval-derived coordinates for timelines "
-                        f"{list(ambiguous)}"
-                    )
-                match_stamps.append(stamp)
-            rows = [dict(stamp.coordinates) for stamp in match_stamps]
-            all_tl_ids: set[str] = set()
-            for row in rows:
-                all_tl_ids.update(row)
-            return self._render_matchstamp_table(
-                self._assemble_matchstamp_table(
-                    rows,
-                    all_tl_ids,
-                    within,
-                    conversion_maps=conversion_maps,
-                ),
-                format=format,
-                fields=fields,
-                units=units,
-            )
-
-        anchors = (
-            _table_anchors(self._claims_in_force(_belief_key(believer, beliefs)))
-            if claims is None
-            else [
-                (anchor.timeline_a_id, anchor.coordinate_a)
-                + (anchor.timeline_b_id, anchor.coordinate_b)
-                for claim in believed(
-                    claims, believer, beliefs, context=belief_context(self)
-                )
-                for anchor in claim.anchors
-            ]
-        )
-        if from_graph:
-            rows = self._collapsed_claim_rows(anchors, list(self._known_timelines()))
-        else:
-            rows = [
-                {timeline_a: coordinate_a, timeline_b: coordinate_b}
-                for timeline_a, coordinate_a, timeline_b, coordinate_b in anchors
-            ]
-        all_tl_ids = set()
-        for row in rows:
-            all_tl_ids.update(row)
-
-        return self._render_matchstamp_table(
-            self._assemble_matchstamp_table(
-                rows,
-                all_tl_ids,
-                within,
-                conversion_maps=conversion_maps,
-            ),
+        return stamp_table._get_matchstamp_table(
+            self,
+            at,
+            timeline_id,
+            claims=claims,
+            within=within,
+            from_graph=from_graph,
+            conversion_maps=conversion_maps,
             format=format,
             fields=fields,
             units=units,
+            believer=believer,
+            beliefs=beliefs,
         )
 
     @staticmethod
@@ -4112,114 +2864,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline after them, by ID), each followed by its derived
             conversion columns.  Empty input yields an empty table.
         """
-        n_rows = len(rows)
-        if n_rows == 0:
-            return pa.table({})
-
-        # Keep only the timelines ``within`` names, if given
-        if within is not None:
-            all_tl_ids = all_tl_ids & within
-
-        # Build table with consistent fields, scattering each row into its
-        # cells rather than probing every field of every row.
-        known = self._known_timelines()
-        rank = {tl_id: position for position, tl_id in enumerate(known)}
-        field_lists: dict[str, list[Coordinate | None]] = {
-            tl_id: [None] * n_rows
-            for tl_id in sorted(
-                all_tl_ids, key=lambda tl_id: (rank.get(tl_id, len(rank)), tl_id)
-            )
-        }
-        for position, row in enumerate(rows):
-            for tl_id, value in row.items():
-                column = field_lists.get(tl_id)
-                if column is not None:
-                    column[position] = value
-
-        # Each timeline's derived columns, written after the timeline's own.
-        derived_columns: dict[str, dict[str, list[Coordinate | None]]] = {}
-        if conversion_maps is not False and conversion_maps is not None:
-            from timetoalign.core.timestamp import _conversion_map_enabled_for_spec
-
-            collected: list[tuple[TimeUnit, str, "ConversionMap[Any]"]] = []
-            for tl_id in list(field_lists.keys()):
-                for cmap in self._get_conversion_maps_for_timeline(tl_id):
-                    target_unit = cmap.target_unit
-                    if target_unit is None:
-                        continue  # numeric unit conversions only in tables
-                    if not _conversion_map_enabled_for_spec(cmap, conversion_maps):
-                        continue
-                    collected.append((target_unit, tl_id, cmap))
-            label_counts: dict[str, int] = {}
-            for target_unit, _tl_id, _cmap in collected:
-                label_counts[target_unit.value] = (
-                    label_counts.get(target_unit.value, 0) + 1
-                )
-            for target_unit, tl_id, cmap in collected:
-                label = target_unit.value
-                col_name = label if label_counts[label] == 1 else f"{tl_id}:{label}"
-                source_timeline = self.get_timeline(tl_id)
-                target_type = target_unit.resolve_number_type(
-                    source_timeline.number_type
-                    if source_timeline.number_type in target_unit.allowed_number_types
-                    else None
-                )
-                derived: list[Coordinate | None] = []
-                for coordinate in field_lists[tl_id]:
-                    if coordinate is None:
-                        derived.append(None)
-                        continue
-                    try:
-                        derived.append(
-                            Coordinate(
-                                cmap(coordinate.value),
-                                cmap.target_unit,
-                                number_type=target_type,
-                            )
-                        )
-                    except ValueError:
-                        # The map does not reach this position (outside its
-                        # domain) or its value cannot be written on the
-                        # target unit: the cell stays null. Any other error
-                        # is a defect and propagates.
-                        derived.append(None)
-                derived_columns.setdefault(tl_id, {})[col_name] = derived
-        field_lists = {
-            name: column
-            for tl_id, coordinates in field_lists.items()
-            for name, column in (
-                (tl_id, coordinates),
-                *derived_columns.get(tl_id, {}).items(),
-            )
-        }
-
-        columns: list[TimestampColumn] = []
-        for name, coordinates in field_lists.items():
-            exemplar = next(
-                (coordinate for coordinate in coordinates if coordinate is not None),
-                None,
-            )
-            if exemplar is None:
-                if name in known:
-                    timeline = known[name]
-                    unit = timeline.unit
-                    number_type = timeline.number_type
-                else:
-                    unit = TimeUnit.number
-                    number_type = NumberType.float
-            else:
-                unit = exemplar.unit
-                number_type = exemplar.number_type
-            columns.append(
-                TimestampColumn(
-                    name=name,
-                    values=coordinates,
-                    unit=unit,
-                    number_type=number_type,
-                    timeline_id=name if name in known else None,
-                )
-            )
-        return build_timestamp_table(columns)
+        return stamp_table._assemble_matchstamp_table(
+            self, rows, all_tl_ids, within, conversion_maps
+        )
 
     @staticmethod
     def _collapsed_claim_rows(
@@ -4246,53 +2893,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             One row per component, ordered as documented on
             :meth:`get_matchstamp_table`.
         """
-        parent: dict[tuple[str, CoordinateValue], tuple[str, CoordinateValue]] = {}
-        coordinates: dict[tuple[str, CoordinateValue], Coordinate] = {}
-
-        def node(
-            timeline_id: str, coordinate: Coordinate
-        ) -> tuple[str, CoordinateValue]:
-            """Return the union-find key of a coordinate, registering it on first sight."""
-            key = (timeline_id, coordinate.value)
-            parent.setdefault(key, key)
-            coordinates.setdefault(key, coordinate)
-            return key
-
-        def find(key: tuple[str, CoordinateValue]) -> tuple[str, CoordinateValue]:
-            """Return the root of *key*'s component, compressing the path to it."""
-            root = key
-            while parent[root] != root:
-                root = parent[root]
-            while parent[key] != root:
-                parent[key], key = root, parent[key]
-            return root
-
-        for timeline_a, coordinate_a, timeline_b, coordinate_b in anchors:
-            root_a = find(node(timeline_a, coordinate_a))
-            root_b = find(node(timeline_b, coordinate_b))
-            if root_a != root_b:
-                parent[root_b] = root_a
-
-        components: dict[tuple[str, CoordinateValue], dict[str, Coordinate]] = {}
-        for key in parent:
-            timeline_id, value = key
-            row = components.setdefault(find(key), {})
-            carried = row.get(timeline_id)
-            if carried is None or value < carried.value:
-                row[timeline_id] = coordinates[key]
-
-        rank = {timeline_id: index for index, timeline_id in enumerate(registered)}
-
-        def first(row: dict[str, Coordinate]) -> tuple[int, str]:
-            """The row's timeline the bundle knows first, with its rank."""
-            return min((rank.get(tl_id, len(rank)), tl_id) for tl_id in row)
-
-        def order(row: dict[str, Coordinate]) -> tuple[int, float]:
-            """Sort key: the first timeline's rank, then the row's value on it."""
-            position, timeline_id = first(row)
-            return position, float(row[timeline_id].value)
-
-        return sorted(components.values(), key=order)
+        return stamp_table._collapsed_claim_rows(anchors, registered)
 
     def _invalidate_warp_cache(self) -> None:
         """Clear every cache built from the claims, forcing rebuild on next access."""
@@ -4345,23 +2946,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             MatchLine for the source, or None where no claim names it.
         """
-        cache_key = (belief_key, source_tl_id)
-        if cache_key in self._matchline_cache:
-            return self._matchline_cache[cache_key]
-
-        naming = self._claims_naming(source_tl_id, belief_key)
-        if len(naming) == 0:
-            self._matchline_cache[cache_key] = None
-            return None
-
-        # Building a line from claims checked on entry has no failure that
-        # means "no line": an error here propagates and is never cached.
-        match_line = MatchLine.from_claims(
-            claims=self._materialized(naming),
-            source_timeline_id=source_tl_id,
-        )
-        self._matchline_cache[cache_key] = match_line
-        return match_line
+        return closure._get_or_build_match_line(self, source_tl_id, belief_key)
 
     def _get_or_build_warp_map(
         self,
@@ -4385,102 +2970,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             WarpMap for the pair, or None if insufficient data.
         """
-        if len(self._claims_in_force(belief_key)) == 0:
-            return None
-
-        cache_key = (belief_key, source_tl_id, target_tl_id)
-        if cache_key in self._warp_map_cache:
-            return self._warp_map_cache[cache_key]
-
-        # Build or retrieve cached MatchLine for this source
-        match_line = self._get_or_build_match_line(source_tl_id, belief_key)
-        if match_line is None:
-            self._warp_map_cache[cache_key] = None
-            return None
-
-        # Check if target timeline is reachable
-        if target_tl_id not in match_line.target_timeline_ids():
-            self._warp_map_cache[cache_key] = None
-            return None
-
-        # Build WarpMap
-        try:
-            warp = WarpMap.from_match_line(match_line, target_tl_id)
-        except AmbiguousWarpMapError:
-            raise
-        except ValueError as e:
-            self._logger.debug(
-                "Failed to build WarpMap %s -> %s: %s",
-                source_tl_id,
-                target_tl_id,
-                e,
-            )
-            self._warp_map_cache[cache_key] = None
-            return None
-
-        self._warp_map_cache[cache_key] = warp
-        self._logger.debug(
-            "Built WarpMap %s -> %s (%d anchors)",
-            source_tl_id,
-            target_tl_id,
-            warp.n_anchors,
+        return closure._get_or_build_warp_map(
+            self, source_tl_id, target_tl_id, belief_key
         )
-        return warp
 
     # endregion
 
     # region Grouped Timestamp Helpers
 
-    def _get_group_timestamp(
-        self,
-        group: TimelineGroup,
-        coordinate: CoordinateValue,
-        timeline_id: str,
-        *,
-        conversion_maps: "ConversionMapsSpec" = True,
-    ) -> dict[str, CoordinateValue | None]:
-        """Get the group members' exact coordinates at a position on one member.
-
-        Args:
-            group: The TimelineGroup.
-            coordinate: Coordinate in the source timeline's native unit,
-                or in a unit convertible via C-Map (see
-                ``_resolve_claim_coordinate``).
-            timeline_id: ID of the member the coordinate is on.
-
-        Returns:
-            Dict mapping member IDs to coordinates, each in its member's
-            declared number type; a position outside the source member gives
-            the source alone.
-        """
-        result: dict[str, CoordinateValue | None] = {}
-
-        try:
-            ts = group.get_timestamp_at(
-                coordinate,
-                timeline_id,
-                conversion_maps=conversion_maps,
-            )
-            for tl_id in group.timeline_ids:
-                try:
-                    coord = ts.get_coordinate_for(tl_id, format="coordinate")
-                except KeyError:
-                    result[tl_id] = None
-                    continue
-                assert isinstance(coord, Coordinate)
-                result[tl_id] = coord.value
-        except UnknownLengthError:
-            # Converting between members needs both lengths; that is not a
-            # position outside the source member, so it is not swallowed.
-            raise
-        except (KeyError, ValueError) as e:
-            self._logger.debug(
-                f"Failed to get group timestamp at {coordinate} on {timeline_id}: {e}"
-            )
-            # Return what we can: source coordinate at least
-            result[timeline_id] = coordinate
-
-        return result
+    _get_group_timestamp = closure._get_group_timestamp
 
     def _manifest_relatives(
         self, timeline: "Timeline", coordinate: CoordinateValue
@@ -4530,36 +3028,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             position, by id, the root first and then depth-first; empty for a
             position outside the queried timeline.
         """
-        if not timeline._holds_position(coordinate, end_held=True):
-            return {}
-        carried: dict[str, CoordinateValue] = {timeline.id: coordinate}
-        reached_from = [timeline]
-        node = timeline
-        while node._parent is not None:
-            parent = node._parent
-            carried[parent.id] = shift_number(
-                carried[node.id], parent._child_offsets[node.id].value, subtract=False
-            )
-            reached_from.append(parent)
-            node = parent
-        root = node
-        pending = reached_from
-        while pending:
-            node = pending.pop()
-            for child_id, child in node._children.items():
-                if child.id in carried:
-                    continue
-                value = shift_number(
-                    carried[node.id], node._child_offsets[child_id].value, subtract=True
-                )
-                if child._holds_position(value):
-                    carried[child.id] = value
-                    pending.append(child)
-        return {
-            relative.id: express_as(carried[relative.id], relative.number_type)
-            for relative in _tree(root)
-            if relative is not timeline and relative.id in carried
-        }
+        return closure._manifest_relatives(self, timeline, coordinate)
 
     def _get_unit_map(self) -> dict[str, str]:
         """Build a mapping from timeline IDs to their coordinate unit strings.
@@ -4633,120 +3102,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             The target coordinate (always within ``[0, length]``), or None when
             out-of-support under the ``omit`` policy.
         """
-        source_coords = warp._source_float_array
-        hull_low = float(source_coords[0])
-        hull_high = float(source_coords[-1])
-        entering = float(entering)
-        length = self._timeline_length(target_tl_id)
+        return closure._transfer_coordinate(
+            self, warp, entering, target_tl_id, support_policy
+        )
 
-        def _produce(value: float) -> float:
-            return warp._interpolate_float(value)
-
-        produced = _produce(entering)
-        within_hull = hull_low <= entering <= hull_high
-        within_length = produced >= 0.0 and (length is None or produced <= length)
-        if within_hull and within_length:
-            return produced
-
-        if support_policy is SupportPolicy.omit:
-            return None
-        if support_policy is SupportPolicy.clamp:
-            clamped = min(max(entering, hull_low), hull_high)
-            return self._clip_to_length(target_tl_id, _produce(clamped))
-        # extrapolate: keep the linear extrapolation, clipped into range.
-        return self._clip_to_length(target_tl_id, produced)
-
-    def _transfer_to_group(
-        self,
-        coordinate: float,
-        source_tl_id: str,
-        source_group: TimelineGroup | None,
-        target_ids: Sequence[str],
-        support_policy: SupportPolicy,
-        belief_key: _BeliefKey = _ALL_BELIEFS,
-    ) -> tuple[str, CoordinateValue] | None:
-        """Transfer a coordinate from one group to another via WarpMap.
-
-        Searches for a WarpMap connecting any timeline in the source
-        group to any timeline in the target group.  Tries direct maps
-        first, then indirect (convert within source group, then warp).
-        Each transfer is governed by ``support_policy``
-        (see :meth:`_transfer_coordinate`); a transfer omitted under the
-        ``omit`` policy is skipped so another timeline in the target group may
-        still be reached. An ungrouped timeline is a group of its own on
-        either side (see :meth:`_warp_units`).
-
-        Args:
-            coordinate: Source coordinate.
-            source_tl_id: Source timeline ID.
-            source_group: Source group, or None when the source is ungrouped.
-            target_ids: The target group's members, or the one ungrouped
-                target timeline.
-            support_policy: How out-of-support transfers are handled.
-            belief_key: The belief filter the WarpMaps' claims are read under.
-
-        Returns:
-            ``(target_timeline_id, transferred_coordinate)`` or ``None``.
-        """
-        # Try direct: source_tl_id -> any timeline in target group
-        for target_tl_id in target_ids:
-            warp = self._get_or_build_warp_map(source_tl_id, target_tl_id, belief_key)
-            if warp is None:
-                continue
-            try:
-                transferred = self._transfer_coordinate(
-                    warp,
-                    coordinate,
-                    target_tl_id,
-                    support_policy,
-                )
-            except ValueError:
-                continue
-            if transferred is not None:
-                return (target_tl_id, transferred)
-
-        if source_group is None:
-            return None
-
-        # Try indirect: convert within source group, then warp
-        for src_other_tl_id in source_group.timeline_ids:
-            if src_other_tl_id == source_tl_id:
-                continue
-            # Convert within source group
-            try:
-                intermediate = source_group.get_coordinate_at(
-                    IdCoordinate(
-                        coordinate,
-                        self.get_timeline(source_tl_id).unit,
-                        source_tl_id,
-                    ),
-                    timeline_id=src_other_tl_id,
-                    format="coordinate",
-                )
-                assert isinstance(intermediate, Coordinate)
-            except (KeyError, ValueError):
-                continue
-
-            # Try WarpMap from intermediate to target group
-            for target_tl_id in target_ids:
-                warp = self._get_or_build_warp_map(
-                    src_other_tl_id, target_tl_id, belief_key
-                )
-                if warp is None:
-                    continue
-                try:
-                    transferred = self._transfer_coordinate(
-                        warp,
-                        float(intermediate.value),
-                        target_tl_id,
-                        support_policy,
-                    )
-                except ValueError:
-                    continue
-                if transferred is not None:
-                    return (target_tl_id, transferred)
-
-        return None
+    _transfer_to_group = closure._transfer_to_group
 
     # endregion
 
@@ -4823,35 +3183,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 as :meth:`MatchClaimField.from_parquet` and
                 :meth:`add_match_claim_field` for the MatchClaim table).
         """
-        named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
-        if "Projection" in named:
-            path = named["Projection"].path_in(directory)
-            if path.is_file():
-                for timeline_id, projections in read_projection_table(
-                    path, data
-                ).items():
-                    self._require_known_timeline(timeline_id).add_projections(
-                        projections
-                    )
-        if "Box" in named:
-            path = named["Box"].path_in(directory)
-            if path.is_file():
-                for timeline_id, rows in read_event_table(path).items():
-                    try:
-                        boxes = [
-                            Box.from_row(
-                                row, unit=row["unit"], number_type=row["number_type"]
-                            )
-                            for row in rows.to_pylist()
-                        ]
-                    except ValidationError as error:
-                        # The Box's own refusal, as add_events gives it.
-                        raise _refusal_of(error) from None
-                    self._require_known_timeline(timeline_id).add_events(boxes)
-        if "MatchClaim" in named:
-            path = named["MatchClaim"].path_in(directory)
-            if path.is_file():
-                self.add_match_claim_field(MatchClaimField.from_parquet(path))
+        return package._read_tables(self, directory, data)
 
     def _event_tables(self) -> dict[str, pa.Table]:
         """The package's event tables by resource type, each holding a row.
@@ -4962,105 +3294,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 entry's id is held in the manifest, before any file is
                 written.
         """
-        claims = self.match_claim_table
-        event_tables = self._event_tables()
-        if len(claims) == 0 and not event_tables:
-            return False
-        named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
-        taken = {
-            **self._scope_ids(),
-            **{r.id: f"resource {quote_id(r.id)}" for r in self.resources},
-        }
-        written: dict[str, Resource] = {}
-
-        def place(table_type: str, default: str) -> tuple[str, Path]:
-            """Return the URL and resolved path a table is written to, creating its folder.
-
-            A held entry's URL is kept; otherwise *default* is used.
-            """
-            held = named.get(table_type)
-            url = held.url if held is not None else default
-            path = resource_path(directory, url)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            return url, path
-
-        # Every table to write: its type, URL, path, timelines and writer.
-        tables: list[tuple[str, str, Path, list[str], Callable[[Path], object]]] = []
-        # Every place is resolved (a URL refused) before the first file is written.
-        if len(claims):
-            url, path = place("MatchClaim", MatchClaimField.file_name)
-            claim_table = claims.table
-            named_timelines = pc.unique(
-                pa.concat_arrays(
-                    [
-                        claim_table.column("timeline_a_id").combine_chunks(),
-                        claim_table.column("timeline_b_id").combine_chunks(),
-                    ]
-                )
-            )
-            tables.append(
-                (
-                    "MatchClaim",
-                    url,
-                    path,
-                    sorted(named_timelines.to_pylist()),
-                    claims.to_parquet,
-                )
-            )
-        file_names = {"Projection": PROJECTIONS_FILE_NAME, "Box": BOXES_FILE_NAME}
-        for kind, table in event_tables.items():
-            url, path = place(kind, file_names[kind])
-            holders = pc.unique(table.column("timeline_id")).to_pylist()
-            tables.append(
-                (
-                    kind,
-                    url,
-                    path,
-                    sorted(holders),
-                    lambda path, table=table: write_event_table(table, path),
-                )
-            )
-        kept = {
-            table_type
-            for table_type, held in named.items()
-            if resource_path(directory, held.url).is_file()
-        }
-        # Every entry's id, refused where the manifest holds it, before the
-        # first file is written. A held entry's id is reused, and its
-        # timeline order kept when it names the same timelines; otherwise a
-        # new entry mints its id.
-        entries: list[tuple[str, str, Path, list[str], str]] = []
-        for table_type, url, path, timelines, _ in tables:
-            held = named.get(table_type)
-            if held is not None and set(held.timelines) == set(timelines):
-                timelines = list(held.timelines)
-            if held is None:
-                resource_id = Resource._minted_id(table_type, timelines, url)
-                taken = _refuse_held_ids(
-                    [(resource_id, f"resource {quote_id(resource_id)}")], taken
-                )
-            else:
-                resource_id = held.id
-            entries.append((table_type, url, path, timelines, resource_id))
-        for (_, _, _, _, write), (table_type, url, path, timelines, resource_id) in zip(
-            tables, entries, strict=True
-        ):
-            write(path)
-            written[table_type] = Resource.of_file(
-                path, id=resource_id, type=table_type, timelines=timelines, url=url
-            )
-        resources = [
-            (
-                written.pop(r.type, r if r.type in kept else None)
-                if r.type in TABLE_RESOURCE_TYPES
-                else r
-            )
-            for r in self.resources
-        ]
-        self.resources = [r for r in resources if r is not None] + list(
-            written.values()
-        )
-        return True
+        return package._write_tables(self, directory)
 
     def to_dict(
         self,
@@ -5129,28 +3363,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> data["graphical"]["order"]
             {'#group_1hvif5xc2r1fv': ['#score', '#audio']}
         """
-        groups = [self.groups[group_id] for group_id in sorted(self.groups)]
-        manifest = Manifest(
-            id=self.id if self._id_given else None,
-            name=self.name,
-            meta=self.meta,
-            statement_state=self._statement_state,
-            prefixes=self._prefixes,
-            styling=self.styling,
-            band_orders=self._band_orders,
-            has_graphical=self._has_graphical,
-            measure_maps=self._measure_maps,
-            resources=self.resources,
-        )
-        manifest._unknown_keys = self._unknown_keys
-        return manifest.write(
-            self._roots(),
-            groups=[group._to_group_object() for group in groups],
-            order={group.id: group.timeline_ids for group in groups},
+        return package._to_dict(
+            self,
             minimal=minimal,
             events=events,
             external_references=external_references,
-            table_prefixes=self.match_claim_table._used_prefixes(),
         )
 
     def __repr__(self) -> str:

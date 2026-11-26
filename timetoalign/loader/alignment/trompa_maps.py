@@ -41,12 +41,8 @@ import math
 from collections import Counter
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from timetoalign.alignment.claims import (
-    NOMATCH,
-    ClaimSide,
-    MatchClaim,
-    _claims_between_events,
-)
+from timetoalign.alignment.claim_events import ClaimSide, _claims_between_events
+from timetoalign.alignment.claims import NOMATCH, MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.time import Coordinate
 from timetoalign.loader._sources import Source, describe_source

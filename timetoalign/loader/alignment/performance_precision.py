@@ -66,7 +66,8 @@ from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
-from timetoalign.alignment.claims import NOMATCH, ClaimSide
+from timetoalign.alignment.claim_events import ClaimSide
+from timetoalign.alignment.claims import NOMATCH
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.loader._ids import give_event_ids

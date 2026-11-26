@@ -29,8 +29,9 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 from timetoshare import DEFAULT_BELIEFS
 
-from timetoalign.alignment.claims import AlignmentAnchor
-from timetoalign.alignment.graph import MatchGraph, MatchStamp
+from timetoalign.alignment.anchors import AlignmentAnchor
+from timetoalign.alignment.graph import MatchGraph
+from timetoalign.alignment.stamps import MatchStamp
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,

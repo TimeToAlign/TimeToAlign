@@ -32,7 +32,7 @@ from timetoalign.alignment import (
     MatchClaimField,
     MatchIntervalStamp,
 )
-from timetoalign.alignment.bundle import _ALL_BELIEFS
+from timetoalign.alignment.claim_store import _ALL_BELIEFS
 from timetoalign.alignment.filters import ClaimFilter
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine

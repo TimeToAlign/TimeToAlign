@@ -41,8 +41,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pandas import DataFrame
 
-    from timetoalign.alignment.graph import MatchStamp
     from timetoalign.alignment.matchline import MatchLine
+    from timetoalign.alignment.stamps import MatchStamp
 
 module_logger = logging.getLogger(__name__)
 

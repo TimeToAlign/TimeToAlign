@@ -33,7 +33,8 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 import pandas as pd
 
-from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
+from timetoalign.alignment.claim_events import ClaimSide, _claims_between_events
+from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Coordinate, Provenance, TimeUnit
 from timetoalign.core.events import canonical_pitch_names
 

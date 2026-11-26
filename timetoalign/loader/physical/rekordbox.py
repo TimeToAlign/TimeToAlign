@@ -161,6 +161,12 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         timeline cannot carry, so the map is returned here instead of
         being attached to the track's timeline.
 
+        The loader builds each track's floating measures without listing
+        the bars that do not add up to their nominal length: on a beat
+        grid these are millisecond rounding, not notation. To see them,
+        build the lattice from a returned map yourself, which warns as for
+        any score: ``QuartersToFloatingMeasures.from_measure_map(map)``.
+
         Raises:
             ValueError: If a track's grids reach no downbeat.
         """

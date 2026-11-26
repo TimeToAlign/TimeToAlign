@@ -58,11 +58,11 @@ def test_timetoalign_warning_remains_visible_in_backend_context() -> None:
     with warnings.catch_warnings(record=True) as recorded:
         warnings.simplefilter("always")
         with suppressed_backend_warnings():
-            result = resolve_id("timeline", ["timeline-1", "timeline-2"])
+            result = resolve_id("timeline-.", ["timeline-1", "timeline-2"])
 
     assert result == "timeline-1"
     assert [item.category for item in recorded] == [UserWarning]
     assert [str(item.message) for item in recorded] == [
-        "Pattern 'timeline' matches 2 IDs: ['timeline-1', 'timeline-2']. "
+        "Pattern 'timeline-.' matches 2 IDs: ['timeline-1', 'timeline-2']. "
         "Returning first match: 'timeline-1'"
     ]

@@ -136,7 +136,6 @@ from timetoalign.core import (
     Quadrilateral,
     QuadrilateralField,
     ResolvedCoordinate,
-    ScopedId,
     Shape,
     ShapeField,
     TimeIntervalStamp,
@@ -360,7 +359,6 @@ __all__ = [
     "TimeStamp",
     "TimeIntervalStamp",
     # IDs
-    "ScopedId",
     # Loader - Event-based (Type 2)
     "EventData",
     "EventStore",

@@ -15,6 +15,8 @@ import numpy as np
 import pytest
 from hypothesis import HealthCheck, settings
 
+from timetoalign.core.ids import reset_content_minters
+
 # A property test asserts correctness; time belongs to the budget tests. On
 # its first draw in a process Hypothesis collects the literal constants of
 # the project's modules (cached per source hash under ``.hypothesis/``),
@@ -30,6 +32,18 @@ settings.register_profile(
     print_blob=True,
 )
 settings.load_profile("timetoalign")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_content_minters() -> None:
+    """Start every test with no content minter held.
+
+    An object built without an id mints from the process's minter of its
+    content seed, whose counter carries on from every object of equal
+    content built before. Forgetting them makes a test's ids independent of
+    the tests the same worker ran before it.
+    """
+    reset_content_minters()
 
 
 def _c_int_bound_ldexp(real_ldexp):

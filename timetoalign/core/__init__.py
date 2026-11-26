@@ -14,7 +14,8 @@ Flat module layout (no sub-packages):
   the store builder, and Parquet metadata.
 * :mod:`timetoalign.core.enums` — ``Domain``, ``TimeUnit``, ``NumberType``,
   …
-* :mod:`timetoalign.core.ids` — ``ScopedId``, ``mint_id``, ``mint_ids``.
+* :mod:`timetoalign.core.ids` — ``IdMinter``, ``seed_from``,
+  ``content_minter``, ``mint_id``, ``mint_ids``.
 * :mod:`timetoalign.core.protocols` — pitch, harmony, and time protocols.
 * :mod:`timetoalign.core.timestamp` — ``TimeStamp``, ``TimeIntervalStamp``.
 """
@@ -152,11 +153,15 @@ from .fields import (
     resolve_source_fields,
 )
 from .ids import (
-    ScopedId,
+    ID_LENGTH,
+    IdMinter,
+    content_minter,
     mint_id,
     mint_ids,
+    reset_content_minters,
     resolve_id,
     resolve_ids,
+    seed_from,
     validate_id,
 )
 from .provenance import Belief, BeliefField, Provenance, ProvenanceField
@@ -406,7 +411,11 @@ __all__ = [
     "validate_table_format",
     "reject_dataframe_options",
     # IDs
-    "ScopedId",
+    "ID_LENGTH",
+    "IdMinter",
+    "seed_from",
+    "content_minter",
+    "reset_content_minters",
     "mint_id",
     "mint_ids",
     "validate_id",

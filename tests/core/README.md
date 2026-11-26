@@ -1810,33 +1810,74 @@ gives the values `B♭3`, `B♭3`, null, `F♯4` and the ordered categories `F�
 indices 0, 0, null, 1. An Arrow column of two chunks with different dictionaries (`Bb3`, null
 and `F#4`, `Bb3`) gives `B♭3`, null, `F♯4`, `B♭3`.
 
-### `test_ids.py` - Scoped ID System
+### `test_ids.py` - Minted IDs, Given IDs and Resolution
 
-**Purpose:** Validates the `ScopedId` class and the stateless generator of
-manifest element ids. There is no process-wide id counter: `IdGenerator` is
-deleted, so no test of one exists.
+**Purpose:** Validates the random-id minter (`IdMinter`, `seed_from`,
+`content_minter`), the numbered-id generator, the rule every given id obeys,
+and the resolution of an id pattern.
 
 **Test Categories:**
 
-1. **ScopedId Creation** (9 tests)
-   - Basic creation with scope and local
-   - Validation (no digits starting scope, no whitespace/colons in local)
-   - Frozen and hashable
+1. **`mix64` is a bijection** — the minter's suffixes are distinct only if
+   SplitMix64's finalizer loses nothing, so its inverse `_unmix64` must undo
+   it: `_unmix64(_mix64(x)) == x` and `_mix64(_unmix64(x)) == x` for 0,
+   1, 2^63, 2^64 − 1, the golden-ratio constant `0x9e3779b97f4a7c15`, and
+   1,000 values drawn from a seeded generator. One value is anchored
+   outside the library: the first output of SplitMix64 from state 0 is
+   `mix64(0x9e3779b97f4a7c15) = 0xe220a8397b1dcdaf`, the published
+   reference value, and `mix64(0) = 0`.
 
-2. **ScopedId String Conversion** (3 tests)
-   - `__str__` format: `scope:local` or just `local`
-   - `__repr__` format
+2. **Seeded ids are exact** — the ids a seeded minter gives are read from
+   the minter once and pinned literally (seed 0: `note_1be6k8ij6dzad`,
+   `claim_3cccv6pc7fclm`, `note_0gloaudxbozjk`, the counter shared across
+   prefixes). The same ids are recomputed by a restatement of the
+   algorithm in the test itself, with plain integers and none of the
+   module's helpers (`prefix + "_" + base36(mix64(mix64(seed) + k) mod
+   36^L)`), for seeds 0, 7, 2^64 − 1 and lengths 13, 7, 1; so a change to
+   the minter that the pinned literals would only report is located
+   against the rule it breaks. The cross-implementation vectors shared
+   with the TiLiE minter are tested elsewhere.
 
-3. **ScopedId Parse** (4 tests)
-   - Parsing from string with/without scope
-   - Roundtrip: `parse(str(id)) == id`
+3. **`mint_many` equals repeated `mint`** — the vectorised path is the
+   one minting events, so it must answer exactly what `count` calls of
+   `mint` answer: for prefixes `note`, `score:clt`, a non-ASCII role
+   (`perf:Szegedi‐1966:dpt`), lengths 13, 10, 7 and 1 and seeds 20261126
+   and `_unmix64(2**64 - 10)` (its start is 2^64 − 10, so `start + k`
+   wraps past 2^64 within the batch), one minter mints a batch,
+   its twin of the same seed mints one by one, and the lists are
+   equal. A batch then a single id continue one counter (`mint_many(p, 3)`
+   then `mint(p)` equals four `mint`s). The array type is `pa.string()`;
+   a count of 0 gives an empty array and moves the counter by nothing; a
+   negative count raises `ValueError`.
 
-4. **ScopedId Methods** (6 tests)
-   - `with_scope()`, `with_local()` copy methods
-   - `nested()` for hierarchical scopes
-   - `is_scoped` property
+4. **Length and seed bounds** — the length 0, 14 and `-1` raise
+   `ValueError`; 1 and 13 are accepted and every suffix has that many
+   characters. A seed is taken modulo 2^64: `-1` gives `seed == 2**64 -
+   1` and the same ids as `2**64 - 1`; `2**64` the ids of `0`. A string
+   seed raises `TypeError` (`'str' object cannot be interpreted as an
+   integer`). `seed` and `length` are read-only (assigning
+   raises `AttributeError`).
 
-5. **The manifest id generator** (`mint_id`, `validate_id`,
+5. **`seed_from`** — pinned values for `()`, `("clt",)`, `(b"\x00\x01",)`
+   and `("clt", {"length": 16, "a": [1, 2]})`, each also recomputed in the
+   test from the wording of the rule (SHA-256 over 8-byte big-endian
+   lengths and the encoded parts, first 8 bytes big-endian), so the pinned
+   numbers and the rule cannot drift apart. The length prefix keeps
+   `("ab", "c")` and `("a", "bc")` apart, and a dict's key order does not
+   matter (`{"a": 1, "b": 2}` and `{"b": 2, "a": 1}` give one seed). A part
+   JSON cannot encode (`object()`) raises `TypeError` naming its type.
+
+6. **`content_minter`** — equal content asked for twice gives the same
+   minter, so the two ids it mints differ; after `reset_content_minters()`
+   the same content mints the same sequence again. A different length is a
+   different minter. The `tests/conftest.py` fixture resets the minters
+   before every test, which the test relies on for its first id.
+
+7. **Fresh minters differ** — two `IdMinter()` without a seed draw
+   different seeds and mint different first ids (two 64-bit draws are
+   equal with probability 2^−64).
+
+8. **The numbered id generator** (`mint_id`, `validate_id`,
    `timeline_id_prefix`)
    - `mint_ids(prefix, taken, count)` is the library's one id generator
      (timelines, maps, manifest elements, MatchClaims, events): N continues
@@ -1871,12 +1912,27 @@ deleted, so no test of one exists.
      quarters `clt`, ticks `dlt`, seconds `cpt`, samples `dpt`, centimeters
      `cgt`, pixels `dgt`.
 
-**Validity Rationale:**
+9. **Resolution** (`resolve_ids`, `resolve_id`) — an exact id wins
+   (`"clt_1"` among `clt_1`, `clt_2`, `dlt_1` gives `["clt_1"]`, even where
+   it would also match as a regular expression); otherwise a pattern must
+   match a whole id (`re.fullmatch`): `"perf:.*"` gives `perf:dlt_1`,
+   `perf:dlt_2` in their given order, `r"clt_\d+"` gives `clt_1`, `clt_2`
+   but not `score:clt_1`. A fragment matches nothing, which is the point
+   of the rule (a substring of a random id would pick an unrelated one):
+   `"clt"` and `"score"` give `[]` against `score:clt_1`, `clt_1`, and so
+   does the anchored-prefix spelling `r"^perf:"`. An empty pattern, an
+   empty list and an invalid regular expression (`"[invalid"`) give `[]`.
+   `resolve_id` returns the first of several and warns once (`matches 2
+   IDs`), stays silent with `warn_multiple=False`, and raises `KeyError`
+   `No ID matches pattern 'clt'. Available: clt_1, clt_2` for a fragment.
 
-The ID system ensures:
-- Events and timelines have unique, traceable identifiers
-- IDs can be hierarchically scoped (e.g., `midi:track1:note_42`)
-- External IDs from source files are preserved
+**Validity Rationale:** A minted id is only as good as two properties: it
+is reproducible from its seed in every process (pinned literals, checked
+against an independent restatement of the rule) and the batch path agrees
+with the one-by-one path (compared id for id). Uniqueness at length 13
+follows from `mix64` being a bijection, which the inverse round trip shows
+directly instead of sampling for collisions. Given ids are kept verbatim,
+so the validity rule is tested on the strings users actually give.
 
 ---
 

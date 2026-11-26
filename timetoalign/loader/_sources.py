@@ -83,8 +83,10 @@ def as_source(source: SourceLike) -> Source:
     """Return *source* as a loader holds it.
 
     A ``str`` or ``Path`` becomes a ``Path`` (existence is the loader's
-    concern, as it always was). A ``zipfile.Path`` is kept as it is; a member
-    named without its closing ``/`` that is a directory is taken as that
+    concern, as it always was). A ``zipfile.Path`` is kept as it is: a
+    member, or the archive's root (``zipfile.Path(archive)``, the archive as
+    a whole, which ``zipfile.Path.exists`` does not report); a member named
+    without its closing ``/`` that is a directory is taken as that
     directory.
 
     Args:
@@ -101,7 +103,7 @@ def as_source(source: SourceLike) -> Source:
     if not isinstance(source, zipfile.Path):
         return Path(source)
     archive = _archive_path(source)
-    if source.exists():
+    if not source.at or source.exists():
         return source
     if source.at and not source.at.endswith("/"):
         directory = zipfile.Path(source.root, f"{source.at}/")
@@ -112,6 +114,24 @@ def as_source(source: SourceLike) -> Source:
     )
 
 
+def as_directory(source: Source) -> Source:
+    """Return *source* as the directory a folder-reading loader searches.
+
+    A filesystem path naming a ZIP archive is read as the archive's root
+    (``zipfile.Path`` of it), so a loader that reads a folder reads the
+    archive of that folder alike; every other source is returned as it is.
+
+    Args:
+        source: A source as a loader holds it (see :func:`as_source`).
+
+    Returns:
+        The archive's root for a ZIP file on disk, else *source*.
+    """
+    if isinstance(source, Path) and source.is_file() and zipfile.is_zipfile(source):
+        return zipfile.Path(source)
+    return source
+
+
 def describe_source(source: object) -> str:
     """How messages, warnings and summaries name *source*.
 
@@ -119,7 +139,8 @@ def describe_source(source: object) -> str:
     member of a ZIP archive is named ``<archive> member <name>``: the
     archive's absolute path and the member's path inside it (``str`` of a
     ``zipfile.Path`` would join the two into a filesystem path that does not
-    exist). Anything else is named as ``str`` names it.
+    exist); the archive's root is named by the archive's path alone.
+    Anything else is named as ``str`` names it.
 
     Args:
         source: A filesystem path or a member of a ZIP archive, as a loader
@@ -132,7 +153,8 @@ def describe_source(source: object) -> str:
         return str(source)
     filename = source.root.filename
     archive = Path(filename).absolute() if filename is not None else "<file object>"
-    return f"{archive} member {_member_name(source)}"
+    name = _member_name(source)
+    return f"{archive} member {name}" if name else str(archive)
 
 
 def source_record(source: Source, key: str = "path") -> dict[str, str]:

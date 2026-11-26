@@ -129,6 +129,13 @@ The loaders' own test files pin the filesystem entries of `XmlLoader`,
   filesystem paths come before members.
 - `join_source` resolves `./` and `..`; a member's parent stays inside the
   archive.
+- The archive's root (`zipfile.Path(archive)`) is a source, although
+  `zipfile.Path.exists()` reports it missing: `as_source` returns it as it
+  is, the archive's top folder is found in it, a member is joined to it,
+  and `describe_source` names it by the archive's path alone.
+- `as_directory`, for loaders that read a folder: a ZIP file on disk is
+  read as the archive's root; a folder, a file that is no archive and a
+  member are returned as they are.
 
 ## Display and errors
 

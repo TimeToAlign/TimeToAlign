@@ -15,6 +15,10 @@ from pathlib import Path
 import pytest
 
 from timetoalign.loader import AudioLoader, RekordboxLoader, materialize
+from timetoalign.loader._sources import (
+    as_directory,
+    as_source,
+)
 from timetoalign.loader._sources import cache_dir as archive_cache_dir
 from timetoalign.loader._sources import (
     describe_source,
@@ -430,6 +434,32 @@ class TestNavigation:
         assert not join_source(
             member(archive, "project/"), "../../outside.png"
         ).exists()
+
+    def test_the_archive_root_is_a_source(self, tmp_path: Path) -> None:
+        # zipfile.Path(archive).exists() is False although the root holds everything.
+        archive = pack(tmp_path / "data.zip", {"corpus/score.mei": b"m"})
+        root = zipfile.Path(archive)
+        assert as_source(root) is root
+        assert [source.at for source in find_sources(as_source(root), "*")] == [
+            "corpus/"
+        ]
+        assert describe_source(root) == str(archive.absolute())
+        assert join_source(root, "corpus/score.mei").read_bytes() == b"m"
+
+    def test_a_zip_file_on_disk_is_read_as_its_root(self, tmp_path: Path) -> None:
+        archive = pack(tmp_path / "data.zip", {"corpus/score.mei": b"m"})
+        directory = as_directory(as_source(archive))
+        assert isinstance(directory, zipfile.Path)
+        assert directory.at == ""
+        assert directory.root.filename == str(archive)
+        other = lay_out(tmp_path / "disk", {"corpus/score.mei": b"m"})
+        assert as_directory(other) == other
+        assert (
+            as_directory(other / "corpus" / "score.mei")
+            == other / "corpus" / "score.mei"
+        )
+        inner = member(archive, "corpus/")
+        assert as_directory(inner) is inner
 
     def test_parent_stays_inside_archive(self, tmp_path: Path) -> None:
         archive = pack(tmp_path / "data.zip", {"top.txt": b"t"})

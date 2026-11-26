@@ -78,7 +78,8 @@ This documentation follows the
     [How to Load an Audio-to-Score Alignment Corpus and Compare Performances](howto/how03_performance_precision.ipynb) ·
     [How to Load a parangonada Note Alignment Across Several Performances](howto/how03_parangonada.ipynb) ·
     [How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)](howto/how03_mpm_toolbox.ipynb) ·
-    [How to Load an Audio-to-Audio Alignment (Listen Here!)](howto/how03_listen_here.ipynb)
+    [How to Load an Audio-to-Audio Alignment (Listen Here!)](howto/how03_listen_here.ipynb) ·
+    [How to Load Musical Themes Aligned to Recordings (MTD)](howto/how03_mtd_themes.ipynb)
 
     *In-depth Topics* ---
     [How to Encode Song Genesis (Hendrix)](howto/how04_hendrix_song_genesis.ipynb) ·

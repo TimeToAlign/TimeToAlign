@@ -560,13 +560,16 @@ rondo = loader.create_timeline(uid="op18_4_iv")
 rondo.flow_control
 
 # %% [markdown]
-# The loader mints the IDs, `jump_N`, `jump_target_N`, `break_N` and so on.
-# The movement's first brackets, with the repeat start their repeat end goes
-# back to:
+# The loader mints the IDs: the element's role as prefix (`jump_…`,
+# `jump_target_…`, `break_…`) and a random suffix seeded from the file it
+# read, so the same file gives the same IDs on every run. The elements from
+# 96 to 160 quarters hold the movement's first brackets (a Jump at 157, a
+# Break and a JumpTarget at 160) and the repeat start at 96 that the repeat
+# end at 160 goes back to, beside the repeat end of the section before it:
 
 # %%
-elements(rondo.flow_control).loc[
-    ["jump_target_3", "jump_4", "break_1", "jump_5", "jump_target_4"]
+elements(rondo.flow_control)[
+    [96 <= element.coordinate.value <= 160 for element in rondo.flow_control.elements]
 ]
 
 # %% [markdown]

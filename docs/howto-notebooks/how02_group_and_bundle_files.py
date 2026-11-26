@@ -123,8 +123,8 @@ score
 # is not written: the unit decides it.
 #
 # Every ID in a manifest, an element's own and every reference to one, is
-# written `#` followed by the ID: the score's ID `clt_1` is written `#clt_1`.
-# The objects hold their IDs without it, so `score.id` is `clt_1`.
+# written `#` followed by the ID: the score's minted ID `clt_…` is written
+# `#clt_…`. The objects hold their IDs without it, so `score.id` reads `clt_…`.
 #
 # Every manifest written opens with an inline JSON-LD `@context`: the
 # format's own terms (`timetoshare.FORMAT_CONTEXT`) and the prefixes its
@@ -298,7 +298,7 @@ rebuilt = TimelineGroup.from_dict(group_data)
 #   child joins a group, its root joins the bundle too, ungrouped unless you
 #   group it.
 #
-# `as_group=` names a new group; its id is minted (`group_1`, `group_2`, ...).
+# `as_group=` names a new group; its id is minted (`group_…`).
 
 # %%
 score = ContinuousLogicalTimeline(length=Fraction(12), name="Score")

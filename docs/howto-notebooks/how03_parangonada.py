@@ -93,16 +93,21 @@ bundle
 # placed in its own group. It appears in **two logical units** — the same notes,
 # measured two ways:
 #
-# - `score:clt_1` carries quarter-note onsets (an exact rational).
-# - `score:dlt_1` carries division-grid onsets (the integer tick grid the score
+# - `score:clt_…` carries quarter-note onsets (an exact rational).
+# - `score:dlt_…` carries division-grid onsets (the integer tick grid the score
 #   was notated on).
+#
+# The loader leads every timeline ID with its role, `score:` or `perf:`, before
+# an ID minted from the export's files, so the same export gives the same IDs on
+# every run. A regular expression matching whole IDs finds a timeline by its
+# role and kind:
 
 # %%
-score_clt = bundle.get_timeline("score:clt_1")
+score_clt = bundle.get_timeline("score:clt_.*")
 score_clt
 
 # %%
-score_dlt = bundle.get_timeline("score:dlt_1")
+score_dlt = bundle.get_timeline("score:dlt_.*")
 score_dlt
 
 # %% [markdown]
@@ -117,7 +122,7 @@ score_clt.get_events().table.slice(0, 5).to_pandas()[["id", "pitch", "voice"]]
 # ### The division grid and the quarter grid are one conversion apart
 #
 # The two logical timelines are not independent: a single
-# {{< glossary ConversionMap >}} on `score:dlt_1` carries the division grid to
+# {{< glossary ConversionMap >}} on `score:dlt_…` carries the division grid to
 # quarters. It is a `LinearMap` — 32 divisions to the quarter, shifted by the
 # half-quarter anacrusis — and it reproduces the quarter onsets exactly,
 # because divisions are the discrete grid the quarters were notated on:
@@ -133,7 +138,7 @@ divs_to_quarters = score_dlt.get_conversion_map(TimeUnit.quarters)
 
 # %% [markdown]
 # The same conversion is what a {{< glossary TimeStamp >}} exposes. Querying
-# `score:dlt_1` at division 48 and asking for the quarter reading reports `1.0`,
+# `score:dlt_…` at division 48 and asking for the quarter reading reports `1.0`,
 # the continuous↔discrete link of the logical domain made visible at a single
 # coordinate:
 
@@ -145,21 +150,31 @@ score_dlt.get_timestamp(48).get_unit(TimeUnit.quarters)
 #
 # ## 3. One performer's physical timelines
 #
-# Each performance lives in its own group, again in **two units** — the same
-# performed notes, measured two ways:
+# Each performance lives in its own group, named `perf:<key>`, again in **two
+# units** — the same performed notes, measured two ways:
 #
-# - `perf:<key>:cpt_1` carries onsets in seconds.
-# - `perf:<key>:dpt_1` carries the same onsets as sample indices into the
+# - `perf:cpt_…` carries onsets in seconds.
+# - `perf:dpt_…` carries the same onsets as sample indices into the
 #   recording's audio.
 #
-# Take Szegedi's 1966 recording:
+# A performer's group is found by its name, and each of its two timelines by a
+# regular expression within the group. Take Szegedi's 1966 recording:
+
 
 # %%
-szegedi_cpt = bundle.get_timeline("perf:1966_Szegedi:cpt_1")
+def performance(key):
+    """The group holding one recording's timelines, named ``perf:<key>``."""
+    return next(
+        group for group in bundle.groups.values() if group.name == f"perf:{key}"
+    )
+
+
+szegedi = performance("1966_Szegedi")
+szegedi_cpt = szegedi.get_timeline("perf:cpt_.*")
 szegedi_cpt
 
 # %%
-szegedi_dpt = bundle.get_timeline("perf:1966_Szegedi:dpt_1")
+szegedi_dpt = szegedi.get_timeline("perf:dpt_.*")
 szegedi_dpt
 
 # %% [markdown]
@@ -210,7 +225,7 @@ szegedi_synchronous = [
     c
     for c in claims
     if c.is_synchronous
-    and c.connects("perf:1966_Szegedi:cpt_1")
+    and c.connects(szegedi_cpt.id)
     and c.start_anchor is not None
     and float(c.start_anchor.coordinate_a) == 40.0
 ]
@@ -223,7 +238,7 @@ szegedi_synchronous[0]
 
 # %%
 szegedi_nomatch = [
-    c for c in claims if not c.is_synchronous and c.connects("perf:1966_Szegedi:cpt_1")
+    c for c in claims if not c.is_synchronous and c.connects(szegedi_cpt.id)
 ]
 szegedi_nomatch[0]
 
@@ -232,12 +247,26 @@ szegedi_nomatch[0]
 #
 # Because every performance is anchored back to the same score, a single score
 # coordinate resolves across the whole bundle. `get_matchstamp_at` takes a
-# coordinate on `score:clt_1` and returns the corresponding coordinate on every
+# coordinate on `score:clt_…` and returns the corresponding coordinate on every
 # timeline connected to it — here, score quarter 40 mapped to the second at
 # which each of the five pianists played it:
 
 # %%
-bundle.get_matchstamp_at(40.0, "score:clt_1")
+stamp = bundle.get_matchstamp_at(40.0, score_clt.id)
+stamp
+
+# %% [markdown]
+# The stamp names each timeline by its ID; each performer's group names the
+# recording, so the seconds read per performer are:
+
+# %%
+{
+    group.name: stamp.get_coordinate_for(
+        group.get_timeline("perf:cpt_.*").id, format="coordinate"
+    )
+    for group in bundle.groups.values()
+    if group.name.startswith("perf:")
+}
 
 # %% [markdown]
 # Read across that {{< glossary MatchStamp >}}: the same notated moment falls at
@@ -255,7 +284,7 @@ bundle.get_matchstamp_at(40.0, "score:clt_1")
 # profile. These are not a model or a synthesised constant-tempo grid: they are
 # the variable tempo and loudness actually measured beat by beat in each
 # recording. The loader places them on the performance's own seconds timeline —
-# `perf:<key>:cpt_1` — as `Beat` and `Dynamics`
+# `perf:cpt_…` of the group `perf:<key>` — as `Beat` and `Dynamics`
 # {{< glossary Event >}}s, sitting alongside the `Note` events at their measured
 # onsets. A performance timeline therefore carries three kinds of event: the
 # notes that were played, and the measured tempo and dynamics that describe how.
@@ -336,7 +365,7 @@ for group in bundle.groups.values():
     key = group.name
     if not key.startswith("perf:"):
         continue
-    cpt = bundle.get_timeline(f"{key}:cpt_1")
+    cpt = group.get_timeline("perf:cpt_.*")
     beats = cpt.get_events().filter(event_type="Beat").to_dataframe()
     bpm = beats["bpm"].astype(float)
     onset = beats["start"].astype(float)
@@ -360,11 +389,11 @@ pd.DataFrame(tempo_by_performer).T
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | Score, two logical units | `score:clt_1` (quarters) + `score:dlt_1` (divs), one divs→quarters `LinearMap` |
-# | Performance, two physical units | `perf:<key>:cpt_1` (s) + `perf:<key>:dpt_1` (samples), one `SamplesToSeconds` |
+# | Score, two logical units | `score:clt_…` (quarters) + `score:dlt_…` (divs), one divs→quarters `LinearMap` |
+# | Performance, two physical units | `perf:cpt_…` (s) + `perf:dpt_…` (samples), one `SamplesToSeconds` |
 # | Score ↔ performance | a synchronous {{< glossary MatchClaim >}} per match; a {{< glossary NOMATCH >}} per gap |
-# | A shared position read everywhere | `bundle.get_matchstamp_at(coord, "score:clt_1")` |
-# | Measured tempo and dynamics | `Beat` / `Dynamics` events on `perf:<key>:cpt_1`, read via `filter(event_type=...)` |
+# | A shared position read everywhere | `bundle.get_matchstamp_at(coord, score_clt.id)` |
+# | Measured tempo and dynamics | `Beat` / `Dynamics` events on `perf:cpt_…`, read via `filter(event_type=...)` |
 #
 # Two logical units for the score, two physical units per performance, each pair
 # linked by a {{< glossary ConversionMap >}}, the whole tied together by

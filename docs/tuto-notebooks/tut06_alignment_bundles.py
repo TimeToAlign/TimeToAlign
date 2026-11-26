@@ -248,7 +248,7 @@ derived_types = {kind.value: claim.claim_type for kind, claim in claim_examples.
 #
 # A bundle organises commensurable timelines into {{< glossary TimelineGroup >}}s.
 # Every timeline is registered under its own id. `as_group=` starts a group and
-# gives it a name, while the group's id is minted (`group_1`, `group_2`, …);
+# gives it a name, while the group's id is minted (`group_…`);
 # `grouped_with=` joins the group of a timeline that is already registered.
 
 # %%

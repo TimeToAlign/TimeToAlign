@@ -321,8 +321,8 @@ segment_line_view
 # system. A child is a timeline with its own coordinates; a region is a name
 # for an interval of this timeline's coordinates. Like every element of a
 # timeline, a region has an `id` that identifies it and an optional `name`
-# for display: give the id yourself, or let the timeline mint `region_1`,
-# `region_2`, and so on.
+# for display: give the id yourself, or let the timeline mint one, `region_`
+# followed by a random suffix (`region_…`).
 
 # %%
 transition = piece.create_region(Fraction(8), Fraction(11), id="transition")

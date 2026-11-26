@@ -176,8 +176,9 @@ stored_note_view
 
 # %% [markdown]
 # This is the first raw note record: B3 begins at zero quarters and ends at one
-# half. Its local id is `note:000001`. The timeline will preserve these musical
-# fields while placing the record under a queryable child named `notes`.
+# half. Its id `n1` is the one the MusicXML file gives the note. The timeline
+# will preserve these musical fields while placing the record under a queryable
+# child named `notes`.
 
 # %% [markdown]
 # ## Making the timeline
@@ -187,7 +188,7 @@ stored_note_view
 # human.
 
 # %%
-score_timeline = partitura_loader.create_timeline(uid="score:clt_1")
+score_timeline = partitura_loader.create_timeline(uid="score:chopin_op10_no3")
 score_timeline.name = "Chopin, Étude Op. 10 No. 3"
 timeline_identity = {
     "automatic id": preview_timeline.id,
@@ -197,9 +198,12 @@ timeline_identity = {
 timeline_identity
 
 # %% [markdown]
-# `clt_1` means the first continuous logical timeline created by that loader;
-# `score:clt_1` adds an optional role prefix. The descriptive title is metadata,
-# not identity, so changing it would not change the timeline's `id`.
+# The automatic id is minted: `clt` for a continuous logical timeline, then a
+# random suffix seeded from the bytes the loader read, so the same file gives
+# the same id on every run. An id you supply is kept as it is; here
+# `score:chopin_op10_no3` leads with an optional role prefix. The descriptive
+# title is metadata, not identity, so changing it would not change the
+# timeline's `id`.
 
 # %% [markdown]
 # ## What you got for free
@@ -232,7 +236,7 @@ loader_payoff
 
 # %% [markdown]
 # Each child is named after one of the four stored categories; its id is minted
-# like any other timeline's (`clt_2`, …), because a category is a label, not an
+# like any other timeline's (`clt_…`), because a category is a label, not an
 # identity. The map reads `Coordinate(Fraction(13, 2), quarters)` as
 # `Coordinate(5.0, floating_measures)`, the first beat of the fifth measure the
 # file records. The loader reads no metronome value from this file, so no
@@ -292,8 +296,7 @@ for position_column in ("start", "end"):
         for value in note_examples[position_column]
     ]
 
-timeline_note_id = f"notes:{stored_note_id}"
-assert note_examples.loc[0, "id"] == timeline_note_id
+assert note_examples.loc[0, "id"] == stored_note_id
 note_examples_view = note_examples.style.format({"start": repr, "end": repr})
 note_examples_view = note_examples_view.set_caption(
     f"First four of {len(loaded_notes)} Note events"
@@ -302,9 +305,8 @@ note_examples_view
 
 # %% [markdown]
 # These are actual note rows, not an `EventData` summary. The first is the B3
-# stored earlier: timeline creation preserves its fields and scopes its local id
-# `note:000001` as `notes:note:000001`. The table shows four of the 498 rows kept
-# by the familiar `event_type` filter.
+# stored earlier: timeline creation preserves its fields and its id `n1`. The
+# table shows four of the 498 rows kept by the familiar `event_type` filter.
 
 # %% [markdown]
 # ## The same music, a second way
@@ -315,7 +317,7 @@ note_examples_view
 
 # %%
 ms3_loader = Ms3Loader.from_file(ms3_path)
-ms3_timeline = ms3_loader.create_timeline(uid="ms3:clt_1")
+ms3_timeline = ms3_loader.create_timeline(uid="ms3:chopin_op10_no3")
 ms3_events = ms3_timeline.get_events()
 ms3_notes = ms3_timeline.get_events(event_type="Note")
 

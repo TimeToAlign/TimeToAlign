@@ -112,9 +112,10 @@ all_timelines = loader.create_timelines()
 # 23 timelines: 1 score + 22 performances. Each performance has a slightly
 # different event count because some pianists omit notes (deletions).
 #
-# Individual timelines are accessed by role shorthand. The stored score UID is
-# `score:clt_1`; performance UIDs are `perf:<stem>:dlt_1` (for example,
-# `perf:Chopin_op10_no3_p01:dlt_1`). The shorthand remains convenient for
+# Individual timelines are accessed by role shorthand. The stored IDs lead
+# with the role before an ID the loader mints from the files it read: the
+# score's is `score:clt_…`, each performance's `perf:dlt_…`. The shorthand
+# (`score`, or `perf:` and a performance's number) remains convenient for
 # lookup:
 
 # %%

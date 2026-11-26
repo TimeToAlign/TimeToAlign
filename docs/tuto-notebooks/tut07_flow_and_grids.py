@@ -251,9 +251,9 @@ repeat_events
 # Every element of a timeline (a region, a jump, a jump target, a break) has an
 # `id` that identifies it, unique across everything you save together in one
 # manifest, and may have a name for display. A loader gives ids where the
-# source has none, with one prefix per kind: `jump_1`, `jump_target_1`,
-# `break_1`, `section_break_1`, `barline_1`. A short score with a *Fine*, a
-# segno and a coda shows them.
+# source has none: one prefix per kind followed by a random suffix, `jump_…`,
+# `jump_target_…`, `break_…`, `section_break_…`, `barline_…`. A short score
+# with a *Fine*, a segno and a coda shows them.
 
 # %%
 flow_dir = score_data / "flow_control" / "flow_only"

@@ -137,8 +137,8 @@ bundle.add_timeline(recording, as_group="recording")
 # event_b, timeline_b_id)`, each event by its id. Its `provenance` records
 # how the claims were made, by whom and when. `actor=` names the person
 # stating them: a person who states a claim believes it, so the editor's
-# belief `"true"` is recorded in the provenance, dated `date=`. The bundle
-# gives every claim its id, `claim_N`, which never changes.
+# belief `"true"` is recorded in the provenance, dated `date=`. Every claim
+# is minted its id when it is made, `claim_…`, which never changes.
 
 # %%
 stated = Provenance(stated_by=(EDITOR,), method="manual", date=DAY)
@@ -325,12 +325,11 @@ pq.read_table(package / "projections.parquet").to_pylist()
 
 # %% [markdown]
 # A Projection's id is unique among all the Projections of the manifest,
-# whichever timeline holds it, so the table names each id once, numbered in
-# the order the Projections were added: the recording's `projection_1` for
-# the fourth note, then the score's `projection_2` and the recording's
-# `projection_3` for the claim between two positions. An id once given is
-# never re-minted, and a Projection given an id another timeline's
-# Projection holds is refused.
+# whichever timeline holds it, so the table names each id once: the
+# recording's Projection for the fourth note (its `projection_of` names the
+# note), and one Projection of each timeline for the claim between two
+# positions. Each id is minted (`projection_…`) and never re-minted, and a
+# Projection given an id another timeline's Projection holds is refused.
 
 # %% [markdown]
 # ## Read the package

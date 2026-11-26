@@ -560,8 +560,8 @@ print(scan.get_timestamp_for("m4"))
 
 # %% [markdown]
 # `create_timelines()` returns one root timeline per page instead. Without
-# the identity parameters, timelines are minted `dgt_N` and Boxes `box_N`
-# per accolade.
+# the identity parameters, timelines get minted IDs (`dgt_…`) and Boxes too
+# (`box_…`), seeded from the file the loader read.
 
 # %%
 {

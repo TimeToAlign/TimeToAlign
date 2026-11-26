@@ -67,9 +67,10 @@ DATA_DIR = ensure_data("hendrix")
 # file and extract the first hierarchy timeline (`HIERARCHY_TIMELINE_0`),
 # which contains the section-level annotations (Intro, Verse, Bridge, etc.).
 #
-# Each file is loaded on its own, so each loader mints the same id, `cpt_1`,
-# for its timeline. The version name becomes the timeline's `name`; the ids are
-# told apart when the timelines join one bundle.
+# Each file is loaded on its own, and each loader mints its timeline's id
+# (`cpt_…`) from the bytes of its file, so the three versions get three ids
+# that stay the same on every run. The version name becomes the timeline's
+# `name`.
 
 # %%
 names = ["Studio", "Demo2", "Demo1"]
@@ -105,10 +106,10 @@ df
 # ## 3. Create the AlignmentBundle
 #
 # We add each hierarchy timeline to a single {{< glossary AlignmentBundle >}}.
-# A bundle holds a timeline id once, so the loader-minted `cpt_1` held by the
-# first version is minted again for the others: the versions become `cpt_1`,
-# `cpt_2` and `cpt_3`. Their names still match the column names in
-# `match_data.csv`, and the claims below name each version by its id.
+# A bundle holds a timeline id once; the three ids differ, each seeded from
+# its own file, and joining the bundle renames none of them. The names still
+# match the column names in `match_data.csv`, and the claims below name each
+# version by its id.
 
 # %%
 bundle = AlignmentBundle(name="Hendrix Song Genesis")

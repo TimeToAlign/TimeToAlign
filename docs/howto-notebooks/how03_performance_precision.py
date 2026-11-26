@@ -118,10 +118,12 @@ metrical_position_map = loader.metrical_position_map
 # The score is a logical {{< glossary Timeline >}} measured in quarters. It holds
 # every note of the `.solo` score, each placed at its absolute quarter position.
 # The Projections the alignment's claims stand on are not here yet: they are
-# added when the bundle is created (§5). Its stored UID is `score:clt_1`.
+# added when the bundle is created (§5). The loader asks for it by its role,
+# `"score"`; its stored ID is the role followed by a minted one, `score:clt_…`,
+# seeded from the specimen's files.
 
 # %%
-score_tl = loader.create_timeline(uid="score:clt_1")
+score_tl = loader.create_timeline(uid="score")
 score_tl
 
 # %% [markdown]
@@ -173,16 +175,16 @@ pitch_field = solo.events.get_field(EnharmonicPitch)
 #
 # Each recording is a physical {{< glossary Timeline >}} measured in seconds, one
 # Note per aligned note onset; the Projections of its bar and beat rows are
-# added with the bundle (§5). Their stored UIDs follow
-# `perf:<performer>:cpt_1`, so the Ashkenazy recording is
-# `perf:Chopin_Ashkenazy:cpt_1`:
+# added with the bundle (§5). Each is named by its performer key, by which the
+# loader also finds it; its stored ID is minted, `perf:cpt_…`. The Ashkenazy
+# recording is `"Chopin_Ashkenazy"`:
 
 # %%
 performer_keys = [tl.name for tl in loader.create_timelines() if tl is not score_tl]
 performer_keys
 
 # %%
-ashkenazy = loader.create_timeline(uid="perf:Chopin_Ashkenazy:cpt_1")
+ashkenazy = loader.create_timeline(uid="Chopin_Ashkenazy")
 ashkenazy
 
 # %% [markdown]

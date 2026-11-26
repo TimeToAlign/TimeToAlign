@@ -929,10 +929,10 @@ tilia_loader.store.keys()  # TiliaDictStore
 tilia_loader.timeline_ids
 
 # %% [markdown]
-# TiLiA timelines receive stored UIDs in source order: `cpt_1`, `cpt_2`, and so
-# on. The source timeline name remains available for lookup — for example,
+# TiLiA timelines receive minted IDs (`cpt_…`), seeded from the file the loader
+# read. The source timeline name remains available for lookup — for example,
 # `BEAT_TIMELINE_3` can still select that source timeline — but it is not the
-# stored UID.
+# stored ID.
 
 # %%
 tilia_loader.timeline_specs

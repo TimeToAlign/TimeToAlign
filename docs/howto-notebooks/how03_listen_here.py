@@ -185,9 +185,16 @@ print(bundle.diagram())
 # The query coordinate must land on an exact grid column carried by the field,
 # so we take a real one from the data rather than inventing a value: a claim
 # from roughly the middle of the work, read off the reference recording's clock.
+# Each recording's group is named by its stem, and its timeline's ID is minted,
+# so the reference timeline is found through its group.
 
 # %%
-reference_uid = f"{os.path.splitext(loader.reference)[0]}:dpt_1"
+reference_group = next(
+    group
+    for group in bundle.groups.values()
+    if group.name == os.path.splitext(loader.reference)[0]
+)
+reference_uid = reference_group.timeline_ids[0]
 
 reference_claims = field.connecting(reference_uid)
 mid_claim = reference_claims[len(reference_claims) // 2]
@@ -215,8 +222,8 @@ stamp
 {
     "timelines in the stamp": stamp.n_timelines,
     "samples per recording": {
-        tl_id: stamp.get_coordinate_for(tl_id, format="int")
-        for tl_id in sorted(stamp.coordinates)
+        bundle.get_timeline(tl_id).name: stamp.get_coordinate_for(tl_id, format="int")
+        for tl_id in bundle.timeline_ids
     },
 }
 
@@ -252,11 +259,11 @@ stamp
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | One recording per group | `<stem>:dpt_1` samples timeline, one point event per grid column, recording-length |
+# | One recording per group | `dpt_…` samples timeline, one point event per grid column, recording-length |
 # | The whole pairwise alignment | a columnar {{< glossary MatchClaimField >}} via `get_field(MatchClaim)` |
 # | One claim, materialised | `field[i]` → a synchronous instant {{< glossary MatchClaim >}} |
 # | The reference recording | `loader.reference` — the grid origin, but just another recording |
-# | A point placed everywhere | `bundle.get_matchstamp_at(coord, "<stem>:dpt_1")` → every recording at once |
+# | A point placed everywhere | `bundle.get_matchstamp_at(coord, timeline_id)` → every recording at once |
 #
 # A single file encodes an entire audio-to-audio {{< glossary MatchGraph >}} —
 # every recording of one work warped onto a shared reference grid, every pair

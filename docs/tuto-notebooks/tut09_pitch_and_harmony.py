@@ -417,9 +417,12 @@ eroica_bundle
 #
 # The score {{< glossary Timeline >}} carries the aligned score notes in
 # quarters. Selecting it keeps the performance timelines out of this example.
+# The loader leads the score's timeline IDs with the role `score:` and mints
+# the rest (`score:clt_…` in quarters), so a regular expression matching the
+# whole ID selects it.
 
 # %%
-eroica_score_timeline = eroica_bundle.get_timeline("score:clt_1")
+eroica_score_timeline = eroica_bundle.get_timeline("score:clt_.*")
 eroica_score_timeline
 
 # %% [markdown]

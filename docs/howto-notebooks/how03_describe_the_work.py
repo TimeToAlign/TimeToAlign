@@ -318,11 +318,11 @@ show(score, node=("wdt:P629", 0))
 # `add_prefix()`.
 
 # %%
-opening = score.create_region(0, 9, id="region_1", name="mm. 1–2")
+opening = score.create_region(0, 9, id="opening", name="mm. 1–2")
 score.replace_region(
     opening.with_statement("rdfs:comment", "the opening, before the melody enters")
 )
-opening.statements, score.get_region("region_1").statements
+opening.statements, score.get_region("opening").statements
 
 # %% [markdown]
 # ## Write the manifest
@@ -407,10 +407,12 @@ HEADER = """<?xml version="1.0" encoding="UTF-8"?>
 """
 (FOLDER / "cnw0133.mei").write_text(HEADER, encoding="utf-8")
 song = MeiHeadLoader.from_file(FOLDER / "cnw0133.mei").create_bundle(date="2026-11-19")
-song.id, [(tl_id, song.get_timeline(tl_id).name) for tl_id in song.timeline_ids]
+song.name, [(tl_id, song.get_timeline(tl_id).name) for tl_id in song.timeline_ids]
 
 # %% [markdown]
-# The bundle takes the file's stem as its ID. Each manifestation becomes a
+# The bundle takes the file's stem as its name; its ID is minted, as are the
+# timelines' IDs (`cgt_…`), seeded from the file, so the same file gives the
+# same IDs on every run. Each manifestation becomes a
 # graphical timeline in millimetres of unknown length, named by its title,
 # the axis along which pages of the print or the autograph can be laid out.
 # The work lands as a value node under the bundle's `schema:about`, its IRI the
@@ -437,7 +439,12 @@ show(song, node=WORK)
 # manifestation that embodies it, the print; the autograph holds its item.
 
 # %%
-show(song.get_timeline("cgt_1"))
+print_timeline = next(
+    song.get_timeline(tl_id)
+    for tl_id in song.timeline_ids
+    if song.get_timeline(tl_id).name == "Score, print"
+)
+show(print_timeline)
 
 # %% [markdown]
 # An imported candidate is stated as any other. Here the editor states the
@@ -529,10 +536,11 @@ show(suite, node=("schema:about", 0))
 # `lrmoo:R7i_is_exemplified_by`; the item names its manifestation by the
 # timeline's reference. A person who is no subject is a value, labelled
 # from the triples of its file. Each entry's basis is the file the pair was
-# read from.
+# read from. The bundle holds one graphical timeline, so a regular expression
+# matching every `cgt_` ID finds it.
 
 # %%
-show(suite.get_timeline("cgt_1"))
+show(suite.get_timeline("cgt_.*"))
 
 # %% [markdown]
 # Both importers' bundles write manifests as any other, their `@context`

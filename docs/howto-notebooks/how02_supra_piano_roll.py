@@ -595,8 +595,9 @@ end_ts = group.get_timestamp_at(int(aton_loader.musical_length.value), "dgt_hole
 end_ts
 
 # %% [markdown]
-# The end stamp lists the nested timelines that reach the end of the music
-# (`dlt_1`, `dlt_4`, `clt_3`) and leaves out those that end earlier: a child
+# The end stamp holds the nested timelines that reach the end of the music
+# (the raw MIDI's `notes` child, the expressive MIDI's `controls` child and the
+# score's `annotations` child) and leaves out those that end earlier: a child
 # holds its own end where no sibling starts there.
 
 # %% [markdown]

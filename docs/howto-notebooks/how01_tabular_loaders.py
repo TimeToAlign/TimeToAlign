@@ -337,7 +337,7 @@ grouped_tl = create_timeline(typed, group_by="image_filename")
 grouped_tl
 
 # %% [markdown]
-# Each child gets a minted ID (`cpt_2`, `cpt_3`, …) and is named after its
+# Each child gets a minted ID (`cpt_…`) and is named after its
 # column value, so the image a child holds is its `name`:
 
 # %%

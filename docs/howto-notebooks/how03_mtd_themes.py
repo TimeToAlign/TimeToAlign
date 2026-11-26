@@ -18,8 +18,8 @@
 #
 # The Musical Theme Dataset (MTD; Zalkow, Balke, Arifi-Müller and Müller,
 # TISMIR 2020, [doi:10.5334/tismir.68](https://doi.org/10.5334/tismir.68))
-# takes 2,067 themes from Barlow and Morgenstern's *A Dictionary of Musical
-# Themes* and gives each one an encoding, an excerpt of a commercial
+# takes 2,067 themes, each with its MTD ID, from Barlow and Morgenstern's *A
+# Dictionary of Musical Themes* and gives each one an encoding, an excerpt of a commercial
 # recording of its movement, and an alignment of the two: per note onset of
 # the encoding, the second of the excerpt where it sounds. This guide loads
 # one movement with `MtdLoader` and walks through what it makes:
@@ -29,7 +29,7 @@
 # 2. per theme, the excerpt, a child of the track at its start time;
 # 3. per theme, the theme's encoding, a quarters timeline of its notes, in
 #    exact fractions of a quarter;
-# 4. per aligned onset, a {{< glossary MatchClaim >}} from the note to
+# 4. per aligned onset, a {{< glossary MatchClaim >}} from each note there to
 #    `CHUNK` on the excerpt: the excerpt holds no event, the claim states a
 #    position on it.
 #
@@ -43,8 +43,9 @@
 # sample of the MTD archive in its own layout, `MTD_sample.zip`, fetched by
 # the test-data helper; the full `MTD_1.0.0.zip` is read the same way, in
 # place, without extracting it. The helper `notes` shows a timeline's notes
-# one per row, and `claims` shows MatchClaims one per row, each side as its
-# onset and the note's pitch, or as the position the claim states.
+# one per row, and `claims` shows a bundle's MatchClaims from one timeline,
+# one per row: the note's onset and pitch, and the position the claim states
+# on the excerpt.
 
 # %%
 import tempfile
@@ -54,7 +55,7 @@ from pathlib import Path
 import pandas as pd
 import pyarrow.compute as pc
 
-from timetoalign import AlignmentBundle, MatchClaim, MtdLoader
+from timetoalign import AlignmentBundle, MtdLoader
 from timetoalign.testdata import ensure_data
 
 ARCHIVE = ensure_data("mtd") / "MTD_sample.zip"
@@ -81,8 +82,8 @@ def notes(timeline):
     )
 
 
-def claims(field, timeline):
-    """MatchClaims one per row: the note's onset and pitch, the excerpt's second."""
+def claims(bundle, timeline):
+    """The bundle's MatchClaims from *timeline*: onset, pitch, the excerpt's second."""
     events = timeline.get_events().table
     pitch = dict(
         zip(
@@ -91,9 +92,7 @@ def claims(field, timeline):
         )
     )
     rows = []
-    for claim in field.to_claims():
-        if claim.timeline_a_id != timeline.id:
-            continue
+    for claim in bundle.get_match_claims(timeline_id=timeline.id):
         rows.append(
             {
                 "onset (quarters)": str(
@@ -134,8 +133,10 @@ loader.themes, loader.tracks
 # theme from the Electronic Dictionary of Musical Themes (folder
 # `data_EDM-corr_MID`), so that is the encoding the loader reads by default.
 # The encoding of the engraved theme (`data_SCORE_MID`) can be chosen with
-# `theme_midi="data_SCORE_MID"`; for about a quarter of the themes its notes
-# differ, and the loader then refuses an alignment row that meets no onset.
+# `theme_midi="data_SCORE_MID"`, but its notes differ from the counted ones
+# for 616 of the 2,067 themes (about 30 %): a row of the alignment meets no
+# onset, or the last row is not the end of the last note. The loader refuses
+# such a theme, and one refused theme refuses the whole load.
 
 # %%
 loader.theme_midi
@@ -145,11 +146,20 @@ loader.theme_midi
 #
 # `create_bundle()` assembles the bundle: the track's timeline, holding the
 # excerpts as children, and each theme's encoding as a timeline of its own.
-# MTD does not state how long the track is, so its length is unknown (`?`).
 
 # %%
 bundle = loader.create_bundle()
 bundle
+
+# %% [markdown]
+# The bundle lists the tracks' timelines first, then the themes'. The track
+# is named after its movement, its performer, the disc and the track. MTD
+# does not state how long the track is, so its length is unknown, `None`.
+
+# %%
+track_id, *theme_ids = bundle.timeline_ids
+track = bundle.get_timeline(track_id)
+track.name, track.length
 
 # %% [markdown]
 # Each excerpt is a child of the track, placed at the theme's `StartTime`
@@ -157,7 +167,6 @@ bundle
 # writes.
 
 # %%
-track = bundle.get_timeline(loader.create_timelines()[0].id)
 excerpts = [track.get_child(child_id) for child_id in track.list_children()]
 pd.DataFrame(
     {
@@ -195,11 +204,16 @@ loader.create_bundle(track_lengths={key: 431.0}).get_timeline(track.id).length
 # child of the excerpt, since the two are different manifestations of the
 # theme, related by the alignment. Each tick of the MIDI file (480 per
 # quarter) is an exact fraction: the triplet near the theme's end starts at
-# `20/3` quarters.
+# `20/3` quarters. The pitches are the encoding's: META's
+# `MidiTransposition`, the interval by which a recording sounds transposed
+# against the encoding (774 of the 2,067 themes, most an octave lower), is
+# not carried.
 
 # %%
-theme = next(t for t in loader.create_timelines() if t.name == "B689 (MTD 0807)")
-theme = bundle.get_timeline(theme.id)
+theme = bundle.get_timeline(theme_ids[0])
+theme.name
+
+# %%
 notes(theme)
 
 # %% [markdown]
@@ -213,20 +227,24 @@ theme.statements
 # %% [markdown]
 # ## 4. The alignment as MatchClaims
 #
-# Each row of the alignment file but the last is one MatchClaim: from the
+# Each row of the alignment file but the last is one MatchClaim: from each
 # note at that onset to `CHUNK` on the excerpt, anchored at the onset in
 # quarters and the excerpt's second. The file writes the onset with five
 # decimals (`6.66667`); the claim holds the exact onset of the note it
 # meets, `20/3`. The last row, the end of the last note, is checked and not
-# kept. The loader reaches the claims through `get_field`.
+# kept. The bundle holds the claims in its MatchClaim table, and
+# `get_match_claims` reads them back, here those of the first theme.
 
 # %%
-field = loader.get_field(MatchClaim)
-claims(field, theme)
+claims(bundle, theme)
 
 # %% [markdown]
 # From the triplet's onset, the bundle answers the excerpt's second and,
-# through the excerpt's offset, the track's:
+# through the excerpt's offset, the track's. In the full dataset, 25 claims
+# state a second outside their excerpt (before its start or past its end);
+# they are kept as MTD gives them, and a matchstamp there names the
+# excerpt's second but none of the track, which the excerpt reaches only
+# within its span.
 
 # %%
 stamp = bundle.get_matchstamp_at(Fraction(20, 3), theme.id)

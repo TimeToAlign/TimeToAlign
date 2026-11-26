@@ -15,6 +15,7 @@ module level so the corpus is materialised once, before collection.
 |------|-------------------|
 | `test_ieee1599.py` | `Ieee1599Loader` against all six IEEE 1599 specimens — spine delta accumulation, the four projection layers, verbatim media references, and the spine-hub claim topology. Zero-tolerance counts and coordinates (see below). |
 | `test_ieee1599_structural.py` | The `<structural>` layer of the gymnopédie specimen — the segment ↔ Petri-net-place resolution and the `external_references` rows it produces on the spine. Exact row counts and exact resolutions (see below). |
+| `test_mtd.py` | `MtdLoader` on the `mtd` corpus (four themes of the Musical Theme Dataset in an archive of MTD's layout): the CD track with its excerpts, the theme encodings and their notes, one MatchClaim per aligned onset, the statements, the selection, the archive and an extracted folder alike, the package round trip, and every refusal (see below). |
 | `test_trompa_maps.py` | `MapsLoader` on a MEI score and a MAPS file the tests write — one claim per listed `xml:id`, both sides of every claim, retrieval through a bundle on a samples and on a seconds performance, and every refusal (see below). |
 
 Fast lane: gymnopédie, animals, khomus.  The three large specimens
@@ -595,3 +596,88 @@ in an otherwise valid fixture, so the refusal can only come from that change.
   (`tests/loader/README.md`, "Single-source loaders"), naming the held file:
   one MAPS file aligns one performance. The held rows stay; after `clear()`
   the loader reads the other file.
+
+## `MtdLoader` validation logic
+
+Corpus: `mtd` — `MTD_sample.zip`, four themes of the Musical Theme Dataset
+in the archive's own layout (`MTD/data_META`, `MTD/data_ALIGNMENT`,
+`MTD/data_SCORE_MID`, `MTD/data_EDM-corr_MID`; the corpus README says why the
+last folder holds the files of the third):
+
+| theme | movement | recording | excerpt | rows | notes |
+|---|---|---|---|---|---|
+| `MTD0807` (B689) | `Beethoven_Op002No1-01` (piano) | Brendel, CD 049, Track01 | `00:00.2`–`00:03` | 11 | 10 |
+| `MTD0808` (B690) | `Beethoven_Op002No1-01` | the same track | `01:24.7`–`01:29.2` | 17 | 16 |
+| `MTD1044` (B926) | `Beethoven_Op055-02` (orchestra) | Abbado, CD 007, Track06 | `04:07.1`–`04:15` | 11 | 10 |
+| `MTD1080` (B962) | `Beethoven_Op067-04` (orchestra) | Abbado, CD 009, Track04 | `01:00.75`–`01:06.3` | 29 | 28 |
+
+Every expected value below is read off these files by hand (the MIDI files
+at 480 ticks per quarter, each note ending one tick before the next onset),
+never computed by the code under test.
+
+### What would prove the loader right
+
+* **The notes are the MIDI file's, in exact quarters.** MTD0807's theme
+  timeline holds 10 notes, onsets `0, 1, 2, 3, 4, 5, 13/2, 20/3, 41/6, 7`
+  (ticks `0 … 3360` over 480), pitches `60, 65, 68, 72, 77, 80, 79, 77, 76,
+  77`, the first ending at `479/480`, the last at `3839/480`, which is also
+  the timeline's length; number type fraction, unit quarters. A triplet
+  onset that a float could not hold (`20/3`) is the test that no float
+  passed between file and timeline.
+* **Each alignment row but the last is one claim, at the exact onset.**
+  Claims per theme = rows − 1 (10, 16, 10, 28; 64 in all), because every
+  onset of these themes holds one note. MTD0807's row `6.66667;2.20401` is
+  the claim from the note at `20/3` (pitch 77) to CHUNK on the excerpt,
+  anchored at exactly `Fraction(20, 3)` quarters and `2.20401` seconds; the
+  five decimals are never kept. MTD1044's `3.16667` is `19/6`. Side B of
+  every claim is the excerpt (not the track) and is CHUNK; the provenance
+  is `imported`, basis the MTD paper's DOI. A row meeting no onset within
+  half a tick is refused, so a matched claim proves the onset existed.
+* **The last row is checked, not kept.** A fixture whose last row is moved
+  by one tick's worth (`7.99792` → `8.00000`) is refused; the unchanged
+  files load, so the check passed on all four.
+* **The excerpt is a child of its track at StartTime.** Offsets and lengths
+  come from the decimal strings, exactly as written: MTD0807 at `0.2`,
+  `2.8` long; MTD1080 at `60.75`, `5.55` long (the float of `"5.55"`;
+  subtracting the floats would give `5.549999999999997`). Two themes of one
+  track are two children of one track timeline.
+* **The track is what MTD says of the recording, and no more.** Its length
+  is unknown (`None`) unless `track_lengths` gives it; its name is
+  `Beethoven Op002No1-01, Brendel (CD 49, track 1)`; its statements are
+  exactly: type `schema:MusicRecording`, `schema:recordingOf` the movement
+  by label, `schema:inAlbum` the MusicBrainz release, three MeLODy
+  identifiers (`MTD CollectionID`, `MTD NameCD`, `MTD NameTrack`, the
+  strings as written), the performer `rel:prf` by label,
+  `dcterms:rights` In Copyright and `dcterms:accessRights` COAR
+  metadata-only access. The theme encoding states `schema:isPartOf` the
+  movement, its MTD and Barlow and Morgenstern identifiers and its source
+  (the corrected EDM encoding, or the score encoding when
+  `theme_midi="data_SCORE_MID"`). It is a root of its own, never the
+  excerpt's child.
+* **The selection reads what it names.** `movements=["Beethoven_Op002No1-01"]`
+  gives MTD0807 and MTD0808, one track, 26 claims; `themes=["MTD1044"]`
+  one theme; both together the union; no selection all four themes, three
+  movements, three tracks, 64 claims. A name the source does not hold raises
+  `KeyError`.
+* **Archive and folder are one source.** The archive's path, a
+  `zipfile.Path` of it, the extracted folder holding `MTD/` and `MTD/`
+  itself give equal timelines (`to_dict`) and equal MatchClaim tables, IDs
+  included: the minter is seeded from the bytes of the files read.
+* **IDs are the minter's.** With `seed=0` the IDs are those a fresh
+  `IdMinter(0)` mints in the loader's order: per theme in file-name order
+  its notes (`note_…`), its excerpt (`cpt_…`), its theme encoding
+  (`clt_…`); then the tracks (`cpt_…`); then the claims (`claim_…`). Two
+  fresh loaders without a seed mint equal IDs.
+* **The package round trip keeps it all.** The bundle written with
+  `to_file` validates with `timetoshare.validate`, reads back with
+  `from_file` with 64 claims and the statements unchanged, and a matchstamp
+  at MTD0807's onset `20/3` answers the excerpt's `2.20401` seconds.
+
+### Refusals
+
+Each refusal changes one thing in an extracted copy of the corpus written to
+`tmp_path`: an alignment row moved off its onset (`6.66667` → `6.70000`),
+the last row moved, a `StartTime` not written `mm:ss`, an `EndTime` before
+the `StartTime`, a theme's MIDI file removed, a `theme_midi` that is no
+encoding folder, a folder holding no `MTD/data_META`, no source or two in one call, a
+second source while one is held, a keyword `create_bundle` does not take.

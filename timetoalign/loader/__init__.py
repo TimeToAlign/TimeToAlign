@@ -27,6 +27,7 @@ Loader Taxonomy:
         - TiliaJsonLoader: TiLiA hierarchical annotations
         - MpmLoader, ParangonadaLoader, PerformancePrecisionLoader,
           ListenHereLoader: multimodal alignment exports
+        - MtdLoader: Musical Theme Dataset themes aligned to recordings
 
 Classes:
     EventData: PyArrow-based bulk event storage.

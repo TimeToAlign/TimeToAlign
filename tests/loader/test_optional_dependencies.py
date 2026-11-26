@@ -247,6 +247,7 @@ def test_drawing_without_pillow_names_the_extra(
                 "Ieee1599Loader",
                 "ListenHereLoader",
                 "MapsLoader",
+                "MtdLoader",
                 "MatchfileLoader",
                 "MpmLoader",
                 "ParangonadaLoader",

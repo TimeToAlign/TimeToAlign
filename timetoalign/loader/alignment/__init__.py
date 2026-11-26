@@ -21,6 +21,10 @@ Loaders:
     MapsLoader: MAPS score-to-performance alignment JSON (TROMPA's
         trompa-align), stated as MatchClaims between a score timeline keyed
         by MEI ``xml:id`` and a performance timeline.
+    MtdLoader: Musical Theme Dataset (MTD) themes, read from the archive or
+        an extracted folder: per CD track a seconds timeline with an excerpt
+        per theme, per theme a quarters timeline of its encoding, and the
+        alignment as MatchClaims from the theme's notes to the excerpt.
     Ieee1599Loader: IEEE 1599 XML documents (spine + logic / notational /
         audio layers) ingested as one multimodal AlignmentBundle in which
         every layer is aligned to the spine.
@@ -38,6 +42,7 @@ from timetoalign.loader._optional import import_optional, resolve_optional
 
 from .ieee1599 import Ieee1599Loader
 from .listen_here import ListenHereLoader
+from .mtd import MtdLoader
 from .parangonada import ParangonadaLoader
 from .performance_precision import PerformancePrecisionLoader
 from .tilia import TiliaDictStore, TiliaJsonLoader
@@ -54,6 +59,7 @@ __all__ = [
     "Ieee1599Loader",
     "ListenHereLoader",
     "MapsLoader",
+    "MtdLoader",
     *import_optional(__name__, _OPTIONAL_LOADERS, globals()),
     "ParangonadaLoader",
     "PerformancePrecisionLoader",

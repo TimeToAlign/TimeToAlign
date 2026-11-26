@@ -31,6 +31,7 @@ with `TTA_TESTDATA_DIR`.
 | `fixtures` | Synthetic fixtures (corrupt files, ATON minimals, .lab samples). |
 | `hendrix` | TiLiA hierarchy timelines for the *All Along the Watchtower* genesis study. |
 | `midi` | Performance and score MIDI specimens. |
+| `mtd` | Musical Theme Dataset (MTD) sample — four themes in the MTD archive's layout (`MTD_sample.zip`). |
 | `performance_precision` | Performance-precision benchmark inputs. |
 | `score` | Score corpora — Beethoven WoO 71, Op. 18 multimodal, Bruckner 5, Couperin, Rachmaninoff, Wagner, *Out of the Flow* experience. The big one (~750 MB extracted). |
 | `supra` | SUPRA piano-roll annotations and audio. |

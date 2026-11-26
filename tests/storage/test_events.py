@@ -39,6 +39,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
+from timetoalign.core.ids import IdMinter, reset_content_minters
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
     CoordinateField,
@@ -686,36 +687,112 @@ class TestHead:
 class TestMintedIds:
     """One minting function; a declared ``projection_of`` column."""
 
+    TYPES = ["Note", "Projection", "Note", None, ""]
+
+    @staticmethod
+    def _rows() -> list[dict[str, Any]]:
+        return [
+            {"event_type": "Note", "start": 0},
+            {"event_type": "Note", "id": "given", "start": 1},
+            {"event_type": "Beat", "start": 2},
+            {"event_type": "Note", "start": 3},
+        ]
+
     def test_mint_event_ids(self) -> None:
         assert storage.mint_event_ids is mint_event_ids
-        assert mint_event_ids(
-            ["Note", "Projection", "Note", None],
-            {"note_1", "projection_2", "note:000005"},
-        ).to_pylist() == ["note_2", "projection_3", "note_3", "event_1"]
+        expected = IdMinter(5)
+        notes = [expected.mint("note"), expected.mint("note")]
+        projection = expected.mint("projection")
+        events = [expected.mint("event"), expected.mint("event")]
+        assert mint_event_ids(self.TYPES, IdMinter(5)).to_pylist() == [
+            notes[0],
+            projection,
+            notes[1],
+            *events,
+        ]
 
-    def test_from_dicts_mints_above_the_given_ids(self) -> None:
-        data = EventData.from_dicts(
-            [
-                {"event_type": "Note", "id": "note_4", "start": 0},
-                {"event_type": "Note", "start": 1},
-            ],
-            TimeUnit.samples,
+    def test_mint_event_ids_without_a_minter_is_content_seeded(self) -> None:
+        first = mint_event_ids(self.TYPES).to_pylist()
+        second = mint_event_ids(self.TYPES).to_pylist()
+        assert len(set(first) | set(second)) == 10
+        reset_content_minters()
+        assert mint_event_ids(self.TYPES).to_pylist() == first
+
+    def test_from_dicts_keeps_given_ids_and_mints_from_the_seed(self) -> None:
+        data = EventData.from_dicts(self._rows(), TimeUnit.samples, seed=3)
+        minted = mint_event_ids(["Note", "Beat", "Note"], IdMinter(3)).to_pylist()
+        assert data.column_values("id") == [minted[0], "given", minted[1], minted[2]]
+        again = EventData.from_dicts(self._rows(), TimeUnit.samples, seed=3)
+        assert again.table.equals(data.table)
+
+    def test_from_dicts_continues_a_given_minter(self) -> None:
+        minter = IdMinter(3)
+        first = EventData.from_dicts(self._rows(), TimeUnit.samples, minter=minter)
+        second = EventData.from_dicts(self._rows(), TimeUnit.samples, minter=minter)
+        expected = IdMinter(3)
+        drawn = [
+            mint_event_ids(["Note", "Beat", "Note"], expected).to_pylist()
+            for _ in range(2)
+        ]
+        assert first.column_values("id") == [drawn[0][0], "given", *drawn[0][1:]]
+        assert second.column_values("id") == [drawn[1][0], "given", *drawn[1][1:]]
+
+    def test_from_dicts_without_a_seed_is_content_seeded(self) -> None:
+        first = EventData.from_dicts(self._rows(), TimeUnit.samples)
+        second = EventData.from_dicts(self._rows(), TimeUnit.samples)
+        minted = {*first.column_values("id"), *second.column_values("id")} - {"given"}
+        assert len(minted) == 6
+        assert first.table.column("id").null_count == 0
+        reset_content_minters()
+        again = EventData.from_dicts(self._rows(), TimeUnit.samples)
+        assert again.column_values("id") == first.column_values("id")
+
+    def test_from_arrays_mints_an_absent_column_and_a_null(self) -> None:
+        types = ["Projection", "Projection", "Note"]
+        absent = EventData.from_arrays(
+            {"event_type": types, "start": [0, 1, 2]}, TimeUnit.samples, seed=8
         )
-        assert data.column_values("id") == ["note_4", "note_5"]
-
-    def test_from_arrays_mints_from_the_event_types(self) -> None:
-        data = EventData.from_arrays(
+        assert (
+            absent.column_values("id") == mint_event_ids(types, IdMinter(8)).to_pylist()
+        )
+        with_null = EventData.from_arrays(
             {
-                "event_type": ["Projection", "Projection", "Note"],
+                "id": pa.array(["a", None, "c"], pa.string()),
+                "event_type": types,
                 "start": [0, 1, 2],
             },
             TimeUnit.samples,
+            seed=8,
         )
-        assert data.column_values("id") == [
-            "projection_1",
-            "projection_2",
-            "note_1",
+        assert with_null.column_values("id") == [
+            "a",
+            IdMinter(8).mint("projection"),
+            "c",
         ]
+        unseeded = EventData.from_arrays(
+            {"event_type": types, "start": [0, 1, 2]}, TimeUnit.samples
+        )
+        assert unseeded.table.column("id").null_count == 0
+        assert set(unseeded.column_values("id")).isdisjoint(absent.column_values("id"))
+
+    def test_from_dataframe_passes_the_seed_on(self) -> None:
+        frame = pd.DataFrame({"event_type": ["Note", "Beat"], "start": [0, 1]})
+        data = EventData.from_dataframe(frame, TimeUnit.samples, seed=2)
+        assert (
+            data.column_values("id")
+            == mint_event_ids(["Note", "Beat"], IdMinter(2)).to_pylist()
+        )
+
+    @pytest.mark.parametrize("constructor", ["from_dicts", "from_arrays"])
+    def test_seed_and_minter_together_are_refused(self, constructor: str) -> None:
+        build = getattr(EventData, constructor)
+        source = (
+            self._rows()
+            if constructor == "from_dicts"
+            else {"event_type": ["Note"], "start": [0]}
+        )
+        with pytest.raises(TypeError, match="Give seed or minter, not both"):
+            build(source, TimeUnit.samples, seed=1, minter=IdMinter(1))
 
     def test_projection_of_is_typed_by_declaration(self) -> None:
         data = EventData.from_dicts(
@@ -766,8 +843,9 @@ class TestProjectionRows:
                     start=Coordinate(2, TimeUnit.samples),
                     duration=Duration(3, TimeUnit.samples),
                     projection_of=EventReference(timeline_id="clt_6", event_id="x1"),
+                    id="p1",
                 ),
-                {"event_type": "Note", "start": 7},
+                {"event_type": "Note", "start": 7, "id": "n1"},
             ],
             TimeUnit.samples,
         )
@@ -776,14 +854,14 @@ class TestProjectionRows:
         ).to_pylist()
         assert rows == [
             {
-                "id": "projection_1",
+                "id": "p1",
                 "event_type": "Projection",
                 "start": {"value": 2.0, "numerator": 2, "denominator": 1},
                 "duration": {"value": 3.0, "numerator": 3, "denominator": 1},
                 "projection_of": {"timeline_id": "clt_6", "event_id": "x1"},
             },
             {
-                "id": "note_1",
+                "id": "n1",
                 "event_type": "Note",
                 "start": {"value": 7.0, "numerator": 7, "denominator": 1},
                 "duration": None,
@@ -1509,13 +1587,13 @@ class TestOneAxisPerTable:
     def test_a_projection_read_unreduced_is_the_same_projection(self, tmp_path):
         half = Coordinate(Fraction(1, 2), TimeUnit.quarters)
         timeline = ContinuousLogicalTimeline(length=2)
-        assert timeline.add_projections([Projection(start=half)]) == ["projection_1"]
+        (held,) = timeline.add_projections([Projection(start=half)])
         path = tmp_path / "projections.parquet"
         pq.write_table(self._spelled(timeline.events, [(2, 4)]), path)
 
         read = EventData.from_parquet(path).create_timeline()
 
-        assert read.add_projections([Projection(start=half)]) == ["projection_1"]
+        assert read.add_projections([Projection(start=half)]) == [held]
         assert read.n_events == 1
 
 
@@ -1817,13 +1895,11 @@ class TestReducedAtTheDoorsOnly:
         reduced = self._counted(monkeypatch)
 
         filtered = data.filter(min_coord=Fraction(2, 3))
-        prefixed = data.prefix_ids("p")
         joined = data.concat(other)
         timeline = data.create_timeline()
 
         assert reduced == []
         assert self._starts(filtered) == [("n1", (2, 3))]
-        assert self._starts(prefixed) == [("p:n0", (1, 2)), ("p:n1", (2, 3))]
         assert self._starts(joined) == [("n0", (1, 2)), ("n1", (2, 3)), ("b", (5, 4))]
         assert self._starts(timeline.events) == [("n0", (1, 2)), ("n1", (2, 3))]
 
@@ -1899,39 +1975,6 @@ def test_rows_stating_numbers_only_carry_no_list_column() -> None:
 
 
 # endregion
-
-
-class TestPrefixIds:
-    """``prefix_ids`` prefixes every id once and keeps a null id null."""
-
-    IDS = [None, "a", "p:b", "pa"]
-
-    @staticmethod
-    def _table(ids: list[str | None], chunks: int = 1) -> pa.Table:
-        rows = EventData.from_dicts(
-            [{"id": f"x{i}", "start": float(i)} for i in range(len(ids))],
-            TimeUnit.seconds,
-        ).table
-        index = rows.schema.get_field_index("id")
-        table = rows.set_column(
-            index, rows.schema.field(index), pa.array(ids, pa.string())
-        )
-        if chunks == 1:
-            return table
-        return pa.Table.from_batches(table.to_batches(max_chunksize=len(ids) // chunks))
-
-    @pytest.mark.parametrize("chunks", [1, 2])
-    def test_null_id_stays_null(self, chunks: int) -> None:
-        data = EventData(self._table(self.IDS, chunks), TimeUnit.seconds)
-        column = data.prefix_ids("p").table.column("id")
-        assert column.type == pa.string()
-        assert column.to_pylist() == [None, "p:a", "p:b", "p:pa"]
-
-    def test_no_rows(self) -> None:
-        data = EventData(self._table([]), TimeUnit.seconds)
-        column = data.prefix_ids("p").table.column("id")
-        assert column.type == pa.string()
-        assert column.to_pylist() == []
 
 
 class TestFromDataFrameLabels:

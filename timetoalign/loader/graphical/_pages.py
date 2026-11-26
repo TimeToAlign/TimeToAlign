@@ -539,31 +539,6 @@ def _plan(
     return plans
 
 
-def _set_aside_given_ids(
-    owner: object, plans: list[_PagePlan], uid: str | None
-) -> None:
-    """Keep every timeline id the call was given out of *owner*'s minting.
-
-    Called once a call's checks have passed and before its first timeline is
-    made, so that a timeline minted early is never given the id a later one
-    was named with. A given id holds its number as
-    :func:`~timetoalign.timelines.factory._root_timeline_id` reads it: by
-    its part after the last ``:``.
-    """
-    given = [uid] + [
-        timeline.uid for plan in plans for timeline in (plan, *(plan.accolades or ()))
-    ]
-    taken: set[str] | None = getattr(owner, "_minted_timeline_ids", None)
-    if taken is None:
-        taken = set()
-        setattr(owner, "_minted_timeline_ids", taken)
-    taken.update(
-        timeline_id.rpartition(":")[2]
-        for timeline_id in given
-        if timeline_id is not None
-    )
-
-
 # endregion
 
 
@@ -576,17 +551,12 @@ def _timeline(
     uid: str | None,
     **arguments: Any,
 ) -> _TimelineT:
-    """Make one timeline, its id *uid* or minted from *owner*.
+    """Make one timeline for *owner*, its id *uid* or minted
+    (:func:`~timetoalign.timelines.factory.mint_timeline_id`)."""
+    from timetoalign.timelines.factory import mint_timeline_id
 
-    A named timeline takes its number among *owner*'s minted ids all the
-    same, so the numbers follow document order whatever is named.
-    """
-    from timetoalign.timelines.factory import _flag_minted, _root_timeline_id
-
-    timeline_id, minted = _root_timeline_id(owner, _UNIT, uid)
-    timeline = cls(unit=_UNIT, number_type=NumberType.int, uid=timeline_id, **arguments)
-    _flag_minted(timeline, minted)
-    return timeline
+    timeline_id = mint_timeline_id(_UNIT) if uid is None else uid
+    return cls(unit=_UNIT, number_type=NumberType.int, uid=timeline_id, **arguments)
 
 
 def _build_line(
@@ -679,7 +649,6 @@ def build_pages(
     plans = _plan(
         pages, uid=None, page_ids=page_ids, accolade_ids=accolade_ids, box_ids=box_ids
     )
-    _set_aside_given_ids(owner, plans, None)
     timelines = []
     for plan in plans:
         timeline = _build_page(owner, plan)
@@ -746,7 +715,6 @@ def build_volume(
         if of_accolades
         else DiscreteGraphicalTimeline
     )
-    _set_aside_given_ids(owner, plans, uid)
     volume = _timeline(
         owner,
         SegmentLine[page_class],

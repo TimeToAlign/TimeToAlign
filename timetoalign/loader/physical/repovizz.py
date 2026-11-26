@@ -760,12 +760,8 @@ class RepoVizzLoader(ManifestLoader):
                 )
 
                 # Create the notes timeline from the stored notes EventData.
-                # "notes" is its name; its event ids keep the group-led
-                # prefix; its id is minted when it joins the audio timeline.
-                notes_id_prefix = id or (category or "group")
-                notes_tl = create_timeline_from_event_data(
-                    self._store.notes.prefix_ids(f"{notes_id_prefix}_notes")
-                )
+                # "notes" is its name; its events keep their ids.
+                notes_tl = create_timeline_from_event_data(self._store.notes)
                 notes_tl.name = "notes"
 
                 # Add as child with automatic unit conversion (seconds -> samples)

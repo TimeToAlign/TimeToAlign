@@ -56,7 +56,6 @@ from timetoalign.core.fields import (
     ONE_OR_SEVERAL_SUFFIX,
     SemanticField,
     _filled,
-    _joined_strings,
     _member_fields,
     _struct_array,
     _struct_array_from,
@@ -66,7 +65,7 @@ from timetoalign.core.fields import (
     field_metadata,
     split_row_member,
 )
-from timetoalign.core.ids import id_column, mint_ids, quote_id
+from timetoalign.core.ids import IdMinter, content_minter, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
     build_number_struct_array,
@@ -143,26 +142,34 @@ SHAPE_FIELDS: dict[str, type[ShapeField[Any]]] = {
 
 def mint_event_ids(
     event_types: pa.Array | pa.ChunkedArray | Iterable[object],
-    taken: pa.Array | pa.ChunkedArray | Iterable[str] = (),
+    minter: IdMinter | None = None,
 ) -> pa.Array:
-    """Mint one event ID per event type, each new to *taken* and to the others.
+    """Mint one event ID per event type.
 
-    The prefix of an event's ID is its event type in lower case (a missing
-    or empty type counts as ``Event``): ``note_N``, ``projection_N``,
-    ``event_N``. The rows of one prefix take the next numbers above the
-    highest held (:func:`~timetoalign.core.ids.mint_ids`, the one minter), in
-    row order.
+    The prefix of an event's ID is its event type in lower case, ``event``
+    for a missing or empty type: ``note_…``, ``projection_…``, ``event_…``.
+    The IDs are drawn from *minter* by
+    :meth:`~timetoalign.core.ids.IdMinter.mint_many`, one batch per prefix:
+    the prefixes in the order of their first row, the rows of each prefix
+    in row order. ``["Note", "Projection", "Note"]`` therefore takes the
+    minter's first two IDs for the two notes and its third for the
+    Projection. Without a minter, the IDs come from the content minter of
+    the event types (:func:`~timetoalign.core.ids.content_minter` of
+    ``"event"`` and the types' Arrow IPC bytes).
 
     Args:
         event_types: One event type per ID to mint, in order.
-        taken: The IDs already held.
+        minter: The minter the IDs are drawn from, or None.
 
     Returns:
         A string array of the minted IDs, in the order of *event_types*.
 
     Examples:
-        >>> mint_event_ids(["Note", "Projection", "Note", None], {"note_1"}).to_pylist()
-        ['note_2', 'projection_1', 'note_3', 'event_1']
+        >>> ids = mint_event_ids(["Note", "Projection", "Note", None], IdMinter(0))
+        >>> ids.to_pylist()[:2]
+        ['note_1be6k8ij6dzad', 'projection_0gloaudxbozjk']
+        >>> ids.to_pylist()[2:]
+        ['note_3cccv6pc7fclm', 'event_2sjbpc8k7u4gk']
     """
     if isinstance(event_types, pa.ChunkedArray):
         event_types = event_types.combine_chunks()
@@ -172,16 +179,69 @@ def mint_event_ids(
             pa.string(),
         )
     types = pc.cast(event_types, pa.string())
+    if len(types) == 0:
+        return pa.array([], pa.string())
+    if minter is None:
+        minter = content_minter("event", _ipc_bytes(pa.table({"event_type": types})))
     empty = pa.scalar("")
-    types = pc.if_else(pc.equal(pc.fill_null(types, empty), empty), "Event", types)
-    prefixes = pc.utf8_lower(types)
-    held = id_column(taken)
+    prefixes = pc.utf8_lower(
+        pc.if_else(pc.equal(pc.fill_null(types, empty), empty), "event", types)
+    )
     ids = pa.nulls(len(prefixes), pa.string())
     for prefix in pc.unique(prefixes).to_pylist():
         rows = pc.equal(prefixes, prefix)
-        count = pc.sum(rows).as_py()
-        ids = pc.replace_with_mask(ids, rows, mint_ids(prefix, held, count))
+        ids = pc.replace_with_mask(ids, rows, minter.mint_many(prefix, rows.true_count))
     return ids
+
+
+def _ipc_bytes(table: pa.Table) -> bytes:
+    """The Arrow IPC stream bytes of *table*, in one batch: a content seed."""
+    table = table.combine_chunks()
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().to_pybytes()
+
+
+def _given_minter(seed: int | None, minter: IdMinter | None) -> IdMinter | None:
+    """The minter a constructor given *seed* or *minter* draws its IDs from.
+
+    A seed gives a fresh :class:`~timetoalign.core.ids.IdMinter`; neither
+    gives None, for the constructor's content minter.
+
+    Raises:
+        TypeError: If both are given.
+    """
+    if seed is not None and minter is not None:
+        raise TypeError("Give seed or minter, not both.")
+    return IdMinter(seed) if seed is not None else minter
+
+
+def _ids_minted_where_missing(
+    ids: pa.Array | pa.ChunkedArray, columns: pa.Table, minter: IdMinter | None
+) -> pa.Array:
+    """*ids* with every null filled by :func:`mint_event_ids`.
+
+    The prefixes are the rows' ``event_type`` in *columns* (``event`` where
+    it has none). Without a minter, the IDs come from the content minter of
+    the rows: :func:`~timetoalign.core.ids.content_minter` of ``"event"``
+    and the Arrow IPC bytes of *columns*, every column of the rows but
+    ``id``. Given IDs are kept.
+    """
+    if isinstance(ids, pa.ChunkedArray):
+        ids = ids.combine_chunks()
+    ids = pc.cast(ids, pa.string())
+    missing = pc.is_null(ids)
+    if not ids.null_count:
+        return ids
+    if minter is None:
+        minter = content_minter("event", _ipc_bytes(columns))
+    types = (
+        columns.column("event_type").filter(missing)
+        if "event_type" in columns.column_names
+        else pa.nulls(ids.null_count, pa.string())
+    )
+    return pc.replace_with_mask(ids, missing, mint_event_ids(types, minter))
 
 
 def projection_ids(events: pa.Table) -> pa.Array:
@@ -1608,6 +1668,8 @@ class EventData(SemanticFieldAccessMixin):
         number_type: NumberType | None = None,
         *,
         interval_policy: IntervalPolicy = IntervalPolicy.warn,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
     ) -> Self:
         """Create EventData from a list of row dictionaries.
 
@@ -1615,9 +1677,9 @@ class EventData(SemanticFieldAccessMixin):
         converted to the internal struct format. Convenience defaults are
         applied so that callers can omit boilerplate fields:
 
-        - **id**: Minted if missing, above the IDs the rows give, its prefix
-          the event type in lower case: ``note_1``, ``beat_1``,
-          ``projection_1``.
+        - **id**: Minted if missing (:func:`mint_event_ids`), its prefix the
+          event type in lower case: ``note_…``, ``beat_…``,
+          ``projection_…``. A given ID is kept.
         - **temporal_type**: Inferred from the keys present in the dict --
           ``"interval"`` when *both* ``start`` and ``end`` (or ``duration``)
           are given, ``"instant"`` otherwise.
@@ -1643,11 +1705,16 @@ class EventData(SemanticFieldAccessMixin):
             number_type: The number type for coordinates.
             interval_policy: How to handle end/duration inconsistencies.
                 See `IntervalPolicy` for options.
+            seed: Mint the missing IDs from ``IdMinter(seed)``.
+            minter: Mint the missing IDs from this minter (a loader's).
+                Without *seed* or *minter*, they come from the content
+                minter of the rows (every column but ``id``).
 
         Returns:
             A new EventData containing the events.
 
         Raises:
+            TypeError: If both *seed* and *minter* are given.
             ValueError: If a position is in another unit, or a shape in
                 another unit or number type, than the table; if a row of
                 another event type than Box gives a shape column, or a Box
@@ -1663,10 +1730,20 @@ class EventData(SemanticFieldAccessMixin):
             ...     {"event_type": "Note", "start": 0, "end": 0.5},
             ... ], unit=TimeUnit.seconds)
         """
+        given = _given_minter(seed, minter)
         number_type = unit.resolve_number_type(number_type)
         table = cls._rows_table(
             rows, unit, number_type, interval_policy=interval_policy
         )
+        if table.num_rows:
+            at = table.schema.get_field_index("id")
+            table = table.set_column(
+                at,
+                table.schema.field(at),
+                _ids_minted_where_missing(
+                    table.column(at), table.drop_columns(["id"]), given
+                ),
+            )
         return cls(table, unit, number_type)
 
     @classmethod
@@ -1678,25 +1755,20 @@ class EventData(SemanticFieldAccessMixin):
         *,
         interval_policy: IntervalPolicy = IntervalPolicy.warn,
     ) -> pa.Table:
-        """The table :meth:`from_dicts` makes of *rows*, before it is held."""
+        """The table :meth:`from_dicts` makes of *rows*, before it is held.
+
+        A row without an ID holds a null ``id``, which :meth:`from_dicts`
+        mints.
+        """
         rows = box_rows_on_the_axis(_event_rows(rows), unit, number_type)
         if not rows:
             return cls._empty_table(unit, number_type)
-
-        # Mint the IDs the rows lack, above the IDs the rows give.
-        minted = iter(
-            mint_event_ids(
-                [row.get("event_type") for row in rows if row.get("id") is None],
-                [row["id"] for row in rows if row.get("id") is not None],
-            ).to_pylist()
-        )
 
         # Convert coordinate values to struct format
         processed_rows = []
         for row in rows:
             processed = dict(row)
-            if processed.get("id") is None:
-                processed["id"] = next(minted)
+            processed["id"] = processed.get("id")
             for key in ("instant", "start", "end", "duration"):
                 if key in processed:
                     processed[key] = _native_position(
@@ -1754,6 +1826,8 @@ class EventData(SemanticFieldAccessMixin):
         validate: bool = True,
         extra_fields: list[pa.Field] | None = None,
         interval_policy: IntervalPolicy = IntervalPolicy.warn,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
     ) -> Self:
         """Create EventData from field-oriented arrays (VECTORIZED).
 
@@ -1784,11 +1858,17 @@ class EventData(SemanticFieldAccessMixin):
                 If not provided, fields are inferred from the data arrays.
             interval_policy: How to handle end/duration inconsistencies.
                 See `IntervalPolicy` for options.
+            seed: Mint the missing IDs (no ``id`` array, or a null in it)
+                from ``IdMinter(seed)``.
+            minter: Mint the missing IDs from this minter (a loader's).
+                Without *seed* or *minter*, they come from the content
+                minter of the rows (every column but ``id``).
 
         Returns:
             A new EventData containing the events.
 
         Raises:
+            TypeError: If both *seed* and *minter* are given.
             ValueError: If validation fails (missing fields, length mismatch, etc.)
 
         Examples:
@@ -1803,6 +1883,7 @@ class EventData(SemanticFieldAccessMixin):
             >>> # Direct from loader output (StructArrays already parsed)
             >>> data = EventData.from_arrays(loader_fields, unit=TimeUnit.quarters)
         """
+        given = _given_minter(seed, minter)
         number_type = unit.resolve_number_type(number_type)
         if not fields:
             return cls.empty(unit, number_type)
@@ -1955,13 +2036,8 @@ class EventData(SemanticFieldAccessMixin):
                             [str(x) for x in arr_data], type=pa.string()
                         )
                 else:
-                    # Mint the IDs from the event types, if there are any.
-                    event_types = get_arr("event_type")
-                    if event_types is None:
-                        event_types = pa.nulls(n_rows, pa.string())
-                    elif isinstance(event_types, np.ndarray):
-                        event_types = event_types.tolist()
-                    processed[field_name] = mint_event_ids(event_types)
+                    # Minted below, once every other column is built.
+                    processed[field_name] = pa.nulls(n_rows, pa.string())
             elif arr_data is not None:
                 # Regular field - convert to PyArrow array
                 if isinstance(arr_data, (pa.Array, pa.ChunkedArray)):
@@ -2040,6 +2116,14 @@ class EventData(SemanticFieldAccessMixin):
         if inferred_fields:
             schema = extend_schema(schema, inferred_fields)
 
+        processed["id"] = _ids_minted_where_missing(
+            processed["id"],
+            pa.table(
+                {name: column for name, column in processed.items() if name != "id"}
+            ),
+            given,
+        )
+
         # Validate arrays if requested (vectorized validation)
         if validate:
             ArrayValidator.validate_field_dict(processed, schema)
@@ -2057,6 +2141,9 @@ class EventData(SemanticFieldAccessMixin):
         df: pd.DataFrame,
         unit: TimeUnit,
         number_type: NumberType | None = None,
+        *,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
     ) -> Self:
         """Create EventData from a pandas DataFrame.
 
@@ -2064,10 +2151,17 @@ class EventData(SemanticFieldAccessMixin):
             df: DataFrame with event data. Field names should match the schema.
             unit: The time unit for coordinates.
             number_type: The number type for coordinates.
+            seed: Mint the missing IDs from ``IdMinter(seed)``.
+            minter: Mint the missing IDs from this minter (a loader's), as
+                :meth:`from_dicts` does.
 
         Returns:
             A new EventData containing the events.
+
+        Raises:
+            TypeError: If both *seed* and *minter* are given.
         """
+        _given_minter(seed, minter)
         if df.empty:
             return cls.empty(unit, number_type)
 
@@ -2075,7 +2169,7 @@ class EventData(SemanticFieldAccessMixin):
         if not _keyed_by_strings(records, df.columns):
             labels = [label for label in df.columns if not isinstance(label, str)]
             raise TypeError(f"Column labels must be strings: {labels!r}")
-        return cls.from_dicts(records, unit, number_type)
+        return cls.from_dicts(records, unit, number_type, seed=seed, minter=minter)
 
     @classmethod
     def from_parquet(cls, path: Path | str) -> Self:
@@ -2288,30 +2382,6 @@ class EventData(SemanticFieldAccessMixin):
 
         # Use promote_options="default" to handle schema differences
         new_table = pa.concat_tables(tables, promote_options="default")
-        return self._derived(new_table)
-
-    def prefix_ids(self, prefix: str) -> "EventData":
-        """Return a new EventData with all event IDs prefixed.
-
-        Prepends ``prefix:`` to every event ID. Used when events are placed
-        onto a timeline so that IDs become globally unique and informative,
-        e.g. ``clt_1:note:000001``.
-
-        If the IDs already start with the prefix, they are left unchanged.
-
-        Args:
-            prefix: The prefix to prepend (without trailing colon).
-
-        Returns:
-            A new EventData with prefixed IDs.
-        """
-        ids = self._table.column("id").combine_chunks()
-        prefix_str = f"{prefix}:"
-        # A null id stays null: its test and its prefixed form are both null.
-        prefixed = _joined_strings(pa.repeat(pa.scalar(prefix_str), len(ids)), ids, "")
-        new_ids = pc.if_else(pc.starts_with(ids, pattern=prefix_str), ids, prefixed)
-        idx = self._table.schema.get_field_index("id")
-        new_table = self._table.set_column(idx, self._table.schema.field(idx), new_ids)
         return self._derived(new_table)
 
     def _with_segment_renamed(self, old_id: str, new_id: str) -> "EventData":

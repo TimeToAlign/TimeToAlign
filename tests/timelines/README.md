@@ -5366,14 +5366,32 @@ expected files include headers, row order, labels, and boolean spellings so
 format-specific consumers receive a stable dictionary layout.
 
 `test_factory.py` exercises `EventStore.create_timeline()` for direct events,
-multi-store children, and store selection. It pins child IDs and event counts
-to distinguish direct placement from child construction.
+multi-store children, and store selection. It pins child names and event
+counts to distinguish direct placement from child construction.
+
+The factory's timeline IDs (`TestFactoryMinting`) are drawn from the one
+minter a call is given (`minter=`, a loader's), the parent's first, then
+the children's in child order; the expected IDs are computed with
+`mint_timeline_id` from an `IdMinter` of the same seed, never typed from a
+run. Proven: a single-store timeline takes the minter's first ID
+(`clt_…` for quarters); a two-store timeline takes the first for the parent
+and the next two for the children `notes` and `measures`, in store order;
+`group_by` the same for the parent and the children in group-value order; a
+given `uid` is kept and the minter's counter is then used for the children
+only; two calls with minters of one seed give equal IDs; without a minter
+the IDs come from the content minter of the data, so two calls on equal data
+in one test give distinct IDs and, after `reset_content_minters()`, the
+first call's IDs again. `mint_timeline_id(unit, minter, role=)` leads with
+the role (`score:clt_…`). Events keep their IDs on the timeline (no store
+name or timeline ID is prefixed), so two stores merged by `flatten=True`
+holding one event ID are refused, naming the ID and the timeline, with
+`ValueError`.
 
 Stores of one unit and two number types make one timeline
 (`TestStoresOfTwoNumberTypes`): a store holding a `fraction` quarters table
 (`a` on `[1/3, 2/3)`) and then a `float` one (a Beat `b` at `0.75`) gives,
 with `flatten=True`, a `fraction` timeline `t` of length `3/4` holding
-`t:a` at `1/3` and `t:b` at `3/4` (the double `0.75` as its exact ratio),
+`a` at `1/3` and `b` at `3/4` (the double `0.75` as its exact ratio),
 and with `group_by="event_type"` a `fraction` timeline whose children
 `Beat` and `Note` hold `b` at `3/4` and `a` at `1/3`. Both joins pass
 through `EventData.concat`, which re-expresses the second table's rows in

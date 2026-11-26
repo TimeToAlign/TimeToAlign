@@ -12,12 +12,19 @@ Design principles:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
+import pyarrow as pa
+import pyarrow.compute as pc
+
 from timetoalign.core import Domain, NumberType, TimeUnit
-from timetoalign.core.ids import mint_id, timeline_id_prefix
+from timetoalign.core.ids import IdMinter, content_minter, quote_id, timeline_id_prefix
 from timetoalign.storage import EventData, EventStore, SingleStore
+from timetoalign.storage.events import (
+    _ipc_bytes,
+)
 from timetoalign.storage.events import (
     _register_timeline_factory as _register_data_factory,
 )
@@ -31,68 +38,83 @@ if TYPE_CHECKING:
 module_logger = logging.getLogger(__name__)
 
 
-def _mint_timeline_id(owner: object, unit: TimeUnit, *, role: str | None = None) -> str:
-    """Mint a timeline id unique among those minted for *owner* before.
+def mint_timeline_id(
+    unit: TimeUnit, minter: IdMinter | None = None, *, role: str | None = None
+) -> str:
+    """Mint a timeline ID: the unit's timeline prefix, led by *role*.
 
-    The id is ``{prefix}_{N}`` with the unit's timeline prefix, led by
-    ``{role}:`` when a role is given (``spine:dlt_1``, then ``los:dlt_2``):
-    the number counts every timeline of the prefix, whatever its role.
-    *owner* is the data, store or loader whose successive timelines must not
-    share an id.
+    The ID is ``{prefix}_{suffix}`` drawn from *minter*
+    (:func:`~timetoalign.core.ids.timeline_id_prefix` of *unit*), led by
+    ``{role}:`` when a role is given (``score:clt_…``). Without a minter, it
+    comes from the content minter of the prefix alone, so successive calls
+    of one process mint successive IDs.
+
+    Args:
+        unit: The timeline's unit.
+        minter: The minter the ID is drawn from (a loader's), or None.
+        role: A role leading the ID, or None.
+
+    Returns:
+        The ID.
+
+    Examples:
+        >>> mint_timeline_id(TimeUnit.quarters, IdMinter(0), role="score")
+        'score:clt_1be6k8ij6dzad'
     """
-    taken: set[str] | None = getattr(owner, "_minted_timeline_ids", None)
-    if taken is None:
-        taken = set()
-        setattr(owner, "_minted_timeline_ids", taken)
-    timeline_id = mint_id(timeline_id_prefix(unit), taken)
-    taken.add(timeline_id)
+    prefix = timeline_id_prefix(unit)
+    timeline_id = (minter or content_minter(prefix)).mint(prefix)
     return timeline_id if role is None else f"{role}:{timeline_id}"
 
 
-def _root_timeline_id(
-    owner: object, unit: TimeUnit, uid: str | None, *, role: str | None = None
-) -> tuple[str, bool]:
-    """Return the id of a tree's root and whether it was minted.
+def _content_minter_of(
+    unit: TimeUnit, tables: Sequence[tuple[str | None, pa.Table]]
+) -> IdMinter:
+    """The content minter of timelines made of *tables*.
 
-    The root's number is drawn from *owner*'s minted ids even when *uid*
-    names the root, so the timelines minted after it number on from it. A
-    given *uid* also takes its own number from those ids, by its part after
-    the last ``:``: the number counts every timeline of the prefix whatever
-    its role (:func:`_mint_timeline_id`), so ``score:clt_2``, ``perf:clt_2``
-    and ``clt_2`` all hold ``clt_2``, and no timeline of the tree is minted
-    the root's id. A given id of another shape reserves a number nothing is
-    minted.
+    Its content is the unit's timeline prefix, the unit, and each table's
+    name and Arrow IPC bytes, in order.
     """
-    root_id = _mint_timeline_id(owner, unit, role=role)
-    if uid is None:
-        return root_id, True
-    getattr(owner, "_minted_timeline_ids").add(uid.rpartition(":")[2])
-    return uid, False
+    prefix = timeline_id_prefix(unit)
+    return content_minter(
+        prefix,
+        unit.value,
+        *(part for name, table in tables for part in (name, _ipc_bytes(table))),
+    )
 
 
-def _flag_minted(timeline: "Timeline", minted: bool) -> "Timeline":
-    """Record that the library minted *timeline*'s id, and return it.
+def _refuse_repeated_event_ids(data: EventData, timeline_id: str) -> None:
+    """Refuse an event ID held by two rows of *data*, one timeline's events.
 
-    A minted id is minted again when the timeline joins a scope that holds
-    it, where a given id raises; the flag must therefore survive from the
-    minting to the joining.
+    Raises:
+        ValueError: Naming the first such ID and the timeline.
     """
-    if minted:
-        timeline._set_id(timeline.id, minted=True)
-    return timeline
+    counts = pc.value_counts(data.table.column("id"))
+    repeated = counts.filter(pc.greater(counts.field("counts"), pa.scalar(1)))
+    if len(repeated):
+        raise ValueError(
+            f"Event id {quote_id(repeated.field('values')[0].as_py())} is held by "
+            f"{repeated.field('counts')[0].as_py()} events of timeline "
+            f"{quote_id(timeline_id)}"
+        )
 
 
 def create_timeline_from_event_data(
     data: EventData,
     uid: str | None = None,
     filters: dict[str, Any] | None = None,
+    *,
+    minter: IdMinter | None = None,
 ) -> "Timeline":
     """Create a timeline containing one EventData table.
 
     Args:
         data: Source event data.
-        uid: Optional timeline ID.
+        uid: Optional timeline ID; without one, it is minted from *minter*
+            (:func:`mint_timeline_id`).
         filters: Optional EventData filters.
+        minter: The minter of the timeline ID (a loader's); without one,
+            the content minter of the prefix, the unit and the selected
+            events.
 
     Returns:
         A timeline containing the selected events, held in its own
@@ -102,9 +124,10 @@ def create_timeline_from_event_data(
     timeline_class, effective_number_type = _infer_timeline_class_and_number_type(
         data.unit, data.number_type
     )
-    minted = uid is None
-    if minted:
-        uid = _mint_timeline_id(data, data.unit)
+    if uid is None:
+        uid = mint_timeline_id(
+            data.unit, minter or _content_minter_of(data.unit, [(None, source.table)])
+        )
     coord_range = source.coordinate_range()
     length = coord_range[1] if coord_range else 0
     timeline = timeline_class(
@@ -117,7 +140,7 @@ def create_timeline_from_event_data(
     # to it replaces its table and leaves the source and every other
     # timeline made from the source as they are.
     timeline._events = source._derived(source.table)
-    return _flag_minted(timeline, minted)
+    return timeline
 
 
 def _infer_timeline_class_and_number_type(
@@ -187,6 +210,8 @@ def _create_grouped_timeline(
     timeline_class: type["Timeline"],
     effective_number_type: NumberType,
     uid: str | None = None,
+    *,
+    minter: IdMinter | None,
 ) -> "Timeline":
     """Create a timeline with children grouped by a field value.
 
@@ -195,7 +220,10 @@ def _create_grouped_timeline(
         group_by: Field name to group by.
         timeline_class: The Timeline class to use.
         effective_number_type: The number type for the timeline.
-        uid: Optional parent timeline ID.
+        uid: Optional parent timeline ID; without one, it is minted from
+            *minter*.
+        minter: The minter of the parent's ID, if missing, and the
+            children's, in the order of their group values.
 
     Returns:
         Timeline with children for each unique group value.
@@ -239,12 +267,10 @@ def _create_grouped_timeline(
         length=max_length,
         unit=merged_data.unit,
         number_type=effective_number_type,
-        uid=uid,
+        uid=mint_timeline_id(merged_data.unit, minter) if uid is None else uid,
     )
 
     # Create child for each unique value
-    import pyarrow.compute as pc
-
     for group_value in unique_values:
         if group_value is None:
             child_name = "_none_"
@@ -270,12 +296,12 @@ def _create_grouped_timeline(
         child_coord_range = group_data.coordinate_range()
         child_length = child_coord_range[1] if child_coord_range else 0
 
-        # The group value is the child's label; its id is minted in the
-        # parent's manifest.
+        # The group value is the child's label; its id is minted.
         child = timeline_class(
             length=child_length,
             unit=group_data.unit,
             number_type=effective_number_type,
+            uid=mint_timeline_id(group_data.unit, minter),
             name=child_name,
         )
         child._events = group_data
@@ -296,6 +322,8 @@ def create_timeline_from_bundle(
     exclude_stores: list[str] | None = None,
     flatten: bool = False,
     group_by: str | None = None,
+    *,
+    minter: IdMinter | None = None,
 ) -> "Timeline":
     """Create a Timeline from an EventStore.
 
@@ -321,12 +349,18 @@ def create_timeline_from_bundle(
             If False (default), multiple data become children at offset 0.
         group_by: Field name to group events by. Each unique value becomes
             a child timeline. Useful for grouping by image_filename, page, etc.
+        minter: The minter of every timeline ID the call mints (a
+            loader's), the parent's first, then the children's in order;
+            without one, the content minter of the prefix, the unit and the
+            data used (each name and table, in order).
 
     Returns:
         A Timeline with events (single data) or children (multiple data/groups).
+        Each event keeps its ID.
 
     Raises:
-        ValueError: If no data remain after filtering, or all are empty.
+        ValueError: If no data remain after filtering, or all are empty; if
+            two events merged into one timeline hold one ID.
     """
     store_filters = store_filters or {}
     exclude_set = set(exclude_stores or [])
@@ -357,29 +391,31 @@ def create_timeline_from_bundle(
     timeline_class, effective_number_type = _infer_timeline_class_and_number_type(
         first_data.unit, first_data.number_type
     )
-    minted = uid is None
-    if minted:
-        uid = _mint_timeline_id(store, first_data.unit)
+    single = flatten or len(data_to_use) == 1
+    if minter is None and (uid is None or group_by is not None or not single):
+        minter = _content_minter_of(
+            first_data.unit, [(name, data.table) for name, data in data_to_use]
+        )
 
     # Handle group_by: create children from unique field values
     if group_by is not None:
-        return _flag_minted(
-            _create_grouped_timeline(
-                data_to_use,
-                group_by=group_by,
-                timeline_class=timeline_class,
-                effective_number_type=effective_number_type,
-                uid=uid,
-            ),
-            minted,
+        return _create_grouped_timeline(
+            data_to_use,
+            group_by=group_by,
+            timeline_class=timeline_class,
+            effective_number_type=effective_number_type,
+            uid=uid,
+            minter=minter,
         )
+    if uid is None:
+        uid = mint_timeline_id(first_data.unit, minter)
 
     # Single data case: put events directly on the timeline (no children).
     # This applies when flatten=True is explicitly requested OR when there
     # is only a single data source (the common case for simple loaders and
     # SingleStore).  create_timeline() defaults to flatten=False, but
     # the single-data optimisation still fires because len(data_to_use)==1.
-    if flatten or len(data_to_use) == 1:
+    if single:
         # Merge all events into single timeline
         merged_data = first_data
         for _, data in data_to_use[1:]:
@@ -393,13 +429,15 @@ def create_timeline_from_bundle(
             number_type=effective_number_type,
             uid=uid,
         )
-        timeline._events = merged_data.prefix_ids(timeline.id)
+        if len(data_to_use) > 1:
+            _refuse_repeated_event_ids(merged_data, timeline.id)
+        timeline._events = merged_data
 
         module_logger.debug(
             f"Created timeline '{timeline.id}' with {len(merged_data)} events"
         )
 
-        return _flag_minted(timeline, minted)
+        return timeline
 
     else:
         # Multiple data: create parent with children at offset 0
@@ -422,22 +460,22 @@ def create_timeline_from_bundle(
             # Create child with corrected number_type
             child_coord_range = data.coordinate_range()
             child_length = child_coord_range[1] if child_coord_range else 0
-            # The store name is the child's label, and leads its event ids;
-            # the child's id is minted in the parent's manifest.
+            # The store name is the child's label; its id is minted.
             child = timeline_class(
                 length=child_length,
                 unit=data.unit,
                 number_type=effective_number_type,
+                uid=mint_timeline_id(data.unit, minter),
                 name=name,
             )
-            child._events = data.prefix_ids(name)
+            child._events = data
             parent.add_child(child, offset=0, allow_expansion=True)
 
         module_logger.debug(
             f"Created timeline '{parent.id}' with {parent.n_children} children"
         )
 
-        return _flag_minted(parent, minted)
+        return parent
 
 
 def create_timeline(
@@ -448,6 +486,8 @@ def create_timeline(
     exclude_stores: list[str] | None = None,
     flatten: bool = False,
     group_by: str | None = None,
+    *,
+    minter: IdMinter | None = None,
 ) -> "Timeline":
     """Create a Timeline from various source types.
 
@@ -476,6 +516,8 @@ def create_timeline(
             If False (default), multiple data sources become children.
         group_by: Field name to group events by. Each unique value becomes
             a child timeline. Useful for grouping by image_filename, page, etc.
+        minter: The minter of every timeline ID the call mints, as
+            :func:`create_timeline_from_bundle` says.
 
     Returns:
         A Timeline with events (single source) or children (multiple sources/groups).
@@ -496,7 +538,7 @@ def create_timeline(
         >>> loader = PartituraLoader()
         >>> loader.load("score.musicxml")
         >>> timeline = create_timeline(loader, uid="my_score")
-        >>> # Each child is named after its store; its id is minted (clt_2, ...)
+        >>> # Each child is named after its store; its id is minted (clt_...)
         >>> children = {timeline.get_child(i).name: i for i in timeline.list_children()}
         >>> notes_tl = timeline.get_child(children["notes"])
 
@@ -535,6 +577,7 @@ def create_timeline(
         exclude_stores=exclude_stores,
         flatten=flatten,
         group_by=group_by,
+        minter=minter,
     )
 
 

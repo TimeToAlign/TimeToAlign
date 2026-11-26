@@ -19,7 +19,8 @@ import timetoalign
 
 assert "timetoalign.timelines" not in sys.modules, "timeline layer already imported"
 data = timetoalign.EventData.from_dicts(
-    [{"event_type": "Note", "start": 0, "end": 1}], unit=timetoalign.TimeUnit.quarters
+    [{"id": "n1", "event_type": "Note", "start": 0, "end": 1}],
+    unit=timetoalign.TimeUnit.quarters,
 )
 """
 
@@ -46,8 +47,8 @@ def test_event_data_creates_a_timeline_after_import_timetoalign() -> None:
 
 def test_store_creates_a_timeline_after_import_timetoalign() -> None:
     lines = _run("""
-        timeline = timetoalign.SingleStore(data).create_timeline(uid="clt_1")
+        timeline = timetoalign.SingleStore(data).create_timeline(uid="score")
         ids = timeline.get_events().table.column("id").to_pylist()
         print(type(timeline).__name__, timeline.id, ids)
         """)
-    assert lines == ["ContinuousLogicalTimeline clt_1 ['clt_1:note_1']"]
+    assert lines == ["ContinuousLogicalTimeline score ['n1']"]

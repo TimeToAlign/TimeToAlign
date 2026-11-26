@@ -139,7 +139,7 @@ from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap
 from timetoalign.storage.events import EventData, mint_event_ids
-from timetoalign.timelines.factory import _mint_timeline_id
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -589,8 +589,8 @@ class Ieee1599Loader(XmlLoader):
         coordinate and the hpos sum a single integer field.  Events notated as
         simultaneous carry ``timing="0"`` and so share a coordinate.
         """
-        self._spine_uid = _mint_timeline_id(
-            self, TimeUnit.ticks, role=self._claim_role("spine")
+        self._spine_uid = mint_timeline_id(
+            TimeUnit.ticks, role=self._claim_role("spine")
         )
         timing = 0
         hpos = 0
@@ -621,9 +621,7 @@ class Ieee1599Loader(XmlLoader):
         recoverable by grouping on ``event_ref`` and ordering by
         ``notehead_index``.
         """
-        self._los_uid = _mint_timeline_id(
-            self, TimeUnit.ticks, role=self._claim_role("los")
-        )
+        self._los_uid = mint_timeline_id(TimeUnit.ticks, role=self._claim_role("los"))
         los = root.find("./logic/los")
         if los is None:
             return
@@ -828,7 +826,7 @@ class Ieee1599Loader(XmlLoader):
             description = group.get("description") or "edition"
             role = self._claim_role(description)
             spec = _EditionSpec(
-                uid=_mint_timeline_id(self, TimeUnit.pixels, role=role),
+                uid=mint_timeline_id(TimeUnit.pixels, role=role),
                 role=role,
                 description=description,
                 pages=[],
@@ -956,7 +954,7 @@ class Ieee1599Loader(XmlLoader):
             general = track.find("track_general")
             notes = None if general is None else general.find("notes")
             spec = _TrackSpec(
-                uid=_mint_timeline_id(self, TimeUnit.seconds, role=role),
+                uid=mint_timeline_id(TimeUnit.seconds, role=role),
                 role=role,
                 file_name=file_name,
                 attributes={

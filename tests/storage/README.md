@@ -209,29 +209,43 @@ values without reaching into `EventData`'s private `_table`.
 ### `test_events.py` - Minted event IDs, Projections as rows and the declared `projection_of` column
 
 **Purpose:** Every path that builds an `EventData` mints a missing event ID
-through the library's one minter (`core/ids.py::mint_ids`), a Projection
-object stands for its event row, and a Projection's reference column is typed
-by declaration rather than by the rows of one batch.
+through `mint_event_ids`, which draws from the library's random-ID minter
+(`core/ids.py::IdMinter`), a Projection object stands for its event row, and
+a Projection's reference column is typed by declaration rather than by the
+rows of one batch.
 
-**Contract and what proves it:**
+**Contract and what proves it** (`TestMintedIds`). A minted ID is only
+proven by the minter that drew it, so each expected ID below is computed by
+an `IdMinter` of the same seed in the order the contract states, never
+typed from a run: a test that restated the output of the function under
+test would prove nothing.
 
-- `mint_event_ids(event_types, taken)` (public, also exported from
-  `timetoalign.storage`, the same function) mints one ID per type, in order: the
-  prefix is the event type in lower case (a missing type counts as
-  `Event`), N continues above the highest number held under that prefix,
-  so a gap is never filled. `["Note", "Projection", "Note", None]` against
-  `{"note_1", "projection_2", "note:000005"}` gives exactly `["note_2",
-  "projection_3", "note_3", "event_1"]` (`projection_1` is free but lies
-  below `projection_2`, so it is not given; `note:000005` is no minted ID).
-- `EventData.from_dicts` mints above the IDs its rows give: a row given
-  `note_4` and one without an ID end with `note_4` and `note_5` (no
-  repeated ID within the table); `from_arrays` without an `id` column mints
-  `projection_1`, `projection_2`, `note_1` for the types `Projection,
-  Projection, Note`.
+- `mint_event_ids(event_types, minter)` (public, also exported from
+  `timetoalign.storage`, the same function) mints one ID per type: the
+  prefix is the event type in lower case (`event` for a missing or empty
+  type), the suffix drawn from *minter*, one batch per prefix in the order
+  of each prefix's first row, the rows of a prefix in row order. So
+  `["Note", "Projection", "Note", None, ""]` with `IdMinter(5)` gives the
+  first two IDs of a second `IdMinter(5)` (minted under `note`) for rows 0
+  and 2, its third (`projection`) for row 1, and its fourth and fifth
+  (`event`) for rows 3 and 4. Without a minter the IDs come from the content
+  minter of the event types: two calls with equal types in one test give
+  distinct IDs, and after `reset_content_minters()` the first call's IDs
+  again (the process replays).
+- `EventData.from_dicts` and `from_arrays` keep a given ID and mint the
+  missing ones: with `seed=3`, the rows without an ID hold exactly the IDs
+  `mint_event_ids` draws from `IdMinter(3)` for their event types, in row
+  order of the missing rows; with `minter=` they continue that minter's
+  counter (a loader's one minter: the second table starts where the first
+  stopped); two calls with one seed give equal tables; two calls without
+  either give distinct IDs. `from_arrays` mints both for an absent `id`
+  column and for a null in a given one. `from_dataframe` passes `seed=` on.
+  Giving both `seed` and `minter` raises `TypeError`. No table built by a
+  constructor holds a null ID.
 - `EventData.from_dicts` takes a `Projection` object, alone or in the list
   beside dicts, as its event row: `Projection(start=Coordinate(2, samples),
-  duration=Duration(3, samples), projection_of=EventReference(clt_6, x1))`
-  and a Note dict give the IDs `projection_1`, `note_1`, the event type
+  duration=Duration(3, samples), projection_of=EventReference(clt_6, x1),
+  id=p1)` and a Note dict with the ID `n1` give the IDs `p1`, `n1`, the event type
   `Projection`, the cells `{2.0, 2, 1}` and `{3.0, 3, 1}` and the reference
   as its two values; a Projection given its ID keeps it. A position given as
   a `Coordinate` in the table's unit is written in the table's number type
@@ -243,26 +257,6 @@ by declaration rather than by the rows of one batch.
   `EventReferenceField` field type in its metadata, so `extend` with a batch
   holding a reference concatenates and the column reads `[None,
   {"timeline_id": "clt_6", "event_id": "x1azmn68"}]`.
-
-### `test_events.py` - `EventData.prefix_ids()` on every id, null included
-
-**Purpose:** `prefix_ids(prefix)` places events onto a timeline by writing
-`prefix:` before every event ID that does not already start with it. It reads
-the whole `id` column at once, so a table of any size costs one pass in
-PyArrow, and a null ID (which a table handed to the `EventData` constructor
-may hold; the `from_*` constructors mint one) stays null instead of failing.
-
-**Contract and what proves it** (`TestPrefixIds`), on the table built by the
-constructor from rows whose ids are `[None, "a", "p:b", "pa"]`:
-
-- `prefix_ids("p")` gives `[None, "p:a", "p:b", "p:pa"]`: the null row stays
-  null (it raised `AttributeError: 'NoneType' object has no attribute
-  'startswith'` before), `a` is prefixed, `p:b` already carries the prefix
-  with its colon and is kept, and `pa`, which starts with the letter but not
-  with `p:`, is prefixed. The column stays `string`.
-- The same rows split into two chunks give the same column, so the result
-  does not depend on how the table is laid out in memory.
-- A table without rows gives an empty `string` column.
 
 ### `test_events.py` - `EventData.from_dataframe()` refuses a non-string column label
 
@@ -582,17 +576,17 @@ and holds one spelling of each value, whatever way its rows came in.
   Parquet file, read with `from_parquet` and placed on a timeline, then
   `add_projections` of the same Projection at `1/2`, gave a second
   Projection (`projection_2`), since Projections are matched by their cells;
-  now it is the same Projection (`projection_1`, one event).
+  now it is the same Projection (the ID the first call gave, one event).
 - **Cells are reduced at the doors only** (`TestReducedAtTheDoorsOnly`). A
   table derived from tables already held (rows selected by `filter` or
-  `where`, IDs prefixed, tables joined by `concat`, a column retyped, a
+  `where`, tables joined by `concat`, a column retyped, a
   timeline's own copy, the rows `get_events` rebuilds from a timeline and
   its children) holds cells that were reduced when they entered, so
   reducing them again costs a pass over every coordinate column and changes
   nothing. The proof counts the calls of the one reducing function,
   `storage.events._in_lowest_terms`, replaced for the test by a counting
   wrapper around it: `EventData(table)` and `EventData.from_parquet` call it
-  once each (the doors); `filter`, `prefix_ids`, `concat`, a timeline made
+  once each (the doors); `filter`, `concat`, a timeline made
   by `create_timeline`, and `get_events(temporal_type=, event_type=,
   min_coord=, max_coord=)` on a flat timeline and on a parent with a child
   call it zero times. A table of no rows is not given to it at all, as it
@@ -673,12 +667,12 @@ Each check therefore runs a fresh interpreter (`sys.executable -c`) that does
 pass whether or not the fix exists), then calls the entry point and prints
 what it made.
 
-- `EventData.from_dicts` of one `Note` `[0, 1)` quarters, then
+- `EventData.from_dicts` of one `Note` `n1`, `[0, 1)` quarters, then
   `create_timeline(uid="notes")`: a `ContinuousLogicalTimeline` with id
   `notes` holding one event.
-- `SingleStore` of the same data, then `create_timeline(uid="clt_1")`: a
-  `ContinuousLogicalTimeline` with id `clt_1` whose events are
-  `["clt_1:note_1"]` (the store prefixes the event ID with the timeline's).
+- `SingleStore` of the same data, then `create_timeline(uid="score")`: a
+  `ContinuousLogicalTimeline` with id `score` whose events are `["n1"]` (an
+  event keeps its ID on the timeline).
 
 The child's standard output must be exactly those lines, and its exit code 0;
 before the fix both calls raised `RuntimeError: Timeline creation requires

@@ -90,7 +90,7 @@ from timetoalign.core.fields import (
     drop_from_schema,
     register_value_projector,
 )
-from timetoalign.core.ids import mint_ids, quote_id, validate_id
+from timetoalign.core.ids import IdMinter, content_minter, quote_id, validate_id
 from timetoalign.core.provenance import (
     Belief,
     Provenance,
@@ -123,6 +123,7 @@ from timetoalign.core.time import (
     struct_to_rational,
 )
 from timetoalign.core.timestamp import _format_coordinate
+from timetoalign.storage.events import _given_minter, _ipc_bytes
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -131,7 +132,7 @@ if TYPE_CHECKING:
 
 module_logger = logging.getLogger(__name__)
 
-#: The prefix of a minted claim id (``claim_1``).
+#: The prefix of a minted claim id (``claim_…``).
 _CLAIM_ID_PREFIX = "claim"
 
 
@@ -259,12 +260,11 @@ def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, holder: str) -> No
 
     A claim's id never changes once it holds one, and a MatchClaim is
     addressed by its id alone, so an id the holder already holds, or one
-    held by two newcomers, is refused, whether it was given or minted. A
-    row without an id passes. Vectorized: the cost is that of hashing the
-    ids, whatever their number.
+    held by two newcomers, is refused, whether it was given or minted.
+    Vectorized: the cost is that of hashing the ids, whatever their number.
 
     Args:
-        ids: The newcomers' ids (a string array; null for a row without one).
+        ids: The newcomers' ids (a string array).
         taken: The ids the holder already holds.
         holder: What holds the ids, for the message (``"bundle"``,
             ``"field"``).
@@ -289,36 +289,47 @@ def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, holder: str) -> No
         )
 
 
-def _admitted_claim_ids(ids: pa.Array, taken: pa.Array, *, holder: str) -> pa.Array:
-    """Return the ids rows keep when they join a bundle.
+def _minted_claim_ids(
+    struct_array: pa.StructArray, minter: IdMinter | None
+) -> pa.StructArray:
+    """Return the claim rows *struct_array* with an id minted for each row without one.
 
-    The ids are checked first (:func:`_refuse_held_claim_ids`), so a refusal
-    changes nothing. A row without an id is then minted one (``claim_N``, N
-    above the highest held), which is the only id a bundle ever chooses; a
-    :class:`MatchClaimField` mints none, its rows keep a missing id until
-    the bundle they join mints it.
-
-    Args:
-        ids: The newcomers' ids (a string array; null for a row without one).
-        taken: The ids the bundle already holds.
-        holder: What holds the ids, for the message.
-
-    Returns:
-        The ids the newcomers keep, in row order.
-
-    Raises:
-        ValueError: If an id is already held or held twice.
+    The ids are drawn from *minter* in row order (``claim_…``); without a
+    minter, from the content minter of the rows
+    (:func:`~timetoalign.core.ids.content_minter` of ``"claim"`` and the
+    Arrow IPC bytes of every column of the rows but ``id``). Given ids are
+    kept.
     """
-    ids = pc.cast(ids, pa.string())
-    taken = pc.cast(taken, pa.string())
-    _refuse_held_claim_ids(ids, taken, holder=holder)
-    present = ids.filter(pc.is_valid(ids))
-    missing = pc.is_null(ids)
-    count = missing.true_count
+    ids = pc.cast(struct_array.field("id"), pa.string())
+    count = ids.null_count
     if count == 0:
-        return ids
-    fresh = mint_ids(_CLAIM_ID_PREFIX, pa.concat_arrays([taken, present]), count)
-    return pc.replace_with_mask(ids, missing, fresh)
+        return struct_array
+    if minter is None:
+        rows = pa.Table.from_batches(
+            [pa.RecordBatch.from_struct_array(struct_array)]
+        ).drop_columns(["id"])
+        minter = content_minter(_CLAIM_ID_PREFIX, _ipc_bytes(rows))
+    filled = pc.replace_with_mask(
+        ids, pc.is_null(ids), minter.mint_many(_CLAIM_ID_PREFIX, count)
+    )
+    fields = list(struct_array.type)
+    return pa.StructArray.from_arrays(
+        [
+            filled if field.name == "id" else struct_array.field(field.name)
+            for field in fields
+        ],
+        fields=fields,
+    )
+
+
+def _given_or_seeded_claim_id(claim_id: str | None, seed: int | None) -> str | None:
+    """*claim_id*, else with a *seed* the first id of ``IdMinter(seed)``.
+
+    None leaves the claim to mint its id from its content.
+    """
+    if claim_id is not None or seed is None:
+        return claim_id
+    return IdMinter(seed).mint(_CLAIM_ID_PREFIX)
 
 
 def _join_claims(
@@ -326,13 +337,12 @@ def _join_claims(
 ) -> list["MatchClaim"]:
     """Return *claims* as they join a holder of the ids *taken*.
 
-    The ids are admitted by :func:`_admitted_claim_ids`, which never renames
-    one: a claim whose id the holder holds, or two claims under one id, are
-    refused before anything changes. A claim without an id is then given
-    the id the holder mints for it, in place (its first id, not a rename).
-    A claim that belongs to no bundle joins as
-    itself; a claim a bundle already holds joins as a copy, so the bundle it
-    came from keeps its back-reference.
+    Every claim holds its id from construction, and joining mints none: a
+    claim whose id the holder holds, or two claims under one id, are
+    refused before anything changes (:func:`_refuse_held_claim_ids`). A
+    claim that belongs to no bundle joins as itself; a claim a bundle
+    already holds joins as a copy, so the bundle it came from keeps its
+    back-reference.
 
     Args:
         claims: The newcomers.
@@ -342,15 +352,11 @@ def _join_claims(
     Returns:
         The claims to store, in order.
     """
-    ids = _admitted_claim_ids(
+    _refuse_held_claim_ids(
         pa.array([claim.id for claim in claims], type=pa.string()),
-        taken,
+        pc.cast(taken, pa.string()),
         holder=holder,
     )
-    for claim, claim_id in zip(claims, ids.to_pylist(), strict=True):
-        if claim.id is None:
-            # Frozen model: its first id is set through object.__setattr__.
-            object.__setattr__(claim, "id", claim_id)
     return [claim if claim._bundle is None else claim.model_copy() for claim in claims]
 
 
@@ -693,10 +699,12 @@ class MatchClaim(BaseModel):
         event_b_name: Name/label of the event on timeline B (if known).
         id: The claim's identifier, which alone addresses it: unique in
             the :class:`MatchClaimField` or ``AlignmentBundle`` holding the
-            claim. It never changes once given: a table or bundle already
-            holding it refuses the claim. A claim made without one holds
-            ``None`` until the first bundle it joins mints one
-            (``claim_N``).
+            claim. It never changes: a table or bundle already holding it
+            refuses the claim. A claim made without one mints one at
+            construction (``claim_…``): from ``IdMinter(seed)`` when
+            :meth:`from_events` or :meth:`nomatch` is given ``seed=``, else
+            from the content minter of its other properties (:meth:`to_dict`
+            without ``id``).
 
     Examples:
         >>> from timetoalign.timelines.types import (
@@ -732,7 +740,7 @@ class MatchClaim(BaseModel):
     event_a_name: str | None = None
     event_b_id: str | None = None
     event_b_name: str | None = None
-    id: str | None = None  # noqa: A003 — minted by the first bundle it joins
+    id: str | None = None  # noqa: A003 — minted at construction where not given
 
     # Runtime association with the owning bundle. A private attr takes no
     # part in the derived Arrow schema or the repr, and ``__eq__`` excludes it.
@@ -748,7 +756,11 @@ class MatchClaim(BaseModel):
 
     @model_validator(mode="after")
     def _validate_claim(self) -> "MatchClaim":
-        """Validate the ID, and the timelines, anchors and events against the kind."""
+        """Validate the ID, and the timelines, anchors and events against the kind.
+
+        A claim without an ID is minted one from the content minter of its
+        other properties.
+        """
         if self.id is not None:
             validate_id(self.id)
         if self.timeline_a_id == self.timeline_b_id:
@@ -797,6 +809,16 @@ class MatchClaim(BaseModel):
                 "A MatchClaim names its events: a NOMATCH claim one event "
                 "(the other side None, the NOMATCH sentinel), a conceptual "
                 "claim two."
+            )
+        if self.id is None:
+            content = {
+                key: value for key, value in self.to_dict().items() if key != "id"
+            }
+            # Frozen model: its id is set once, here, through object.__setattr__.
+            object.__setattr__(
+                self,
+                "id",
+                content_minter(_CLAIM_ID_PREFIX, content).mint(_CLAIM_ID_PREFIX),
             )
         return self
 
@@ -1304,6 +1326,7 @@ class MatchClaim(BaseModel):
         certainty: float = 1.0,
         provenance: Provenance | None = None,
         id: str | None = None,  # noqa: A002 — the claim's id
+        seed: int | None = None,
     ) -> "MatchClaim":
         """Case (a): Two events on different timelines correspond.
 
@@ -1328,8 +1351,8 @@ class MatchClaim(BaseModel):
                 non-synchronous (conceptual) claim holds no anchors.
             certainty: How certain the claim is, in [0, 1].
             provenance: How the claim was made and who believes it.
-            id: The claim's id; without one, the first bundle the claim
-                joins mints it.
+            id: The claim's id; without one, it is minted (:class:`MatchClaim`).
+            seed: The seed of the minter of a missing id.
 
         Returns:
             A MatchClaim naming both events, with 1 or 2 anchors when
@@ -1376,7 +1399,7 @@ class MatchClaim(BaseModel):
             event_a_name=_event_name(event_a),
             event_b_id=_event_id(event_b, "event_b"),
             event_b_name=_event_name(event_b),
-            id=id,
+            id=_given_or_seeded_claim_id(id, seed),
         )
         return claim.check_on_timelines(timeline_a, timeline_b)
 
@@ -1390,6 +1413,7 @@ class MatchClaim(BaseModel):
         certainty: float = 1.0,
         provenance: Provenance | None = None,
         id: str | None = None,  # noqa: A002 — the claim's id
+        seed: int | None = None,
     ) -> "MatchClaim":
         """Case (b): An event has no equivalent on the other timeline.
 
@@ -1404,8 +1428,8 @@ class MatchClaim(BaseModel):
                 counterpart (a timeline, or its id).
             certainty: How certain the claim is, in [0, 1].
             provenance: How the claim was made and who believes it.
-            id: The claim's id; without one, the first bundle the claim
-                joins mints it.
+            id: The claim's id; without one, it is minted (:class:`MatchClaim`).
+            seed: The seed of the minter of a missing id.
 
         Returns:
             A non-synchronous MatchClaim with no anchors.
@@ -1424,7 +1448,7 @@ class MatchClaim(BaseModel):
             provenance=provenance,
             event_a_id=_event_id(event, "event"),
             event_a_name=_event_name(event),
-            id=id,
+            id=_given_or_seeded_claim_id(id, seed),
         )
         return claim.check_on_timelines(
             timeline, None if isinstance(other_timeline, str) else other_timeline
@@ -1462,7 +1486,7 @@ class MatchClaim(BaseModel):
         (coordinate dicts or coordinates), rebuilt as an
         :class:`AlignmentAnchor` on the claim's ``timeline_a_id`` and
         ``timeline_b_id``; an :class:`AlignmentAnchor` is taken as it is. A
-        missing or null ``id`` leaves the claim without one.
+        missing or null ``id`` is minted (:class:`MatchClaim`).
 
         Raises:
             ValueError: If the timeline IDs are missing, or an anchor mapping
@@ -2019,9 +2043,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
     :meth:`from_claims`, carry it per row.
 
     A MatchClaim is addressed by its id alone: an id held twice is refused,
-    and an id never changes. A field mints no id: a row without one keeps
-    it missing until the :class:`~timetoalign.alignment.bundle.AlignmentBundle`
-    it joins mints it.
+    and an id never changes. A field never holds a row without an id: every
+    constructor mints the missing ones (``claim_…``), from ``IdMinter(seed)``
+    when given ``seed=``, from the minter given as ``minter=`` (a loader's),
+    else from the content minter of the rows (every column but ``id``).
+    Joining a :class:`~timetoalign.alignment.bundle.AlignmentBundle` mints
+    nothing.
 
     Attributes:
         table: The claims as a :class:`pyarrow.Table` (read-only property),
@@ -2089,6 +2116,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         ) = None,
         certainty: float = 1.0,
         provenance: Provenance | None = None,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
     ) -> "MatchClaimField":
         """Build a field of event matches from parallel columns (the vectorized path).
 
@@ -2101,10 +2130,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         and event ids are filled from the inputs, and every coordinate is a
         position on its row's timeline, written in that timeline's unit and
         declared number type. With the two end columns, every row with an
-        end on both sides is an interval claim. The ids are left null: the
-        bundle the field joins mints them
-        (:meth:`~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field`),
-        so fields of several sources join one bundle. Names are left null,
+        end on both sides is an interval claim. The ids are minted, in row
+        order (:class:`MatchClaimField`). Names are left null,
         and so is the ``provenance`` column (the shared provenance is
         injected on read). The field is checked against the timelines
         (:meth:`check_on_timelines`).
@@ -2124,17 +2151,21 @@ class MatchClaimField(SemanticField[MatchClaim]):
             end_coordinate_b: The end of each event on timeline B.
             certainty: How certain every claim is, in [0, 1].
             provenance: Shared provenance for every claim in the field.
+            seed: The seed of the minter of the ids.
+            minter: The minter of the ids (a loader's).
 
         Returns:
             A new :class:`MatchClaimField`.
 
         Raises:
+            TypeError: If both *seed* and *minter* are given.
             ValueError: If the inputs do not all have the same length, a row
                 names no event, a row names a timeline not among
                 *timelines*, the end columns are given one without the
                 other, a row gives an end on one side only, or a coordinate
                 is a number no cell holds (a NaN).
         """
+        given = _given_minter(seed, minter)
         axes = _axes(timelines)
         tl_a = cls._string_array(timeline_a_ids)
         tl_b = cls._string_array(timeline_b_ids)
@@ -2205,7 +2236,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
             },
         )
         return cls._read(
-            struct_array, provenance, source="column set", where="as provenance="
+            struct_array,
+            provenance,
+            source="column set",
+            where="as provenance=",
+            minter=given,
         ).check_on_timelines(axes)
 
     @classmethod
@@ -2222,8 +2257,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Each row keeps every property of its claim, so every claim
         materialises equal to the one stored. A MatchClaim is addressed by
         its id alone: two claims under one id are refused (an id is never
-        renamed), and a claim without an id keeps it missing (the bundle the
-        field joins mints it).
+        renamed); every claim holds its id from construction.
 
         If ``provenance`` is ``None`` and all claims share one equal
         :class:`~timetoalign.core.provenance.Provenance`, it is adopted as
@@ -2273,7 +2307,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
         return cls._admitted(struct_array, provenance=provenance)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MatchClaimField":
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
+    ) -> "MatchClaimField":
         """Deserialize a field from a plain dictionary (inverse of :meth:`to_dict`).
 
         The mapping holds ``provenance`` (the field's
@@ -2284,15 +2324,19 @@ class MatchClaimField(SemanticField[MatchClaim]):
         :func:`~timetoalign.core.retrieval.coordinate_from_dict` and written
         into its storage cell as :meth:`from_claims` writes a claim's; every
         other cell is read as stored. A field built from claims therefore
-        comes back with an equal table and equal claims.
+        comes back with an equal table and equal claims. A row without an id
+        is minted one (:class:`MatchClaimField`).
 
         Args:
             data: A mapping as :meth:`to_dict` writes it.
+            seed: The seed of the minter of the missing ids.
+            minter: The minter of the missing ids (a loader's).
 
         Returns:
             A new :class:`MatchClaimField`.
 
         Raises:
+            TypeError: If both *seed* and *minter* are given.
             ValueError: If a mapping, at any depth, lacks a key it must hold
                 or holds an unknown one (the mapping itself, row, anchor,
                 provenance, belief, coordinate), or a coordinate dict is
@@ -2300,6 +2344,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 mapping carries provenance both under its key ``provenance``
                 and in its rows; or if two rows hold the same id.
         """
+        given = _given_minter(seed, minter)
         keys = ["provenance", "rows"]
         if not isinstance(data, dict) or sorted(data) != keys:
             raise ValueError(
@@ -2334,6 +2379,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             provenance,
             source="dictionary",
             where="under its key 'provenance'",
+            minter=given,
         )
 
     @classmethod
@@ -2405,7 +2451,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 )
 
     @classmethod
-    def from_table(cls, table: pa.Table) -> "MatchClaimField":
+    def from_table(
+        cls,
+        table: pa.Table,
+        *,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
+    ) -> "MatchClaimField":
         """Read a field back from its Arrow table (inverse of :attr:`table`).
 
         The table must hold one column per top-level property of
@@ -2421,16 +2473,19 @@ class MatchClaimField(SemanticField[MatchClaim]):
         ``timetoshare:provenance`` (the JSON of
         :meth:`~timetoalign.core.provenance.Provenance.to_dict`); a table
         without that key gives a field whose provenance is ``None``. Every
-        row is kept as stored; a row without an id keeps none (the bundle it
-        joins mints it).
+        row is kept as stored; a row without an id is minted one
+        (:class:`MatchClaimField`).
 
         Args:
             table: A table as written by :attr:`table`.
+            seed: The seed of the minter of the missing ids.
+            minter: The minter of the missing ids (a loader's).
 
         Returns:
             A new :class:`MatchClaimField`.
 
         Raises:
+            TypeError: If both *seed* and *minter* are given.
             ValueError: If the table lacks a column of a ``MatchClaim``
                 property, or a column's type is not the property's; if a
                 row is not a MatchClaim (:meth:`_read`); if the table
@@ -2438,6 +2493,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 rows; or if two rows hold the same id (a MatchClaim is
                 addressed by its id alone).
         """
+        given = _given_minter(seed, minter)
         columns = cls.struct_schema().names
         missing = [name for name in columns if name not in table.column_names]
         if missing:
@@ -2479,10 +2535,17 @@ class MatchClaimField(SemanticField[MatchClaim]):
             source="table",
             where=f"in its schema metadata ({cls._PROVENANCE_KEY.decode()!r})",
             further=further,
+            minter=given,
         )
 
     @classmethod
-    def from_package_table(cls, table: pa.Table) -> "MatchClaimField":
+    def from_package_table(
+        cls,
+        table: pa.Table,
+        *,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
+    ) -> "MatchClaimField":
         """Read a field from a MatchClaim table in the package form.
 
         The inverse of :attr:`package_table`: every anchor coordinate cell is
@@ -2494,15 +2557,18 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Args:
             table: A table as :attr:`package_table` gives it, or as read from
                 a package's ``match_claims.parquet``.
+            seed: The seed of the minter of the missing ids.
+            minter: The minter of the missing ids (a loader's).
 
         Returns:
             A new :class:`MatchClaimField`.
 
         Raises:
+            TypeError: If both *seed* and *minter* are given.
             ValueError: As :meth:`from_table`, or naming the column and row
                 of a cell not in the package form.
         """
-        return cls.from_table(cls._memory_table(table))
+        return cls.from_table(cls._memory_table(table), seed=seed, minter=minter)
 
     @staticmethod
     def _memory_table(table: pa.Table) -> pa.Table:
@@ -2520,6 +2586,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         path: str | os.PathLike[str],
         *,
         timelines: Iterable[Any] | Mapping[str, Any] | None = None,
+        seed: int | None = None,
+        minter: IdMinter | None = None,
     ) -> "MatchClaimField":
         """Read the MatchClaim table from its Parquet file.
 
@@ -2529,17 +2597,22 @@ class MatchClaimField(SemanticField[MatchClaim]):
             timelines: Where given, the timelines the rows name (as
                 :meth:`check_on_timelines` takes them); the field is checked
                 against them.
+            seed: The seed of the minter of the missing ids.
+            minter: The minter of the missing ids (a loader's).
 
         Returns:
             The field :meth:`to_parquet` wrote, value for value.
 
         Raises:
+            TypeError: If both *seed* and *minter* are given.
             ValueError: As :meth:`from_table`, or as
                 :meth:`check_on_timelines`.
         """
         import pyarrow.parquet as pq
 
-        field = cls.from_package_table(pq.read_table(cls._file_path(path)))
+        field = cls.from_package_table(
+            pq.read_table(cls._file_path(path)), seed=seed, minter=minter
+        )
         return field if timelines is None else field.check_on_timelines(timelines)
 
     @classmethod
@@ -2557,12 +2630,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
         source: str,
         where: str,
         further: pa.Table | None = None,
+        minter: IdMinter | None = None,
     ) -> "MatchClaimField":
         """Admit rows read from a table, a dictionary or columns.
 
         Refuses a row no :class:`MatchClaim` could be (:meth:`_refuse_malformed`)
         and provenance stated twice (:meth:`_refuse_provenance_twice`), then
-        admits the ids (:meth:`_admitted`).
+        mints the missing ids and admits them (:meth:`_admitted`).
 
         Args:
             struct_array: The rows, of type :attr:`pa_schema`.
@@ -2570,12 +2644,16 @@ class MatchClaimField(SemanticField[MatchClaim]):
             source: What is read, for the messages (``"table"``).
             where: Where the source states the field-level provenance.
             further: The table's further columns, row for row, if any.
+            minter: The minter of the missing ids; None for the content
+                minter of the rows.
         """
         cls._refuse_malformed(struct_array)
         cls._refuse_provenance_twice(
             provenance, struct_array.field("provenance"), source=source, where=where
         )
-        return cls._admitted(struct_array, provenance=provenance, further=further)
+        return cls._admitted(
+            struct_array, provenance=provenance, further=further, minter=minter
+        )
 
     @staticmethod
     def _refuse_malformed(data: pa.StructArray) -> None:
@@ -2762,15 +2840,14 @@ class MatchClaimField(SemanticField[MatchClaim]):
         provenance: Provenance | None,
         taken: pa.Array | None = None,
         holder: str = "field",
-        mint: bool = False,
         further: pa.Table | None = None,
+        minter: IdMinter | None = None,
     ) -> "MatchClaimField":
-        """Wrap *struct_array* with its ids admitted.
+        """Wrap *struct_array* with its ids minted and admitted.
 
-        An id already held or held twice is refused
-        (:func:`_refuse_held_claim_ids`). A field mints no id; joining a
-        bundle (``mint=True``, :func:`_admitted_claim_ids`) mints one for
-        every row without one.
+        A row without an id is minted one (:func:`_minted_claim_ids`); then
+        an id already held or held twice is refused
+        (:func:`_refuse_held_claim_ids`).
 
         Args:
             struct_array: The claim rows.
@@ -2778,22 +2855,16 @@ class MatchClaimField(SemanticField[MatchClaim]):
             taken: The ids already held (none: the field holds only its
                 own).
             holder: What holds the ids, for the message.
-            mint: Whether a row without an id is minted one.
             further: The further columns of the rows, if any.
+            minter: The minter of the missing ids; None for the content
+                minter of the rows.
         """
         taken = pa.array([], type=pa.string()) if taken is None else taken
-        if not mint:
-            _refuse_held_claim_ids(struct_array.field("id"), taken, holder=holder)
-            return cls._from_struct_array(
-                struct_array, provenance=provenance, further=further
-            )
-        ids = _admitted_claim_ids(struct_array.field("id"), taken, holder=holder)
-        arrays = [
-            ids if sub_field.name == "id" else struct_array.field(sub_field.name)
-            for sub_field in cls.struct_schema()
-        ]
-        rebuilt = pa.StructArray.from_arrays(arrays, fields=list(cls.struct_schema()))
-        return cls._from_struct_array(rebuilt, provenance=provenance, further=further)
+        struct_array = _minted_claim_ids(struct_array, minter)
+        _refuse_held_claim_ids(struct_array.field("id"), taken, holder=holder)
+        return cls._from_struct_array(
+            struct_array, provenance=provenance, further=further
+        )
 
     @classmethod
     def _from_struct_array(
@@ -3474,6 +3545,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             ...         "score": ("quarters", "fraction"),
             ...         "audio": ("seconds", "float"),
             ...     },
+            ...     seed=0,
             ... )
             >>> row = field.to_dict()["rows"][0]
             >>> row["start_anchor"]["coordinate_a"]
@@ -3481,7 +3553,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             >>> row["start_anchor"]["coordinate_b"]
             {'unit': 'seconds', 'number_type': 'float', 'value': 0.5}
             >>> row["id"], row["end_anchor"]
-            (None, None)
+            ('claim_1be6k8ij6dzad', None)
         """
         rows = _struct_rows(self._struct_array())
         paths = list(_coordinate_paths(self.struct_schema()))
@@ -3516,10 +3588,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         file as it was and no temporary file.
 
         Every MatchClaim written holds an id, which a named MatchStamp may
-        record: a field whose rows hold none (built from columns or from
-        claims without ids) is written from the bundle it joined, which
-        minted them (:attr:`AlignmentBundle.match_claim_table
-        <timetoalign.alignment.bundle.AlignmentBundle.match_claim_table>`).
+        record: a field holds an id in every row from its construction.
 
         Args:
             path: The file, or a directory to hold :attr:`file_name`
@@ -3539,8 +3608,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             row = pc.index(missing, True).as_py()
             raise ValueError(
                 f"MatchClaim table row {row} holds no id, and every MatchClaim "
-                f"of the file holds one: add the field to an AlignmentBundle, "
-                f"which mints the ids, and write its match_claim_table."
+                f"of the file holds one."
             )
         table = self.package_table
         target = self._file_path(path)
@@ -3756,17 +3824,14 @@ class MatchClaimField(SemanticField[MatchClaim]):
     def _joined(self, taken: pa.Array, *, holder: str) -> "MatchClaimField":
         """Return this field as it joins a bundle holding the ids *taken*.
 
-        A given or minted id the bundle holds, or one held twice, is refused
-        (an id never changes); a row without an id is minted one above the
-        highest held (:func:`_admitted_claim_ids`), its first id. The field
-        itself is left as it is.
+        Joining mints nothing: an id the bundle holds, or one held twice, is
+        refused (an id never changes). The field itself is left as it is.
         """
         return self._admitted(
             self._struct_array(),
             provenance=self._provenance,
             taken=taken,
             holder=holder,
-            mint=True,
             further=self._further,
         )
 
@@ -4118,7 +4183,7 @@ def _claims_between_events(
       dict's ``id`` (an event the timeline does not hold, ``projection_of``
       null), or, without one, under the id of a Projection the timeline
       already holds for the same event at the same position, else a
-      minted ``projection_N``; it names the other side's event in
+      minted ``projection_…``; it names the other side's event in
       ``projection_of`` where the other side is a held event (null where
       that side is a position or ``None``);
     - ``None``, the NOMATCH sentinel, on one side at most.
@@ -4153,8 +4218,8 @@ def _claims_between_events(
             the new claims keep.
 
     Returns:
-        The claims, in pair order, without ids (the bundle they join mints
-        them).
+        The claims, in pair order, each holding the id minted at its
+        construction (:class:`MatchClaim`).
 
     Raises:
         KeyError: If an id names no event of its timeline.

@@ -70,6 +70,7 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
+from timetoalign.core.ids import IdMinter, seed_from
 from timetoalign.display.html import code
 from timetoalign.loader._sources import (
     Source,
@@ -109,12 +110,15 @@ _POINT_EVENT_TYPE = "ListenHerePoint"
 def _point_ids(n_columns: int) -> pa.Array:
     """The ids of a recording's points, one per reference grid column, in order.
 
-    Every recording holds one point per grid column under the same id, the
-    id the timeline would mint for it (``listenherepoint_1`` for column 0),
-    given by the one event-ID minter
-    (:func:`~timetoalign.storage.events.mint_event_ids`, nothing taken).
+    Every recording holds one point per grid column under the same id,
+    minted by :func:`~timetoalign.storage.events.mint_event_ids` from a
+    minter seeded by the number of columns, so every recording of one grid
+    gets the same ids.
     """
-    return mint_event_ids(pa.repeat(pa.scalar(_POINT_EVENT_TYPE), n_columns))
+    return mint_event_ids(
+        pa.repeat(pa.scalar(_POINT_EVENT_TYPE), n_columns),
+        IdMinter(seed_from(_POINT_EVENT_TYPE, n_columns)),
+    )
 
 
 # endregion

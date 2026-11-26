@@ -33,7 +33,7 @@ from timetoalign.core.fields import (
     _struct_members,
     _valid_struct_cell,
 )
-from timetoalign.core.ids import quote_id
+from timetoalign.core.ids import IdMinter, content_minter, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
     combine_number_columns,
@@ -402,15 +402,19 @@ class EventsMixin(_Host):
         self,
         rows: Event | Sequence[dict[str, Any] | Event],
         allow_expansion: bool = False,
+        *,
+        seed: int | None = None,
     ) -> list[str]:
         """Add events to the timeline.
 
         Only ``event_type`` and a coordinate are strictly required per dict.
         Missing fields are filled in automatically:
 
-        - **id**: minted above every ID held on this timeline, its prefix the
-          event type in lower case: ``note_1``, ``beat_1``, ``projection_1``.
-          An ID once given on the timeline is never given again.
+        - **id**: minted (:func:`~timetoalign.storage.events.mint_event_ids`),
+          its prefix the event type in lower case: ``note_…``, ``beat_…``,
+          ``projection_…``; from ``IdMinter(seed)`` when *seed* is given,
+          else from the content minter of the timeline's ID, the number of
+          events it holds and the event types of the rows without an ID.
         - **temporal_type**: inferred from keys -- ``"interval"`` when both
           ``start`` and ``end`` (or ``duration``) are present, ``"instant"``
           otherwise.
@@ -455,13 +459,14 @@ class EventsMixin(_Host):
                 - instant: coordinate (for instant events), **or**
                 - start, end: coordinates (for interval events)
             allow_expansion: If True, expand timeline if events exceed length.
+            seed: The seed of the minter of the missing IDs.
 
         Returns:
             The IDs of the added events, in the order of *rows*.
 
         Raises:
-            ValueError: If an ID is already held by an event of this timeline
-                or given twice, a Projection row holds a key a Projection does
+            ValueError: If an ID, given or minted, is already held by an
+                event of this timeline or given twice, a Projection row holds a key a Projection does
                 not have or names an event of this timeline, a Box's shape is
                 off the timeline's axis (or its row's ``unit``,
                 ``number_type`` or ``timeline_id`` names another), a number of
@@ -476,8 +481,8 @@ class EventsMixin(_Host):
             >>> tl.add_events([
             ...     {"event_type": "Beat", "instant": 0.0},
             ...     {"event_type": "Note", "start": 0.0, "end": 0.5},
-            ... ])
-            ['beat_1', 'note_1']
+            ... ], seed=0)
+            ['beat_1be6k8ij6dzad', 'note_3cccv6pc7fclm']
         """
         # A shape is never converted: refused before any position of the rows
         # is converted, so the refusal names the shape, not a missing C-Map.
@@ -499,7 +504,7 @@ class EventsMixin(_Host):
             if row.get("event_type") == PROJECTION_EVENT_TYPE:
                 _check_projection_row(row, self._id)
         given_ids = [row.get("id") for row in rows]
-        rows = self._rows_with_ids(rows)
+        rows = self._rows_with_ids(rows, seed)
         added = self._event_data_of(rows)
         self._refuse_boxes_off_their_shapes(added, given_ids)
 
@@ -635,6 +640,8 @@ class EventsMixin(_Host):
         self,
         projections: Projection | Sequence[dict[str, Any] | Projection],
         allow_expansion: bool = False,
+        *,
+        seed: int | None = None,
     ) -> list[str]:
         """Add Projections to the timeline, reusing those it already holds.
 
@@ -646,14 +653,16 @@ class EventsMixin(_Host):
         and ``duration``; a Projection with an ``id`` reuses the one held
         under that id when its content is equal. Rows of one call are taken
         alike, so two rows standing for one thing give one Projection.
-        Everything else is added, its id kept or minted
-        (``projection_N``).
+        Everything else is added, its id kept or minted (``projection_…``,
+        by :meth:`add_events`).
 
         Args:
             projections: :class:`~timetoalign.core.Projection` objects or
                 their event rows (one or a list).
             allow_expansion: If True, expand the timeline if a Projection
                 added exceeds its length.
+            seed: The seed of the minter of the missing IDs, as
+                :meth:`add_events` takes it.
 
         Returns:
             The ID of the Projection standing for each row, in row order.
@@ -670,10 +679,10 @@ class EventsMixin(_Host):
             >>> tl = ContinuousPhysicalTimeline(length=10.0)
             >>> n1 = EventReference(timeline_id="score", event_id="n1")
             >>> at = Coordinate(2.5, "seconds")
-            >>> tl.add_projections([Projection(start=at, projection_of=n1)] * 2)
-            ['projection_1', 'projection_1']
+            >>> tl.add_projections([Projection(start=at, projection_of=n1)] * 2, seed=0)
+            ['projection_1be6k8ij6dzad', 'projection_1be6k8ij6dzad']
             >>> tl.add_projections(Projection(start=at, projection_of=n1))
-            ['projection_1']
+            ['projection_1be6k8ij6dzad']
         """
         rows = [self._resolve_row_coordinates(row) for row in _event_rows(projections)]
         if not rows:
@@ -745,7 +754,7 @@ class EventsMixin(_Host):
                 first[key] = len(added)
                 ids.append(len(added))
                 added.append(row)
-        minted = self.add_events(added, allow_expansion) if added else []
+        minted = self.add_events(added, allow_expansion, seed=seed) if added else []
         return [minted[entry] if isinstance(entry, int) else entry for entry in ids]
 
     def _manifest_projection_ids(self) -> tuple[pa.Array, pa.Array]:
@@ -761,83 +770,80 @@ class EventsMixin(_Host):
         """
         return tree_projection_ids(self._manifest_roots(), skip=self)
 
-    def _rows_with_ids(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _rows_with_ids(
+        self, rows: list[dict[str, Any]], seed: int | None
+    ) -> list[dict[str, Any]]:
         """Return *rows*, each with an ID new to this timeline.
 
-        A given ID is kept; one already held by an event of this timeline, or
-        given twice, is refused. A missing one is minted above both. A
-        Projection's ID is unique in the timeline's manifest
-        (:meth:`_manifest_projection_ids`): where the rows hold a Projection,
-        a given Projection ID another timeline of the manifest holds as a
-        Projection is refused, naming the first timeline holding it and this
-        one, and every ID is minted above the Projection IDs held there too.
-        Timelines that joined after creating their Projections may hold one
-        ID each; that refuses nothing here (the package writer refuses it).
-        The held IDs are read column-wise, never as Python objects.
+        A given ID is kept; a missing one is minted
+        (:func:`~timetoalign.storage.events.mint_event_ids`) from
+        ``IdMinter(seed)``, or without a seed from the content minter of
+        this timeline's ID, the number of events it holds and the event
+        types of the rows without an ID. An ID, given or minted, already
+        held by an event of this timeline, or held by two rows, is refused.
+        A Projection's ID is unique in the timeline's manifest
+        (:meth:`_manifest_projection_ids`): a Projection ID another timeline
+        of the manifest holds as a Projection is refused, naming the first
+        timeline holding it and this one. Timelines that joined after
+        creating their Projections may hold one ID each; that refuses
+        nothing here (the package writer refuses it). The held IDs are read
+        column-wise, never as Python objects.
 
         Raises:
-            ValueError: If a given ID is held already or given twice, or a
-                given Projection ID names a Projection of another timeline of
-                the manifest.
+            ValueError: If an ID is held already or given twice, or a
+                Projection ID names a Projection of another timeline of the
+                manifest.
         """
-        given = [row["id"] for row in rows if row.get("id") is not None]
         held = self._events.table.column("id")
-        given_ids = pa.array(given, type=pa.string())
-        around = pa.array([], pa.string())
+        missing = [row.get("event_type") for row in rows if row.get("id") is None]
+        if missing:
+            minter = (
+                IdMinter(seed)
+                if seed is not None
+                else content_minter("event", self._id, len(held), missing)
+            )
+            minted = iter(mint_event_ids(missing, minter).to_pylist())
+            rows = [
+                row if row.get("id") is not None else {**row, "id": next(minted)}
+                for row in rows
+            ]
+        row_ids: list[str] = [row["id"] for row in rows]
+        ids = pa.array(row_ids, type=pa.string())
         if any(row.get("event_type") == PROJECTION_EVENT_TYPE for row in rows):
             around, holders = self._manifest_projection_ids()
-            given_projections = pa.array(
+            projections = pa.array(
                 [
                     row["id"]
                     for row in rows
-                    if row.get("id") is not None
-                    and row.get("event_type") == PROJECTION_EVENT_TYPE
+                    if row.get("event_type") == PROJECTION_EVENT_TYPE
                 ],
                 pa.string(),
             )
-            # Only a given ID is checked: timelines that joined after creating
-            # their Projections may hold one ID each, refused by the writer.
-            at = pc.index_in(given_projections, value_set=around)
+            at = pc.index_in(projections, value_set=around)
             hits = at.filter(at.is_valid())
             refuse_shared_projection_ids(
                 pa.concat_arrays(
-                    [around.take(hits), given_projections.filter(at.is_valid())]
+                    [around.take(hits), projections.filter(at.is_valid())]
                 ),
                 pa.concat_arrays(
                     [holders.take(hits), pa.array([self._id] * len(hits), pa.string())]
                 ),
             )
-        if given:
-            repeated = sorted(
-                event_id for event_id, count in Counter(given).items() if count > 1
-            )
-            if repeated:
-                raise ValueError(
-                    f"Event id {quote_id(repeated[0])} is given twice in one "
-                    f"call to add_events on timeline {quote_id(self._id)}"
-                )
-            clash = pc.filter(given_ids, pc.is_in(given_ids, value_set=held))
-            if len(clash):
-                raise ValueError(
-                    f"Event id {quote_id(clash[0].as_py())} is already held by an "
-                    f"event of timeline {quote_id(self._id)}"
-                )
-        missing = [row.get("event_type") for row in rows if row.get("id") is None]
-        if not missing:
-            return rows
-        minted = iter(
-            mint_event_ids(
-                missing,
-                pa.chunked_array(
-                    [*pc.cast(held, pa.string()).chunks, given_ids, around],
-                    pa.string(),
-                ),
-            ).to_pylist()
+        repeated = sorted(
+            event_id for event_id, count in Counter(row_ids).items() if count > 1
         )
-        return [
-            row if row.get("id") is not None else {**row, "id": next(minted)}
-            for row in rows
-        ]
+        if repeated:
+            raise ValueError(
+                f"Event id {quote_id(repeated[0])} is given twice in one "
+                f"call to add_events on timeline {quote_id(self._id)}"
+            )
+        clash = pc.filter(ids, pc.is_in(ids, value_set=pc.cast(held, pa.string())))
+        if len(clash):
+            raise ValueError(
+                f"Event id {quote_id(clash[0].as_py())} is already held by an "
+                f"event of timeline {quote_id(self._id)}"
+            )
+        return rows
 
     def _resolve_row_coordinates(self, row: dict[str, Any]) -> dict[str, Any]:
         """Return a row whose coordinate fields are in the native unit.
@@ -971,10 +977,10 @@ class EventsMixin(_Host):
         Examples:
             >>> from timetoalign import Timeline, TimeUnit
             >>> timeline = Timeline(length=4, unit=TimeUnit.quarters)
-            >>> timeline.add_events([{"event_type": "Note", "start": 0, "end": 1}])
-            ['note_1']
-            >>> timeline.get_event("note_1")["id"]
-            'note_1'
+            >>> timeline.add_events([{"id": "n1", "event_type": "Note", "start": 0, "end": 1}])
+            ['n1']
+            >>> timeline.get_event("n1")["id"]
+            'n1'
             >>> timeline.get_event("nonexistent") is None
             True
         """

@@ -50,7 +50,7 @@ from timetoalign.core import TimeUnit, resolve_id
 from timetoalign.loader.format.json import JsonLoader, _normalise_array
 from timetoalign.storage.events import EventData
 from timetoalign.storage.store import DictStore
-from timetoalign.timelines.factory import _mint_timeline_id
+from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.types import ContinuousPhysicalTimeline
 
 if TYPE_CHECKING:
@@ -626,7 +626,7 @@ class TiliaJsonLoader(JsonLoader):
 
             # Use tilia_id if available (from v2 format conversion)
             source_id = tl_obj.get("_tilia_id", f"{kind}_{idx}")
-            tl_id = _mint_timeline_id(self, TimeUnit.seconds)
+            tl_id = mint_timeline_id(TimeUnit.seconds)
             timeline_name = name or source_id
 
             # Normalise components into a pa.Table

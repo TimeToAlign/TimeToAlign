@@ -944,15 +944,12 @@ class VerovioLoader(ScoreLoader):
         minted ids, so no movement is minted the root's id (``score:clt_2``
         given, the movements are ``score:clt_3``, …).
         """
-        from timetoalign.timelines.factory import (
-            _flag_minted,
-            _mint_timeline_id,
-            _root_timeline_id,
-        )
+        from timetoalign.timelines.factory import mint_timeline_id
 
         rendering = self._require_rendering()
         unit = TimeUnit.quarters if role == "score" else TimeUnit.seconds
-        uid, minted = _root_timeline_id(self, unit, uid, role=role)
+        if uid is None:
+            uid = mint_timeline_id(unit, role=role)
         by_movement: dict[int | None, list[dict[str, Any]]] = {}
         for row in rendering.rows:
             by_movement.setdefault(rendering.movement[row["id"]], []).append(row)
@@ -973,7 +970,6 @@ class VerovioLoader(ScoreLoader):
 
         start = convert(Fraction(0))
         root = build(None, start, convert(rendering.end), uid=uid, name=name, meta=meta)
-        _flag_minted(root, minted)
         nodes: dict[int | None, tuple[Timeline, Fraction]] = {None: (root, start)}
         for index, movement in enumerate(rendering.movements):
             if not movement.named or index not in rendering.spans:
@@ -986,7 +982,7 @@ class VerovioLoader(ScoreLoader):
                 index,
                 span_start,
                 span_end,
-                uid=_mint_timeline_id(self, unit, role=role),
+                uid=mint_timeline_id(unit, role=role),
                 name=movement.label,
                 meta={
                     key: value
@@ -1000,7 +996,6 @@ class VerovioLoader(ScoreLoader):
                     if value is not None
                 },
             )
-            _flag_minted(child, True)
             nodes[index] = (child, span_start)
             parent.add_child(child, offset=span_start - parent_start)
         return root

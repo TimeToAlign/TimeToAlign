@@ -222,22 +222,18 @@ class ScoreLoader(EventLoader):
         Returns:
             The score timeline.
         """
-        from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
+        from timetoalign.timelines.factory import mint_timeline_id
 
-        minted = uid is None
-        if minted:
-            uid = _mint_timeline_id(self, self._unit)
-        timeline = _flag_minted(
-            self.store.create_timeline(
-                uid=uid,
-                store_filters=store_filters,
-                include_stores=include_stores,
-                exclude_stores=exclude_stores,
-                flatten=flatten,
-                ppq=ppq,
-                attach_cmaps=attach_cmaps,
-            ),
-            minted,
+        if uid is None:
+            uid = mint_timeline_id(self._unit)
+        timeline = self.store.create_timeline(
+            uid=uid,
+            store_filters=store_filters,
+            include_stores=include_stores,
+            exclude_stores=exclude_stores,
+            flatten=flatten,
+            ppq=ppq,
+            attach_cmaps=attach_cmaps,
         )
         self._populate_timeline_structure(timeline)
         return timeline

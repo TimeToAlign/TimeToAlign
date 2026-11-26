@@ -948,16 +948,17 @@ class TestDictRoundTrip:
 
     def test_to_dict_literal(self) -> None:
         field = _two_claim_field()
+        ids = field.table.column("id").to_pylist()
         assert field.to_dict() == {
             "provenance": None,
             "rows": [
                 _literal_row(
-                    None,
+                    ids[0],
                     ("score", "n1", "quarters", "fraction", [1, 3]),
                     ("audio", "o1", "seconds", "float", 0.5),
                 ),
                 _literal_row(
-                    None,
+                    ids[1],
                     ("midi", "t96", "ticks", "int", 96),
                     ("pcm", "s44100", "samples", "int", 44100),
                 ),
@@ -1417,7 +1418,7 @@ class TestParquetFile:
     def test_shared_provenance_through_the_file(
         self, gold_field: MatchClaimField, tmp_path: Path
     ) -> None:
-        # The gold vector holds no ids; the bundle it joins mints them.
+        # The bundle keeps the ids the gold vector minted at its construction.
         bundle = AlignmentBundle()
         for uid, timeline_class in (
             ("A", ContinuousLogicalTimeline),
@@ -1429,11 +1430,9 @@ class TestParquetFile:
         path = held.to_parquet(tmp_path / "claims.parquet")
         restored = MatchClaimField.from_parquet(path)
         assert restored.provenance == SHARED
-        assert restored.table.column("id").to_pylist() == [
-            "claim_1",
-            "claim_2",
-            "claim_3",
-        ]
+        assert restored.table.column("id").to_pylist() == (
+            gold_field.table.column("id").to_pylist()
+        )
         assert restored.table.equals(held.table, check_metadata=True)
 
     def test_empty_field_through_the_file(self, tmp_path: Path) -> None:
@@ -1772,6 +1771,7 @@ class TestOneSpelling:
             coordinate_a,
             [1.0],
             timelines=self.AXES,
+            seed=1,
         )
 
     def _reduced(self) -> MatchClaimField:
@@ -1787,7 +1787,7 @@ class TestOneSpelling:
 
     @staticmethod
     def _held(field: MatchClaimField) -> MatchClaimField:
-        """*field* as a bundle holds it, its claim given the id ``claim_1``."""
+        """*field* as a bundle holds it, under the id its claim was minted."""
         bundle = AlignmentBundle()
         bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
         bundle.add_timeline(ContinuousPhysicalTimeline(length=60.0, uid="audio"))

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.core.ids import IdMinter, reset_content_minters
 from timetoalign.loader.score.stores.notes import NoteEventData
 from timetoalign.storage import EventData, SingleStore
 from timetoalign.storage.store import EventStore
@@ -30,7 +31,11 @@ from timetoalign.timelines import (
     Timeline,
     create_timeline,
 )
-from timetoalign.timelines.factory import _infer_timeline_class
+from timetoalign.timelines.factory import (
+    _infer_timeline_class,
+    create_timeline_from_event_data,
+    mint_timeline_id,
+)
 
 if TYPE_CHECKING:
     pass
@@ -310,7 +315,7 @@ class TestCreateTimelineFromStore:
         timeline = multi_store.create_timeline()
 
         assert type(timeline) is DiscreteLogicalTimeline
-        assert list(timeline._children) == ["dlt_2", "dlt_3"]
+        assert timeline.n_children == 2
         assert _child_names(timeline) == ["notes", "measures"]
         assert _child_named(timeline, "notes").n_events == 2
         assert _child_named(timeline, "measures").n_events == 1
@@ -365,8 +370,8 @@ class TestStoresOfTwoNumberTypes:
         assert timeline.number_type is NumberType.fraction
         assert timeline.n_children == 0
         assert self._starts(timeline) == [
-            ("t:a", Fraction(1, 3)),
-            ("t:b", Fraction(3, 4)),
+            ("a", Fraction(1, 3)),
+            ("b", Fraction(3, 4)),
         ]
         assert timeline.length.value == Fraction(3, 4)
 
@@ -377,6 +382,101 @@ class TestStoresOfTwoNumberTypes:
         assert _child_names(timeline) == ["Beat", "Note"]
         assert self._starts(_child_named(timeline, "Beat")) == [("b", Fraction(3, 4))]
         assert self._starts(_child_named(timeline, "Note")) == [("a", Fraction(1, 3))]
+
+
+class TestFactoryMinting:
+    """Timeline IDs come from the call's minter; events keep their IDs."""
+
+    @staticmethod
+    def _data(*ids: str, event_type: str = "Note") -> EventData:
+        return EventData.from_dicts(
+            [
+                {"id": event_id, "event_type": event_type, "start": index}
+                for index, event_id in enumerate(ids)
+            ],
+            TimeUnit.quarters,
+        )
+
+    def _store(self) -> DictStore:
+        return DictStore(
+            {
+                "notes": self._data("n1", "n2"),
+                "measures": self._data("m1", event_type="Measure"),
+            }
+        )
+
+    @staticmethod
+    def _ids(minter: IdMinter, count: int) -> list[str]:
+        return [mint_timeline_id(TimeUnit.quarters, minter) for _ in range(count)]
+
+    @staticmethod
+    def _tree(timeline: Timeline) -> list[str]:
+        return [timeline.id, *timeline.list_children()]
+
+    def test_single_store_takes_the_first_id(self) -> None:
+        timeline = create_timeline(self._data("n1"), minter=IdMinter(4))
+        assert self._tree(timeline) == self._ids(IdMinter(4), 1)
+        assert timeline.id.startswith("clt_")
+
+    def test_parent_then_children_in_store_order(self) -> None:
+        timeline = create_timeline(self._store(), minter=IdMinter(4))
+        expected = self._ids(IdMinter(4), 3)
+        assert self._tree(timeline) == expected
+        assert _child_names(timeline) == ["notes", "measures"]
+
+    def test_grouped_children_in_group_value_order(self) -> None:
+        store = DictStore(
+            {
+                "all": self._data("n1", "n2").concat(
+                    self._data("m1", event_type="Measure")
+                )
+            }
+        )
+        timeline = create_timeline(store, group_by="event_type", minter=IdMinter(4))
+        assert self._tree(timeline) == self._ids(IdMinter(4), 3)
+        assert _child_names(timeline) == ["Measure", "Note"]
+
+    def test_given_uid_is_kept_and_the_children_are_minted(self) -> None:
+        timeline = create_timeline(self._store(), uid="score", minter=IdMinter(4))
+        assert self._tree(timeline) == ["score", *self._ids(IdMinter(4), 2)]
+
+    def test_one_seed_twice_gives_equal_ids(self) -> None:
+        first = create_timeline(self._store(), minter=IdMinter(9))
+        second = create_timeline(self._store(), minter=IdMinter(9))
+        assert self._tree(first) == self._tree(second)
+
+    def test_without_a_minter_the_data_seeds_the_ids(self) -> None:
+        first = self._tree(create_timeline(self._store()))
+        second = self._tree(create_timeline(self._store()))
+        assert len({*first, *second}) == 6
+        reset_content_minters()
+        assert self._tree(create_timeline(self._store())) == first
+
+    def test_event_data_create_timeline_takes_a_minter(self) -> None:
+        timeline = create_timeline_from_event_data(self._data("n1"), minter=IdMinter(4))
+        assert timeline.id == self._ids(IdMinter(4), 1)[0]
+
+    def test_a_role_leads_the_id(self) -> None:
+        expected = IdMinter(4).mint("clt")
+        assert mint_timeline_id(TimeUnit.quarters, IdMinter(4), role="score") == (
+            f"score:{expected}"
+        )
+
+    def test_events_keep_their_ids(self) -> None:
+        timeline = create_timeline(self._store(), uid="score")
+        assert _child_named(timeline, "notes").get_events().column_values("id") == [
+            "n1",
+            "n2",
+        ]
+        flat = create_timeline(self._store(), uid="flat", flatten=True)
+        assert flat.get_events().column_values("id") == ["n1", "n2", "m1"]
+
+    def test_one_event_id_in_two_merged_stores_is_refused(self) -> None:
+        store = DictStore({"a": self._data("x"), "b": self._data("x")})
+        with pytest.raises(
+            ValueError, match=r"Event id 'x' is held by 2 events of timeline 'flat'"
+        ):
+            create_timeline(store, uid="flat", flatten=True)
 
 
 class TestCreateTimelineIncludeExclude:

@@ -1275,7 +1275,8 @@ fraction) ↔ `audio` (seconds, float), one claim `n1` ↔ `o1` at `1/2` ↔
   holds `{0.5, 1, 2, "quarters", "fraction"}`;
 - `from_table` of that field's table with the cell rewritten to `(2, 4)`
   equals it;
-- through a file (the fields held by a bundle, which mints `claim_1`): the
+- through a file (the fields, both built with `seed=1` so their one claim
+  holds one id, held by a bundle, which keeps it): the
   `2/4` field written, written again over its own file, then the `1/2`
   field written over it, all accepted; and the other way round, the `1/2`
   field written first and the `2/4` field over it; `from_parquet` of the
@@ -1323,8 +1324,9 @@ denominator]` — the form `MatchClaim.to_dict()` writes. What proves the form:
 - **The literal dictionary** of a two-claim field (`score` quarters `1/3` ↔
   `audio` seconds `0.5`; `midi` ticks `96` ↔ `pcm` samples `44100`), asserted
   whole: nothing in it holds `numerator`/`denominator`, no anchor holds a
-  timeline id, and its rows hold no id (`id` null: a field built from
-  columns mints none).
+  timeline id, and each row holds the id the field minted for it at its
+  construction (read from the field's `id` column: the literal is not about
+  minting).
 - **The same values as the claim**: each anchor of each row equals the anchor
   of `field[i].to_dict()`, and the cells that are not coordinates equal
   `field.table.to_pylist()`'s.
@@ -1520,59 +1522,59 @@ it. Two things must hold, and each has its own proof:
 ### What We're Validating
 
 A claim id addresses one claim, alone (no scope, no prefix joined to it),
-in the table or bundle that holds it; it **never changes** once given, and
-the same input gives the same ids in every process. Claims
-persist (the MatchClaim table written to Parquet keeps its ids), and a stored
-id is what a manifest's named MatchStamp records, so renaming a claim when it
-joins a table would break every reference to it. The rule tested:
+in the table or bundle that holds it; it is **minted when the claim or the
+field is constructed and never changes**, and the same input gives the same
+ids in every run. Claims persist (the MatchClaim table written to Parquet
+keeps its ids), and a stored id is what a manifest's named MatchStamp
+records, so renaming a claim when it joins a table would break every
+reference to it. The rule tested:
 
-- **A free claim** made without an id holds `None` until the first bundle
-  it joins mints one; a given id is kept verbatim; an id with a control
-  character is refused by `validate_id`. Nothing records whether an id was
-  given or minted: an id never changes once given, so no reader needs to
-  know (no flag, no re-minting that would read one).
-- **A field holds each id once and mints nothing** (every constructor:
-  `from_columns`, `from_claims`, `from_dict`, `from_table`, `from_parquet`):
-  an id held by two rows is refused, **whether given or minted** (`claim id
-  'a' is held by 2 claims`), before anything is built, and a row without an
-  id keeps none. Were a field to mint, two loaders'
-  fields would both hold `claim_1` and could never join one bundle; the
-  bundle they join is the one holder that mints. A field whose rows hold no
-  id is not written to a file (TimeToShare's table requires every id):
-  `MatchClaim table row 0 holds no id, and every MatchClaim of the file
-  holds one: ...`.
+- **A claim mints its id at construction**: `MatchClaim.from_events` and
+  `nomatch` given `seed=` hold the first id of `IdMinter(seed)` under
+  `claim` (computed by a second minter of that seed, never typed); two
+  claims of one seed hold one id. Without a seed the id comes from the
+  content minter of the claim's other properties: two claims of equal
+  content built in one test hold two ids, and after
+  `reset_content_minters()` the first is minted again. A given id is kept
+  verbatim; an id with a control character is refused by `validate_id`.
+- **A field never holds a row without an id** (every constructor that reads
+  rows: `from_columns`, `from_dict`, `from_table`, `from_package_table`,
+  `from_parquet`): with `seed=` the missing ids are the first ids of
+  `IdMinter(seed)` in row order, given ids kept (a table holding `claim_2`,
+  null, `x`, null reads back as `claim_2`, the first seeded id, `x`, the
+  second); with `minter=` they continue that minter (two fields of one
+  minter hold its first ids, then the next); without either, the content
+  minter of the rows (two equal column sets give distinct ids). `seed` and
+  `minter` together raise `TypeError`. An id held by two rows is refused,
+  **whether given or minted** (`claim id 'a' is held by 2 claims`).
 - **The id is stored**: a row read back keeps its id.
-- **A bundle is the holder that mints** for the claims added to it
-  (`add_match_claims`, `add_match_claim_field`): a row or claim without an
-  id is minted `claim_N`, N above the highest number held (minting gives a
-  first id, it renames nothing, and a number is never given twice), a claim
-  object in place (its first id); a field's rows in the bundle's table (the
-  field passed in keeps its nulls). An id the bundle holds is refused,
-  never re-minted. **A merge keeps every id and refuses a shared one**
-  (`from_bundles`): a MatchClaim is addressed by its id alone, so two
-  sources both holding `claim_1` are refused before anything is merged,
-  naming the id and both bundles (the accepted cost: one of them is stated
-  again under other ids first); claims added to the merge afterwards are
-  minted above the highest id it holds.
+- **Joining a bundle mints nothing** (`add_match_claims`,
+  `add_match_claim_field`): the bundle holds the ids the claims and rows
+  came with, a claim object is not changed, and an id the bundle holds is
+  refused, never re-minted (`claim id '<id>' is already held by another
+  claim of this bundle`), every check before any change. **A merge keeps
+  every id and refuses a shared one** (`from_bundles`), naming the id and
+  both bundles.
 
 ### Why this proves "beyond one process"
 
-The minted id depends only on the ids already held, never on what
-was built before in the process. One test builds and stores a field in a
-subprocess and asserts its ids and table equal the in-process build, so the
-determinism across processes is observed, not inferred.
+A content-seeded id depends only on the content and on what the process
+minted of that content before; `tests/conftest.py` resets the content
+minters before every test, so a test starts as a fresh process does. One
+test builds and stores a field in a subprocess and asserts its ids and table
+equal the in-process build, so the determinism across processes is
+observed, not inferred.
 
 ### Field part: Exact Expected Values
 
 | Test | Validates |
 |------|-----------|
-| `test_free_claim_holds_no_id` | two fresh claims both hold `None`; a given `"onset 7"` is kept; `"a\tb"` raises |
-| `test_field_holds_each_id_once` | `from_claims` of claims given `s0`–`s2` keeps them; two free claims are two rows without an id, the objects still `None`; two claims given `"a"` are refused (`claim id 'a' is held by 2 claims`) |
-| `test_from_columns_mints_no_id` | the gold vector's ids are `None` ×3; the bundle it joins holds them as `claim_1`–`claim_3`, and the field passed in still holds `None` ×3 |
-| `test_two_fields_join_one_bundle` | the `STORED` field (`score ↔ audio`, 4 rows) and a field of the two `NEW` pairs, both from `from_columns`, join one bundle in that order as `claim_1`–`claim_4` and `claim_5`, `claim_6` |
-| `test_null_ids_are_minted_around_held_ones` | a table whose rows hold `claim_2`, null, `x`, null reads back as is (`claim_2`, `None`, `x`, `None`); the bundle it joins mints `claim_3` and `claim_4` (above the highest held, `claim_1` never given) |
-| `test_a_field_without_ids_is_not_written` | `to_parquet` of the `from_columns` field is refused (`MatchClaim table row 0 holds no id, ...`) and no file is left |
-| `test_two_runs_store_the_same_ids` | a subprocess and this process add the same `from_columns` field to a bundle and store its MatchClaim table to Parquet: ids `claim_1`–`claim_4` and the tables equal |
+| `test_claim_mints_its_id_at_construction` | `from_events(..., seed=3)` and `nomatch(..., seed=3)` hold `IdMinter(3).mint("claim")`; two equal claims without a seed hold two ids, both `claim_` + 13 characters; after `reset_content_minters()` the first claim's content gives the first id again; a given `"onset 7"` is kept; `"a\tb"` raises |
+| `test_field_holds_each_id_once` | `from_claims` of claims given `s0`–`s2` keeps them; of two claims given `"a"` is refused (`claim id 'a' is held by 2 claims`) |
+| `test_from_columns_mints_its_ids` | with `seed=4` the gold vector's ids are the first three of `IdMinter(4)`; with one `minter=` two fields hold its ids 1–3 and 4–6; without either, two builds hold six distinct ids and no null; `seed` and `minter` together raise `TypeError` |
+| `test_every_reading_constructor_mints_the_missing_ids` | a table holding `claim_2`, null, `x`, null: `from_table`, `from_package_table` (its package form), `from_parquet` (written by `pyarrow.parquet`) and `from_dict` (its `to_dict` with those ids) each give `claim_2`, the first id of `IdMinter(6)`, `x`, the second, with `seed=6` |
+| `test_joining_mints_nothing` | the `from_columns` field and a field of the two `NEW` pairs join one bundle: its claims hold exactly the two fields' ids, in that order, and each field still holds its ids |
+| `test_two_runs_store_the_same_ids` | a subprocess and this process add the same `from_columns` field, built without a seed, to a bundle and store its MatchClaim table to Parquet: ids equal, four distinct, tables equal |
 
 ### Bundle part: Exact Expected Values
 
@@ -1582,14 +1584,14 @@ the claims are `from_events` between named notes and onsets on those axes.
 
 | Test | Validates |
 |------|-----------|
-| `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both hold `None`: a graph built from them filters by object, so `filter(within={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, both edges carrying `claim_id is None`; `from_claims` stores them without ids and leaves the objects unchanged; a bundle gives the objects `claim_1`, `claim_2` in place, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
-| `test_stored_and_new_claims_are_distinct` | the stored field (a bundle's MatchClaim table of the four `STORED` claims, written and read back) keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; the bundle's claims read back are `claim_1`–`claim_10`, the last six equal to the caller's objects, each with `bundle` the bundle |
-| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` holds exactly those six claims (an inferred edge is no claim and takes no id) and six inferred edges, each on `score`→`score_copy`, its `source_claim` one of the six and its `score` coordinate that claim's; the six stated edges' `claim_id` equal their claims' ids, all distinct, and the other six edges carry the inferred-edge records, in the graph's order; `filter(stated_only=True)` and `filter(within={"score", "audio"})` keep exactly `claim_1`–`claim_6` and no inferred edge |
-| `test_held_ids_are_refused_never_reminted` | `from_claims` of a claim given `"anchor"` and a free claim stores `"anchor"` and no id; a bundle holding `claim_1`, `claim_2` takes that field as `"anchor"`, `claim_3`; another bundle's MatchClaim table (`claim_1`, `claim_2`, minted) is refused by it (`claim id 'claim_1' is already held by another claim of this bundle`), which still holds its four; a bundle holding `"anchor"` and a minted `claim_1` gives a free claim `claim_2` |
-| `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, are refused by `from_bundles` with the exact message `MatchClaim id 'claim_1' is held by bundle '<first>' and by bundle '<second>' (bundles 0 and 1 of the merge): a MatchClaim is addressed by its id alone, so the two merge once one of them states its MatchClaims under other ids.`, each still holding its run's table |
-| `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and the newcomer keeps its id (`None` for the one made without) and no bundle |
-| `test_merge_keeps_ids_and_refuses_a_shared_one` | `from_bundles` of two bundles each holding `claim_1`, `claim_2` is refused with the message above (naming `claim_1` and both bundles), the sources unchanged (`claim_1`, `claim_2`, each claim recording its source); two bundles holding a minted `claim_1` and a given `claim_2` merge: the merge's claims are `claim_1`, `claim_2`, equal to the two added, each recording the merge, and its table holds the twelve MatchClaim columns alone; a free claim added to the merge is given `claim_3`; a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
-| `test_merge_refuses_an_id_two_distant_sources_hold` | the merge's one check, made before anything is built, compares every pair of sources (so nothing checks the ids again while the merge appends each source's rows): of three sources holding `claim_1`, `claim_2` and `claim_1`, `from_bundles` is refused naming the first and the third (`... (bundles 0 and 2 of the merge) ...`, the message above), every source unchanged (its ids, each claim recording it) |
+| `test_two_claims_hold_distinct_ids` | two claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), hold two ids: a graph built from them filters by object, `filter(within={"score", "audio"})` keeping the first alone and `{"score", "score_copy"}` the second, the edges carrying the claims' ids; `from_claims` stores those ids; a bundle holds them unchanged, and a graph of the bundle's claims keeps the second's id for `{"score", "score_copy"}` |
+| `test_stored_and_new_claims_are_distinct` | the stored field (a bundle's MatchClaim table of the four `STORED` claims, written and read back) keeps its four ids; the same four built again (equal content, so four new ids) plus the two new ones join the bundle under their own ids; the caller's objects keep them and `claim.bundle is bundle`; the bundle's claims are the stored four then the six, the last six equal to the caller's objects |
+| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims: `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` holds exactly those six claims (an inferred edge is no claim and takes no id) and six inferred edges, each on `score`→`score_copy`, its `source_claim` one of the six and its `score` coordinate that claim's; the six stated edges' `claim_id` equal their claims' ids, all distinct, and the other six edges carry the inferred-edge records; `filter(stated_only=True)` and `filter(within={"score", "audio"})` keep exactly the six claims' ids and no inferred edge |
+| `test_held_ids_are_refused_never_reminted` | `from_claims` of a claim given `"anchor"` and another stores `"anchor"` and that claim's id; a bundle holding the two `NEW` claims takes that field; a second bundle holding the same two `NEW` claims (copies, same ids) gives a MatchClaim table that the first refuses (`claim id '<first NEW id>' is already held by another claim of this bundle`), which still holds its four |
+| `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table, the claims built without a seed: ids equal, tables equal; one bundle takes the first and refuses the second (`claim id '<first id>' is already held ...`), keeping 4 rows; two bundles, one run each, are refused by `from_bundles` with the exact message `MatchClaim id '<first id>' is held by bundle '<first>' and by bundle '<second>' (bundles 0 and 1 of the merge): a MatchClaim is addressed by its id alone, so the two merge once one of them states its MatchClaims under other ids.`, each still holding its run's table |
+| `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and each newcomer keeps its id and no bundle |
+| `test_merge_keeps_ids_and_refuses_a_shared_one` | `from_bundles` of two bundles each holding claims given `c1`, `c2` is refused with the message above (naming `c1` and both bundles), the sources unchanged (each claim recording its source); two bundles holding a claim minted without a seed and one given `c2` merge: the merge's claims are those two, equal to the two added, each recording the merge, and its table holds the twelve MatchClaim columns alone; a claim added to the merge keeps its id; a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
+| `test_merge_refuses_an_id_two_distant_sources_hold` | the merge's one check, made before anything is built, compares every pair of sources: of three sources holding `claim_1`, `claim_2` and `claim_1` (given), `from_bundles` is refused naming the first and the third (`... (bundles 0 and 2 of the merge) ...`, the message above), every source unchanged (its ids, each claim recording it) |
 
 ---
 

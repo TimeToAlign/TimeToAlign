@@ -1560,9 +1560,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         The MatchClaim is then made between the two events, on the two
         timelines' own axes (:meth:`MatchClaim.from_events`); an end on both
         sides makes an interval claim. A pair with ``None`` makes a NOMATCH
-        claim for the other side's event (:meth:`MatchClaim.nomatch`). The
-        claims join the bundle (:meth:`add_match_claims`), which mints their
-        ids.
+        claim for the other side's event (:meth:`MatchClaim.nomatch`), its
+        id minted at its construction. The claims join the bundle
+        (:meth:`add_match_claims`).
 
         Every pair is checked before any Projection is added, so a refusal
         leaves the bundle and its timelines unchanged: the timelines are the
@@ -1642,13 +1642,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...         ("n99", "score", None, "audio"),  # NOMATCH
             ...     ]
             ... )
-            >>> [(claim.event_a_id, claim.event_b_id) for claim in claims]
-            [('n10', 'o42'), ('n99', 'projection_1'), ('n99', None)]
-            >>> audio.get_event("projection_1")["projection_of"]
+            >>> [(claim.event_a_id, claim.event_b_id) for claim in claims[::2]]
+            [('n10', 'o42'), ('n99', None)]
+            >>> projection = claims[1].event_b_id
+            >>> audio.get_event(projection)["projection_of"]
             {'timeline_id': 'score', 'event_id': 'n99'}
             >>> again = bundle.create_match_claims([("n99", "score", {"start": 55.0}, "audio")])
-            >>> again[0].event_b_id, again[0].id
-            ('projection_1', 'claim_4')
+            >>> again[0].event_b_id == projection, again[0].id == claims[1].id
+            (True, False)
             >>> stated = bundle.create_match_claims(
             ...     [("n10", "score", "o42", "audio")],
             ...     actor="https://orcid.org/0000-0002-1825-0097",
@@ -1700,9 +1701,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         A MatchClaim is addressed by its id alone, and a claim's id never
         changes: an id the bundle holds, or one held by two of the claims,
-        is refused, whether it was given or minted. A claim without an id is given the id the bundle mints
-        (``claim_N``, N above the highest held), set on the claim object
-        itself: its first id, not a rename. Each claim records the bundle
+        is refused, whether it was given or minted. Every claim holds its id
+        from its construction, and joining mints none. Each claim records the bundle
         (:attr:`MatchClaim.bundle`); a claim another bundle holds joins as a
         copy. The table holds the claims' rows, so a claim read back from
         the bundle equals the one added but is another object. Every check
@@ -1814,9 +1814,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> bundle = AlignmentBundle()
             >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
             >>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=705600, uid="pcm"))
-            >>> _ = bundle.create_match_claims([({"start": 0}, "score", {"start": 0}, "pcm")])
+            >>> (claim,) = bundle.create_match_claims(
+            ...     [({"start": 0}, "score", {"start": 0}, "pcm")]
+            ... )
             >>> _ = bundle.add_match_claim_belief(
-            ...     "claim_1", actor="https://orcid.org/0000-0001", belief="false",
+            ...     claim.id, actor="https://orcid.org/0000-0001", belief="false",
             ...     date="2026-11-21",
             ... )
             >>> len(bundle.get_match_claims(believer="https://orcid.org/0000-0001"))

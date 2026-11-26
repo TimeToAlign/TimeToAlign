@@ -93,8 +93,9 @@ documentation:
   placed across every recording at once.
 - [How to Load Musical Themes Aligned to Recordings (MTD)](howto/how03_mtd_themes.ipynb) ---
   MtdLoader, the Musical Theme Dataset read in place: a CD track with an
-  excerpt per theme, each theme's encoding in exact quarters, and the
-  alignment as MatchClaims from its notes to CHUNK on the excerpt.
+  excerpt per theme, one timeline per file of a theme, four groups by
+  encoding, and the alignment as MatchClaims from its notes to CHUNK on the
+  excerpt.
 - [How to Load an IEEE 1599 Document](howto/how03_ieee1599.ipynb) ---
   IEEE 1599 spine/VTU hub relating score, page images, and audio as one
   multimodal AlignmentBundle.

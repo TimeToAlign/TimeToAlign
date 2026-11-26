@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -690,7 +690,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="segmenting-the-folded-score" class="level2">
 <h2 class="anchored" data-anchor-id="segmenting-the-folded-score">Segmenting the folded score</h2>
-<p><code>create_flow_maps_from_flow_control()</code> writes the stretches flow control never divides, its atomic sections, as Regions named by letters, and the route as a FlowMap of them. Their starts divide the folded timeline into a <button class="glossary" title="">SegmentLine</button> of adjacent, inspectable sections.</p>
+<p><code>create_flow_maps_from_flow_control()</code> writes the stretches flow control never divides, its atomic sections, as Regions named by letters, and the route as a FlowMap of them. Their starts divide the folded timeline into a <button class="glossary" title="A runtime class parameterized by its segment class, such as SegmentLine[DiscreteGraphicalTimeline], whose contiguous Segments tile its full length. A line is also an instance of that segment class. Any timeline can check this structure with the property is_segment_line and adopt enforcement with as_segment_line(); a line returns to an unenforced timeline with to_timeline(). create_children_from_boundaries() creates boundary-driven tilings. Appending extends an unlocked line, while appending to a locked line raises RuntimeError.">SegmentLine</button> of adjacent, inspectable sections.</p>
 <div id="5414bc74" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:39.219332Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:39.219128Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:40.286377Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:40.285513Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>computed <span class="op">=</span> score_timeline.create_flow_maps_from_flow_control()</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>section_starts <span class="op">=</span> [section.start <span class="cf">for</span> section <span class="kw">in</span> computed.sections]</span>

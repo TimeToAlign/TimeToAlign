@@ -1415,7 +1415,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td><code>core/</code></td>
-<td>Foundational types: enums (<code>Domain</code>, <code>TimeUnit</code>, …), <code>Coordinate</code> / <code>IdCoordinate</code>, <code>TimeStamp</code>, <code>ScopedId</code> and the id minting of <code>core/ids.py</code>; <code>core/fields.py</code> contains the <code>SemanticField</code> bases plus the Arrow translator/builder.</td>
+<td>Foundational types: enums (<code>Domain</code>, <code>TimeUnit</code>, …), <code>Coordinate</code> / <code>IdCoordinate</code>, <code>TimeStamp</code> and the id minter of <code>core/ids.py</code>; <code>core/fields.py</code> contains the <code>SemanticField</code> bases plus the Arrow translator/builder.</td>
 </tr>
 <tr class="even">
 <td><code>display/</code></td>
@@ -1531,7 +1531,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><strong><code>MatchGraph</code> is on-demand and analytical.</strong> It is built from claims when needed, not maintained as a system-wide structure.</li>
 <li><strong>Loaders use a strict two-phase contract.</strong> <code>loader.load(*sources)</code> ingests files; <code>loader.create_*()</code> produces domain objects and <strong>never</strong> takes file paths. The <code>from_file()</code> classmethod is sugar for the common case.</li>
 <li><strong>All enums live in <code>core/enums.py</code></strong> and subclass <code>FancyStrEnum</code>. Member names are lowercase. The single documented exception is <code>NumberType</code>, whose values are Python <code>type</code> objects.</li>
-<li><strong>Timeline IDs are systematic:</strong> <code>clt</code>/<code>dlt</code>/<code>cpt</code>/<code>dpt</code>/<code>cgt</code>/<code>dgt</code> prefixes for the six domain × modality combinations, with optional role prefixes, each minted as <code>{prefix}_{N}</code> (<code>clt_1</code>, <code>score:clt_1</code>, <code>perf:dlt_1</code>).</li>
+<li><strong>Minted IDs are random and seeded:</strong> a type prefix (<code>clt</code>/<code>dlt</code>/<code>cpt</code>/ <code>dpt</code>/<code>cgt</code>/<code>dgt</code> for the six domain × modality combinations of a timeline), <code>_</code> and 13 random base-36 characters, led by an optional role (<code>score:clt_…</code>). An ID is minted when its object is constructed and never renamed; an ID held twice is refused at a join. Loaders seed from the bytes they read, objects built in code from their content, and <code>seed=</code> gives exact IDs: a test asserts minted IDs only where it is about minting, and otherwise gives speaking IDs or reads them through the object (<code>timeline.id</code>).</li>
 </ul>
 <p>For the full conceptual rationale see <a href="./concepts.html">Concepts</a> and the <a href="./glossary.html">Glossary</a>.</p>
 </section>

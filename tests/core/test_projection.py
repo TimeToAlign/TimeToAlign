@@ -367,6 +367,7 @@ FIXTURE_PROJECTIONS = [
         start=Coordinate(396900, TimeUnit.samples),
         projection_of=EventReference(timeline_id="clt_2", event_id="note_13"),
     ),
+    Projection(id="inserted_1", start=Coordinate(573300, TimeUnit.samples)),
 ]
 
 
@@ -392,7 +393,7 @@ class TestTimeToShareFixture:
             "clt_2": [FIXTURE_PROJECTIONS[0]],
         }
         timelines = _fixture_projections().column("timeline_id").to_pylist()
-        assert timelines == ["clt_2"] + ["cpt_1"] * 2 + ["dpt_1"] * 7
+        assert timelines == ["clt_2"] + ["cpt_1"] * 2 + ["dpt_1"] * 8
 
         def types(projections: list[Projection]) -> list[tuple[type, type | None]]:
             return [
@@ -403,7 +404,7 @@ class TestTimeToShareFixture:
                 for p in projections
             ]
 
-        assert types(read["dpt_1"]) == [(int, None), (int, int)] + [(int, None)] * 5
+        assert types(read["dpt_1"]) == [(int, None), (int, int)] + [(int, None)] * 6
         assert types(read["cpt_1"]) == [(float, float), (float, None)]
         assert types(read["clt_2"]) == [(Fraction, Fraction)]
 

@@ -68,13 +68,14 @@ class TestFixtureTable:
     def test_read_and_written_back_unchanged(self, tmp_path: Path) -> None:
         fixture = pq.read_table(_FIXTURE)
         field = MatchClaimField.from_parquet(_FIXTURE)
-        assert [claim.id for claim in field] == [f"claim_{n}" for n in range(1, 18)]
+        assert [claim.id for claim in field] == [f"claim_{n}" for n in range(1, 19)]
         kinds = [claim.claim_type.name for claim in field]
         assert kinds == ["event_match"] * 11 + ["nomatch", "event_match"] + [
             "conceptual",
             "event_match",
             "event_match",
             "event_match",
+            "nomatch",
         ]
         nomatch = field[11]
         assert (nomatch.event_a_id, nomatch.event_b_id, nomatch.anchors) == (

@@ -1145,14 +1145,54 @@ class TestTimeToShareFixturePackage:
         fixture = pq.read_table(_TABLES / "projections.parquet")
         known = bundle._known_timelines()
 
-        assert len(bundle.match_claim_table) == 17
+        assert len(bundle.match_claim_table) == 18
         assert {tid: known[tid].n_events for tid in sorted(known)} == {
             "clt_1": 0,
             "clt_2": 1,
             "cpt_1": 2,
-            "dpt_1": 7,
+            "dpt_1": 8,
         }
         assert projection_table(known[tid] for tid in sorted(known)).equals(fixture)
+
+    def test_a_projection_without_a_source_is_read(
+        self, bundle: AlignmentBundle
+    ) -> None:
+        """``inserted_1`` stands for a note the package does not hold: a
+        Projection whose ``projection_of`` is null, stating a NOMATCH."""
+        inserted = bundle._known_timelines()["dpt_1"].get_event("inserted_1")
+        assert (
+            inserted["event_type"],
+            inserted["temporal_type"],
+            inserted["start"]["numerator"],
+            inserted["duration"],
+            inserted["projection_of"],
+        ) == ("Projection", "instant", 573300, None, None)
+        (claim,) = [
+            claim
+            for claim in bundle.get_match_claims()
+            if "inserted_1" in (claim.event_a_id, claim.event_b_id)
+        ]
+        assert (
+            claim.id,
+            claim.claim_type.name,
+            claim.timeline_a_id,
+            claim.event_a_id,
+            claim.timeline_b_id,
+            claim.event_b_id,
+            claim.is_synchronous,
+            claim.anchors,
+            claim.chunk_sides,
+        ) == (
+            "claim_18",
+            "nomatch",
+            "dpt_1",
+            "inserted_1",
+            "clt_1",
+            NOMATCH,
+            False,
+            [],
+            (),
+        )
 
     def test_the_package_is_written_back(self, tmp_path: Path) -> None:
         bundle = AlignmentBundle.from_file(_TABLES / "manifest.yaml")

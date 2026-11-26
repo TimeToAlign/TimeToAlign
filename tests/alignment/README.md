@@ -1716,9 +1716,10 @@ TimeToShare's own artifacts:
   `COORDINATE_CELL_TYPE` cells.
 - **The fixture table, read and written back.** TimeToShare's fixture
   `fixtures/tables/<version>/match_claims.parquet` is read with
-  `MatchClaimField.from_parquet`: seventeen claims, `claim_1`–`claim_17`,
-  fifteen `event_match`, one `nomatch` (`claim_12`, naming `note_10` and
-  `NOMATCH`, no anchor), one `conceptual` (`claim_14`); the sentinels
+  `MatchClaimField.from_parquet`: eighteen claims, `claim_1`–`claim_18`,
+  fifteen `event_match`, two `nomatch` (`claim_12`, naming `note_10` and
+  `NOMATCH`, and `claim_18`, naming the Projection `inserted_1` and
+  `NOMATCH`, neither with an anchor), one `conceptual` (`claim_14`); the sentinels
   read as the strings of the event ID columns, `CHUNK` on both sides of
   `claim_11` and on side A of `claim_16` (their `chunk_sides`
   `(dpt_1, cpt_1)` and `(cpt_1,)`); rows with a null
@@ -2344,13 +2345,18 @@ with the MatchClaims stating each and the expected potential MatchStamps.
 Those values are literal data written by hand in TimeToShare's emission
 script, never computed by a derivation, so they are an independent oracle.
 
-- `AlignmentBundle.from_file(manifest.yaml)` holds the seventeen MatchClaims
-  and the ten Projections (seven on `dpt_1`, two on `cpt_1`, one on
+- `AlignmentBundle.from_file(manifest.yaml)` holds the eighteen MatchClaims
+  and the eleven Projections (eight on `dpt_1`, two on `cpt_1`, one on
   `clt_2`; `clt_1` holds none; the CHUNK sides of `claim_11` and `claim_16`
   hold none), so every timeline's events are its
-  Projections alone; the bundle's Projections table equals the fixture's
+  Projections alone; `inserted_1` on `dpt_1`, the one Projection whose
+  source names an event the package does not hold, reads as a Projection
+  with `projection_of` null, and `claim_18` as the NOMATCH stated from it
+  (`inserted_1` on side A, `NOMATCH` on `clt_1`, no anchor, no CHUNK
+  side), so a reader that reads a null `projection_of` as an error, or a
+  NOMATCH side as a missing event, fails; the bundle's Projections table equals the fixture's
   rows (the table is read from the bundle's timelines sorted by ID, each
-  timeline in its event order: `clt_2`, `cpt_1` ×2, `dpt_1` ×7, the order
+  timeline in its event order: `clt_2`, `cpt_1` ×2, `dpt_1` ×8, the order
   the fixture holds them in). The Projections file is the fixture's byte
   for byte, as the MatchClaim file is.
 - Written to a fresh directory, `match_claims.parquet` and

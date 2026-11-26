@@ -1904,9 +1904,12 @@ class TestMeasureMapSlice:
         assert part.to_rows()[-1]["count"] == 6
 
     def test_a_slice_is_a_new_minted_unnamed_map(self) -> None:
-        part = MeasureMap.from_rows(SEVENTY_TWO_BARS).get_slice(0, 27)
+        whole = MeasureMap.from_rows(SEVENTY_TWO_BARS, id="whole")
+        part = whole.get_slice(0, 27)
 
-        assert (part.id, part.name, part.meta) == ("measuremap_1", None, {})
+        assert (part.name, part.meta) == (None, {})
+        assert part.id.startswith("measure_map_")
+        assert part.id != whole.id
 
     @pytest.mark.parametrize(
         ("start", "end", "message"),

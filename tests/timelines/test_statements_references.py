@@ -1,6 +1,7 @@
 """What statements name stays true wherever they are written.
 
-An element given a new id is named by it; an element leaving the manifest —
+An element keeps its id wherever it joins, and what names it names it still;
+a timeline given a new id is named by it; an element leaving the manifest —
 removed, left behind by a selection or by a partial write — is named no
 more, its pair, provenance entry and basis item dropped together. The
 validation logic is documented in ``tests/timelines/README.md`` under
@@ -101,12 +102,18 @@ def _quarters(timeline_id: str | None = None, length: int = 8) -> Timeline:
     return ContinuousLogicalTimeline(length=length, uid=timeline_id)
 
 
-def _minted_tree() -> Timeline:
-    """``clt_1`` holding the child ``clt_2`` and the region ``region_1``."""
-    root = _quarters()
-    root.add_child(_quarters(length=4), offset=0)
-    root.create_region(0, 4)
+def _tree(seed: int | None = None) -> Timeline:
+    """A root holding a child and a region, every ID minted (from *seed*)."""
+    root = ContinuousLogicalTimeline(length=8, seed=seed)
+    child_seed = None if seed is None else seed + 1
+    root.add_child(ContinuousLogicalTimeline(length=4, seed=child_seed), offset=0)
+    root.create_region(0, 4, seed=seed)
     return root
+
+
+def _tree_ids(root: Timeline) -> list[str]:
+    """The root's ID, its child's and its region's."""
+    return [root.id, *root._children, *root._regions]
 
 
 # region A partial write keeps the manifest valid
@@ -259,42 +266,84 @@ def test_two_namespaces_for_one_prefix_refuse_to_be_written() -> None:
 
 # endregion
 
-# region Every new id renames
+# region Joining keeps every ID; a collision is refused, nothing renamed
+
+
+def _ids(root: Timeline) -> tuple[str, list[str], list[str]]:
+    return (root.id, list(root._children), list(root._regions))
+
+
+def _written(holder: Any) -> list[list[str]]:
+    """What every timeline of *holder*'s manifest names, in the order written."""
+    return [_named(timeline) for timeline in holder.to_dict()["timelines"]]
 
 
 @pytest.mark.parametrize("scope", ["group", "bundle"])
-def test_joining_a_scope_renames_what_statements_name(scope: str) -> None:
-    member = _naming(_minted_tree(), "region_1", "clt_2")
-    newcomer = _naming(_minted_tree(), "clt_1", "clt_2", "region_1")
+def test_joining_a_scope_keeps_what_statements_name(scope: str) -> None:
+    member, newcomer = _tree(), _tree()
+    root, (child,), (region,) = _ids(newcomer)
+    _naming(member, *_ids(member)[2], *_ids(member)[1])
+    _naming(newcomer, root, child, region)
+    # Built alike, from their content: no ID of the one is held by the other.
+    assert set(_tree_ids(member)).isdisjoint(_tree_ids(newcomer))
     if scope == "group":
         holder: Any = TimelineGroup(timelines=[member])
         holder.add_timeline(newcomer)
     else:
-        holder = _naming(AlignmentBundle().add_timeline(member), "clt_1", "region_1")
+        holder = _naming(AlignmentBundle().add_timeline(member), member.id, region)
         holder.add_timeline(newcomer)
-        assert _named(holder) == ["clt_1", "region_1"]
-    assert (newcomer.id, list(newcomer._children), list(newcomer._regions)) == (
-        "clt_3",
-        ["clt_4"],
-        ["region_2"],
-    )
-    assert _named(newcomer) == ["clt_3", "clt_4", "region_2"]
-    assert _named(member) == ["region_1", "clt_2"]
+        assert _named(holder) == [member.id, region]
+    assert _ids(newcomer) == (root, [child], [region])
+    assert _named(newcomer) == [root, child, region]
+    assert _named(member) == [*_ids(member)[2], *_ids(member)[1]]
     validate(holder.to_dict())
 
 
-def test_add_child_renames_what_the_child_s_statements_name() -> None:
-    parent = _quarters()
-    parent.create_region(0, 4)
-    _naming(parent, "region_1", "clt_1")
-    child = _quarters(length=4)
+@pytest.mark.parametrize("scope", ["group", "bundle"])
+def test_a_tree_holding_an_id_of_the_scope_is_refused(scope: str) -> None:
+    member, newcomer = _tree(7), _tree(7)
+    _naming(newcomer, *_tree_ids(newcomer))
+    holder: Any = (
+        TimelineGroup(timelines=[member], id="scope")
+        if scope == "group"
+        else AlignmentBundle(id="scope").add_timeline(member)
+    )
+    _raises(
+        f"timeline '{member.id}' cannot join {scope} 'scope': its id "
+        f"'{member.id}' is already held by timeline '{member.id}'",
+        lambda: holder.add_timeline(newcomer),
+    )
+    assert holder.timeline_ids == [member.id]
+    assert _named(newcomer) == _tree_ids(newcomer) == _tree_ids(member)
+
+
+def test_add_child_keeps_what_the_child_s_statements_name() -> None:
+    parent = _quarters("parent")
+    held = parent.create_region(0, 4)
+    _naming(parent, held.id, "parent")
+    child = _quarters("child", length=4)
     region = child.create_region(0, 2)
-    child.replace_region(_naming(_RegionHolder(region), "region_1", "clt_1").region)
+    child.replace_region(_naming(_RegionHolder(region), region.id, "child").region)
     parent.add_child(child, offset=0)
-    assert (child.id, list(child._regions)) == ("clt_2", ["region_2"])
-    assert _named(child.get_region("region_2")) == ["region_2", "clt_2"]
-    assert _named(parent) == ["region_1", "clt_1"]
+    assert (child.id, list(child._regions)) == ("child", [region.id])
+    assert _named(child.get_region(region.id)) == [region.id, "child"]
+    assert _named(parent) == [held.id, "parent"]
     validate(parent.to_dict())
+
+
+def test_add_child_refuses_a_child_holding_an_id_of_the_tree() -> None:
+    parent = _quarters("parent")
+    held = parent.create_region(0, 4, seed=7)
+    child = _quarters("child", length=4)
+    region = child.create_region(0, 2, seed=7)
+    assert region.id == held.id
+    _raises(
+        f"region '{held.id}' of timeline 'child' cannot join: its id '{held.id}' is "
+        f"already held by region '{held.id}' of timeline 'parent'",
+        lambda: parent.add_child(child, offset=0),
+    )
+    assert (parent.n_children, child._parent) == (0, None)
+    assert list(child._regions) == [held.id]
 
 
 class _RegionHolder:
@@ -331,108 +380,92 @@ def test_a_root_given_an_id_on_reading_is_named_by_it() -> None:
     assert _named(written["timelines"][0]) == ["piece"]
 
 
-def test_from_bundles_renames_what_statements_name() -> None:
-    first, second = _minted_tree(), _minted_tree()
+def test_from_bundles_keeps_what_statements_name() -> None:
+    first, second = _tree(), _tree()
     for root in (first, second):
-        _naming(root, "clt_2", "region_1")
+        _naming(root, *_ids(root)[1], *_ids(root)[2])
+    before = [_ids(first), _ids(second)]
     merged = AlignmentBundle.from_bundles(
         [AlignmentBundle().add_timeline(first), AlignmentBundle().add_timeline(second)]
     )
-    assert sorted(merged.timelines) == ["clt_1", "clt_3"]
-    assert (second.id, list(second._children), list(second._regions)) == (
-        "clt_3",
-        ["clt_4"],
-        ["region_2"],
-    )
-    assert _named(first) == ["clt_2", "region_1"]
-    assert _named(second) == ["clt_4", "region_2"]
+    assert merged.timeline_ids == [first.id, second.id]
+    assert [_ids(first), _ids(second)] == before
+    assert _named(first) == [*_ids(first)[1], *_ids(first)[2]]
+    assert _named(second) == [*_ids(second)[1], *_ids(second)[2]]
     validate(merged.to_dict())
 
 
-def test_from_bundles_renames_a_group_minted_again() -> None:
+def test_from_bundles_refuses_sources_sharing_an_id() -> None:
+    first, second = _tree(7), _tree(7)
+    sources = [AlignmentBundle().add_timeline(t) for t in (first, second)]
+    held = re.escape(first.id)
+    with pytest.raises(
+        ValueError,
+        match=f"^timeline '{held}' cannot join bundle '[^']+': its id '{held}' is "
+        f"already held by timeline '{held}'$",
+    ):
+        AlignmentBundle.from_bundles(sources)
+    assert [source.timeline_ids for source in sources] == [[first.id], [second.id]]
+    assert _ids(second) == _ids(first)
+
+
+def test_groups_minted_alike_keep_their_ids_through_from_bundles() -> None:
     sources = []
     for _ in range(2):
         score = _quarters()
         bundle = AlignmentBundle().add_timeline(score, as_group="score")
-        _naming(score, "group_1")
-        sources.append((bundle, score))
-    merged = AlignmentBundle.from_bundles([bundle for bundle, _ in sources])
-    assert sorted(merged.groups) == ["group_1", "group_2"]
-    assert [_named(score) for _, score in sources] == [["group_1"], ["group_2"]]
+        (group_id,) = bundle.groups
+        _naming(score, group_id)
+        sources.append((bundle, score, group_id))
+    merged = AlignmentBundle.from_bundles([bundle for bundle, _, _ in sources])
+    assert list(merged.groups) == [group_id for _, _, group_id in sources]
+    assert len(set(merged.groups)) == 2
+    assert [_named(score) for _, score, _ in sources] == [
+        [group_id] for _, _, group_id in sources
+    ]
     validate(merged.to_dict())
 
 
-def test_add_group_renames_the_group_in_the_trees_joining_with_it() -> None:
-    p = _naming(_quarters("p"), "group_1")
-    s = _naming(_quarters("s"), "group_1")
-    bundle = AlignmentBundle().add_timeline(p, as_group="first")
-    group = TimelineGroup(timelines=[p, s])
-    assert group.id == "group_1"
-    bundle.add_group(group)
-    assert (sorted(bundle.groups), group.id) == (["group_1", "group_2"], "group_2")
-    assert (_named(p), _named(s)) == (["group_1"], ["group_2"])
-    validate(bundle.to_dict())
-
-
-def test_from_bundles_renames_every_tree_of_the_source_at_once() -> None:
-    f = _naming(_quarters("f"), "group_1")
-    first = AlignmentBundle().add_timeline(f, as_group="f")
-    m, n = _naming(_quarters("m"), "group_2"), _quarters("n")
-    u = _naming(_quarters("u"), "group_1", "group_2")
-    source = (
-        AlignmentBundle().add_timeline(m, as_group="a").add_timeline(n, as_group="b")
-    )
-    source.add_timeline(u)
-    assert sorted(source.groups) == ["group_1", "group_2"]
-    merged = AlignmentBundle.from_bundles([first, source])
-    assert {key: group.timeline_ids for key, group in merged.groups.items()} == {
-        "group_1": ["f"],
-        "group_2": ["m"],
-        "group_3": ["n"],
-    }
-    assert (_named(f), _named(m), _named(u)) == (
-        ["group_1"],
-        ["group_3"],
-        ["group_2", "group_3"],
-    )
-    validate(merged.to_dict())
-    # The source shares its trees with the merged bundle: it no longer writes.
+def test_a_group_whose_id_the_bundle_holds_is_refused() -> None:
+    p, s = _quarters("p"), _quarters("s")
+    bundle = AlignmentBundle().add_group(TimelineGroup(timelines=[p], seed=7))
+    group = TimelineGroup(timelines=[s], seed=7)
     _raises(
-        "#/timelines/0/statements/dcterms:source/0/id: '#group_3' names no element "
-        "of this manifest",
-        source.to_dict,
+        f"Group '{group.id}' already exists in bundle", lambda: bundle.add_group(group)
+    )
+    assert list(bundle.groups) == [group.id]
+    assert bundle.groups[group.id].timeline_ids == ["p"]
+    sources = [
+        AlignmentBundle().add_group(TimelineGroup(timelines=[_quarters(t)], seed=7))
+        for t in ("a", "b")
+    ]
+    _raises(
+        f"Group '{group.id}' already exists in bundle",
+        lambda: AlignmentBundle.from_bundles(sources),
     )
 
 
-def _grouped_naming_group_1() -> tuple[Timeline, TimelineGroup, AlignmentBundle]:
-    """``m`` in the minted ``group_1`` of a bundle, both naming ``#group_1``."""
-    m = _naming(_quarters("m"), "group_1")
+@pytest.mark.parametrize("joins", ["bundle", "group", "region"])
+def test_a_given_id_a_minted_group_holds_is_refused(joins: str) -> None:
+    m = _naming(_quarters("m"), "m")
     group = TimelineGroup(timelines=[m])
-    bundle = _naming(AlignmentBundle().add_group(group), "group_1")
-    return m, group, bundle
-
-
-@pytest.mark.parametrize("joins", ["bundle", "group"])
-def test_a_group_giving_way_to_a_given_id_is_renamed_but_in_the_newcomer(
-    joins: str,
-) -> None:
-    m, group, bundle = _grouped_naming_group_1()
-    newcomer = _naming(_quarters("group_1"), "group_1")
-    (bundle if joins == "bundle" else group).add_timeline(newcomer)
-    assert (group.id, sorted(bundle.groups)) == ("group_2", ["group_2"])
-    assert (_named(m), _named(bundle), _named(newcomer)) == (
-        ["group_2"],
-        ["group_2"],
-        ["group_1"],
-    )
-    validate(bundle.to_dict())
-
-
-def test_a_region_given_the_id_of_a_minted_group_renames_the_group() -> None:
-    m, group, bundle = _grouped_naming_group_1()
-    m.create_region(0, 4, id="group_1")
-    assert group.id == "group_2"
-    assert (_named(m), _named(bundle)) == (["group_2"], ["group_2"])
+    bundle = _naming(AlignmentBundle(id="rec").add_group(group), group.id)
+    held = f"its id '{group.id}' is already held by group '{group.id}'"
+    if joins == "region":
+        _raises(
+            f"region '{group.id}' of timeline 'm' cannot join: {held}",
+            lambda: m.create_region(0, 4, id=group.id),
+        )
+        assert m.list_regions() == []
+    else:
+        newcomer = _quarters(group.id)
+        scope = "bundle 'rec'" if joins == "bundle" else f"group '{group.id}'"
+        _raises(
+            f"timeline '{group.id}' cannot join {scope}: {held}",
+            lambda: (bundle if joins == "bundle" else group).add_timeline(newcomer),
+        )
+    assert (list(bundle.groups), group.timeline_ids) == ([group.id], ["m"])
+    assert (_named(m), _named(bundle)) == (["m"], [group.id])
     validate(bundle.to_dict())
 
 
@@ -440,34 +473,69 @@ def _q(value: int) -> Coordinate:
     return Coordinate(Fraction(value), TimeUnit.quarters)
 
 
-def _with_map_and_break() -> Timeline:
-    """A root holding the minted map ``cmap_1`` and break ``break_1``."""
-    root = _quarters(length=16)
+def _with_map_and_break(
+    timeline_id: str | None = None, seed: int | None = None
+) -> Timeline:
+    """A root holding one conversion map and one break, minted."""
+    root = _quarters(timeline_id, length=16)
     root.add_conversion_map(
-        LinearMap(scalar=2, source_unit="quarters", target_unit="seconds")
+        LinearMap(scalar=2, source_unit="quarters", target_unit="seconds", seed=seed)
     )
-    root.flow_control.add(Break(_q(8)))
+    root.flow_control.add(Break(_q(8), seed=seed))
     return root
 
 
-def test_a_map_and_a_break_minted_again_with_their_tree_are_renamed() -> None:
+def _map_and_break(root: Timeline) -> tuple[str, str]:
+    (cmap,) = root._conversion_maps
+    (element,) = root.flow_control.elements
+    return cmap, element.id
+
+
+def test_a_map_and_a_break_keep_their_ids_with_their_tree() -> None:
     held = _with_map_and_break()
-    newcomer = _naming(_with_map_and_break(), "cmap_1", "break_1")
+    newcomer = _with_map_and_break()
+    named = _map_and_break(newcomer)
+    assert set(named).isdisjoint(_map_and_break(held))
+    _naming(newcomer, *named)
     bundle = AlignmentBundle().add_timeline(held).add_timeline(newcomer)
-    (cmap,) = newcomer._conversion_maps
-    (element,) = newcomer.flow_control.elements
-    assert (cmap, element.id) == ("cmap_2", "break_2")
-    assert _named(newcomer) == ["cmap_2", "break_2"]
+    assert _map_and_break(newcomer) == named
+    assert _named(newcomer) == list(named)
     validate(bundle.to_dict())
 
 
+@pytest.mark.parametrize("held_seed", [None, 7])
+def test_a_map_or_a_break_whose_id_the_bundle_holds_is_refused(
+    held_seed: int | None,
+) -> None:
+    held = _with_map_and_break("held", 7)
+    newcomer = _quarters("newcomer", length=16)
+    if held_seed is None:
+        newcomer.flow_control.add(Break(_q(8), seed=7))
+        kind, (_, refused) = "break", _map_and_break(held)
+    else:
+        newcomer.add_conversion_map(
+            LinearMap(scalar=2, source_unit="quarters", target_unit="seconds", seed=7)
+        )
+        kind, (refused, _) = "conversion map", _map_and_break(held)
+    bundle = AlignmentBundle(id="rec").add_timeline(held)
+    _raises(
+        f"{kind} '{refused}' of timeline 'newcomer' cannot join bundle 'rec': its id "
+        f"'{refused}' is already held by {kind} '{refused}' of timeline 'held'",
+        lambda: bundle.add_timeline(newcomer),
+    )
+    assert bundle.timeline_ids == ["held"]
+
+
 def test_a_map_added_beside_one_named_leaves_the_name_with_it() -> None:
-    root = _naming(_with_map_and_break(), "cmap_1")
+    root = _with_map_and_break()
+    (first,) = root._conversion_maps
+    _naming(root, first)
     root.add_conversion_map(
         LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
     )
-    assert sorted(root._conversion_maps) == ["cmap_1", "cmap_2"]
-    assert _named(root) == ["cmap_1"]
+    second = list(root._conversion_maps)[1]
+    assert list(root._conversion_maps) == [first, second] and first != second
+    assert _named(root) == [first]
 
 
 # endregion

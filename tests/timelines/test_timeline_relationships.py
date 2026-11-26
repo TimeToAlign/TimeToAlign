@@ -273,7 +273,9 @@ class TestTimelineRegionManagement:
 
         with pytest.raises(ValueError, match="already held by region 'Chorus'"):
             tl.create_region(70, 90, id="Chorus", name="Chorus")
-        assert tl.create_region(70, 90, name="Chorus").id == "region_1"
+        again = tl.create_region(70, 90, name="Chorus")
+        assert again.id.startswith("region_")
+        assert tl.list_regions() == ["Chorus", again.id]
 
     def test_add_region_on_locked_timeline_succeeds(self):
         """add_region works on a locked timeline; regions are pure annotations.
@@ -1869,7 +1871,8 @@ class TestCreateRegionsByGrouping:
         assert regions[1].end.value == 56.0
         # A recurring value repeats the name; the ids tell the runs apart
         assert regions[2].name == "Fast"
-        assert [region.id for region in regions] == ["region_1", "region_2", "region_3"]
+        assert len({region.id for region in regions}) == 3
+        assert tl.list_regions() == [region.id for region in regions]
 
     def test_custom_name_format(self):
         """name_format with {run} distinguishes recurrences."""
@@ -2041,13 +2044,13 @@ class TestCreateChildrenFromRegions:
         [
             (
                 [(0, 8), (4, 12)],
-                [[("fast_1", 0, 2), ("fast_2", 6, 7)], [("fast_2", 2, 3)]],
+                [[("f1", 0, 2), ("f2", 6, 7)], [("f2", 2, 3)]],
             ),
             (
                 [(0, 8), (0, 8)],
                 [
-                    [("fast_1", 0, 2), ("fast_2", 6, 7)],
-                    [("fast_1", 0, 2), ("fast_2", 6, 7)],
+                    [("f1", 0, 2), ("f2", 6, 7)],
+                    [("f1", 0, 2), ("f2", 6, 7)],
                 ],
             ),
         ],
@@ -2057,8 +2060,8 @@ class TestCreateChildrenFromRegions:
         tl = ContinuousLogicalTimeline(length=16, uid="clt_1")
         tl.add_events(
             [
-                {"event_type": "Fast", "start": 0, "end": 2},
-                {"event_type": "Fast", "start": 6, "end": 7},
+                {"event_type": "Fast", "id": "f1", "start": 0, "end": 2},
+                {"event_type": "Fast", "id": "f2", "start": 6, "end": 7},
             ]
         )
         for start, end in regions:

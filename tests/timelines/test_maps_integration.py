@@ -191,10 +191,12 @@ def test_both_tables_refuse_a_map_without_output_number_type():
     """The timeline table and the group table apply one column rule."""
     timeline = ContinuousLogicalTimeline(length=4, uid="clt_1")
     timeline.add_conversion_map(
-        _SecondsByProperty(scalar=2, offset=0, source_unit=TimeUnit.quarters)
+        _SecondsByProperty(
+            scalar=2, offset=0, source_unit=TimeUnit.quarters, uid="by_property"
+        )
     )
     message = (
-        "Conversion map 'cmap_1' names the target unit 'seconds' "
+        "Conversion map 'by_property' names the target unit 'seconds' "
         "but no output number type"
     )
     with pytest.raises(ValueError) as refused:

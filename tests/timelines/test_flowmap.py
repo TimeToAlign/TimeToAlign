@@ -22,6 +22,7 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
+from timetoalign.core.ids import IdMinter
 from timetoalign.core.provenance import Provenance
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
@@ -425,9 +426,8 @@ class TestChunkObjects:
             [concert.get_region("intro"), concert.get_child("second"), z, Gap(2)]
         )
         assert flow_map.chunks == ("intro", "second", "z", Gap(Fraction(2)))
-        assert flow_map.id == "flow_map_1"
         assert flow_map.timeline == "set"
-        assert concert.get_flow_map("flow_map_1") is flow_map
+        assert concert.get_flow_map(flow_map.id) is flow_map
 
 
 class TestVirtualTimelineAsChunk:
@@ -658,47 +658,74 @@ class TestDictionaryForm:
 
 
 class TestIdentity:
-    """IDs are minted in the manifest, and references follow a new ID."""
+    """IDs are minted at construction; a collision is refused, nothing renamed."""
 
     @staticmethod
-    def _score() -> ContinuousLogicalTimeline:
-        score = ContinuousLogicalTimeline(length=8)
-        section = score.create_region(0, 4)
-        flow_map = score.create_flow_map([section, section])
-        score.create_virtual_timeline(flow_map)
+    def _score(seed: int | None = None) -> ContinuousLogicalTimeline:
+        other = None if seed is None else seed + 1
+        score = ContinuousLogicalTimeline(length=8, seed=seed)
+        section = score.create_region(0, 4, seed=seed)
+        flow_map = score.create_flow_map([section, section], seed=seed)
+        score.create_virtual_timeline(flow_map, seed=other)
         return score
 
-    def test_ids_are_minted_in_the_timeline_s_manifest(self) -> None:
-        score = self._score()
-        assert score.id == "clt_1"
-        assert score.list_regions() == ["region_1"]
-        assert score.list_flow_maps() == ["flow_map_1"]
-        # The root holds clt_1, so the virtual timeline is minted above it.
-        assert score.list_virtual_timelines() == ["clt_2"]
-        second = score.create_flow_map(["region_1"])
-        assert second.id == "flow_map_2"
+    def test_ids_are_minted_from_the_seed_given(self) -> None:
+        score = self._score(7)
+        # Each call given a seed mints the first ID of a fresh minter.
+        assert score.id == IdMinter(7).mint("clt") == "clt_1hvif5xc2r1fv"
+        assert score.list_regions() == [IdMinter(7).mint("region")]
+        assert score.list_flow_maps() == [IdMinter(7).mint("flow")]
+        assert score.list_virtual_timelines() == [IdMinter(8).mint("clt")]
+        assert score.list_virtual_timelines() == ["clt_260an7vd22pgd"]
+        # Without a seed, from the content: distinct from every ID held.
+        (region,) = score.list_regions()
+        second = score.create_flow_map([region])
+        assert second.id.startswith("flow_")
+        assert score.list_flow_maps() == [IdMinter(7).mint("flow"), second.id]
 
-    def test_a_second_tree_joining_a_bundle_is_minted_again_and_keeps_its_references(
-        self,
-    ) -> None:
+    def test_a_minted_collision_is_refused_and_nothing_is_renamed(self) -> None:
+        score = ContinuousLogicalTimeline(length=8, seed=7)
+        flow_map = score.create_flow_map([score.create_region(0, 4)])
+        with pytest.raises(ValueError) as refused:
+            score.create_virtual_timeline(flow_map, seed=7)
+        assert str(refused.value) == (
+            f"virtual timeline '{score.id}' of timeline '{score.id}' cannot join: "
+            f"its id '{score.id}' is already held by timeline '{score.id}'"
+        )
+        assert score.list_virtual_timelines() == []
+
+    def test_two_trees_built_alike_join_a_bundle_and_keep_their_ids(self) -> None:
         first, second = self._score(), self._score()
+        held = [
+            (t.id, t.list_regions(), t.list_flow_maps(), t.list_virtual_timelines())
+            for t in (first, second)
+        ]
+        # Equal content built twice: two sets of IDs, none shared.
+        ids = [i for tree in held for i in (tree[0], *tree[1], *tree[2], *tree[3])]
+        assert len(set(ids)) == len(ids) == 8
         bundle = AlignmentBundle()
         bundle.add_timeline(first)
         bundle.add_timeline(second)
-        assert first.id == "clt_1"
-        assert first.get_flow_map("flow_map_1").chunks == ("region_1", "region_1")
-        assert first.list_virtual_timelines() == ["clt_2"]
-        # clt_1, clt_2, region_1 and flow_map_1 are held: each is minted above.
-        assert second.id == "clt_3"
-        assert second.list_regions() == ["region_2"]
-        assert second.list_flow_maps() == ["flow_map_2"]
-        assert second.list_virtual_timelines() == ["clt_4"]
-        flow_map = second.get_flow_map("flow_map_2")
-        assert (flow_map.timeline, flow_map.chunks) == (
-            "clt_3",
-            ("region_2", "region_2"),
-        )
-        virtual = second.get_virtual_timeline("clt_4")
-        assert (virtual.map, virtual.timeline) == ("flow_map_2", "clt_3")
+        assert [
+            (t.id, t.list_regions(), t.list_flow_maps(), t.list_virtual_timelines())
+            for t in (first, second)
+        ] == held
+        (region,) = second.list_regions()
+        flow_map = second.get_flow_map(second.list_flow_maps()[0])
+        assert (flow_map.timeline, flow_map.chunks) == (second.id, (region, region))
+        virtual = second.get_virtual_timeline(second.list_virtual_timelines()[0])
+        assert (virtual.map, virtual.timeline) == (flow_map.id, second.id)
         assert virtual.resolve(second).length == q(8)
         assert AlignmentBundle.from_dict(bundle.to_dict()).to_dict() == bundle.to_dict()
+
+    def test_a_tree_holding_an_id_the_bundle_holds_is_refused(self) -> None:
+        first, second = self._score(7), self._score(7)
+        bundle = AlignmentBundle(id="rec")
+        bundle.add_timeline(first)
+        with pytest.raises(ValueError) as refused:
+            bundle.add_timeline(second)
+        assert str(refused.value) == (
+            f"timeline '{second.id}' cannot join bundle 'rec': its id "
+            f"'{second.id}' is already held by timeline '{first.id}'"
+        )
+        assert bundle.timeline_ids == [first.id]

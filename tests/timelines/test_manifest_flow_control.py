@@ -763,17 +763,22 @@ def test_a_score_s_flow_control_round_trips_as_its_array() -> None:
     # with a repeat end and a Fine; MC 17 and MC 32 start repeats at 42 and
     # 84 and carry the markers 1e and 2e; MC 31 and MC 58 end at 84 and 162,
     # each with a repeat end and a D.S. al Fine.
-    assert [(type(e), e.id, e.coordinate, e.name) for e in registry.elements] == [
-        (JumpTarget, "jump_target_3", _q(12), "segno"),
-        (Break, "break_1", _q(42), "fine"),
-        (Jump, "jump_1", _q(42), None),
-        (JumpTarget, "jump_target_1", _q(42), None),
-        (JumpTarget, "jump_target_4", _q(42), "1e"),
-        (Jump, "jump_2", _q(84), None),
-        (JumpTarget, "jump_target_2", _q(84), None),
-        (JumpTarget, "jump_target_5", _q(84), "2e"),
-        (Jump, "jump_3", _q(162), None),
-    ]
+    # Held in the canonical order, by coordinate and then ID; the IDs are
+    # minted, so the elements sharing a coordinate are compared as a set.
+    elements = registry.elements
+    assert len({e.id for e in elements}) == len(elements) == 9
+    assert [(e.coordinate.value, e.id) for e in elements] == sorted(
+        (e.coordinate.value, e.id) for e in elements
+    )
+    by_place: dict[Any, set[tuple[Any, Any]]] = {}
+    for e in elements:
+        by_place.setdefault(e.coordinate, set()).add((type(e), e.name))
+    assert by_place == {
+        _q(12): {(JumpTarget, "segno")},
+        _q(42): {(Break, "fine"), (Jump, None), (JumpTarget, None), (JumpTarget, "1e")},
+        _q(84): {(Jump, None), (JumpTarget, None), (JumpTarget, "2e")},
+        _q(162): {(Jump, None)},
+    }
     assert _read(registry.to_dict()).to_dict() == registry.to_dict()
 
 

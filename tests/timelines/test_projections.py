@@ -19,6 +19,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
+from timetoalign.core.ids import IdMinter
 from timetoalign.core.time import RATIONAL_STRUCT_TYPE
 from timetoalign.maps import LinearMap
 from timetoalign.storage import EventData
@@ -189,22 +190,29 @@ class TestIds:
 
     def test_minted_ids_follow_the_id_scheme(self) -> None:
         timeline = _samples()
+        minter = IdMinter(7)
         assert timeline.add_events(
             [
                 {"event_type": "Projection", "start": 5},
                 {"event_type": "Projection", "start": 6},
-            ]
-        ) == ["projection_1", "projection_2"]
+            ],
+            seed=7,
+        ) == [minter.mint("projection"), minter.mint("projection")]
+        assert timeline.events.table.column("id").to_pylist() == [
+            "projection_1hvif5xc2r1fv",
+            "projection_0g2wfq87pa7jx",
+        ]
 
-    def test_minted_ids_continue_above_every_event_type(self) -> None:
+    def test_a_minted_id_held_by_another_event_type_is_refused(self) -> None:
         timeline = _samples()
-        timeline.add_events([{"event_type": "Note", "id": "projection_2", "start": 1}])
-        assert timeline.add_events(
-            [
-                {"event_type": "Projection", "start": 5},
-                {"event_type": "Projection", "start": 6},
-            ]
-        ) == ["projection_3", "projection_4"]
+        held = IdMinter(7).mint("projection")
+        timeline.add_events([{"event_type": "Note", "id": held, "start": 1}])
+        with pytest.raises(ValueError) as refused:
+            timeline.add_events([{"event_type": "Projection", "start": 5}], seed=7)
+        assert str(refused.value) == (
+            f"Event id '{held}' is already held by an event of timeline 'dpt_1'"
+        )
+        assert timeline.events.table.column("id").to_pylist() == [held]
 
 
 class TestIdsAcrossTheManifest:
@@ -219,116 +227,126 @@ class TestIdsAcrossTheManifest:
         bundle.add_timeline(_quarters())
         return bundle
 
-    def test_minted_above_every_projection_of_the_bundle(self) -> None:
+    @staticmethod
+    def _shared(id: str, other: str) -> str:
+        return (
+            f"Projection ID '{id}' names a Projection on the timeline 'dpt_1' and "
+            f"one on '{other}': a Projection's ID is unique among all Projections "
+            "of a manifest and its package"
+        )
+
+    def test_minted_ids_are_distinct_across_the_bundle(self) -> None:
         bundle = self._bundle()
         samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
-        assert samples.add_projections(
+        ids = samples.add_projections(
             [
                 Projection(start=Coordinate(22050, TimeUnit.samples)),
                 Projection(start=Coordinate(44100, TimeUnit.samples)),
             ]
-        ) == ["projection_1", "projection_2"]
-        assert quarters.add_events(
-            [{"event_type": "Projection", "start": Fraction(1)}]
-        ) == ["projection_3"]
+        )
+        ids += quarters.add_events([{"event_type": "Projection", "start": Fraction(1)}])
+        assert len(set(ids)) == 3
 
-    def test_minted_above_every_projection_of_the_tree(self) -> None:
+    def test_a_minted_id_another_timeline_of_the_bundle_holds_is_refused(
+        self,
+    ) -> None:
+        bundle = self._bundle()
+        samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
+        (held,) = samples.add_projections(
+            [Projection(start=Coordinate(22050, TimeUnit.samples))], seed=7
+        )
+        assert held == IdMinter(7).mint("projection")
+        with pytest.raises(ValueError) as raised:
+            quarters.add_events(
+                [{"event_type": "Projection", "start": Fraction(1)}], seed=7
+            )
+        assert str(raised.value) == self._shared(held, "clt_6")
+        with pytest.raises(ValueError) as raised:
+            quarters.add_projections(
+                [Projection(start=Coordinate(Fraction(1), TimeUnit.quarters))], seed=7
+            )
+        assert str(raised.value) == self._shared(held, "clt_6")
+        assert len(quarters.events) == 0
+
+    def test_a_minted_id_another_timeline_of_the_tree_holds_is_refused(self) -> None:
         samples = _samples()
         part = DiscretePhysicalTimeline(length=1000, uid="part")
         samples.add_child(part, 0)
-        assert samples.add_events([{"event_type": "Projection", "start": 5}]) == [
-            "projection_1"
-        ]
-        assert part.add_events([{"event_type": "Projection", "start": 5}]) == [
-            "projection_2"
-        ]
+        (held,) = samples.add_events([{"event_type": "Projection", "start": 5}], seed=7)
+        with pytest.raises(ValueError) as raised:
+            part.add_events([{"event_type": "Projection", "start": 5}], seed=7)
+        assert str(raised.value) == self._shared(held, "part")
+        assert len(part.events) == 0
 
-    def test_a_timeline_of_no_shared_manifest_mints_on_its_own(self) -> None:
+    def test_a_timeline_of_no_shared_manifest_is_not_checked_against_it(
+        self,
+    ) -> None:
         bundle = self._bundle()
         samples = bundle.timelines["dpt_1"]
-        samples.add_events([{"event_type": "Projection", "start": 5}])
+        (held,) = samples.add_events([{"event_type": "Projection", "start": 5}], seed=7)
         free = _quarters()
         assert free.add_events(
-            [{"event_type": "Projection", "start": Fraction(1)}]
-        ) == ["projection_1"]
+            [{"event_type": "Projection", "start": Fraction(1)}], seed=7
+        ) == [held]
 
     def test_a_given_id_another_timeline_holds_is_refused(self) -> None:
         bundle = self._bundle()
         samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
-        samples.add_events([{"event_type": "Projection", "start": 5}])
-        message = (
-            "Projection ID 'projection_1' names a Projection on the timeline "
-            "'dpt_1' and one on 'clt_6': a Projection's ID is unique among all "
-            "Projections of a manifest and its package"
-        )
+        (held,) = samples.add_events([{"event_type": "Projection", "start": 5}])
+        message = self._shared(held, "clt_6")
         with pytest.raises(ValueError) as raised:
             quarters.add_events(
-                [
-                    {
-                        "event_type": "Projection",
-                        "id": "projection_1",
-                        "start": Fraction(1),
-                    }
-                ]
+                [{"event_type": "Projection", "id": held, "start": Fraction(1)}]
             )
         assert str(raised.value) == message
         with pytest.raises(ValueError) as raised:
             quarters.add_projections(
-                Projection(
-                    id="projection_1",
-                    start=Coordinate(Fraction(1), TimeUnit.quarters),
-                )
+                Projection(id=held, start=Coordinate(Fraction(1), TimeUnit.quarters))
             )
         assert str(raised.value) == message
         assert len(quarters.events) == 0
 
     def test_a_child_sharing_a_projection_id_joins(self) -> None:
         parent = _samples()
-        parent.add_events([{"event_type": "Projection", "start": 5}])
+        (shared,) = parent.add_events(
+            [{"event_type": "Projection", "start": 5}], seed=7
+        )
         part = DiscretePhysicalTimeline(length=1000, uid="part")
-        # Minted in the child's own manifest, never minted again on joining.
-        assert part.add_events([{"event_type": "Projection", "start": 7}]) == [
-            "projection_1"
+        # Minted in the child's own manifest from the same seed: the same ID.
+        assert part.add_events([{"event_type": "Projection", "start": 7}], seed=7) == [
+            shared
         ]
         parent.add_child(part, 0)
         assert parent.n_children == 1
         assert part._parent is parent
-        assert part.events.table.column("id").to_pylist() == ["projection_1"]
+        assert part.events.table.column("id").to_pylist() == [shared]
 
         # The shared ID refuses nothing on creation: a missing ID is minted
-        # above every Projection of the manifest, a free one is kept ...
-        assert parent.add_events([{"event_type": "Projection", "start": 9}]) == [
-            "projection_2"
-        ]
+        # apart from every Projection of the manifest, a free one is kept ...
+        (minted,) = parent.add_events([{"event_type": "Projection", "start": 9}])
+        assert minted != shared
         assert part.add_events(
             [{"event_type": "Projection", "id": "onset_a", "start": 8}]
         ) == ["onset_a"]
         # ... and one another timeline of the manifest holds is refused.
         with pytest.raises(ValueError) as raised:
-            part.add_events(
-                [{"event_type": "Projection", "id": "projection_2", "start": 9}]
-            )
-        assert str(raised.value) == (
-            "Projection ID 'projection_2' names a Projection on the timeline "
-            "'dpt_1' and one on 'part': a Projection's ID is unique among all "
-            "Projections of a manifest and its package"
-        )
-        assert part.events.table.column("id").to_pylist() == [
-            "projection_1",
-            "onset_a",
-        ]
+            part.add_events([{"event_type": "Projection", "id": minted, "start": 9}])
+        assert str(raised.value) == self._shared(minted, "part")
+        assert part.events.table.column("id").to_pylist() == [shared, "onset_a"]
 
     def test_a_child_sharing_a_projection_id_of_the_bundle_joins(self) -> None:
         bundle = self._bundle()
         samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
-        quarters.add_events([{"event_type": "Projection", "start": Fraction(1)}])
+        (shared,) = quarters.add_events(
+            [{"event_type": "Projection", "start": Fraction(1)}], seed=7
+        )
         part = DiscretePhysicalTimeline(length=1000, uid="part")
-        part.add_events([{"event_type": "Projection", "start": 7}])
+        part.add_events([{"event_type": "Projection", "start": 7}], seed=7)
         samples.add_child(part, 0)
         assert samples.n_children == 1
         assert part._parent is samples
-        assert part.events.table.column("id").to_pylist() == ["projection_1"]
-        assert quarters.events.table.column("id").to_pylist() == ["projection_1"]
+        assert part.events.table.column("id").to_pylist() == [shared]
+        assert quarters.events.table.column("id").to_pylist() == [shared]
 
 
 class TestProjectionObjects:
@@ -340,8 +358,9 @@ class TestProjectionObjects:
                 projection_of=EventReference(timeline_id="clt_6", event_id="x1azmn68"),
             )
         )
-        assert ids == ["projection_1"]
-        row = _row(timeline, "projection_1")
+        (minted,) = ids
+        assert minted.startswith("projection_")
+        row = _row(timeline, minted)
         assert row["event_type"] == "Projection"
         assert row["start"] == {"value": 22050.0, "numerator": 22050, "denominator": 1}
         assert row["duration"] is None
@@ -357,9 +376,10 @@ class TestProjectionObjects:
                     duration=Duration(0.5, TimeUnit.seconds),
                 ),
                 {"event_type": "Note", "start": 3},
-            ]
+            ],
+            seed=7,
         )
-        assert ids == ["given", "note_1"]
+        assert ids == ["given", IdMinter(7).mint("note")]
         row = _row(timeline, "given")
         assert row["start"] == {"value": 44100.0, "numerator": 44100, "denominator": 1}
         assert row["duration"] == {
@@ -446,19 +466,20 @@ class TestGetOrAdd:
 
     def test_a_second_call_reuses_every_projection(self) -> None:
         timeline = _samples()
-        expected = [f"projection_{n}" for n in (1, 2, 3, 4)]
-        assert timeline.add_projections(self._projections()) == expected
+        expected = timeline.add_projections(self._projections())
+        assert len(set(expected)) == 4
         assert timeline.add_projections(self._projections()) == expected
         assert len(timeline.events) == 4
+        first, second, third, fourth = expected
         assert [
             (row["id"], row["start"]["numerator"], row["duration"])
             for row in timeline.events.table.to_pylist()
         ] == [
-            ("projection_1", 22050, None),
-            ("projection_2", 22050, None),
-            ("projection_3", 44100, None),
+            (first, 22050, None),
+            (second, 22050, None),
+            (third, 44100, None),
             (
-                "projection_4",
+                fourth,
                 44100,
                 {"value": 22050.0, "numerator": 22050, "denominator": 1},
             ),
@@ -466,27 +487,27 @@ class TestGetOrAdd:
 
     def test_the_position_is_compared_on_the_axis(self) -> None:
         timeline = _samples()
-        timeline.add_projections(self._projections())
+        first = timeline.add_projections(self._projections())[0]
         n1 = EventReference(timeline_id="clt_6", event_id="n1")
         assert timeline.add_projections(
             [{"event_type": "Projection", "start": 22050, "projection_of": n1}]
-        ) == ["projection_1"]
+        ) == [first]
         assert len(timeline.events) == 4
 
     def test_one_value_is_one_key_however_the_cell_is_spelled(self) -> None:
         timeline = _quarters()
         unreduced = {"value": 0.5, "numerator": 2, "denominator": 4}
-        assert timeline.add_projections(
+        (added,) = timeline.add_projections(
             [{"event_type": "Projection", "start": unreduced}]
-        ) == ["projection_1"]
-        assert _row(timeline, "projection_1")["start"] == {
+        )
+        assert _row(timeline, added)["start"] == {
             "value": 0.5,
             "numerator": 1,
             "denominator": 2,
         }
         assert timeline.add_projections(
             [Projection(start=Coordinate(Fraction(1, 2), TimeUnit.quarters))]
-        ) == ["projection_1"]
+        ) == [added]
         assert len(timeline.events) == 1
 
     def test_an_event_table_given_whole_is_held_in_lowest_terms(self) -> None:
@@ -510,12 +531,9 @@ class TestGetOrAdd:
         rows = [Projection(start=Coordinate(22050, TimeUnit.samples))] * 3 + [
             Projection(start=Coordinate(44100, TimeUnit.samples))
         ]
-        assert timeline.add_projections(rows) == [
-            "projection_1",
-            "projection_1",
-            "projection_1",
-            "projection_2",
-        ]
+        ids = timeline.add_projections(rows)
+        assert ids == [ids[0], ids[0], ids[0], ids[3]]
+        assert ids[0] != ids[3]
         assert len(timeline.events) == 2
 
     def test_what_tells_projections_apart(self) -> None:
@@ -531,7 +549,7 @@ class TestGetOrAdd:
                 Projection(start=at, duration=Duration(100, TimeUnit.samples)),
             ]
         )
-        assert ids == [f"projection_{n}" for n in (1, 2, 3, 4)]
+        assert len(set(ids)) == len(ids) == 4
         assert len(timeline.events) == 4
 
     def test_a_given_id_is_kept_and_reused(self) -> None:

@@ -18,6 +18,7 @@ import pytest
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import BoundingBox, Box, Coordinate, Duration, Quadrilateral
+from timetoalign.core.ids import IdMinter
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
     DiscreteGraphicalTimeline,
@@ -173,17 +174,20 @@ class TestAccepted:
             [
                 {"event_type": "Note", "start": 0, "duration": 10},
                 Box.from_shape(RECT_H2, origin=7, id="rect_h2"),
-            ]
+            ],
+            seed=7,
         )
 
-        assert ids == ["note_1", "rect_h2"]
+        assert ids == [IdMinter(7).mint("note"), "rect_h2"]
 
     def test_no_box_reads_no_meta_box(self) -> None:
         timeline = DiscreteGraphicalTimeline(
             length=867, uid="seg_2", meta={"box": {"x": "left"}}
         )
 
-        assert timeline.add_events([{"event_type": "Note", "start": 0}]) == ["note_1"]
+        assert timeline.add_events([{"event_type": "Note", "start": 0}], seed=7) == [
+            IdMinter(7).mint("note")
+        ]
 
 
 class TestRefused:

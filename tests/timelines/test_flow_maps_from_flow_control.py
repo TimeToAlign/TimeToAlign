@@ -98,6 +98,14 @@ def _repeat_written() -> ContinuousLogicalTimeline:
     return score
 
 
+def _default_id(written: ComputedFlows | None) -> str:
+    """The ID of the FlowMap written for ``default``, the first written."""
+    assert written is not None
+    default = written.flow_maps[0]
+    assert default.convention == FlowConvention.default
+    return default.id
+
+
 def _state(timeline: Timeline) -> tuple[Any, ...]:
     """Everything the call may change."""
     return (
@@ -116,14 +124,14 @@ class TestOp106:
         written = score.create_flow_maps_from_flow_control()
         assert written is not None
         assert [
-            (region.id, region.name, region.start, region.end)
-            for region in written.sections
+            (region.name, region.start, region.end) for region in written.sections
         ] == [
-            ("region_1", "A", q(0), q(Fraction(953, 2))),
-            ("region_2", "B", q(Fraction(953, 2)), q(500)),
-            ("region_3", "C", q(500), q(1644)),
+            ("A", q(0), q(Fraction(953, 2))),
+            ("B", q(Fraction(953, 2)), q(500)),
+            ("C", q(500), q(1644)),
         ]
-        assert score.list_regions() == ["region_1", "region_2", "region_3"]
+        assert score.list_regions() == [region.id for region in written.sections]
+        assert len(set(score.list_regions())) == 3
         for region in written.sections:
             assert score.get_region(region.id) is region
             assert region.statements == {"type": ["tts:AtomicSection"]}
@@ -142,23 +150,16 @@ class TestOp106:
         score = _op106()
         written = score.create_flow_maps_from_flow_control()
         assert written is not None
+        a, b, c = (region.id for region in written.sections)
         assert [
-            (flow_map.id, flow_map.convention, flow_map.chunks)
-            for flow_map in written.flow_maps
+            (flow_map.convention, flow_map.chunks) for flow_map in written.flow_maps
         ] == [
-            (
-                "flow_map_1",
-                FlowConvention.default,
-                ("region_1", "region_2", "region_1", "region_3"),
-            ),
-            ("flow_map_2", FlowConvention.single, ("region_1", "region_3")),
-            (
-                "flow_map_3",
-                FlowConvention.printed,
-                ("region_1", "region_2", "region_3"),
-            ),
+            (FlowConvention.default, (a, b, a, c)),
+            (FlowConvention.single, (a, c)),
+            (FlowConvention.printed, (a, b, c)),
         ]
-        assert score.list_flow_maps() == ["flow_map_1", "flow_map_2", "flow_map_3"]
+        assert score.list_flow_maps() == [flow_map.id for flow_map in written.flow_maps]
+        assert len(set(score.list_flow_maps())) == 3
         for flow_map in written.flow_maps:
             assert score.get_flow_map(flow_map.id) is flow_map
             assert flow_map.timeline == "op106"
@@ -189,32 +190,23 @@ class TestOp106:
 
     def test_the_manifest_written_is_valid_and_reads_back_equal(self) -> None:
         score = _op106()
-        score.create_flow_maps_from_flow_control()
+        written = score.create_flow_maps_from_flow_control()
+        assert written is not None
+        a, b, c = (f"#{region.id}" for region in written.sections)
+        default, single, printed = (f"#{f.id}" for f in written.flow_maps)
         manifest = score.to_dict()
         timetoshare.validate(manifest)
+        # Written in the format's canonical order: by ID.
         assert [
             (entry["id"], entry["convention"], entry["chunks"], entry["provenance"])
             for entry in manifest["flow_maps"]
-        ] == [
-            (
-                "#flow_map_1",
-                "default",
-                ["#region_1", "#region_2", "#region_1", "#region_3"],
-                [{"method": "inferred"}],
-            ),
-            (
-                "#flow_map_2",
-                "single",
-                ["#region_1", "#region_3"],
-                [{"method": "inferred"}],
-            ),
-            (
-                "#flow_map_3",
-                "printed",
-                ["#region_1", "#region_2", "#region_3"],
-                [{"method": "inferred"}],
-            ),
-        ]
+        ] == sorted(
+            [
+                (default, "default", [a, b, a, c], [{"method": "inferred"}]),
+                (single, "single", [a, c], [{"method": "inferred"}]),
+                (printed, "printed", [a, b, c], [{"method": "inferred"}]),
+            ]
+        )
         assert manifest["@context"]["tts"] == timetoshare.NAMESPACE
         read = Timeline.from_dict(manifest)
         assert read._flow_maps == score._flow_maps
@@ -267,22 +259,25 @@ class TestVirtualTimeline:
 
     def test_it_states_the_axis_the_flow_map_gives(self) -> None:
         score = _op106()
-        score.create_flow_maps_from_flow_control()
-        virtual = score.create_virtual_timeline("flow_map_1", name="as played")
+        default = _default_id(score.create_flow_maps_from_flow_control())
+        virtual = score.create_virtual_timeline(default, name="as played")
+        # A minted ID of the timeline's kind, held by no other element.
+        assert virtual.id.startswith("clt_")
+        assert virtual.id not in {"op106", *score.list_regions(), default}
         assert virtual == VirtualTimeline(
-            "flow_map_1",
+            default,
             "op106",
             q(Fraction(4241, 2)),
             name="as played",
-            id="clt_1",
+            id=virtual.id,
         )
         assert (virtual.unit, virtual.number_type) == (Q, NumberType.fraction)
         assert virtual.through is None
-        assert score.get_virtual_timeline("clt_1") is virtual
-        assert score.list_virtual_timelines() == ["clt_1"]
+        assert score.get_virtual_timeline(virtual.id) is virtual
+        assert score.list_virtual_timelines() == [virtual.id]
         assert virtual.to_dict() == {
-            "id": "clt_1",
-            "map": "flow_map_1",
+            "id": virtual.id,
+            "map": default,
             "timeline": "op106",
             "unit": "quarters",
             "number_type": "fraction",
@@ -293,8 +288,8 @@ class TestVirtualTimeline:
 
     def test_positions_convert_as_the_flow_map_s_do(self) -> None:
         score = _op106()
-        score.create_flow_maps_from_flow_control()
-        virtual = score.create_virtual_timeline("flow_map_1")
+        default = _default_id(score.create_flow_maps_from_flow_control())
+        virtual = score.create_virtual_timeline(default, id="played")
         assert virtual.unfold(Fraction(393, 2), score) == [
             q(Fraction(393, 2)),
             q(Fraction(1393, 2)),
@@ -304,10 +299,10 @@ class TestVirtualTimeline:
         ]
         assert virtual.fold(Fraction(1393, 2), score) == q(Fraction(393, 2))
         assert virtual.fold(
-            IdCoordinate(Fraction(1393, 2), Q, timeline_id="clt_1"), score
+            IdCoordinate(Fraction(1393, 2), Q, timeline_id="played"), score
         ) == q(Fraction(393, 2))
         with pytest.raises(
-            ValueError, match="is no position of virtual timeline 'clt_1'"
+            ValueError, match="is no position of virtual timeline 'played'"
         ):
             virtual.fold(IdCoordinate(4, Q, timeline_id="op106"), score)
         with pytest.raises(ValueError, match="lies outside the virtual axis"):
@@ -315,9 +310,9 @@ class TestVirtualTimeline:
 
     def test_a_statement_that_is_not_true_of_the_timeline_does_not_join(self) -> None:
         score = _op106()
-        score.create_flow_maps_from_flow_control()
+        default = _default_id(score.create_flow_maps_from_flow_control())
         with pytest.raises(ValueError, match="states the length"):
-            score.add_virtual_timeline(VirtualTimeline("flow_map_1", "op106", q(1644)))
+            score.add_virtual_timeline(VirtualTimeline(default, "op106", q(1644)))
         with pytest.raises(ValueError, match="which is no FlowMap of timeline 'op106'"):
             score.add_virtual_timeline(VirtualTimeline("flow_map_9", "op106", q(1644)))
         with pytest.raises(KeyError, match="Available FlowMaps"):
@@ -442,15 +437,17 @@ class TestFindings:
         written = score.create_flow_maps_from_flow_control()
         assert type(written) is ComputedFlows
         sections, flow_maps, findings = written
-        assert [(r.id, r.name, r.start, r.end) for r in sections] == [
-            ("region_1", "A", q(0), q(4)),
-            ("region_2", "B", q(4), q(8)),
+        assert [(r.name, r.start, r.end) for r in sections] == [
+            ("A", q(0), q(4)),
+            ("B", q(4), q(8)),
         ]
-        assert [(f.id, f.convention, f.chunks) for f in flow_maps] == [
-            ("flow_map_1", FlowConvention.default, ("region_1", "region_1")),
-            ("flow_map_2", FlowConvention.single, ("region_1", "region_2")),
-            ("flow_map_3", FlowConvention.printed, ("region_1", "region_2")),
+        a, b = (r.id for r in sections)
+        assert [(f.convention, f.chunks) for f in flow_maps] == [
+            (FlowConvention.default, (a, a)),
+            (FlowConvention.single, (a, b)),
+            (FlowConvention.printed, (a, b)),
         ]
+        assert score.list_flow_maps() == [f.id for f in flow_maps]
         assert _found(findings) == ENDLESS
         assert findings is written.findings
 
@@ -467,10 +464,11 @@ class TestWhatIsWritten:
             ("A", q(0), q(8)),
             ("B", q(8), q(12)),
         ]
+        a, b = (r.id for r in written.sections)
         assert [(f.convention, f.chunks) for f in written.flow_maps] == [
-            (FlowConvention.default, ("region_1", "region_2"))
+            (FlowConvention.default, (a, b))
         ]
-        assert score.list_flow_maps() == ["flow_map_1"]
+        assert score.list_flow_maps() == [written.flow_maps[0].id]
 
     def test_a_timeline_without_flow_control_writes_nothing(self) -> None:
         plain = ContinuousLogicalTimeline(length=12, uid="plain")
@@ -491,15 +489,17 @@ class TestWhatIsWritten:
         assert (score.list_regions(), score.list_flow_maps()) == ([], [])
 
 
-def _named_sections() -> ContinuousLogicalTimeline:
+def _named_sections() -> tuple[ContinuousLogicalTimeline, ComputedFlows]:
     """``|: 8 :| 12`` with its sections written and three things naming them."""
     score = _repeat()
-    score.create_flow_maps_from_flow_control()
+    first = score.create_flow_maps_from_flow_control()
+    assert first is not None
+    a, b = (region.id for region in first.sections)
     theme = score.create_region(2, 6, id="theme")
-    score.replace_region(theme.with_statement("dcterms:relation", {"id": "region_1"}))
-    score.create_flow_map(["region_2", "region_1"], id="backwards")
-    score.create_virtual_timeline("flow_map_1", id="played")
-    return score
+    score.replace_region(theme.with_statement("dcterms:relation", {"id": a}))
+    score.create_flow_map([b, a], id="backwards")
+    score.create_virtual_timeline(_default_id(first), id="played")
+    return score, first
 
 
 def _sections(written: ComputedFlows | None) -> list[tuple[Any, ...]]:
@@ -512,81 +512,78 @@ def _flow_maps(written: ComputedFlows | None) -> list[tuple[Any, ...]]:
     return [(f.id, f.convention, f.chunks) for f in written.flow_maps]
 
 
+def _ids(written: ComputedFlows | None) -> tuple[list[str], list[str]]:
+    """The IDs of the sections and of the FlowMaps written, in their order."""
+    assert written is not None
+    return [r.id for r in written.sections], [f.id for f in written.flow_maps]
+
+
+def _new(ids: list[str], held: list[str]) -> list[str]:
+    """``ids``, after asserting that they are distinct and none was held."""
+    assert len(set(ids)) == len(ids)
+    assert set(ids).isdisjoint(held)
+    return ids
+
+
 class TestWrittenAgain:
     """Computed again, nothing is taken away and no ID names another stretch."""
 
     def test_the_first_writing(self) -> None:
         score = _repeat()
         first = score.create_flow_maps_from_flow_control()
+        a, b = _new(_ids(first)[0], ["score"])
+        default, single, printed = _new(_ids(first)[1], ["score", a, b])
         assert _sections(first) == [
-            ("region_1", "A", q(0), q(8)),
-            ("region_2", "B", q(8), q(12)),
+            (a, "A", q(0), q(8)),
+            (b, "B", q(8), q(12)),
         ]
         assert _flow_maps(first) == [
-            (
-                "flow_map_1",
-                FlowConvention.default,
-                ("region_1", "region_1", "region_2"),
-            ),
-            ("flow_map_2", FlowConvention.single, ("region_1", "region_2")),
-            ("flow_map_3", FlowConvention.printed, ("region_1", "region_2")),
+            (default, FlowConvention.default, (a, a, b)),
+            (single, FlowConvention.single, (a, b)),
+            (printed, FlowConvention.printed, (a, b)),
         ]
-        assert _named_sections().get_virtual_timeline("played").length == q(20)
+        assert _named_sections()[0].get_virtual_timeline("played").length == q(20)
 
     def test_unchanged_flow_control_writes_the_same_and_asks_for_no_actor(
         self,
     ) -> None:
         score = _op106()
         first = score.create_flow_maps_from_flow_control()
-        virtual = score.create_virtual_timeline("flow_map_1")
+        virtual = score.create_virtual_timeline(_default_id(first))
         before = _state(score)
         second = score.create_flow_maps_from_flow_control()
         assert second == first
         assert _state(score) == before
-        assert score.list_flow_maps() == ["flow_map_1", "flow_map_2", "flow_map_3"]
+        assert score.list_flow_maps() == _ids(first)[1]
         assert score.get_virtual_timeline(virtual.id) == virtual
 
     def test_a_divided_section_stays_under_its_id_and_is_rejected(self) -> None:
-        score = _named_sections()
-        whole = score.get_region("region_1")
+        score, first = _named_sections()
+        a, b = _ids(first)[0]
+        default, single, printed = _ids(first)[1]
+        whole = score.get_region(a)
         score.flow_control.add(JumpTarget(q(4), id="sign"))
 
         second = score.create_flow_maps_from_flow_control(
             actor=EDITOR, date="2026-11-25"
         )
 
+        # A new stretch gets an ID no element of the timeline held.
+        c, d = _new(_ids(second)[0][:2], [a, b, "theme", "score"])
         assert _sections(second) == [
-            ("region_3", "A", q(0), q(4)),
-            ("region_4", "B", q(4), q(8)),
-            ("region_2", "C", q(8), q(12)),
+            (c, "A", q(0), q(4)),
+            (d, "B", q(4), q(8)),
+            (b, "C", q(8), q(12)),
         ]
         assert all(region.is_atomic_section for region in second.sections)
         assert _flow_maps(second) == [
-            (
-                "flow_map_1",
-                FlowConvention.default,
-                ("region_3", "region_4", "region_3", "region_4", "region_2"),
-            ),
-            (
-                "flow_map_2",
-                FlowConvention.single,
-                ("region_3", "region_4", "region_2"),
-            ),
-            (
-                "flow_map_3",
-                FlowConvention.printed,
-                ("region_3", "region_4", "region_2"),
-            ),
+            (default, FlowConvention.default, (c, d, c, d, b)),
+            (single, FlowConvention.single, (c, d, b)),
+            (printed, FlowConvention.printed, (c, d, b)),
         ]
-        assert score.list_regions() == [
-            "region_1",
-            "region_2",
-            "theme",
-            "region_3",
-            "region_4",
-        ]
+        assert score.list_regions() == [a, b, "theme", c, d]
         # The section that is none any more: same ID, interval and name.
-        kept = score.get_region("region_1")
+        kept = score.get_region(a)
         assert (kept.name, kept.start, kept.end) == ("A", q(0), q(8))
         assert (kept.name, kept.start, kept.end) == (whole.name, whole.start, whole.end)
         assert not kept.is_atomic_section
@@ -600,22 +597,15 @@ class TestWrittenAgain:
             }
         ]
         # What named it names the same stretch.
-        assert score.get_region("theme").statements == {
-            "dcterms:relation": [{"id": "region_1"}]
-        }
+        assert score.get_region("theme").statements == {"dcterms:relation": [{"id": a}]}
         backwards = score.get_flow_map("backwards")
-        assert backwards.chunks == ("region_2", "region_1")
+        assert backwards.chunks == (b, a)
         assert [
             (chunk.source.start, chunk.source.end)
             for chunk in backwards.resolve(score).chunks
         ] == [(q(8), q(12)), (q(0), q(8))]
         assert score.get_virtual_timeline("played").length == q(20)
-        assert score.list_flow_maps() == [
-            "flow_map_1",
-            "flow_map_2",
-            "flow_map_3",
-            "backwards",
-        ]
+        assert score.list_flow_maps() == [default, single, printed, "backwards"]
         timetoshare.validate(score.to_dict())
 
         # Nothing changed since: no actor is needed, nothing is rejected again.
@@ -624,84 +614,81 @@ class TestWrittenAgain:
         assert _state(score) == before
 
     def test_a_stretch_that_comes_back_gets_a_new_region(self) -> None:
-        score = _named_sections()
+        score, first = _named_sections()
+        a, b = _ids(first)[0]
+        default, single, printed = _ids(first)[1]
         score.flow_control.add(JumpTarget(q(4), id="sign"))
-        score.create_flow_maps_from_flow_control(actor=EDITOR, date="2026-11-25")
-        rejected_before = score.get_region("region_1")
+        second = score.create_flow_maps_from_flow_control(
+            actor=EDITOR, date="2026-11-25"
+        )
+        c, d = _ids(second)[0][:2]
+        rejected_before = score.get_region(a)
         score.flow_control.with_belief("sign", EDITOR, "false", date="2026-11-26")
 
         third = score.create_flow_maps_from_flow_control(
             actor=REVIEWER, date="2026-11-26"
         )
 
+        (e,) = _new(_ids(third)[0][:1], [a, b, c, d, "theme", "score"])
         assert _sections(third) == [
-            ("region_5", "A", q(0), q(8)),
-            ("region_2", "B", q(8), q(12)),
+            (e, "A", q(0), q(8)),
+            (b, "B", q(8), q(12)),
         ]
         assert _flow_maps(third) == [
-            (
-                "flow_map_1",
-                FlowConvention.default,
-                ("region_5", "region_5", "region_2"),
-            ),
-            ("flow_map_2", FlowConvention.single, ("region_5", "region_2")),
-            ("flow_map_3", FlowConvention.printed, ("region_5", "region_2")),
+            (default, FlowConvention.default, (e, e, b)),
+            (single, FlowConvention.single, (e, b)),
+            (printed, FlowConvention.printed, (e, b)),
         ]
         # The Region rejected before is as it was; the two halves follow it.
-        assert score.get_region("region_1") is rejected_before
+        assert score.get_region(a) is rejected_before
         assert [
             (region.id, region.is_atomic_section)
             for region in score._regions.values()
             if region.id != "theme"
         ] == [
-            ("region_1", False),
-            ("region_2", True),
-            ("region_3", False),
-            ("region_4", False),
-            ("region_5", True),
+            (a, False),
+            (b, True),
+            (c, False),
+            (d, False),
+            (e, True),
         ]
         assert [
             belief["actor"]
-            for region_id in ("region_3", "region_4")
+            for region_id in (c, d)
             for entry in score.get_region(region_id).provenance
             for belief in entry["beliefs"]
         ] == [REVIEWER, REVIEWER]
         timetoshare.validate(score.to_dict())
 
     def test_a_shortened_section_stays_and_the_flow_maps_keep_their_ids(self) -> None:
-        score = _named_sections()
+        score, first = _named_sections()
+        a, b = _ids(first)[0]
+        default, single, printed = _ids(first)[1]
         score.flow_control.add(Break(q(10), id="stop"))
 
         second = score.create_flow_maps_from_flow_control(
             actor=EDITOR, date="2026-11-25"
         )
 
+        c, d = _new(_ids(second)[0][1:], [a, b, "theme", "score"])
         assert _sections(second) == [
-            ("region_1", "A", q(0), q(8)),
-            ("region_3", "B", q(8), q(10)),
-            ("region_4", "C", q(10), q(12)),
+            (a, "A", q(0), q(8)),
+            (c, "B", q(8), q(10)),
+            (d, "C", q(10), q(12)),
         ]
         assert _flow_maps(second) == [
-            (
-                "flow_map_1",
-                FlowConvention.default,
-                ("region_1", "region_1", "region_3"),
-            ),
-            ("flow_map_2", FlowConvention.single, ("region_1", "region_3")),
-            (
-                "flow_map_3",
-                FlowConvention.printed,
-                ("region_1", "region_3", "region_4"),
-            ),
+            (default, FlowConvention.default, (a, a, c)),
+            (single, FlowConvention.single, (a, c)),
+            (printed, FlowConvention.printed, (a, c, d)),
         ]
         assert [(f.kind, f.coordinate, f.end) for f in second.findings] == [
             (FlowFindingKind.flow_ends_at_break, q(10), None),
             (FlowFindingKind.never_played, q(10), q(12)),
         ]
-        gone = score.get_region("region_2")
+        gone = score.get_region(b)
         assert (gone.name, gone.start, gone.end) == ("B", q(8), q(12))
         assert not gone.is_atomic_section
-        assert score.get_region("region_1").provenance == [
+        assert score.get_region(a).provenance == [
             {
                 "property": "rdf:type",
                 "value": {"id": "tts:AtomicSection"},
@@ -710,18 +697,19 @@ class TestWrittenAgain:
         ]
         assert score.get_flow_map("backwards").resolve(score).length == q(12)
         assert score.get_virtual_timeline("played") == VirtualTimeline(
-            "flow_map_1", "score", q(18), id="played"
+            default, "score", q(18), id="played"
         )
         timetoshare.validate(score.to_dict())
 
     def test_without_an_actor_changed_sections_are_refused(self) -> None:
-        score = _named_sections()
+        score, first = _named_sections()
+        a = _ids(first)[0][0]
         score.flow_control.add(JumpTarget(q(4), id="sign"))
         before = _state(score)
         with pytest.raises(ValueError) as raised:
             score.create_flow_maps_from_flow_control()
         assert str(raised.value) == (
-            "timeline 'score' holds the atomic section(s) ['region_1'], whose "
+            f"timeline 'score' holds the atomic section(s) ['{a}'], whose "
             "stretches its flow control does not give any more: they stay and are "
             "rejected as atomic sections, which needs the actor who recomputes "
             "(actor=)"
@@ -732,20 +720,22 @@ class TestWrittenAgain:
         assert _state(score) == before
 
     def test_a_flow_map_of_single_stays_where_it_comes_to_equal_default(self) -> None:
-        score = _named_sections()
+        score, first = _named_sections()
+        a, b = _ids(first)[0]
+        default, single, printed = _ids(first)[1]
         score.flow_control.with_belief("repeat", EDITOR, "false", date="2026-11-25")
         score.flow_control.add(SectionBreak(q(8), id="movement"))
 
         second = score.create_flow_maps_from_flow_control()
 
         assert _sections(second) == [
-            ("region_1", "A", q(0), q(8)),
-            ("region_2", "B", q(8), q(12)),
+            (a, "A", q(0), q(8)),
+            (b, "B", q(8), q(12)),
         ]
         assert _flow_maps(second) == [
-            ("flow_map_1", FlowConvention.default, ("region_1", "region_2")),
-            ("flow_map_2", FlowConvention.single, ("region_1", "region_2")),
-            ("flow_map_3", FlowConvention.printed, ("region_1", "region_2")),
+            (default, FlowConvention.default, (a, b)),
+            (single, FlowConvention.single, (a, b)),
+            (printed, FlowConvention.printed, (a, b)),
         ]
         assert score.get_virtual_timeline("played").length == q(12)
 
@@ -755,16 +745,15 @@ class TestAnotherOrigin:
 
     def test_a_computed_flow_map_of_another_convention_name(self) -> None:
         score = _repeat()
-        score.create_flow_maps_from_flow_control()
+        first = score.create_flow_maps_from_flow_control()
         own = score.create_flow_map(
-            ["region_1"], id="exposition", convention="as recorded", provenance=INFERRED
+            [_ids(first)[0][0]],
+            id="exposition",
+            convention="as recorded",
+            provenance=INFERRED,
         )
         written = score.create_flow_maps_from_flow_control()
-        assert [f.id for f in written.flow_maps] == [
-            "flow_map_1",
-            "flow_map_2",
-            "flow_map_3",
-        ]
+        assert _ids(written)[1] == _ids(first)[1]
         assert score.get_flow_map("exposition") is own
 
     def test_flow_maps_naming_a_convention_without_provenance(self) -> None:
@@ -775,25 +764,25 @@ class TestAnotherOrigin:
         regions = dict(score._regions)
         stated = {
             flow_map_id: score.get_flow_map(flow_map_id)
-            for flow_map_id in ("flow_map_1", "flow_map_2", "flow_map_3")
+            for flow_map_id in score.list_flow_maps()
         }
+        assert len(stated) == 3
         assert not any(flow_map.is_computed for flow_map in stated.values())
+        named = {score.get_region(i).name: i for i in score.list_regions()}
+        a, b = named["A"], named["B"]
 
         written = score.create_flow_maps_from_flow_control()
 
         assert _sections(written) == [
-            ("region_1", "A", q(0), q(8)),
-            ("region_2", "B", q(8), q(12)),
+            (a, "A", q(0), q(8)),
+            (b, "B", q(8), q(12)),
         ]
         assert score._regions == regions
+        default, single, printed = _new(_ids(written)[1], [*stated, a, b, "score"])
         assert _flow_maps(written) == [
-            (
-                "flow_map_4",
-                FlowConvention.default,
-                ("region_1", "region_1", "region_2"),
-            ),
-            ("flow_map_5", FlowConvention.single, ("region_1", "region_2")),
-            ("flow_map_6", FlowConvention.printed, ("region_1", "region_2")),
+            (default, FlowConvention.default, (a, a, b)),
+            (single, FlowConvention.single, (a, b)),
+            (printed, FlowConvention.printed, (a, b)),
         ]
         for flow_map_id, flow_map in stated.items():
             assert score.get_flow_map(flow_map_id) is flow_map
@@ -825,9 +814,10 @@ class TestAnotherOrigin:
 
     def test_a_jump_going_on_at_a_section_keeps_its_place(self) -> None:
         score = _repeat()
-        score.create_flow_maps_from_flow_control()
+        first = score.create_flow_maps_from_flow_control()
+        a, b = _ids(first)[0]
         back = score.flow_control.add(
-            Jump(q(12), [JumpDestination(to="region_2", repeat_count=1)], id="back")
+            Jump(q(12), [JumpDestination(to=b, repeat_count=1)], id="back")
         )
         score.flow_control.add(JumpTarget(q(10), id="sign"))
 
@@ -835,25 +825,19 @@ class TestAnotherOrigin:
             actor=EDITOR, date="2026-11-25"
         )
 
+        c, d = _new(_ids(written)[0][1:], [a, b, "score"])
         assert _sections(written) == [
-            ("region_1", "A", q(0), q(8)),
-            ("region_3", "B", q(8), q(10)),
-            ("region_4", "C", q(10), q(12)),
+            (a, "A", q(0), q(8)),
+            (c, "B", q(8), q(10)),
+            (d, "C", q(10), q(12)),
         ]
-        gone = score.get_region("region_2")
+        gone = score.get_region(b)
         assert (gone.start, gone.end, gone.is_atomic_section) == (q(8), q(12), False)
         assert score.flow_control.place_of(back.targets[0], back) == q(8)
         assert _flow_maps(written)[0] == (
-            "flow_map_1",
+            _ids(first)[1][0],
             FlowConvention.default,
-            (
-                "region_1",
-                "region_1",
-                "region_3",
-                "region_4",
-                "region_3",
-                "region_4",
-            ),
+            (a, a, c, d, c, d),
         )
 
     def test_a_flow_map_by_hand_over_other_regions_does_not_stand_in_the_way(
@@ -862,14 +846,11 @@ class TestAnotherOrigin:
         score = _repeat()
         score.create_region(2, 6, id="theme")
         by_hand = score.create_flow_map(["theme", "theme"], id="twice")
-        score.create_flow_maps_from_flow_control()
+        first = score.create_flow_maps_from_flow_control()
         written = score.create_flow_maps_from_flow_control()
         assert written is not None
-        assert [f.id for f in written.flow_maps] == [
-            "flow_map_1",
-            "flow_map_2",
-            "flow_map_3",
-        ]
+        assert _ids(written)[1] == _ids(first)[1]
+        assert score.list_flow_maps() == ["twice", *_ids(first)[1]]
         assert score.get_flow_map("twice") is by_hand
 
 
@@ -890,31 +871,17 @@ def _maps(root: Timeline) -> list[tuple[str, Any, Any, tuple[Any, ...]]]:
     ]
 
 
-MOVEMENT_MAPS = [
-    (
-        "flow_map_1",
-        FlowConvention.default,
-        "Allegro, default",
-        ("region_1", "region_1", "region_2"),
-    ),
-    ("flow_map_2", FlowConvention.single, "Allegro, single", ("region_1", "region_2")),
-    (
-        "flow_map_3",
-        FlowConvention.printed,
-        "Allegro, printed",
-        ("region_1", "region_2"),
-    ),
-]
-FINALE_MAPS = [
-    (
-        "flow_map_4",
-        FlowConvention.default,
-        "Finale, default",
-        ("region_3", "region_3", "region_4"),
-    ),
-    ("flow_map_5", FlowConvention.single, "Finale, single", ("region_3", "region_4")),
-    ("flow_map_6", FlowConvention.printed, "Finale, printed", ("region_3", "region_4")),
-]
+def _written_maps(
+    written: ComputedFlows | None, name: str
+) -> list[tuple[str, Any, Any, tuple[Any, ...]]]:
+    """The three FlowMaps of ``|: x :| 12`` written for the child ``name``."""
+    a, b = _ids(written)[0]
+    default, single, printed = _ids(written)[1]
+    return [
+        (default, FlowConvention.default, f"{name}, default", (a, a, b)),
+        (single, FlowConvention.single, f"{name}, single", (a, b)),
+        (printed, FlowConvention.printed, f"{name}, printed", (a, b)),
+    ]
 
 
 class TestChild:
@@ -924,21 +891,21 @@ class TestChild:
         root, movement, _ = _sonata()
         written = movement.create_flow_maps_from_flow_control()
         assert written is not None and written.findings == ()
-        assert [(r.id, r.name, str(r.as_interval)) for r in written.sections] == [
-            ("region_1", "A", "[0, 8) quarters"),
-            ("region_2", "B", "[8, 12) quarters"),
+        assert [(r.name, str(r.as_interval)) for r in written.sections] == [
+            ("A", "[0, 8) quarters"),
+            ("B", "[8, 12) quarters"),
         ]
-        assert movement.list_regions() == ["region_1", "region_2"]
+        assert movement.list_regions() == _ids(written)[0]
         assert root.list_regions() == []
         assert movement.list_flow_maps() == []
-        assert _maps(root) == MOVEMENT_MAPS
+        assert _maps(root) == _written_maps(written, "Allegro")
         assert {flow_map.timeline for flow_map in written.flow_maps} == {"sonata"}
         assert all(flow_map.provenance == INFERRED for flow_map in written.flow_maps)
 
     def test_the_flow_map_resolves_at_the_childs_offset(self) -> None:
         root, movement, _ = _sonata()
-        movement.create_flow_maps_from_flow_control()
-        resolved = root.get_flow_map("flow_map_1").resolve(root)
+        default = _default_id(movement.create_flow_maps_from_flow_control())
+        resolved = root.get_flow_map(default).resolve(root)
         assert [
             (chunk.source.start, chunk.source.end) for chunk in resolved.chunks
         ] == [
@@ -947,49 +914,54 @@ class TestChild:
             (q(12), q(16)),
         ]
         assert resolved.length == q(20)
-        virtual = root.create_virtual_timeline("flow_map_1", id="allegro_played")
+        virtual = root.create_virtual_timeline(default, id="allegro_played")
         assert (virtual.timeline, virtual.map, virtual.length) == (
             "sonata",
-            "flow_map_1",
+            default,
             q(20),
         )
 
     def test_two_children_stand_side_by_side_and_survive_a_manifest(self) -> None:
         root, movement, finale = _sonata()
-        movement.create_flow_maps_from_flow_control()
-        finale.create_flow_maps_from_flow_control()
-        assert finale.list_regions() == ["region_3", "region_4"]
+        allegro = movement.create_flow_maps_from_flow_control()
+        last = finale.create_flow_maps_from_flow_control()
+        _new([*_ids(allegro)[0], *_ids(allegro)[1], *_ids(last)[0], *_ids(last)[1]], [])
+        assert finale.list_regions() == _ids(last)[0]
         assert [
             str(finale.get_region(i).as_interval) for i in finale.list_regions()
         ] == [
             "[0, 6) quarters",
             "[6, 12) quarters",
         ]
-        assert _maps(root) == MOVEMENT_MAPS + FINALE_MAPS
+        both = _written_maps(allegro, "Allegro") + _written_maps(last, "Finale")
+        assert _maps(root) == both
         read = Timeline.from_dict(root.to_dict())
-        assert _maps(read) == MOVEMENT_MAPS + FINALE_MAPS
-        assert read.get_child("movement").list_regions() == ["region_1", "region_2"]
-        assert read.get_child("finale").list_regions() == ["region_3", "region_4"]
+        # Read back in the format's canonical order of FlowMaps: by ID.
+        assert _maps(read) == sorted(both)
+        assert read.get_child("movement").list_regions() == _ids(allegro)[0]
+        assert read.get_child("finale").list_regions() == _ids(last)[0]
 
     def test_written_again_the_virtual_timeline_takes_the_new_length(self) -> None:
         root, movement, _ = _sonata()
-        movement.create_flow_maps_from_flow_control()
-        root.create_virtual_timeline("flow_map_1", id="allegro_played")
+        first = movement.create_flow_maps_from_flow_control()
+        a, b = _ids(first)[0]
+        root.create_virtual_timeline(_default_id(first), id="allegro_played")
         movement.flow_control.add(Jump(q(12), [JumpDestination(repeat_count=1)]))
         again = movement.create_flow_maps_from_flow_control()
         assert again is not None
-        assert [r.id for r in again.sections] == ["region_1", "region_2"]
-        default = root.get_flow_map("flow_map_1")
+        assert _ids(again) == _ids(first)
+        default = root.get_flow_map(_default_id(first))
         assert (default.name, default.chunks) == (
             "Allegro, default",
-            ("region_1", "region_1", "region_2", "region_1", "region_1", "region_2"),
+            (a, a, b, a, a, b),
         )
         assert root.get_virtual_timeline("allegro_played").length == q(40)
 
     def test_written_again_a_divided_section_is_rejected(self) -> None:
         root, movement, finale = _sonata()
-        movement.create_flow_maps_from_flow_control()
-        finale.create_flow_maps_from_flow_control()
+        first = movement.create_flow_maps_from_flow_control()
+        last = finale.create_flow_maps_from_flow_control()
+        a, b = _ids(first)[0]
         movement.flow_control.add(JumpTarget(q(4)))
         before = _state(root)
         with pytest.raises(ValueError):
@@ -999,19 +971,20 @@ class TestChild:
             actor=EDITOR, date="2026-11-25"
         )
         assert again is not None
+        c, d = _new(_ids(again)[0][:2], [a, b, *_ids(last)[0]])
         assert [(r.id, r.name, str(r.as_interval)) for r in again.sections] == [
-            ("region_5", "A", "[0, 4) quarters"),
-            ("region_6", "B", "[4, 8) quarters"),
-            ("region_2", "C", "[8, 12) quarters"),
+            (c, "A", "[0, 4) quarters"),
+            (d, "B", "[4, 8) quarters"),
+            (b, "C", "[8, 12) quarters"),
         ]
-        assert movement.get_region("region_1").is_atomic_section is False
+        assert movement.get_region(a).is_atomic_section is False
         assert _maps(root)[0] == (
-            "flow_map_1",
+            _default_id(first),
             FlowConvention.default,
             "Allegro, default",
-            ("region_5", "region_6", "region_5", "region_6", "region_2"),
+            (c, d, c, d, b),
         )
-        assert _maps(root)[3:] == FINALE_MAPS
+        assert _maps(root)[3:] == _written_maps(last, "Finale")
 
 
 # region A timeline played with its tree
@@ -1198,32 +1171,19 @@ class TestTree:
         work, allegro, _ = _work(dc=False)
         written = work.create_flow_maps_from_flow_control()
         assert written is not None and written.findings == ()
+        a, b, c = _new(_ids(written)[0], ["work", "allegro", "finale", "codetta"])
         assert [(r.id, r.name, str(r.as_interval)) for r in written.sections] == [
-            ("region_1", "A", "[0, 4) quarters"),
-            ("region_2", "B", "[4, 12) quarters"),
-            ("region_3", "C", "[12, 40) quarters"),
+            (a, "A", "[0, 4) quarters"),
+            (b, "B", "[4, 12) quarters"),
+            (c, "C", "[12, 40) quarters"),
         ]
-        assert work.list_regions() == ["region_1", "region_2", "region_3"]
+        assert work.list_regions() == [a, b, c]
         assert allegro.list_regions() == []
+        default, single, printed = _new(_ids(written)[1], [a, b, c, "work"])
         assert _maps(work) == [
-            (
-                "flow_map_1",
-                FlowConvention.default,
-                None,
-                ("region_1", "region_2", "region_2", "region_3"),
-            ),
-            (
-                "flow_map_2",
-                FlowConvention.single,
-                None,
-                ("region_1", "region_2", "region_3"),
-            ),
-            (
-                "flow_map_3",
-                FlowConvention.printed,
-                None,
-                ("region_1", "region_2", "region_3"),
-            ),
+            (default, FlowConvention.default, None, (a, b, b, c)),
+            (single, FlowConvention.single, None, (a, b, c)),
+            (printed, FlowConvention.printed, None, (a, b, c)),
         ]
         timetoshare.validate(work.to_dict())
 

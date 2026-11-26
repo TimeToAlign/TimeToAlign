@@ -302,7 +302,7 @@ the library writes back against the same literal text.
   rule the library never checked itself: a named timestamp, which the
   library keeps unread with the styling. A timestamp on `clt_9`, a
   timeline the manifest lacks, is refused on reading with
-  `timestamp_timeline`, `'clt_9' names no timeline of this manifest`; one
+  `timestamp_timeline`, `'clt_9' names no timeline or virtual timeline of this manifest`; one
   at `[13, 1]` on `clt_1` of length `[12, 1]` with `timestamp_coordinate`,
   `coordinate [13, 1] of 'timestamp_1' is beyond the length [12, 1] of its
   timeline 'clt_1'`, through `Timeline` and `AlignmentBundle` alike. The
@@ -631,8 +631,8 @@ the library writes back against the same literal text.
     id 'g', name 'Other'` listing the groups, instead of renaming a group
     that was selected.
 - **Identity of the manifest.** An `AlignmentBundle()` writes no `id`; read
-  from an anonymous bundle it holds a minted `bundle_1` that it never
-  writes, and a manifest with a `name` and no `id` writes back exactly that.
+  from an anonymous bundle it holds a minted ID (prefix `bundle`) that it
+  never writes, and a manifest with a `name` and no `id` writes back exactly that.
   A given bundle id is written. A legacy `"support_policy": "clamp"` beside
   the groups is an unknown key: kept and written back, never read, so the
   bundle's `support_policy` stays `omit`.
@@ -640,7 +640,7 @@ the library writes back against the same literal text.
   timeline's id, of a root or a descendant. The list form is refused by
   the validator with `schema`, `[['score'], ['perf']] is not of type
   'object'`, and a key naming neither with `order_key`, `'g3' names no
-  group or timeline of this manifest`. The keys `score` (a root) and `part` (a child) of the band-order
+  group, timeline or virtual timeline of this manifest`. The keys `score` (a root) and `part` (a child) of the band-order
   manifests below are read, so a reader that looked among the roots alone
   would fail.
 - **Band orders are kept, never read.** A timeline's entry of
@@ -832,18 +832,20 @@ tests prove that the writer lifts it into `measure_maps`, that the reader
 puts it back, and that every legacy measure-derived map names the right
 entry, with literal manifests written from the format's rules.
 
-- **A measure map writes its minimal entry by default.** The two-bar map
-  written on its own is `{"id": "measuremap_1", "rows": [...]}`; with
-  `minimal=False` it states `"name": null` and `"meta": {}` as well.
+- **A measure map writes its minimal entry by default.** The two-bar map,
+  given the ID `bars`, written on its own is `{"id": "bars", "rows":
+  [...]}`; with `minimal=False` it states `"name": null` and `"meta": {}`
+  as well.
 - **Writing lifts the timeline's measure map.** A quarters timeline holding
-  a measure map writes one entry `measuremap_1` and a `MeasureRecordMap`
-  `{"type": "MeasureRecordMap", "id": <minted cmap id>, "source_unit":
-  "quarters", "target_unit": null, "measure_map": "measuremap_1"}` in its
-  `conversion_maps`, sorted with the others by id; the timeline object has
-  no `measure_map` and no `metric_hierarchy` key. A `whole_notes` timeline
-  writes its record map inside a `ChainMap` after `LinearMap(scalar=4)` from
-  `whole_notes` to `quarters`, the chain `cmap_1` and the record map
-  `cmap_2` (a nested map holds an id of its own), and a ticks timeline after the `LinearMap` it
+  the map `bars` writes one entry `bars` and a `MeasureRecordMap`
+  `{"type": "MeasureRecordMap", "id": <its minted cmap id, read from the
+  timeline>, "source_unit": "quarters", "target_unit": null,
+  "measure_map": "bars"}` in its `conversion_maps`, sorted with the others
+  by id; the timeline object has no `measure_map` and no
+  `metric_hierarchy` key. A `whole_notes` timeline writes its record map
+  inside a `ChainMap` after `LinearMap(scalar=4)` from `whole_notes` to
+  `quarters`, the chain, the `LinearMap` and the record map holding three
+  distinct IDs (a nested map holds an id of its own), and a ticks timeline after the `LinearMap` it
   was given (`scalar` `[1, 480]`); `add_measure_map` refuses a ticks timeline
   without one, and any unit but quarters, whole_notes and ticks, with the
   exact message.
@@ -866,11 +868,14 @@ entry, with literal manifests written from the format's rules.
   not match timeline unit 'ticks'`, the message `add_conversion_map` gives,
   since the reader attaches every map through it; a ticks timeline reaches
   its measure map only through the chain above.
-- **Several timelines may share one entry.** Two roots holding the same
-  `MeasureMap` object, and two holding equal maps with minted ids, write one
-  entry both record maps name; two holding unequal maps write
-  `measuremap_1` and `measuremap_2`. Read back, two timelines naming one
-  entry hold the same `MeasureMap` object. An entry no timeline names is
+- **Several timelines may share one entry, by ID.** Two roots holding the
+  same `MeasureMap` object, and two holding equal maps given one ID
+  (`bars`), write one entry both record maps name. Two holding equal maps
+  built without ID hold two minted IDs and write two entries: an entry is
+  one ID, and nothing merges equal content under another ID. Two holding
+  unequal maps (`bars`, `waltz`) write both, sorted by ID. Read back, two
+  timelines naming one entry hold the same `MeasureMap` object, and only
+  they. An entry no timeline names is
   kept and written back where the manifest is read as a whole.
 - **Ids are the manifest's.** A measure map's id is unique together with
   every other id of the manifest: an entry whose id is a timeline's, a
@@ -879,13 +884,15 @@ entry, with literal manifests written from the format's rules.
   <first> and by <second>` (the manifest first, then the measure maps, the
   trees, the groups); writing a measure map whose given id a timeline holds
   is refused with `measure map 'score' cannot be written: its id is already
-  held by timeline 'score'`; a minted id is minted again around every id of
-  the manifest (`measuremap_1` held by a timeline makes the entry
-  `measuremap_2`). A view naming an id no entry has is refused naming it.
+  held by timeline 'score'`, and so is a minted id a timeline holds (the
+  timeline given the map's minted id as its own): nothing is minted again.
+  A view naming an id no entry has is refused naming it.
 - **Measure-derived maps name the measure map they derive from.** On a score
-  timeline, the floating-measure map the loader attaches (a
-  `FloatingMeasureMap` over an equal, separately built map) names the
-  timeline's own entry, so the manifest holds one entry. A
+  timeline, the floating-measure map the loader attaches is a
+  `FloatingMeasureMap` over an equal, separately built map with an ID of
+  its own: it names that entry, so the manifest holds two entries of equal
+  rows, each named by its map, and reads back with each view over its own
+  entry (equal maps, not one object). A
   `QuartersToFloatingMeasures`, `QuartersToMeasureNumber` and `MetricMap`
   built from the timeline's measures name the own entry too; ones built from
   other data each write an entry of their own built from their data, which
@@ -992,11 +999,14 @@ literals of the format and never from what the writer happens to produce.
   (`test_flow_engine.py`).
 - **Elements naming one another are added together.** A Fine naming a D.C.
   and a To Coda naming it are refused one by one in the wrong order and
-  accepted by `add_all` in any order. Two elements arriving with the same
-  minted ID are stored as `jump_target_1` and `jump_target_2`, and a
-  registry absorbed into a timeline whose manifest holds `jump_target_1`
-  has that target stored as `jump_target_2` with the destination naming it
-  following.
+  accepted by `add_all` in any order. Two JumpTargets built without ID
+  hold distinct minted IDs, and one given the ID of the first is refused
+  (`jump_target 'x' cannot join: its id 'x' is already held by
+  jump_target 'x'`), the registry unchanged. A registry absorbed into a
+  timeline keeps every ID and every reference as it was (a destination
+  `to` its target, an `after` naming its Jump); a registry holding an ID
+  the timeline's registry holds is refused whole, naming the element and
+  the timeline, and nothing is renamed.
 - **Canonical order.** Elements added in reverse are held and written by
   coordinate and then ID, an integer, a fraction and a float axis each
   with values whose text order differs from their numeric order. The
@@ -1014,8 +1024,8 @@ literals of the format and never from what the writer happens to produce.
   target; `by` forwards, backwards and 0, on an integer, a fraction (9/2 −
   1/2 = 4 exactly) and a float axis; a Region of the timeline (its start),
   a child timeline (its offset) and the timeline itself (0), all three
-  through a real timeline, with a Region renamed afterwards followed by
-  the destination naming it; no place without and with section breaks
+  through a real timeline; a destination naming its own timeline follows
+  it when `append_child(..., uid=)` gives the timeline a new ID; no place without and with section breaks
   before the Jump (the nearest one before it; one at the Jump's own
   coordinate does not count).
 - **The axis.** A bound registry refuses another unit naming both, and
@@ -1117,9 +1127,11 @@ literals of the format and never from what the writer happens to produce.
   three entries are refused by `Provenance.from_dict`, which the test
   asserts beside it.
 - **Score loaders.** The elements a loader writes from the ms3 measures of
-  Couperin's `c05n05_musete` (class, ID, coordinate and name of each of the
-  nine) are written as the `flow_control` array and read back to an equal
-  registry. What each element states, and from which column of the table,
+  Couperin's `c05n05_musete` (class, coordinate and name of each of the
+  nine, the four at 42 and the three at 84 compared as sets, since the
+  canonical order puts them by their minted IDs; the nine IDs distinct and
+  in canonical order) are written as the `flow_control` array and read back
+  to an equal registry. What each element states, and from which column of the table,
   is the subject of `tests/loader/score/test_flow_gold.py`.
 
 Whole manifests holding flow control are proved by
@@ -1354,9 +1366,15 @@ real score through it would prove only that the rules agree with themselves
 on that score. So every rule gets a measure map made for it, small enough
 that the expected elements can be written down by hand from the rule and
 the bar positions alone: 4/4 bars, measure count *n* starting at `4 (n - 1)`
-quarters. The expected value is the whole `to_dict()` of every element, IDs
-included, so an element too many, a key too many or a default written out
-fails as surely as a wrong place. The cases:
+quarters. The expected value is the whole `to_dict()` of every element,
+so an element too many, a key too many or a default written out fails as
+surely as a wrong place. The IDs the translation mints are random, so the
+test asserts them distinct and replaces each by a label, the k-th element
+of a role in the order written being `"<role> k"` (`"jump_target 2"`),
+and every `to` naming it by the same label: which element a destination
+names stays asserted, the spelling drops out. A jump's destinations with
+`to` are written in the canonical order, by the ID named; that order is
+asserted on the IDs before they are put in label order. The cases:
 
 | Case | Proves |
 |---|---|
@@ -1803,41 +1821,41 @@ a manifest naming another is a pair `dcterms:source: [{"id": "#X"}]` with a
 provenance entry whose `basis` is `["#X"]`, so every case checks the three
 places a reference can stand, value, entry value and basis item:
 
-- **Renamed.** An element given a new ID — a timeline or region minted again
-  on joining a group or a bundle, on `add_child` or in
-  `AlignmentBundle.from_bundles`, a root given an ID on reading, a group
-  minted again by `from_bundles` — is named by its new ID in the value, the
-  entry and the basis, and the manifest written validates. The member
-  already in the scope keeps its own references: renames run before the
-  newcomer joins, so a holder naming its own element by the ID the newcomer
-  had is untouched. A conversion map and a flow-control element minted
-  again with their subtree are renamed in a value naming them. A map added
-  to a timeline that already holds a map of its minted ID takes a new ID,
-  and a statement naming the existing map still names it: only an element
-  that was named before it moved is renamed.
-- **A group given a new ID.** A statement naming a group by `#group_N`
-  follows the group wherever its minted ID is minted again, and only
-  where the old ID named that group:
-  - `add_group` of a group minted `group_1` into a bundle whose own
-    `group_1` holds `p` mints it `group_2`; the newcomer member `s` naming
-    `#group_1` names `group_2`, while `p`, a member of both groups whose
-    tree the bundle held before, keeps naming the bundle's `group_1`.
-  - `from_bundles` of a bundle holding `group_1` (member `f`) and a source
-    bundle whose minted groups `group_1` (`m`) and `group_2` (`n`) become
-    `group_2` and `group_3`: every tree carried from the source, the
-    ungrouped root `u` included, is renamed at once, so `u` naming both
-    groups names `group_2`, `group_3` (each reference renamed once, never
-    twice), `m` naming the source's `group_2` names `group_3`, and `f`
-    still names `group_1`. The trees are shared with the source bundle,
-    so the source no longer writes: its `to_dict` raises the check's
-    `'#group_3' names no element of this manifest`. This is a documented
-    limit of `from_bundles`.
-  - A minted `group_1` giving way to a given ID `group_1` — a timeline
-    joining the bundle holding the group, a timeline joining the group,
-    a region added to a member — becomes `group_2`; the member and the
-    bundle naming `#group_1` name `group_2`, while the joining timeline,
-    whose `#group_1` names itself, keeps it.
-  Each manifest written validates.
+- **Kept, never renamed.** An ID is minted when its element is built and
+  never changes: two trees built alike from their content (a root, its
+  child, its region) hold six distinct IDs; joining a group or a bundle,
+  `add_child` and `AlignmentBundle.from_bundles` keep every ID, and every
+  statement naming one (value, entry and basis) names it still; the
+  manifest written validates. Two bundles each holding a group made by
+  `as_group=` keep both group IDs through `from_bundles`. A conversion map
+  and a flow-control element keep their IDs with their tree, and a map
+  added beside a named one takes an ID of its own while the statement
+  still names the first.
+- **A collision is refused** at the join, every check first, naming the
+  element and its holder; nothing is renamed and nothing joins:
+  - a tree built with `seed=7` joining a group or bundle holding a tree
+    built with `seed=7` (`timeline 'x' cannot join bundle 'scope': its id
+    'x' is already held by timeline 'x'`); the scope holds the first
+    alone;
+  - `add_child` of a child whose region holds the parent's region ID (both
+    made with `seed=7`): `region 'x' of timeline 'child' cannot join: its
+    id 'x' is already held by region 'x' of timeline 'parent'`, the child
+    staying free;
+  - `from_bundles` of two sources sharing a timeline ID, the sources
+    unchanged; of two sources holding groups made with one seed, and
+    `add_group` of such a group, `Group 'x' already exists in bundle`;
+  - a given ID equal to a minted group's ID, as a timeline joining the
+    bundle or the group, or as a region added to a member (`... its id 'x'
+    is already held by group 'x'`): the group keeps its ID and what names
+    it;
+  - a conversion map or a break made with the seed of one the bundle
+    holds on another timeline (`conversion map 'x' of timeline 'newcomer'
+    cannot join bundle 'rec': its id 'x' is already held by conversion map
+    'x' of timeline 'held'`, the same for `break`).
+- **A root given an ID on reading** (`Timeline.from_dict(...,
+  timeline_id=)`) is named by it in the value, the entry and the basis;
+  this and `append_child(..., uid=)` are the renames left, and both rename
+  a timeline the caller names.
 - **Dropped.** An element leaving the manifest — a member removed from a
   group, a timeline or a group selected from a larger manifest, a partial
   write (a timeline of a bundle written on its own) — takes its pair, its
@@ -2795,7 +2813,9 @@ leaves a timeline of length 4 holding its one event, length 4.
 1. **Construction Tests** (12 tests)
    - Empty timeline creation with defaults
    - Timeline with explicit length, unit, number_type
-   - Custom ID vs auto-generated ID
+   - Custom ID vs auto-generated ID: `seed=7` gives `IdMinter(7).mint("cpt")`
+     (`cpt_1hvif5xc2r1fv`) every time; without a seed two timelines get two
+     IDs, and after `reset_content_minters()` the first again
    - Locked state on creation
    - Factory methods: `from_events()`, `from_event_store()`
    - The experimental base class remains available as an explicit
@@ -2827,13 +2847,15 @@ leaves a timeline of length 4 holding its one event, length 4.
    - an ID already held by an event of the timeline is refused naming the ID
      and the timeline, and so is one given twice in one call; nothing is
      added either time, so the refusal is atomic;
-   - two calls without IDs mint `note_1` and then `note_2`, never the same
-     ID twice (a per-call counter minted the first ID twice);
-   - a minted ID continues above the highest held: a timeline holding the
-     given `note_5` mints `note_6` for the next Note, never `note_1` below
-     it (an ID is never given again);
+   - two calls without IDs mint two distinct `note` IDs, never the same ID
+     twice (a per-call counter minted the first ID twice);
+   - a minted ID the timeline holds is refused like a given one, never
+     minted again: a timeline holding the given `IdMinter(7).mint("note")`
+     refuses a Note added with `seed=7`, naming the ID and the timeline,
+     and still holds one event;
    - `add_events` returns the IDs of the rows it added, in row order, the
-     minted ones included (`beat_1`, `given`, `beat_2`).
+     minted ones included: with `seed=7`, the minter's first and second
+     `beat` IDs around `given`.
 
 4. **Length and Expansion Tests** (7 tests)
    - Length can expand (unlocked)
@@ -2932,57 +2954,62 @@ write fractions):
   one concatenates (the column of the second Projection reads back its
   dict).
 - **IDs.** A source's ID is kept (`x1azmn68`); a missing one is minted
-  `projection_N`, N above the highest held among the timeline's events of
-  every type, so no ID is given twice and a gap is never filled: the first
-  call mints `projection_1`, `projection_2`; with `projection_2` held by a
-  Note, the next call mints `projection_3` and `projection_4` for two rows
-  (the call returns them in row order), never `projection_1` below it.
+  at random with the prefix `projection`. Given `seed=7`, a call of two
+  rows mints the minter's first two IDs, `IdMinter(7)`'s first and second
+  `projection` ID (`projection_1hvif5xc2r1fv`, `projection_0g2wfq87pa7jx`
+  read from a run), returned in row order. A minted ID that an event of
+  the timeline holds is refused like a given one, never minted again: a
+  Note given `IdMinter(7).mint("projection")` refuses a Projection added
+  with `seed=7` (`Event id '…' is already held by an event of timeline
+  'dpt_1'`), the timeline keeping its one event. Without a seed the IDs of
+  one call are distinct (each test asserts it where it reads them).
 - **A new Projection's ID is unique in its manifest** (the timeline's tree
   and every tree of the groups and bundles holding it, as a bundle writes
   one Projections table for all of them; TimeToShare's table check keys
-  the ID alone). In a bundle holding `dpt_1` and `clt_6` (both roots),
-  `add_projections` of two Projections on `dpt_1` mints `projection_1`,
-  `projection_2`; one Projection then added to `clt_6` through
-  `add_events` is minted `projection_3`, never `projection_1` again. In
-  one tree without a bundle the same holds: with `projection_1` on
-  `dpt_1`, a Projection on its child `part` is minted `projection_2`. A
-  timeline in no manifest with them mints on its own: a free `clt_6`
-  holding nothing mints `projection_1` (the scope is the manifest, not
-  the process). A given Projection ID another timeline of the manifest
-  holds as a Projection is refused, atomically (`clt_6` still holds 0
-  events), naming both timelines — through `add_events`, `Projection ID
-  'projection_1' names a Projection on the timeline 'dpt_1' and one on
-  'clt_6': a Projection's ID is unique among all Projections of a
-  manifest and its package`, and through `add_projections` (get-or-add
-  reuses a Projection of its own timeline only), the same message. Nothing
-  here mints again: a test that passed with per-timeline minting would
-  see `clt_6` mint `projection_1` and accept the given one.
+  the ID alone), given or minted. In a bundle holding `dpt_1` and `clt_6`
+  (both roots), a Projection added to `dpt_1` with `seed=7` holds the
+  minter's first ID; one added to `clt_6` with `seed=7` would hold the same
+  and is refused, atomically (`clt_6` still holds 0 events), naming both
+  timelines — through `add_events`, `Projection ID '<the ID>' names a
+  Projection on the timeline 'dpt_1' and one on 'clt_6': a Projection's
+  ID is unique among all Projections of a manifest and its package`, and
+  through `add_projections` (get-or-add reuses a Projection of its own
+  timeline only), the same message; without a seed the three Projections
+  of the two timelines hold three distinct IDs. In one tree without a
+  bundle the same holds: with a Projection added to `dpt_1` with
+  `seed=7`, one added to its child `part` with `seed=7` is refused naming
+  `dpt_1` and `part`. A timeline in no manifest with them is not checked
+  against them: a free `clt_6` given `seed=7` holds the very ID `dpt_1`
+  holds (the scope is the manifest, not the process). A given Projection
+  ID another timeline of the manifest holds as a Projection (the ID
+  `dpt_1` minted, read from its return) is refused with the same message.
 - **A child joins whatever Projection IDs it holds.** The rule binds the
   creation of a Projection, not a join: a timeline that created its
   Projections before joining keeps their IDs (a MatchClaim names an event
   by its timeline and ID, so it stays unambiguous in memory; the package
   writer refuses the shared ID, tested in `tests/alignment/`). `dpt_1`
-  holding `projection_1` takes a free `part` whose own `projection_1` was
-  minted alone as a child at offset 0: `dpt_1` then has one child, `part`
-  has `dpt_1` as its parent and still holds `projection_1` (never minted
-  again). The manifest now holds `projection_1` twice, and that refuses
-  nothing on creation: a Projection then added to `dpt_1` without an ID
-  is minted `projection_2` (above every Projection of the manifest), one
-  given the free ID `onset_a` on `part` is added, and one given
-  `projection_2` on `part` is refused, `Projection ID 'projection_2' names
-  a Projection on the timeline 'dpt_1' and one on 'part': ...`, `part`
-  keeping its two events. A check that compared the manifest's IDs among
-  themselves would refuse both of the first two. In a bundle, `dpt_1`
-  takes `part` likewise although `clt_6`, another root of the bundle,
-  holds `projection_1`.
+  holding a Projection added with `seed=7` takes a free `part` whose own
+  Projection was added with `seed=7` too, at offset 0, both holding one ID:
+  `dpt_1` then has one child, `part` has `dpt_1` as its parent and still
+  holds that ID (nothing is renamed). The manifest now holds it twice,
+  and that refuses nothing on creation: a Projection then added to
+  `dpt_1` without an ID is minted an ID of its own, one given the free ID
+  `onset_a` on `part` is added, and one given the ID `dpt_1` minted last
+  on `part` is refused, `Projection ID '<the ID>' names a Projection on
+  the timeline 'dpt_1' and one on 'part': ...`, `part` keeping its two
+  events. A check that compared the manifest's IDs among themselves would
+  refuse both of the first two. In a bundle, `dpt_1` takes `part` likewise
+  although `clt_6`, another root of the bundle, holds the same ID.
 - **A Projection object stands for its row.** `add_events` takes a
   `Projection` alone or in a list beside dicts: `Projection(start=
   Coordinate(1/2, seconds), projection_of=EventReference(clt_6, x1azmn68))`
-  without an ID is minted `projection_1` and stored at sample 22050 with its
-  reference, exactly as the same dict; with `duration=Duration(0.5,
+  without an ID is minted a `projection` ID (the one the call returns) and
+  stored at sample 22050 with its reference, exactly as the same dict; with `duration=Duration(0.5,
   seconds)` from start `Coordinate(1.0, seconds)` (one axis, both float) it
   is stored as start 44100, duration 22050; a Projection given its ID keeps it. A Note dict
-  beside it in the same list mints `note_1`.
+  beside it in the same list, the call given `seed=7`, mints
+  `IdMinter(7).mint("note")`: the minter's first ID, since the given
+  Projection ID takes none.
 - **Refusals**, each atomic (the number of events unchanged):
   - an ID held by any event of the timeline (a Note's ID reused by a
     Projection);
@@ -3005,23 +3032,25 @@ and the number of rows the timeline holds afterwards, never a count of calls:
   `add_projections` of a Projection of `clt_6:n1` at `Coordinate(1/2, s)`,
   one of `clt_6:n2` at the same position, one of no event at
   `Coordinate(1, s)` and one of no event from `Coordinate(1, s)` for
-  `Duration(1/2, s)` returns `projection_1` … `projection_4`; the same call
-  again returns the same four IDs and the timeline still holds four events.
-  The position is compared after conversion, exactly: `22050` given as a
-  bare sample number is `projection_1` again.
+  `Duration(1/2, s)` returns four distinct IDs, stored in that order with
+  starts 22050, 22050, 44100, 44100 and the last with duration 22050; the
+  same call again returns the same four IDs and the timeline still holds
+  four events. The position is compared after conversion, exactly: `22050`
+  given as a bare sample number returns the first ID again.
 - **Equal rows of one call are one Projection.** Three rows standing for
-  no event at sample 22050 and one at 44100 give `['projection_1',
-  'projection_1', 'projection_1', 'projection_2']` and two events.
+  no event at sample 22050 and one at 44100 give `[p, p, p, q]` with
+  `p != q` and two events.
 - **What tells Projections apart.** The event stood for (a Projection of
   `n1` and one of no event at one position are two), the start (`n1` at two
   positions, a repeat played against one score note, are two), and the
-  duration (an instant and a span from one start are two).
+  duration (an instant and a span from one start are two): four rows,
+  four distinct IDs.
 - **One value, one key, however the cell is spelled.** The keys compare a
   cell's members, so they compare values only because memory holds one
   spelling of a value. On the quarters timeline a Projection row given its
   start as the whole cell `{0.5, 2, 4}` is stored as `{0.5, 1, 2}` and
-  added as `projection_1`; `Projection(start=Coordinate(1/2, quarters))`
-  then returns `projection_1` and the timeline holds one event. The same
+  added under the ID the call returns; `Projection(start=Coordinate(1/2,
+  quarters))` then returns that ID and the timeline holds one event. The same
   holds for an event table given whole: `EventData.from_arrays` with a
   `start` struct column `[{0.5, 2, 4}, {0.75, 3, 4}]` stores
   `[{0.5, 1, 2}, {0.75, 3, 4}]`.
@@ -3135,7 +3164,7 @@ the sources' own arithmetic, never a restatement of the implementation):
   The comparison is exact: a float detour would still agree here, so the
   float-free path is pinned by the cells holding numerator and denominator.
 - **Other events pass unchanged.** A Note dict beside a Box in one call is
-  added with it (`["note_1", "rect_h2"]`); a timeline holding no Box never
+  added with it (with `seed=7`, `[IdMinter(7).mint("note"), "rect_h2"]`); a timeline holding no Box never
   reads its `meta["box"]` (a malformed one, `{"x": "left"}`, refuses
   nothing when a Note is added).
 
@@ -3490,8 +3519,8 @@ class without a matching column raises. A field of nulls would read present
 data as absent, so these are the cases that would show it broken:
 
 - *TiLiA, Bruckner 5, Scherzo* (`score`,
-  `bruckner5_scherzo/harnoncourt/Bruckner5_Scherzo.json`), timeline
-  `cpt_4` ("Takte"): its events hold 1,146 rows, every one typed `Beat`,
+  `bruckner5_scherzo/harnoncourt/Bruckner5_Scherzo.json`), the timeline
+  named "Takte": its events hold 1,146 rows, every one typed `Beat`,
   and no `index` column (the beat's number is in `beat` and `measure`).
   `get_field(Beat)` raises `KeyError` starting `"No field matching
   'BeatField' found in table"`, `has_field(BeatField)` is `False`.
@@ -3526,8 +3555,8 @@ data as absent, so these are the cases that would show it broken:
   StringQuartetEEP_I_Normal/StringQuartetEEP_I_Normal_align_vln1.notes`
   (`EepNotesLoader`): 1,266 Note rows, `pitch` a string column (the first
   row's value read from the file's first note line); *IEEE 1599*,
-  `ieee1599/bach_artefuga_01.xml` (`Ieee1599Loader`), timeline
-  `los:dlt_2`: 1,038 Note rows, no `pitch`, `specific_pitch` or `midi`
+  `ieee1599/bach_artefuga_01.xml` (`Ieee1599Loader`), the timeline named
+  "Logically organised symbols": 1,038 Note rows, no `pitch`, `specific_pitch` or `midi`
   column, the spelling in the raw `step`, `octave` and
   `actual_accidental` columns. What would show it broken: a field of
   1,266 or 1,038 notes, every one a rest.
@@ -3540,7 +3569,8 @@ loader's output: the two measure zones of the Anhalt chorale facsimile
 `start` 0 and 454, `duration` 483 and 579, the zones' `xml:id`s as IDs)
 and the two measures of system 1 of the DMOS page (*Aimons-nous*, system
 from x 1221: quadrilaterals `start` 0 and 930, `duration` 940 and 624,
-minted IDs `box_1`, `box_2`), and a fraction case (the thirds Box on a
+the IDs the loader minted, read from the accolade in row order and
+asserted distinct), and a fraction case (the thirds Box on a
 `user_units` timeline). For each, the accolade's
 `get_events(event_type="Box").get_field(Box)` equals the expected Boxes,
 each `start.value`, `duration.value` and shape number of the type the axis
@@ -3866,7 +3896,7 @@ need contents opt in.
 
 7. **Cross-Unit Child Addition via Conversion Map** (11 tests)
    - `use_conversion_map=True` auto-selects parent's C-Map (e.g., SamplesToSeconds)
-   - Converted child is named `{original name} [{parent_unit}]` (e.g., `notes [samples]`); its id is minted in the parent's unit (`dpt_1`), because a label is no identity
+   - Converted child is named `{original name} [{parent_unit}]` (e.g., `notes [samples]`); its id is minted in the parent's unit (with `seed=7`, `IdMinter(7).mint("dpt")`), because a label is no identity; the other tests read the converted child as the parent's one child
    - Event coordinates correctly converted (seconds → samples via inverse C-Map)
    - Original child is NOT modified or locked (only the derived copy is locked)
    - Lookup by string target unit name (`use_conversion_map="seconds"`)
@@ -3979,10 +4009,11 @@ case.
 - **A refusal changes nothing.** Moving the label "10" to 300.0 takes it off
   the line through the end ticks, which reaches 10 at 290.58594870239284:
   the call raises, and the parent then has
-  no child, no new segment event and the same manifest ids as before, so the
-  next child it creates gets the id it would have had anyway.
+  no child, no new segment event and the same manifest ids as before.
 - **Order is irrelevant.** Unsorted calibration gives a map equal to the
-  sorted one.
+  sorted one, the second built after `reset_content_minters()`: a map
+  holds its ID, minted from its content, so two maps built apart are equal
+  only where their content minter starts afresh.
 - **The scalar survives serialization bit for bit.** `to_dict()` → JSON text
   → `from_dict()` of the child restores the scalar with the same
   `float.hex()` and the offset 0.0. The map's declared `float` output is a
@@ -3995,7 +4026,8 @@ case.
   `value_unit` raises `TypeError` naming that keyword, since without a unit
   there is no target axis.
 - **Values come as coordinates or as numbers in `value_unit`.** Numbers with
-  `value_unit` build the same map as the equal coordinates without it, and a
+  `value_unit` build the same map as the equal coordinates without it (the
+  second built after `reset_content_minters()`), and a
   `Coordinate` value in another unit than `value_unit` is refused.
 - **Every timeline class has it.** One test runs over the six leaf classes
   (continuous and discrete, in the three domains) with their default units
@@ -4075,7 +4107,7 @@ builders cannot disagree about which maps are columnar.
    leaf class listing a unit by hand in the wrong place fails. In
    particular `Timeline.resolve_subclass("css_pixels")` and
    `Timeline.resolve_subclass("user_units")` are `ContinuousGraphicalTimeline`,
-   and a `Timeline` in either unit is minted `cgt_1`.
+   and a `Timeline` in either unit is minted an ID with the prefix `cgt`.
 
 6. **Domain Property Tests** (3 tests)
    - Each domain class returns correct Domain enum
@@ -4377,8 +4409,8 @@ its target unit (`seconds`) through the `target_unit` property alone
 declares no output number type; on a quarters timeline, both
 `get_timestamp_table([0, 1])` and the group's
 `get_timestamp_table([0, 1], "clt_1")` raise the same `ValueError`,
-`Conversion map 'cmap_1' names the target unit 'seconds' but no output
-number type`. One table leaving the column out while the other refuses,
+`Conversion map 'by_property' names the target unit 'seconds' but no
+output number type` (the map given that ID). One table leaving the column out while the other refuses,
 or either failing with an assertion, fails the test.
 
 ---
@@ -4530,7 +4562,8 @@ measures.
 5. **Region creation — create_regions_by_grouping()** (6 tests)
    - Groups adjacent events by field value
    - Recurring group values (e.g., 4/4 → 3/4 → 4/4) repeat the name;
-     minted ids (`region_1`, `region_2`, `region_3`) tell the runs apart
+     three distinct minted ids, listed by `list_regions()` in run order,
+     tell the runs apart
    - Supports custom `name_format` with `{value}` and `{run}` placeholders
    - Raises ValueError for missing field
 
@@ -4553,14 +4586,14 @@ measures.
    - Creates children for all or specified regions
    - Returns list of created children
    - Overlapping regions give independent children, as the method
-     promises: on a 16-quarter timeline holding `fast_1` [0, 2) and
-     `fast_2` [6, 7), regions [0, 8) and [4, 12) give one child holding
-     `fast_1` [0, 2) and `fast_2` [6, 7), and one holding `fast_2` [2, 3)
+     promises: on a 16-quarter timeline holding `f1` [0, 2) and
+     `f2` [6, 7), regions [0, 8) and [4, 12) give one child holding
+     `f1` [0, 2) and `f2` [6, 7), and one holding `f2` [2, 3)
      alone; the same region [0, 8) twice gives two children holding both
      events at their own positions; the timeline keeps its two events. The
      second child's cut also meets the first child's copy of an event,
      under the same ID: a copy taking both rows refused the call
-     (`Event id 'fast_2' is given twice in one call to add_events`).
+     (`Event id 'f2' is given twice in one call to add_events`).
 
 9. **Children and regions — get_regions_at() / get_children_at()** (6 tests)
    - `get_regions_at(coord)` returns all regions containing that coordinate
@@ -4869,12 +4902,21 @@ enumeration's members and any other word is kept as given; a key the
 library does not know is kept and written back, on the FlowMap and on a
 gap.
 
-**IDs and references stay true.** A FlowMap ID is minted `flow_map_{N}`
-in the timeline's manifest. When two trees whose minted IDs collide join
-one bundle, the second tree's Region, FlowMap and virtual timeline are
-minted again and the FlowMap's chunks, its `timeline` and the virtual
-timeline's `map` name the new IDs; the test states the expected IDs from
-the minting rule (the number above the highest held).
+**IDs and references stay true.** A FlowMap ID is minted at
+construction with the prefix `flow`: given `seed=7`, the root, its Region,
+its FlowMap and (with `seed=8`) its virtual timeline hold
+`IdMinter(7).mint("clt")`, `IdMinter(7).mint("region")`,
+`IdMinter(7).mint("flow")` and `IdMinter(8).mint("clt")`, the first two
+also as read from a run (`clt_1hvif5xc2r1fv`, `clt_260an7vd22pgd`); a
+FlowMap built without seed holds an ID of its own beside it. A virtual
+timeline given the root's seed would hold the root's ID: it is refused,
+naming both, and the timeline holds no virtual timeline. Two trees built
+alike without seed hold eight distinct IDs; joining one bundle, each keeps
+every ID, and the second's FlowMap chunks, `timeline` and its virtual
+timeline's `map` name what they named; the bundle round-trips. Two trees
+built with one seed hold the same IDs: the second is refused by the bundle
+(`timeline 'x' cannot join bundle 'rec': its id 'x' is already held by
+timeline 'x'`), which keeps the first alone. Nothing is renamed.
 
 ### Atomic sections and computed FlowMaps (`test_flow_maps_from_flow_control.py`)
 
@@ -4885,6 +4927,16 @@ computes one flow and writes nothing. The engine is proven in
 `test_flow_engine.py`; what is proven here is that its result is written as
 the format says, so the expected values are those of the first movement of
 Beethoven's Op. 106, each derived by hand below.
+
+**IDs.** Regions, FlowMaps and virtual timelines written by the call get
+minted IDs, random (see *Manifest identity*), so no test spells one: every
+ID is read from the objects the call returns (`ComputedFlows.sections`,
+`.flow_maps`), and the values below name a section by its letter and a
+FlowMap by its convention. Where a call writes a new Region, the test
+asserts its ID distinct from every ID the timeline held before; where an
+element is kept, that its ID is the one read before. The manifest writes
+its FlowMaps in the format's canonical order, by ID, and reads them back
+in that order.
 
 **The Op. 106/i shape.** A quarters timeline of length 1644 (fraction axis)
 with four elements: a Jump at 953/2 with the destinations `{by: 0, passes:
@@ -4916,8 +4968,8 @@ it an atomic section: rejection is read as the format reads it on a
 flow-control element.
 
 The virtual timeline of `default` states the length 4241/2, quarters and
-`fraction`; its minted ID is of the timeline's kind (`clt_1`, the root
-having a given ID); its `unfold` and `fold` answer as the FlowMap's do; a
+`fraction`; its minted ID is of the timeline's kind (prefix `clt`) and
+held by no other element of the timeline; its `unfold` and `fold` answer as the FlowMap's do; a
 position given as an IdCoordinate of another timeline is refused, and so
 is a virtual timeline stating another length than its FlowMap gives.
 `get_flow` returns the same lengths and positions for the three
@@ -4961,27 +5013,28 @@ the child's offset), that two children's FlowMaps do not take each other
 for their own when written again, and that the format accepts the result.
 The root `sonata` (length 40) holds `movement` ("Allegro", length 12 at
 offset 4, a repeat sign at 8) and `finale` ("Finale", length 12 at offset
-20, a repeat sign at 6). Written for `movement`: `region_1` A [0, 8) and
-`region_2` B [8, 12) on `movement`, none on the root; on the root
-`flow_map_1` `default` (1, 1, 2) named "Allegro, default",
-`flow_map_2` `single` (1, 2) and `flow_map_3` `printed` (1, 2), each with
-`timeline` `sonata`. `flow_map_1` resolved on the root places [4, 12),
-[4, 12), [12, 16): length 20; a virtual timeline of the root applying it
-has length 20. Then written for `finale`: `region_3` A [0, 6), `region_4`
-B [6, 12) on `finale`; `flow_map_4` `default` (3, 3, 4) "Finale,
-default", `flow_map_5`, `flow_map_6`; the movement's three FlowMaps are
-unchanged. The manifest written (`to_dict`, which the format's validator
-checks) and read back holds the same Regions and FlowMaps.
+20, a repeat sign at 6). Written for `movement`: A [0, 8) and B [8, 12)
+as Regions of `movement`, none on the root; on the root `default`
+(A, A, B) named "Allegro, default", `single` (A, B) and `printed` (A, B),
+each with `timeline` `sonata`. `default` resolved on the root places
+[4, 12), [4, 12), [12, 16): length 20; a virtual timeline of the root
+applying it has length 20. Then written for `finale`: its A [0, 6) and
+B [6, 12) on `finale`, and on the root its three FlowMaps "Finale,
+default" (A, A, B) and the others; the movement's three FlowMaps are
+unchanged, and the twelve IDs are distinct. The manifest written
+(`to_dict`, which the format's validator checks) and read back holds the
+same Regions and FlowMaps, the FlowMaps now in ID order.
 
 Written again on the child, the guarantees of a root hold. A repeat sign
 added at 12 (a repeat end without place goes back to the start of the
-timeline, restoring the repeat inside) adds no boundary: the Regions are
-kept, `flow_map_1` keeps its ID and name and lists (1, 1, 2, 1, 1, 2),
-and the virtual timeline takes the new length 40. A JumpTarget added at 4
-in `movement` instead divides A: `region_1` stays and is rejected by the
-actor, `region_5` A [0, 4), `region_6` B [4, 8), `region_2` C [8, 12);
-`flow_map_1` keeps its ID and lists (5, 6, 5, 6, 2); the finale's
-FlowMaps are unchanged. Without an actor that call raises and changes
+timeline, restoring the repeat inside) adds no boundary: the Regions and
+FlowMaps keep their IDs, `default` keeps its name and lists
+(A, A, B, A, A, B), and the virtual timeline takes the new length 40. A
+JumpTarget added at 4 in `movement` instead divides A: the old A stays
+and is rejected by the actor; two new Regions A′ [0, 4) and B′ [4, 8),
+under IDs no element held, and the old B, now named C [8, 12); `default`
+keeps its ID and lists (A′, B′, A′, B′, C); the finale's FlowMaps are
+unchanged. Without an actor that call raises and changes
 nothing.
 
 **A timeline is played with its tree** (`TestTree`). Flow control stated
@@ -5044,11 +5097,10 @@ the root's 0: [0, 12) [0, 40) (length 52).
 
 **Where the sections are written.** A root whose flow control lies only
 in descendants gets its atomic sections as Regions of the root: without
-`dc`, `work.create_flow_maps_from_flow_control()` writes `region_1` A
-[0, 4), `region_2` B [4, 12), `region_3` C [12, 40) on `work`, none on
-`allegro`; `flow_map_1` `default` (1, 2, 2, 3), `flow_map_2` `single`
-(1, 2, 3), `flow_map_3` `printed` (1, 2, 3), unnamed, on `work`; the
-manifest written passes the format's validator.
+`dc`, `work.create_flow_maps_from_flow_control()` writes A [0, 4),
+B [4, 12), C [12, 40) as Regions of `work`, none on `allegro`; `default`
+(A, B, B, C), `single` (A, B, C), `printed` (A, B, C), unnamed, on
+`work`; the manifest written passes the format's validator.
 
 **One jump at a position of the root's axis.** A tree that the library
 holds must be one it can write: the format's validator refuses two Jumps
@@ -5107,36 +5159,37 @@ recomputing actor's belief `false`; the letters are those of the new
 sectioning.
 
 The timeline is `|: 8 :| 12` (a repeat sign at 8, length 12). First call:
-`region_1` A [0, 8), `region_2` B [8, 12); `flow_map_1` `default`
-(1, 1, 2), `flow_map_2` `single` (1, 2), `flow_map_3` `printed` (1, 2).
-Then are added: a Region `theme` [2, 6) stating `dcterms:relation`
-`region_1`; a FlowMap by hand `backwards` (`region_2`, `region_1`); a
-virtual timeline `played` applying `flow_map_1` (length 8 + 12 = 20).
-Each row of the table is one change made to that state, on its own.
+Regions `a` A [0, 8) and `b` B [8, 12) (the letters in code font stand
+for the IDs the call returned); `default` (`a`, `a`, `b`), `single`
+(`a`, `b`), `printed` (`a`, `b`). Then are added: a Region `theme`
+[2, 6) stating `dcterms:relation` `a`; a FlowMap by hand `backwards`
+(`b`, `a`); a virtual timeline `played` applying `default` (length
+8 + 12 = 20). Each row of the table is one change made to that state, on
+its own; `c` and `d` are the IDs of the new Regions.
 
-| Change | Sections after | What happened to the old Regions | Computed FlowMaps |
+| Change | Sections after | What happened to the old Regions | Computed FlowMaps (IDs kept) |
 |---|---|---|---|
-| a JumpTarget at 4 | `region_3` A [0, 4), `region_4` B [4, 8), `region_2` C [8, 12) | `region_1` stays [0, 8), still named A, rejected; `region_2` kept and renamed from B to C | `flow_map_1` (3, 4, 3, 4, 2); `flow_map_2` and `flow_map_3` (3, 4, 2) |
-| a Break at 10 | `region_1` A [0, 8), `region_3` B [8, 10), `region_4` C [10, 12) | `region_2` stays [8, 12), named B, rejected; `region_1` kept | `flow_map_1` (1, 1, 3): the flow ends at the Break; `flow_map_2` (1, 3); `flow_map_3` (1, 3, 4) |
+| a JumpTarget at 4 | `c` A [0, 4), `d` B [4, 8), `b` C [8, 12) | `a` stays [0, 8), still named A, rejected; `b` kept and renamed from B to C | `default` (`c`, `d`, `c`, `d`, `b`); `single` and `printed` (`c`, `d`, `b`) |
+| a Break at 10 | `a` A [0, 8), `c` B [8, 10), `d` C [10, 12) | `b` stays [8, 12), named B, rejected; `a` kept | `default` (`a`, `a`, `c`): the flow ends at the Break; `single` (`a`, `c`); `printed` (`a`, `c`, `d`) |
 
-The new IDs are `region_3` and `region_4` in both rows because the
-timeline holds `region_1` and `region_2` throughout: an ID is minted above
-the highest held and never again for another stretch. Asserted after the
-first row: `region_1` has its interval [0, 8) and is no atomic section any
-more (`is_atomic_section` false), and its provenance entry for the type
+`c` and `d` are distinct and differ from every ID the timeline holds
+(`a`, `b`, `theme`): a minted ID never names another stretch, and the
+regions list is `a`, `b`, `theme`, `c`, `d`. Asserted after the first
+row: `a` has its interval [0, 8) and is no atomic section any more
+(`is_atomic_section` false), and its provenance entry for the type
 holds the belief `{actor, belief: false, date}` with the actor and the
-date given to the call; `theme` still states `region_1`; `backwards`
-still resolves, to [8, 12) then [0, 8), length 12; `played` keeps its
-length 20, since the default flow is as long as before. After the second
-row `played` states 18 (8 + 8 + 2). The manifest written validates in both
+date given to the call; `theme` still states `a`; `backwards` still
+resolves, to [8, 12) then [0, 8), length 12; `played` keeps its length
+20, since the default flow is as long as before. After the second row
+`played` states 18 (8 + 8 + 2). The manifest written validates in both
 rows. A further call with nothing changed needs no actor and changes
 nothing: the rejected Region is no section and is not rejected a second
 time. A stretch that comes back is a new stretch: after the first row the
 JumpTarget at 4 is rejected and the sections are computed again by a
-second actor. [0, 8) is a section again and gets `region_5`, not the
-rejected `region_1`, which stays exactly as it was; `region_3` and
-`region_4` are rejected by the second actor; `region_2` is kept and named
-B again; the FlowMaps keep their IDs with (5, 5, 2), (5, 2) and (5, 2).
+second actor. [0, 8) is a section again and gets a fifth ID `e`, none of
+`a` to `d`, not the rejected `a`, which stays exactly as it was; `c` and
+`d` are rejected by the second actor; `b` is kept and named B again; the
+FlowMaps keep their IDs with (`e`, `e`, `b`), (`e`, `b`) and (`e`, `b`).
 
 **The actor is asked for only when something is rejected.** With unchanged
 flow control the second call writes the same sections and FlowMaps under
@@ -5149,8 +5202,8 @@ An invalid date is refused the same way.
 **A FlowMap written before for `single` or `printed` stays** where its
 chunks come to equal `default`'s. In `|: 8 :| 12` the repeat is rejected
 and a section break added at 8: the sections are the same two (no actor
-needed), every flow is (1, 2), and `flow_map_2` and `flow_map_3` are
-still held, with those chunks, because a virtual timeline may apply them;
+needed), every flow is (1, 2), and `single` and `printed` are
+still held under their IDs, with those chunks, because a virtual timeline may apply them;
 `played` states 12.
 
 **FlowMaps of another origin stand untouched beside the computed ones.**
@@ -5161,15 +5214,15 @@ but state no provenance, so that nothing says they were computed: the
 manifest of `|: 8 :| 12` with its flows written is read again with the
 `provenance` of its three FlowMaps removed; the two sections are kept as
 they are, those three FlowMaps are untouched, and the computed FlowMaps
-are written beside them as `flow_map_4` (1, 1, 2), `flow_map_5` (1, 2)
-and `flow_map_6` (1, 2). The format's own fixture `flow/sonata_exposition`
+are written beside them under three new IDs, `default` (A, A, B),
+`single` (A, B) and `printed` (A, B). The format's own fixture `flow/sonata_exposition`
 states its sections and its FlowMaps as computed (`inferred`): computing
 them again from its flow control gives the same three sections ([0, 12),
 [12, 16), [16, 24)) and the same three FlowMaps under the same IDs
 ((1, 2, 1, 3), (1, 3), (1, 2, 3)) and changes nothing in the timeline,
 which shows that what the library writes is the form the format states.
-A Jump going on at a section (`to: region_2`, added after the first call)
-keeps landing at 8 after the sections were computed again.
+A Jump going on at a section (`to:` the ID of B, added after the first
+call) keeps landing at 8 after the sections were computed again.
 
 ### FlowMaps and virtual timelines in a manifest (`test_manifest_flow_maps.py`)
 

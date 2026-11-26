@@ -70,12 +70,10 @@ ROWS: list[dict[str, Any]] = [
 
 
 def _bars() -> MeasureMap:
-    return MeasureMap.from_rows(copy.deepcopy(ROWS))
+    return MeasureMap.from_rows(copy.deepcopy(ROWS), id="bars")
 
 
-def _record(
-    measure_map: str = "measuremap_1", map_id: str = "cmap_1"
-) -> dict[str, Any]:
+def _record(measure_map: str, map_id: str) -> dict[str, Any]:
     return {
         "type": "MeasureRecordMap",
         "id": map_id,
@@ -141,7 +139,9 @@ def test_a_volta_is_written_and_read_in_the_form_stated(
 ) -> None:
     rows = _bracket_rows(first, second)
     score = ContinuousLogicalTimeline(length=F(16), uid="score")
-    score.add_measure_map(MeasureMap.from_rows(copy.deepcopy(rows)))
+    score.add_measure_map(MeasureMap.from_rows(copy.deepcopy(rows), id="bars"))
+    record = score._measure_record_map
+    assert record is not None
 
     written = score.to_dict(minimal=True)
     assert bare(written) == {
@@ -152,10 +152,10 @@ def test_a_volta_is_written_and_read_in_the_form_stated(
                 "id": "score",
                 "unit": "quarters",
                 "length": [16, 1],
-                "conversion_maps": [_record()],
+                "conversion_maps": [_record("bars", record.id)],
             }
         ],
-        "measure_maps": [{"id": "measuremap_1", "rows": rows}],
+        "measure_maps": [{"id": "bars", "rows": rows}],
     }
     timetoshare.validate(written)
     read = Timeline.from_dict(copy.deepcopy(written))
@@ -166,9 +166,9 @@ def test_a_volta_is_written_and_read_in_the_form_stated(
 def test_a_measure_map_writes_its_minimal_entry_by_default() -> None:
     bars = _bars()
 
-    assert bars.to_dict() == {"id": "measuremap_1", "rows": ROWS}
+    assert bars.to_dict() == {"id": "bars", "rows": ROWS}
     assert bars.to_dict(minimal=False) == {
-        "id": "measuremap_1",
+        "id": "bars",
         "name": None,
         "meta": {},
         "rows": ROWS,
@@ -178,6 +178,8 @@ def test_a_measure_map_writes_its_minimal_entry_by_default() -> None:
 def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
     score = ContinuousLogicalTimeline(length=F(8), uid="score")
     score.add_measure_map(_bars())
+    record = score._measure_record_map
+    assert isinstance(record, MeasureRecordMap)
 
     assert bare(score.to_dict(minimal=True)) == {
         "@context": dict(FORMAT_CONTEXT),
@@ -187,10 +189,10 @@ def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
                 "id": "score",
                 "unit": "quarters",
                 "length": [8, 1],
-                "conversion_maps": [_record()],
+                "conversion_maps": [_record("bars", record.id)],
             }
         ],
-        "measure_maps": [{"id": "measuremap_1", "rows": ROWS}],
+        "measure_maps": [{"id": "bars", "rows": ROWS}],
     }
     written = bare(score.to_dict())["timelines"][0]
     assert "measure_map" not in written and "metric_hierarchy" not in written
@@ -199,22 +201,27 @@ def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
 def test_a_whole_notes_timeline_reads_its_measure_map_through_times_four() -> None:
     piece = ContinuousLogicalTimeline(length=F(2), unit="whole_notes", uid="piece")
     piece.add_measure_map(_bars())
+    chain = piece._measure_record_map
+    assert isinstance(chain, ChainMap)
+    linear, record = chain.maps
+    # The chain and each map it nests hold IDs of their own.
+    assert len({chain.id, linear.id, record.id}) == 3
 
     assert bare(piece.to_dict(minimal=True))["timelines"][0]["conversion_maps"] == [
         {
             "type": "ChainMap",
-            "id": "cmap_1",
+            "id": chain.id,
             "source_unit": "whole_notes",
             "target_unit": None,
             "maps": [
                 {
                     "type": "LinearMap",
-                    "id": "cmap_2",
+                    "id": linear.id,
                     "source_unit": "whole_notes",
                     "target_unit": "quarters",
                     "scalar": 4,
                 },
-                _record(map_id="cmap_3"),
+                _record("bars", record.id),
             ],
         }
     ]
@@ -494,26 +501,26 @@ def _named(manifest: dict[str, Any]) -> dict[str, str]:
 
 
 @pytest.mark.parametrize(
-    ("second", "entries", "named"),
-    [
-        ("same", ["measuremap_1"], {"a": "measuremap_1", "b": "measuremap_1"}),
-        ("equal", ["measuremap_1"], {"a": "measuremap_1", "b": "measuremap_1"}),
-        (
-            "different",
-            ["measuremap_1", "measuremap_2"],
-            {"a": "measuremap_1", "b": "measuremap_2"},
-        ),
-    ],
+    "second", ["same", "equal, one id", "equal, minted apart", "different"]
 )
-def test_timelines_share_an_entry_when_their_measure_maps_are_equal(
-    second: str, entries: list[str], named: dict[str, str]
+def test_timelines_share_an_entry_when_they_name_one_measure_map(
+    second: str,
 ) -> None:
-    first_map = _bars()
+    first_map = (
+        MeasureMap.from_rows(copy.deepcopy(ROWS))
+        if second == "equal, minted apart"
+        else _bars()
+    )
     second_map = {
         "same": first_map,
-        "equal": _bars(),
-        "different": MeasureMap.from_rows([{"count": 1, "time_signature": "3/4"}]),
+        "equal, one id": _bars(),
+        "equal, minted apart": MeasureMap.from_rows(copy.deepcopy(ROWS)),
+        "different": MeasureMap.from_rows(
+            [{"count": 1, "time_signature": "3/4"}], id="waltz"
+        ),
     }[second]
+    one_entry = second in ("same", "equal, one id")
+    assert (first_map.id == second_map.id) is one_entry
     bundle = AlignmentBundle()
     for timeline_id, measure_map in (("a", first_map), ("b", second_map)):
         timeline = ContinuousLogicalTimeline(length=F(8), uid=timeline_id)
@@ -521,11 +528,12 @@ def test_timelines_share_an_entry_when_their_measure_maps_are_equal(
         bundle.add_timeline(timeline)
 
     written = bare(bundle.to_dict(minimal=True))
-    assert _entries(written) == entries
-    assert _named(written) == named
+    # One entry per ID, written by ID; equal maps under two IDs are two.
+    assert _entries(written) == sorted({first_map.id, second_map.id})
+    assert _named(written) == {"a": first_map.id, "b": second_map.id}
     read = AlignmentBundle.from_dict(filed(written))
     shared = read.timelines["a"].measure_map is read.timelines["b"].measure_map
-    assert shared is (second != "different")
+    assert shared is one_entry
 
 
 def test_an_entry_no_timeline_names_is_kept() -> None:
@@ -607,10 +615,16 @@ def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
     assert refusal(refused.value) == (code, path, message)
 
 
-def test_a_minted_measure_map_id_is_minted_around_the_manifest_s_ids() -> None:
-    score = ContinuousLogicalTimeline(length=F(8), uid="measuremap_1")
-    score.add_measure_map(_bars())
-    assert _entries(bare(score.to_dict())) == ["measuremap_2"]
+def test_a_minted_measure_map_id_held_by_a_timeline_is_refused_on_writing() -> None:
+    bars = MeasureMap.from_rows(copy.deepcopy(ROWS))
+    score = ContinuousLogicalTimeline(length=F(8), uid=bars.id)
+    score.add_measure_map(bars)
+    with pytest.raises(ValueError) as refused:
+        bare(score.to_dict())
+    assert str(refused.value) == (
+        f"measure map '{bars.id}' cannot be written: its id is already held by "
+        f"timeline '{bars.id}'"
+    )
 
 
 def test_a_given_measure_map_id_held_by_a_timeline_is_refused_on_writing() -> None:
@@ -644,7 +658,7 @@ def test_two_different_measure_maps_of_one_given_id_are_refused_on_writing() -> 
 # region Measure-derived maps
 
 
-def test_a_score_s_floating_measure_map_names_the_timeline_s_entry() -> None:
+def test_a_score_s_floating_measure_map_names_an_entry_of_its_own() -> None:
     score = (
         Ms3Loader()
         .load(SCORE / "flow_control/full/out_of_the_flow_experience-full.measures.tsv")
@@ -656,19 +670,27 @@ def test_a_score_s_floating_measure_map_names_the_timeline_s_entry() -> None:
         if isinstance(cmap, FloatingMeasureMap)
     ]
     assert len(floating) == 1
-    assert floating[0].measure_map is not score.measure_map
+    own, other = score.measure_map, floating[0].measure_map
+    assert other is not own and other == own and other.id != own.id
+    record = score._measure_record_map
+    assert record is not None
 
+    # An equal map under another ID is another entry: nothing is merged.
     written = bare(score.to_dict(minimal=True))
-    assert _entries(written) == ["measuremap_1"]
-    views = [
-        cmap["measure_map"]
+    assert _entries(written) == sorted([own.id, other.id])
+    rows = {entry["id"]: entry["rows"] for entry in written["measure_maps"]}
+    assert rows[own.id] == rows[other.id]
+    views = {
+        cmap["id"]: cmap["measure_map"]
         for cmap in written["timelines"][0]["conversion_maps"]
         if "measure_map" in cmap
-    ]
-    assert views == ["measuremap_1", "measuremap_1"]
+    }
+    assert views == {record.id: own.id, floating[0].id: other.id}
     read = Timeline.from_dict(filed(json.loads(json.dumps(written))))
     read_floating = read.get_conversion_map(floating[0].id)
-    assert read_floating.measure_map is read.measure_map
+    assert read_floating.measure_map.id == other.id
+    assert read_floating.measure_map == read.measure_map
+    assert read_floating.measure_map is not read.measure_map
     assert bare(read.to_dict(minimal=True)) == written
 
 
@@ -695,18 +717,16 @@ def test_legacy_maps_built_from_the_timeline_s_measures_name_its_entry() -> None
             uid="m",
         ),
     ]
-    written = bare(_timeline_with(*maps).to_dict(minimal=True))
+    score = _timeline_with(*maps)
+    record = score._measure_record_map
+    assert record is not None
+    written = bare(score.to_dict(minimal=True))
 
-    assert _entries(written) == ["measuremap_1"]
+    assert _entries(written) == ["bars"]
     assert {
         cmap["id"]: cmap["measure_map"]
         for cmap in written["timelines"][0]["conversion_maps"]
-    } == {
-        "cmap_1": "measuremap_1",
-        "f": "measuremap_1",
-        "m": "measuremap_1",
-        "n": "measuremap_1",
-    }
+    } == {record.id: "bars", "f": "bars", "m": "bars", "n": "bars"}
     read = Timeline.from_dict(filed(written))
     for map_id in ("f", "m", "n"):
         assert read.get_conversion_map(map_id).measure_map is read.measure_map
@@ -722,13 +742,20 @@ def test_legacy_maps_built_from_other_data_write_entries_of_their_own() -> None:
     meter = MetricMap(
         starts=[F(0), F(2)], mcs=[1, 2], mns=["0", "1"], lengths=[F(2), F(6)], uid="m"
     )
-    written = bare(_timeline_with(floating, meter).to_dict(minimal=True))
+    score = _timeline_with(floating, meter)
+    record = score._measure_record_map
+    assert record is not None
+    written = bare(score.to_dict(minimal=True))
 
-    assert _entries(written) == ["measuremap_1", "measuremap_2", "measuremap_3"]
-    assert {
+    named = {
         cmap["id"]: cmap["measure_map"]
         for cmap in written["timelines"][0]["conversion_maps"]
-    } == {"cmap_1": "measuremap_1", "f": "measuremap_2", "m": "measuremap_3"}
+    }
+    assert set(named) == {record.id, "f", "m"}
+    assert named[record.id] == "bars"
+    # Each map built from other data names an entry of its own.
+    assert len({"bars", named["f"], named["m"]}) == 3
+    assert _entries(written) == sorted(["bars", named["f"], named["m"]])
     read = Timeline.from_dict(filed(json.loads(json.dumps(written))))
     read_floating, read_meter = read.get_conversion_map("f"), read.get_conversion_map(
         "m"

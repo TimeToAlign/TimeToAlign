@@ -17,6 +17,7 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
+from timetoalign.core.ids import IdMinter
 from timetoalign.core.provenance import Provenance
 from timetoalign.timelines import Timeline
 from timetoalign.timelines.flowcontrol import (
@@ -112,18 +113,24 @@ def test_flow_control_is_exported_where_a_user_looks_for_it() -> None:
 
 def test_each_class_names_its_role_and_mints_its_id_from_it() -> None:
     made = [
-        Jump(_q(8), [D(repeat_count=1)]),
-        JumpTarget(_q(8)),
-        Break(_q(8)),
-        SectionBreak(_q(8)),
-        Barline(_q(8)),
+        Jump(_q(8), [D(repeat_count=1)], seed=7),
+        JumpTarget(_q(8), seed=7),
+        Break(_q(8), seed=7),
+        SectionBreak(_q(8), seed=7),
+        Barline(_q(8), seed=7),
     ]
+    # One seed, a fresh minter per element: the first ID of that minter,
+    # with the role as prefix.
     assert [(type(e).role, e.id) for e in made] == [
-        ("jump", "jump_1"),
-        ("jump_target", "jump_target_1"),
-        ("break", "break_1"),
-        ("section_break", "section_break_1"),
-        ("barline", "barline_1"),
+        (role, IdMinter(7).mint(role))
+        for role in ("jump", "jump_target", "break", "section_break", "barline")
+    ]
+    assert [e.id for e in made] == [
+        "jump_1hvif5xc2r1fv",
+        "jump_target_1hvif5xc2r1fv",
+        "break_1hvif5xc2r1fv",
+        "section_break_1hvif5xc2r1fv",
+        "barline_1hvif5xc2r1fv",
     ]
     assert all(isinstance(e, FlowControlElement) for e in made)
     assert [e.to_dict()["role"] for e in made] == [type(e).role for e in made]
@@ -166,7 +173,7 @@ def test_a_jump_puts_its_distances_on_its_axis() -> None:
     assert [d.goes_on for d in jump.targets] == [False, True]
     assert jump.targets[0].after == after("x", by=Duration(F(-1), "quarters"))
     assert _refused(lambda: Jump(_q(8), [D(by=Duration(1, "seconds"))])) == (
-        "a `by` of jump 'jump_1' is a distance in seconds on an axis in quarters"
+        "a `by` of jump (unnamed) is a distance in seconds on an axis in quarters"
     )
 
 
@@ -179,23 +186,23 @@ def test_a_single_destination_may_be_given_bare() -> None:
     [
         (
             lambda: Jump(_q(8), []),
-            "jump 'jump_1' has no destination: `targets` lists at least one",
+            "jump (unnamed) has no destination: `targets` lists at least one",
         ),
         (
             lambda: Jump(_q(8), [D(to="a"), D(to="a", repeat_count=1)]),
-            "jump 'jump_1' has 2 destinations with `to: a`: the destinations of one "
+            "jump (unnamed) has 2 destinations with `to: a`: the destinations of one "
             "jump are distinct places",
         ),
         (
             lambda: Jump(_q(8), [D(), D(repeat_count=1, reset=False)]),
-            "jump 'jump_1' has 2 destinations with no place: the destinations of "
+            "jump (unnamed) has 2 destinations with no place: the destinations of "
             "one jump are distinct places",
         ),
         (
             lambda: Jump(
                 Coordinate(8.0, "seconds"), [D(by=1), D(by=Duration(1.0, "seconds"))]
             ),
-            "jump 'jump_1' has 2 destinations with `by: 1.0`: the destinations of "
+            "jump (unnamed) has 2 destinations with `by: 1.0`: the destinations of "
             "one jump are distinct places",
         ),
         (
@@ -211,12 +218,12 @@ def test_a_single_destination_may_be_given_bare() -> None:
         (lambda: PassesFrom(0), "passes from 0: passes are counted from 1"),
         (
             lambda: Break(_q(8), ends=FlowCondition()),
-            "the `ends` of break 'break_1' states no condition: leave `ends` out "
+            "the `ends` of break (unnamed) states no condition: leave `ends` out "
             "for a break that always ends the flow",
         ),
         (
             lambda: Break(_q(8), ends=D(repeat_count=1)),
-            "the `ends` of break 'break_1' is a FlowCondition, not JumpDestination",
+            "the `ends` of break (unnamed) is a FlowCondition, not JumpDestination",
         ),
         (
             lambda: after("j", to="a", by=1),
@@ -225,7 +232,7 @@ def test_a_single_destination_may_be_given_bare() -> None:
         ),
         (
             lambda: Break(_q(8), manifestation=FlowManifestation.segno),
-            "break 'break_1' is one of ['fine', 'volta'] or a word outside the "
+            "break (unnamed) is one of ['fine', 'volta'] or a word outside the "
             "vocabulary, not 'segno'",
         ),
     ],
@@ -398,44 +405,60 @@ def test_elements_naming_one_another_are_added_together() -> None:
     assert FlowControlRegistry([fine, to_coda, dc, coda], unit="ticks") == registry
 
 
-def test_a_minted_id_that_is_taken_is_minted_again() -> None:
+def test_an_id_held_is_refused_given_or_minted() -> None:
     registry = FlowControlRegistry(unit="ticks")
     first = registry.add(JumpTarget(_t(4)))
     second = registry.add(JumpTarget(_t(2)))
-    assert (first.id, second.id) == ("jump_target_1", "jump_target_2")
-    assert [e.id for e in registry.elements] == ["jump_target_2", "jump_target_1"]
-    assert _refused(lambda: registry.add(JumpTarget(_t(6), id="jump_target_1"))) == (
-        "jump_target 'jump_target_1' cannot join: its id 'jump_target_1' is already "
-        "held by jump_target 'jump_target_1'"
+    assert first.id != second.id
+    assert [e.id for e in registry.elements] == [second.id, first.id]
+    assert _refused(lambda: registry.add(JumpTarget(_t(6), id=first.id))) == (
+        f"jump_target '{first.id}' cannot join: its id '{first.id}' is already "
+        f"held by jump_target '{first.id}'"
     )
+    assert [e.id for e in registry.elements] == [second.id, first.id]
 
 
-def test_a_destination_follows_a_target_minted_again() -> None:
+def test_an_absorbed_registry_keeps_its_ids_and_a_shared_one_is_refused() -> None:
     source = FlowControlRegistry(unit="quarters")
     target = source.add(JumpTarget(_q(4), manifestation="segno"))
-    source.add(Jump(_q(8), D(to=target.id, repeat_count=1, reset=False)))
-    source.add(Break(_q(6), ends=FlowCondition(after=after("jump_1", to=target.id))))
+    dal_segno = source.add(Jump(_q(8), D(to=target.id, repeat_count=1, reset=False)))
+    fine = source.add(
+        Break(_q(6), ends=FlowCondition(after=after(dal_segno.id, to=target.id)))
+    )
 
-    timeline = ContinuousLogicalTimeline(length=16)
+    timeline = ContinuousLogicalTimeline(length=16, uid="score")
     held = timeline.flow_control.add(JumpTarget(_q(2)))
-    timeline.flow_control.add(Jump(_q(12), D(to=held.id, repeat_count=1)))
+    back = timeline.flow_control.add(Jump(_q(12), D(to=held.id, repeat_count=1)))
     timeline.flow_control._absorb(source)
 
     assert [(e.id, e.coordinate.value) for e in timeline.flow_control.elements] == [
-        ("jump_target_1", 2),
-        ("jump_target_2", 4),
-        ("break_1", 6),
-        ("jump_2", 8),
-        ("jump_1", 12),
+        (held.id, 2),
+        (target.id, 4),
+        (fine.id, 6),
+        (dal_segno.id, 8),
+        (back.id, 12),
     ]
+    assert len({e.id for e in timeline.flow_control.elements}) == 5
     absorbed = timeline.flow_control.jump_at(8)
-    assert absorbed.targets == (D(to="jump_target_2", repeat_count=1, reset=False),)
+    assert absorbed.targets == (D(to=target.id, repeat_count=1, reset=False),)
     assert timeline.flow_control.breaks[0].ends.after == after(
-        "jump_2", to="jump_target_2"
+        dal_segno.id, to=target.id
     )
-    assert timeline.flow_control.jump_at(12).targets[0].to == "jump_target_1"
+    assert timeline.flow_control.jump_at(12).targets[0].to == held.id
     # The source registry is what it was.
-    assert [e.id for e in source.elements] == ["jump_target_1", "break_1", "jump_1"]
+    assert [e.id for e in source.elements] == [target.id, fine.id, dal_segno.id]
+
+    # A registry holding an ID the timeline holds is refused whole.
+    clash = FlowControlRegistry(unit="quarters")
+    clash.add(JumpTarget(_q(14), id="coda"))
+    clash.add(JumpTarget(_q(15), id=held.id))
+    before = timeline.flow_control.elements
+    assert _refused(lambda: timeline.flow_control._absorb(clash)) == (
+        f"jump_target '{held.id}' of timeline 'score' cannot join: its id "
+        f"'{held.id}' is already held by jump_target '{held.id}' of timeline "
+        "'score'"
+    )
+    assert timeline.flow_control.elements == before
 
 
 # endregion
@@ -580,8 +603,9 @@ def test_a_destination_names_a_region_a_child_and_the_timeline() -> None:
         ("score", _q(F(0))),
         ("trio", _q(F(40))),
     ]
-    assert _refused(lambda: registry.add(Jump(_q(60), D(to="verse")))) == (
-        "jump 'jump_2' goes on at 'verse', which names no jump target of this "
+    verse = Jump(_q(60), D(to="verse"))
+    assert _refused(lambda: registry.add(verse)) == (
+        f"jump '{verse.id}' goes on at 'verse', which names no jump target of this "
         "registry and no place of its timeline. Available jump targets: []. "
         "Available places: ['score', 'chorus', 'trio']"
     )
@@ -589,15 +613,14 @@ def test_a_destination_names_a_region_a_child_and_the_timeline() -> None:
         FlowControlRegistry(unit="quarters").place_of(jump.targets[0], jump)
 
 
-def test_a_destination_follows_a_place_renamed() -> None:
-    timeline = ContinuousLogicalTimeline(length=64, uid="score")
-    timeline.create_region(16, 32, id="chorus")
-    timeline.flow_control.add(Jump(_q(48), D(to="chorus", repeat_count=1)))
-    timeline._rename_region("chorus", "refrain")
-    timeline._rename_references("chorus", "refrain")
-    (jump,) = timeline.flow_control.jumps
-    assert jump.targets[0].to == "refrain"
-    assert timeline.flow_control.place_of(jump.targets[0], jump) == _q(F(16))
+def test_a_destination_follows_its_timeline_given_a_new_id() -> None:
+    verse = ContinuousLogicalTimeline(length=8, uid="draft")
+    verse.flow_control.add(Jump(_q(8), D(to="draft", repeat_count=1)))
+    song = ContinuousLogicalTimeline(length=0, uid="song")
+    song.append_child(verse, uid="verse")
+    (jump,) = verse.flow_control.jumps
+    assert jump.targets[0].to == "verse"
+    assert verse.flow_control.place_of(jump.targets[0], jump) == _q(F(0))
 
 
 # endregion

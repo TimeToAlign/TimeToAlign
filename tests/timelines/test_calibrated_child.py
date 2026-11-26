@@ -9,6 +9,7 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType
+from timetoalign.core.ids import reset_content_minters
 from timetoalign.maps import LinearMap
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
@@ -89,6 +90,9 @@ class TestDrawnAxis:
         unsorted = drawing().create_calibrated_child(
             AXIS_LENGTH, AXIS_START, calibration
         )
+        # A map holds its ID, minted from its content: built again from the
+        # same content after a reset, an equal map holds the same ID.
+        reset_content_minters()
         assert unsorted.get_conversion_map("seconds") == calibrate(
             drawing(), TICKS
         ).get_conversion_map("seconds")
@@ -120,7 +124,6 @@ class TestDrawnAxis:
         assert parent.n_children == 0
         assert len(parent.events) == events_before
         assert parent._manifest_ids() == ids_before
-        assert parent.create_child(length=1.0).id == "cgt_2"
 
 
 class TestBound:
@@ -202,6 +205,7 @@ class TestInputs:
         by_number = small_parent().create_calibrated_child(
             80.0, 10.0, [(10.0, 0.0), (50.0, 2.0), (90.0, 4.0)], value_unit="seconds"
         )
+        reset_content_minters()
         by_coordinate = calibrate_small(
             [(10.0, seconds(0)), (50.0, seconds(2)), (90.0, seconds(4))]
         )

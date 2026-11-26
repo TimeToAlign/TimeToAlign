@@ -1324,7 +1324,8 @@ def test_an_anonymous_bundle_writes_no_id() -> None:
 
     bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(data)))
 
-    assert bundle.id == "bundle_1"
+    # It holds a minted ID of its own, which it never writes.
+    assert bundle.id.startswith("bundle_")
     assert bare(bundle.to_dict(minimal=True)) == data
 
 
@@ -1406,7 +1407,7 @@ def test_an_order_naming_no_group_or_timeline_is_refused() -> None:
     assert refusal(refused.value) == (
         "order_key",
         "#/graphical/order/g3",
-        "'g3' names no group or timeline of this manifest",
+        "'g3' names no group, timeline or virtual timeline of this manifest",
     )
 
 
@@ -2349,7 +2350,7 @@ def _stamped(timeline: str, coordinate: list[int]) -> dict[str, Any]:
             [3, 1],
             "timestamp_timeline",
             "#/graphical/timestamps/0/timeline",
-            "'clt_9' names no timeline of this manifest",
+            "'clt_9' names no timeline or virtual timeline of this manifest",
         ),
         (
             "clt_1",

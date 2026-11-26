@@ -183,27 +183,27 @@ def test_children_out_of_order_rebuild_in_offset_order() -> None:
 
 
 def test_segments_rebuild_in_offset_order_not_key_order() -> None:
-    """Minted ids that sort differently from their offsets rebuild by offset.
+    """Ids that sort differently from their offsets rebuild by offset.
 
-    Eleven minted segments are ``dgt_1`` … ``dgt_11``; a writer that sorts
-    object keys lists ``dgt_10`` before ``dgt_2``, and the line must still
-    append its segments in offset order.
+    Eleven segments ``s1`` … ``s11``; a writer that sorts object keys lists
+    ``s10`` before ``s2``, and the line must still append its segments in
+    offset order.
     """
     line = SegmentLine[DiscreteGraphicalTimeline](length=0, uid="line")
-    for _ in range(11):
-        line.append_segment(DiscreteGraphicalTimeline(length=10))
+    for n in range(1, 12):
+        line.append_segment(DiscreteGraphicalTimeline(length=10, uid=f"s{n}"))
     data = bare(line.to_dict())
     _root(data)["children"].sort(key=lambda child: child["id"])
     assert [child["id"] for child in _root(data)["children"]][:4] == [
-        "dgt_1",
-        "dgt_10",
-        "dgt_11",
-        "dgt_2",
+        "s1",
+        "s10",
+        "s11",
+        "s2",
     ]
 
     restored = Timeline.from_dict(filed(data))
 
-    assert restored.list_segments() == [f"dgt_{n}" for n in range(1, 12)]
+    assert restored.list_segments() == [f"s{n}" for n in range(1, 12)]
     assert bare(restored.to_dict()) == bare(line.to_dict())
 
 

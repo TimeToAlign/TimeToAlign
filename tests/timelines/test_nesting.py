@@ -26,6 +26,7 @@ import pytest
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, TimeUnit, number_to_json
+from timetoalign.core.ids import IdMinter
 from timetoalign.maps import (
     FloatingMeasureMap,
     LinearMap,
@@ -1078,6 +1079,12 @@ class TestNestingScale:
 # region Use Conversion Map Tests
 
 
+def _converted(parent: Timeline) -> Timeline:
+    """The one child of *parent*, a converted copy whose id was minted."""
+    (child_id,) = parent.list_children()
+    return parent.get_child(child_id)
+
+
 class TestAddChildWithConversionMap:
     """Test add_child with use_conversion_map parameter.
 
@@ -1107,7 +1114,7 @@ class TestAddChildWithConversionMap:
         parent.add_child(child, offset=0, use_conversion_map=True)
 
         assert parent.n_children == 1
-        converted = parent.get_child("dpt_1")
+        converted = _converted(parent)
         assert converted.unit == TimeUnit.samples
         assert converted.length.value == 441000.0
 
@@ -1122,10 +1129,11 @@ class TestAddChildWithConversionMap:
             length=5.0, unit=TimeUnit.seconds, uid="my_notes"
         )
 
-        parent.add_child(child, offset=0, use_conversion_map=True)
+        parent.add_child(child, offset=0, use_conversion_map=True, seed=7)
 
-        converted = parent.get_child("dpt_1")
-        assert converted.id == "dpt_1"
+        converted = _converted(parent)
+        # Minted in the parent's unit from the seed given: no label is an id.
+        assert converted.id == IdMinter(7).mint("dpt") == "dpt_1hvif5xc2r1fv"
         assert converted.name == "my_notes [samples]"
 
     def test_converted_child_events_have_correct_coordinates(self):
@@ -1146,7 +1154,7 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("dpt_1")
+        converted = _converted(parent)
         events = list(converted._events)
         assert len(events) == 1
         event = events[0]
@@ -1193,8 +1201,8 @@ class TestAddChildWithConversionMap:
         parent.add_child(child, offset=0, use_conversion_map="seconds")
 
         assert parent.n_children == 1
-        assert "dpt_1" in parent
-        assert parent.get_child("dpt_1").name == "notes [samples]"
+        assert _converted(parent).id in parent
+        assert _converted(parent).name == "notes [samples]"
 
     def test_use_conversion_map_by_cmap_object(self):
         """use_conversion_map accepts a ConversionMap object directly."""
@@ -1279,7 +1287,7 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("dpt_1")
+        converted = _converted(parent)
         assert converted.is_locked
         assert not child.is_locked
 

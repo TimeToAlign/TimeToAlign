@@ -343,7 +343,7 @@ class TestTimelineSubclassResolution:
     ) -> None:
         """CSS pixels and user units select the continuous graphical timeline."""
         assert Timeline.resolve_subclass(unit) is ContinuousGraphicalTimeline
-        assert Timeline(length=4.0, unit=unit).id == "cgt_1"
+        assert Timeline(length=4.0, unit=unit).id.startswith("cgt_")
 
     def test_every_unit_has_exactly_one_leaf_class_of_its_kind(self) -> None:
         """The leaf classes partition the units by domain and discreteness.

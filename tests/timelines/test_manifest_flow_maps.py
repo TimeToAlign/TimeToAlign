@@ -137,9 +137,20 @@ class TestFixtures:
 def _score() -> ContinuousLogicalTimeline:
     score = ContinuousLogicalTimeline(length=12, uid="score")
     score.flow_control.add(Jump(q(8), [JumpDestination(repeat_count=1)], id="repeat"))
-    score.create_flow_maps_from_flow_control()
-    score.create_virtual_timeline("flow_map_1", id="as_played")
+    written = score.create_flow_maps_from_flow_control()
+    assert written is not None
+    score.create_virtual_timeline(written.flow_maps[0], id="as_played")
     return score
+
+
+def _ids(score: Timeline) -> tuple[list[str], list[str]]:
+    """The file IDs of the score's Regions A, B and of its FlowMaps default,
+    single, printed (minted, so read from the objects)."""
+    regions = sorted(score._regions.values(), key=lambda region: region.start)
+    return (
+        [f"#{region.id}" for region in regions],
+        [f"#{flow_map_id}" for flow_map_id in score.list_flow_maps()],
+    )
 
 
 def _concert() -> ContinuousLogicalTimeline:
@@ -160,16 +171,14 @@ class TestBuiltInMemory:
         score, concert = _score(), _concert()
         bundle.add_timeline(score)
         bundle.add_timeline(concert)
+        (a, b), (default, _, _) = _ids(score)
         manifest = bundle.to_dict()
         timetoshare.validate(manifest)
 
         # Sorted by ID across both roots, every ID as a file writes it.
-        assert [entry["id"] for entry in manifest["flow_maps"]] == [
-            "#encore",
-            "#flow_map_1",
-            "#flow_map_2",
-            "#flow_map_3",
-        ]
+        written = [entry["id"] for entry in manifest["flow_maps"]]
+        assert written == sorted(["#encore", *_ids(score)[1]])
+        assert written[0] == "#encore"
         assert manifest["flow_maps"][0] == {
             "id": "#encore",
             "timeline": "#concert",
@@ -177,17 +186,17 @@ class TestBuiltInMemory:
             "canonical": True,
             "name": "Encore order",
         }
-        assert manifest["flow_maps"][1] == {
-            "id": "#flow_map_1",
+        assert manifest["flow_maps"][written.index(default)] == {
+            "id": default,
             "timeline": "#score",
-            "chunks": ["#region_1", "#region_1", "#region_2"],
+            "chunks": [a, a, b],
             "convention": "default",
             "provenance": [{"method": "inferred"}],
         }
         assert manifest["virtual_timelines"] == [
             {
                 "id": "#as_played",
-                "map": "#flow_map_1",
+                "map": default,
                 "timeline": "#score",
                 "unit": "quarters",
                 "number_type": "fraction",
@@ -206,20 +215,14 @@ class TestBuiltInMemory:
     def test_a_timeline_and_a_group_write_them_too(self) -> None:
         score = _score()
         alone = score.to_dict()
-        assert [entry["id"] for entry in alone["flow_maps"]] == [
-            "#flow_map_1",
-            "#flow_map_2",
-            "#flow_map_3",
-        ]
+        assert [entry["id"] for entry in alone["flow_maps"]] == sorted(_ids(score)[1])
         assert Timeline.from_dict(alone).to_dict() == alone
-        group = TimelineGroup(id="pair", timelines=[_score(), _concert()])
+        member = _score()
+        group = TimelineGroup(id="pair", timelines=[member, _concert()])
         grouped = group.to_dict()
-        assert [entry["id"] for entry in grouped["flow_maps"]] == [
-            "#encore",
-            "#flow_map_1",
-            "#flow_map_2",
-            "#flow_map_3",
-        ]
+        assert [entry["id"] for entry in grouped["flow_maps"]] == sorted(
+            ["#encore", *_ids(member)[1]]
+        )
         assert [entry["id"] for entry in grouped["virtual_timelines"]] == ["#as_played"]
         assert TimelineGroup.from_dict(grouped).to_dict() == grouped
 
@@ -234,11 +237,14 @@ class TestBuiltInMemory:
                 "name": "Encore order",
             }
         ]
-        score = _score().to_dict(minimal=False)
-        assert score["flow_maps"][1] == {
-            "id": "#flow_map_2",
+        timeline = _score()
+        (a, b), (_, single, _) = _ids(timeline)
+        score = timeline.to_dict(minimal=False)
+        (written,) = [entry for entry in score["flow_maps"] if entry["id"] == single]
+        assert written == {
+            "id": single,
             "timeline": "#score",
-            "chunks": ["#region_1", "#region_2"],
+            "chunks": [a, b],
             "convention": "single",
             "canonical": False,
             "name": None,

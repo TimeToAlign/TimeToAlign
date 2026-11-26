@@ -35,6 +35,7 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
+from timetoalign.core.ids import IdMinter, reset_content_minters
 from timetoalign.maps import LinearMap, ScalarMap
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
@@ -176,9 +177,15 @@ class TestTimelineConstruction:
         assert tl.id == "my_custom_id"
 
     def test_timeline_auto_generated_id(self):
-        """A timeline without a given id mints its unit's prefix, every time."""
-        assert Timeline().id == "cpt_1"
-        assert Timeline().id == "cpt_1"
+        """A timeline without a given id mints one with its unit's prefix: from
+        the seed given, else from its content, a new one each time."""
+        assert Timeline(seed=7).id == IdMinter(7).mint("cpt") == "cpt_1hvif5xc2r1fv"
+        assert Timeline(seed=7).id == "cpt_1hvif5xc2r1fv"
+        first, second = Timeline().id, Timeline().id
+        assert first.startswith("cpt_") and second.startswith("cpt_")
+        assert first != second
+        reset_content_minters()
+        assert Timeline().id == first
 
     def test_timeline_locked_on_creation(self):
         """Timeline can be created in locked state."""
@@ -461,24 +468,35 @@ class TestAddEventsAxisAndIds:
 
     def test_two_calls_mint_two_ids(self) -> None:
         timeline = _samples_timeline()
-        assert timeline.add_events([{"event_type": "Note", "start": 1}]) == ["note_1"]
-        assert timeline.add_events([{"event_type": "Note", "start": 2}]) == ["note_2"]
-        assert timeline.events.column_values("id") == ["note_1", "note_2"]
+        (first,) = timeline.add_events([{"event_type": "Note", "start": 1}])
+        (second,) = timeline.add_events([{"event_type": "Note", "start": 2}])
+        assert first.startswith("note_") and second.startswith("note_")
+        assert first != second
+        assert timeline.events.column_values("id") == [first, second]
 
-    def test_a_minted_id_continues_above_the_highest_held(self) -> None:
+    def test_a_minted_id_held_is_refused(self) -> None:
         timeline = _samples_timeline()
-        timeline.add_events([{"event_type": "Note", "id": "note_5", "start": 1}])
-        assert timeline.add_events([{"event_type": "Note", "start": 2}]) == ["note_6"]
+        held = IdMinter(7).mint("note")
+        timeline.add_events([{"event_type": "Note", "id": held, "start": 1}])
+        with pytest.raises(ValueError) as refused:
+            timeline.add_events([{"event_type": "Note", "start": 2}], seed=7)
+        assert str(refused.value) == (
+            f"Event id '{held}' is already held by an event of timeline 'dpt_1'"
+        )
+        assert timeline.events.column_values("id") == [held]
 
     def test_returns_the_ids_in_row_order(self) -> None:
         timeline = _samples_timeline()
+        minter = IdMinter(7)
+        first, second = minter.mint("beat"), minter.mint("beat")
         assert timeline.add_events(
             [
                 {"event_type": "Beat", "instant": 1},
                 {"event_type": "Note", "id": "given", "start": 2},
                 {"event_type": "Beat", "instant": 3},
-            ]
-        ) == ["beat_1", "given", "beat_2"]
+            ],
+            seed=7,
+        ) == [first, "given", second]
 
 
 # endregion

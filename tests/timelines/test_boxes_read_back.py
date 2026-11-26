@@ -281,14 +281,18 @@ def _mei_page(tmp_path: Path) -> tuple[Timeline, list[Box]]:
 def _dmos_page(tmp_path: Path) -> tuple[Timeline, list[Box]]:
     """The DMOS page, and its Boxes built from the regions' own numbers."""
     (page,) = DmosLoader.from_file(_dmos(tmp_path)).create_timelines()
+    # The loader mints the Boxes' IDs; the expected Boxes take them in order.
+    (accolade_id,) = page.list_children()
+    ids = page.get_child(accolade_id).events.column_values("id")
+    assert len(set(ids)) == len(DMOS_MEASURES)
     order = ("top_left", "top_right", "bottom_left", "bottom_right")
     expected = [
         Box.from_shape(
             Quadrilateral.from_points(region, order=order, unit="pixels"),
             origin=DMOS_SYSTEM[0][0],
-            id=f"box_{n}",
+            id=box_id,
         )
-        for n, region in enumerate(DMOS_MEASURES, start=1)
+        for box_id, region in zip(ids, DMOS_MEASURES, strict=True)
     ]
     assert [(box.start.value, box.duration.value) for box in expected] == [
         (0, 940),
@@ -515,10 +519,10 @@ EEP_VLN1 = (
     / "StringQuartetEEP_I_Normal_align_vln1.notes"
 )
 #: Bach, The Art of Fugue, Contrapunctus 1, in IEEE 1599; its timeline
-#: ``los:dlt_2`` spells each of its 1,038 notes in raw columns.
+#: "Logically organised symbols" spells each of its 1,038 notes in raw columns.
 IEEE_BACH = ensure_data("ieee1599") / "bach_artefuga_01.xml"
 
-#: TiLiA's export of Bruckner 5, Scherzo; its timeline ``cpt_4`` ("Takte")
+#: TiLiA's export of Bruckner 5, Scherzo; its timeline "Takte"
 #: holds 1,146 beats as rows typed ``Beat`` and no ``index`` column.
 TILIA_BRUCKNER = (
     ensure_data("score")
@@ -540,7 +544,7 @@ class TestTypesNotHeld:
     def test_tilia_beats_hold_no_beat_index(self) -> None:
         loader = TiliaJsonLoader()
         loader.load(TILIA_BRUCKNER)
-        events = loader.create_timeline("cpt_4").get_events()
+        events = loader.create_timeline("Takte").get_events()
         assert len(events) == 1146
         assert set(events.column_values("event_type")) == {"Beat"}
         assert "index" not in events.schema.names
@@ -617,7 +621,7 @@ class TestTypesNotHeld:
         (timeline,) = [
             timeline
             for timeline in Ieee1599Loader.from_file(IEEE_BACH).create_timelines()
-            if timeline.id == "los:dlt_2"
+            if timeline.name == "Logically organised symbols"
         ]
         return timeline
 

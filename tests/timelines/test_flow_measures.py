@@ -57,7 +57,38 @@ def bars(*rows: dict[str, Any], signature: str = "4/4") -> MeasureMap:
 
 
 def written(measures: Any) -> list[dict[str, Any]]:
-    return [element.to_dict() for element in flow_control_from_measures(measures)]
+    """The elements' dicts, each minted ID replaced by a label.
+
+    The k-th element of a role in the order written is labelled
+    ``"<role> k"``, and every destination naming it names the label: the
+    structure stays exact, the random spelling of the IDs drops out. The
+    IDs are asserted distinct, so no two elements share a label. A jump's
+    destinations with ``to`` are written in the canonical order, by the ID
+    they name; that is asserted, and they are then put in the order of their
+    labels, so that the expected values do not depend on random spellings.
+    """
+    elements = flow_control_from_measures(measures)
+    ids = [element.id for element in elements]
+    assert len(set(ids)) == len(ids)
+    counted: dict[str, int] = {}
+    labels: dict[str, str] = {}
+    for element in elements:
+        role = element.to_dict()["role"]
+        counted[role] = counted.get(role, 0) + 1
+        labels[element.id] = f"{role} {counted[role]}"
+    labels_order = {label: index for index, label in enumerate(labels.values())}
+    dicts = [element.to_dict() for element in elements]
+    for entry in dicts:
+        entry["id"] = labels[entry["id"]]
+        if "targets" not in entry:
+            continue
+        placed = [d for d in entry["targets"] if "to" in d]
+        assert [d["to"] for d in placed] == sorted(d["to"] for d in placed)
+        for destination in placed:
+            destination["to"] = labels[destination["to"]]
+        placed.sort(key=lambda destination: labels_order[destination["to"]])
+        entry["targets"] = [d for d in entry["targets"] if "to" not in d] + placed
+    return dicts
 
 
 def target(id: str, at: int, manifestation: str) -> dict[str, Any]:
@@ -97,51 +128,51 @@ def test_measures_without_signs_state_no_flow_control() -> None:
 
 
 def test_a_repeat_start_is_a_jump_target_at_the_rows_start() -> None:
-    assert written(bars({}, START, {})) == [target("jump_target_1", 4, "repeat_start")]
+    assert written(bars({}, START, {})) == [target("jump_target 1", 4, "repeat_start")]
 
 
 def test_a_repeat_end_goes_back_to_its_repeat_start() -> None:
     assert written(bars({}, START, END, {})) == [
-        target("jump_target_1", 4, "repeat_start"),
-        jump("jump_1", 12, repeat_end("jump_target_1")),
+        target("jump_target 1", 4, "repeat_start"),
+        jump("jump 1", 12, repeat_end("jump_target 1")),
     ]
 
 
 def test_a_repeat_end_without_a_printed_start_has_no_place() -> None:
-    assert written(bars({}, END, {})) == [jump("jump_1", 8, repeat_end())]
+    assert written(bars({}, END, {})) == [jump("jump 1", 8, repeat_end())]
 
 
 def test_nested_repeats_close_the_nearest_open_start() -> None:
     assert written(bars(START, START, END, END)) == [
-        target("jump_target_1", 0, "repeat_start"),
-        target("jump_target_2", 4, "repeat_start"),
-        jump("jump_1", 12, repeat_end("jump_target_2")),
-        jump("jump_2", 16, repeat_end("jump_target_1")),
+        target("jump_target 1", 0, "repeat_start"),
+        target("jump_target 2", 4, "repeat_start"),
+        jump("jump 1", 12, repeat_end("jump_target 2")),
+        jump("jump 2", 16, repeat_end("jump_target 1")),
     ]
 
 
 def test_a_start_once_closed_serves_no_later_repeat_end() -> None:
     assert written(bars(START, END, {}, END)) == [
-        target("jump_target_1", 0, "repeat_start"),
-        jump("jump_1", 8, repeat_end("jump_target_1")),
-        jump("jump_2", 16, repeat_end()),
+        target("jump_target 1", 0, "repeat_start"),
+        jump("jump 1", 8, repeat_end("jump_target 1")),
+        jump("jump 2", 16, repeat_end()),
     ]
 
 
 def test_a_start_and_an_end_on_one_measure_repeat_that_measure() -> None:
     assert written(bars({}, {**START, **END}, {})) == [
-        target("jump_target_1", 4, "repeat_start"),
-        jump("jump_1", 8, repeat_end("jump_target_1")),
+        target("jump_target 1", 4, "repeat_start"),
+        jump("jump 1", 8, repeat_end("jump_target 1")),
     ]
 
 
 def test_two_brackets_are_one_jump_one_landing_and_one_break() -> None:
     assert written(bars(START, {}, {"volta": 1, **END}, {"volta": 2}, {})) == [
-        target("jump_target_1", 0, "repeat_start"),
-        jump("jump_1", 8, bracket([1]), bracket([2], "jump_target_2")),
-        volta_break("break_1", 12),
-        jump("jump_2", 12, repeat_end("jump_target_1")),
-        target("jump_target_2", 12, "volta"),
+        target("jump_target 1", 0, "repeat_start"),
+        jump("jump 1", 8, bracket([1]), bracket([2], "jump_target 2")),
+        volta_break("break 1", 12),
+        jump("jump 2", 12, repeat_end("jump_target 1")),
+        target("jump_target 2", 12, "volta"),
     ]
 
 
@@ -149,29 +180,29 @@ def test_a_later_brackets_repeat_end_goes_to_the_same_start_without_reset() -> N
     assert written(
         bars(START, {}, {"volta": 1, **END}, {"volta": 2, **END}, {"volta": 3}, {})
     ) == [
-        target("jump_target_1", 0, "repeat_start"),
+        target("jump_target 1", 0, "repeat_start"),
         jump(
-            "jump_1",
+            "jump 1",
             8,
             bracket([1]),
-            bracket([2], "jump_target_2"),
-            bracket([3], "jump_target_3"),
+            bracket([2], "jump_target 2"),
+            bracket([3], "jump_target 3"),
         ),
-        volta_break("break_1", 12),
-        jump("jump_2", 12, repeat_end("jump_target_1")),
-        target("jump_target_2", 12, "volta"),
-        volta_break("break_2", 16),
-        jump("jump_3", 16, repeat_end("jump_target_1", reset=False)),
-        target("jump_target_3", 16, "volta"),
+        volta_break("break 1", 12),
+        jump("jump 2", 12, repeat_end("jump_target 1")),
+        target("jump_target 2", 12, "volta"),
+        volta_break("break 2", 16),
+        jump("jump 3", 16, repeat_end("jump_target 1", reset=False)),
+        target("jump_target 3", 16, "volta"),
     ]
 
 
 def test_a_bracket_of_two_measures_is_one_bracket() -> None:
     assert written(bars({}, {"volta": 1}, {"volta": 1, **END}, {"volta": 2})) == [
-        jump("jump_1", 4, bracket([1]), bracket([2], "jump_target_1")),
-        volta_break("break_1", 12),
-        jump("jump_2", 12, repeat_end()),
-        target("jump_target_1", 12, "volta"),
+        jump("jump 1", 4, bracket([1]), bracket([2], "jump_target 1")),
+        volta_break("break 1", 12),
+        jump("jump 2", 12, repeat_end()),
+        target("jump_target 1", 12, "volta"),
     ]
 
 
@@ -192,11 +223,11 @@ def test_a_volta_stated_as_a_list_gives_those_passes(read: Any) -> None:
         ]
     )
     assert written(rows) == [
-        jump("jump_1", 4, bracket([1, 3]), bracket([2], "jump_target_1")),
-        volta_break("break_1", 8),
-        jump("jump_2", 8, repeat_end()),
-        target("jump_target_1", 8, "volta"),
-        jump("jump_3", 12, repeat_end(reset=False)),
+        jump("jump 1", 4, bracket([1, 3]), bracket([2], "jump_target 1")),
+        volta_break("break 1", 8),
+        jump("jump 2", 8, repeat_end()),
+        target("jump_target 1", 8, "volta"),
+        jump("jump 3", 12, repeat_end(reset=False)),
     ]
 
 
@@ -204,23 +235,23 @@ def test_a_bracket_naming_a_pass_again_begins_the_next_run() -> None:
     assert written(
         bars({}, {"volta": 1, **END}, {"volta": 2}, {"volta": 1, **END}, {"volta": 2})
     ) == [
-        jump("jump_1", 4, bracket([1]), bracket([2], "jump_target_1")),
-        volta_break("break_1", 8),
-        jump("jump_2", 8, repeat_end()),
-        target("jump_target_1", 8, "volta"),
-        jump("jump_3", 12, bracket([1]), bracket([2], "jump_target_2")),
-        volta_break("break_2", 16),
-        jump("jump_4", 16, repeat_end()),
-        target("jump_target_2", 16, "volta"),
+        jump("jump 1", 4, bracket([1]), bracket([2], "jump_target 1")),
+        volta_break("break 1", 8),
+        jump("jump 2", 8, repeat_end()),
+        target("jump_target 1", 8, "volta"),
+        jump("jump 3", 12, bracket([1]), bracket([2], "jump_target 2")),
+        volta_break("break 2", 16),
+        jump("jump 4", 16, repeat_end()),
+        target("jump_target 2", 16, "volta"),
     ]
 
 
 def test_signs_on_one_coordinate_are_destinations_of_one_jump() -> None:
     assert written(bars({}, END, {"volta": 1, **END}, {"volta": 2})) == [
-        jump("jump_1", 8, repeat_end(), bracket([1]), bracket([2], "jump_target_1")),
-        volta_break("break_1", 12),
-        jump("jump_2", 12, repeat_end()),
-        target("jump_target_1", 12, "volta"),
+        jump("jump 1", 8, repeat_end(), bracket([1]), bracket([2], "jump_target 1")),
+        volta_break("break 1", 12),
+        jump("jump 2", 12, repeat_end()),
+        target("jump_target 1", 12, "volta"),
     ]
 
 
@@ -562,7 +593,7 @@ def test_a_stated_order_is_written_as_a_flow_map(
     )
     assert flow_map.provenance == (Provenance(method="imported"),)
     assert not flow_map.is_computed
-    assert score.list_flow_maps() == [flow_map.id] == ["flow_map_1"]
+    assert score.list_flow_maps() == [flow_map.id]
     assert stated.differs_at == (
         None if differs_at is None else Coordinate(Fraction(differs_at), "quarters")
     )
@@ -582,12 +613,12 @@ def test_computing_the_flows_leaves_a_stated_flow_map_standing() -> None:
     stated = score.create_flow_map_from_measure_order([1, 2, 1, 2, 3], id="stated")
     computed = score.create_flow_maps_from_flow_control()
     assert score.get_flow_map("stated") == stated.flow_map
-    assert [region.id for region in stated.regions] == ["region_1", "region_2"]
+    assert computed is not None
     assert score.list_regions() == [
-        "region_1",
-        "region_2",
+        *[region.id for region in stated.regions],
         *[section.id for section in computed.sections],
     ]
+    assert len(set(score.list_regions())) == 2 + 2
     # Two stretches there, three atomic sections here: the same flow.
     by_source, by_engine = (
         flow_map.resolve(score) for flow_map in (stated.flow_map, computed.flow_maps[0])
@@ -671,7 +702,7 @@ def test_a_repeat_end_behind_a_last_bracket_is_found() -> None:
         MeasureFinding(MeasureFindingKind.repeat_end_behind_brackets, 4),
     )
     # Nothing is added because of it: the repeat end keeps no place.
-    assert written(measures)[-1] == jump("jump_3", 16, repeat_end())
+    assert written(measures)[-1] == jump("jump 3", 16, repeat_end())
 
 
 @pytest.mark.parametrize(

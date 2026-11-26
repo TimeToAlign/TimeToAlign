@@ -351,22 +351,40 @@ class Loader(ABC, Generic[PayloadT]):
 
     @classmethod
     def from_file(cls, *paths: SourceLike, **kwargs: Any) -> Self:
-        """Instantiate the loader with *kwargs*, load *paths*, and return it.
+        """Instantiate the loader, load *paths*, and return it.
+
+        A keyword the loader's :meth:`load` declares keyword-only (what to
+        read of a source, as ``performance`` of
+        :class:`~timetoalign.loader.alignment.MpmLoader`) goes to
+        :meth:`load`; every other keyword to the constructor.
 
         Args:
             *paths: Filesystem paths or members of ZIP archives
                 (``zipfile.Path``), as :meth:`load` takes them.
-            **kwargs: Passed to the loader's constructor, ``seed`` among
-                them (the seed of the loader's ID minter).
+            **kwargs: The keyword-only arguments of :meth:`load`, and the
+                loader's constructor arguments, ``seed`` among them (the
+                seed of the loader's ID minter).
 
         Examples:
             >>> from zipfile import Path as ZipPath
             >>> member = ZipPath("corpus.zip", at="corpus/measures/piece.measures.tsv")
             >>> loader = Ms3Loader.from_file(member)
         """
+        load_keywords = {
+            name: kwargs.pop(name) for name in cls._load_keywords() if name in kwargs
+        }
         loader = cls(**kwargs)
-        loader.load(*paths)
+        loader.load(*paths, **load_keywords)
         return loader
+
+    @classmethod
+    def _load_keywords(cls) -> tuple[str, ...]:
+        """The names of the keyword-only parameters of the loader's :meth:`load`."""
+        return tuple(
+            name
+            for name, parameter in inspect.signature(cls.load).parameters.items()
+            if parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        )
 
     @property
     def sources(self) -> list[Source]:

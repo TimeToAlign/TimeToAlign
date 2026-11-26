@@ -195,7 +195,7 @@ is `float`, so an explicit choice is stated as given.
 |---------------------|-------------------|
 | `test_loader.py` | Generic loader smoke tests and contract checks |
 | `test_loader_ids.py` | The IDs a loader mints: one seeded minter per load (see "IDs a loader mints") |
-| `test_base_loaders.py` | The `EventLoader` / `ManifestLoader` / `AlignmentLoader` ABCs; `AlignmentStore` holds events, C-Maps and metadata only (exact `event_count`, `cmap_count`, the whole `summary()` dict): MatchClaims live in the MatchClaim table, never in a store |
+| `test_base_loaders.py` | The `EventLoader` / `ManifestLoader` / `AlignmentLoader` ABCs; `AlignmentStore` holds events, C-Maps and metadata only (exact `event_count`, `cmap_count`, the whole `summary()` dict): MatchClaims live in the MatchClaim table, never in a store; `Loader.from_file` hands a keyword that `load` declares keyword-only to `load` and every other keyword to the constructor (a loader taking `option` in its constructor and `choice` in `load` holds both as given; an unknown keyword is the constructor's `TypeError`) |
 | `test_bundle.py` | `AlignmentBundle` produced by alignment loaders |
 | `test_error_handling.py` | Faulty-input behaviour across loaders |
 | `test_interval_policy.py` | Half-open interval semantics on event ingestion, per `IntervalPolicy`, on the row path (`_normalize_intervals_row`, `from_dicts`) and the column path (`_normalize_intervals_vectorized`, `from_arrays`), which select the same rows to complete. Both take the table's number type and complete in it: on a fraction axis the duration recomputed under `warn` from `start = 1/3`, `end = 3` (or `end = 3.0`) is exactly `8/3`; on a float axis the result is the float operation. All values are asserted with exact `==` (zero tolerance). The arithmetic itself is pinned in `tests/storage/README.md` (Interval completion). |
@@ -914,7 +914,9 @@ pitchname ``"e"``, accidentals ``-1``, octave ``4``, date ``360`` ticks.
 ``load(mpr, performance="Curzon_1971_DECCA-SXL6523_audio")`` reaches a
 different performance whose inline-numeric bpm values resolve directly —
 its ``score:dlt_…`` then carries **25** Asynchrony events (vs 0 in the
-default) and **123** Tempo events.
+default) and **123** Tempo events. ``MpmLoader.from_file(mpr,
+performance=…, seed=0)`` selects it as well: its bundle's ``to_dict()``
+equals that of ``MpmLoader(seed=0).load(mpr, performance=…)``.
 
 **A load that did not complete builds no timeline.** `load()` builds the score timelines
 before the performance ones, so a project whose performance block cannot be built leaves the

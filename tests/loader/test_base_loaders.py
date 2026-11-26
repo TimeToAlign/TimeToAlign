@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from timetoalign.core import TimeUnit
 from timetoalign.loader import (
     AlignmentLoader,
@@ -255,6 +257,46 @@ class TestAlignmentLoader:
         loader.clear()
         assert loader.store is None
         assert len(loader.sources) == 0
+
+
+# endregion
+
+
+# region Loader.from_file
+
+
+class TestFromFile:
+    """``from_file`` hands ``load``'s keyword-only parameters to ``load``."""
+
+    class ChoosingLoader(AlignmentLoader):
+        """A loader whose constructor takes ``option`` and whose ``load`` takes ``choice``."""
+
+        def __init__(self, *, seed: int | None = None, option: str | None = None):
+            super().__init__(seed=seed)
+            self.option = option
+            self.choice: str | None = None
+
+        def _load_source(self, source: Path) -> AlignmentStore:
+            return AlignmentStore.empty()
+
+        def load(self, *sources, choice: str | None = None):
+            self.choice = choice
+            return super().load(*sources)
+
+    def test_keywords_split_between_load_and_constructor(self, tmp_path):
+        path = tmp_path / "test.xml"
+        path.write_text("<alignment/>")
+        loader = self.ChoosingLoader.from_file(path, choice="b", option="a")
+        assert (loader.option, loader.choice) == ("a", "b")
+        assert loader.sources == [path]
+        plain = self.ChoosingLoader.from_file(path)
+        assert (plain.option, plain.choice) == (None, None)
+
+    def test_an_unknown_keyword_reaches_the_constructor(self, tmp_path):
+        path = tmp_path / "test.xml"
+        path.write_text("<alignment/>")
+        with pytest.raises(TypeError, match="other"):
+            self.ChoosingLoader.from_file(path, other=1)
 
 
 # endregion

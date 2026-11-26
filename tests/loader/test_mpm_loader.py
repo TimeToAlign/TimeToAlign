@@ -572,6 +572,18 @@ def test_performance_selector_reaches_audio_performance() -> None:
     assert all(r["bpm"] is not None for r in tempos)
 
 
+def test_from_file_passes_the_performance_to_load() -> None:
+    """``from_file(..., performance=)`` selects as ``load(..., performance=)`` does."""
+    loader = MpmLoader.from_file(
+        BEETHOVEN_MPR, performance="Curzon_1971_DECCA-SXL6523_audio", seed=0
+    )
+    assert loader.performance_name == "Curzon_1971_DECCA-SXL6523_audio"
+    loaded = MpmLoader(seed=0).load(
+        BEETHOVEN_MPR, performance="Curzon_1971_DECCA-SXL6523_audio"
+    )
+    assert loader.create_bundle().to_dict() == loaded.create_bundle().to_dict()
+
+
 def test_unknown_performance_raises() -> None:
     """An unknown performance name raises ValueError."""
     with pytest.raises(ValueError, match="No performance named"):

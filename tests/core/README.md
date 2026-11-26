@@ -1394,7 +1394,11 @@ inverse, asserted over all three). `number_type_codes([fraction, float,
 int])` is the `int8` array `[1, 2, 0]`; names (`"float"`) are read as the
 members they name. A row-type array of another length than the column, a
 null code or a code outside `0..2` is refused (`ValueError`), since a row of
-no known type has no rule to be read by.
+no known type has no rule to be read by. A code array of another integer
+type is read by its values, checked before they are narrowed to `int8`:
+`int16` `[1, 1, 1]` casts as `int8` `[1, 1, 1]` does, and `int16` `258` is
+refused, never wrapped to the code `2` (float); a code array that is not of
+an integer type (`float64` `[1.0, …]`) is refused.
 
 **The cast** re-expresses every non-null cell in the target type, as
 `express_as` writes one value, and leaves the rows already of the target
@@ -1416,6 +1420,33 @@ as they are:
 - **A double with no int64 ratio is refused**: `1e-300` cast to fraction
   raises `ValueError` (its exact denominator passes `2**62`), as the
   builder refuses it on an exact field; a ratio is never approximated.
+- **Which side a row is read from.** A float row is read from its float;
+  a fraction row from its ratio; an int row cast to float from its float
+  side, so the measured float an int cell keeps (`preserve_source_floats`:
+  `(2.7, 3, 1)`) survives the cast as `(2.7, 3039929748475085,
+  1125899906842624)` (the double `2.7` and its mirror), never as `3.0`.
+  A row that lacks the side it is read from is read from the other: the
+  value-only fraction cell `(0.3, None, None)` (the score loaders build
+  such cells from a float position) casts to float as `(0.3,
+  5404319552844595, 18014398509481984)` and to int as `(0.0, 0, 1)`
+  (`rint` of `0.3`); the int cell `(None, 3, 1)` casts to float as `(3.0,
+  3, 1)`. Only a non-null cell holding neither side is refused, naming its
+  row. **The join never refuses for the number type**: an `EventData`
+  declared float joined with (`concat`) one declared fraction whose
+  `start` holds `(0.3, None, None)` gives that row `(0.3,
+  5404319552844595, 18014398509481984)`; the same join on the unit
+  `number` with an int table built with `preserve_source_floats` from
+  `2.7` gives `(2.7, 3039929748475085, 1125899906842624)`.
+- **Ratios near the int64 limits round exactly**: the fraction cells
+  `2**62 / (2**62 + 1)`, `(2**62 + 3) / (2**62 + 1)` and `-(2**63) / 3`
+  cast to int give `1`, `1` and `-3074457345618258603` (`round` of the
+  `Fraction`). The first has the remainder `2**62`, whose double passes
+  int64; the rounding compares the remainder with the denominator minus
+  the remainder, so nothing in it can wrap.
+- **A zero denominator is refused** by the cast as by the validator: the
+  cell `(0.5, 1, 0)` cast to int and to float raises `ValueError` naming
+  `row 0`, the cell and `denominator 0` (before, the cast to int gave `1`
+  from a division numpy answers with `0`).
 - **Rows of the target stay untouched**: a column of `[float 0.1, int 3]`
   cast to float keeps the first cell bit for bit (including its ratio
   side) and casts only the second.
@@ -1425,7 +1456,10 @@ as they are:
 - **Vectorised**: with the per-cell encoder (`number_cell`) and the scalar
   arithmetic (`combine_numbers`) replaced by functions that fail, a
   1,000-row column mixing the three types casts to each target, so no row
-  is computed one at a time.
+  is computed one at a time. This proves that no row is handed to the
+  library's per-value functions; it does not see a loop written inside the
+  cast itself, which the 1,000 rows' exact cells do not rule out either.
+  The cast is read for that.
 
 **The comparison** takes per-row types. Where the query or the row is a
 float, the two compare as float keys (the float side of the cell; `0.1`
@@ -1481,6 +1515,17 @@ dict, `build_number_struct_array` given a column of cells, `in_lowest_terms`,
 - **Without a number type there is nothing to resolve by**:
   `number_cell(cell)` and `in_lowest_terms` of a bare number column keep
   both sides as given (reduced), as before.
+- **A guessed number type is no number type.** Where no type is declared,
+  the builder (`build_number_struct_array(cells, number_type=None)`) and
+  the blueprint `RedundantNumberField(name="x").from_array(cells)` (and
+  the number-shaped branch of `SemanticField.from_array`, which builds the
+  same way) infer the kind of a plain column, but a column of cells is
+  settled without a type: `{0.7, 1/2}` is kept as `(0.7, 1, 2)`, as it was
+  before the validator, never resolved by the `int` that
+  `infer_number_type` answers for every struct column. The rest of the
+  rule holds there too: `(0.5, 2, 4)` is held as `(0.5, 1, 2)` and `(1.0,
+  1, 0)` is refused naming `row 0`. A plain column without a declared
+  type keeps its own kind (`[0.5]` a float cell, `[3]` an int cell).
 - **Reduction stays as it is**: `2/4` is held as `1/2`, every spelling
   accepted and compared by value.
 - **One rule, two routes**: 400 seeded cells, some agreeing and some not,

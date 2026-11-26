@@ -211,12 +211,20 @@ def _row_type_codes(
 ) -> npt.NDArray[np.int8]:
     """*row_types* as one int8 code per row of a column of *length* rows.
 
+    A code array of another integer type is read by its values, checked
+    before they are narrowed to ``int8``.
+
     Raises:
-        ValueError: If a code array has another length, a null, or a code
-            that names no number type.
+        ValueError: If a code array has another length, a null, a type that
+            is not an integer type, or a code that names no number type.
     """
     if isinstance(row_types, NumberType):
         return np.full(length, NUMBER_TYPE_CODES[row_types], dtype=np.int8)
+    if not pa.types.is_integer(row_types.type):
+        raise ValueError(
+            f"row types of the type {row_types.type} were given; row types are "
+            f"integer codes ({NUMBER_TYPE_CODES})"
+        )
     if len(row_types) != length:
         raise ValueError(
             f"{len(row_types)} row types were given for a column of {length} rows; "
@@ -227,14 +235,14 @@ def _row_type_codes(
             "a row type is null; every row is read in a number type "
             f"(codes {NUMBER_TYPE_CODES})"
         )
-    codes = row_types.to_numpy(zero_copy_only=False).astype(np.int8)
+    codes = row_types.to_numpy(zero_copy_only=False)
     unknown = (codes < 0) | (codes >= len(NUMBER_TYPES_BY_CODE))
     if unknown.any():
         raise ValueError(
             f"the row-type code {int(codes[unknown][0])} names no number type "
             f"(codes {NUMBER_TYPE_CODES})"
         )
-    return codes
+    return codes.astype(np.int8)
 
 
 _INT64_MIN: int = -(2**63)
@@ -931,7 +939,7 @@ def _is_missing(value: Any) -> bool:
 def build_number_struct_array(
     values: Any,
     *,
-    number_type: NumberType,
+    number_type: NumberType | None,
     rounding: str = "round",
     preserve_source_floats: bool = False,
     on_error: str = "raise",
@@ -944,15 +952,19 @@ def build_number_struct_array(
     mirrors it, and both are populated on every non-null row.
 
     A plain numeric column takes a vectorised path, and so does a column
-    already of :data:`RATIONAL_STRUCT_TYPE`, whose complete cells are taken as
-    they stand (a cell carries both sides, so *number_type* has nothing to
-    choose). Anything mixed, textual or rational falls back to reading values
-    one at a time, because no array kernel parses ``"3/8"``.
+    already of :data:`RATIONAL_STRUCT_TYPE`, whose complete cells are
+    settled by the one cell rule (:func:`_settled_cells`). Anything mixed,
+    textual or rational falls back to reading values one at a time, because
+    no array kernel parses ``"3/8"``.
 
     Args:
         values: Source column — a PyArrow array, numpy array, pandas Series,
             or any iterable of numbers, ``"n/d"`` strings, or ``None``.
-        number_type: The representation the target field declares.
+        number_type: The representation the target field declares, or
+            ``None`` where none is declared: plain values then keep the
+            kind the column writes them in (:func:`infer_number_type`), and
+            cells are settled without a type, their two sides kept as
+            given (reduced), since a guessed type resolves nothing.
         rounding: How to make inexact values integral for an ``int`` field.
         preserve_source_floats: Keep incoming floats on the float side of an
             ``int`` field instead of mirroring the stored integers.
@@ -976,14 +988,17 @@ def build_number_struct_array(
             f"Use one of {', '.join(ROUNDING_MODES)}."
         )
 
+    vectorised = _pass_number_struct_array(values, number_type)
+    if vectorised is not None:
+        return vectorised
+    declared = number_type
+    resolved = infer_number_type(values) if number_type is None else number_type
     vectorised = _build_numeric_struct_array(
         values,
-        number_type=number_type,
+        number_type=resolved,
         rounding=rounding,
         preserve_source_floats=preserve_source_floats,
     )
-    if vectorised is None:
-        vectorised = _pass_number_struct_array(values, number_type)
     if vectorised is not None:
         return vectorised
 
@@ -996,7 +1011,7 @@ def build_number_struct_array(
             rows.append(
                 number_cell(
                     raw,
-                    number_type,
+                    declared if _is_dict(raw) else resolved,
                     rounding=rounding,
                     preserve_source_float=preserve_source_floats,
                 )
@@ -1097,14 +1112,14 @@ def _build_numeric_struct_array(
 
 
 def _pass_number_struct_array(
-    values: Any, number_type: NumberType
+    values: Any, number_type: NumberType | None
 ) -> pa.StructArray | None:
     """Take a column of complete number structs whole; ``None`` if inapplicable.
 
     Vectorised counterpart of what :func:`number_cell` does to one cell dict
     with both sides present: the cell is settled by the one cell rule
     (:func:`_settled_cells`: lowest terms, a zero denominator refused, two
-    sides that disagree resolved by *number_type*). A column of another
+    sides that disagree resolved by *number_type* where one is declared). A column of another
     struct type, or one holding a non-null cell with a null numerator or
     denominator, is left to the per-row reader, which knows what such a
     cell means.
@@ -1639,10 +1654,17 @@ def cast_number_column(
     → ``fraction`` is the double's exact dyadic ratio, never a tidier one;
     → ``float`` is the nearest double, its ratio side rebuilt as that
     double's mirror; → ``int`` is the nearest integer, ties to even (on the
-    ratio, in integers, for an exact row; ``rint`` on the double for a
-    float row). Nulls stay null. Each source type is computed at most once,
-    over the whole column, and merged on its rows: at most two kernel
-    passes beside the rows kept, no loop over rows.
+    ratio, in integers, for a row read from its ratio; ``rint`` on the
+    double for a row read from its float). Nulls stay null.
+
+    A row is read from the side its type names: a ``float`` row from its
+    float, a ``fraction`` row from its ratio, an ``int`` row cast to
+    ``float`` from its float side, which may hold the measured float it was
+    rounded from (``preserve_source_floats``). A row lacking that side is
+    read from the other (a value-only cell, as the score loaders build from
+    a float position, is cast as a float row is). Each side is computed at
+    most once, over the whole column, and merged on its rows: at most two
+    kernel passes beside the rows kept, no loop over rows.
 
     Args:
         cells: A column of :data:`RATIONAL_STRUCT_TYPE`.
@@ -1654,10 +1676,11 @@ def cast_number_column(
         A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
 
     Raises:
-        ValueError: If a double's exact ratio does not fit int64 (below
+        ValueError: If a cell has the denominator 0, a converted cell holds
+            neither side, a double's exact ratio does not fit int64 (below
             about ``2**-10`` on a ``fraction`` target), a double is past
-            int64 on an ``int`` target, a converted row lacks the side its
-            conversion reads, or the row types do not fit the column.
+            int64 on an ``int`` target, or the row types do not fit the
+            column.
 
     Examples:
         >>> cells = build_number_struct_array([0.25], number_type=NumberType.float)
@@ -1668,69 +1691,91 @@ def cast_number_column(
     target = NumberType(target)
     codes = _row_type_codes(row_types, len(column))
     valid = column.is_valid().to_numpy(zero_copy_only=False)
-    result: pa.StructArray = column
+    members = dict(zip(column.type.names, _struct_members(column), strict=True))
+    has_float = members["value"].is_valid().to_numpy(zero_copy_only=False)
+    has_ratio = pc.and_(
+        members["numerator"].is_valid(), members["denominator"].is_valid()
+    ).to_numpy(zero_copy_only=False)
+    n = members["numerator"].fill_null(0).to_numpy(zero_copy_only=False)
+    d = members["denominator"].fill_null(1).to_numpy(zero_copy_only=False)
+    zero = valid & has_ratio & (d == 0)
+    if zero.any():
+        row = int(np.flatnonzero(zero)[0])
+        raise ValueError(
+            f"row {row}: the cell {column[row].as_py()!r} has the denominator 0: a "
+            "zero denominator names no number."
+        )
+    from_float = np.zeros(len(column), dtype=bool)
+    from_ratio = np.zeros(len(column), dtype=bool)
     for source in NUMBER_TYPES_BY_CODE:
         rows = valid & (codes == NUMBER_TYPE_CODES[source])
         if source is target or not rows.any():
             continue
         if source is NumberType.int and target is NumberType.fraction:
             continue  # n/1 is a fraction cell as it stands
-        cast = _cast_rows(column, rows, source, target)
-        result = _struct_array(pc.if_else(pa.array(rows), cast, result))
-    return result
-
-
-def _cast_rows(
-    column: pa.StructArray, rows: np.ndarray, source: NumberType, target: NumberType
-) -> pa.StructArray:
-    """The cells of *column* written in *target*, read as *source* in *rows*.
-
-    A full-length column; the cells outside *rows* are placeholders, which
-    :func:`cast_number_column` does not take.
-    """
-    reads = ("value",) if source is NumberType.float else ("numerator", "denominator")
-    members = dict(zip(column.type.names, _struct_members(column), strict=True))
-    missing = np.zeros(len(column), dtype=bool)
-    for name in reads:
-        missing |= members[name].is_null().to_numpy(zero_copy_only=False)
-    if (rows & missing).any():
-        row = int(np.flatnonzero(rows & missing)[0])
-        raise ValueError(
-            f"row {row}: the {source} cell {column[row].as_py()!r} lacks the side "
-            f"its cast to {target} reads"
-        )
-    if source is NumberType.float:
+        if source is NumberType.float or (
+            source is NumberType.int and target is NumberType.float
+        ):
+            from_float |= rows & has_float
+            from_ratio |= rows & ~has_float & has_ratio
+        else:
+            from_ratio |= rows & has_ratio
+            from_float |= rows & ~has_ratio & has_float
+        empty = rows & ~has_float & ~has_ratio
+        if empty.any():
+            row = int(np.flatnonzero(empty)[0])
+            raise ValueError(
+                f"row {row}: the {source} cell {column[row].as_py()!r} holds no "
+                "number to cast"
+            )
+    result: pa.StructArray = column
+    if from_float.any():
         doubles = np.where(
-            rows,
+            from_float,
             members["value"].fill_null(0.0).to_numpy(zero_copy_only=False),
             0.0,
         ).astype(np.float64)
-        if target is NumberType.fraction:
-            numerator, denominator = _pairs_from_float_array(
-                doubles, exact_required=True
-            )
-            return _cells_of(doubles, numerator, denominator)
-        beyond = ~(np.isfinite(doubles) & (np.abs(doubles) < _MIRROR_LIMIT))
-        if beyond.any():
-            row = int(np.flatnonzero(beyond)[0])
-            raise ValueError(
-                f"row {row}: the float {doubles[row]!r} has no integer an int cell "
-                "can hold"
-            )
-        integers = np.rint(doubles).astype(np.int64)
-        return _cells_of(integers.astype(np.float64), integers, np.ones_like(integers))
-    n = np.where(
-        rows, members["numerator"].fill_null(0).to_numpy(zero_copy_only=False), 0
-    ).astype(np.int64)
-    d = np.where(
-        rows, members["denominator"].fill_null(1).to_numpy(zero_copy_only=False), 1
-    ).astype(np.int64)
+        cast = _doubles_cast(doubles, target)
+        result = _struct_array(pc.if_else(pa.array(from_float), cast, result))
+    if from_ratio.any():
+        cast = _ratios_cast(
+            np.where(from_ratio, n, 0).astype(np.int64),
+            np.where(from_ratio, d, 1).astype(np.int64),
+            target,
+        )
+        result = _struct_array(pc.if_else(pa.array(from_ratio), cast, result))
+    return result
+
+
+def _doubles_cast(doubles: np.ndarray, target: NumberType) -> pa.StructArray:
+    """The cells of *doubles* written in *target*; ``0.0`` in rows not cast."""
+    if target is NumberType.fraction:
+        numerator, denominator = _pairs_from_float_array(doubles, exact_required=True)
+        return _cells_of(doubles, numerator, denominator)
+    if target is NumberType.float:
+        return _cells_of(doubles, *_pairs_from_float_array(doubles))
+    beyond = ~(np.isfinite(doubles) & (np.abs(doubles) < _MIRROR_LIMIT))
+    if beyond.any():
+        row = int(np.flatnonzero(beyond)[0])
+        raise ValueError(
+            f"row {row}: the float {doubles[row]!r} has no integer an int cell "
+            "can hold"
+        )
+    integers = np.rint(doubles).astype(np.int64)
+    return _cells_of(integers.astype(np.float64), integers, np.ones_like(integers))
+
+
+def _ratios_cast(
+    numerator: np.ndarray, denominator: np.ndarray, target: NumberType
+) -> pa.StructArray:
+    """The cells of the ratios ``n/d`` (``d > 0``) written in *target*."""
     if target is NumberType.int:
-        integers = _round_ratios(n, d, "round")
+        integers = _round_ratios(numerator, denominator, "round")
         return _cells_of(integers.astype(np.float64), integers, np.ones_like(integers))
-    doubles = _ratio_values(n, d)
-    numerator, denominator = _pairs_from_float_array(doubles)
-    return _cells_of(doubles, numerator, denominator)
+    doubles = _ratio_values(numerator, denominator)
+    if target is NumberType.fraction:
+        return _cells_of(doubles, numerator, denominator)
+    return _cells_of(doubles, *_pairs_from_float_array(doubles))
 
 
 def _cells_of(
@@ -1774,8 +1819,7 @@ def _float_side(array: pa.Array[Any] | pa.ChunkedArray[Any]) -> pa.Array[Any]:
 
 # A row whose cross-products stay below this bound (estimated on doubles, so
 # a relative error far below the factor of two to ``2**62``) is computed in
-# int64; doubling a remainder below it, as half-to-even rounding does, still
-# fits.
+# int64.
 _INT64_PRODUCT_BOUND = float(2**61)
 
 
@@ -1958,10 +2002,10 @@ def _round_ratios(
     if rounding == "truncate":
         return floor + ((remainder != 0) & (numerator < 0))
     if rounding == "round":
-        twice = 2 * remainder
-        return floor + (
-            (twice > denominator) | ((twice == denominator) & (floor % 2 != 0))
-        )
+        # remainder against denominator - remainder, never 2 * remainder,
+        # which passes int64 once the remainder reaches 2**62.
+        rest = denominator - remainder
+        return floor + ((remainder > rest) | ((remainder == rest) & (floor % 2 != 0)))
     raise ValueError(
         f"Unknown rounding mode: {rounding!r}. Use one of {', '.join(ROUNDING_MODES)}."
     )
@@ -2123,7 +2167,8 @@ class RedundantNumberField(NumberField):
 
         Accepts ``"<numerator>/<denominator>"`` strings as well as plain
         numbers. Without an explicit *number_type* the column's own way of
-        writing numbers is kept (see :func:`infer_number_type`).
+        writing numbers is kept (see :func:`infer_number_type`), and a
+        column of cells keeps both sides of each cell as given (reduced).
         """
         if not self.is_empty:
             raise TypeError(
@@ -2131,13 +2176,11 @@ class RedundantNumberField(NumberField):
                 f"(empty DataField); this instance has live data"
             )
         out_name = name if name is not None else self.name
-        resolved = (
-            infer_number_type(source)
-            if number_type is None
-            else NumberType(number_type)
-        )
         struct_arr = build_number_struct_array(
-            source, number_type=resolved, rounding=rounding, on_error="null"
+            source,
+            number_type=None if number_type is None else NumberType(number_type),
+            rounding=rounding,
+            on_error="null",
         )
         return RedundantNumberField(
             struct_arr, pa.field(out_name, RATIONAL_STRUCT_TYPE)

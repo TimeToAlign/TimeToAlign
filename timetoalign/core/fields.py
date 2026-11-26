@@ -1683,10 +1683,11 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
 
         # Canonical number shape — build through the one number builder.
         if field_names == ["value", "numerator", "denominator"]:
-            from .time import build_number_struct_array, infer_number_type
+            from .time import build_number_struct_array
 
+            # No type is declared here: the column keeps the kind it writes.
             struct_arr = build_number_struct_array(
-                source, number_type=infer_number_type(source), on_error="null"
+                source, number_type=None, on_error="null"
             )
             return cls.from_field((struct_arr, pa.field(out_name, struct_arr.type)))
 

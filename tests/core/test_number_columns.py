@@ -21,6 +21,7 @@ from timetoalign.core.time import (
     NUMBER_TYPES_BY_CODE,
     RATIONAL_STRUCT_TYPE,
     DenominateNumber,
+    RedundantNumberField,
     build_number_struct_array,
     cast_number_column,
     compare_number_column,
@@ -41,6 +42,18 @@ AS_FLOAT = {
     "denominator": 4503599627370496,
 }
 ZERO_DENOMINATOR = {"value": 1.0, "numerator": 1, "denominator": 0}
+# The double 0.3 and its mirror; the double 2.7 and its mirror.
+POINT_THREE = {
+    "value": 0.3,
+    "numerator": 5404319552844595,
+    "denominator": 18014398509481984,
+}
+TWO_POINT_SEVEN = {
+    "value": 2.7,
+    "numerator": 3039929748475085,
+    "denominator": 1125899906842624,
+}
+VALUE_ONLY = {"value": 0.3, "numerator": None, "denominator": None}
 
 
 def _cells(*rows: tuple[Any, NumberType] | None) -> pa.StructArray:
@@ -78,6 +91,26 @@ class TestRowTypeCodes:
         ids=["another length", "a null", "past the codes", "below the codes"],
     )
     def test_row_types_that_do_not_fit_are_refused(
+        self, row_types: pa.Int8Array
+    ) -> None:
+        column = _cells((1, INT), (2, INT), (3, INT))
+        with pytest.raises(ValueError):
+            cast_number_column(column, row_types, FLOAT)
+        with pytest.raises(ValueError):
+            compare_number_column(column, 1, "equal", row_types)
+
+    def test_another_integer_type_is_read_by_its_values(self) -> None:
+        column = _cells((1, INT), (2, INT), (3, INT))
+        assert cast_number_column(
+            column, pa.array([1, 1, 1], pa.int16()), FLOAT
+        ).equals(cast_number_column(column, pa.array([1, 1, 1], pa.int8()), FLOAT))
+
+    @pytest.mark.parametrize(
+        "row_types",
+        [pa.array([1, 258, 1], pa.int16()), pa.array([1.0, 1.0, 1.0], pa.float64())],
+        ids=["past int8, never wrapped", "not an integer type"],
+    )
+    def test_codes_that_narrowing_would_change_are_refused(
         self, row_types: pa.Int8Array
     ) -> None:
         column = _cells((1, INT), (2, INT), (3, INT))
@@ -143,6 +176,64 @@ class TestCast:
         column = _cells((3, INT), (-7, INT), None)
         assert cast_number_column(column, INT, FRACTION).equals(column)
 
+    def test_an_int_row_cast_to_float_keeps_its_measured_float(self) -> None:
+        measured = build_number_struct_array(
+            [2.7], number_type=INT, preserve_source_floats=True
+        )
+        assert measured.to_pylist() == [_cell(3, 1, 2.7)]
+        assert cast_number_column(measured, INT, FLOAT).to_pylist() == [TWO_POINT_SEVEN]
+
+    def test_a_row_lacking_its_side_is_read_from_the_other(self) -> None:
+        value_only = pa.array([VALUE_ONLY], RATIONAL_STRUCT_TYPE)
+        assert cast_number_column(value_only, FRACTION, FLOAT).to_pylist() == [
+            POINT_THREE
+        ]
+        assert cast_number_column(value_only, FRACTION, INT).to_pylist() == [
+            _cell(0, 1, 0.0)
+        ]
+        ratio_only = pa.array(
+            [{"value": None, "numerator": 3, "denominator": 1}], RATIONAL_STRUCT_TYPE
+        )
+        assert cast_number_column(ratio_only, INT, FLOAT).to_pylist() == [
+            _cell(3, 1, 3.0)
+        ]
+
+    def test_a_cell_holding_neither_side_is_refused(self) -> None:
+        empty = pa.array(
+            [AS_FRACTION, {"value": None, "numerator": None, "denominator": None}],
+            RATIONAL_STRUCT_TYPE,
+        )
+        with pytest.raises(ValueError, match="row 1"):
+            cast_number_column(empty, FRACTION, FLOAT)
+
+    @pytest.mark.parametrize(
+        ("numerator", "denominator", "expected"),
+        [
+            (2**62, 2**62 + 1, 1),
+            (2**62 + 3, 2**62 + 1, 1),
+            (-(2**63), 3, -3074457345618258603),
+        ],
+        ids=["remainder 2**62", "just above 1", "int64 minimum"],
+    )
+    def test_ratios_near_the_int64_limits_round_exactly(
+        self, numerator: int, denominator: int, expected: int
+    ) -> None:
+        column = pa.array([_cell(numerator, denominator, 1.0)], RATIONAL_STRUCT_TYPE)
+        assert round(Fraction(numerator, denominator)) == expected
+        assert cast_number_column(column, FRACTION, INT).to_pylist() == [
+            _cell(expected, 1, float(expected))
+        ]
+
+    @pytest.mark.parametrize("target", [INT, FLOAT])
+    def test_a_zero_denominator_is_refused(self, target: NumberType) -> None:
+        cell = _cell(1, 0, 0.5)
+        column = pa.array([cell], RATIONAL_STRUCT_TYPE)
+        with pytest.raises(ValueError) as refusal:
+            cast_number_column(column, FRACTION, target)
+        assert "row 0" in str(refusal.value)
+        assert repr(cell) in str(refusal.value)
+        assert "denominator 0" in str(refusal.value)
+
     def test_rows_of_the_target_stay_untouched(self) -> None:
         # A float cell whose ratio side is 1/10 agrees with its float 0.1;
         # a cast to float keeps it bit for bit, ratio side included.
@@ -203,6 +294,49 @@ class TestCast:
         assert cast == [
             original if kind is target else want
             for original, want, (_, kind) in zip(column.to_pylist(), expected, values)
+        ]
+
+
+class TestJoinNeverRefusesForTheNumberType:
+    def test_a_value_only_cell_on_an_exact_table(self) -> None:
+        fractions = EventData.from_arrays(
+            {
+                "start": pa.array([AS_FRACTION, VALUE_ONLY], RATIONAL_STRUCT_TYPE),
+                "duration": pa.array(
+                    [_cell(1, 1, 1.0), _cell(1, 1, 1.0)], RATIONAL_STRUCT_TYPE
+                ),
+            },
+            TimeUnit.quarters,
+            FRACTION,
+            seed=1,
+        )
+        floats = EventData.from_arrays(
+            {"start": [0.25], "duration": [1.0]}, TimeUnit.quarters, FLOAT, seed=2
+        )
+        assert floats.concat(fractions).table.column("start").to_pylist() == [
+            _cell(1, 4, 0.25),
+            AS_FRACTION,
+            POINT_THREE,
+        ]
+
+    def test_an_int_table_keeps_its_measured_float(self) -> None:
+        ints = EventData.from_arrays(
+            {
+                "start": build_number_struct_array(
+                    [2.7], number_type=INT, preserve_source_floats=True
+                ),
+                "duration": [1],
+            },
+            TimeUnit.number,
+            INT,
+            seed=3,
+        )
+        floats = EventData.from_arrays(
+            {"start": [0.25], "duration": [1.0]}, TimeUnit.number, FLOAT, seed=2
+        )
+        assert floats.concat(ints).table.column("start").to_pylist() == [
+            _cell(1, 4, 0.25),
+            TWO_POINT_SEVEN,
         ]
 
 
@@ -369,6 +503,30 @@ class TestTwoSidesResolvedByTheNumberType:
         assert number_cell(TWO_NUMBERS) == TWO_NUMBERS
         column = pa.array([TWO_NUMBERS], RATIONAL_STRUCT_TYPE)
         assert in_lowest_terms(column).to_pylist() == [TWO_NUMBERS]
+
+    def test_a_guessed_number_type_resolves_nothing(self) -> None:
+        column = pa.array([TWO_NUMBERS, _cell(2, 4, 0.5)], RATIONAL_STRUCT_TYPE)
+        settled = [TWO_NUMBERS, AS_FRACTION]
+        assert (
+            build_number_struct_array(column, number_type=None).to_pylist() == settled
+        )
+        blueprint = RedundantNumberField(name="x")
+        assert blueprint.from_array(column).data.to_pylist() == settled
+        zero = pa.array([ZERO_DENOMINATOR], RATIONAL_STRUCT_TYPE)
+        for read in (
+            lambda: build_number_struct_array(zero, number_type=None),
+            lambda: blueprint.from_array(zero),
+        ):
+            with pytest.raises(ValueError, match="row 0"):
+                read()
+
+    def test_a_plain_column_without_a_number_type_keeps_its_kind(self) -> None:
+        assert build_number_struct_array([0.5], number_type=None).to_pylist() == [
+            _cell(1, 2, 0.5)
+        ]
+        assert build_number_struct_array(
+            pa.array([3], pa.int64()), number_type=None
+        ).to_pylist() == [_cell(3, 1, 3.0)]
 
     @pytest.mark.parametrize("number_type", [INT, FRACTION, FLOAT])
     def test_agreeing_cells_are_kept(self, number_type: NumberType) -> None:

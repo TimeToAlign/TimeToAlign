@@ -654,8 +654,8 @@ critical of the two. Without `believer=` nothing is filtered.
 
 An {{< glossary AlignmentBundle >}} holds all its claims in one MatchClaim
 table, a {{< glossary MatchClaimField >}} (`match_claim_table`): one row per
-claim, one column per property of a MatchClaim. The bundle gives a claim
-without an ID the next `claim_N`. A MatchClaim is addressed by its ID alone,
+claim, one column per property of a MatchClaim. A claim given no ID is
+minted one when it is constructed, and joining a bundle renames none. A MatchClaim is addressed by its ID alone,
 so `AlignmentBundle.from_bundles()` refuses two sources holding one ID. On disk the MatchClaim table is
 `match_claims.parquet`, and the Projections of every timeline form one
 Projections table, `projections.parquet`. Both write each number once, in

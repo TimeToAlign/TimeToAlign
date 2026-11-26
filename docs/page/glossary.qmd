@@ -285,8 +285,8 @@ to the relevant section of the conceptual model.
 **DictStore**
 :   A generic `EventStore` subclass holding a `dict[str, EventData]` with
     arbitrary keys. Used internally by AlignmentLoaders to store one
-    `EventData` table per timeline-to-be (e.g., `"score:clt_1"`,
-    `"perf:Chopin_op10_no3_p01:cpt_1"`).
+    `EventData` table per timeline-to-be (e.g., `"score:clt_…"`,
+    `"perf:Chopin_op10_no3_p01:cpt_…"`).
     Maintains the uniform `EventStore` interface.
     See the [API reference](reference/DictStore.qmd).
 
@@ -316,18 +316,21 @@ to the relevant section of the conceptual model.
     id is free: whatever was given is kept verbatim, any non-empty string
     without a control character; spaces, colons, slashes and URIs are
     allowed, and no word is reserved. Only an element given no id gets a
-    minted one, `{prefix}_{N}` with `N` above the highest number held under
-    that prefix, so a number once given is never given again. The prefix
-    names the kind: `clt`, `dlt`,
+    minted one, when it is constructed: a prefix, `_` and 13 random base-36
+    characters (`region_3kq9x0m2ztb7a`). The characters are seeded, so a
+    run repeats them: a loader seeds from the bytes it reads, an object
+    built in code from its content, and a `seed=` argument makes them exact.
+    The prefix names the kind: `clt`, `dlt`,
     `cpt`, `dpt`, `cgt` or `dgt` for a timeline (continuous or discrete,
-    logical, physical or graphical), `group` for a group, `measuremap` for
+    logical, physical or graphical), `group` for a group, `measure_map` for
     a MeasureMap, `cmap` for a conversion map,
     `region` for a Region, `resource` for a Resource, `jump`, `jump_target`,
     `break`, `section_break` or `barline` for a flow-control element and
-    `flow_map` for a FlowMap; a virtual timeline is minted as a timeline of
-    its unit; a loader role leads it (`score:clt_1`). When trees are joined into a group or bundle, a
-    minted id that collides is re-minted and a given id that collides raises,
-    for every kind of element. The id identifies, the `name` displays: a name
+    `flow` for a FlowMap; a virtual timeline is minted as a timeline of
+    its unit; a loader role leads it (`score:clt_…`). An id is never
+    renamed: when trees are joined into a group or bundle, an id held twice
+    is refused, minted or given alike, for every kind of element, before
+    anything changes. The id identifies, the `name` displays: a name
     may be absent or repeat, and an id is never derived from it.
 
 **EndInstant**
@@ -531,9 +534,10 @@ to the relevant section of the conceptual model.
     on either side, `within` a claim whose both timelines are in the set.
     Held individually, or in the bundle's one MatchClaim table, a
     {{< glossary MatchClaimField >}}. Its ID never changes: a claim given
-    none holds no ID until the {{< glossary AlignmentBundle >}} it joins
-    mints `claim_N`, `N` above the highest held there; a MatchClaimField
-    mints nothing. A MatchClaim is addressed by its ID alone: a bundle or
+    none is minted one when it is constructed (`claim_` and 13 random
+    characters, seeded from the claim's content or by `seed=`), and joining
+    an {{< glossary AlignmentBundle >}} mints nothing. A MatchClaim is
+    addressed by its ID alone: a bundle or
     field already holding an ID refuses a second claim under it, and
     merging bundles (`from_bundles()`) refuses, before anything is merged,
     two sources holding one ID.
@@ -760,7 +764,7 @@ to the relevant section of the conceptual model.
 **Projection**
 :   An event standing on a timeline for an event that timeline does not
     hold, so that a {{< glossary MatchClaim >}} can join two events: its ID
-    (`projection_N` when none is given), its position on the timeline's own
+    (`projection_` and 13 random characters when none is given), its position on the timeline's own
     axis (`start`, and a `duration` for a span), and `projection_of`, the
     event it stands for (`{timeline_id, event_id}`), or none when its side
     was stated as a position only. `Timeline.add_projections()` adds
@@ -778,9 +782,9 @@ to the relevant section of the conceptual model.
     `unit` and `number_type` once per row, each number once, in the member
     its number type names (see {{< glossary MatchClaimField >}}). A
     Projection's ID is unique among all Projections of its manifest: a
-    missing one is minted above every Projection ID the manifest holds, a
-    given one another timeline's Projection already holds is refused, and
-    an ID once given is never re-minted. Timelines given Projections apart
+    missing one is minted when the Projection is added, an ID another
+    timeline's Projection already holds is refused, and no ID is ever
+    renamed, since a MatchClaim may name it. Timelines given Projections apart
     and joined later may hold one ID twice; writing their package refuses
     it, naming both timelines.
     See [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) and
@@ -871,7 +875,7 @@ to the relevant section of the conceptual model.
 :   An entry of a {{< glossary "TimeToShare manifest" >}}'s `resources`,
     naming a file that holds data for its timelines and lies beside it: its
     `id` (any {{< glossary "element id" >}} no other element of the manifest
-    holds; an entry the library adds gets a minted `resource_N`, and an
+    holds; an entry the library adds gets a minted `resource_…`, and an
     entry read keeps its own when written back), its `type` (what its rows are: `MatchClaim` for the
     MatchClaim table, a {{< glossary MatchClaimField >}}, `Projection` for
     the Projections table, see {{< glossary Projection >}}, `Box` for the

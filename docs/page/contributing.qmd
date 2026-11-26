@@ -51,7 +51,7 @@ each with a single responsibility:
 
 | Subpackage    | Responsibility                                                                                    |
 |---------------|---------------------------------------------------------------------------------------------------|
-| `core/`       | Foundational types: enums (`Domain`, `TimeUnit`, …), `Coordinate` / `IdCoordinate`, `TimeStamp`, `ScopedId` and the id minting of `core/ids.py`; `core/fields.py` contains the `SemanticField` bases plus the Arrow translator/builder. |
+| `core/`       | Foundational types: enums (`Domain`, `TimeUnit`, …), `Coordinate` / `IdCoordinate`, `TimeStamp` and the id minter of `core/ids.py`; `core/fields.py` contains the `SemanticField` bases plus the Arrow translator/builder. |
 | `display/`    | ASCII rendering helpers for timelines, groups, bundles, flows.                                    |
 | `maps/`       | `ConversionMap` family (`LinearMap`, `TableMap`, `ChainMap`, `PiecewiseMap`, …).                  |
 | `timelines/`  | `Timeline` classes for all six domain × modality combinations, `TimelineGroup`, regions, flow control, beat grids. |
@@ -143,9 +143,15 @@ find yourself wanting to break one, raise it as a discussion before coding.
 - **All enums live in `core/enums.py`** and subclass `FancyStrEnum`. Member
   names are lowercase. The single documented exception is `NumberType`,
   whose values are Python `type` objects.
-- **Timeline IDs are systematic:** `clt`/`dlt`/`cpt`/`dpt`/`cgt`/`dgt`
-  prefixes for the six domain × modality combinations, with optional
-  role prefixes, each minted as `{prefix}_{N}` (`clt_1`, `score:clt_1`, `perf:dlt_1`).
+- **Minted IDs are random and seeded:** a type prefix (`clt`/`dlt`/`cpt`/
+  `dpt`/`cgt`/`dgt` for the six domain × modality combinations of a
+  timeline), `_` and 13 random base-36 characters, led by an optional role
+  (`score:clt_…`). An ID is minted when its object is constructed and never
+  renamed; an ID held twice is refused at a join. Loaders seed from the
+  bytes they read, objects built in code from their content, and `seed=`
+  gives exact IDs: a test asserts minted IDs only where it is about minting,
+  and otherwise gives speaking IDs or reads them through the object
+  (`timeline.id`).
 
 For the full conceptual rationale see [Concepts](concepts.qmd) and the
 [Glossary](glossary.qmd).

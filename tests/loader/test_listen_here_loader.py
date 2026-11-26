@@ -14,14 +14,14 @@ It verifies:
   reached through the uniform ``loader.get_field(MatchClaim)`` API (the
   ``loader.claim_field`` property is gone);
 - the loader repr names the reference recording (``header.ref``);
-- one samples timeline per recording, each in its own group, holding no
-  events, with ``length`` converted from the recording's stored
+- one seconds timeline per recording (float), each in its own group,
+  holding no events and no C-Map, its ``length`` the recording's stored
   ``duration``;
 - faithful preservation of negative pre-onset warp coordinates (never
   clamped or dropped);
 - claims that are CHUNK on both sides (the file states grid positions,
-  no events), each anchored at its column's two sample positions; a grid
-  time becomes its nearest sample;
+  no events), each anchored at its column's two positions in seconds, the
+  file's numbers exactly; no recording beside the file is read;
 - a ``get_matchstamp_at`` headline read returning all recordings'
   coordinates at one reference instant via the columnar query path;
 - every other bundle claim reader answering the columnar store with
@@ -43,6 +43,7 @@ from __future__ import annotations
 import json
 import wave
 from pathlib import Path
+from typing import Any
 
 import pyarrow.compute as pc
 import pytest
@@ -53,11 +54,12 @@ from timetoalign.core import (
     CHUNK,
     Coordinate,
     IdCoordinateField,
+    NumberType,
     Provenance,
     TimeUnit,
 )
 from timetoalign.loader.alignment import ListenHereLoader
-from timetoalign.timelines import DiscretePhysicalTimeline
+from timetoalign.timelines import ContinuousPhysicalTimeline
 
 # region Fixtures
 
@@ -104,16 +106,15 @@ def _write_silent_wav(path: Path, sample_rate: int) -> None:
 
 
 #: What the loader (seed 0) mints, in order: one timeline per recording in
-#: sorted key order, their C-Maps, the 15 claims.
-_MINTED = minted(0, *["dpt"] * 3, *["cmap"] * 3, *["claim"] * 15)
+#: sorted key order, then the 15 claims.
+_MINTED = minted(0, *["cpt"] * 3, *["claim"] * 15)
 REC = dict(zip(["rec-a", "rec-b", "rec-ref"], _MINTED[:3], strict=True))
-CLAIMS = _MINTED[6:]
+CLAIMS = _MINTED[3:]
 
-#: Each recording's grid times in samples (``rint(seconds × 44100)``).
-SAMPLES = {
-    "rec-a": [0, 882, 1764, 2646, 3528],
-    "rec-b": [-441, 441, 1323, 2205, 3087],
-    "rec-ref": [0, 1102, 1984, 2866, 3749],
+#: Each recording's grid times in seconds, as the file states them.
+SECONDS = {
+    stem: _CANONICAL_SPEC["body"]["audio"][f"{stem}.mp3"]["times"]
+    for stem in ("rec-a", "rec-b", "rec-ref")
 }
 
 
@@ -213,8 +214,8 @@ def test_negative_coordinate_kept(loader: ListenHereLoader) -> None:
         pc.min(anchor.field("coordinate_b").field("value")).as_py(),
     )
     # rec-b's first grid column is -0.01 (pre-onset extrapolation); the
-    # loader preserves it as -441 samples, neither clamped nor dropped.
-    assert minimum == -441
+    # loader keeps it, neither clamped nor dropped.
+    assert minimum == -0.01
 
 
 # endregion
@@ -261,78 +262,77 @@ def test_recordings_hold_no_events(loader: ListenHereLoader) -> None:
     ]
 
 
-def test_recording_timelines_are_discrete_samples(loader: ListenHereLoader) -> None:
+def test_recording_timelines_are_seconds(loader: ListenHereLoader) -> None:
+    # The file gives seconds: each recording is a float seconds timeline,
+    # without a samples C-Map or a sample rate.
     bundle = loader.create_bundle()
-    for timeline in bundle.timelines.values():
-        assert isinstance(timeline, DiscretePhysicalTimeline)
-        assert timeline.unit is TimeUnit.samples
+    assert [
+        (
+            type(timeline),
+            timeline.unit,
+            timeline.number_type,
+            timeline.n_conversion_maps,
+            timeline.meta,
+        )
+        for timeline in bundle.timelines.values()
+    ] == [(ContinuousPhysicalTimeline, TimeUnit.seconds, NumberType.float, 0, {})] * 3
 
 
 def test_recording_timeline_length(loader: ListenHereLoader) -> None:
+    # Each length is the recording's stored duration, in seconds.
     bundle = loader.create_bundle()
-    assert bundle.timelines[REC["rec-b"]].length.value == 4410
+    assert [bundle.timelines[REC[stem]].length for stem in REC] == [
+        Coordinate(0.08, TimeUnit.seconds),
+        Coordinate(0.10, TimeUnit.seconds),
+        Coordinate(0.085, TimeUnit.seconds),
+    ]
 
 
-def test_assumed_sample_rate_is_recorded(loader: ListenHereLoader) -> None:
-    timeline = loader.create_bundle().timelines[REC["rec-a"]]
-    assert timeline.meta["sample_rate"] == 44100
-    assert timeline.meta["sample_rate_provenance"] == "assumed"
+def _two_recordings(times: list[float]) -> dict[str, Any]:
+    """A two-recording export (WAV keys) whose recordings share *times*."""
+    return {
+        "header": {"ref": "rec-a.wav"},
+        "body": {
+            "audio": {
+                "rec-a.wav": {"times": times, "duration": times[-1]},
+                "rec-b.wav": {"times": times, "duration": times[-1]},
+            }
+        },
+    }
 
 
-def test_audio_file_sample_rate_converts_coordinates(tmp_path: Path) -> None:
+def test_recordings_beside_the_file_are_not_read(tmp_path: Path) -> None:
+    # The loader represents what the file gives: recordings beside it change
+    # nothing, so the bundle with them is the bundle without them.
+    spec = _two_recordings([0.0, 0.02, 0.04])
+    without = tmp_path / "without"
+    without.mkdir()
+    beside = tmp_path / "beside"
+    beside.mkdir()
     for name in ("rec-a.wav", "rec-b.wav"):
-        _write_silent_wav(tmp_path / name, sample_rate=48000)
-    path = _write_spec(
-        tmp_path,
-        {
-            "header": {"ref": "rec-a.wav"},
-            "body": {
-                "audio": {
-                    "rec-a.wav": {"times": [0.0, 0.02, 0.04], "duration": 0.04},
-                    "rec-b.wav": {"times": [0.0, 0.01, 0.03], "duration": 0.04},
-                }
-            },
-        },
-    )
-
-    loader = ListenHereLoader.from_file(path, seed=0)
-    bundle = loader.create_bundle()
-    for timeline in bundle.timelines.values():
-        assert timeline.meta["sample_rate"] == 48000
-        assert timeline.meta["sample_rate_provenance"] == "file"
-        # seconds are float-canonical, so a public map call answers in the
-        # representation that axis declares.
-        assert timeline.get_conversion_map(TimeUnit.seconds)(960) == 0.02
-
-    claim = loader.get_field(MatchClaim)[1]
-    assert claim.start_anchor.coordinate_a.value == 960
-    assert claim.start_anchor.coordinate_b.value == 480
-    assert claim.start_anchor.coordinate_a.unit is TimeUnit.samples
+        _write_silent_wav(beside / name, sample_rate=48000)
+    read = [
+        ListenHereLoader.from_file(_write_spec(directory, spec), seed=0)
+        .create_bundle()
+        .to_dict()
+        for directory in (without, beside)
+    ]
+    assert read[0] == read[1]
 
 
-def test_grid_seconds_become_the_nearest_sample(tmp_path: Path) -> None:
-    path = _write_spec(
-        tmp_path,
-        {
-            "header": {"ref": "rec-a.mp3"},
-            "body": {
-                "audio": {
-                    "rec-a.mp3": {"times": [0.0, 0.001], "duration": 0.001},
-                    "rec-b.mp3": {"times": [0.0, 0.001], "duration": 0.001},
-                }
-            },
-        },
-    )
+def test_grid_seconds_are_kept_exactly(tmp_path: Path) -> None:
+    # 0.001 s and 0.1 s stay the file's doubles: no nearest sample, no
+    # guessed ratio.
+    path = _write_spec(tmp_path, _two_recordings([0.0, 0.001, 0.1]))
     loader = ListenHereLoader.from_file(path)
+    claims = list(loader.get_field(MatchClaim))
+    assert [c.start_anchor.coordinates for c in claims] == [
+        (Coordinate(value, TimeUnit.seconds), Coordinate(value, TimeUnit.seconds))
+        for value in (0.0, 0.001, 0.1)
+    ]
+    assert [type(c.start_anchor.coordinate_a.value) for c in claims] == [float] * 3
     bundle = loader.create_bundle()
-    claim = loader.get_field(MatchClaim)[1]
-    timeline = bundle.timelines[claim.timeline_a_id]
-
-    # 0.001 s × 44100 Hz = 44.1 → 44 samples; the C-Map reads 44 back as
-    # 44 / 44100 s, and the stated 0.001 s is not kept.
-    assert claim.start_anchor.coordinate_a.value == 44
-    assert timeline.get_conversion_map(TimeUnit.seconds)(44) == 44 / 44100
-    assert len(timeline.events) == 0
+    assert [len(timeline.events) for timeline in bundle.timelines.values()] == [0, 0]
 
 
 # endregion
@@ -343,33 +343,33 @@ def test_grid_seconds_become_the_nearest_sample(tmp_path: Path) -> None:
 
 def test_matchstamp_spans_all_recordings(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
-    stamp = bundle.get_matchstamp_at(1984, REC["rec-ref"])
+    stamp = bundle.get_matchstamp_at(0.045, REC["rec-ref"])
     assert stamp.n_timelines == 3
-    # Reference-grid column index 2: rec-a=1764, rec-b=1323, rec-ref=1984.
-    for timeline_id, expected in {
-        REC["rec-a"]: 1764,
-        REC["rec-b"]: 1323,
-        REC["rec-ref"]: 1984,
-    }.items():
-        coordinate = stamp.get_coordinate(timeline_id)
-        assert coordinate.value == expected
-        assert coordinate.unit is TimeUnit.samples
+    # Reference-grid column index 2: rec-a=0.04, rec-b=0.03, rec-ref=0.045.
+    assert {
+        timeline_id: stamp.get_coordinate(timeline_id).to_coordinate()
+        for timeline_id in REC.values()
+    } == {
+        REC["rec-a"]: Coordinate(0.04, TimeUnit.seconds),
+        REC["rec-b"]: Coordinate(0.03, TimeUnit.seconds),
+        REC["rec-ref"]: Coordinate(0.045, TimeUnit.seconds),
+    }
 
 
 def test_matchstamp_at_first_grid_coordinate(loader: ListenHereLoader) -> None:
     # Query an exact grid coordinate read off one recording: rec-a column 0
-    # is 0, where rec-b is -441 and rec-ref is 0. Same instant in all 3.
+    # is 0.0, where rec-b is -0.01 and rec-ref is 0.0. Same instant in all 3.
     bundle = loader.create_bundle()
-    stamp = bundle.get_matchstamp_at(0, REC["rec-a"])
+    stamp = bundle.get_matchstamp_at(0.0, REC["rec-a"])
     assert stamp.n_timelines == 3
-    for timeline_id, expected in {
-        REC["rec-a"]: 0,
-        REC["rec-b"]: -441,
-        REC["rec-ref"]: 0,
-    }.items():
-        coordinate = stamp.get_coordinate(timeline_id)
-        assert coordinate.value == expected
-        assert coordinate.unit is TimeUnit.samples
+    assert {
+        timeline_id: stamp.get_coordinate(timeline_id).to_coordinate()
+        for timeline_id in REC.values()
+    } == {
+        REC["rec-a"]: Coordinate(0.0, TimeUnit.seconds),
+        REC["rec-b"]: Coordinate(-0.01, TimeUnit.seconds),
+        REC["rec-ref"]: Coordinate(0.0, TimeUnit.seconds),
+    }
 
 
 # endregion
@@ -404,7 +404,7 @@ def test_bundle_get_claim_field(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
     assert len(bundle.get_claim_field()) == 15
     assert len(bundle.get_claim_field(timeline_id=REC["rec-a"])) == 10
-    assert len(bundle.get_claim_field(timeline_id="missing:dpt_1")) == 0
+    assert len(bundle.get_claim_field(timeline_id="missing:cpt_1")) == 0
 
 
 def test_bundle_matchstamp_table_per_claim(loader: ListenHereLoader) -> None:
@@ -439,11 +439,7 @@ def test_bundle_matchstamp_table_from_graph(loader: ListenHereLoader) -> None:
         for position in range(table.num_rows)
     ]
     assert semantic_rows == [
-        {REC["rec-a"]: 0, REC["rec-b"]: -441, REC["rec-ref"]: 0},
-        {REC["rec-a"]: 882, REC["rec-b"]: 441, REC["rec-ref"]: 1102},
-        {REC["rec-a"]: 1764, REC["rec-b"]: 1323, REC["rec-ref"]: 1984},
-        {REC["rec-a"]: 2646, REC["rec-b"]: 2205, REC["rec-ref"]: 2866},
-        {REC["rec-a"]: 3528, REC["rec-b"]: 3087, REC["rec-ref"]: 3749},
+        {REC[stem]: SECONDS[stem][column] for stem in REC} for column in range(5)
     ]
 
 
@@ -451,13 +447,13 @@ def test_bundle_are_commensurable(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
     assert bundle.are_commensurable(REC["rec-a"], REC["rec-b"]) is True
     assert bundle.are_commensurable(REC["rec-b"], REC["rec-ref"]) is True
-    assert bundle.are_commensurable(REC["rec-a"], "missing:dpt_1") is False
+    assert bundle.are_commensurable(REC["rec-a"], "missing:cpt_1") is False
 
 
 def test_bundle_transfer(loader: ListenHereLoader) -> None:
     # The MatchLine -> WarpMap path over the columnar store: grid column 1.
     bundle = loader.create_bundle()
-    assert bundle.transfer(882, REC["rec-a"], REC["rec-b"]) == 441
+    assert bundle.transfer(0.02, REC["rec-a"], REC["rec-b"]) == 0.01
 
 
 def test_bundle_diagram_reports_claim_count(loader: ListenHereLoader) -> None:
@@ -483,7 +479,7 @@ def test_claim_provenance(loader: ListenHereLoader) -> None:
 def test_claims_are_chunk_on_both_sides(loader: ListenHereLoader) -> None:
     # The file names no event: every claim is CHUNK on both sides, in field
     # order the three pairs over the five grid columns, each anchored at its
-    # column's two sample positions.
+    # column's two positions in seconds, the file's numbers.
     claims = list(loader.get_field(MatchClaim))
     pairs = [("rec-a", "rec-b"), ("rec-a", "rec-ref"), ("rec-b", "rec-ref")]
     assert [
@@ -494,8 +490,8 @@ def test_claims_are_chunk_on_both_sides(loader: ListenHereLoader) -> None:
     ]
     assert [c.start_anchor.coordinates for c in claims] == [
         (
-            Coordinate(SAMPLES[a][column], TimeUnit.samples),
-            Coordinate(SAMPLES[b][column], TimeUnit.samples),
+            Coordinate(SECONDS[a][column], TimeUnit.seconds),
+            Coordinate(SECONDS[b][column], TimeUnit.seconds),
         )
         for a, b in pairs
         for column in range(5)
@@ -523,7 +519,9 @@ def test_bare_array_value_form(tmp_path: Path) -> None:
     path = _write_spec(tmp_path, spec)
     bundle = ListenHereLoader.from_file(path, seed=0).create_bundle()
     # The bare-array recording's length is the max of its times.
-    assert bundle.timelines[minted(0, "dpt", "dpt")[1]].length.value == 1764
+    assert bundle.timelines[minted(0, "cpt", "cpt")[1]].length == Coordinate(
+        0.04, TimeUnit.seconds
+    )
 
 
 # endregion

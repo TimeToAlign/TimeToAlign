@@ -24,7 +24,8 @@ The file states positions on a grid and nothing else: no note, beat or other
 event of any recording.  Every claim therefore names the sentinel
 :data:`~timetoalign.core.ids.CHUNK` on both sides — a position on a timeline
 that holds no event for it — and its anchor holds the two positions, in
-samples.  The recordings' timelines hold no events.
+seconds, the file's numbers exactly.  The recordings' timelines hold no
+events.
 
 ``ListenHereLoader`` ingests one alignment JSON file in one call::
 
@@ -32,17 +33,18 @@ samples.  The recordings' timelines hold no events.
 
 and produces a single :class:`~timetoalign.alignment.bundle.AlignmentBundle`:
 
-* one samples
-  :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``dpt_…``, named after the recording's stem) per recording, each in its
-  **own** group, with ``length`` converted from that recording's stored
-  ``duration`` and a samples-to-seconds C-Map; no events; and
+* one seconds
+  :class:`~timetoalign.timelines.types.ContinuousPhysicalTimeline`
+  (``cpt_…``, number type float, named after the recording's stem) per
+  recording, each in its **own** group, its ``length`` that recording's
+  stored ``duration`` in seconds; no events; and
 * the complete-topology pairwise claims, ``CHUNK`` on both sides, reached
   through the uniform field API ``loader.get_field(MatchClaim)`` ->
   :class:`MatchClaimField`.
 
-A grid time becomes the nearest sample, ``rint(seconds × sample_rate)``; the
-seconds the file states are not kept beside it.
+The loader represents what the file gives: the seconds of the ``times``
+arrays, unchanged.  It reads no recording, so it states no sample rate and
+no samples timeline.
 
 The reference recording named by ``header.ref`` fixes the grid origin but is
 **not** a privileged hub: it is just another recording, related to every other
@@ -65,9 +67,7 @@ from __future__ import annotations
 
 import itertools
 import json
-import logging
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -77,26 +77,20 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import CHUNK, NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
-from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.display.html import code
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
     as_source,
     describe_source,
-    sibling_source,
 )
 from timetoalign.loader.base import AlignmentLoader
-from timetoalign.loader.physical.audio import AudioLoader
-from timetoalign.maps import SamplesToSeconds
 from timetoalign.timelines.factory import mint_timeline_id
-from timetoalign.timelines.types import DiscretePhysicalTimeline
+from timetoalign.timelines.types import ContinuousPhysicalTimeline
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.timelines.base import Timeline
-
-module_logger = logging.getLogger(__name__)
 
 
 # region Constants
@@ -106,9 +100,6 @@ module_logger = logging.getLogger(__name__)
 #: the alignment method Listen Here! uses (chroma-feature DTW).
 _DEFAULT_AGENT = "Listen Here!"
 _AGENT_IDENTIFIER = "dtw_chroma_alignment"
-
-#: Fallback for exports whose recordings are not available beside the JSON.
-_DEFAULT_SAMPLE_RATE = 44100
 
 
 # endregion
@@ -122,7 +113,7 @@ class ListenHereLoader(AlignmentLoader):
 
     The loader parses a single alignment JSON file describing many recordings
     of one work warped onto a shared equidistant reference grid, and assembles
-    a bundle in which every recording is a samples timeline in its own group,
+    a bundle in which every recording is a seconds timeline in its own group,
     related to every other recording by a complete set of pairwise synchronous
     instant :class:`MatchClaim` rows held columnar in a :class:`MatchClaimField`.
     The file states grid positions, not events, so every claim is
@@ -148,13 +139,10 @@ class ListenHereLoader(AlignmentLoader):
         # duration in seconds.
         self._stems: dict[str, str] = {}
         self._durations: dict[str, float] = {}
-        self._sample_rates: dict[str, int] = {}
-        self._sample_rate_provenance: dict[str, str] = {}
         self._claim_field: MatchClaimField | None = None
         # IDs minted once per load, so that every timeline built from the
-        # loader holds them: each recording's timeline and C-Map.
+        # loader holds them.
         self._uid_by_key: dict[str, str] = {}
-        self._cmap_uid_by_key: dict[str, str] = {}
         self._name: str | None = None
         # The reference recording key (``header.ref``): the grid origin.
         self._ref: str | None = None
@@ -182,8 +170,7 @@ class ListenHereLoader(AlignmentLoader):
 
         Args:
             source: Path to the ``alignment.json`` file, or its member in a
-                ZIP archive (recordings named relative to it are then looked
-                up in the same archive).
+                ZIP archive.
 
         Returns:
             Self, for method chaining.
@@ -222,9 +209,6 @@ class ListenHereLoader(AlignmentLoader):
             times_by_key[key] = times
             self._durations[key] = duration
             self._stems[key] = os.path.splitext(os.path.basename(key))[0]
-            sample_rate, provenance = self._resolve_sample_rate(path, key)
-            self._sample_rates[key] = sample_rate
-            self._sample_rate_provenance[key] = provenance
 
         lengths = {key: len(times_by_key[key]) for key in keys}
         if len(set(lengths.values())) != 1:
@@ -236,15 +220,12 @@ class ListenHereLoader(AlignmentLoader):
         self._keys = keys
         minter = self._id_minter
         self._uid_by_key = {
-            key: mint_timeline_id(TimeUnit.samples, minter) for key in keys
+            key: mint_timeline_id(TimeUnit.seconds, minter) for key in keys
         }
-        self._cmap_uid_by_key = {key: minter.mint(CMAP_PREFIX) for key in keys}
         self._name = path.stem
         self._ref = ref
         agent = header.get("createdBy", _DEFAULT_AGENT)
-        self._claim_field = self._build_claim_field(
-            keys, times_by_key, self._sample_rates, agent
-        )
+        self._claim_field = self._build_claim_field(keys, times_by_key, agent)
         self._sources = [path]
         return self
 
@@ -271,42 +252,18 @@ class ListenHereLoader(AlignmentLoader):
         duration = max(times) if times else 0.0
         return times, duration
 
-    @staticmethod
-    def _resolve_sample_rate(source: Source, key: str) -> tuple[int, str]:
-        """Return a recording's rate and whether it came from the file.
-
-        Audio paths in Listen Here! JSON are conventionally relative to the
-        export.  An absolute path is also accepted.  Missing or unreadable
-        recordings retain usable coordinates via the documented 44100 Hz
-        fallback.
-        """
-        key_path = Path(key)
-        candidate: Source = (
-            key_path if key_path.is_absolute() else sibling_source(source, key)
-        )
-        if candidate.is_file():
-            try:
-                return AudioLoader.from_file(candidate).sample_rate, "file"
-            except (OSError, ValueError):
-                module_logger.debug(
-                    "Could not read audio metadata from %s; assuming %d Hz.",
-                    describe_source(candidate),
-                    _DEFAULT_SAMPLE_RATE,
-                )
-        return _DEFAULT_SAMPLE_RATE, "assumed"
-
     def _build_claim_field(
         self,
         keys: list[str],
         times_by_key: dict[str, list[float]],
-        sample_rates: dict[str, int],
         agent: str,
     ) -> MatchClaimField:
         """Build the complete-topology pairwise claim field, vectorized.
 
         For every unordered pair of recordings ``(a, b)`` and every column
         ``i``, a synchronous instant claim joins ``times_a[i]`` on ``a`` to
-        ``times_b[i]`` on ``b``, both in samples, with :data:`CHUNK` on both
+        ``times_b[i]`` on ``b``, both in seconds as the file states them,
+        with :data:`CHUNK` on both
         sides (the file names no event).  The parallel columns are
         concatenated across all pairs with numpy and handed to
         :meth:`MatchClaimField.from_columns`, so no :class:`MatchClaim` object
@@ -315,7 +272,6 @@ class ListenHereLoader(AlignmentLoader):
         Args:
             keys: The sorted audio keys.
             times_by_key: Each key's per-grid-column times (seconds).
-            sample_rates: The resolved sample rate for each recording.
             agent: Who created the export (``header.createdBy``), named in the
                 provenance note.
 
@@ -323,10 +279,7 @@ class ListenHereLoader(AlignmentLoader):
             A :class:`MatchClaimField` of ``C(R, 2) × N`` synchronous claims.
         """
         coord_arrays = {
-            key: np.rint(
-                np.asarray(times_by_key[key], dtype=np.float64) * sample_rates[key]
-            ).astype(np.int64)
-            for key in keys
+            key: np.asarray(times_by_key[key], dtype=np.float64) for key in keys
         }
         uid_by_key = self._uid_by_key
         ncols = len(next(iter(coord_arrays.values()))) if keys else 0
@@ -347,12 +300,12 @@ class ListenHereLoader(AlignmentLoader):
         coordinate_a = (
             np.concatenate(coord_a_blocks)
             if coord_a_blocks
-            else np.empty(0, dtype=np.int64)
+            else np.empty(0, dtype=np.float64)
         )
         coordinate_b = (
             np.concatenate(coord_b_blocks)
             if coord_b_blocks
-            else np.empty(0, dtype=np.int64)
+            else np.empty(0, dtype=np.float64)
         )
         # The file states positions, no events: CHUNK on both sides.
         event_ids = pa.repeat(pa.scalar(CHUNK), len(timeline_a_ids))
@@ -366,7 +319,7 @@ class ListenHereLoader(AlignmentLoader):
             pa.array(coordinate_a),
             pa.array(coordinate_b),
             timelines={
-                uid: (TimeUnit.samples, NumberType.int) for uid in uid_by_key.values()
+                uid: (TimeUnit.seconds, NumberType.float) for uid in uid_by_key.values()
             },
             provenance=provenance,
             minter=self._id_minter,
@@ -445,8 +398,8 @@ class ListenHereLoader(AlignmentLoader):
     def create_bundle(self) -> "AlignmentBundle":
         """Assemble the AlignmentBundle from the loaded alignment.
 
-        Each recording becomes a samples
-        :class:`DiscretePhysicalTimeline` in its own group, and the complete
+        Each recording becomes a seconds
+        :class:`ContinuousPhysicalTimeline` in its own group, and the complete
         pairwise claim field is added to the bundle **columnar**.
 
         The field is handed to the bundle with
@@ -481,7 +434,7 @@ class ListenHereLoader(AlignmentLoader):
         return bundle
 
     def create_timelines(self, id_pattern: str | None = None) -> list["Timeline"]:
-        """Return one samples timeline per recording, in sorted order.
+        """Return one seconds timeline per recording, in sorted order.
 
         Args:
             id_pattern: Optional regex pattern to filter timeline IDs.
@@ -490,10 +443,10 @@ class ListenHereLoader(AlignmentLoader):
         return self._filter_timelines_by_id_pattern(timelines, id_pattern)
 
     def create_timeline(self, uid: str | None = None, **kwargs: Any) -> "Timeline":
-        """Return a single recording's samples timeline by its uid.
+        """Return a single recording's seconds timeline by its uid.
 
         Args:
-            uid: A timeline uid (``dpt_…``), as :meth:`create_timelines`
+            uid: A timeline uid (``cpt_…``), as :meth:`create_timelines`
                 lists them.
 
         Raises:
@@ -515,24 +468,15 @@ class ListenHereLoader(AlignmentLoader):
             + ", ".join(f"'{uid}'" for uid in available)
         )
 
-    def _make_timeline(self, key: str) -> DiscretePhysicalTimeline:
-        """Build one recording's samples timeline: no events, one C-Map."""
-        stem = self._stems[key]
-        sample_rate = self._sample_rates[key]
-        timeline = DiscretePhysicalTimeline(
-            length=int(round(self._durations[key] * sample_rate)),
-            unit=TimeUnit.samples,
+    def _make_timeline(self, key: str) -> ContinuousPhysicalTimeline:
+        """Build one recording's seconds timeline: no events, its stored length."""
+        return ContinuousPhysicalTimeline(
+            length=self._durations[key],
+            unit=TimeUnit.seconds,
+            number_type=NumberType.float,
             uid=self._uid_by_key[key],
-            name=self._human_name(stem),
-            meta={
-                "sample_rate": sample_rate,
-                "sample_rate_provenance": self._sample_rate_provenance[key],
-            },
+            name=self._human_name(self._stems[key]),
         )
-        timeline.add_conversion_map(
-            SamplesToSeconds(sample_rate=sample_rate, uid=self._cmap_uid_by_key[key])
-        )
-        return timeline
 
     # endregion
 
@@ -548,7 +492,7 @@ class ListenHereLoader(AlignmentLoader):
         The base :class:`AlignmentLoader` count row is replaced by the
         claim count (see :meth:`_repr_count_row`); the data lives in the
         assembled timelines and the claim field, not the unpopulated
-        per-source ``AlignmentStore``.  One samples timeline per recording,
+        per-source ``AlignmentStore``.  One seconds timeline per recording,
         each in its own group.
         """
         rows = super()._repr_rows()

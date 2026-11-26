@@ -202,7 +202,7 @@ is `float`, so an explicit choice is stated as given.
 | `test_matchfile_loader.py` | `MatchfileLoader` parity against gold standard, including quarters-to-seconds claim units while preserving all match values and counts; `id_pattern` includes both matching and no-match filters |
 | `test_performance_precision_loader.py` | `PerformancePrecisionLoader` against the CAAMP Chopin Nocturne specimen — composes `SoloLoader` for the `.solo` score (2494 notes), builds the score timeline by resolving every `"<measure>+<offset>"` label to absolute quarters via the `MetricMap`, and emits one physical timeline + three granularities of `MatchClaim` per performer. `id_pattern` includes both matching and no-match filters. Zero-tolerance counts (see "Validation logic" below). |
 | `test_parangonada_loader.py` | `ParangonadaLoader` against the parangonada CSV export of the `Beethoven_Eroica_op35-cpjku` dataset (5 performers). Builds one shared multimodal `AlignmentBundle` (1 score group + 5 performer groups) from `part.csv` / `ppart.csv` / `align.csv`, plus measured `Beat` / `Dynamics` feature events (`.beats` / `.dyn`) on each performance's seconds timeline. `id_pattern` includes both matching and no-match filters. Zero-tolerance counts (see "Validation logic" below). |
-| `test_listen_here_loader.py` | `ListenHereLoader` against an inline synthetic Listen Here! alignment JSON (built in `tmp_path`). Parses many recordings of one work warped onto a shared equidistant reference grid into one audio-to-audio `AlignmentBundle`: one samples timeline per recording without events (each its own group) and complete-topology pairwise synchronous claims, CHUNK on both sides, held columnar in a `MatchClaimField`. Tests assert that both sides of every bulk-produced anchor materialise in samples, and that `id_pattern` returns an exact empty list for a no-match pattern. Zero-tolerance counts (see "Validation logic" below). |
+| `test_listen_here_loader.py` | `ListenHereLoader` against an inline synthetic Listen Here! alignment JSON (built in `tmp_path`). Parses many recordings of one work warped onto a shared equidistant reference grid into one audio-to-audio `AlignmentBundle`: one seconds timeline per recording (float, without events or C-Map, each its own group) and complete-topology pairwise synchronous claims, CHUNK on both sides, held columnar in a `MatchClaimField`. Tests assert that both sides of every bulk-produced anchor materialise as the file's seconds, exactly, and that `id_pattern` returns an exact empty list for a no-match pattern. Zero-tolerance counts (see "Validation logic" below). |
 | `test_parsing.py` | Format-agnostic parsing helpers |
 | `test_schema.py` | Loader schema and field-spec resolution |
 | `test_store.py` | `EventStore` low-level operations |
@@ -1070,29 +1070,32 @@ holds a ``times`` array whose ``i``-th entry is that recording's clock-time
 length, so together they are a dense alignment matrix.  ``ListenHereLoader``
 reads it into one audio-to-audio ``AlignmentBundle``. Every ID is minted from
 the loader's minter, in this order: the recordings' timelines (sorted keys),
-their C-Maps, the claims; the tests load with ``seed=0`` and name the IDs a
+then the claims; the tests load with ``seed=0`` and name the IDs a
 fresh ``IdMinter(0)`` mints, never typed:
 
-* one samples ``DiscretePhysicalTimeline`` (``dpt_…``, named after the
-  recording stem) per recording, each in its **own** group named by the
-  stem; ``length`` is that recording's stored ``duration`` in samples; it
-  holds **no events** and one samples-to-seconds C-Map;
+* one seconds ``ContinuousPhysicalTimeline`` (``cpt_…``, number type
+  float, named after the recording stem) per recording, each in its **own**
+  group named by the stem; ``length`` is that recording's stored
+  ``duration`` in seconds; it holds **no events**, no C-Map and no sample
+  rate;
 * the **complete pairwise topology** — for every unordered pair of recordings
   ``(a, b)`` and every grid column ``i``, one synchronous instant claim
-  joining ``rint(times_a[i] × sample_rate)`` on ``a`` to
-  ``rint(times_b[i] × sample_rate)`` on ``b`` — held columnar in a
+  joining ``times_a[i]`` on ``a`` to ``times_b[i]`` on ``b``, the file's
+  seconds exactly — held columnar in a
   ``MatchClaimField``, built vectorized via ``MatchClaimField.from_columns``
   (never one ``MatchClaim`` object per row).
 
 The file states positions on a grid, never an event, so every claim is
 **CHUNK on both sides** (``event_a_id == event_b_id == CHUNK``,
 ``chunk_sides == (timeline_a_id, timeline_b_id)``): the anchor holds the two
-positions, no event or Projection is added to any timeline, and the seconds
-the file states are not kept (the anchor holds the nearest sample; the
-C-Map reads it back as ``samples / sample_rate``).  What proves the change
-is that every reader answers exactly as when the grid columns were point
-events: the anchors, ``get_matchstamp_at``, both matchstamp-table modes and
-the transfer keep their values, while the timelines hold nothing.  The
+positions, and no event or Projection is added to any timeline.  The loader
+represents what the file gives: seconds, so no samples timeline, no sample
+rate and no recording read.  What proves it is that every anchor, both
+matchstamp-table modes, ``get_matchstamp_at`` and the transfer answer the
+file's own numbers (``-0.01``, ``0.045``, never a rounded or rescaled
+value), that each timeline is a float seconds timeline without a C-Map and
+with an empty ``meta``, and that recordings lying beside the file change
+nothing.  The
 reference named by ``header.ref`` is just another recording, not a
 privileged hub.  The loader reads the existing alignment — it never runs an
 aligner.
@@ -1148,7 +1151,7 @@ bundle previously left unanswered, all with exact values:
 | `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, the columns exactly the recordings in the bundle's registration order (`rec-a`, `rec-b`, `rec-ref`, as the loader adds them), exactly two filled cells per row |
 | `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, the columns in registration order, exact coordinates, ordered by the `rec-a` coordinate |
 | `test_bundle_are_commensurable` | all recording pairs commensurable; an absent ID is not |
-| `test_bundle_transfer` | `transfer(882, <rec-a>, <rec-b>) == 441` — the `MatchLine` → `WarpMap` path over the columnar store |
+| `test_bundle_transfer` | `transfer(0.02, <rec-a>, <rec-b>) == 0.01` — the `MatchLine` → `WarpMap` path over the columnar store |
 | `test_bundle_diagram_reports_claim_count` | `diagram()` reports `MatchClaims: 15` |
 
 
@@ -1169,7 +1172,7 @@ Committed tests use an **inline synthetic** ``alignment.json`` written to
 ```
 
 Sorted keys → ``["rec-a.mp3", "rec-b.mp3", "rec-ref.mp3"]``; stems ``rec-a`` /
-``rec-b`` / ``rec-ref``; timeline uids the first three minted ``dpt_…`` (below the rec-a, rec-b
+``rec-b`` / ``rec-ref``; timeline uids the first three minted ``cpt_…`` (below the rec-a, rec-b
 and rec-ref timeline); pairs ``(a, b)``, ``(a, ref)``, ``(b, ref)``.  ``rec-b``'s
 first column is ``-0.01`` — a **negative** pre-onset warp coordinate that the
 loader keeps faithfully (never clamped or dropped).  ``peaks`` is
@@ -1185,24 +1188,27 @@ waveform-display payload and is ignored.
   ``loader.get_field(MatchClaimField)`` returns the same field.
 * ``get_field(MatchClaim).timeline_ids`` is exactly the three timeline uids.
 * **Faithfulness:** ``pc.min`` over both coordinate columns of the field is
-  exactly ``-441`` samples (``-0.01`` s × 44100 Hz; negatives kept).
+  exactly ``-0.01`` (seconds; negatives kept).
 * ``bundle = loader.create_bundle()``: exactly **3** timelines and **3**
   groups; timeline uids equal the set above; each timeline holds **0**
-  events (no point, no Projection); the rec-b timeline's length ``== 4410``
-  samples.
+  events (no point, no Projection); each is a ``ContinuousPhysicalTimeline``
+  in seconds, number type float, with no C-Map and an empty ``meta``; the
+  lengths are the stored durations ``0.08``, ``0.10``, ``0.085`` seconds.
 * **Claims are CHUNK on both sides:** the claims, in field order, are the
   three pairs ``(rec-a, rec-b)``, ``(rec-a, rec-ref)``, ``(rec-b, rec-ref)``,
   each over the columns 1–5, ``CHUNK`` as both event IDs and
   ``chunk_sides == (a, b)``; each anchor is exactly the two recordings'
-  samples at that column (rec-a ``0, 882, 1764, 2646, 3528``, rec-b ``-441,
-  441, 1323, 2205, 3087``, rec-ref ``0, 1102, 1984, 2866, 3749``), so a claim
-  on the wrong column or pair fails.
-* **Grid seconds become samples:** a two-recording file whose column 1 is
-  ``0.001`` s anchors at ``44`` samples, and the C-Map reads ``44`` back as
-  ``44 / 44100`` s, not ``0.001``: the bundle holds the nearest sample only.
-* ``bundle.get_matchstamp_at(1984, <rec-ref>)`` (grid column 2):
-  ``stamp.n_timelines == 3``; rec-a at ``1764``, rec-b at ``1323``, rec-ref
-  at ``1984`` samples (the same as when the columns were point events).
+  seconds at that column, read off the specimen's ``times``, so a claim on
+  the wrong column or pair fails.
+* **Grid seconds are kept exactly:** a two-recording file with the columns
+  ``0.0``, ``0.001``, ``0.1`` anchors at exactly those floats, each a
+  Python ``float`` (no nearest sample, no guessed ratio).
+* **No recording is read:** the same two-recording export loaded from a
+  folder holding 48 kHz WAVs under its keys and from an empty folder gives
+  equal ``to_dict()`` bundles.
+* ``bundle.get_matchstamp_at(0.045, <rec-ref>)`` (grid column 2):
+  ``stamp.n_timelines == 3``; rec-a at ``0.04``, rec-b at ``0.03``, rec-ref
+  at ``0.045`` seconds; at ``0.0`` on rec-a, rec-b is at ``-0.01``.
 * **Bare-array form:** a second fixture where one entry is a bare list
   ``[0.0, 0.02, 0.04]`` (no ``peaks`` / ``duration``) parses, and that
   recording's timeline ``length == max(times)``.

@@ -53,7 +53,7 @@ by `MetricMap.from_verovio_timemap`.
 (MEI), `PartituraLoader` and `Music21Loader` (MusicXML), each read from a
 copy; `MpmLoader` (the `.msm`/`.mpm` siblings, the recursive `*.wav`
 search with the recording it picks, the spectrogram `.png` header);
-`ListenHereLoader` (inline JSON naming corpus WAVs beside it);
+`ListenHereLoader` (inline JSON; it reads no recording);
 `ParangonadaLoader`; `RepoVizzLoader` on its XML manifest with the `.notes`
 files it reads and one signal CSV, and on a CSV alone; `Ieee1599Loader`,
 with its single-source refusal from an archive; `MeiFacsimileLoader`
@@ -93,8 +93,9 @@ The loaders' own test files pin the filesystem entries of `XmlLoader`,
 ## Reading in place
 
 - No audio backend needs a copy: after an archived WAV, an MPM project,
-  a Parangonada dataset or a Listen Here! export is read, the cache folder
-  holds no file, and the audio information equals the disk reading.
+  a Parangonada dataset or a Listen Here! export (which reads no
+  recording) is read, the cache folder holds no file, and the audio
+  information equals the disk reading.
 - MeLODy Turtle is parsed in place. A relative IRI in a member resolves
   against the member's URI, `jar:<archive file URI>!/<member>`
   (`<other.ttl>` in `repo/works/1.ttl` names

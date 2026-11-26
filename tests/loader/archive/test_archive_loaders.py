@@ -33,7 +33,6 @@ IEEE_ANIMALS = ensure_data("ieee1599") / "Animals and their Sounds"
 
 FLOW_ONLY = SCORE / "flow_control" / "out_of_the_flow_experience-flow_only"
 REPOVIZZ = SCORE / "beethoven_op18-4iv_multimodal" / "StringQuartetEEP_I_Normal"
-WAV = REPOVIZZ / "StringQuartetEEP_I_Normal_mono.wav.tonal.ChordsStrength.wav"
 SOLO = PRECISION / "Chopin Nocturne Op. 9 No. 2.solo"
 
 
@@ -140,15 +139,15 @@ class TestProjectLoaders:
             },
         }
         files: dict[str, Any] = {"project/alignment.json": json.dumps(spec)}
-        files |= {f"project/audio/{name}.wav": WAV for name in ("a", "b", "ref")}
         source, path = _both(tmp_path, files, "project/alignment.json")
         archived = ListenHereLoader.from_file(source)
         on_disk = ListenHereLoader.from_file(path)
         assert archived.create_bundle().to_dict() == on_disk.create_bundle().to_dict()
-        rate = AudioLoader.from_file(WAV).sample_rate
-        for timeline in archived.create_timelines():
-            assert timeline.meta["sample_rate_provenance"] == "file"
-            assert timeline.meta["sample_rate"] == rate
+        assert [timeline.length.value for timeline in archived.create_timelines()] == [
+            0.04,
+            0.05,
+            0.045,
+        ]
         assert copies(cache_dir) == []
 
     def test_parangonada(self, tmp_path: Path, cache_dir: Path) -> None:

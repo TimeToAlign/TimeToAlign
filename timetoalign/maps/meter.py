@@ -780,18 +780,22 @@ class MetricalPositionMap(CombinationMap):
         Args:
             meter_map: The MetricMap providing measure structure.
             uid: Optional explicit ID.
-            seed: The seed of the minter of the id when *uid* is None.
+            seed: The seed of the minter of the ids: the map's own when
+                *uid* is None, then the BeatInMeasureMap's when
+                *beat_map_id* is None.
             name: Human-readable name for this map. Defaults to the map's ID.
             beat_map_id: Optional explicit ID of the derived BeatInMeasureMap.
         """
         self._meter_map = meter_map
-        beat_map = BeatInMeasureMap(meter_map, uid=beat_map_id)
+        own_id, beat_id = self._nested_ids(seed, 1)
+        beat_map = BeatInMeasureMap(
+            meter_map, uid=beat_map_id if beat_map_id is not None else beat_id
+        )
 
         super().__init__(
             maps={"mc": meter_map, "beat": beat_map},
             source_unit=TimeUnit.quarters,
-            uid=uid,
-            seed=seed,
+            uid=uid if uid is not None else own_id,
             name=name,
         )
 

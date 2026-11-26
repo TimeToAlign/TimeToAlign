@@ -13,7 +13,7 @@ from timetoshare import DEFAULT_BELIEFS, BeliefState
 
 from timetoalign.core import CoordinateSpec, Gap
 from timetoalign.core.enums import FlowConvention
-from timetoalign.core.ids import IdMinter, quote_id, timeline_id_prefix
+from timetoalign.core.ids import IdMinter, minting_from, quote_id, timeline_id_prefix
 from timetoalign.core.provenance import Provenance
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
@@ -46,6 +46,7 @@ class SegmentsMixin(_Host):
         boundaries: Sequence[CoordinateSpec],
         *,
         copy_events: bool = True,
+        seed: int | None = None,
     ) -> "SegmentLine":
         """Create a SegmentLine by segmenting at boundary coordinates.
 
@@ -63,6 +64,10 @@ class SegmentsMixin(_Host):
         Args:
             boundaries: k+1 monotonically increasing coordinates.
             copy_events: Copy events into their respective segments.
+            seed: The seed of one minter of every id the call mints, in the
+                order built: the line, then each segment
+                (:func:`~timetoalign.core.ids.minting_from`); without one,
+                each from its content. Not stored.
 
         Returns:
             A new SegmentLine with k segments.
@@ -100,26 +105,27 @@ class SegmentsMixin(_Host):
         line_class = (
             SegmentLine if self.__class__ is Timeline else SegmentLine[self.__class__]
         )
-        sl = line_class(
-            length=0,
-            unit=self._unit,
-            number_type=self._number_type,
-        )
-
-        for i in range(len(coords) - 1):
-            start = coords[i]
-            end = coords[i + 1]
-            length = end - start
-
-            segment = type(self._timeline)(
-                length=length,
+        with minting_from(seed):
+            sl = line_class(
+                length=0,
                 unit=self._unit,
                 number_type=self._number_type,
-                name=f"segment_{i}",
             )
 
-            self._copy_events_to_cut(segment, start, end, copy_events=copy_events)
-            sl.append_segment(segment)
+            for i in range(len(coords) - 1):
+                start = coords[i]
+                end = coords[i + 1]
+                length = end - start
+
+                segment = type(self._timeline)(
+                    length=length,
+                    unit=self._unit,
+                    number_type=self._number_type,
+                    name=f"segment_{i}",
+                )
+
+                self._copy_events_to_cut(segment, start, end, copy_events=copy_events)
+                sl.append_segment(segment)
 
         return sl
 
@@ -128,6 +134,7 @@ class SegmentsMixin(_Host):
         region_ids: Sequence[str] | None = None,
         *,
         copy_events: bool = True,
+        seed: int | None = None,
     ) -> "SegmentLine":
         """Create a SegmentLine from contiguous regions.
 
@@ -140,6 +147,10 @@ class SegmentsMixin(_Host):
             region_ids: Ordered region ids. None = all regions sorted
                 by start coordinate. Each segment is named after its region.
             copy_events: Copy events into segments.
+            seed: The seed of one minter of every id the call mints, in the
+                order built: the line, then each segment
+                (:func:`~timetoalign.core.ids.minting_from`); without one,
+                each from its content. Not stored.
 
         Returns:
             A new SegmentLine.
@@ -181,7 +192,7 @@ class SegmentsMixin(_Host):
             boundaries.append(r.end.value)
 
         # Create the segment line
-        sl = self.create_segment_line(boundaries, copy_events=copy_events)
+        sl = self.create_segment_line(boundaries, copy_events=copy_events, seed=seed)
 
         # Rename segments to match region names
         for i, seg_id in enumerate(sl._segment_order):
@@ -195,6 +206,7 @@ class SegmentsMixin(_Host):
         *,
         copy_events: bool = True,
         name_format: str = "{value}",
+        seed: int | None = None,
     ) -> "SegmentLine":
         """Create a SegmentLine by grouping adjacent events on a field value.
 
@@ -207,6 +219,10 @@ class SegmentsMixin(_Host):
             field: Event field to group by.
             copy_events: Copy events into segments.
             name_format: Format string for segment names.
+            seed: The seed of one minter of every id the call mints, in the
+                order built: the line, then each segment
+                (:func:`~timetoalign.core.ids.minting_from`); without one,
+                each from its content. Not stored.
 
         Returns:
             A new SegmentLine.
@@ -288,7 +304,7 @@ class SegmentsMixin(_Host):
         for _, _, end in runs:
             boundaries.append(end)
 
-        sl = self.create_segment_line(boundaries, copy_events=copy_events)
+        sl = self.create_segment_line(boundaries, copy_events=copy_events, seed=seed)
 
         # Rename segments
         for i, seg_id in enumerate(sl._segment_order):
@@ -314,6 +330,7 @@ class SegmentsMixin(_Host):
         prefix: str = "section",
         include_before_first: bool = True,
         include_after_last: bool = True,
+        seed: int | None = None,
     ) -> "SegmentLine":
         """Create a SegmentLine by splitting at events matching a predicate.
 
@@ -332,6 +349,10 @@ class SegmentsMixin(_Host):
             prefix: Prefix for auto-generated names.
             include_before_first: Include segment before first split point.
             include_after_last: Include segment after last split point.
+            seed: The seed of one minter of every id the call mints, in the
+                order built: the line, then each segment
+                (:func:`~timetoalign.core.ids.minting_from`); without one,
+                each from its content. Not stored.
 
         Returns:
             A new SegmentLine.
@@ -378,7 +399,7 @@ class SegmentsMixin(_Host):
         if len(boundaries) < 2:
             raise ValueError("Not enough split points to create segments")
 
-        sl = self.create_segment_line(boundaries, copy_events=copy_events)
+        sl = self.create_segment_line(boundaries, copy_events=copy_events, seed=seed)
 
         # Rename segments
         n_segments = sl.n_segments

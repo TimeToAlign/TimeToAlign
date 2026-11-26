@@ -137,7 +137,6 @@ class CombinationMap(ConversionMap[dict[str, Any], dict[str, NDArray[Any]]]):
             seed=seed,
             name=name,
         )
-        self._admit_ids()
 
     @property
     def maps(self) -> dict[str, ConversionMap[Any]]:

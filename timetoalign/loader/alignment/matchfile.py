@@ -34,7 +34,7 @@ with suppressed_backend_warnings():
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit, resolve_id
-from timetoalign.loader._ids import CLAIM_PREFIX, CMAP_PREFIX
+from timetoalign.core.ids import CLAIM_PREFIX, CMAP_PREFIX
 from timetoalign.loader._sources import Source, describe_source, on_disk
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap

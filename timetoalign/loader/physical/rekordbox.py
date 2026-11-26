@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlparse
 
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.loader._ids import CMAP_PREFIX, MEASURE_MAP_PREFIX
+from timetoalign.core.ids import CMAP_PREFIX, MEASURE_MAP_PREFIX
 from timetoalign.loader._sources import Source, describe_source, readable
 from timetoalign.loader.base import Loader
 

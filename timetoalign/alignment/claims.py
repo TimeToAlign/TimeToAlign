@@ -90,7 +90,15 @@ from timetoalign.core.fields import (
     drop_from_schema,
     register_value_projector,
 )
-from timetoalign.core.ids import IdMinter, content_minter, quote_id, validate_id
+from timetoalign.core.ids import (
+    CLAIM_PREFIX,
+    IdMinter,
+    content_minter,
+    given_minter,
+    quote_id,
+    table_seed_part,
+    validate_id,
+)
 from timetoalign.core.provenance import (
     Belief,
     Provenance,
@@ -123,7 +131,6 @@ from timetoalign.core.time import (
     struct_to_rational,
 )
 from timetoalign.core.timestamp import _format_coordinate
-from timetoalign.storage.events import _given_minter, _ipc_bytes
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -131,10 +138,6 @@ if TYPE_CHECKING:
     from timetoalign.core.timestamp import ConversionMapsSpec
 
 module_logger = logging.getLogger(__name__)
-
-#: The prefix of a minted claim id (``claim_…``).
-_CLAIM_ID_PREFIX = "claim"
-
 
 # region Axes
 
@@ -308,9 +311,9 @@ def _minted_claim_ids(
         rows = pa.Table.from_batches(
             [pa.RecordBatch.from_struct_array(struct_array)]
         ).drop_columns(["id"])
-        minter = content_minter(_CLAIM_ID_PREFIX, _ipc_bytes(rows))
+        minter = content_minter(CLAIM_PREFIX, table_seed_part(rows))
     filled = pc.replace_with_mask(
-        ids, pc.is_null(ids), minter.mint_many(_CLAIM_ID_PREFIX, count)
+        ids, pc.is_null(ids), minter.mint_many(CLAIM_PREFIX, count)
     )
     fields = list(struct_array.type)
     return pa.StructArray.from_arrays(
@@ -329,7 +332,7 @@ def _given_or_seeded_claim_id(claim_id: str | None, seed: int | None) -> str | N
     """
     if claim_id is not None or seed is None:
         return claim_id
-    return IdMinter(seed).mint(_CLAIM_ID_PREFIX)
+    return IdMinter(seed).mint(CLAIM_PREFIX)
 
 
 def _join_claims(
@@ -818,7 +821,7 @@ class MatchClaim(BaseModel):
             object.__setattr__(
                 self,
                 "id",
-                content_minter(_CLAIM_ID_PREFIX, content).mint(_CLAIM_ID_PREFIX),
+                content_minter(CLAIM_PREFIX, content).mint(CLAIM_PREFIX),
             )
         return self
 
@@ -2165,7 +2168,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 other, a row gives an end on one side only, or a coordinate
                 is a number no cell holds (a NaN).
         """
-        given = _given_minter(seed, minter)
+        given = given_minter(seed, minter)
         axes = _axes(timelines)
         tl_a = cls._string_array(timeline_a_ids)
         tl_b = cls._string_array(timeline_b_ids)
@@ -2344,7 +2347,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 mapping carries provenance both under its key ``provenance``
                 and in its rows; or if two rows hold the same id.
         """
-        given = _given_minter(seed, minter)
+        given = given_minter(seed, minter)
         keys = ["provenance", "rows"]
         if not isinstance(data, dict) or sorted(data) != keys:
             raise ValueError(
@@ -2493,7 +2496,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 rows; or if two rows hold the same id (a MatchClaim is
                 addressed by its id alone).
         """
-        given = _given_minter(seed, minter)
+        given = given_minter(seed, minter)
         columns = cls.struct_schema().names
         missing = [name for name in columns if name not in table.column_names]
         if missing:

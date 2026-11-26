@@ -89,8 +89,9 @@ from typing_extensions import Self
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
+from timetoalign.core.ids import CLAIM_PREFIX, CMAP_PREFIX
 from timetoalign.display.html import code
-from timetoalign.loader._ids import CLAIM_PREFIX, CMAP_PREFIX, give_event_ids
+from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import (
     Source,
     SourceLike,

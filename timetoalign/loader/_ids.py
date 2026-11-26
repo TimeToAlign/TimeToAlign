@@ -13,33 +13,6 @@ from typing import Any
 from timetoalign.core.ids import IdMinter
 from timetoalign.storage import mint_event_ids
 
-#: The prefix of a conversion map's ID, every class alike.
-CMAP_PREFIX = "cmap"
-
-#: The prefix of a MatchClaim's ID.
-CLAIM_PREFIX = "claim"
-
-#: The prefix of a TimelineGroup's ID.
-GROUP_PREFIX = "group"
-
-#: The prefix of a measure map's ID.
-MEASURE_MAP_PREFIX = "measure_map"
-
-
-def minter_of(seed: int | None, minter: IdMinter | None) -> IdMinter | None:
-    """The minter a constructor given *seed* or *minter* draws IDs from.
-
-    A seed gives a fresh :class:`~timetoalign.core.ids.IdMinter`; neither
-    gives None, for :func:`~timetoalign.storage.mint_event_ids`' content
-    minter.
-
-    Raises:
-        TypeError: If both are given.
-    """
-    if seed is not None and minter is not None:
-        raise TypeError("Give seed or minter, not both.")
-    return IdMinter(seed) if seed is not None else minter
-
 
 def give_event_ids(
     rows: Sequence[MutableMapping[str, Any]], minter: IdMinter | None

@@ -22,7 +22,9 @@ import operator
 import re
 import secrets
 import threading
-from collections.abc import Container, Mapping, Sequence
+from collections.abc import Container, Generator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import InitVar, dataclass, field
 from types import MappingProxyType
@@ -353,6 +355,7 @@ def seed_from(*parts: object) -> int:
 
 _CONTENT_MINTERS: dict[tuple[int, int], IdMinter] = {}
 _CONTENT_MINTERS_LOCK = threading.Lock()
+_CALL_MINTER: ContextVar[IdMinter | None] = ContextVar("_CALL_MINTER", default=None)
 
 
 def content_minter(*parts: object, length: int = ID_LENGTH) -> IdMinter:
@@ -363,7 +366,8 @@ def content_minter(*parts: object, length: int = ID_LENGTH) -> IdMinter:
     content built one after another get distinct ids, in construction order,
     and a script gives the same ids on every run. A caller given a seed
     mints with a fresh ``IdMinter(seed)`` instead, which gives the same ids
-    whatever ran before it.
+    whatever ran before it; inside :func:`minting_from`, every content
+    minter is that call's minter.
 
     Args:
         *parts: The content the seed is computed from, the class's prefix
@@ -382,6 +386,9 @@ def content_minter(*parts: object, length: int = ID_LENGTH) -> IdMinter:
         >>> content_minter("region", 0, 4).seed == seed_from("region", 0, 4)
         True
     """
+    call_minter = _CALL_MINTER.get()
+    if call_minter is not None and call_minter.length == length:
+        return call_minter
     key = (seed_from(*parts), length)
     with _CONTENT_MINTERS_LOCK:
         minter = _CONTENT_MINTERS.get(key)
@@ -400,9 +407,135 @@ def reset_content_minters() -> None:
         _CONTENT_MINTERS.clear()
 
 
+@contextmanager
+def minting_from(seed: int | None) -> Generator[None, None, None]:
+    """Mint every id of a call from one ``IdMinter(seed)``.
+
+    A method given ``seed=`` runs its work inside this block: each element
+    the call builds without an id of its own draws it from the one minter,
+    in the order the call builds them, whatever ran before in the process.
+    Without a seed the block changes nothing. An element given its own
+    ``seed=`` inside the block mints from that seed instead.
+
+    Args:
+        seed: The seed of the call, or None.
+
+    Examples:
+        >>> with minting_from(7):
+        ...     content_minter("region", 0, 4).mint("region")
+        'region_1hvif5xc2r1fv'
+        >>> IdMinter(7).mint("region")
+        'region_1hvif5xc2r1fv'
+    """
+    if seed is None:
+        yield
+        return
+    token = _CALL_MINTER.set(IdMinter(seed))
+    try:
+        yield
+    finally:
+        _CALL_MINTER.reset(token)
+
+
+def given_minter(seed: int | None, minter: IdMinter | None) -> IdMinter | None:
+    """The minter a constructor given *seed* or *minter* draws its ids from.
+
+    A seed gives a fresh :class:`IdMinter`; a minter is used as it is (a
+    loader's, which goes on counting); neither gives None, for the
+    constructor's content minter.
+
+    Args:
+        seed: The seed the caller gave, or None.
+        minter: The minter the caller gave, or None.
+
+    Returns:
+        The minter to draw from, or None.
+
+    Raises:
+        TypeError: If both are given.
+
+    Examples:
+        >>> given_minter(7, None)
+        IdMinter(seed=7, length=13)
+        >>> given_minter(None, None) is None
+        True
+    """
+    if seed is not None and minter is not None:
+        raise TypeError("Give seed or minter, not both.")
+    return IdMinter(seed) if seed is not None else minter
+
+
+def table_seed_part(table: pa.Table) -> bytes:
+    """A table as a content seed holds it: its Arrow IPC stream bytes.
+
+    The table is written in one batch, so two tables of equal schema and
+    values give equal bytes however they are chunked.
+
+    Args:
+        table: The table, its schema included in the bytes.
+
+    Returns:
+        The bytes, a part for :func:`seed_from`.
+    """
+    table = table.combine_chunks()
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().to_pybytes()
+
+
+def array_seed_part(values: np.ndarray[Any, Any]) -> bytes | None:
+    """A numeric array as a content seed holds it: its type, shape and bytes.
+
+    The bytes are those of the contiguous array in little-endian order, led
+    by its dtype and shape, so equal numbers of two dtypes (``1`` and
+    ``1.0``) give two parts and one array gives one part on every machine.
+    An array of Python objects has no such form.
+
+    Args:
+        values: The array.
+
+    Returns:
+        The bytes, a part for :func:`seed_from`, or None for an array whose
+        dtype is not boolean or numeric.
+
+    Examples:
+        >>> array_seed_part(np.array([1, 2], dtype=np.int8))
+        b'|i1:2:\\x01\\x02'
+        >>> array_seed_part(np.array(["a"], dtype=object)) is None
+        True
+    """
+    if values.dtype.kind not in "biufc":
+        return None
+    little = np.ascontiguousarray(values, dtype=values.dtype.newbyteorder("<"))
+    head = f"{little.dtype.str}:{','.join(map(str, little.shape))}:"
+    return head.encode("ascii") + little.tobytes()
+
+
 # endregion
 
 # region Identified elements
+
+
+#: The prefix of a TimelineGroup's minted id.
+GROUP_PREFIX = "group"
+#: The prefix of an AlignmentBundle's minted id.
+BUNDLE_PREFIX = "bundle"
+#: The prefix of a conversion map's minted id, every class alike.
+CMAP_PREFIX = "cmap"
+#: The prefix of a measure map's minted id.
+MEASURE_MAP_PREFIX = "measure_map"
+#: The prefix of a region's minted id.
+REGION_PREFIX = "region"
+#: The prefix of a FlowMap's minted id.
+FLOW_MAP_PREFIX = "flow"
+#: The prefix of a resource's minted id.
+RESOURCE_PREFIX = "resource"
+#: The prefix of a MatchClaim's minted id.
+CLAIM_PREFIX = "claim"
+#: The prefix of an event's minted id when its row states no event type;
+#: an event of a type takes the type in lower case (``note``, ``box``).
+EVENT_PREFIX = "event"
 
 
 def timeline_id_prefix(unit: TimeUnit) -> str:
@@ -425,7 +558,7 @@ def _refuse_held_ids(
     taken: Mapping[str, str],
     *,
     scope: str = "",
-) -> None:
+) -> dict[str, str]:
     """Refuse elements joining a scope where one's id is held already.
 
     The one check of every scope: an id the scope holds, or one two joining
@@ -439,12 +572,17 @@ def _refuse_held_ids(
         scope: A description of the scope (``"group 'g'"``), for the error,
             or empty for the manifest of a timeline.
 
+    Returns:
+        The ids claimed once the elements joined: *taken*, then every
+        joining id mapped to its description.
+
     Raises:
         ValueError: If an id is held in the scope or by another joining
             element, naming the id and both holders.
 
     Examples:
         >>> _refuse_held_ids([("a", "region 'a'")], {"b": "timeline 'b'"})
+        {'b': "timeline 'b'", 'a': "region 'a'"}
         >>> _refuse_held_ids([("b", "region 'b'")], {"b": "timeline 'b'"})
         Traceback (most recent call last):
         ...
@@ -459,6 +597,7 @@ def _refuse_held_ids(
                 f"{quote_id(element_id)} is already held by {holder}"
             )
         claimed[element_id] = element
+    return claimed
 
 
 class _OpenObject:
@@ -537,6 +676,9 @@ class _IdentifiedElement(_OpenObject):
     _id_prefix: ClassVar[str]
 
     id: str = field(default=None, kw_only=True)  # type: ignore[assignment]
+    # The seed is never held. The class attribute ``seed`` the dataclass
+    # leaves reads None on every element; it stays, since
+    # ``dataclasses.replace`` reads it to pass an InitVar on.
     seed: InitVar[int | None] = field(default=None, kw_only=True)
     # A field, so that a copy made with ``dataclasses.replace`` keeps it.
     _unknown_keys: Mapping[str, Any] = field(
@@ -560,10 +702,15 @@ class _IdentifiedElement(_OpenObject):
 
     @property
     def _named(self) -> str:
-        """The element's id as a message names it, before it is minted too."""
+        """The element as a message names it after its kind: its id quoted,
+        or, before its id is minted, where it lies (:meth:`_place`)."""
         # A given id is checked before the element completes, so only the
         # id still to be minted is falsy here.
-        return quote_id(self.id) if self.id else "(unnamed)"
+        return quote_id(self.id) if self.id else self._place()
+
+    def _place(self) -> str:
+        """Where the element lies, naming it before it holds an id."""
+        return "without an id"
 
     def _complete(self) -> None:
         """Check and complete the element's fields: nothing here."""

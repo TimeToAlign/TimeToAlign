@@ -17,8 +17,8 @@ import verovio
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.enums import ExtrapolationPolicy, FlowManifestation
+from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.core.time import build_number_struct_array, rational_to_struct
-from timetoalign.loader._ids import CMAP_PREFIX
 from timetoalign.loader._sources import (
     Source,
     describe_source,

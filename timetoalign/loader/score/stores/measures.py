@@ -33,8 +33,8 @@ from typing_extensions import Self
 
 from timetoalign.core import IntervalPolicy, NumberType, TimeUnit
 from timetoalign.core.fields import ONE_OR_SEVERAL_SUFFIX, split_row_member
-from timetoalign.core.ids import IdMinter
-from timetoalign.loader._ids import give_event_ids, minter_of
+from timetoalign.core.ids import IdMinter, given_minter
+from timetoalign.loader._ids import give_event_ids
 from timetoalign.storage.events import EventData
 
 if TYPE_CHECKING:
@@ -358,7 +358,7 @@ class MeasureData(EventData):
 
             processed_rows.append(processed)
 
-        give_event_ids(processed_rows, minter_of(seed, minter))
+        give_event_ids(processed_rows, given_minter(seed, minter))
         table = pa.Table.from_pylist(processed_rows, schema=schema)
         return cls(table, unit, number_type)
 

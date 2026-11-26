@@ -119,6 +119,35 @@ returns a `FloatingMeasureMap`, which remembers the measure map it reads, so
 the score loaders' floating-measure map writes as a view without being
 matched against anything.
 
+## Content seeds of minted ids (`test_map_content_seeds.py`)
+
+A map built without `uid` and without `seed=` mints its id from the content
+minter of its class and every value that defines it, read once the
+outermost constructor has run (a subclass sets its parameters after the
+base initializer). What proves the seed holds a defining parameter is the
+id's independence from what else was built: for every concrete
+`ConversionMap` class, two maps differing in one defining parameter (`ppq`
+480 against 960, one boundary moved, another interpolation kind, another
+nested map, ...) are built in a fresh run in either order; each map's id is
+the same whether it was built first or after the other, and the two ids
+differ. A seed missing that parameter fails both: the second map built
+takes the next id of a shared minter, so its id changes with the order.
+Nested maps are given ids, so the pair differs only where the test says.
+The parameter list covers every concrete class: a guard collects the
+subclasses of `ConversionMap` the library defines and fails on one without
+a case, so a new class cannot escape the check.
+
+Two further properties, exact values throughout:
+
+- **A NumPy scalar or array seeds alike in every environment.** A
+  `TableMap` from `np.float64` lists gets the id the same map from Python
+  floats gets (a NumPy scalar is read as its Python number, an array by
+  its bytes), and from an array the id a list of the same floats gets.
+- **`seed=` reaches the maps a constructor builds.** `MetricalPositionMap`
+  and `IntervalToConstantMap` (given an `end`) mint their own id, then each
+  nested map's, from one `IdMinter(seed)`: the ids are those `IdMinter(seed)`
+  mints in that order, whatever ran before in the process.
+
 ## Test Coverage Summary
 
 | Module | Coverage | Status |

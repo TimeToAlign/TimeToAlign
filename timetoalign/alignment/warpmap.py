@@ -33,6 +33,7 @@ from numpy.typing import NDArray
 
 from timetoalign.alignment.claims import AlignmentAnchor
 from timetoalign.core.enums import NumberType, TimeUnit
+from timetoalign.core.ids import REGION_PREFIX, content_minter, minting_from
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -633,7 +634,9 @@ class WarpMap:
 
     # region Materialise
 
-    def materialise(self, source_timeline: "Timeline") -> "Timeline":
+    def materialise(
+        self, source_timeline: "Timeline", *, seed: int | None = None
+    ) -> "Timeline":
         """Produce a new Timeline with all contents warped to target coordinates.
 
         Creates a complete copy of the source timeline where every
@@ -647,8 +650,17 @@ class WarpMap:
         - Contains warped copies of all regions
         - Carries an inverse WarpMap as a ConversionMap for traceability
 
+        Every timeline and region of the copy holds an id of its own, so the
+        copy may join a group or bundle holding its source. A region's id is
+        minted from the source region's id and the id of the timeline
+        holding the copy; events keep theirs.
+
         Args:
             source_timeline: The timeline to warp.
+            seed: The seed of one minter of every id the call mints, in the
+                order built: the warped timeline, then each child's maps
+                and warped copy (recursively), then the regions (:func:`~timetoalign.core.ids.minting_from`);
+                without one, each from its content. Not stored.
 
         Returns:
             A new Timeline with warped coordinates.
@@ -702,21 +714,22 @@ class WarpMap:
         else:
             tl_class = type(source_timeline)
 
-        warped = tl_class(
-            length=warped_length,
-            unit=target_unit,
-            number_type=self.target_number_type,
-            name=f"{source_timeline.name or source_timeline.id}[warped->{self.target_timeline_id}]",
-        )
+        with minting_from(seed):
+            warped = tl_class(
+                length=warped_length,
+                unit=target_unit,
+                number_type=self.target_number_type,
+                name=f"{source_timeline.name or source_timeline.id}[warped->{self.target_timeline_id}]",
+            )
 
-        # Warp events
-        self._warp_events(source_timeline, warped)
+            # Warp events
+            self._warp_events(source_timeline, warped)
 
-        # Warp children (recursively)
-        self._warp_children(source_timeline, warped)
+            # Warp children (recursively)
+            self._warp_children(source_timeline, warped)
 
-        # Warp regions
-        self._warp_regions(source_timeline, warped)
+            # Warp regions
+            self._warp_regions(source_timeline, warped)
 
         module_logger.debug(
             "Materialised '%s' -> '%s' (length %.3f -> %.3f)",
@@ -901,8 +914,12 @@ class WarpMap:
                 )
                 continue
 
+            # A copy under an id of its own, so that the warped timeline
+            # may join a scope holding the source.
             warped_region = Region(
-                id=region.id,
+                id=content_minter(REGION_PREFIX, region.id, target.id).mint(
+                    REGION_PREFIX
+                ),
                 name=region.name,
                 start=Coordinate(
                     warped_start,

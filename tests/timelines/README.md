@@ -5453,3 +5453,20 @@ All tests follow these principles:
 Each test class includes a docstring explaining its validity rationale,
 linking back to specific requirements from the TimeToAlign model and the
 project's engineering standards.
+
+## Calls given `seed=` (`test_seeded_calls.py`)
+
+A method given `seed=` mints every id the call creates from one
+`IdMinter(seed)`, in the order it builds them, whatever ran before in the
+process. Each case builds something with content minters first (so a
+content seed would have moved on), then asserts the exact ids `IdMinter(seed)`
+mints in the documented order: `get_slice` (the slice, then each copied
+map), `create_regions_by_splitting` (regions in coordinate order),
+`create_segment_line` (the line, then each segment), `derive` (the derived
+timeline, then its inverse map; `uid=` given, the inverse map first),
+`MeasureMap.get_slice` (the slice). A second call with the same seed gives
+the same ids.
+
+`append_child(uid=, name=)` applies the id and name before `add_child`
+checks the child; a refused child (its new id held in the parent's
+manifest) keeps the id and name it had, exactly.

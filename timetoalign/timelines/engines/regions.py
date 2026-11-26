@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import Self
 
 from timetoalign.core import CoordinateSpec, CoordinateValue
-from timetoalign.core.ids import IdMinter, quote_id
+from timetoalign.core.ids import minting_from, quote_id
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
@@ -208,13 +208,12 @@ class RegionsMixin(_Host):
                 increasing.
 
         Examples:
-            >>> tl.create_regions_from_boundaries(
+            >>> regions = tl.create_regions_from_boundaries(
             ...     [0, 30, 60, 90],
             ...     prefix="movement",
             ... )
-            [Region('region_1', name='movement_1', 0-30 quarters),
-             Region('region_2', name='movement_2', 30-60 quarters),
-             Region('region_3', name='movement_3', 60-90 quarters)]
+            >>> [region.name for region in regions]
+            ['movement_1', 'movement_2', 'movement_3']
         """
         coords, region_names = _resolve_boundary_names(
             boundaries,
@@ -224,18 +223,13 @@ class RegionsMixin(_Host):
             self._resolve_axis_value,
         )
 
-        minter = None if seed is None else IdMinter(seed)
-        return [
-            self.create_region(
-                start,
-                end,
-                name=name,
-                id=None if minter is None else minter.mint(Region._id_prefix),
-            )
-            for start, end, name in zip(
-                coords[:-1], coords[1:], region_names, strict=True
-            )
-        ]
+        with minting_from(seed):
+            return [
+                self.create_region(start, end, name=name)
+                for start, end, name in zip(
+                    coords[:-1], coords[1:], region_names, strict=True
+                )
+            ]
 
     def create_regions_by_grouping(
         self,
@@ -271,10 +265,9 @@ class RegionsMixin(_Host):
 
         Examples:
             >>> # Time-signature regions (adjacent grouping)
-            >>> tl.create_regions_by_grouping("timesig")
-            [Region('region_1', name='4/4', 0-64 quarters),
-             Region('region_2', name='3/4', 64-88 quarters),
-             Region('region_3', name='4/4', 88-120 quarters)]
+            >>> regions = tl.create_regions_by_grouping("timesig")
+            >>> [region.name for region in regions]
+            ['4/4', '3/4', '4/4']
         """
         # Collect events sorted by start coordinate
         events_sorted = self._sorted_event_dicts()
@@ -333,24 +326,18 @@ class RegionsMixin(_Host):
             runs.append((current_value, run_start, run_end))
 
         # Create regions
-        minter = None if seed is None else IdMinter(seed)
         result: list[Region] = []
-        for i, (value, start, end) in enumerate(runs):
-            value_counts.setdefault(value, 0)
-            value_counts[value] += 1
-            region_name = name_format.format(
-                value=value,
-                i=i,
-                n=i + 1,
-                run=value_counts[value],
-            )
-            region = self.create_region(
-                start,
-                end,
-                name=region_name,
-                id=None if minter is None else minter.mint(Region._id_prefix),
-            )
-            result.append(region)
+        with minting_from(seed):
+            for i, (value, start, end) in enumerate(runs):
+                value_counts.setdefault(value, 0)
+                value_counts[value] += 1
+                region_name = name_format.format(
+                    value=value,
+                    i=i,
+                    n=i + 1,
+                    run=value_counts[value],
+                )
+                result.append(self.create_region(start, end, name=region_name))
 
         return result
 
@@ -363,6 +350,7 @@ class RegionsMixin(_Host):
         prefix: str = "section",
         include_before_first: bool = True,
         include_after_last: bool = True,
+        seed: int | None = None,
     ) -> list[Region]:
         """Create contiguous regions by splitting at events matching a predicate.
 
@@ -390,6 +378,8 @@ class RegionsMixin(_Host):
                 first split point.
             include_after_last: Create a region from last split point to
                 timeline end.
+            seed: The seed of one minter of the regions' ids, minted in
+                coordinate order; None mints each from its content.
 
         Returns:
             List of contiguous Region objects in coordinate order.
@@ -458,13 +448,13 @@ class RegionsMixin(_Host):
                 for i in range(n_regions)
             ]
 
-        result: list[Region] = []
-        for i in range(n_regions):
-            region = self.create_region(
-                boundaries[i], boundaries[i + 1], name=region_names[i]
-            )
-            result.append(region)
-        return result
+        with minting_from(seed):
+            return [
+                self.create_region(
+                    boundaries[i], boundaries[i + 1], name=region_names[i]
+                )
+                for i in range(n_regions)
+            ]
 
     def _resolve_predicate(
         self,
@@ -558,9 +548,8 @@ class RegionsMixin(_Host):
             coordinate. Empty list if no regions contain coord.
 
         Examples:
-            >>> tl.get_regions_at(75.0)
-            [Region('region_1', name='verse', 30-90 quarters),
-             Region('region_2', name='chorus', 60-120 quarters)]
+            >>> [region.name for region in tl.get_regions_at(75.0)]
+            ['verse', 'chorus']
         """
         coord_val = self._resolve_axis_value(coord)
         matching = [r for r in self._regions.values() if r.contains(coord_val)]

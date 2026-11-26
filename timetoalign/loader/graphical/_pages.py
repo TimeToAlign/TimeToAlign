@@ -144,6 +144,7 @@ from timetoalign.loader.graphical.paths import (
     PiecewisePath,
     TimeAxisPath,
 )
+from timetoalign.storage import mint_event_ids
 from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine, Timeline
 
 if TYPE_CHECKING:
@@ -152,8 +153,6 @@ if TYPE_CHECKING:
 #: The axis of every timeline built here.
 _UNIT = TimeUnit.pixels
 
-#: The prefix of a minted Box id: its event type in lower case.
-_BOX_PREFIX = "box"
 _TimelineT = TypeVar("_TimelineT", bound=Timeline)
 
 #: An ids argument: nothing, one id per element in document order, or a template.
@@ -582,12 +581,19 @@ def _build_line(
     )
     if plan.boxes:
         assert plan.area is not None
+        # A Box the source names no id of mints one by the event-type rule.
+        minted = iter(
+            mint_event_ids(
+                ["Box"] * sum(box_id is None for box_id in plan.box_ids),
+                owner._id_minter,
+            ).to_pylist()
+        )
         timeline.add_events(
             [
                 Box.from_shape(
                     box.shape,
                     origin=plan.area.x_min,
-                    id=owner._id_minter.mint(_BOX_PREFIX) if box_id is None else box_id,
+                    id=next(minted) if box_id is None else box_id,
                 )
                 for box, box_id in zip(plan.boxes, plan.box_ids)
             ]

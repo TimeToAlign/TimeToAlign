@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from timetoalign.core import TimeUnit, resolve_id
+from timetoalign.core.ids import GROUP_PREFIX
 from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader.format.json import JsonLoader, _normalise_array
 from timetoalign.storage.events import EventData
@@ -767,7 +768,7 @@ class TiliaJsonLoader(JsonLoader):
             group_name = self._sources[-1].stem
 
         group = TimelineGroup(
-            id=self._id_minter.mint("group"),
+            id=self._id_minter.mint(GROUP_PREFIX),
             name=group_name,
             timelines=timelines,
         )

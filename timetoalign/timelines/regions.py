@@ -21,7 +21,7 @@ from typing import Any, ClassVar
 from timetoshare import ATOMIC_SECTION, Catalogue, expand_iri, same_pair
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
-from timetoalign.core.ids import _IdentifiedElement, quote_id
+from timetoalign.core.ids import REGION_PREFIX, _IdentifiedElement, quote_id
 from timetoalign.core.provenance import BeliefValue, Provenance
 from timetoalign.core.time import Duration, Interval
 
@@ -93,7 +93,7 @@ end=Coordinate(Fraction(32, 1), quarters))
         Coordinate(Fraction(16, 1), quarters)
     """
 
-    _id_prefix: ClassVar[str] = "region"
+    _id_prefix: ClassVar[str] = REGION_PREFIX
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
         "name",

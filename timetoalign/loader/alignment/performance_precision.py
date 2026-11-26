@@ -67,7 +67,8 @@ from typing_extensions import Self
 
 from timetoalign.alignment.claims import ClaimSide
 from timetoalign.core import Provenance, TimeUnit
-from timetoalign.loader._ids import CMAP_PREFIX, give_event_ids
+from timetoalign.core.ids import CMAP_PREFIX
+from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import (
     Source,
     SourceLike,

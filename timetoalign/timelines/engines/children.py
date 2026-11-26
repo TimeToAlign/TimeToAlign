@@ -20,7 +20,13 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import _filled
-from timetoalign.core.ids import IdMinter, content_minter, quote_id, timeline_id_prefix
+from timetoalign.core.ids import (
+    IdMinter,
+    content_minter,
+    minting_from,
+    quote_id,
+    timeline_id_prefix,
+)
 from timetoalign.core.time import (
     compare_number_column,
     coordinate_numeric_value,
@@ -474,42 +480,36 @@ class ChildrenMixin(_Host):
                 f"is not invertible. Cannot convert child from "
                 f"'{child.unit}' to '{self._unit}'."
             )
-        inverse_cmap = cmap.inverse()
-
-        # Temporarily add the inverse map to the child so derive() can use it
-        child_had_map = bool(child._get_unit_maps(self._unit))
-        if not child_had_map:
-            child.add_conversion_map(inverse_cmap)
-
-        try:
-            derived = child.derive(
-                self._unit,
-                copy_events=True,
-            )
-        finally:
-            # Clean up: remove the temporarily added map if we added it.
-            # Removal is by identity, so a map the child already carried for
-            # the same unit survives.
-            if not child_had_map and inverse_cmap.id in child._conversion_maps:
-                del child._conversion_maps[inverse_cmap.id]
-                registered = child._unit_maps.get(self._unit)
-                if registered is not None:
-                    registered[:] = [
-                        cmap for cmap in registered if cmap is not inverse_cmap
-                    ]
-                    if not registered:
-                        del child._unit_maps[self._unit]
-
         # The name links back to the original; the id is minted, because a
         # label is no identity: from the seed, else from the source's id and
-        # the unit it is converted to.
+        # the unit it is converted to. With a seed, every id the conversion
+        # mints comes from it, the derived child's first.
         prefix = timeline_id_prefix(self._unit)
-        minter = (
-            IdMinter(seed)
-            if seed is not None
-            else content_minter(prefix, child.id, self._unit.value)
-        )
-        derived._set_id(minter.mint(prefix))
+        with minting_from(seed):
+            derived_id = content_minter(prefix, child.id, self._unit.value).mint(prefix)
+            inverse_cmap = cmap.inverse()
+
+            # Temporarily add the inverse map to the child so derive() can use it
+            child_had_map = bool(child._get_unit_maps(self._unit))
+            if not child_had_map:
+                child.add_conversion_map(inverse_cmap)
+
+            try:
+                derived = child.derive(self._unit, copy_events=True, uid=derived_id)
+            finally:
+                # Clean up: remove the temporarily added map if we added it.
+                # Removal is by identity, so a map the child already carried
+                # for the same unit survives.
+                if not child_had_map and inverse_cmap.id in child._conversion_maps:
+                    del child._conversion_maps[inverse_cmap.id]
+                    registered = child._unit_maps.get(self._unit)
+                    if registered is not None:
+                        registered[:] = [
+                            cmap for cmap in registered if cmap is not inverse_cmap
+                        ]
+                        if not registered:
+                            del child._unit_maps[self._unit]
+
         derived._name = f"{child.name or child.id} [{self._unit}]"
 
         self._logger.debug(
@@ -851,6 +851,7 @@ class ChildrenMixin(_Host):
         prefix: str = "section",
         allow_expansion: bool = False,
         measures: bool = False,
+        seed: int | None = None,
     ) -> list["Timeline"]:
         """Create children spanning consecutive boundary coordinates.
 
@@ -864,6 +865,10 @@ class ChildrenMixin(_Host):
             allow_expansion: If True, expand the parent when needed.
             measures: Give each child the slice of this timeline's measure
                 map over its span, as :meth:`create_child` does.
+            seed: The seed of one minter of every id the call mints (the
+                measure maps and views of each child, with *measures*), in
+                boundary order (:func:`~timetoalign.core.ids.minting_from`).
+                The children's ids are their names. Not stored.
 
         Returns:
             Child timelines in boundary order.
@@ -889,14 +894,15 @@ class ChildrenMixin(_Host):
             prefix,
             self._resolve_axis_value,
         )
-        return [
-            self.create_child(
-                end - start, start, name, name, allow_expansion, measures=measures
-            )
-            for start, end, name in zip(
-                coords[:-1], coords[1:], child_names, strict=True
-            )
-        ]
+        with minting_from(seed):
+            return [
+                self.create_child(
+                    end - start, start, name, name, allow_expansion, measures=measures
+                )
+                for start, end, name in zip(
+                    coords[:-1], coords[1:], child_names, strict=True
+                )
+            ]
 
     def append_child(
         self,
@@ -914,7 +920,8 @@ class ChildrenMixin(_Host):
         becomes the child's ID (the key under which it is stored and
         retrieved) and *name* its human-readable name — both applied before
         :meth:`add_child` embeds it (locking it unless it is a plain segment
-        of a segment line).
+        of a segment line). A child :meth:`add_child` refuses keeps the id
+        and name it had.
 
         Args:
             child: The timeline to append. Must be fresh (parentless) and
@@ -946,11 +953,18 @@ class ChildrenMixin(_Host):
         """
         self._check_not_locked("append child")
         end = self._append_offset()
+        given_id, given_name = child.id, child._name
         if uid is not None:
             child._set_id(uid)
         if name is not None:
             child._name = name
-        self.add_child(child, end, allow_expansion=True)
+        try:
+            self.add_child(child, end, allow_expansion=True)
+        except Exception:
+            # A refused child is left as it was given.
+            child._set_id(given_id)
+            child._name = given_name
+            raise
 
     def _append_offset(self) -> Coordinate:
         """The offset :meth:`append_child` places a child at: this timeline's end.
@@ -1159,8 +1173,8 @@ class ChildrenMixin(_Host):
                 at 0.
 
         Examples:
-            >>> tl.create_regions_by_splitting("breaks", prefix="movement")
-            >>> mov4 = tl.create_child_from_region("region_4")
+            >>> movements = tl.create_regions_by_splitting("breaks", prefix="movement")
+            >>> mov4 = tl.create_child_from_region(movements[3].id)
             >>> mov4.name
             'movement_4'
         """
@@ -1639,6 +1653,7 @@ class ChildrenMixin(_Host):
         truncate_events: bool = True,
         include_children: bool = True,
         copy_cmaps: bool = True,
+        seed: int | None = None,
     ) -> "Timeline":
         """Extract a portion of this timeline as a new, independent timeline.
 
@@ -1678,6 +1693,10 @@ class ChildrenMixin(_Host):
                 overlaps [start, end) are recursively sliced and included.
             copy_cmaps: If True (default), ConversionMaps are bounded-copied
                 for the slice range.
+            seed: The seed of one minter of every id the slice mints, in
+                the order built: the slice, then its children's slices, then
+                the copied maps (:func:`~timetoalign.core.ids.minting_from`);
+                without one, each from its content. Not stored.
 
         Returns:
             New Timeline (same concrete subclass) with length = end - start,
@@ -1705,25 +1724,33 @@ class ChildrenMixin(_Host):
 
         slice_length = e - s
 
-        # Create new timeline using the source's spawn class
-        sliced = self._spawn_class()(
-            length=slice_length,
+        with minting_from(seed):
+            sliced = self._empty_slice(slice_length)
+
+            # Copy events with coordinate shifting
+            self._copy_events_to_slice(sliced, s, e, truncate_events)
+
+            # Recursively slice children
+            if include_children:
+                self._copy_children_to_slice(sliced, s, e, truncate_events)
+
+            # Copy conversion maps (bounded to slice range)
+            if copy_cmaps:
+                self._copy_cmaps_to_slice(sliced, s, e)
+
+        self._close_slice(sliced, slice_length)
+        return sliced
+
+    def _empty_slice(self, length: CoordinateValue) -> "Timeline":
+        """The timeline :meth:`get_slice` fills: of the spawn class, *length* long."""
+        return self._spawn_class()(
+            length=length,
             unit=self._unit,
             number_type=self._number_type,
         )
 
-        # Copy events with coordinate shifting
-        self._copy_events_to_slice(sliced, s, e, truncate_events)
-
-        # Recursively slice children
-        if include_children:
-            self._copy_children_to_slice(sliced, s, e, truncate_events)
-
-        # Copy conversion maps (bounded to slice range)
-        if copy_cmaps:
-            self._copy_cmaps_to_slice(sliced, s, e)
-
-        return sliced
+    def _close_slice(self, sliced: "Timeline", length: CoordinateValue) -> None:
+        """Settle a filled slice of *length*: nothing here."""
 
     def _copy_events_to_slice(
         self,
@@ -1930,7 +1957,10 @@ class ChildrenMixin(_Host):
         for cmap_id, cmap in self._conversion_maps.items():
             # The slice holds its own copy under an id of its own, minted
             # from the source map's id: a slice may join a manifest that
-            # holds the source's map. Maps nested in it are shared.
+            # holds the source's map. Maps nested in it are shared. A
+            # measure view's copy keeps the id it holds for its own measure
+            # map (``_own_measure_map_id``): the rows it writes equal the
+            # source's, so a manifest holding both writes one entry.
             copied = copy.copy(cmap)
             copied._id = content_minter(cmap._id_prefix, cmap.id).mint(cmap._id_prefix)
             try:

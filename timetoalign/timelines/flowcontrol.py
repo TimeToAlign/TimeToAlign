@@ -937,6 +937,10 @@ class FlowControlElement(_IdentifiedElement):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.id!r} @ {self.coordinate})"
 
+    def _place(self) -> str:
+        """Where the element lies: ``at 8 quarters``."""
+        return f"at {self.coordinate}"
+
     @property
     def is_rejected(self) -> bool:
         """Whether the element is rejected: some actor believes it ``"false"``.

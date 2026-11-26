@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self
 from timetoalign.core import Coordinate, Duration, Gap, IdCoordinate, Interval
 from timetoalign.core.enums import FlowConvention, NumberType, TimeUnit
 from timetoalign.core.ids import (
+    FLOW_MAP_PREFIX,
     _IdentifiedElement,
     quote_id,
     timeline_id_prefix,
@@ -126,7 +127,7 @@ class FlowMap(_IdentifiedElement):
         True
     """
 
-    _id_prefix: ClassVar[str] = "flow"
+    _id_prefix: ClassVar[str] = FLOW_MAP_PREFIX
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
         "timeline",
@@ -184,6 +185,10 @@ class FlowMap(_IdentifiedElement):
         )
         flow_map._keep_unknown_keys(data)
         return flow_map
+
+    def _place(self) -> str:
+        """Where the FlowMap lies: ``of timeline 'score'``."""
+        return f"of timeline {quote_id(str(self.timeline))}"
 
     def _complete(self) -> None:
         """Validate and settle the members."""

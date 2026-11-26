@@ -71,8 +71,8 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
+from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.display.html import code
-from timetoalign.loader._ids import CMAP_PREFIX
 from timetoalign.loader._sources import (
     Source,
     SourceLike,

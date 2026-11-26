@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
+    CoordinateValue,
     Domain,
     TimeUnit,
 )
@@ -508,43 +509,18 @@ class SegmentLineMixin(_SegmentLineBase):
         for i, seg_id in enumerate(self._segment_order):
             yield (i, self._child_offsets[seg_id], self._children[seg_id])
 
-    def get_slice(
-        self,
-        start: CoordinateSpec,
-        end: CoordinateSpec,
-        *,
-        truncate_events: bool = True,
-        include_children: bool = True,
-        copy_cmaps: bool = True,
-    ) -> "Timeline":
-        """Extract a slice while preserving the parameterized line class."""
-        s, e = self._slice_bounds(start, end)
-
-        sliced = type(self)(
+    def _empty_slice(self, length: CoordinateValue) -> Timeline:
+        """An empty line of this parameterized class: its segments set its length."""
+        return type(self)(
             length=0,
             unit=self._unit,
             number_type=self._number_type,
         )
 
-        # Copy events (SegmentLines usually have none, but handle it)
-        self._copy_events_to_slice(sliced, s, e, truncate_events)
-
-        # Recursively slice children (segments)
-        if include_children:
-            self._copy_children_to_slice(sliced, s, e, truncate_events)
-
-        # Copy conversion maps
-        if copy_cmaps:
-            self._copy_cmaps_to_slice(sliced, s, e)
-
-        # If no children were added (slice falls between segments) the
-        # length is still 0.  Set it to the expected slice length so
-        # the caller gets a correctly-sized timeline.
-        expected_length = e - s
-        if sliced._require_length("be sliced").value < expected_length:
-            sliced._length = sliced._make_coordinate(expected_length)
-
-        return sliced
+    def _close_slice(self, sliced: Timeline, length: CoordinateValue) -> None:
+        """Give a slice falling between segments the slice's *length*."""
+        if sliced._require_length("be sliced").value < length:
+            sliced._length = sliced._make_coordinate(length)
 
     def _typed_class(self) -> type[Timeline]:
         """Return a line parameterized by the recursively typed child class."""

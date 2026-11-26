@@ -10,9 +10,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from timetoalign.core.ids import IdMinter
+from timetoalign.core.ids import CMAP_PREFIX, IdMinter
 from timetoalign.core.time import number_from_json, number_to_json
-from timetoalign.loader._ids import CMAP_PREFIX
 from timetoalign.loader.score.stores.annotations import AnnotationEventData
 from timetoalign.loader.score.stores.controls import ControlEventData
 from timetoalign.loader.score.stores.measures import MeasureData

@@ -48,6 +48,7 @@ from timetoalign.core import (
 from timetoalign.core.enums import NumberType
 from timetoalign.core.fields import _compared, _filled, _struct_child
 from timetoalign.core.ids import (
+    BUNDLE_PREFIX,
     IdMinter,
     _OpenObject,
     _refuse_held_ids,
@@ -291,12 +292,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     - Coordinate transfer between any two timelines (same-group or
       cross-group via ``MatchClaim``/``WarpMap``)
 
-    IMPORTANT: The resulting bundle structure is order-independent. Adding
-    timelines in any order produces the same alignment relationships and
-    coordinate transfer results.
+    The alignment relationships and coordinates do not depend on the order
+    in which timelines are added; the order of table rows and columns and
+    of a stamp's coordinates follows registration.
 
     Attributes:
-        id: Unique identifier for this bundle, ``bundle_N`` unless given.
+        id: Unique identifier for this bundle, minted with the prefix
+            ``bundle`` unless given.
         name: Optional human-readable name.
         timelines: Dictionary mapping timeline IDs to Timeline objects: every
             timeline added, and the root of every one that is a child. The
@@ -441,10 +443,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 IdMinter(seed)
                 if seed is not None
                 else content_minter(
-                    "bundle", self.name, list(self.timelines), list(self.groups)
+                    BUNDLE_PREFIX, self.name, list(self.timelines), list(self.groups)
                 )
             )
-            self.id = minter.mint("bundle")
+            self.id = minter.mint(BUNDLE_PREFIX)
         else:
             validate_id(self.id)
         self.support_policy = SupportPolicy(self.support_policy)
@@ -754,12 +756,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     f"{quote_id(grouped_with)}: one is nested in the other, and a parent "
                     "and its child cannot share one start and end"
                 )
+            founders = [timeline] if target is None else [target, timeline]
+            group_id = None
+            if target is not None or as_group is not None:
+                # The new group's id is checked before anything changes.
+                group_id = TimelineGroup._minted_id(
+                    as_group, [founder.id for founder in founders], seed
+                )
+                self._refuse_group_id(group_id, None if registered else timeline)
             if not registered:
                 self._admit(timeline)
-            if target is not None or as_group is not None:
-                founders = [timeline] if target is None else [target, timeline]
-                group = TimelineGroup(name=as_group, timelines=founders, seed=seed)
-                self._refuse_group_id(group)
+            if group_id is not None:
+                group = TimelineGroup(name=as_group, timelines=founders, id=group_id)
                 self._hold_group(group)
                 if target is not None:
                     # A member is registered, a nested one too.
@@ -826,7 +834,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         for member in members:
             if self.timelines.get(member.id) is not member:
                 self._admit(member)
-        self._refuse_group_id(group)
+        self._refuse_group_id(group.id)
 
         self._hold_group(group)
         for member in members:
@@ -940,18 +948,26 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self.groups[group.id] = group
         group._hold_in(self)
 
-    def _refuse_group_id(self, group: TimelineGroup) -> None:
-        """Refuse *group* joining the bundle where an element holds its id.
+    def _refuse_group_id(
+        self, group_id: str, joining: "Timeline | None" = None
+    ) -> None:
+        """Refuse a group joining the bundle where an element holds its id.
+
+        Args:
+            group_id: The group's id.
+            joining: A timeline joining the bundle with the group, whose
+                manifest tree counts as held.
 
         Raises:
-            ValueError: If the group's id, given or minted, is held in the
-                bundle.
+            ValueError: If *group_id*, given or minted, is held in the
+                bundle or by the tree of *joining*.
         """
-        if group.id in self.groups:
-            raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
+        taken = self._scope_ids()
+        if joining is not None:
+            taken = {**_root(joining)._tree_ids(), **taken}
         _refuse_held_ids(
-            [(group.id, f"group {quote_id(group.id)}")],
-            self._scope_ids(),
+            [(group_id, f"group {quote_id(group_id)}")],
+            taken,
             scope=f"bundle {quote_id(self.id)}",
         )
 
@@ -3831,8 +3847,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Returns:
             One field per timeline, each a coordinate struct carrying its
-            number twice.  Non-synchronous claims are excluded.  Empty input
-            yields an empty table.
+            number twice, in the order the bundle registered the timelines
+            (:meth:`_known_timelines`; a timeline it does not know after
+            them, by ID), each followed by its derived C-Map fields.
+            Non-synchronous claims are excluded.  Empty input yields an
+            empty table.
 
         Raises:
             ValueError: If both ``claims`` and ``at`` are given, on an unknown
@@ -3879,7 +3898,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> table.num_rows  # one per anchor
             4
             >>> table.column_names
-            ['perf:cpt_1', 'perf:cpt_2', 'score:clt_1']
+            ['score:clt_1', 'perf:cpt_1', 'perf:cpt_2']
             >>> bundle.get_matchstamp_table(from_graph=True).num_rows  # one per instant
             2
             >>> bundle.get_matchstamp_table([0, 8], "score:clt_1").num_rows
@@ -4009,9 +4028,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 ``target_unit`` set) become columns.
 
         Returns:
-            PyArrow Table with one field per (filtered) timeline ID, followed
-            by any derived conversion columns.  Empty input yields an empty
-            table.
+            PyArrow Table with one field per (filtered) timeline ID, in
+            registration order (:meth:`_known_timelines`; an unknown
+            timeline after them, by ID), each followed by its derived
+            conversion columns.  Empty input yields an empty table.
         """
         n_rows = len(rows)
         if n_rows == 0:
@@ -4023,16 +4043,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         # Build table with consistent fields, scattering each row into its
         # cells rather than probing every field of every row.
-        field_lists: dict[str, list[Coordinate | None]] = {
-            tl_id: [None] * n_rows for tl_id in sorted(all_tl_ids)
-        }
         known = self._known_timelines()
+        rank = {tl_id: position for position, tl_id in enumerate(known)}
+        field_lists: dict[str, list[Coordinate | None]] = {
+            tl_id: [None] * n_rows
+            for tl_id in sorted(
+                all_tl_ids, key=lambda tl_id: (rank.get(tl_id, len(rank)), tl_id)
+            )
+        }
         for position, row in enumerate(rows):
             for tl_id, value in row.items():
                 column = field_lists.get(tl_id)
                 if column is not None:
                     column[position] = value
 
+        # Each timeline's derived columns, written after the timeline's own.
+        derived_columns: dict[str, dict[str, list[Coordinate | None]]] = {}
         if conversion_maps is not False and conversion_maps is not None:
             from timetoalign.core.timestamp import _conversion_map_enabled_for_spec
 
@@ -4078,7 +4104,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         # target unit: the cell stays null. Any other error
                         # is a defect and propagates.
                         derived.append(None)
-                field_lists[col_name] = derived
+                derived_columns.setdefault(tl_id, {})[col_name] = derived
+        field_lists = {
+            name: column
+            for tl_id, coordinates in field_lists.items()
+            for name, column in (
+                (tl_id, coordinates),
+                *derived_columns.get(tl_id, {}).items(),
+            )
+        }
 
         columns: list[TimestampColumn] = []
         for name, coordinates in field_lists.items():
@@ -4845,8 +4879,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ValueError: As :meth:`MatchClaimField.to_parquet` refuses the
                 MatchClaim table, or as
                 :func:`~timetoalign.timelines.manifest.projection_table`
-                refuses a Projection ID held by two timelines, before any
-                file is written.
+                refuses a Projection ID held by two timelines, or if a new
+                entry's id is held in the manifest, before any file is
+                written.
         """
         claims = self.match_claim_table
         event_tables = self._event_tables()
@@ -4859,30 +4894,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         }
         written: dict[str, Resource] = {}
 
-        def entry(table_type: str, url: str, path: Path, timelines: list[str]) -> None:
-            """Record the resource entry of one written table.
-
-            A held entry's id is reused, and its timeline order kept when it names
-            the same timelines; otherwise a new entry mints its id, refused
-            where the manifest holds it.
-            """
-            held = named.get(table_type)
-            if held is not None and set(held.timelines) == set(timelines):
-                timelines = list(held.timelines)
-            resource = Resource.of_file(
-                path,
-                id=None if held is None else held.id,
-                type=table_type,
-                timelines=timelines,
-                url=url,
-            )
-            if held is None:
-                _refuse_held_ids(
-                    [(resource.id, f"resource {quote_id(resource.id)}")], taken
-                )
-                taken[resource.id] = f"resource {quote_id(resource.id)}"
-            written[table_type] = resource
-
         def place(table_type: str, default: str) -> tuple[str, Path]:
             """Return the URL and resolved path a table is written to, creating its folder.
 
@@ -4894,35 +4905,71 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             path.parent.mkdir(parents=True, exist_ok=True)
             return url, path
 
+        # Every table to write: its type, URL, path, timelines and writer.
+        tables: list[tuple[str, str, Path, list[str], Callable[[Path], object]]] = []
         # Every place is resolved (a URL refused) before the first file is written.
-        claim_place = (
-            place("MatchClaim", MatchClaimField.file_name) if len(claims) else None
-        )
+        if len(claims):
+            url, path = place("MatchClaim", MatchClaimField.file_name)
+            claim_table = claims.table
+            named_timelines = pc.unique(
+                pa.concat_arrays(
+                    [
+                        claim_table.column("timeline_a_id").combine_chunks(),
+                        claim_table.column("timeline_b_id").combine_chunks(),
+                    ]
+                )
+            )
+            tables.append(
+                (
+                    "MatchClaim",
+                    url,
+                    path,
+                    sorted(named_timelines.to_pylist()),
+                    claims.to_parquet,
+                )
+            )
         file_names = {"Projection": PROJECTIONS_FILE_NAME, "Box": BOXES_FILE_NAME}
-        event_places = {kind: place(kind, file_names[kind]) for kind in event_tables}
+        for kind, table in event_tables.items():
+            url, path = place(kind, file_names[kind])
+            holders = pc.unique(table.column("timeline_id")).to_pylist()
+            tables.append(
+                (
+                    kind,
+                    url,
+                    path,
+                    sorted(holders),
+                    lambda path, table=table: write_event_table(table, path),
+                )
+            )
         kept = {
             table_type
             for table_type, held in named.items()
             if resource_path(directory, held.url).is_file()
         }
-        if claim_place is not None:
-            url, path = claim_place
-            claims.to_parquet(path)
-            table = claims.table
-            named_timelines = pc.unique(
-                pa.concat_arrays(
-                    [
-                        table.column("timeline_a_id").combine_chunks(),
-                        table.column("timeline_b_id").combine_chunks(),
-                    ]
+        # Every entry's id, refused where the manifest holds it, before the
+        # first file is written. A held entry's id is reused, and its
+        # timeline order kept when it names the same timelines; otherwise a
+        # new entry mints its id.
+        entries: list[tuple[str, str, Path, list[str], str]] = []
+        for table_type, url, path, timelines, _ in tables:
+            held = named.get(table_type)
+            if held is not None and set(held.timelines) == set(timelines):
+                timelines = list(held.timelines)
+            if held is None:
+                resource_id = Resource._minted_id(table_type, timelines, url)
+                taken = _refuse_held_ids(
+                    [(resource_id, f"resource {quote_id(resource_id)}")], taken
                 )
+            else:
+                resource_id = held.id
+            entries.append((table_type, url, path, timelines, resource_id))
+        for (_, _, _, _, write), (table_type, url, path, timelines, resource_id) in zip(
+            tables, entries, strict=True
+        ):
+            write(path)
+            written[table_type] = Resource.of_file(
+                path, id=resource_id, type=table_type, timelines=timelines, url=url
             )
-            entry("MatchClaim", url, path, sorted(named_timelines.to_pylist()))
-        for kind, table in event_tables.items():
-            url, path = event_places[kind]
-            write_event_table(table, path)
-            holders = pc.unique(table.column("timeline_id")).to_pylist()
-            entry(kind, url, path, sorted(holders))
         resources = [
             (
                 written.pop(r.type, r if r.type in kept else None)

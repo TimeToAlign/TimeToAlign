@@ -78,8 +78,10 @@ from timetoshare.tables import TableError, projection_problems
 from timetoalign.core import Coordinate, Event, NumberType, Projection, TimeUnit
 from timetoalign.core.fields import _null_column, derive_arrow_schema
 from timetoalign.core.ids import (
+    RESOURCE_PREFIX,
     IdMinter,
     _OpenObject,
+    _refuse_held_ids,
     content_minter,
     quote_id,
     validate_id,
@@ -417,10 +419,6 @@ class Integrity(_OpenObject):
         )
 
 
-RESOURCE_ID_PREFIX = "resource"
-"""The prefix of a minted resource ID."""
-
-
 @dataclass(frozen=True)
 class Resource(_OpenObject):
     """A file the manifest names: one entry of its ``resources``.
@@ -505,6 +503,23 @@ class Resource(_OpenObject):
                 f"{what} has the size {self.size!r}: a number of bytes, at least 0"
             )
 
+    @staticmethod
+    def _minted_id(
+        type: str,  # noqa: A002 - the key's name
+        timelines: Iterable[str],
+        url: str,
+        seed: int | None = None,
+    ) -> str:
+        """The id a resource described without one mints: from
+        ``IdMinter(seed)``, else from the content minter of *type*,
+        *timelines* and *url*."""
+        minter = (
+            IdMinter(seed)
+            if seed is not None
+            else content_minter(RESOURCE_PREFIX, type, list(timelines), url)
+        )
+        return minter.mint(RESOURCE_PREFIX)
+
     @classmethod
     def of_file(
         cls,
@@ -535,12 +550,7 @@ class Resource(_OpenObject):
         data = Path(path).read_bytes()
         timelines = tuple(timelines)
         if id is None:
-            minter = (
-                IdMinter(seed)
-                if seed is not None
-                else content_minter(RESOURCE_ID_PREFIX, type, list(timelines), url)
-            )
-            id = minter.mint(RESOURCE_ID_PREFIX)
+            id = cls._minted_id(type, timelines, url, seed)
         return cls(
             id,
             type,
@@ -1099,7 +1109,7 @@ class Manifest(_OpenObject):
         (:func:`timetoshare.with_bare_ids`), as every object of the library
         holds them. The measure maps are read next, then every root timeline
         is rebuilt, its conversion maps reading the measure maps they name,
-        and every element of the manifest is indexed by id (:func:`unique_ids`).
+        and every element of the manifest is indexed by id (:func:`~timetoalign.core.ids._refuse_held_ids`).
         Each FlowMap joins the root timeline it names and each virtual
         timeline the root of the tree it comes from
         (:func:`~timetoalign.timelines.flow.flowmap.place_on_roots`), so that
@@ -1191,7 +1201,7 @@ class Manifest(_OpenObject):
         holders.extend(
             (group_id, f"group {quote_id(group_id)}") for group_id in group_ids
         )
-        ids = unique_ids(holders)
+        ids = _refuse_held_ids(holders, {})
         named = {
             id(measure_map)
             for timeline in timelines.values()
@@ -1291,7 +1301,7 @@ class Manifest(_OpenObject):
 
         Raises:
             ValueError: If an id is held twice among the manifest, its
-                timelines' trees and its groups (:func:`unique_ids`), or a
+                timelines' trees and its groups (:func:`~timetoalign.core.ids._refuse_held_ids`), or a
                 measure map cannot be written (two different ones carry one
                 given id, or one's given id is held by another element), two
                 holders written use one prefix for two namespaces (``the
@@ -1326,7 +1336,7 @@ class Manifest(_OpenObject):
             for resource in self.resources
         )
         entries = MeasureMapEntries(
-            unique_ids(holders),
+            _refuse_held_ids(holders, {}),
             [
                 *self.measure_maps,
                 *(
@@ -1554,11 +1564,7 @@ class MeasureMapEntries:
                 measure map, carries the id.
         """
         entry_id = measure_map.id
-        if entry_id in self.taken:
-            raise ValueError(
-                f"measure map {quote_id(entry_id)} cannot be written: its id is already "
-                f"held by {self.taken[entry_id]}"
-            )
+        _refuse_held_ids([(entry_id, f"measure map {quote_id(entry_id)}")], self.taken)
         held = self._entries.get(entry_id)
         if held is not None and not _same_entry(held, measure_map):
             raise ValueError(
@@ -1648,27 +1654,6 @@ def _read_roots(
         ]:
             index.setdefault(timeline.id, timeline)
     return roots, index
-
-
-def unique_ids(holders: Iterable[tuple[str, str]]) -> dict[str, str]:
-    """Map each id to its holder, refusing an id held twice.
-
-    Args:
-        holders: ``(id, description)`` of every element of a manifest.
-
-    Raises:
-        ValueError: ``the id 'intro' is held twice in the manifest: by
-            region 'intro' of timeline 'score' and by timeline 'intro'``.
-    """
-    ids: dict[str, str] = {}
-    for element_id, holder in holders:
-        if element_id in ids:
-            raise ValueError(
-                f"the id {quote_id(element_id)} is held twice in the manifest: by "
-                f"{ids[element_id]} and by {holder}"
-            )
-        ids[element_id] = holder
-    return ids
 
 
 def select(

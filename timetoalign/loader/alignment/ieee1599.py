@@ -138,8 +138,9 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.fields import SemanticField
+from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.display.html import code
-from timetoalign.loader._ids import CMAP_PREFIX, give_event_ids
+from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import Source
 from timetoalign.loader.base import LoadSourceResult
 from timetoalign.loader.format.xml import XmlLoader

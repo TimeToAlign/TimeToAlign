@@ -44,6 +44,7 @@ from timetoalign.core import (
 )
 from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.ids import (
+    GROUP_PREFIX,
     IdMinter,
     _OpenObject,
     _refuse_held_ids,
@@ -460,10 +461,9 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                     "the manifest holds one timeline and no group: give group_id or "
                     "name to make a group of it"
                 )
-            if group_id is not None and group_id in content.ids:
-                raise ValueError(
-                    f"group id {quote_id(group_id)} is already held by "
-                    f"{content.ids[group_id]}"
+            if group_id is not None:
+                _refuse_held_ids(
+                    [(group_id, f"group {quote_id(group_id)}")], content.ids
                 )
             # A group writes an anonymous bundle.
             manifest.id = manifest.name = None
@@ -493,11 +493,9 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 return group._keep_manifest(manifest)
             old_id = group.id
             if group_id is not None:
-                if group_id in content.ids:
-                    raise ValueError(
-                        f"group id {quote_id(group_id)} is already held by "
-                        f"{content.ids[group_id]}"
-                    )
+                _refuse_held_ids(
+                    [(group_id, f"group {quote_id(group_id)}")], content.ids
+                )
                 group.id = validate_id(group_id)
             if name is not None:
                 group.name = name
@@ -565,6 +563,17 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         group._keep_unknown_keys(data)
         return group
 
+    @staticmethod
+    def _minted_id(name: str | None, member_ids: list[str], seed: int | None) -> str:
+        """The id a group built without one mints: from ``IdMinter(seed)``,
+        else from the content minter of its name and its initial members' ids."""
+        minter = (
+            IdMinter(seed)
+            if seed is not None
+            else content_minter(GROUP_PREFIX, name, member_ids)
+        )
+        return minter.mint(GROUP_PREFIX)
+
     def __init__(
         self,
         id: str | None = None,
@@ -594,17 +603,11 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 cannot join (see :meth:`add_timeline`).
         """
         initial = list(timelines or [])
-        if id is not None:
-            self.id = validate_id(id)
-        else:
-            minter = (
-                IdMinter(seed)
-                if seed is not None
-                else content_minter(
-                    "group", name, [timeline.id for timeline in initial]
-                )
-            )
-            self.id = minter.mint("group")
+        self.id = (
+            validate_id(id)
+            if id is not None
+            else self._minted_id(name, [timeline.id for timeline in initial], seed)
+        )
         self.name = name
         self.meta = dict(meta) if meta else {}
         self.styling = dict(styling) if styling else {}

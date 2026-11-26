@@ -6,9 +6,10 @@ map implementations must inherit from.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from enum import Enum
 from fractions import Fraction
@@ -30,9 +31,12 @@ from typing_extensions import TypeVar
 
 from ..core.enums import NumberType, TimeUnit
 from ..core.ids import (
+    CMAP_PREFIX,
+    MEASURE_MAP_PREFIX,
     IdMinter,
     _OpenObject,
     _refuse_held_ids,
+    array_seed_part,
     content_minter,
     quote_id,
     validate_id,
@@ -188,7 +192,22 @@ class OutputNumberTypeError(ValueError):
 # region ConversionMap
 
 
-class ConversionMap(_OpenObject, ABC, Generic[T, A]):
+class _IdentifiedOnceBuilt(ABCMeta):
+    """The metaclass of conversion maps: a map takes its id once built.
+
+    A subclass sets the values that define it after the base initializer
+    has run, so a map's id is settled only after the outermost
+    ``__init__`` returns (:meth:`ConversionMap._settle_id`): a minted id is
+    then seeded from the complete map.
+    """
+
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
+        cmap = super().__call__(*args, **kwargs)
+        cmap._settle_id()
+        return cmap
+
+
+class ConversionMap(_OpenObject, ABC, Generic[T, A], metaclass=_IdentifiedOnceBuilt):
     """Abstract base class for coordinate conversion maps.
 
     A ConversionMap transforms coordinates from one representation to another.
@@ -220,7 +239,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
     """
 
     # Prefix of a minted id, one for every conversion map.
-    _id_prefix: ClassVar[str] = "cmap"
+    _id_prefix: ClassVar[str] = CMAP_PREFIX
 
     # Set by a measure view that may write a measure map of its own: it
     # holds that measure map's id from construction (``_own_measure_map_id``),
@@ -392,9 +411,10 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
             source_unit: The unit of input coordinates. Defaults to class default.
             target_unit: The unit of output coordinates. Defaults to class default.
             uid: Optional explicit ID, kept verbatim. If None, an id with
-                the prefix ``cmap`` is minted: from ``IdMinter(seed)`` with
-                *seed*, else from the content minter of the map's class,
-                units, given name and the values it holds (:meth:`_content`).
+                the prefix ``cmap`` is minted once the map is built: from
+                ``IdMinter(seed)`` with *seed*, else from the content minter
+                of the map's class and every value that defines it
+                (:meth:`_content`).
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" if units are
                 provided, otherwise uses the map's ID.
@@ -450,27 +470,17 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
             self._stated_output_number_type()
         )
 
-        minter = None if seed is None else IdMinter(seed)
-        if uid is not None:
-            self._id = uid
-        else:
-            if minter is None:
-                minter = content_minter(self._id_prefix, *self._content(name))
-            self._id = minter.mint(self._id_prefix)
-        if self._names_own_measure_map:
-            if minter is None:
-                minter = content_minter(MEASURE_MAP_ID_PREFIX, self._id)
-            self._own_measure_map_id: str = minter.mint(MEASURE_MAP_ID_PREFIX)
+        # Settled once the outermost initializer has run (_settle_id).
+        self._id_given: tuple[str | None, int | None] = (uid, seed)
 
         # Set name: explicit > "source_to_target" > id. Only a given name is
-        # written by to_dict(); the others are derived for display.
+        # written by to_dict(); the others are derived for display, the id
+        # once it is settled.
         self._name_given = name is not None
         if name is not None:
             self._name = name
         elif self._source_unit and self._target_unit:
             self._name = f"{self._source_unit.value}_to_{self._target_unit.value}"
-        else:
-            self._name = self._id
 
         self._logger = module_logger.getChild(self.__class__.__name__)
 
@@ -865,15 +875,58 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
             for cmap in self._map_tree()
         ]
 
-    def _content(self, name: str | None) -> list[Any]:
-        """What seeds a minted id: the class, the units, the given *name* and
-        every value the map holds when its id is minted, nested maps by id."""
+    def _settle_id(self) -> None:
+        """Take the id given, or mint it from the map now built.
+
+        Runs once the outermost initializer has returned, so a minted id is
+        seeded from every value that defines the map (:meth:`_content`). A
+        map naming a measure map of its own mints that one's id next, from
+        the same minter; a map nesting others refuses an id held twice in
+        its tree (:meth:`_admit_ids`).
+        """
+        uid, seed = self._id_given
+        del self._id_given
+        minter = None if seed is None else IdMinter(seed)
+        if uid is None:
+            if minter is None:
+                minter = content_minter(self._id_prefix, *self._content())
+            uid = minter.mint(self._id_prefix)
+        self._id: str = uid
+        if self._names_own_measure_map:
+            if minter is None:
+                minter = content_minter(MEASURE_MAP_PREFIX, self._id)
+            self._own_measure_map_id: str = minter.mint(MEASURE_MAP_PREFIX)
+        if "_name" not in self.__dict__:
+            self._name: str = self._id
+        if self._nested_maps():
+            self._admit_ids()
+
+    @staticmethod
+    def _nested_ids(seed: int | None, count: int) -> list[str | None]:
+        """The ids of the maps a map builds inside its initializer, given *seed*.
+
+        With a seed, one ``IdMinter(seed)`` mints the map's own id first,
+        then one id per nested map in the order built; the map passes the
+        first to its base initializer as ``uid``. Without one, every id is
+        None and each map mints from its own content.
+
+        Returns:
+            *count* + 1 ids: the map's own, then the nested maps'.
+        """
+        if seed is None:
+            return [None] * (count + 1)
+        minter = IdMinter(seed)
+        return [minter.mint(CMAP_PREFIX) for _ in range(count + 1)]
+
+    def _content(self) -> list[Any]:
+        """What seeds a minted id: the class and every value that defines the
+        built map, its name if one was given or set, nested maps by id."""
         state = {
             key: _content_value(value)
             for key, value in sorted(vars(self).items())
             if key not in _STATELESS
         }
-        return [type(self).__name__, name, state]
+        return [type(self).__name__, state]
 
     def _unique_map_tree(self, owner: str = "") -> list[ConversionMap[Any, Any]]:
         """Return :meth:`_map_tree` as a list, refusing a map held twice in it.
@@ -1121,10 +1174,6 @@ class ConversionMap(_OpenObject, ABC, Generic[T, A]):
 # region Measure-map ids
 
 
-MEASURE_MAP_ID_PREFIX = "measure_map"
-"""The prefix of a minted measure-map id."""
-
-
 class MeasureMapIds(Protocol):
     """Where a map being written finds the ids of the measure maps it names.
 
@@ -1172,25 +1221,40 @@ STANDALONE_MEASURE_MAPS: MeasureMapIds = _StandaloneMeasureMaps()
 # region Equality
 
 
-_STATELESS = frozenset({"_logger", "_inverse", "_own_measure_map_id"})
+_STATELESS = frozenset({"_logger", "_inverse", "_own_measure_map_id", "_id_given"})
 """Attributes that take no part in a map's equality or its content seed."""
 
 
 def _content_value(value: Any) -> Any:
-    """*value* as a content seed spells it: JSON values, an array by its
-    values, a map by its id, any other object by its class alone."""
+    """*value* as a content seed spells it: JSON values, a number by its
+    exact text, a numeric array or sequence by the SHA-256 digest of its
+    bytes (:func:`~timetoalign.core.ids.array_seed_part`), a map by its id,
+    any other object by its class alone.
+
+    A NumPy scalar is read as the Python number it holds, so a seed is
+    spelled alike whatever NumPy prints; an array costs no Python object
+    per element.
+    """
+    if isinstance(value, np.generic):
+        value = value.item()
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
-        return repr(value)
+        return float.hex(value)
     if isinstance(value, Fraction):
         return f"{value.numerator}/{value.denominator}"
     if isinstance(value, Enum):
         return value.name
     if isinstance(value, ConversionMap):
         return value._id
+    if isinstance(value, (np.ndarray, list, tuple)):
+        array = _numeric_array(value)
+        if array is not None:
+            part = array_seed_part(array)
+            assert part is not None  # a numeric array has one
+            return hashlib.sha256(part).hexdigest()
     if isinstance(value, np.ndarray):
-        return [str(value.dtype), list(value.shape), _content_value(value.tolist())]
+        return [list(value.shape), [_content_value(item) for item in value.tolist()]]
     if isinstance(value, (list, tuple)):
         return [_content_value(item) for item in value]
     if isinstance(value, Mapping):
@@ -1201,6 +1265,23 @@ def _content_value(value: Any) -> Any:
     if isinstance(held_id, str):
         return held_id
     return type(value).__name__
+
+
+def _numeric_array(
+    values: np.ndarray[Any, Any] | list[Any] | tuple[Any, ...],
+) -> np.ndarray[Any, Any] | None:
+    """*values* as a numeric array, or None where NumPy reads them as
+    anything else (Fractions, strings, maps, ragged sequences)."""
+    if isinstance(values, np.ndarray):
+        array = values
+    elif not values:
+        return None
+    else:
+        try:
+            array = np.asarray(values)
+        except (ValueError, TypeError):
+            return None
+    return array if array.ndim >= 1 and array.dtype.kind in "biufc" else None
 
 
 def _state(cmap: ConversionMap[Any, Any]) -> dict[str, Any]:

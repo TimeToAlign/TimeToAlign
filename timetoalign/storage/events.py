@@ -65,7 +65,14 @@ from timetoalign.core.fields import (
     field_metadata,
     split_row_member,
 )
-from timetoalign.core.ids import IdMinter, content_minter, quote_id
+from timetoalign.core.ids import (
+    EVENT_PREFIX,
+    IdMinter,
+    content_minter,
+    given_minter,
+    quote_id,
+    table_seed_part,
+)
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
     build_number_struct_array,
@@ -182,39 +189,18 @@ def mint_event_ids(
     if len(types) == 0:
         return pa.array([], pa.string())
     if minter is None:
-        minter = content_minter("event", _ipc_bytes(pa.table({"event_type": types})))
+        minter = content_minter(
+            EVENT_PREFIX, table_seed_part(pa.table({"event_type": types}))
+        )
     empty = pa.scalar("")
     prefixes = pc.utf8_lower(
-        pc.if_else(pc.equal(pc.fill_null(types, empty), empty), "event", types)
+        pc.if_else(pc.equal(pc.fill_null(types, empty), empty), EVENT_PREFIX, types)
     )
     ids = pa.nulls(len(prefixes), pa.string())
     for prefix in pc.unique(prefixes).to_pylist():
         rows = pc.equal(prefixes, prefix)
         ids = pc.replace_with_mask(ids, rows, minter.mint_many(prefix, rows.true_count))
     return ids
-
-
-def _ipc_bytes(table: pa.Table) -> bytes:
-    """The Arrow IPC stream bytes of *table*, in one batch: a content seed."""
-    table = table.combine_chunks()
-    sink = pa.BufferOutputStream()
-    with pa.ipc.new_stream(sink, table.schema) as writer:
-        writer.write_table(table)
-    return sink.getvalue().to_pybytes()
-
-
-def _given_minter(seed: int | None, minter: IdMinter | None) -> IdMinter | None:
-    """The minter a constructor given *seed* or *minter* draws its IDs from.
-
-    A seed gives a fresh :class:`~timetoalign.core.ids.IdMinter`; neither
-    gives None, for the constructor's content minter.
-
-    Raises:
-        TypeError: If both are given.
-    """
-    if seed is not None and minter is not None:
-        raise TypeError("Give seed or minter, not both.")
-    return IdMinter(seed) if seed is not None else minter
 
 
 def _ids_minted_where_missing(
@@ -235,7 +221,7 @@ def _ids_minted_where_missing(
     if not ids.null_count:
         return ids
     if minter is None:
-        minter = content_minter("event", _ipc_bytes(columns))
+        minter = content_minter(EVENT_PREFIX, table_seed_part(columns))
     types = (
         columns.column("event_type").filter(missing)
         if "event_type" in columns.column_names
@@ -1730,7 +1716,7 @@ class EventData(SemanticFieldAccessMixin):
             ...     {"event_type": "Note", "start": 0, "end": 0.5},
             ... ], unit=TimeUnit.seconds)
         """
-        given = _given_minter(seed, minter)
+        given = given_minter(seed, minter)
         number_type = unit.resolve_number_type(number_type)
         table = cls._rows_table(
             rows, unit, number_type, interval_policy=interval_policy
@@ -1883,7 +1869,7 @@ class EventData(SemanticFieldAccessMixin):
             >>> # Direct from loader output (StructArrays already parsed)
             >>> data = EventData.from_arrays(loader_fields, unit=TimeUnit.quarters)
         """
-        given = _given_minter(seed, minter)
+        given = given_minter(seed, minter)
         number_type = unit.resolve_number_type(number_type)
         if not fields:
             return cls.empty(unit, number_type)
@@ -2161,7 +2147,7 @@ class EventData(SemanticFieldAccessMixin):
         Raises:
             TypeError: If both *seed* and *minter* are given.
         """
-        _given_minter(seed, minter)
+        given_minter(seed, minter)
         if df.empty:
             return cls.empty(unit, number_type)
 

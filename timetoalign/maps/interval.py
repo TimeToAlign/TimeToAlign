@@ -119,7 +119,9 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             target_unit: The unit of output values (optional). Use None for
                 non-coordinate outputs like string labels.
             uid: Optional explicit ID.
-            seed: The seed of the minter of the id when *uid* is None.
+            seed: The seed of the minter of the ids: the map's own when
+                *uid* is None, then one per nested ConstantMap in interval
+                order.
             name: Human-readable name for this map.
 
         Raises:
@@ -155,18 +157,26 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         self._end = end
         # With an end, the ConstantMap of each interval its form nests. Set
         # first: the base reads the nested maps once, at construction.
+        piece_values = self._values if end is not None else []
+        own_id, *piece_ids = self._nested_ids(
+            seed if piece_values else None, len(piece_values)
+        )
         self._pieces = [
-            ConstantMap(value=value, source_unit=source_unit, target_unit=target_unit)
-            for value in (self._values if end is not None else ())
+            ConstantMap(
+                value=value,
+                source_unit=source_unit,
+                target_unit=target_unit,
+                uid=piece_id,
+            )
+            for value, piece_id in zip(piece_values, piece_ids, strict=True)
         ]
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
-            uid=uid,
-            seed=seed,
+            uid=uid if uid is not None else own_id,
+            seed=None if piece_values else seed,
             name=name,
         )
-        self._admit_ids()
 
     @property
     def end(self) -> CoordinateValue | None:

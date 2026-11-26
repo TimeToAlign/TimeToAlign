@@ -3779,3 +3779,39 @@ an unlocked one with `locked=False`.
    finite start is refused as a backwards span (rule 2), as before.
    Accepted neighbours: `9e18`, below `2**63`, as a start on `clock`, and
    a finite span `{"start": 1.0, "end": 2.0}`, each one claim.
+
+## MatchStamp table order (`test_stamp_table_order.py`)
+
+With random ids an order by id reads as random, so the MatchStamp table
+follows the order the bundle registered its timelines. What proves it is a
+bundle whose registration order is the reverse of the id order: timelines
+`z_score`, `m_perf`, `a_third`, registered in that order, each with one
+numeric C-Map. The columns of `get_matchstamp_table(conversion_maps=True)`
+are exactly `z_score`, its derived column, `m_perf`, its derived column,
+`a_third`, its derived column; an order by id, or derived columns gathered
+at the end, fails. With `from_graph=True` the rows are ordered by the
+first-registered timeline each row holds, then by the value on it: the two
+rows on `z_score` (0 and 8 quarters, given in the reverse order) come
+first, then the row joining only `m_perf` and `a_third`, although its
+`m_perf` value (2 seconds) lies between theirs (0 and 4 seconds).
+Every cell is checked with its exact value.
+
+## Ids of a warped copy and of a new group (`test_warp_copy_ids.py`)
+
+`WarpMap.materialise` copies a timeline's regions onto the warped timeline.
+A copy keeping the source's region ids could never join a group or bundle
+holding the source, so each warped region mints an id of its own from the
+source region's id and the warped timeline's id. The proof is the join
+itself: a bundle holding the source accepts the warped copy, and the copy's
+region ids are exactly those the minter computes (with `seed=7`, the warped
+timeline takes `IdMinter(7)`'s first id and the two regions its next two, in
+region order; without a seed, each region's id is the first one
+`content_minter("region", <source region id>, <warped timeline id>)`
+mints in a fresh run), while names and spans are those of the source.
+Running the seeded call twice, with other maps built in between, gives the
+same ids.
+
+`add_timeline(as_group=)` mints the new group's id and checks it before the
+timeline joins: a seed whose first id the bundle already holds (a timeline
+given that id) is refused with the one scope message, and the bundle holds
+exactly the timelines and groups it held before.

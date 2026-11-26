@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterator, Literal, TypeVar
 
-from timetoalign.loader._ids import CMAP_PREFIX
+from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.loader._optional import optional_module
 from timetoalign.loader._sources import Source, describe_source, readable
 from timetoalign.loader.base import Loader

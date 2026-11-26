@@ -20,11 +20,14 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from timetoalign.core import Domain, NumberType, TimeUnit
-from timetoalign.core.ids import IdMinter, content_minter, quote_id, timeline_id_prefix
-from timetoalign.storage import EventData, EventStore, SingleStore
-from timetoalign.storage.events import (
-    _ipc_bytes,
+from timetoalign.core.ids import (
+    IdMinter,
+    content_minter,
+    quote_id,
+    table_seed_part,
+    timeline_id_prefix,
 )
+from timetoalign.storage import EventData, EventStore, SingleStore
 from timetoalign.storage.events import (
     _register_timeline_factory as _register_data_factory,
 )
@@ -39,19 +42,18 @@ module_logger = logging.getLogger(__name__)
 
 
 def mint_timeline_id(
-    unit: TimeUnit, minter: IdMinter | None = None, *, role: str | None = None
+    unit: TimeUnit, minter: IdMinter, *, role: str | None = None
 ) -> str:
     """Mint a timeline ID: the unit's timeline prefix, led by *role*.
 
     The ID is ``{prefix}_{suffix}`` drawn from *minter*
     (:func:`~timetoalign.core.ids.timeline_id_prefix` of *unit*), led by
-    ``{role}:`` when a role is given (``score:clt_…``). Without a minter, it
-    comes from the content minter of the prefix alone, so successive calls
-    of one process mint successive IDs.
+    ``{role}:`` when a role is given (``score:clt_…``).
 
     Args:
         unit: The timeline's unit.
-        minter: The minter the ID is drawn from (a loader's), or None.
+        minter: The minter the ID is drawn from: a loader's, or the content
+            minter of what the timeline is built from.
         role: A role leading the ID, or None.
 
     Returns:
@@ -62,7 +64,7 @@ def mint_timeline_id(
         'score:clt_1be6k8ij6dzad'
     """
     prefix = timeline_id_prefix(unit)
-    timeline_id = (minter or content_minter(prefix)).mint(prefix)
+    timeline_id = minter.mint(prefix)
     return timeline_id if role is None else f"{role}:{timeline_id}"
 
 
@@ -78,7 +80,7 @@ def _content_minter_of(
     return content_minter(
         prefix,
         unit.value,
-        *(part for name, table in tables for part in (name, _ipc_bytes(table))),
+        *(part for name, table in tables for part in (name, table_seed_part(table))),
     )
 
 
@@ -211,7 +213,7 @@ def _create_grouped_timeline(
     effective_number_type: NumberType,
     uid: str | None = None,
     *,
-    minter: IdMinter | None,
+    minter: IdMinter,
 ) -> "Timeline":
     """Create a timeline with children grouped by a field value.
 
@@ -392,6 +394,8 @@ def create_timeline_from_bundle(
         first_data.unit, first_data.number_type
     )
     single = flatten or len(data_to_use) == 1
+    # The content minter is built only when an ID is minted: its seed reads
+    # every table.
     if minter is None and (uid is None or group_by is not None or not single):
         minter = _content_minter_of(
             first_data.unit, [(name, data.table) for name, data in data_to_use]
@@ -399,6 +403,7 @@ def create_timeline_from_bundle(
 
     # Handle group_by: create children from unique field values
     if group_by is not None:
+        assert minter is not None  # built above
         return _create_grouped_timeline(
             data_to_use,
             group_by=group_by,
@@ -408,6 +413,7 @@ def create_timeline_from_bundle(
             minter=minter,
         )
     if uid is None:
+        assert minter is not None  # built above
         uid = mint_timeline_id(first_data.unit, minter)
 
     # Single data case: put events directly on the timeline (no children).
@@ -440,6 +446,7 @@ def create_timeline_from_bundle(
         return timeline
 
     else:
+        assert minter is not None  # built above
         # Multiple data: create parent with children at offset 0
         # Parent length = max of all child lengths
         max_length: float | Fraction = 0.0

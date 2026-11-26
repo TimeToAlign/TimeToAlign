@@ -31,7 +31,13 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import join_row_member
-from timetoalign.core.ids import IdMinter, _OpenObject, content_minter, validate_id
+from timetoalign.core.ids import (
+    MEASURE_MAP_PREFIX,
+    IdMinter,
+    _OpenObject,
+    content_minter,
+    validate_id,
+)
 from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
 from timetoalign.core.time import (
     TimeScalarValue,
@@ -39,7 +45,6 @@ from timetoalign.core.time import (
     number_to_json,
     struct_to_rational,
 )
-from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 from timetoalign.timelines.manifest import read_id, read_meta, read_name, require_object
 
 if TYPE_CHECKING:
@@ -682,12 +687,12 @@ class MeasureMap(_OpenObject):
                 IdMinter(seed)
                 if seed is not None
                 else content_minter(
-                    MEASURE_MAP_ID_PREFIX,
+                    MEASURE_MAP_PREFIX,
                     name,
                     [repr(measure) for measure in self._measures],
                 )
             )
-            self._id = minter.mint(MEASURE_MAP_ID_PREFIX)
+            self._id = minter.mint(MEASURE_MAP_PREFIX)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, MeasureMap):
@@ -772,7 +777,9 @@ class MeasureMap(_OpenObject):
                 return measure
         raise KeyError(measure_id)
 
-    def get_slice(self, start: Fraction | int, end: Fraction | int) -> MeasureMap:
+    def get_slice(
+        self, start: Fraction | int, end: Fraction | int, *, seed: int | None = None
+    ) -> MeasureMap:
         """Return the measures holding ``[start, end)``, re-based to *start*.
 
         Positions are quarters, as the map's ``qstamp`` values. A measure is
@@ -791,6 +798,8 @@ class MeasureMap(_OpenObject):
         Args:
             start: The first position of the range, in quarters.
             end: The position the range ends before, in quarters.
+            seed: The seed of the minter of the slice's id; without one, it
+                is minted from the slice's content. Not stored.
 
         Returns:
             The measure map of the range.
@@ -839,26 +848,31 @@ class MeasureMap(_OpenObject):
                 held.append((measure, qstamp, qstamp + length))
         ids = {measure.id for measure, _, _ in held}
         sliced = type(self)(
-            Measure.from_values(
-                id=measure.id,
-                qstamp=max(first, start) - start,
-                number=measure.number,
-                name=measure.name,
-                time_signature=measure.time_signature,
-                nominal_length=measure.nominal_length,
-                actual_length=min(last, end) - max(first, start),
-                start_repeat=measure.start_repeat,
-                end_repeat=measure.end_repeat,
-                next=tuple(
-                    successor for successor in measure.next or () if successor in ids
-                ),
-                volta=measure.volta,
-                offset_within_measure=(
-                    getattr(measure, "offset_within_measure", Fraction(0))
-                    + max(start - first, Fraction(0))
-                ),
-            )
-            for measure, first, last in held
+            (
+                Measure.from_values(
+                    id=measure.id,
+                    qstamp=max(first, start) - start,
+                    number=measure.number,
+                    name=measure.name,
+                    time_signature=measure.time_signature,
+                    nominal_length=measure.nominal_length,
+                    actual_length=min(last, end) - max(first, start),
+                    start_repeat=measure.start_repeat,
+                    end_repeat=measure.end_repeat,
+                    next=tuple(
+                        successor
+                        for successor in measure.next or ()
+                        if successor in ids
+                    ),
+                    volta=measure.volta,
+                    offset_within_measure=(
+                        getattr(measure, "offset_within_measure", Fraction(0))
+                        + max(start - first, Fraction(0))
+                    ),
+                )
+                for measure, first, last in held
+            ),
+            seed=seed,
         )
         sliced._unknown_row_keys = {
             measure_id: keys

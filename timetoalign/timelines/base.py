@@ -2074,12 +2074,10 @@ class Timeline(
         elif whole and not matches_any(timelines, id=timeline_id, name=name):
             timeline = content.roots[0]
             if timeline_id is not None:
-                if timeline_id in content.ids:
-                    raise ValueError(
-                        f"root timeline {quote_id(timeline.id)} cannot take the id "
-                        f"{quote_id(timeline_id)}: it is already held by "
-                        f"{content.ids[timeline_id]}"
-                    )
+                _refuse_held_ids(
+                    [(timeline_id, f"root timeline {quote_id(timeline.id)}")],
+                    content.ids,
+                )
                 # The manifest's statements name the root by its new id too.
                 timeline._manifest = manifest
                 timeline._set_id(timeline_id)

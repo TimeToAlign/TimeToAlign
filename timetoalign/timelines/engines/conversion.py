@@ -19,6 +19,7 @@ from timetoalign.core import (
     express_as,
     resolve_coordinate_spec,
 )
+from timetoalign.core.ids import minting_from
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -207,6 +208,9 @@ class ConversionMapsMixin(_Host):
         target_unit: TimeUnit | str,
         name: str | None = None,
         copy_events: bool = False,
+        *,
+        uid: str | None = None,
+        seed: int | None = None,
     ) -> "Timeline":
         """Create a derivative timeline in a different unit via C-Map conversion.
 
@@ -228,6 +232,12 @@ class ConversionMapsMixin(_Host):
             target_unit: The unit for the derived timeline.
             name: Optional name for the derived timeline.
             copy_events: If True, copy and convert events to the derived timeline.
+            uid: The derived timeline's id; minted when None.
+            seed: The seed of one minter of every id the call mints, in the
+                order built: the derived timeline (unless *uid* is given),
+                the inverse C-Map, the copied events
+                (:func:`~timetoalign.core.ids.minting_from`); without one,
+                each from its content. Not stored.
 
         Returns:
             A new Timeline in the target unit.
@@ -274,50 +284,54 @@ class ConversionMapsMixin(_Host):
             # Fallback to base Timeline if domain lookup fails
             derived_class = Timeline
 
-        # Create derived timeline
-        derived = derived_class(
-            length=derived_length,
-            unit=target,
-            name=name or f"{self._id}_derived",
-        )
-
-        # Add inverse C-Map if available (for roundtrip conversion)
-        if cmap.is_invertible:
-            inverse = cmap.inverse()
-            derived.add_conversion_map(inverse)
-        else:
-            self._logger.warning(
-                f"C-Map '{cmap.id}' is not invertible. "
-                f"The derived timeline will not have a C-Map back to '{self._unit}'."
+        with minting_from(seed):
+            # Create derived timeline
+            derived = derived_class(
+                length=derived_length,
+                unit=target,
+                name=name or f"{self._id}_derived",
+                uid=uid,
             )
 
-        # Copy and convert events if requested
-        if copy_events:
-            converted_events = []
-            coordinate_values = {
-                name: self._events.column_values(name)
-                for name in ("instant", "start", "end", "duration")
-            }
-            for index, event in enumerate(self._events):
-                # Skip segment events
-                if event.get("event_type") == SEGMENT_EVENT_TYPE:
-                    continue
+            # Add inverse C-Map if available (for roundtrip conversion)
+            if cmap.is_invertible:
+                inverse = cmap.inverse()
+                derived.add_conversion_map(inverse)
+            else:
+                self._logger.warning(
+                    f"C-Map '{cmap.id}' is not invertible. "
+                    f"The derived timeline will not have a C-Map back to '{self._unit}'."
+                )
 
-                converted = dict(event)
-                for coord_col in ("instant", "start", "end"):
-                    val = coordinate_values[coord_col][index]
-                    if val is not None:
-                        converted[coord_col] = float(cmap(val))
+            # Copy and convert events if requested
+            if copy_events:
+                converted_events = []
+                coordinate_values = {
+                    name: self._events.column_values(name)
+                    for name in ("instant", "start", "end", "duration")
+                }
+                for index, event in enumerate(self._events):
+                    # Skip segment events
+                    if event.get("event_type") == SEGMENT_EVENT_TYPE:
+                        continue
 
-                # Convert duration if present
-                duration_val = coordinate_values["duration"][index]
-                if duration_val is not None:
-                    converted["duration"] = float(cmap(duration_val)) - float(cmap(0))
+                    converted = dict(event)
+                    for coord_col in ("instant", "start", "end"):
+                        val = coordinate_values[coord_col][index]
+                        if val is not None:
+                            converted[coord_col] = float(cmap(val))
 
-                converted_events.append(converted)
+                    # Convert duration if present
+                    duration_val = coordinate_values["duration"][index]
+                    if duration_val is not None:
+                        converted["duration"] = float(cmap(duration_val)) - float(
+                            cmap(0)
+                        )
 
-            if converted_events:
-                derived.add_events(converted_events)
+                    converted_events.append(converted)
+
+                if converted_events:
+                    derived.add_events(converted_events)
 
         self._logger.debug(
             f"Derived timeline '{derived.id}' in {target} from '{self._id}'"

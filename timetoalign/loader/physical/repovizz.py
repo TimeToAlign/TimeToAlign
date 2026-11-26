@@ -42,8 +42,8 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit, resolve_id
+from timetoalign.core.ids import CMAP_PREFIX, GROUP_PREFIX
 from timetoalign.display.html import code
-from timetoalign.loader._ids import CMAP_PREFIX, GROUP_PREFIX
 from timetoalign.loader._sources import (
     Source,
     SourceLike,

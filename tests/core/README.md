@@ -1375,6 +1375,118 @@ a wrong row named. Evidence:
   by one that fails, `cells_from_package` and `package_cells` of 1,000
   cells still give the same cells.
 
+### `test_number_columns.py` - Column kernels that read each row in its own number type
+
+**Purpose:** A table whose rows lie on several timelines keeps each row in
+its own timeline's number type; nothing is converted when such tables are
+joined. Two column kernels must therefore take the number type **per row**
+(`NUMBER_TYPE_CODES`: int 0, fraction 1, float 2, given as one `NumberType`
+for every row or as a `pa.Int8Array` of codes): the cast on request
+(`cast_number_column`) and the comparison every query runs
+(`compare_number_column`). And every way into memory of a number cell runs
+one cell validator, so a cell is a well-formed number before any kernel
+reads it. Every expected value is exact, written out below, and derived by
+hand from the rule, not from the implementation.
+
+**The codes.** `NUMBER_TYPE_CODES` maps `int`, `fraction`, `float` to `0`,
+`1`, `2`, and `NUMBER_TYPES_BY_CODE` maps them back (each the other's
+inverse, asserted over all three). `number_type_codes([fraction, float,
+int])` is the `int8` array `[1, 2, 0]`; names (`"float"`) are read as the
+members they name. A row-type array of another length than the column, a
+null code or a code outside `0..2` is refused (`ValueError`), since a row of
+no known type has no rule to be read by.
+
+**The cast** re-expresses every non-null cell in the target type, as
+`express_as` writes one value, and leaves the rows already of the target
+as they are:
+
+| Cells (row type) | Target | Expected cells `(value, numerator, denominator)` |
+|---|---|---|
+| int `1`, fraction `1/2`, float `0.25`, float `0.1`, null | fraction | `(1.0, 1, 1)`, `(0.5, 1, 2)`, `(0.25, 1, 4)`, `(0.1, 3602879701896397, 36028797018963968)`, null |
+| fractions `1/2`, `3/2`, `5/2`, `3/4`, `-1/2` | int | `0`, `2`, `2`, `1`, `0` (nearest, ties to even, on the ratio) |
+| floats `2.5`, `3.5`, `-0.5` | int | `2`, `4`, `0` (`rint`; `-0.5` gives `0` with the float `0.0`) |
+| fraction `1/3`, int `7` | float | `(0.3333333333333333, 6004799503160661, 18014398509481984)`, `(7.0, 7, 1)` |
+
+- int → fraction re-declares the cell: `n/1` is a fraction cell, so the
+  cell is returned bit for bit; float → fraction is the double's exact
+  dyadic ratio (`0.1` as above, never `1/10`, which would be a ratio the
+  data never stated); → float is the nearest double (`float(Fraction(1,
+  3))`) with its ratio side rebuilt as that double's mirror, so the two
+  sides of the cast cell carry one number.
+- **A double with no int64 ratio is refused**: `1e-300` cast to fraction
+  raises `ValueError` (its exact denominator passes `2**62`), as the
+  builder refuses it on an exact field; a ratio is never approximated.
+- **Rows of the target stay untouched**: a column of `[float 0.1, int 3]`
+  cast to float keeps the first cell bit for bit (including its ratio
+  side) and casts only the second.
+- **One type for every row equals the code array of that type**: the cast
+  of a column under `NumberType.fraction` equals its cast under the code
+  array `[1, 1, …]`.
+- **Vectorised**: with the per-cell encoder (`number_cell`) and the scalar
+  arithmetic (`combine_numbers`) replaced by functions that fail, a
+  1,000-row column mixing the three types casts to each target, so no row
+  is computed one at a time.
+
+**The comparison** takes per-row types. Where the query or the row is a
+float, the two compare as float keys (the float side of the cell; `0.1`
+finds `1/10`); otherwise exactly, cross-multiplied, so a fraction `3/4` is
+never `1`:
+
+| Query | Comparison | Rows (type) | Expected |
+|---|---|---|---|
+| int `1` | equal | fraction `3/4`, fraction `1/1`, float `1.0`, int `1` | `[False, True, True, True]` |
+| float `0.1` | equal | fraction `1/10`, float `0.1`, int `0` | `[True, True, False]` |
+| `Fraction(1, 2)` | less | fraction `1/3`, float `0.5`, int `0` | `[True, False, True]` |
+
+The float row `0.3333333333333333` holds that double's dyadic ratio, which
+is not `1/3`; under the exact query `Fraction(1, 3)`, `equal`, on the rows
+fraction `1/3`, float `0.3333333333333333`, fraction `333/1000`, the answer
+is `[True, True, False]`: the float row compares as a key with
+`float(Fraction(1, 3))`, the same double, where cross-multiplying its ratio
+would have said `False`. A second column of cells compares row for row
+under the same row types. A single `NumberType` keeps every caller's
+answer (every existing test of `compare_number_column` passes unchanged).
+A NaN query is still refused (`NaN names no position: it compares with no
+cell`), and a null row answers null.
+
+**One cell validator** for every entry of cells (`number_cell` given a cell
+dict, `build_number_struct_array` given a column of cells, `in_lowest_terms`,
+`DenominateNumber.from_cell`, and the `EventData` constructor):
+
+- **A zero denominator is refused**, naming the cell: `number_cell({"value":
+  1.0, "numerator": 1, "denominator": 0})` raises `ValueError` whose message
+  contains `{'value': 1.0, 'numerator': 1, 'denominator': 0}` and
+  `denominator 0`; a column holding it at row 1 raises naming `row 1` and
+  the cell, from the builder, from `in_lowest_terms` and from an `EventData`
+  given a table holding it as `start`.
+- **Two sides that disagree are resolved by the number type**: the side the
+  type names is the number, the other is derived from it. The cell
+  `{numerator 1, denominator 2, value 0.7}` declared fraction is held as
+  `(0.5, 1, 2)`; declared float as `(0.7, 3152519739159347,
+  4503599627370496)`, the exact ratio of the double `0.7`. The same
+  answers come from `number_cell(cell, type)`, from
+  `build_number_struct_array` of a column holding the cell, from
+  `DenominateNumber.from_cell`, from `in_lowest_terms` of a coordinate cell
+  whose `number_type` member names the type, and from an `EventData` whose
+  `start` column declares it.
+- **What counts as agreeing**: a cell whose float is its ratio's nearest
+  double, or whose ratio is its float's mirror (the exact dyadic ratio, or
+  for a double below about `2**-10` the nearest ratio over `2**62`), agrees
+  and is kept as it stands under any type, so a well-formed cell is never
+  rewritten (the mirror cell of `1e-300`, `(1e-300, 0, 1)`, declared int,
+  keeps its float). On an int cell, the measured float a rounding mode
+  made the integer from (`preserve_source_floats`: `(1.4, 1, 1)`, any float
+  less than 1 away from the integer) is the cell's provenance and kept;
+  `(3.0, 1, 1)` declared int is held as `(1.0, 1, 1)`.
+- **Without a number type there is nothing to resolve by**:
+  `number_cell(cell)` and `in_lowest_terms` of a bare number column keep
+  both sides as given (reduced), as before.
+- **Reduction stays as it is**: `2/4` is held as `1/2`, every spelling
+  accepted and compared by value.
+- **One rule, two routes**: 400 seeded cells, some agreeing and some not,
+  under each of the three types, give the same cells from the column
+  validator and from `number_cell` cell by cell.
+
 ### `test_numpy_portability_hygiene.py` - Integer widths the library chooses
 
 **Purpose:** Keeps the storage guarantee ("an int64 numerator means 64 bits of

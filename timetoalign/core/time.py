@@ -163,6 +163,80 @@ the data which representation to trust, and a float column and an exact
 column are told apart by their schema rather than by sampling their rows.
 """
 
+NUMBER_TYPES_BY_CODE: tuple[NumberType, NumberType, NumberType] = (
+    NumberType.int,
+    NumberType.fraction,
+    NumberType.float,
+)
+"""The number type of each row-type code: the code is the position here.
+
+A column whose rows lie on several timelines holds each row in its own
+timeline's number type. The column kernels (:func:`cast_number_column`,
+:func:`compare_number_column`) then take the number type per row, as a
+``pa.int8`` array of these codes (:func:`number_type_codes`), or one
+:class:`NumberType` for every row.
+"""
+
+NUMBER_TYPE_CODES: dict[NumberType, int] = {
+    number_type: code for code, number_type in enumerate(NUMBER_TYPES_BY_CODE)
+}
+"""The row-type code of each number type: ``int`` 0, ``fraction`` 1, ``float`` 2.
+
+The inverse of :data:`NUMBER_TYPES_BY_CODE`.
+"""
+
+_FLOAT_CODE: int = NUMBER_TYPE_CODES[NumberType.float]
+
+
+def number_type_codes(number_types: Iterable[NumberType | str]) -> pa.Int8Array:
+    """The row-type codes of *number_types*, one per row.
+
+    Args:
+        number_types: The number type of each row, as a member or its name
+            (``"fraction"``).
+
+    Returns:
+        A ``pa.Int8Array`` of :data:`NUMBER_TYPE_CODES`.
+
+    Examples:
+        >>> number_type_codes([NumberType.fraction, "float", NumberType.int]).to_pylist()
+        [1, 2, 0]
+    """
+    codes = [NUMBER_TYPE_CODES[NumberType(number_type)] for number_type in number_types]
+    return pa.array(codes, pa.int8())
+
+
+def _row_type_codes(
+    row_types: NumberType | pa.Int8Array, length: int
+) -> npt.NDArray[np.int8]:
+    """*row_types* as one int8 code per row of a column of *length* rows.
+
+    Raises:
+        ValueError: If a code array has another length, a null, or a code
+            that names no number type.
+    """
+    if isinstance(row_types, NumberType):
+        return np.full(length, NUMBER_TYPE_CODES[row_types], dtype=np.int8)
+    if len(row_types) != length:
+        raise ValueError(
+            f"{len(row_types)} row types were given for a column of {length} rows; "
+            "a column takes one number type per row"
+        )
+    if row_types.null_count:
+        raise ValueError(
+            "a row type is null; every row is read in a number type "
+            f"(codes {NUMBER_TYPE_CODES})"
+        )
+    codes = row_types.to_numpy(zero_copy_only=False).astype(np.int8)
+    unknown = (codes < 0) | (codes >= len(NUMBER_TYPES_BY_CODE))
+    if unknown.any():
+        raise ValueError(
+            f"the row-type code {int(codes[unknown][0])} names no number type "
+            f"(codes {NUMBER_TYPE_CODES})"
+        )
+    return codes
+
+
 _INT64_MIN: int = -(2**63)
 _INT64_MAX: int = 2**63 - 1
 
@@ -171,6 +245,9 @@ _INT64_MAX: int = 2**63 - 1
 # past 2**62, which do not fit; for those the mirror falls back to the nearest
 # ratio over this denominator.  See _pair_from_float.
 _MIRROR_DENOMINATOR_EXPONENT: int = 62
+
+# A double at or past 2**63 has no int64 ratio, exact or mirrored.
+_MIRROR_LIMIT: float = float(2**63)
 
 _FRACTION_RE = re.compile(r"^\s*(-?\d+)\s*/\s*(-?\d+)\s*$")
 """Recogniser for ``"<numerator>/<denominator>"`` strings."""
@@ -423,7 +500,7 @@ def number_cell(
         :data:`RATIONAL_STRUCT_TYPE`.
     """
     if _is_dict(value):
-        return _normalise_cell(value)
+        return _settled_cell(value, number_type)
     number = parse_number(value)
     if number_type is None:
         number_type = NumberType.from_number(number)
@@ -446,8 +523,32 @@ def number_cell(
     return {"value": mirror, "numerator": numerator, "denominator": denominator}
 
 
-def _normalise_cell(cell: dict[str, Any]) -> dict[str, Any]:
-    """Complete and type-check an already-shaped storage cell."""
+def _settled_cell(
+    cell: dict[str, Any], number_type: NumberType | None = None
+) -> dict[str, Any]:
+    """Complete, type-check and settle an already-shaped storage cell.
+
+    The one cell rule of the library, for one cell; :func:`_settled_cells`
+    applies it to a column, and the two give the same cells. Every entry of
+    a cell into memory runs it:
+
+    * the ratio is held in lowest terms, sign on top (``2/4`` as ``1/2``):
+      any spelling is accepted and compared by value;
+    * a zero denominator is refused, since it names no number;
+    * two sides that disagree are resolved by *number_type*: the side it
+      names is the number, the other is derived (a ``float`` cell's ratio
+      becomes its float's mirror, an ``int`` or ``fraction`` cell's float
+      the nearest double of its ratio). A cell agrees when its float is its
+      ratio's nearest double or its ratio is its float's mirror; it is then
+      kept under any type. On an ``int`` cell a float less than 1 away from
+      the integer is the measured value it was rounded from
+      (``preserve_source_float``), and kept. Without *number_type* nothing
+      is resolved.
+
+    Raises:
+        ValueError: On a malformed cell, a zero denominator, or a ``float``
+            cell whose float is not finite.
+    """
     if set(cell) != {"value", "numerator", "denominator"}:
         raise ValueError(f"Invalid coordinate dict structure: {cell}")
     numerator = cell.get("numerator")
@@ -459,15 +560,50 @@ def _normalise_cell(cell: dict[str, Any]) -> dict[str, Any]:
         return number_cell(float(value), NumberType.float)
     numerator = _coerce_ratio_component(numerator, "numerator")
     denominator = _coerce_ratio_component(denominator, "denominator")
-    if denominator:
-        # One spelling per value in memory: 2/4 is held as 1/2.
-        ratio = Fraction(numerator, denominator)
-        numerator, denominator = ratio.numerator, ratio.denominator
-    return {
-        "value": (None if cell["value"] is None else float(cell["value"])),
-        "numerator": numerator,
-        "denominator": denominator,
-    }
+    if denominator == 0:
+        raise ValueError(
+            f"The cell {cell!r} has the denominator 0: a zero denominator names "
+            "no number."
+        )
+    # One spelling per value in memory: 2/4 is held as 1/2.
+    ratio = Fraction(numerator, denominator)
+    numerator, denominator = ratio.numerator, ratio.denominator
+    value = None if cell["value"] is None else float(cell["value"])
+    if (
+        number_type is not None
+        and value is not None
+        and _sides_disagree(value, numerator, denominator)
+    ):
+        if number_type is NumberType.float:
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"The float cell {cell!r} holds the non-finite value {value}, "
+                    "which a number cell cannot store."
+                )
+            numerator, denominator = _pair_from_float(value)
+        elif not (
+            number_type is NumberType.int
+            and denominator == 1
+            and abs(value - numerator) < 1
+        ):
+            value = float(ratio)
+    return {"value": value, "numerator": numerator, "denominator": denominator}
+
+
+def _sides_disagree(value: float, numerator: int, denominator: int) -> bool:
+    """Whether a cell's float and its ratio (in lowest terms) are two numbers.
+
+    They agree when the float is the ratio's nearest double, or when the
+    ratio is the float's mirror (:func:`_pair_from_float`), which for a
+    double below about ``2**-10`` is the nearest ratio over ``2**62``.
+    """
+    if float(Fraction(numerator, denominator)) == value:
+        return False
+    return not (
+        math.isfinite(value)
+        and abs(value) < _MIRROR_LIMIT
+        and _pair_from_float(value) == (numerator, denominator)
+    )
 
 
 def _coerce_ratio_component(component: Any, label: str) -> int:
@@ -847,7 +983,7 @@ def build_number_struct_array(
         preserve_source_floats=preserve_source_floats,
     )
     if vectorised is None:
-        vectorised = _pass_number_struct_array(values)
+        vectorised = _pass_number_struct_array(values, number_type)
     if vectorised is not None:
         return vectorised
 
@@ -960,15 +1096,18 @@ def _build_numeric_struct_array(
     )
 
 
-def _pass_number_struct_array(values: Any) -> pa.StructArray | None:
+def _pass_number_struct_array(
+    values: Any, number_type: NumberType
+) -> pa.StructArray | None:
     """Take a column of complete number structs whole; ``None`` if inapplicable.
 
     Vectorised counterpart of what :func:`number_cell` does to one cell dict
-    with both sides present: the cell is kept, its ratio in lowest terms
-    (:func:`in_lowest_terms`), so memory holds one spelling of each value. A
-    column of another struct type, or one holding a non-null cell with a
-    null numerator or denominator, is left to the per-row reader, which
-    knows what such a cell means.
+    with both sides present: the cell is settled by the one cell rule
+    (:func:`_settled_cells`: lowest terms, a zero denominator refused, two
+    sides that disagree resolved by *number_type*). A column of another
+    struct type, or one holding a non-null cell with a null numerator or
+    denominator, is left to the per-row reader, which knows what such a
+    cell means.
     """
     if _is_chunked(values):
         values = values.combine_chunks()
@@ -982,10 +1121,11 @@ def _pass_number_struct_array(values: Any) -> pa.StructArray | None:
     incomplete = pc.and_(valid, pc.or_(sides[1].is_null(), sides[2].is_null()))
     if pc.any(incomplete).as_py():
         return None
-    return in_lowest_terms(
+    return _settled_cells(
         _struct_array_from(
             sides, fields=_member_fields(RATIONAL_STRUCT_TYPE), mask=pc.invert(valid)
-        )
+        ),
+        number_type,
     )
 
 
@@ -1004,15 +1144,19 @@ def _lowest_terms(
 
 
 def in_lowest_terms(numbers: Any) -> pa.StructArray:
-    """A column of numbers or coordinate cells, every ratio in lowest terms.
+    """A column of numbers or coordinate cells, settled, every ratio in lowest terms.
 
     Memory holds one spelling of each value, the one ``Fraction(n, d)``
-    holds: a cell holding ``2/4`` holds ``1/2``, ``1/-2`` is ``-1/2``. The
-    other members (the float, a cell's ``unit`` and ``number_type``) are
-    kept, and so is a cell missing its numerator or denominator. Every
-    entry into memory of a column of number structs reduces through here
-    (:func:`build_number_struct_array` and the MatchClaim table's reader),
-    so cells compare by value wherever they are compared. Vectorized.
+    holds: a cell holding ``2/4`` holds ``1/2``, ``1/-2`` is ``-1/2``. A
+    zero denominator is refused. A coordinate cell names its number type
+    (its ``number_type`` member), and a cell whose two sides disagree is
+    resolved by it (:func:`_settled_cell`); a bare number cell names none
+    and keeps both sides. The other members (a cell's ``unit`` and
+    ``number_type``) are kept, and so is a cell missing its numerator or
+    denominator. Every entry into memory of a column of number structs
+    runs this rule (:func:`build_number_struct_array`, the ``EventData``
+    constructor, the MatchClaim table's reader), so cells compare by value
+    wherever they are compared. Vectorized.
 
     Args:
         numbers: A struct column holding the members ``numerator`` and
@@ -1022,6 +1166,9 @@ def in_lowest_terms(numbers: Any) -> pa.StructArray:
     Returns:
         A ``pa.StructArray`` of the type of *numbers*.
 
+    Raises:
+        ValueError: On a zero denominator, naming the row and its cell.
+
     Examples:
         >>> numbers = pa.array(
         ...     [{"value": 0.5, "numerator": 2, "denominator": 4}],
@@ -1030,24 +1177,128 @@ def in_lowest_terms(numbers: Any) -> pa.StructArray:
         >>> in_lowest_terms(numbers).to_pylist()
         [{'value': 0.5, 'numerator': 1, 'denominator': 2}]
     """
-    if _is_chunked(numbers):
-        numbers = numbers.combine_chunks()
-    names = numbers.type.names
+    return _settled_cells(numbers)
+
+
+def _settled_cells(
+    cells: Any, row_types: NumberType | pa.Int8Array | None = None
+) -> pa.StructArray:
+    """The one cell rule of :func:`_settled_cell`, over a column of cells.
+
+    *cells* is a struct column with the members ``numerator`` and
+    ``denominator`` and usually ``value``. Its rows are reduced, a zero
+    denominator is refused, and where *row_types* are known (given, or the
+    cells' own ``number_type`` member) a cell whose two sides disagree is
+    resolved by its row's type. Cells that agree, nulls and cells missing a
+    ratio member are kept. Vectorized: the agreement of every row is one
+    division; only the rows that disagree are mirrored again.
+
+    Raises:
+        ValueError: On a zero denominator, or a ``float`` cell whose float
+            is not finite, naming the row and its cell.
+    """
+    if _is_chunked(cells):
+        cells = cells.combine_chunks()
+    names = cells.type.names
     # flatten() applies the slice offset and nulls every member of a null cell.
-    members = numbers.flatten()
+    members = cells.flatten()
     at_n, at_d = names.index("numerator"), names.index("denominator")
     numerator: pa.Array[Any] = members[at_n]
     denominator: pa.Array[Any] = members[at_d]
     complete = pc.and_(numerator.is_valid(), denominator.is_valid())
-    n, d = _lowest_terms(
-        numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64),
-        denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64),
-    )
+    complete_rows = complete.to_numpy(zero_copy_only=False)
+    n = numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
+    d = denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64)
+    zero = complete_rows & (d == 0)
+    if zero.any():
+        row = int(np.flatnonzero(zero)[0])
+        raise ValueError(
+            f"row {row}: the cell {cells[row].as_py()!r} has the denominator 0: a "
+            "zero denominator names no number."
+        )
+    n, d = _lowest_terms(n, d)
+    codes = _cell_type_codes(row_types, members, names)
+    if codes is not None and "value" in names:
+        at_v = names.index("value")
+        members[at_v], n, d = _resolved_sides(
+            cells, members[at_v], n, d, complete_rows, codes
+        )
     members[at_n] = pc.if_else(complete, pa.array(n, pa.int64()), numerator)
     members[at_d] = pc.if_else(complete, pa.array(d, pa.int64()), denominator)
     return _struct_array_from(
-        members, fields=_member_fields(numbers.type), mask=numbers.is_null()
+        members, fields=_member_fields(cells.type), mask=cells.is_null()
     )
+
+
+def _cell_type_codes(
+    row_types: NumberType | pa.Int8Array | None,
+    members: Sequence[pa.Array[Any]],
+    names: Sequence[str],
+) -> npt.NDArray[np.int8] | None:
+    """The row-type code of every cell, ``-1`` where a cell names none.
+
+    Given *row_types* decide; else a coordinate cell's ``number_type``
+    member does (*members* are the cells' flattened members, named by
+    *names*); a bare number column without them has none (``None``).
+    """
+    length = len(members[0])
+    if row_types is not None:
+        return _row_type_codes(row_types, length)
+    if "number_type" not in names:
+        return None
+    named = members[names.index("number_type")]
+    codes = np.full(length, -1, dtype=np.int8)
+    for number_type, code in NUMBER_TYPE_CODES.items():
+        naming = _compared("equal", named, number_type.name).fill_null(False)
+        codes[naming.to_numpy(zero_copy_only=False)] = code
+    return codes
+
+
+def _resolved_sides(
+    cells: pa.StructArray,
+    values: pa.Array[Any],
+    n: np.ndarray,
+    d: np.ndarray,
+    complete: np.ndarray,
+    codes: npt.NDArray[np.int8],
+) -> tuple[pa.Array[Any], np.ndarray, np.ndarray]:
+    """The float side and the ratio of *cells*, two disagreeing sides resolved.
+
+    The column rule of :func:`_settled_cell`: the side a row's type names
+    is its number and the other is derived; a row whose sides agree (its
+    float its ratio's nearest double, or its ratio its float's mirror), a
+    row of no known type, and an ``int`` row's measured float less than 1
+    from its integer are kept. *n* and *d* are in lowest terms.
+    """
+    has_value = values.is_valid().to_numpy(zero_copy_only=False)
+    v = values.fill_null(0.0).to_numpy(zero_copy_only=False).astype(np.float64)
+    rows = complete & has_value & (codes >= 0)
+    nearest = _ratio_values(np.where(rows, n, 0), np.where(rows, d, 1))
+    disagree = rows & (nearest != v)
+    if not disagree.any():
+        return values, n, d
+    mirrorable = disagree & np.isfinite(v) & (np.abs(v) < _MIRROR_LIMIT)
+    mirror_n, mirror_d = _pairs_from_float_array(np.where(mirrorable, v, 0.0))
+    disagree &= ~(mirrorable & (mirror_n == n) & (mirror_d == d))
+    floats = disagree & (codes == _FLOAT_CODE)
+    unstorable = floats & ~mirrorable
+    if unstorable.any():
+        row = int(np.flatnonzero(unstorable)[0])
+        raise ValueError(
+            f"row {row}: the float cell {cells[row].as_py()!r} holds a value "
+            "that a number cell cannot store (not finite, or past int64)."
+        )
+    measured = (
+        (codes == NUMBER_TYPE_CODES[NumberType.int])
+        & (d == 1)
+        & (np.abs(v - n.astype(np.float64)) < 1)
+    )
+    exact = disagree & ~floats & ~measured
+    n = np.where(floats, mirror_n, n)
+    d = np.where(floats, mirror_d, d)
+    if exact.any():
+        values = pc.if_else(pa.array(exact), pa.array(nearest, pa.float64()), values)
+    return values, n, d
 
 
 def _round_float_array(values: np.ndarray, rounding: str) -> np.ndarray:
@@ -1294,34 +1545,39 @@ def compare_number_column(
     column: pa.Array[Any] | pa.ChunkedArray[Any],
     number: int | float | Fraction | pa.Array[Any] | pa.ChunkedArray[Any],
     comparison: str,
-    number_type: NumberType,
+    number_type: NumberType | pa.Int8Array,
 ) -> pa.BooleanArray:
-    """Compare a column of storage cells with a number, as the column reads.
+    """Compare a column of storage cells with a number, each row as it reads.
 
-    An ``int`` or ``fraction`` column is compared exactly with an exact
-    number (an ``int`` or a ``Fraction``), on its ratio side: ``n/d``
-    against ``p/q`` is ``n·q`` against ``p·d``, cross-multiplied in
-    decimals wide enough that no product overflows. A float compares as a
-    key: against the float side of the cells, which holds each stored value
-    as the nearest double, so ``0.1`` equals a cell holding ``1/10`` and
-    ``10.5`` lies between cells holding ``10`` and ``11``. A ``float``
-    column is compared on its float side whatever the number, which is what
-    comparing two floats means. An infinite float compares as an
-    infinite double does (every finite row lies below ``inf``).
+    Each row is read in its number type: one for the whole column, or one
+    per row (:func:`number_type_codes`), as in a table whose rows lie on
+    timelines of different number types. An ``int`` or ``fraction`` row is
+    compared exactly with an exact number (an ``int`` or a ``Fraction``),
+    on its ratio side: ``n/d`` against ``p/q`` is ``n·q`` against ``p·d``,
+    cross-multiplied in decimals wide enough that no product overflows.
+    Where the number or the row is a float, the two compare as keys: the
+    float side of the cell, which holds each stored value as the nearest
+    double, against the number's double, so ``0.1`` equals a cell holding
+    ``1/10`` and ``10.5`` lies between cells holding ``10`` and ``11``. An
+    infinite float compares as an infinite double does (every finite row
+    lies below ``inf``). Rows of both kinds are one ``if_else`` over the two
+    comparisons, never a loop.
 
     Args:
         column: A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
         number: The number to compare every row with, or a second column of
-            storage cells, compared row for row.
+            storage cells, compared row for row and read in the same row
+            types.
         comparison: ``"equal"``, ``"less"``, ``"less_equal"`` or
             ``"greater_equal"`` (row against *number*).
-        number_type: How the column declares its numbers.
+        number_type: How the column's rows declare their numbers.
 
     Returns:
         A boolean array, null where a compared row is null.
 
     Raises:
-        ValueError: If *number* is NaN, which names no position.
+        ValueError: If *number* is NaN, which names no position, or the row
+            types do not fit the column.
     """
     column = _struct_array(column)
     valid = column.is_valid()
@@ -1345,7 +1601,12 @@ def compare_number_column(
             pa.scalar(Decimal(exact.numerator), _CROSS_MULTIPLICATION_TYPE),
             pa.scalar(Decimal(exact.denominator), _CROSS_MULTIPLICATION_TYPE),
         )
-    if ratio is None or number_type is NumberType.float:
+    float_rows = (
+        np.full(len(column), number_type is NumberType.float)
+        if isinstance(number_type, NumberType)
+        else _row_type_codes(number_type, len(column)) == _FLOAT_CODE
+    )
+    if ratio is None or bool(float_rows.all()):
         compared = _compared(kernel, _struct_child(column, "value"), float_side)
     else:
         numerator, denominator = ratio
@@ -1357,8 +1618,133 @@ def compare_number_column(
             _struct_child(column, "denominator").cast(wide), numerator.cast(wide)
         )
         compared = _compared(kernel, left, right)
+        if float_rows.any():
+            keys = _compared(kernel, _struct_child(column, "value"), float_side)
+            compared = pc.if_else(pa.array(float_rows), keys, compared)
     # A struct's own nulls do not reach its members; carry them over.
     return pc.if_else(valid, compared, pa.scalar(None, type=pa.bool_()))
+
+
+def cast_number_column(
+    cells: pa.Array[Any] | pa.ChunkedArray[Any],
+    row_types: NumberType | pa.Int8Array,
+    target: NumberType | str,
+) -> pa.StructArray:
+    """Every cell of a column, its row read in its own type, written in *target*.
+
+    The cast on request of a column whose rows may lie on timelines of
+    different number types, row by row as :func:`express_as` writes one
+    value: rows already of *target* stay as they are; ``int`` → ``fraction``
+    re-declares a cell (``n/1`` is a fraction cell as it stands); ``float``
+    → ``fraction`` is the double's exact dyadic ratio, never a tidier one;
+    → ``float`` is the nearest double, its ratio side rebuilt as that
+    double's mirror; → ``int`` is the nearest integer, ties to even (on the
+    ratio, in integers, for an exact row; ``rint`` on the double for a
+    float row). Nulls stay null. Each source type is computed at most once,
+    over the whole column, and merged on its rows: at most two kernel
+    passes beside the rows kept, no loop over rows.
+
+    Args:
+        cells: A column of :data:`RATIONAL_STRUCT_TYPE`.
+        row_types: The number type of every row (one :class:`NumberType`),
+            or of each row (:func:`number_type_codes`).
+        target: The number type every cell is written in.
+
+    Returns:
+        A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
+
+    Raises:
+        ValueError: If a double's exact ratio does not fit int64 (below
+            about ``2**-10`` on a ``fraction`` target), a double is past
+            int64 on an ``int`` target, a converted row lacks the side its
+            conversion reads, or the row types do not fit the column.
+
+    Examples:
+        >>> cells = build_number_struct_array([0.25], number_type=NumberType.float)
+        >>> cast_number_column(cells, NumberType.float, NumberType.fraction).to_pylist()
+        [{'value': 0.25, 'numerator': 1, 'denominator': 4}]
+    """
+    column = _struct_array(cells)
+    target = NumberType(target)
+    codes = _row_type_codes(row_types, len(column))
+    valid = column.is_valid().to_numpy(zero_copy_only=False)
+    result: pa.StructArray = column
+    for source in NUMBER_TYPES_BY_CODE:
+        rows = valid & (codes == NUMBER_TYPE_CODES[source])
+        if source is target or not rows.any():
+            continue
+        if source is NumberType.int and target is NumberType.fraction:
+            continue  # n/1 is a fraction cell as it stands
+        cast = _cast_rows(column, rows, source, target)
+        result = _struct_array(pc.if_else(pa.array(rows), cast, result))
+    return result
+
+
+def _cast_rows(
+    column: pa.StructArray, rows: np.ndarray, source: NumberType, target: NumberType
+) -> pa.StructArray:
+    """The cells of *column* written in *target*, read as *source* in *rows*.
+
+    A full-length column; the cells outside *rows* are placeholders, which
+    :func:`cast_number_column` does not take.
+    """
+    reads = ("value",) if source is NumberType.float else ("numerator", "denominator")
+    members = dict(zip(column.type.names, _struct_members(column), strict=True))
+    missing = np.zeros(len(column), dtype=bool)
+    for name in reads:
+        missing |= members[name].is_null().to_numpy(zero_copy_only=False)
+    if (rows & missing).any():
+        row = int(np.flatnonzero(rows & missing)[0])
+        raise ValueError(
+            f"row {row}: the {source} cell {column[row].as_py()!r} lacks the side "
+            f"its cast to {target} reads"
+        )
+    if source is NumberType.float:
+        doubles = np.where(
+            rows,
+            members["value"].fill_null(0.0).to_numpy(zero_copy_only=False),
+            0.0,
+        ).astype(np.float64)
+        if target is NumberType.fraction:
+            numerator, denominator = _pairs_from_float_array(
+                doubles, exact_required=True
+            )
+            return _cells_of(doubles, numerator, denominator)
+        beyond = ~(np.isfinite(doubles) & (np.abs(doubles) < _MIRROR_LIMIT))
+        if beyond.any():
+            row = int(np.flatnonzero(beyond)[0])
+            raise ValueError(
+                f"row {row}: the float {doubles[row]!r} has no integer an int cell "
+                "can hold"
+            )
+        integers = np.rint(doubles).astype(np.int64)
+        return _cells_of(integers.astype(np.float64), integers, np.ones_like(integers))
+    n = np.where(
+        rows, members["numerator"].fill_null(0).to_numpy(zero_copy_only=False), 0
+    ).astype(np.int64)
+    d = np.where(
+        rows, members["denominator"].fill_null(1).to_numpy(zero_copy_only=False), 1
+    ).astype(np.int64)
+    if target is NumberType.int:
+        integers = _round_ratios(n, d, "round")
+        return _cells_of(integers.astype(np.float64), integers, np.ones_like(integers))
+    doubles = _ratio_values(n, d)
+    numerator, denominator = _pairs_from_float_array(doubles)
+    return _cells_of(doubles, numerator, denominator)
+
+
+def _cells_of(
+    values: np.ndarray, numerator: np.ndarray, denominator: np.ndarray
+) -> pa.StructArray:
+    """A column of :data:`RATIONAL_STRUCT_TYPE` from its three members."""
+    return _struct_array_from(
+        [
+            pa.array(values, pa.float64()),
+            pa.array(numerator, pa.int64()),
+            pa.array(denominator, pa.int64()),
+        ],
+        fields=_member_fields(RATIONAL_STRUCT_TYPE),
+    )
 
 
 def _combine_float_columns(
@@ -1793,7 +2179,7 @@ class DenominateNumber(ScalarVocabulary, BaseModel):
         cls, cell: dict[str, Any], unit: TimeUnit, number_type: NumberType
     ) -> "DenominateNumber":
         """Build one from a storage cell and its field's declaration."""
-        normalised = _normalise_cell(cell)
+        normalised = _settled_cell(cell, number_type)
         return cls(
             exact=struct_to_rational(normalised),
             approximate=float(normalised["value"]),

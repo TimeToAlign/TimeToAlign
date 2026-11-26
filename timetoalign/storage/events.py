@@ -75,7 +75,9 @@ from timetoalign.core.ids import (
 )
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
+    _settled_cells,
     build_number_struct_array,
+    cast_number_column,
     combine_number_columns,
     combine_numbers,
     compare_number_column,
@@ -786,17 +788,31 @@ def _extreme_coordinate(
 
 
 def _in_lowest_terms(table: pa.Table) -> pa.Table:
-    """*table* with the ratio of every coordinate cell in lowest terms.
+    """*table* with every coordinate cell settled, its ratio in lowest terms.
 
     Memory holds one spelling of each value (:func:`in_lowest_terms`): a
-    cell stating ``2/4`` is held as ``1/2``. Every coordinate column is
-    reduced, the base ones and any further one, and every number of a
-    column on the table's axis (a Box's shape); a column's field and its
-    metadata are kept. One vectorized pass per number column.
+    cell stating ``2/4`` is held as ``1/2``. A zero denominator is refused,
+    and a cell whose two sides disagree is resolved by the number type its
+    column declares (the side it names is the number, the other derived).
+    Every coordinate column is settled, the base ones and any further one,
+    and every number of a column on the table's axis (a Box's shape); a
+    column's field and its metadata are kept. One vectorized pass per number
+    column.
+
+    Raises:
+        ValueError: On a zero denominator, naming the row and its cell.
     """
     for index, field in enumerate(table.schema):
         if _is_number_column(field):
-            table = table.set_column(index, field, in_lowest_terms(table.column(index)))
+            declared = field_metadata(field).get("number_type")
+            table = table.set_column(
+                index,
+                field,
+                _settled_cells(
+                    table.column(index),
+                    None if declared is None else NumberType(declared),
+                ),
+            )
         elif field.name in SHAPE_FIELDS and pa.types.is_struct(field.type):
             table = table.set_column(
                 index, field, _leaves_in_lowest_terms(table.column(index))
@@ -861,7 +877,7 @@ def _on_number_type(
         )
         if source is target:
             continue
-        cells = _reexpressed(table.column(index), source, target)
+        cells = cast_number_column(table.column(index), source, target)
         payload = {key: declared[key] for key in declared if key != "version"}
         payload.setdefault("unit", unit.value)
         payload["number_type"] = target.name
@@ -883,50 +899,6 @@ def _on_number_type(
         )
         table = table.set_column(index, table.schema.field(index), end)
     return table
-
-
-def _reexpressed(
-    cells: pa.Array | pa.ChunkedArray, source: NumberType, target: NumberType
-) -> pa.StructArray:
-    """A column of number cells declared *source*, written in *target*."""
-    cells = _struct_array(cells)
-    if source is NumberType.int and target is NumberType.fraction:
-        return cells  # n/1 is a fraction cell as it stands
-    if source is NumberType.fraction and target is NumberType.int:
-        return _nearest_integers(cells)
-    # The float side mirrors the canonical one; flatten() nulls every
-    # member of a null cell, which the builder reads as missing.
-    doubles = cells.flatten()[cells.type.get_field_index("value")]
-    return build_number_struct_array(doubles, number_type=target)
-
-
-def _nearest_integers(cells: pa.StructArray) -> pa.StructArray:
-    """Integer cells of the ratios of *cells*, nearest, ties to even, exactly.
-
-    Computed on the ratio side in int64: ``n = q·d + r`` with ``0 <= r <
-    d``, rounded up where ``r > d - r`` or, at a tie, where ``q`` is odd.
-    """
-    members = cells.flatten()
-    names = cells.type.names
-    numerator = members[names.index("numerator")]
-    denominator = members[names.index("denominator")]
-    missing = pc.or_(numerator.is_null(), denominator.is_null())
-    n = numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
-    d = denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64)
-    quotient, remainder = np.divmod(n, d)
-    rest = d - remainder
-    up = (remainder > rest) | ((remainder == rest) & (quotient % 2 == 1))
-    rounded = quotient + up.astype(np.int64)
-    mask = missing.to_numpy(zero_copy_only=False)
-    return pa.StructArray.from_arrays(
-        [
-            pa.array(rounded.astype(np.float64), pa.float64(), mask=mask),
-            pa.array(rounded, pa.int64(), mask=mask),
-            pa.array(np.ones(len(rounded), np.int64), pa.int64(), mask=mask),
-        ],
-        fields=list(RATIONAL_STRUCT_TYPE),
-        mask=pa.array(mask),
-    )
 
 
 def _has_value_subfield(pa_type: pa.DataType) -> bool:
@@ -1548,9 +1520,10 @@ class EventData(SemanticFieldAccessMixin):
                     if "value" not in val:
                         processed[coord_col] = coordinate_to_struct(val)
                     elif set(val) == _NUMBER_KEYS:
-                        # A storage cell given whole, its ratio reduced: memory
-                        # holds one spelling of a value (2/4 is held as 1/2).
-                        processed[coord_col] = number_cell(val)
+                        # A storage cell given whole, settled in the table's
+                        # number type: memory holds one spelling of a value
+                        # (2/4 is held as 1/2) and one number on both sides.
+                        processed[coord_col] = number_cell(val, number_type)
                 elif isinstance(val, list):
                     processed[coord_col] = coordinate_to_struct(number_from_json(val))
                 else:
@@ -1908,10 +1881,11 @@ class EventData(SemanticFieldAccessMixin):
                         else arr_data
                     )
                     if isinstance(arr, pa.StructArray):
-                        # Cells given whole keep their members, each ratio
-                        # reduced: memory holds one spelling of a value.
+                        # Cells given whole keep their members, settled before
+                        # the IDs are minted from them: memory holds one
+                        # spelling of a value and one number on both sides.
                         processed[field_name] = (
-                            in_lowest_terms(arr)
+                            _settled_cells(arr, number_type)
                             if {"numerator", "denominator"} <= set(arr.type.names)
                             else arr
                         )

@@ -650,20 +650,15 @@ class QuartersToFloatingMeasures(TableMap):
         """Build the floating-measure lattice of a measure map.
 
         A floating measure is a **compound measure**: a maximal run of
-        consecutive measure records that share one ``number``, each
-        continuing the one before it.  A record continues the compound so
-        far when the last record's ``next`` names it — across a metre
-        change too, since one measure number is one notated bar — or
-        when it has the last record's ``nominal_length`` and its
-        ``offset_within_measure`` is exactly where the compound so far
-        ends inside the notated bar (the first record's offset plus the
-        records' actual lengths) — the second part of a bar split at a
-        repeat sign whose first part jumps back.
-        Two records stating different ``volta`` brackets never join, nor
-        does a record without a number.  A record on its own is a
-        compound of one.  The records of a split bar, whose parts the
-        source represents separately, thus read as the one bar they are
-        notated as.
+        adjacent measure records that share one ``number``.  A record joins
+        the compound before it when it carries the same number as the
+        compound's last record and the two do not state different
+        ``volta`` brackets; neither ``next``, nor the nominal length, nor
+        the offset is consulted, so the records of a bar split at a repeat
+        sign or across a metre change read as the one bar they are
+        notated as.  A record without a number joins nothing, and the
+        endings under different volta brackets count through as separate
+        floating measures.  A record on its own is a compound of one.
 
         One knot per compound measure, placed at its first record's
         **virtual nominal downbeat** — its sounding start minus the
@@ -705,41 +700,22 @@ class QuartersToFloatingMeasures(TableMap):
         """Group a measure map's records into compound measures, in order.
 
         A record joins the compound before it when it carries the same
-        ``number`` as the compound's last record, the two do not state
-        different ``volta`` brackets, and either the last record's
-        ``next`` names it, or it has the same ``nominal_length`` as the
-        last record and its ``offset_within_measure`` is where the
-        compound ends inside the notated bar.
+        non-null ``number`` as the compound's last record and the two do
+        not state different ``volta`` brackets.
         """
-
-        def offset(record: Measure) -> Fraction:
-            return getattr(record, "offset_within_measure", Fraction(0))
-
-        def joins(compound: list[Measure], record: Measure) -> bool:
-            last = compound[-1]
-            if (
-                last.number is None
-                or last.number != record.number
-                or (
-                    last.volta is not None
-                    and record.volta is not None
-                    and last.volta_numbers != record.volta_numbers
-                )
-            ):
-                return False
-            if record.id in (last.next or ()):
-                return True
-            if last.nominal_length != record.nominal_length:
-                return False
-            lengths = [part.actual_length for part in compound]
-            if any(length is None for length in lengths):
-                return False
-            end = offset(compound[0]) + sum(lengths, Fraction(0))  # type: ignore[arg-type]
-            return offset(record) == end
-
         compounds: list[list[Measure]] = []
         for record in measure_map.measures:
-            if compounds and joins(compounds[-1], record):
+            last = compounds[-1][-1] if compounds else None
+            if (
+                last is not None
+                and last.number is not None
+                and last.number == record.number
+                and (
+                    last.volta is None
+                    or record.volta is None
+                    or last.volta_numbers == record.volta_numbers
+                )
+            ):
                 compounds[-1].append(record)
             else:
                 compounds.append([record])
@@ -791,10 +767,9 @@ class QuartersToFloatingMeasures(TableMap):
                 raise ValueError(
                     f"The floating measures starting with measures {labels[index]} and "
                     f"{labels[index + 1]} have nominal downbeats {previous} and {current}, "
-                    "which do not increase; consecutive measures form one floating measure "
-                    "only when they share a number and the first's next names the second, "
-                    "or they also share a nominal length and the second's offset continues "
-                    "the first"
+                    "which do not increase; adjacent measures form one floating measure "
+                    "only when they share a number, and endings under different volta "
+                    "brackets count through as separate floating measures"
                 )
 
         return x_values, y_values

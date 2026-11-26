@@ -762,45 +762,33 @@ is what produces the `.999` an interval end shows. A rounding implementation
 fails this one assertion and nothing else, which is exactly why it is pinned.
 
 **One measure number, one floating measure.** A floating measure is a
-**compound measure**: a maximal run of consecutive measure records that share
-one `number`, each continuing the compound before it. A record on its own is a
-compound of one. This is what floating measures are for: a source that
-represents one notated bar in several records (a bar divided by a repeat sign
-or a cadenza inside it) still reads as that one bar. The compound places ONE
+**compound measure**: a maximal run of adjacent measure records that share
+one `number`. A record on its own is a compound of one. This is what
+floating measures are for: a source that represents one notated bar in
+several records (a bar divided by a repeat sign, by a metre change or by a
+cadenza inside it) still reads as that one bar. The compound places ONE
 knot, at its first record's nominal downbeat; its continuation records place
 none, so inside a compound the reading spreads linearly over the compound's
 whole extent, from its knot to the next compound's.
 
-A record B joins the compound whose last record is A when **all** of these
+A record B joins the compound whose last record is A when **both** of these
 hold:
 
 1. A and B carry the same `number`, and it is not null;
-2. A and B do not both state a `volta`, with different passes — two endings
-   are two bars even when nothing jumps between them;
-3. and B continues the compound, in either of two ways: (a) A's `next` names
-   B (a `next` that is not stated is the Measure Map standard's default, the
-   following record), or (b) A and B have the same `nominal_length` and B's
-   `offset_within_measure` is exactly where the compound ends inside its
-   notated bar — its first record's offset plus the `actual_length` of its
-   records. (b) is the second half of a bar split at a repeat sign: the
-   first half ends the repeat and its `next` jumps back, yet the second half
-   states that it starts where the first half stopped.
+2. A and B do not both state a `volta`, with different passes.
 
-Route (a) joins across a metre change: one measure number followed by `next`
-is one notated bar, whatever metre each of its parts is written in (a second
-ending whose rest changes metre, a bar whose metre changes at a split). Only
-route (b) asks for the same nominal length, because there nothing but the
-offset links the two records.
+Nothing else is read: not A's `next`, not the two nominal lengths, not B's
+`offset_within_measure`. Adjacent records with one number are one notated
+bar by the numbering convention, whatever metre each part is written in and
+wherever the first part jumps to.
 
-Why each condition is needed, by the case it keeps apart: (1) records without
-a number say nothing about bars; (2) a first and a second ending under
-brackets 1 and 2 with no jump stated are still two bars; (3) a record that
-neither follows by `next` nor states the matching offset is a new bar, and
-the nominal length in (b): OpenScore's `sq8913219` gives mc 583 (a full 3/4
-bar, `mn 578`, `next 1`, the end before the *fine*) and mc 584 (a 2/2
-pickup, `mn 578` again, at offset 3/4 of a whole) one number, and the
-pickup's offset equals mc 583's length, so the offset alone would join a 3/4
-bar to a 2/2 pickup that nothing plays after it.
+Why each condition is needed, by the case it keeps apart: (1) records
+without a number say nothing about bars; (2) across voltas, the endings
+carry one number by convention (`15a` and `15b`), yet they are two bars,
+so the endings under different volta brackets count through as separate
+floating measures. A record stating no volta joins a record under a
+bracket: the rest of a second ending, written in a record of its own, is
+still that ending's bar.
 
 **The ordinal rule.** Ordinals count compound measures, never printed labels.
 The first is `0` when it is an anacrusis (its first record's content is offset
@@ -811,10 +799,10 @@ first and a second ending the same fm, collapsing their music onto one point.
 
 **The refusal that remains.** Knots must increase. After joining, two knots can
 still coincide or go backwards only where records that cannot join share a
-nominal downbeat: records of *different* numbers, records of one number that do
-not continue each other, or records of one number whose offset continues the
-compound but whose nominal lengths differ and which no `next` links; such a measure map has no lattice and the map raises, naming the two
-floating measures. No approximate lattice is built in its place.
+nominal downbeat: records of *different* numbers, records without a number,
+or the endings under different voltas; such a measure map has no lattice and
+the map raises, naming the two floating measures. No approximate lattice is
+built in its place.
 
 **The specimens of the compound rule** are hand-derived below; every one of them
 raised before records joined, because a continuation record's nominal downbeat
@@ -825,8 +813,8 @@ Beethoven's Op. 106 up to bar 47, written as the movement's own compressed
 rows: count 1 is the anacrusis (`number 0`, 3/4, `qstamp 0`, `actual 1`,
 `offset 2`); counts 2–46 are default successors, numbers 1–45, three quarters
 each, so count 47 starts at `1 + 45 x 3 = 136`; counts 47 and 48 are both
-`number 46` (`actual 2`, then `actual 1` at offset 2, `qstamp 138`), and 47's
-`next` names 48; count 49 is bar 47 (`qstamp 139`, three quarters).
+`number 46` (`actual 2`, then `actual 1` at offset 2, `qstamp 138`); count 49
+is bar 47 (`qstamp 139`, three quarters).
 Ordinals, counted from the start: count 1 is an anacrusis (offset 2 > 0,
 actual 1 < nominal 3), ordinal `0`; counts 2–46 are one compound each,
 ordinals 1–45; counts 47 + 48 are one compound, ordinal `46`, knot at
@@ -866,38 +854,40 @@ split bar of the second movement alike (`136, 137, 138, 139 → 46.0, 46.333,
 46.666, 47.0`).
 
 *A volta pair* — fourteen 4/4 bars, then `15a` (`number 15`, volta 1, end
-repeat, `next` back to bar 1) and `15b` (`number 15`, volta 2). `15a`'s `next`
-does not name `15b`, so they are two floating measures, `15.0` at quarter 56 and
-`16.0` at quarter 60, and the closing knot at 64 carries `17`. The same two
-records with the default `next` (one played after the other) stay two
-floating measures as well, with the same three readings: they state volta 1
-and volta 2 (condition 3), and `15b` sits at offset 0, not at 4 (no (b)).
+repeat, `next` back to bar 1) and `15b` (`number 15`, volta 2). They state
+volta 1 and volta 2, so they are two floating measures, `15.0` at quarter 56
+and `16.0` at quarter 60, and the closing knot at 64 carries `17`. The same
+two records with the default `next` (one played after the other) read the
+same: the voltas alone keep them apart.
 
-*A bar split at a repeat sign* — `5` (`actual 1/2` of a 2/4 bar, its `next`
-naming itself: the end of a repeat) followed by `5` at offset `1/2`, `actual
-3/2`. A's `next` does not name B, but B's offset `1/2` is where the compound
-`[A]` ends (`0 + 1/2`), so by (b) they are one 2/4 bar: knots `0 → 1` and
-`2 → 2`, so `fm(0) = 1.0`, `fm(1) = 1.5`, `fm(2) = 2.0`. The same pair with
-the default `next` joins by (a) and reads the same.
+*Two adjacent records of one number* — `a` (`actual 1/2` of a 2/4 bar, at
+`0`) and `b` (`actual 3/2`, at `1/2`), both numbered `5`, `next` the default:
 
-*A metre change inside one bar* — the same two records, `5` and `5`, B a 3/4
-bar (`nominal_length 3`, offset `1/2`), A's `next` the default: A's `next`
-names B, so by (a) they are one bar although the nominal lengths differ. The
-compound's knot is A's downbeat `0` (ordinal `1`: A sits at offset 0), the
-closing knot B's end `1/2 + 3/2 = 2` (ordinal `2`): `fm(0) = 1.0`,
-`fm(1) = 1 + 1/2 = 1.5`, `fm(2) = 2.0`.
+- `b` a 2/4 bar at offset `1/2`: one bar, knots `0 → 1` and `2 → 2`, so
+  `fm(0) = 1.0`, `fm(1) = 1.5`, `fm(2) = 2.0`;
+- `b` a 3/4 bar (`nominal_length 3`) at offset `1/2`: the nominal lengths
+  differ, the number joins them all the same, and the readings are those
+  above;
+- `b` a 2/4 bar at offset `0`: the offset does not continue `a`, the number
+  joins them all the same. Knots `0 → 1` and `2 → 2` (no knot at `b`'s
+  downbeat `1/2`), so `fm(1/2) = 1 + (1/2)/2 = 1.25`; apart, `b` would be a
+  knot of its own and read `2.0`.
 
-*Refusals* — the same two records, both nominal downbeats `0`:
+*Refusals* — the same two records, `b` at offset `1/2`, both nominal
+downbeats `0`:
 
 - numbered `5` and `6`: the numbers differ, the knots coincide, the map
   raises;
 - both without a number: they never join, the map raises;
-- numbered `5` and `5`, A's `next` naming A itself, B a 3/4 bar
-  (`nominal_length 3`, offset `1/2`, so its nominal downbeat is still `0`):
-  only route (b) could join them, the nominal lengths differ, so they stay
-  apart (the `sq8913219` mc 583/584 shape), the map raises;
-- numbered `5` and `5`, A under volta 1 and B under volta 2, `next` the
-  default: the voltas differ, the map raises.
+- numbered `5` and `5`, `a` under volta 1 and `b` under volta 2: the voltas
+  differ, the map raises.
+
+The same refusal in a real score: the `op18_no4_mov4_flow` skeleton
+(`op18_no4_mov4_flow.measures.tsv`, 2/2, `nominal_length 4`) gives mc 9
+(`mn 9`, at `29`, `act_dur 3/4` = 3 quarters, end repeat) and mc 10 (`mn
+10`, at `32`, `mc_offset 3/4` = 3 quarters) two numbers; mc 10's nominal
+downbeat `32 - 3 = 29` is mc 9's, so the map raises, naming `'9'` and
+`'10'` with the downbeats `29` and `29`.
 
 **A real score: WoO 71.** Beethoven's WoO 71 (`WoO71.measures.tsv`) divides
 bars at repeat signs throughout. Its rows, in DCML columns (`act_dur` and
@@ -916,15 +906,15 @@ bars at repeat signs throughout. Its rows, in DCML columns (`act_dur` and
   each) and its knot at `75`; mc 44 starts at `75 + 1 + 1/2 = 153/2`.
   **`fm(76) = 38 + 1/(3/2) = 38 + 2/3 → 38.666`.**
 - mc 260 (`mn 237`, volta 1, `next 252`) and mc 261 (`mn 237`, volta 2) do not
-  join (different voltas, and 260's `next` jumps back), and are ordinals `237`
-  and `238` at the loaded map's qstamps `945/2` and `949/2`. mc 262 (`mn 237`
-  again, the 6/8 rest of the second ending, at `957/2`, `act_dur 3/8`,
-  `mc_offset 3/8`, no volta) is named by 261's `next`: by (a) it joins 261
-  although 261 is a 2/4 bar (`nominal_length 2`, sounding `act_dur 1` = 4
-  quarters) and 262 a 6/8 bar (`nominal_length 3`). The compound [261, 262]
-  is ordinal `238`, its knot 261's downbeat `949/2 - 0 = 949/2`; its extent
-  is `4 + 3/2 = 11/2` quarters, and mc 263 (`mn 238`, offset 0) is the next
-  knot, ordinal `239`, at `949/2 + 11/2 = 480`. Readings:
+  join (different voltas), and are ordinals `237` and `238` at the loaded
+  map's qstamps `945/2` and `949/2`. mc 262 (`mn 237` again, the 6/8 rest of
+  the second ending, at `957/2`, `act_dur 3/8`, `mc_offset 3/8`, no volta)
+  carries 261's number and states no volta, so it joins 261 although 261 is
+  a 2/4 bar (`nominal_length 2`, sounding `act_dur 1` = 4 quarters) and 262
+  a 6/8 bar (`nominal_length 3`). The compound [261, 262] is ordinal `238`,
+  its knot 261's downbeat `949/2 - 0 = 949/2`; its extent is `4 + 3/2 =
+  11/2` quarters, and mc 263 (`mn 238`, offset 0) is the next knot, ordinal
+  `239`, at `949/2 + 11/2 = 480`. Readings:
 
   | quarter | derivation | fm |
   |---|---|---|
@@ -937,20 +927,19 @@ bars at repeat signs throughout. Its rows, in DCML columns (`act_dur` and
 The score's 397 measure records form 373 floating measures, ordinals 0–372;
 with the closing knot, carrying `373`, the lattice has 374 knots.
 
-**Real scores of the (b) rule: Couperin.** The DCML Couperin concerts split
-bars at repeat signs whose first part jumps back, so (a) never joins them.
+**Bars split at a repeat sign: Couperin.** The DCML Couperin concerts split
+bars at repeat signs whose first part jumps back.
 
 - `c05n05_musete.measures.tsv` (6/8, `nominal_length 3`): mc 1 is the
   anacrusis (`mn 0`, `act_dur 3/8`, `mc_offset 3/8`: offset `3/2` above 0,
   actual `3/2` below 3, ordinal `0`). Every `mn` from 0 to 54 forms one
-  compound: mn 4 (mc 5 + 6) and mn 14 (mc 16 + 17) by their `next`, mn 28 by
-  (b). So `mn` equals the ordinal throughout: 58 records, 55 compounds, 56
-  knots, the closing one carrying `55`. mc 31 (`mn 28`, at `165/2`, `act_dur
-  3/8` = `3/2` quarters, end repeat, `next 17, 6`) and mc 32 (`mn 28`, at
-  `84`, `mc_offset 3/8` = `3/2` quarters) share number and nominal length, no
-  volta, and mc 32's offset `3/2` equals `0 + 3/2`: one compound, ordinal
-  `28`, knot `165/2`; mc 33 (`mn 29`) is the next knot at `171/2`. The slope
-  is `1/3`:
+  compound: mn 4 (mc 5 + 6), mn 14 (mc 16 + 17) and mn 28 (mc 31 + 32) each
+  join two adjacent records. So `mn` equals the ordinal throughout: 58
+  records, 55 compounds, 56 knots, the closing one carrying `55`. mc 31 (`mn
+  28`, at `165/2`, `act_dur 3/8` = `3/2` quarters, end repeat, `next 17, 6`)
+  and mc 32 (`mn 28`, at `84`, `mc_offset 3/8` = `3/2` quarters) share a
+  number and neither states a volta: one compound, ordinal `28`, knot
+  `165/2`; mc 33 (`mn 29`) is the next knot at `171/2`. The slope is `1/3`:
 
   | quarter | derivation | fm |
   |---|---|---|
@@ -959,57 +948,59 @@ bars at repeat signs whose first part jumps back, so (a) never joins them.
   | `85` | `28 + (5/2)/3 = 28.8333…` | `28.833` |
   | `171/2` | knot | `29.0` |
 
-  Before (b), mc 32's nominal downbeat `84 - 3/2 = 165/2` coincided with mc
-  31's and the score had no floating measures.
+  Apart, mc 32's nominal downbeat `84 - 3/2 = 165/2` would coincide with mc
+  31's and the score would have no floating measures.
 - `c11n08_Rondeau.measures.tsv` (3/8, `nominal_length 3/2`): mc 18 (`mn 16`,
   at `23`, `act_dur 1/4` = 1 quarter, `next 10, 1`) and mc 19 (`mn 16`, at
-  `24`, `mc_offset 1/4` = 1 quarter, `act_dur 1/8`) join by (b), ordinal `16`
+  `24`, `mc_offset 1/4` = 1 quarter, `act_dur 1/8`) join, ordinal `16`
   (mc 1 is the anacrusis `mn 0`, `act_dur 1/8`, `mc_offset 1/4`, ordinal `0`;
-  mn 8, mc 9 + 10, joins by its `next`; so `mn` is the ordinal), knot `23`;
+  mn 8, mc 9 + 10, joins as well; so `mn` is the ordinal), knot `23`;
   mc 20 (`mn 17`) at `49/2`. Readings: `fm(23) = 16.0`,
   `fm(24) = 16 + 1/(3/2) = 16.666`, `fm(49/2) = 17.0`.
 
-**Both routes across a metre change: `sq8913219`.** OpenScore's string-quartet
+**Bars across a metre change: `sq8913219`.** OpenScore's string-quartet
 movement (`OpenScoreSQ/sq8913219.measures.tsv`, qstamps from
 `quarterbeats_all_endings`) shares a number across a metre change twice.
 
 - mc 482 (`mn 480`, 3/8, `nominal_length 3/2`, `act_dur 3/8` = `3/2`
   quarters, at `1270`, `next 483`) and mc 483 (`mn 480`, 3/4, `nominal_length
   3`, `act_dur 1/4` = 1 quarter, `mc_offset 1/2` = 2 quarters, at `2543/2`):
-  482's `next` names 483, so by (a) they are one compound although the
-  nominal lengths differ. Its knot is 482's downbeat `1270`, its extent
-  `3/2 + 1 = 5/2`, and mc 484 (`mn 481`, offset 0) is the next knot at
-  `1270 + 5/2 = 2545/2`. Ordinal: mc 1 is the anacrusis (4/4, `act_dur 1/4`,
-  `mc_offset 3/4`), ordinal `0`; mc 2–481 are 480 records of which only mc 77
-  and 78 (`mn 76`, 77's `next` naming 78) join, so 479 compounds, ordinals
-  1–479; the compound [482, 483] is ordinal `480` — `mn` again. Readings:
+  one number, so one compound although the nominal lengths differ. Its knot
+  is 482's downbeat `1270`, its extent `3/2 + 1 = 5/2`, and mc 484 (`mn
+  481`, offset 0) is the next knot at `1270 + 5/2 = 2545/2`. Ordinal: mc 1
+  is the anacrusis (4/4, `act_dur 1/4`, `mc_offset 3/4`), ordinal `0`; mc
+  2–481 are 480 records of which only mc 77 and 78 (`mn 76`) join, so 479
+  compounds, ordinals 1–479; the compound [482, 483] is ordinal `480` —
+  `mn` again.
+- mc 583 (`mn 578`, 3/4, `act_dur 3/4`, at `3131/2`, `next 1`, the end
+  before the *fine*) and mc 584 (`mn 578`, 2/2, `nominal_length 4`,
+  `act_dur 1/4` = 1 quarter, `mc_offset 3/4` = 3 quarters, at `3137/2`):
+  583's `next` jumps to the start and the nominal lengths are `3` and `4`,
+  but they carry one number and no volta, so they are one compound. Up to mc
+  582, the 582 records hold four joined pairs (mc 77/78, 482/483, 491/492
+  and 533/534), so 578 compounds, ordinals 0–577, and [583, 584] is ordinal
+  `578`, its knot 583's downbeat `3131/2`, its extent `3 + 1 = 4`; mc 585
+  (`mn 579`, offset 0) is the next knot, ordinal `579`, at `3131/2 + 4 =
+  3139/2`. Apart, the two would share the nominal downbeat `3137/2 - 3 =
+  3131/2`, and the score had no lattice.
 
-  | quarter | derivation | fm |
-  |---|---|---|
-  | `1270` | knot | `480.0` |
-  | `2543/2` (mc 483's qstamp) | `480 + (3/2)/(5/2) = 480 + 3/5` | `480.6` |
-  | `1272` | `480 + 2/(5/2) = 480 + 4/5` | `480.8` |
-  | `2545/2` (mc 484) | knot | `481.0` |
+The whole score's 809 records hold 13 adjacent pairs of one number, none
+under two different voltas (first records mc 77, 482, 491, 533, 583, 592,
+601, 610, 626, 660, 667, 675, 684), so they form `809 - 13 = 796` compounds,
+ordinals 0–795 (`mn` throughout: the last record, mc 809, is `mn 795`); with
+the closing knot at mc 809's end `2444 + 3 = 2447`, carrying `796`, the
+lattice has 797 knots. Readings:
 
-- mc 583 (`mn 578`, 3/4, `act_dur 3/4`, `next 1`, the end before the
-  *fine*) and mc 584 (`mn 578`, 2/2, `act_dur 1/4`, `mc_offset 3/4`): 583's
-  `next` jumps to the start, so only (b) could join them; the offset `3`
-  quarters equals mc 583's length, but the nominal lengths are `3` and `4`,
-  so they are two compounds. Their nominal downbeats coincide (`3131/2` and
-  `3137/2 - 3 = 3131/2`), so the whole score has no lattice and the map
-  raises, naming mc 583 and mc 584.
-
-The readings of the first pair are therefore taken on the movement up to
-mc 582 (the records before the refusing pair; the last one's `next`, which
-names mc 583, is cleared, since a measure map refuses a successor it does not
-hold): a knot is its compound's first record's downbeat, so the knots up to
-mc 484's do not depend on the records after mc 582, and the closing knot
-lies at mc 582's end `3125/2 + 3 = 3131/2`. Those 582 records hold four
-joined pairs, each named by its first record's `next` (mc 77/78, 482/483,
-491/492 and 533/534, mc 534 a first ending), so
-they form 578 compounds, ordinals 0–577, and the closing knot carries `578`. The test pins the
-compounds of both pairs, the refusal naming mc 583 and mc 584 with the
-downbeats `3131/2` and `3131/2`, and the four readings above.
+| quarter | derivation | fm |
+|---|---|---|
+| `1270` | knot | `480.0` |
+| `2543/2` (mc 483's qstamp) | `480 + (3/2)/(5/2) = 480 + 3/5` | `480.6` |
+| `1272` | `480 + 2/(5/2) = 480 + 4/5` | `480.8` |
+| `2545/2` (mc 484) | knot | `481.0` |
+| `3131/2` (mc 583) | knot | `578.0` |
+| `3137/2` (mc 584's qstamp) | `578 + 3/4` | `578.75` |
+| `3139/2` (mc 585) | knot | `579.0` |
+| `2446` | `795 + 2/3` (mc 809 is three quarters of a 2/2 bar at offset 0, so its compound runs from `2444` to the closing knot `2447`) | `795.666` |
 
 **The eroica pickup** is the second anacrusis shape: a 1/8 pickup in 2/4
 (`nominal_length = 2`, `actual_length = 1/2`, `nominal_offset = 3/2`). Its

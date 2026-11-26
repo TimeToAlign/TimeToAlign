@@ -301,6 +301,71 @@ class TestTheTableHoldsTheSentinels:
         assert not (tmp_path / "projections.parquet").exists()
 
 
+class TestAChunkSideMayCarryAName:
+    """A name on a CHUNK side names the stated position and travels with the claim."""
+
+    NAMED = [
+        ({"start": 4, "name": "downbeat 3"}, "score", {"start": 20.0}, "audio"),
+        ({"start": 8}, "score", {"start": 40.0, "name": "bar 9"}, "audio"),
+    ]
+
+    @staticmethod
+    def _names(claims: list[MatchClaim]) -> list[tuple]:
+        return [
+            (c.event_a_id, c.event_a_name, c.event_b_id, c.event_b_name) for c in claims
+        ]
+
+    def test_from_events(self) -> None:
+        bundle = _bundle()
+        claim = MatchClaim.from_events(
+            {"start": 4, "name": "downbeat 3"},
+            bundle.timelines["score"],
+            {"id": "o20", "name": "onset", "start": 20.0},
+            bundle.timelines["audio"],
+        )
+        assert self._names([claim]) == [(CHUNK, "downbeat 3", "o20", "onset")]
+        assert claim.chunk_sides == ("score",)
+
+    def test_create_match_claims(self) -> None:
+        bundle = _bundle()
+        claims = bundle.create_match_claims(self.NAMED)
+        assert self._names(claims) == [
+            (CHUNK, "downbeat 3", CHUNK, None),
+            (CHUNK, None, CHUNK, "bar 9"),
+        ]
+        assert _n_events(bundle) == (2, 2)
+        # The same positions under other names: each claim keeps its own.
+        again = bundle.create_match_claims(
+            [({"start": 4, "name": "beat 1"}, "score", {"start": 20.0}, "audio")]
+        )
+        assert self._names(again) == [(CHUNK, "beat 1", CHUNK, None)]
+        assert _n_events(bundle) == (2, 2)
+
+    def test_the_field_round_trips(self, tmp_path: Path) -> None:
+        claims = _bundle().create_match_claims(self.NAMED)
+        field = MatchClaimField.from_claims(claims)
+        assert field.table.column("event_a_name").to_pylist() == ["downbeat 3", None]
+        assert field.table.column("event_b_name").to_pylist() == [None, "bar 9"]
+        field.to_parquet(tmp_path)
+        assert MatchClaimField.from_parquet(tmp_path).to_claims() == claims
+        assert MatchClaimField.from_dict(field.to_dict()).to_claims() == claims
+        assert self._names(MatchClaimField.from_parquet(tmp_path).to_claims()) == [
+            (CHUNK, "downbeat 3", CHUNK, None),
+            (CHUNK, None, CHUNK, "bar 9"),
+        ]
+
+    def test_a_package(self, tmp_path: Path) -> None:
+        bundle = _bundle()
+        bundle.create_match_claims(self.NAMED)
+        bundle.to_file(tmp_path / "package.yaml")
+        read = AlignmentBundle.from_file(tmp_path / "package.yaml")
+        assert read.match_claim_table == bundle.match_claim_table
+        assert self._names(read.get_match_claims()) == [
+            (CHUNK, "downbeat 3", CHUNK, None),
+            (CHUNK, None, CHUNK, "bar 9"),
+        ]
+
+
 class TestTheReaderRefuses:
     @staticmethod
     def _table(column: str, values: list) -> pa.Table:
@@ -336,9 +401,9 @@ class TestTheReaderRefuses:
                 "NOMATCH MatchClaim names an event on its other side.",
             ),
             (
-                "event_a_name",
-                ["bar 1", None, None, None, None],
-                "MatchClaim table row 0 has a name on a sentinel side; a sentinel "
+                "event_b_name",
+                [None, None, None, "bar 1", None],
+                "MatchClaim table row 3 has a name on a NOMATCH side; a NOMATCH "
                 "side has no name.",
             ),
         ],
@@ -565,12 +630,6 @@ class TestRefusedBeforeAnythingIsAdded:
             (
                 ("n8", "score", {"id": NOMATCH, "start": 10.0}, "audio"),
                 _sentinel_id_message("Pair 1", NOMATCH),
-            ),
-            (
-                ({"start": 2, "name": "bar 1"}, "score", {"start": 10.0}, "audio"),
-                "Pair 1: the side on timeline 'score' states the name 'bar 1', but it "
-                "is CHUNK_SENTINEL: the pair states two positions where neither "
-                "timeline holds an event, and a sentinel side has no name.",
             ),
             (
                 ({"start": 2}, "score", {"start": 10.0, "end": 12.0}, "audio"),

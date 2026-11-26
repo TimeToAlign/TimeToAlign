@@ -374,13 +374,13 @@ class TestMatchClaim:
             ),
             (
                 {
-                    **synchronous,
+                    **not_synchronous,
                     "event_a_id": "a1",
-                    "event_b_id": CHUNK,
+                    "event_b_id": NOMATCH,
                     "event_b_name": "bar 1",
                 },
-                "event_b_name is 'bar 1', but side B is CHUNK_SENTINEL: a "
-                "sentinel side has no name.",
+                "event_b_name is 'bar 1', but side B is NOMATCH_SENTINEL: a "
+                "NOMATCH side has no name.",
             ),
             (
                 {**synchronous, "event_a_id": "a1"},

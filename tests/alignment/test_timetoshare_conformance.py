@@ -84,15 +84,28 @@ class TestFixtureTable:
             [],
         )
         # The sentinels are strings in the event ID columns: CHUNK on both
-        # sides of claim_11, on side A of claim_16.
+        # sides of claim_11, its side A named, on side A of claim_16.
         assert [
-            (claim.id, claim.event_a_id, claim.event_b_id, claim.chunk_sides)
+            (
+                claim.id,
+                claim.event_a_id,
+                claim.event_a_name,
+                claim.event_b_id,
+                claim.event_b_name,
+                claim.chunk_sides,
+            )
             for claim in field
             if claim.chunk_sides
         ] == [
-            ("claim_11", CHUNK, CHUNK, ("dpt_1", "cpt_1")),
-            ("claim_16", CHUNK, "note_2", ("cpt_1",)),
+            ("claim_11", CHUNK, "downbeat 3", CHUNK, None, ("dpt_1", "cpt_1")),
+            ("claim_16", CHUNK, None, "note_2", "D4", ("cpt_1",)),
         ]
+        # A NOMATCH side has no name.
+        assert [
+            (claim.id, claim.event_b_name)
+            for claim in field
+            if claim.event_b_id == NOMATCH
+        ] == [("claim_12", None), ("claim_18", None)]
         # An anchor cell holds two coordinates; reading rebuilds the anchor on
         # the row's timelines.
         assert [anchor.timelines for claim in field for anchor in claim.anchors] == [

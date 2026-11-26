@@ -978,7 +978,8 @@ writing `is_explicit=False` is told, never silently given a stated claim.
 IDs are required strings (a claim without `event_b_id` is a pydantic
 `missing` error, `None` a `string_type` one). The validator refuses
 `NOMATCH` on a synchronous claim, `CHUNK` on one that is not, `NOMATCH` on
-both sides, and a name on a sentinel side, so no path — direct
+both sides, and a name on a NOMATCH side (a CHUNK side may carry one,
+naming the stated position), so no path — direct
 construction, `from_dict`, a factory — makes a claim of no kind. `nomatch`
 refuses an event dict without `id`, and `from_events` one on a claim that is
 not synchronous (a conceptual claim names two events), naming the side. The
@@ -1053,7 +1054,7 @@ its anchor written the other way round is refused before any query.
 | `test_one_timeline_twice_refused` | a claim naming one timeline on both sides is refused |
 | `test_synchronous_requires_anchor` | a synchronous claim without anchors is refused |
 | `test_non_synchronous_rejects_anchor` | a non-synchronous claim with anchors is refused |
-| `test_claim_names_its_events` | a synchronous claim naming `NOMATCH`, a non-synchronous one naming `CHUNK`, `NOMATCH` on both sides, a name on a sentinel side and a missing event ID are refused with the exact messages |
+| `test_claim_names_its_events` | a synchronous claim naming `NOMATCH`, a non-synchronous one naming `CHUNK`, `NOMATCH` on both sides, a name on a NOMATCH side and a missing event ID are refused with the exact messages |
 | `test_from_events_places_numbers_on_the_axes` | raw numbers on `quarters` / `seconds` / `ticks` timelines, and a storage cell on `seconds`, take the timeline's unit and number type |
 | `test_from_events_converts_another_unit` | `3.16952381` seconds → `139776` samples through the C-Map; an `IdCoordinate` of another timeline and an unconvertible unit are refused |
 | `test_from_events_refuses_another_number_type` | a `float` quarters coordinate on a `fraction` timeline is refused with the check's exact message |
@@ -1166,11 +1167,23 @@ What would prove CHUNK works and is not a renamed Projection:
   through `to_dict`/`from_dict`, and through a bundle's package written and
   read back (`to_file`/`from_file`); the event ID columns hold no null, and
   the CHUNK cells read `CHUNK_SENTINEL`, the NOMATCH cell `NOMATCH_SENTINEL`,
-  the sentinel sides' names null.
+  the NOMATCH side's name null.
+- **A CHUNK side may carry a name, a NOMATCH side never.** A name on a
+  CHUNK side names the stated position (it is no element, so it names
+  nothing else). It is kept on every path that makes or carries a claim:
+  `from_events` (a dict without `id` stating `name`), `create_match_claims`
+  (each of two bare positions stating a name gives it as that side's
+  `event_X_name`, and a second call stating another name at the same
+  positions keeps its own: the rule that a Projection keeps the name it was
+  first claimed under does not reach a CHUNK side), the field's
+  `to_parquet`/`from_parquet` and `to_dict`/`from_dict` round trips, and a
+  package written and read back. A name on a NOMATCH side is refused by the
+  `MatchClaim` validator and by the table reader, each with its message
+  asserted whole.
 - **The reader refuses what no MatchClaim can be**, row and reason named
   exactly: a null event ID, `CHUNK` on a row that is not synchronous,
   `NOMATCH` on a synchronous row, `NOMATCH` on both sides, a name on a
-  sentinel side. `from_columns` refuses a null event ID input, and
+  NOMATCH side (a name on a CHUNK side is read). `from_columns` refuses a null event ID input, and
   `from_events` a dict without `id` on a conceptual claim.
 - **The queries read the strings**: `filter(nomatch_only=True)` keeps the
   NOMATCH row alone (never a CHUNK row), `filter(synchronous_only=True)` the
@@ -1195,8 +1208,7 @@ What would prove CHUNK works and is not a renamed Projection:
   `NOMATCH` as the event, never the reserved string.
 - **Refusals before anything is added**: `create_match_claims` refuses the
   bare `CHUNK` string as a side and either reserved string as a dict's
-  `id` (the one message above), a name on a CHUNK
-  side, an end on one side only of a CHUNK–CHUNK pair (the anchors could
+  `id` (the one message above), an end on one side only of a CHUNK–CHUNK pair (the anchors could
   hold one end only: an interval needs both), a CHUNK position no number
   cell stores (`nan`, the number cell's own message) and `NOMATCH` on both
   sides, each as the second pair of a call whose first pair projects onto
@@ -1722,7 +1734,10 @@ TimeToShare's own artifacts:
   `NOMATCH`, neither with an anchor), one `conceptual` (`claim_14`); the sentinels
   read as the strings of the event ID columns, `CHUNK` on both sides of
   `claim_11` and on side A of `claim_16` (their `chunk_sides`
-  `(dpt_1, cpt_1)` and `(cpt_1,)`); rows with a null
+  `(dpt_1, cpt_1)` and `(cpt_1,)`); `claim_11`'s CHUNK side A carries the
+  name `downbeat 3`, its side B none, and `claim_16`'s CHUNK side none
+  beside `D4` on `note_2`, so a reader dropping or refusing a name on a
+  CHUNK side fails; both NOMATCH sides have no name; rows with a null
   `beliefs` read. Every anchor read back stands on its row's two timelines
   (the table's anchor cell holds the two coordinates alone): `claim_2`'s is
   `clt_1` 1 quarter ↔ `dpt_1` 44100 samples. Written back with `to_parquet`, the file read again

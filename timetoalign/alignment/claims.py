@@ -459,7 +459,7 @@ def _side_text(event_id: str) -> str:
 
 
 def _event_name(event: dict[str, Any]) -> str | None:
-    """The name of an event, if it states one."""
+    """The name a side states (an event's, or a CHUNK position's), if any."""
     name = event.get("name")
     return None if name is None else str(name)
 
@@ -730,7 +730,8 @@ class MatchClaim(BaseModel):
       event and :data:`NOMATCH` on the other side (the event has no
       counterpart there).
 
-    A sentinel side has no name. Anchors are only present for synchronous
+    A CHUNK side may carry a name, naming the stated position; a NOMATCH
+    side has none. Anchors are only present for synchronous
     claims, and each of their coordinates is on its timeline's own axis
     (:meth:`check_on_timelines`).
 
@@ -757,11 +758,13 @@ class MatchClaim(BaseModel):
             ``None``, not stated).
         event_a_id: ID of the event on timeline A, or a sentinel
             (:data:`NOMATCH`, :data:`CHUNK`).
-        event_a_name: Name/label of the event on timeline A (if known;
-            ``None`` on a sentinel side).
+        event_a_name: Name/label of the event on timeline A, or of the
+            position a CHUNK side states (if known; ``None`` on a NOMATCH
+            side).
         event_b_id: ID of the event on timeline B, or a sentinel.
-        event_b_name: Name/label of the event on timeline B (if known;
-            ``None`` on a sentinel side).
+        event_b_name: Name/label of the event on timeline B, or of the
+            position a CHUNK side states (if known; ``None`` on a NOMATCH
+            side).
         id: The claim's identifier, which alone addresses it: unique in
             the :class:`MatchClaimField` or ``AlignmentBundle`` holding the
             claim. It never changes: a table or bundle already holding it
@@ -887,10 +890,10 @@ class MatchClaim(BaseModel):
             ("a", (self.event_a_id, self.event_a_name)),
             ("b", (self.event_b_id, self.event_b_name)),
         ):
-            if event_id in SENTINELS and name is not None:
+            if event_id == NOMATCH and name is not None:
                 raise ValueError(
                     f"event_{side}_name is {name!r}, but side {side.upper()} is "
-                    f"{event_id}: a sentinel side has no name."
+                    f"{NOMATCH}: a NOMATCH side has no name."
                 )
         if self.id is None:
             content = {
@@ -1444,8 +1447,8 @@ class MatchClaim(BaseModel):
             event_a: Event dict from timeline A; holds ``coord_key`` (and
                 ``end_coord_key`` for an interval match) and the event's
                 ``id`` (without one, side A is CHUNK, which only a
-                synchronous claim names), may hold ``name`` (an event's
-                only: a CHUNK side has no name).
+                synchronous claim names), may hold ``name`` (the event's,
+                or on a CHUNK side the stated position's).
             timeline_a: Timeline A.
             event_b: Event dict from timeline B, likewise.
             timeline_b: Timeline B.
@@ -1466,9 +1469,8 @@ class MatchClaim(BaseModel):
         Raises:
             ValueError: If an event dict's ``id`` is :data:`NOMATCH` or
                 :data:`CHUNK` (a sentinel is no event), an event dict names
-                no id on a claim that is not synchronous, a CHUNK side states
-                a name, or a coordinate cannot be placed on its timeline's
-                axis.
+                no id on a claim that is not synchronous, or a coordinate
+                cannot be placed on its timeline's axis.
         """
         event_a_id = _side_id(event_a, "event_a", synchronous=is_synchronous)
         event_b_id = _side_id(event_b, "event_b", synchronous=is_synchronous)
@@ -2124,7 +2126,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
     Every kind of MatchClaim is a row like any other: synchronous claims
     with their anchors, NOMATCH and conceptual claims without. The event ID
     columns are never null: a side without an event holds its sentinel,
-    :data:`NOMATCH` or :data:`CHUNK`, and its name is null.
+    :data:`NOMATCH` or :data:`CHUNK`; a NOMATCH side's name is null, a
+    CHUNK side's names the stated position where one is given.
 
     Like every paired Field, its struct schema is derived from the scalar by
     :func:`~timetoalign.core.fields.derive_arrow_struct` — so a row's type is
@@ -2764,7 +2767,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         same one; both event IDs written (an event's, or a sentinel);
         ``is_synchronous`` stated; :data:`CHUNK` only on a synchronous row,
         :data:`NOMATCH` only on one that is not, and never on both sides; a
-        sentinel side has no name; a synchronous row holds a start anchor, a
+        NOMATCH side has no name; a synchronous row holds a start anchor, a
         non-synchronous one no anchor; a stated certainty lies in [0, 1]; an anchor holds both its
         coordinates (:meth:`_refuse_null_coordinates`). Across rows, every
         coordinate of one timeline is in one unit and number type
@@ -2789,12 +2792,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 _compared("equal", ev_a, sentinel), _compared("equal", ev_b, sentinel)
             )
 
-        def named_sentinel(events: pa.Array, names: pa.Array) -> pa.Array:
-            """Whether a side is a sentinel holding a name."""
-            return pc.and_(
-                pc.is_in(events, value_set=pa.array(SENTINELS, pa.string())),
-                pc.is_valid(names),
-            )
+        def named_nomatch(events: pa.Array, names: pa.Array) -> pa.Array:
+            """Whether a side is NOMATCH holding a name."""
+            return pc.and_(_compared("equal", events, NOMATCH), pc.is_valid(names))
 
         tl_a = data.field("timeline_a_id")
         tl_b = data.field("timeline_b_id")
@@ -2830,10 +2830,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
             ),
             (
                 pc.or_(
-                    named_sentinel(ev_a, data.field("event_a_name")),
-                    named_sentinel(ev_b, data.field("event_b_name")),
+                    named_nomatch(ev_a, data.field("event_a_name")),
+                    named_nomatch(ev_b, data.field("event_b_name")),
                 ),
-                "has a name on a sentinel side; a sentinel side has no name",
+                "has a name on a NOMATCH side; a NOMATCH side has no name",
             ),
             (
                 pc.and_(synchronous, start.is_null()),
@@ -4334,7 +4334,8 @@ def _claims_between_events(
       that side is a position or :data:`NOMATCH`). Except where both sides
       of a synchronous pair are such dicts without ``id``: no Projection
       stands there, and both sides are :data:`CHUNK`, the claim's anchor
-      holding their positions (a CHUNK side states no ``name``);
+      holding their positions and a ``name`` stated there naming that
+      side's position (``event_X_name``);
     - :data:`NOMATCH`, the NOMATCH sentinel, on one side at most.
 
     A synchronous pair gives :meth:`MatchClaim.from_events` between the two
@@ -4345,7 +4346,8 @@ def _claims_between_events(
 
     A side's ``name`` is the claim's name of the Projection: the name the
     first claim on a Projection recorded (in *earlier*, else in this call)
-    is the one every later claim on it shows.
+    is the one every later claim on it shows. A CHUNK side is no element,
+    so its name is the one its pair states.
 
     Every pair is resolved and every position placed and checked before any
     Projection is added: a float on a samples axis, a span running
@@ -4378,9 +4380,8 @@ def _claims_between_events(
         ValueError: If both sides of a pair are :data:`NOMATCH`, a side is
             :data:`CHUNK` or a dict whose ``id`` is :data:`NOMATCH` or
             :data:`CHUNK` (a CHUNK side is a position: a dict without
-            ``id``; a NOMATCH side is :data:`NOMATCH`), a CHUNK side states
-            a name, a pair with CHUNK on both
-            sides states an end on one side only, a dict naming no held
+            ``id``; a NOMATCH side is :data:`NOMATCH`), a pair with CHUNK
+            on both sides states an end on one side only, a dict naming no held
             event states no ``start``, a position is a float on a
             samples axis, a span runs backwards, a position lies past where
             its timeline can reach (the end of a locked timeline, or an end
@@ -4550,8 +4551,8 @@ def _resolved_side(
     Raises:
         ValueError: If a dict naming no held event states no ``start``, a
             span runs backwards, a position lies past where its timeline
-            can reach, a held event is named with a span not its own, a
-            position cannot be placed, or a CHUNK side states a name.
+            can reach, a held event is named with a span not its own, or a
+            position cannot be placed.
     """
     if side == NOMATCH:
         return _Side(timeline, None, None, None)
@@ -4590,13 +4591,7 @@ def _resolved_side(
     )
     if chunk:
         _refuse_unstorable([start.value] if end is None else [start.value, end.value])
-        if side.get("name") is not None:
-            raise ValueError(
-                f"{where} states the name {side['name']!r}, but it is {CHUNK}: "
-                f"the pair states two positions where neither timeline holds an "
-                f"event, and a sentinel side has no name."
-            )
-        return _Side(timeline, None, None, None, (start, end))
+        return _Side(timeline, None, None, _event_name(side), (start, end))
     given = side.get("id")
     reference = (
         EventReference(timeline_id=other_timeline.id, event_id=str(other_event["id"]))
@@ -4609,8 +4604,7 @@ def _resolved_side(
         duration=duration,
         projection_of=reference,
     )
-    name = side.get("name")
-    return _Side(timeline, None, projection, None if name is None else str(name))
+    return _Side(timeline, None, projection, _event_name(side))
 
 
 def _as_given(value: Any, placed: Coordinate) -> str:
@@ -4841,11 +4835,11 @@ def _claimed_event(
 
     A held event's positions are read on its timeline's axis; a Projection
     takes the id its timeline gave it and keeps the name the side stated; a
-    CHUNK side states its positions without ``id`` or name.
+    CHUNK side states its positions and its name without ``id``.
     """
     if side.chunk is not None:
         start, end = side.chunk
-        return {"start": start, "end": end}
+        return {"name": side.name, "start": start, "end": end}
     if side.event is not None:
         return {
             "id": side.event["id"],

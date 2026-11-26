@@ -515,44 +515,58 @@ and holds one spelling of each value, whatever way its rows came in.
   written before, whose column carries only the bare `unit` key, still reads
   as before (`float`, `0.3333333333333333`): that branch is the reader's
   fallback, asserted on a table written with the old metadata by hand.
-- **`extend` and `concat` join rows of another number type, re-expressed
-  in the receiving table's** (`TestJoiningNumberTypes`). The rule is the one
-  every value landing on an axis obeys: float → fraction as the double's
-  exact ratio (`Fraction(x)`, no denominator limiting), fraction → float as
-  the nearest double (`float(r)`), onto `int` nearest with ties to even
-  (`express_as`). What proves it is the cells, read member by member, and
-  the joined table's declared number type and field metadata, for each
+- **`concat` keeps every row's number type; the cast is on request**
+  (`TestJoiningKeepsNumberTypes`). A join never converts a value: tables of
+  one axis give a table of that axis as they stand (no `timeline_id`
+  column, the inputs unchanged); tables of different axes give a table
+  spanning them, each row keyed by its timeline in the dictionary-encoded
+  column `timeline_id` (a table standing alone that lies on no timeline by
+  its axis, `<quarters fraction>`, `<quarters float>`) and read in that
+  key's unit and number type, which the table maps once per key in memory.
+  What proves it is the cells, read member by member, and the rows each
+  number type selects (`filter(include_number_types=)`), for each
   direction:
-  - a `fraction` quarters table (`a` at `[1/3, 2/3)`) absorbing a `float`
-    one (`b` at `0.1` lasting `0.2`, an instant `c` at `0.5`): `b`'s start
-    is `3602879701896397/36028797018963968` (`Fraction(0.1)`), its
-    duration `3602879701896397/18014398509481984` (`Fraction(0.2)`), its
-    end their exact sum, `10808639105689191/36028797018963968`
-    (`Fraction(0.1) + Fraction(0.2)`, not `Fraction(0.1 + 0.2)`: start and
-    duration are the stored pair of an event and the end is derived from
-    them, so on an exact table the joined row's end is its start plus its
-    duration, exactly, and the row stays consistent under the exact checks
-    the table reads it through); `c` stays an instant at `1/2`; every
-    coordinate field declares `fraction`;
-  - the reverse, the `float` table absorbing the `fraction` one: `a`'s cells
-    are `0.3333333333333333` and `0.6666666666666666`, each mirrored by its
-    double's exact ratio (`6004799503160661/18014398509481984`), the
-    duration `0.3333333333333333` (a float table keeps each value
-    re-expressed, the doubles agreeing within its tolerance);
-  - an `int` table absorbing `fraction` rows `[5/2, 7/2)` and `[3/2, 9/2)`
-    and a `float` row `[2.5, 3.5)`: start and duration are re-expressed,
-    ties to the even neighbour, and the end is their sum, so the rows keep
-    their durations: `5/2` → start 2, duration 1, end 3; `3/2` → start 2,
-    duration 3, end 5; `2.5` → start 2, duration 1, end 3; every cell
-    `denominator` 1 (re-expressing the ends instead would give `[2, 4)`
-    three times, durations 2, and lose the stated durations 1 and 3); and a
-    `fraction` table absorbing the `int` rows keeps them as `n/1`.
-  `extend` and `concat` give the same table; the receiving table's own rows
-  are unchanged. A table of another unit is still refused (`Unit mismatch:
-  quarters vs seconds`), as no number can be re-expressed across units
-  without a C-Map. The joins the factory makes (`flatten=True`,
-  `group_by=`) are proven end to end in `tests/timelines/test_factory.py`
-  (`TestStoresOfTwoNumberTypes`).
+  - a `fraction` quarters table (`a` at `[1/3, 2/3)`) joined by a `float`
+    one (`b` at `0.1` lasting `0.2`, an instant `c` at `0.5`): every cell of
+    the result equals the cell of the table it came from, member for member
+    (`b`'s start stays the float cell `0.1`, not the fraction
+    `3602879701896397/36028797018963968`), the keys are `<quarters
+    fraction>`, `<quarters float>`, `<quarters float>`, the `fraction` rows
+    are `a`, the `float` rows `b`, `c`, and the two inputs keep 1 and 2 rows;
+  - the old re-expressions are now the cast, `to_number_type`, with the old
+    values: on that join, `to_number_type("fraction")` gives `b`'s start
+    `3602879701896397/36028797018963968` (`Fraction(0.1)`), its duration
+    `3602879701896397/18014398509481984` (`Fraction(0.2)`), its end their
+    exact sum `10808639105689191/36028797018963968` (`Fraction(0.1) +
+    Fraction(0.2)`, not `Fraction(0.1 + 0.2)`: start and duration are the
+    stored pair of an event and the end is derived from them, so a row cast
+    onto an exact type ends at its start plus its duration, exactly), `c` an
+    instant at `1/2`, every coordinate field and every row `fraction`; the
+    `float` table joined by the `fraction` one, cast to `float`, gives `a`'s
+    cells `0.3333333333333333` and `0.6666666666666666`, each mirrored by
+    its double's exact ratio (`6004799503160661/18014398509481984`); an
+    `int` table joined by `fraction` rows `[5/2, 7/2)` and `[3/2, 9/2)` and a
+    `float` row `[2.5, 3.5)` keeps them as stated (`5/2`, `3/2`, `2.5`, the
+    rows of each type selected by each type) and, cast to `int`, gives
+    start and duration nearest with ties to the even neighbour and the end
+    their sum: `5/2` → start 2, duration 1, end 3; `3/2` → start 2,
+    duration 3, end 5; `2.5` → start 2, duration 1, end 3, every
+    `denominator` 1; a `fraction` table joined by `int` rows, cast to
+    `fraction`, keeps them as `n/1`. A row already of the target type is
+    kept as it is (`a`, `x`).
+  - a table of another unit joins on its own axis (`<seconds float>`), its
+    cell `1.0` unchanged: the join's single-unit contract is lifted.
+  - `to_number_type(..., columns=[...])` on a table standing alone casts
+    the columns named and declares the type on them only (`start`
+    `fraction`, `end` and `duration` `float`, the table `float`); on a
+    table spanning timelines, whose rows read every coordinate column in
+    their timeline's type, a partial cast is refused naming the columns it
+    would leave out.
+  - `filter(include_number_types=)` on a table standing alone is all or
+    nothing: its declared type keeps every row, another none.
+  The joins the factory makes (`flatten=True`, `group_by=`) cast the stores
+  joining to the first store's number type, as they did; that is proven end
+  to end in `tests/timelines/test_factory.py` (`TestStoresOfTwoNumberTypes`).
 - **Bounds of `filter`** (`TestFilterBounds`). An exact bound (`int`,
   `Fraction`) compares exactly on an `int` or `fraction` table; a bound
   written as a float compares as a key with the float side of the cells, so
@@ -565,7 +579,7 @@ and holds one spelling of each value, whatever way its rows came in.
   table nobody asked for.
 - **Cells are reduced on entry.** A ratio stated as `2/4` is accepted and
   held as `1/2` at every door that takes whole cells: `EventData(table)`,
-  `EventData.from_parquet`; `concat` and `extend` join tables that entered
+  `EventData.from_parquet`; `concat` joins tables that entered
   through those doors, so their rows stay reduced without a second pass. Each is
   asserted on the cells read back (`(1, 2)`, never `(2, 4)`), never by
   refusing the input. A table whose `start` cells spell one value three
@@ -595,6 +609,75 @@ and holds one spelling of each value, whatever way its rows came in.
   cells), so a path that skipped the reduction and then returned wrong rows
   would not pass on the count alone; the reduction tests above pass
   unmodified, which is what shows the doors still reduce.
+
+### `test_tree_store.py` - The tree store: one table per timeline tree
+
+**Purpose:** The root of a timeline tree holds the events of itself and every
+descendant in one table (`TreeStore`, `storage/tree.py`), each row naming its
+timeline and lying in that timeline's own coordinates, unit and number type;
+a timeline reads its own rows as a zero-copy slice of that table.
+
+**Contract and what proves it** (one tree: a `fraction` quarters root
+`clt_root` of length 8 holding `r1` at `1/2`; a `fraction` child `clt_a` at
+offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
+`float` child `clt_b` at offset 4 holding `b1` at `0.1`):
+
+- **One table for the tree.** The three timelines refer to one store, and
+  the children's own stores are emptied when they are attached (their
+  `timeline_ids` read `()`). The table holds 6 rows: the root's `r1` and the
+  two `Segment` rows recording its children (still among its events), `a1`,
+  `a2`, `b1`. Its `timeline_id` column is dictionary-encoded and reads
+  `clt_root` three times, `clt_a` twice, `clt_b` once: the rows are sorted
+  by `(timeline_id, start)`, so `clt_a`'s rows read `a2`, `a1` (starts `0`,
+  `1/3`, the reverse of the order they were added in) and the root's the
+  segment of `clt_a` (at 0), `r1` (`1/2`), the segment of `clt_b` (at 4).
+  Positions stay child-local: `b1`'s start is the float cell `0.1`, not
+  `4.1`.
+- **The map and the row-type mask.** The store maps `clt_root` and `clt_a`
+  to `(quarters, fraction)`, `clt_b` to `(quarters, float)`, once, in
+  memory; no column of the table states a number type. The row-type mask
+  is `[1, 1, 1, 1, 1, 2]` (`NUMBER_TYPE_CODES`: fraction 1, float 2).
+- **A timeline's rows are a zero-copy slice.** The buffer holding the float
+  side of `clt_b`'s `start` cells lies inside the buffer of the tree
+  table's `start` column (address and size compared), so the slice copied
+  nothing. The slice's `start` field declares `quarters` and `float`,
+  `clt_a`'s `fraction`, and their `EventData` say so (`number_type`); the
+  slice holds the timeline's own columns, never `timeline_id`. The slice is
+  the same object until the timeline's rows change.
+- **Rows change only through the store.** `Timeline._events` and
+  `Timeline.events` are read-only (assigning either raises
+  `AttributeError`); `add_events` on a child adds its rows to the root's
+  table (7 rows after one more event on `clt_a`).
+- **Attaching moves rows, splitting gives a subtree a store of its own.**
+  Before `add_child`, `clt_b`'s rows are in its own store; after it they are
+  in the root's, and its own store holds none. `TreeStore.split(["clt_b"])`
+  moves `clt_b`'s rows to a new store holding that timeline alone, with its
+  axis; the tree keeps its other 5 rows.
+- **A join keeps each row's type** (the join converts nothing):
+  `clt_a`'s events concatenated with `clt_b`'s key the rows by their
+  timelines (`clt_a`, `clt_a`, `clt_b`), `b1`'s start stays the float cell
+  `0.1` with the ratio side as stored, and the float filter keeps `b1`
+  alone; `to_number_type("fraction")` gives `b1` the exact ratio of the
+  double, `3602879701896397/36028797018963968`, its field declaring
+  `fraction`.
+- **The number-type filter resolves from the map.** On the tree's table
+  (`TreeStore.data`) `include_number_types={NumberType.float}` keeps `b1`,
+  `{NumberType.fraction}` every other row; `root.get_events(...)` with the
+  same filter gives `["b1"]` and `["r1", "a2", "a1"]` (its own rows and its
+  children's, each named by `source_timeline`, resolved through the map,
+  never from a cell).
+- **Event IDs are unique across the tree**, with nothing renamed: `r1`
+  added to `clt_a` is refused naming both timelines (`Event id 'r1' is
+  already held by an event of timeline 'clt_root', so it cannot join
+  timeline 'clt_a': event ids are unique across a timeline tree`); a child
+  `clt_c` holding `r1` attached to the root is refused naming both (`Event
+  id 'r1' of timeline 'clt_c' is already held by an event of timeline
+  'clt_root'; event ids are unique across a timeline tree`), and the tree is
+  as it was: two children, 6 rows, `clt_c` holding its row in its own store.
+- **A timeline's new ID renames its rows without rewriting one.** After the
+  child `clt_a` takes the ID `clt_x`, the store's timelines read
+  `clt_root`, `clt_x`, `clt_b`, the child reads its two rows, and the
+  index names `clt_x` as the holder of `a1`.
 
 ### `test_coordinate_range.py` - `EventData.coordinate_range()`
 

@@ -607,13 +607,20 @@ class TestNotationalLayer:
 
         assert first.length.value == 426
         assert len(first_rows) == 22
-        assert first_rows[-1]["start"]["value"] == 411.0
+        # A timeline holds its rows in the order of their starts: the box at
+        # 411, the first accolade's last in document order, lies among them.
+        first_starts = [row["start"]["value"] for row in first_rows]
+        assert first_starts[-2:] == [411.0, 418.0]
         # The drop from 411 to 53 (358 pixels) passes half the span of
         # 49..422 (186.5 pixels), so 53 opens the second accolade.
         assert second_rows[0]["start"]["value"] == 53.0
 
     def test_page_file_map_resolves_each_gymnopedie_page(self, ieee1599_loader) -> None:
-        """Every page's first box maps to its verbatim image file name."""
+        """Every page's leftmost box maps to its verbatim image file name.
+
+        A timeline holds its rows in the order of their starts, so a page's
+        first event is its first accolade's leftmost box.
+        """
         edition = ieee1599_loader("gymnopedie").create_timeline(
             "eng_montreal_les_editions_outremontaises_2006:dgt_.*"
         )
@@ -627,10 +634,10 @@ class TestNotationalLayer:
         assert cmap.end == edition.length.value
         assert cmap.to_dict()["type"] == "PiecewiseMap"
         assert [(start, cmap(start)) for start in page_starts] == [
-            (50.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png"),
-            (1749.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-2.png"),
-            (3943.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-3.png"),
-            (6007.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-4.png"),
+            (49.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png"),
+            (1747.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-2.png"),
+            (3899.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-3.png"),
+            (6004.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-4.png"),
         ]
 
     @pytest.mark.parametrize(
@@ -866,12 +873,19 @@ class TestClaims:
         """Layer events are minted from the loader's minter, one batch per type.
 
         The spine's and the LOS's timeline ids are minted first, then the
-        eight rests and the eight syllables of the LOS, in document order.
+        eight rests and the eight syllables of the LOS, in document order;
+        the timeline holds them in the order of their starts.
         """
         loader = Ieee1599Loader.from_file(ieee1599_path("animals"), seed=0)
         los = loader.create_timeline(loader.los_uid)
         ids = minted(0, "dlt", "dlt", *["rest"] * 8, *["syllable"] * 8)
-        assert los.events.table.column("id").to_pylist() == ids[2:]
+        held = los.events.table.column("id").to_pylist()
+        assert sorted(held) == sorted(ids[2:])
+        assert len(held) == 16
+        starts = [
+            cell["value"] for cell in los.events.table.column("start").to_pylist()
+        ]
+        assert starts == sorted(starts)
 
 
 # endregion

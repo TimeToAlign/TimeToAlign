@@ -104,10 +104,10 @@ class ScoreStore(EventStore):
         Args:
             other: The ScoreStore to add.
         """
-        self.notes.extend(other.notes)
-        self.measures.extend(other.measures)
-        self.controls.extend(other.controls)
-        self.annotations.extend(other.annotations)
+        self.notes = self.notes.concat(other.notes)
+        self.measures = self.measures.concat(other.measures)
+        self.controls = self.controls.concat(other.controls)
+        self.annotations = self.annotations.concat(other.annotations)
         # Metadata aggregation strategy: keep last or list?
         # Loader handles source metadata separately.
         # We can merge non-source metadata if needed.

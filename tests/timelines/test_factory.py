@@ -469,7 +469,8 @@ class TestFactoryMinting:
             "n2",
         ]
         flat = create_timeline(self._store(), uid="flat", flatten=True)
-        assert flat.get_events().column_values("id") == ["n1", "n2", "m1"]
+        # A timeline's rows are held in the order of their starts.
+        assert flat.get_events().column_values("id") == ["n1", "m1", "n2"]
 
     def test_one_event_id_in_two_merged_stores_is_refused(self) -> None:
         store = DictStore({"a": self._data("x"), "b": self._data("x")})

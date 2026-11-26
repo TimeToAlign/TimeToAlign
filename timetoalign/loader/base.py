@@ -839,7 +839,7 @@ class EventLoader(Loader[LoadSourceResult]):
         if len(self._events) == 0:
             self._events = new_data
         else:
-            self._events.extend(new_data)
+            self._events = self._events.concat(new_data)
 
     def clear(self) -> None:
         """Clear all loaded sources and events."""

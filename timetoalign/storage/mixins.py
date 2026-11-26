@@ -585,20 +585,6 @@ class SemanticFieldAccessMixin:
             self.__field_cache: dict[tuple[str, str], SemanticField[Any]] = {}
             return self.__field_cache
 
-    def _invalidate_field_cache(self) -> None:
-        """Drop every cached :class:`SemanticField` view.
-
-        A cached field — including one *afforded* over a raw atomic column
-        via :attr:`_afforded_fields` — wraps the underlying ``pa.Array`` as
-        it was at first access.  Any in-place replacement of ``self._table``
-        (e.g. :meth:`EventData.extend`, which reassigns the table to a
-        ``pa.concat_tables`` result) therefore leaves the cache stale: a
-        subsequent ``get_field`` / ``get_pitch_field`` would silently expose
-        only the pre-mutation rows.  Call this after such a mutation so the
-        affordance re-attaches over the new table.
-        """
-        self._field_cache.clear()
-
     def _reset_field_cache(self) -> None:
         """Give this instance a cache of its own, empty.
 

@@ -120,7 +120,7 @@ class MidiStore(EventStore):
         for event_type in CONTROL_EVENT_TYPES:
             filtered = data.filter(event_type=event_type)
             if len(filtered) > 0:
-                controls.extend(filtered)
+                controls = controls.concat(filtered)
 
         return cls(
             notes=notes,
@@ -138,8 +138,8 @@ class MidiStore(EventStore):
         Args:
             other: The MidiStore to merge into this one.
         """
-        self.notes.extend(other.notes)
-        self.controls.extend(other.controls)
+        self.notes = self.notes.concat(other.notes)
+        self.controls = self.controls.concat(other.controls)
         self.metadata.update(other.metadata)
 
     def summary(self) -> dict[str, Any]:

@@ -2699,14 +2699,15 @@ the defect shows, and `s = 10` on an `int` ticks axis and `s = 0.5` on a
 `float` seconds axis, whose boundaries no float conversion moves and whose
 results are therefore those of before (each axis case run against the code
 before the fix: the fraction cases fail there, the int and float ones pass).
-For each axis every part is asserted on its exact event IDs, the child-local
+For each axis every part is asserted on its exact event IDs (a child's
+copies on IDs of their own), the child-local
 start of each event (`j·s`), its offset and its length (`1·s`, `2·s`, `4·s`,
 `3·s`), each value with its Python type, so a length that equals the
 expected value but arrives as a float on an exact axis fails:
 
 | Call | Parts asserted |
 |---|---|
-| `create_child_from_region` on `[1·s, 3·s)` | one child: `n1`, `n2` at `0`, `1·s`; offset `1·s`, length `2·s` |
+| `create_child_from_region` on `[1·s, 3·s)` | one child: copies of `n1`, `n2` at `0`, `1·s`, each minted a `note_` ID none of the timeline's events holds (event IDs are unique across a tree); offset `1·s`, length `2·s` |
 | `create_segment_line_by_splitting` at the ends of `n0`, `n2`, `n6` | `[n0]`, `[n1, n2]`, `[n3 … n6]`, `[n7, n8, n9]` |
 | `SegmentLine.from_segmentation([0, 1·s, 3·s, 7·s, 10·s])` | the same four parts |
 
@@ -2803,8 +2804,11 @@ nobody asked for.
 
 **A timeline's events are not handed out** (`TestGetEventsIsACopy`).
 `get_events()` without a filter returns an `EventData` of its own: `is` the
-timeline's `events` is false, and `extend` on it with a Note at `[10, 11)`
-leaves a timeline of length 4 holding its one event, length 4.
+timeline's `events` is false, and `concat` onto it of a Note at `[10, 11)`
+gives a table of the two events while the result keeps its one and the
+timeline, of length 4, holds its one event. No `EventData` is changed in
+place (`extend` is gone); a timeline's rows change only through its tree's
+store.
 
 ### `test_base.py` - Core Timeline Functionality
 
@@ -2985,23 +2989,16 @@ write fractions):
   holds (the scope is the manifest, not the process). A given Projection
   ID another timeline of the manifest holds as a Projection (the ID
   `dpt_1` minted, read from its return) is refused with the same message.
-- **A child joins whatever Projection IDs it holds.** The rule binds the
-  creation of a Projection, not a join: a timeline that created its
-  Projections before joining keeps their IDs (a MatchClaim names an event
-  by its timeline and ID, so it stays unambiguous in memory; the package
-  writer refuses the shared ID, tested in `tests/alignment/`). `dpt_1`
-  holding a Projection added with `seed=7` takes a free `part` whose own
-  Projection was added with `seed=7` too, at offset 0, both holding one ID:
-  `dpt_1` then has one child, `part` has `dpt_1` as its parent and still
-  holds that ID (nothing is renamed). The manifest now holds it twice,
-  and that refuses nothing on creation: a Projection then added to
-  `dpt_1` without an ID is minted an ID of its own, one given the free ID
-  `onset_a` on `part` is added, and one given the ID `dpt_1` minted last
-  on `part` is refused, `Projection ID '<the ID>' names a Projection on
-  the timeline 'dpt_1' and one on 'part': ...`, `part` keeping its two
-  events. A check that compared the manifest's IDs among themselves would
-  refuse both of the first two. In a bundle, `dpt_1` takes `part` likewise
-  although `clt_6`, another root of the bundle, holds the same ID.
+- **A child sharing a Projection ID is refused at the join.** Event IDs
+  are unique across a timeline tree and a collision is refused at a join,
+  nothing renamed: `dpt_1` holding a Projection added with `seed=7` refuses
+  a free `part` whose own Projection was added with `seed=7` too (`Event id
+  '<the ID>' of timeline 'part' is already held by an event of timeline
+  'dpt_1'; event ids are unique across a timeline tree`); `dpt_1` keeps no
+  child, `part` no parent and its one event. Across the trees of a bundle
+  the join refuses nothing: `dpt_1` takes `part` although `clt_6`, another
+  root of the bundle, holds the same ID (the package writer refuses it,
+  tested in `tests/alignment/`).
 - **A Projection object stands for its row.** `add_events` takes a
   `Projection` alone or in a list beside dicts: `Projection(start=
   Coordinate(1/2, seconds), projection_of=EventReference(clt_6, x1azmn68))`
@@ -3245,6 +3242,14 @@ the source's events onto it, each event's start re-based by the cut's start
 `_by_splitting`) and `SegmentLine.from_segmentation`. A Box holds its
 shape in the image's space, so the shape never moves; what moves is the
 timeline's place in the image.
+
+**A child's copies are new events.** Event IDs are unique across a
+timeline tree, so the events a child cut from a region copies are minted
+IDs of their own (`box_…`, `note_…`), while a slice or a segment line, a
+tree of its own, keeps the source's IDs. The tests read a child's Boxes
+keyed by the Box of the source each copies, matched by its shape, which a
+copy keeps, and assert that no copy holds a source's ID; a refusal names
+the Box by the source's ID.
 
 **Which timelines this concerns.** `meta` is free-form. A timeline *holds
 Boxes* when a Box is among the events `get_events()` gives it: its own or a
@@ -3535,8 +3540,10 @@ data as absent, so these are the cases that would show it broken:
 - *Side by side, one table*: a `pixels` timeline holding, in this order, a
   Beat (`b1` at 0), the Box `rect_h2`, the Projection `p1` at 378, an Event
   `e1` at 10 lasting 5, the Note `n_378` and a Measure `m1` at 30.
-  `get_field(T)` for `Box`, `Projection`, `Event`, `Note` is a field of 6
-  rows, the event added on its own row (index 1 to 4, equal to the event
+  The timeline holds its rows in the order of their starts: `b1`, `e1`,
+  `m1`, then the three at 378 in the order they were added (`rect_h2`,
+  `p1`, `n_378`). `get_field(T)` for `Box`, `Projection`, `Event`, `Note`
+  is a field of 6 rows, the event added on its own row (equal to the event
   added) and `None` on every other; on the same table `get_field(Beat)`
   and `get_field(Measure)` raise the `KeyError` above. The Box holds a
   bounding box and no quadrilateral, the Projection no `projection_of`:
@@ -3805,7 +3812,9 @@ the whole timeline payload is covered by `tests/core/test_number_json.py`.
 with `events=True, external_references=False` yields children that carry
 `"events"` and lack `"external_references"`, and so on for every combination.
 The tests check a two-level hierarchy (parent → child → grandchild) so
-forwarding is verified through more than one recursion step. Each level emits
+forwarding is verified through more than one recursion step; each level
+holds two events of its own IDs (`p1`/`p2`, `e1`/`e2`, `g1`/`g2`), since
+event IDs are unique across a timeline tree. Each level emits
 its own rows: a reference added to the child appears in the child payload
 only. An `"events"` list also carries the `Segment` bookkeeping event that
 `add_child()` records — the expected ids spell it out, since `from_dict()`
@@ -4590,12 +4599,15 @@ measures.
    - Overlapping regions give independent children, as the method
      promises: on a 16-quarter timeline holding `f1` [0, 2) and
      `f2` [6, 7), regions [0, 8) and [4, 12) give one child holding
-     `f1` [0, 2) and `f2` [6, 7), and one holding `f2` [2, 3)
-     alone; the same region [0, 8) twice gives two children holding both
-     events at their own positions; the timeline keeps its two events. The
-     second child's cut also meets the first child's copy of an event,
-     under the same ID: a copy taking both rows refused the call
-     (`Event id 'f2' is given twice in one call to add_events`).
+     copies of `f1` [0, 2) and `f2` [6, 7), and one holding a copy of `f2`
+     [2, 3) alone; the same region [0, 8) twice gives two children holding
+     copies of both events at their own positions; the timeline keeps its
+     two events. Event IDs are unique across a timeline tree, so each copy
+     is a new event minted an ID of its own (`fast_…`, all distinct, none
+     `f1` or `f2`). The second child's cut also meets the first child's
+     copy of an event: a descendant's row equal to a row taken in all but
+     its ID and `source_timeline` is a copy and is taken once, so the
+     second child holds one copy of `f2`, not two.
 
 9. **Children and regions — get_regions_at() / get_children_at()** (6 tests)
    - `get_regions_at(coord)` returns all regions containing that coordinate
@@ -5436,7 +5448,7 @@ half-open stretch out of a timeline, and the assembly of slices into a
    - Events preserved in assembled segments
    - Segment type matches source class
    - The assembled line is an instance of both SegmentLine and the source class
-   - Repeated section assembly (same range played twice)
+   - A repeated section (the same range sliced twice) is refused at the join: the second slice holds the first's event IDs, unique across a tree; the line keeps one segment
 
 **Coordinate Handling:** EventData stores instant events under `start` (struct dict),
 not `instant`. Use `struct_to_coordinate()` for reading; never cast to `float`
@@ -5511,7 +5523,8 @@ the IDs come from the content minter of the data, so two calls on equal data
 in one test give distinct IDs and, after `reset_content_minters()`, the
 first call's IDs again. `mint_timeline_id(unit, minter, role=)` leads with
 the role (`score:clt_…`). Events keep their IDs on the timeline (no store
-name or timeline ID is prefixed), so two stores merged by `flatten=True`
+name or timeline ID is prefixed; the timeline holds them in the order of
+their starts, `n1`, `m1`, `n2`), so two stores merged by `flatten=True`
 holding one event ID are refused, naming the ID and the timeline, with
 `ValueError`.
 

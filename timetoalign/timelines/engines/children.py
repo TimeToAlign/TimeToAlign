@@ -367,7 +367,7 @@ class ChildrenMixin(_Host):
         combined = events.concat(row)
         order = list(range(len(events)))
         order[position] = len(events)
-        self._events = events._derived(combined.table.take(order))
+        self._replace_events(events._derived(combined.table.take(order)))
 
     def validate_child(
         self,
@@ -648,8 +648,14 @@ class ChildrenMixin(_Host):
             None if child.length is None else offset_coord.value + child.length.value
         )
         # The whole subtree joins this manifest: an id held here raises
-        # before anything changes.
+        # before anything changes; so does an event id this tree holds.
         self._refuse_held(child._subtree_entries())
+        # A child that roots its own tree brings its rows into this one; a
+        # child already in another tree (a timeline in two parents) keeps
+        # them there, where it reads them.
+        joining = child._tree_store.timeline_ids[:1] == (child.id,)
+        if joining:
+            self._tree_store.refuse_shared_events(child._tree_store)
         # One Jump per position of the root's axis, over the root's tree.
         _, start = self._root_start()
         self._refuse_repeated_jumps(
@@ -661,10 +667,17 @@ class ChildrenMixin(_Host):
             offset_coord.value if child_end is None else child_end, allow_expansion
         )
 
-        # Store child reference
+        # Store child reference; the child's subtree's rows move into this
+        # tree's store.
         self._children[child.id] = child
         self._child_offsets[child.id] = offset_coord
         child._parent = self._timeline
+        if joining:
+            moved = child._tree_store
+            self._tree_store.attach(moved)
+            for timeline in (child, *(t for _, t in child._iter_descendants())):
+                if timeline._tree_store is moved:
+                    timeline._tree_store = self._tree_store
 
         if plain_segment:
             child._locked = False
@@ -986,7 +999,7 @@ class ChildrenMixin(_Host):
             (new_id if key == old_id else key): offset
             for key, offset in self._child_offsets.items()
         }
-        self._events = self._events._with_segment_renamed(old_id, new_id)
+        self._replace_events(self._events._with_segment_renamed(old_id, new_id))
 
     def get_child(self, child_id: str) -> Timeline:
         """Retrieve a child timeline by ID.
@@ -1205,7 +1218,11 @@ class ChildrenMixin(_Host):
             measured.give_to(child)
 
         self._copy_events_to_cut(
-            child, region.start.value, region.end.value, copy_events=copy_events
+            child,
+            region.start.value,
+            region.end.value,
+            copy_events=copy_events,
+            in_this_tree=True,
         )
 
         self.add_child(child, offset=region.start)
@@ -1381,6 +1398,7 @@ class ChildrenMixin(_Host):
         end: Any,
         *,
         copy_events: bool = True,
+        in_this_tree: bool = False,
     ) -> None:
         """Copy the events starting in [start, end) onto *target*, cut there.
 
@@ -1392,9 +1410,16 @@ class ChildrenMixin(_Host):
         to hold an event running past *end*; an event starting before
         *start* is not taken. Where this timeline holds Boxes, *target*
         states its place in the image first (:meth:`_move_rows_onto_cut`),
-        with or without events. An event ID met twice (a child cut from an
-        overlapping region holds a copy of the event) is taken once, from
+        with or without events. An event ID met twice is taken once, from
         the first row, which is this timeline's own before any child's.
+
+        A copy for a timeline joining this one's tree (a child cut from a
+        region) is a new event of the tree, whose event IDs are unique: it
+        is minted an ID of its own (``add_events``' minting), the event it
+        copies keeping its own. A child cut earlier from an overlapping
+        region holds such copies; a descendant's row equal to a row taken
+        in everything but its ID and ``source_timeline`` is a copy, and is
+        taken once, from the first row.
 
         Args:
             target: The new timeline, standing at *start* of this one.
@@ -1402,6 +1427,8 @@ class ChildrenMixin(_Host):
             end: The cut's end, likewise.
             copy_events: Whether the events are copied; an area is stated
                 either way.
+            in_this_tree: Whether *target* joins this timeline's tree, so
+                that the copies take IDs of their own.
 
         Raises:
             ValueError: As :meth:`_move_rows_onto_cut` refuses a Box, or as
@@ -1410,21 +1437,33 @@ class ChildrenMixin(_Host):
         rows: list[dict[str, Any]] = []
         if copy_events:
             taken: set[str] = set()
+            contents: set[str] = set()
             for event in self.get_events(min_coord=start, max_coord=end):
-                # A child cut from an overlapping region holds a copy of an
-                # event of this timeline under the same ID; the timeline's
-                # own row comes first and is the one taken.
+                # The timeline's own row comes first and is the one taken.
                 event_id = event.get("id")
                 if event_id is not None:
                     if event_id in taken:
                         continue
                     taken.add(event_id)
+                if in_this_tree:
+                    content = repr(
+                        sorted(
+                            (key, value)
+                            for key, value in event.items()
+                            if key not in ("id", "source_timeline")
+                        )
+                    )
+                    if event.get("source_timeline") is not None and content in contents:
+                        continue
+                    contents.add(content)
                 row = dict(event)
                 for key in ("instant", "start", "end"):
                     if row.get(key) is not None:
                         row[key] = shift_coordinate(row[key], start, subtract=True)
                 rows.append(row)
-        self._move_rows_onto_cut(target, rows, start, end, stated=False)
+        self._move_rows_onto_cut(
+            target, rows, start, end, stated=False, new_ids=in_this_tree
+        )
 
     def _holds_boxes(self) -> bool:
         """Whether this timeline holds a Box: among its own events or a
@@ -1531,6 +1570,7 @@ class ChildrenMixin(_Host):
         end: Any,
         *,
         stated: bool,
+        new_ids: bool = False,
     ) -> None:
         """Add *rows*, moved from [start, end) of this timeline, onto *target*.
 
@@ -1563,6 +1603,9 @@ class ChildrenMixin(_Host):
             end: The cut's end, likewise.
             stated: Add as rows read from a source rather than through
                 ``add_events``.
+            new_ids: Add the rows without their IDs, which ``add_events``
+                mints anew (copies joining this timeline's tree); a refusal
+                names a row by the ID it was given.
 
         Raises:
             ValueError: If this timeline holds Boxes and its ``meta["box"]``
@@ -1591,7 +1634,9 @@ class ChildrenMixin(_Host):
             if stated:
                 target._add_stated_events(rows)
             else:
-                target.add_events(rows)
+                target.add_events(
+                    [{**row, "id": None} for row in rows] if new_ids else rows
+                )
         grown = target.length
         if (
             not stated

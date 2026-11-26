@@ -306,7 +306,7 @@ class TestIdsAcrossTheManifest:
         assert str(raised.value) == message
         assert len(quarters.events) == 0
 
-    def test_a_child_sharing_a_projection_id_joins(self) -> None:
+    def test_a_child_sharing_a_projection_id_is_refused(self) -> None:
         parent = _samples()
         (shared,) = parent.add_events(
             [{"event_type": "Projection", "start": 5}], seed=7
@@ -316,23 +316,17 @@ class TestIdsAcrossTheManifest:
         assert part.add_events([{"event_type": "Projection", "start": 7}], seed=7) == [
             shared
         ]
-        parent.add_child(part, 0)
-        assert parent.n_children == 1
-        assert part._parent is parent
-        assert part.events.table.column("id").to_pylist() == [shared]
-
-        # The shared ID refuses nothing on creation: a missing ID is minted
-        # apart from every Projection of the manifest, a free one is kept ...
-        (minted,) = parent.add_events([{"event_type": "Projection", "start": 9}])
-        assert minted != shared
-        assert part.add_events(
-            [{"event_type": "Projection", "id": "onset_a", "start": 8}]
-        ) == ["onset_a"]
-        # ... and one another timeline of the manifest holds is refused.
+        # Event IDs are unique across a timeline tree: the join is refused,
+        # naming both holders, and nothing is renamed.
         with pytest.raises(ValueError) as raised:
-            part.add_events([{"event_type": "Projection", "id": minted, "start": 9}])
-        assert str(raised.value) == self._shared(minted, "part")
-        assert part.events.table.column("id").to_pylist() == [shared, "onset_a"]
+            parent.add_child(part, 0)
+        assert str(raised.value) == (
+            f"Event id '{shared}' of timeline 'part' is already held by an event "
+            "of timeline 'dpt_1'; event ids are unique across a timeline tree"
+        )
+        assert parent.n_children == 0
+        assert part._parent is None
+        assert part.events.table.column("id").to_pylist() == [shared]
 
     def test_a_child_sharing_a_projection_id_of_the_bundle_joins(self) -> None:
         bundle = self._bundle()

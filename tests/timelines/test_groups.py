@@ -1292,8 +1292,8 @@ def test_event_data_coerces_volta_to_integer() -> None:
 
     assert str(null_only._table.schema.field("volta").type) == "int64"
     assert with_volta._table.column("volta").to_pylist() == [2]
-    null_only.extend(with_volta)
-    assert null_only._table.column("volta").to_pylist() == [None, 2]
+    joined = null_only.concat(with_volta)
+    assert joined._table.column("volta").to_pylist() == [None, 2]
 
 
 # endregion

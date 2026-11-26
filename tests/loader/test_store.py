@@ -242,24 +242,8 @@ class TestEventDataRepr:
         assert "ticks" in r
 
 
-class TestEventDataExtend:
-    """Tests for EventData extend/concat methods."""
-
-    def test_extend(
-        self,
-        store_with_instants: EventData,
-        sample_interval_events: list[dict[str, Any]],
-    ) -> None:
-        """extend() adds events from another store."""
-        other = EventData.from_dicts(sample_interval_events, TimeUnit.ticks)
-        store_with_instants.extend(other)
-        assert len(store_with_instants) == 5
-
-    def test_extend_unit_mismatch_raises(self, store_with_instants: EventData) -> None:
-        """extend() raises on unit mismatch."""
-        other = EventData.empty(TimeUnit.seconds)
-        with pytest.raises(ValueError, match="Unit mismatch"):
-            store_with_instants.extend(other)
+class TestEventDataConcat:
+    """Tests for EventData concat, the one join, which changes no table."""
 
     def test_concat(
         self,
@@ -272,11 +256,19 @@ class TestEventDataExtend:
         # Original unchanged
         assert len(store_with_instants) == 3
 
-    def test_concat_unit_mismatch_raises(self, store_with_instants: EventData) -> None:
-        """concat() raises on unit mismatch."""
-        other = EventData.empty(TimeUnit.seconds)
-        with pytest.raises(ValueError, match="Unit mismatch"):
-            store_with_instants.concat(other)
+    def test_concat_of_another_unit_keeps_each_rows_axis(
+        self, store_with_instants: EventData
+    ) -> None:
+        """concat() of another unit keys each row by its axis."""
+        other = EventData.from_dicts(
+            [{"id": "s", "event_type": "Beat", "instant": 1.0}], TimeUnit.seconds
+        )
+        combined = store_with_instants.concat(other)
+        assert combined.table.column("timeline_id").to_pylist()[-2:] == [
+            "<ticks int>",
+            "<seconds float>",
+        ]
+        assert len(store_with_instants) == 3
 
 
 class TestEventDataFilter:

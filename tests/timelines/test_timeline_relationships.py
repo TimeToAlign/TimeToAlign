@@ -2069,7 +2069,18 @@ class TestCreateChildrenFromRegions:
 
         children = tl.create_children_from_regions()
 
-        assert [self._own_events(child) for child in children] == expected
+        # Each copy is a new event of the tree, minted an ID of its own: the
+        # copies of f1 and f2 are compared on their positions, their IDs
+        # held by no other event of the tree.
+        held = [[event[0] for event in self._own_events(child)] for child in children]
+        assert [
+            [(start, end) for _, start, end in self._own_events(child)]
+            for child in children
+        ] == [[(start, end) for _, start, end in part] for part in expected]
+        minted = [event_id for ids in held for event_id in ids]
+        assert [event_id[:5] for event_id in minted] == ["fast_"] * len(minted)
+        assert len(set(minted)) == len(minted)
+        assert not set(minted) & {"f1", "f2"}
         assert tl.n_events == 2
 
 

@@ -8,6 +8,7 @@ zones); every expected value is exact.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -559,7 +560,7 @@ class TestIdentity:
         )
         _assert_nothing_minted(loader)
 
-    def test_a_box_id_is_unique_in_its_accolade_only(self) -> None:
+    def test_a_box_id_is_unique_in_its_page(self) -> None:
         loader = _Loader()
         line = Page(
             name="p",
@@ -578,10 +579,20 @@ class TestIdentity:
         )
         _assert_nothing_minted(loader)
 
-        (page,) = build_pages(loader, [_chorale_page()], box_ids="m{box}")
+        # The accolades of a page are timelines of one tree, across which
+        # event IDs are unique: numbering the Boxes per accolade is refused.
+        with pytest.raises(ValueError) as error:
+            build_pages(_Loader(), [_chorale_page()], box_ids="m{box}")
+        assert re.fullmatch(
+            r"Event id 'm1' of timeline 'dgt_\w+' is already held by an event of "
+            r"timeline 'dgt_\w+'; event ids are unique across a timeline tree",
+            str(error.value),
+        )
+
+        (page,) = build_pages(loader, [_chorale_page()], box_ids="m{n}")
         (_, first), (_, second) = _segments(page)
         assert [box[0] for box in _boxes(first)] == ["m1", "m2", "m3", "m4", "m5"]
-        assert [box[0] for box in _boxes(second)] == ["m1", "m2", "m3", "m4"]
+        assert [box[0] for box in _boxes(second)] == ["m6", "m7", "m8", "m9"]
 
     def test_given_accolade_ids_draw_no_id(self) -> None:
         loader = _Loader()

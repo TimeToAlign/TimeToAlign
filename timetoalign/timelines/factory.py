@@ -138,11 +138,28 @@ def create_timeline_from_event_data(
         number_type=effective_number_type,
         uid=uid,
     )
-    # The timeline's own wrapper over the (immutable) table: adding events
-    # to it replaces its table and leaves the source and every other
+    # The rows join the timeline's tree store (the table is immutable):
+    # adding events to the timeline leaves the source and every other
     # timeline made from the source as they are.
-    timeline._events = source._derived(source.table)
+    timeline._replace_events(source)
     return timeline
+
+
+def _merged(merged: EventData, data: EventData) -> EventData:
+    """*merged* joined by *data*'s rows, written in *merged*'s number type.
+
+    The stores of one timeline share its unit and number type: rows of
+    another number type are cast to *merged*'s
+    (:meth:`~timetoalign.storage.EventData.to_number_type`).
+
+    Raises:
+        ValueError: If *data* has another unit.
+    """
+    if data.unit != merged.unit:
+        raise ValueError(f"Unit mismatch: {merged.unit} vs {data.unit}")
+    if data.number_type is not merged.number_type:
+        data = data.to_number_type(merged.number_type)
+    return merged.concat(data)
 
 
 def _infer_timeline_class_and_number_type(
@@ -233,7 +250,7 @@ def _create_grouped_timeline(
     # Merge all data first
     merged_data = data_to_use[0][1]
     for _, data in data_to_use[1:]:
-        merged_data = merged_data.concat(data)
+        merged_data = _merged(merged_data, data)
 
     # Check that group_by field exists
     table = merged_data.table
@@ -306,7 +323,7 @@ def _create_grouped_timeline(
             uid=mint_timeline_id(group_data.unit, minter),
             name=child_name,
         )
-        child._events = group_data
+        child._replace_events(group_data)
         parent.add_child(child, offset=0, allow_expansion=True)
 
     module_logger.debug(
@@ -425,7 +442,7 @@ def create_timeline_from_bundle(
         # Merge all events into single timeline
         merged_data = first_data
         for _, data in data_to_use[1:]:
-            merged_data = merged_data.concat(data)
+            merged_data = _merged(merged_data, data)
         # Create timeline with corrected number_type
         coord_range = merged_data.coordinate_range()
         length = coord_range[1] if coord_range else 0
@@ -437,7 +454,7 @@ def create_timeline_from_bundle(
         )
         if len(data_to_use) > 1:
             _refuse_repeated_event_ids(merged_data, timeline.id)
-        timeline._events = merged_data
+        timeline._replace_events(merged_data)
 
         module_logger.debug(
             f"Created timeline '{timeline.id}' with {len(merged_data)} events"
@@ -475,7 +492,7 @@ def create_timeline_from_bundle(
                 uid=mint_timeline_id(data.unit, minter),
                 name=name,
             )
-            child._events = data
+            child._replace_events(data)
             parent.add_child(child, offset=0, allow_expansion=True)
 
         module_logger.debug(

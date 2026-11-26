@@ -59,6 +59,7 @@ from timetoalign.maps import (
 )
 from timetoalign.storage import EventData
 from timetoalign.storage.events import BOX_EVENT_TYPE, SHAPE_FIELDS
+from timetoalign.storage.tree import TreeStore
 
 from .engines import (
     ChildrenMixin,
@@ -392,8 +393,11 @@ class Timeline(
         self._name = name
         self._meta = dict(meta) if meta else {}
 
-        # Event storage
-        self._events = self._event_data_class.empty(self._unit, self._number_type)
+        # Event storage: the root of a tree holds the events of the whole
+        # tree; this timeline reads its own rows through ``_events``.
+        self._tree_store = TreeStore(
+            self._id, self._event_data_class.empty(self._unit, self._number_type)
+        )
 
         # Incoming external references (annotations pointing at own events)
         self._external_references = empty_external_reference_table()
@@ -626,7 +630,7 @@ class Timeline(
             number_type=data.number_type,
             **kwargs,
         )
-        timeline._events = data._derived(data.table)
+        timeline._replace_events(data)
         return timeline
 
     # endregion
@@ -1146,6 +1150,7 @@ class Timeline(
         old_id = self._id
         if self._parent is not None and new_id != old_id:
             self._parent._rename_child(old_id, new_id)
+        self._tree_store.rename(old_id, new_id)
         self._id = new_id
         self._rename_references(old_id, new_id)
 

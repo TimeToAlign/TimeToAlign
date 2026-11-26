@@ -370,7 +370,10 @@ class TestOwnBoxesBesideAnAccolade:
         child = sheet.create_child_from_region("r")
         assert child.length.value == 1000
         assert child.meta == {"image": IMAGE}
-        assert _boxes(child) == _boxes(sheet) == {"own": (200, 400, _cells(OWN))}
+        # The copy is a new event of the tree, minted an ID of its own.
+        [(copy_id, cells)] = _boxes(child).items()
+        assert copy_id.startswith("box_")
+        assert {"own": cells} == _boxes(sheet) == {"own": (200, 400, _cells(OWN))}
         _round_trips(child)
 
     def test_a_child_elsewhere_is_refused(self) -> None:
@@ -411,7 +414,10 @@ class TestNoBoxAnywhere:
         child = sheet.create_child_from_region("r")
         assert child.length.value == 1900
         assert child.meta == {}
-        assert _starts(child) == {"e1": (100, 500), "e2": (1450, 1750)}
+        # The copies of e1 and e2 (the descendant's), minted IDs of their own.
+        copies = _starts(child)
+        assert sorted(copies.values()) == [(100, 500), (1450, 1750)]
+        assert all(copy_id.startswith("note_") for copy_id in copies)
         assert sheet.get_child_offset(child.id).value == 100
 
     def test_a_slice(self) -> None:

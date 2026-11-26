@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     )
     from timetoalign.maps import ConversionMap
     from timetoalign.storage import EventData
+    from timetoalign.storage.tree import TreeStore
 
     from ..base import Timeline
     from ..flowcontrol import FlowControlRegistry, FlowControlView, Jump
@@ -64,7 +65,7 @@ class TimelineHost(Protocol):
     _length: Coordinate | None
     _locked: bool
     _meta: dict[str, Any]
-    _events: EventData
+    _tree_store: TreeStore
     _children: dict[str, Timeline]
     _child_offsets: dict[str, Coordinate]
     _conversion_maps: dict[str, ConversionMap[Any]]
@@ -166,6 +167,19 @@ class TimelineHost(Protocol):
         """Number of events (excluding segment events)."""
         ...
 
+    @property
+    def _events(self) -> EventData:
+        """This timeline's own rows, a slice of its tree's table."""
+        ...
+
+    def _append_events(self, data: EventData) -> None:
+        """Add the rows of *data* to this timeline's."""
+        ...
+
+    def _replace_events(self, data: EventData) -> None:
+        """Make the rows of *data* this timeline's."""
+        ...
+
     def _ensure_capacity(
         self,
         required_end: CoordinateValue,
@@ -185,6 +199,7 @@ class TimelineHost(Protocol):
         include_children: bool = True,
         min_coord: CoordinateSpec | None = None,
         max_coord: CoordinateSpec | None = None,
+        include_number_types: Collection[NumberType | str] | None = None,
         **field_filters: Any,
     ) -> EventData:
         """Filter and retrieve events."""
@@ -233,6 +248,7 @@ class TimelineHost(Protocol):
         end: Any,
         *,
         copy_events: bool = True,
+        in_this_tree: bool = False,
     ) -> None:
         """Copy the events starting in [start, end) onto *target*, cut there."""
         ...

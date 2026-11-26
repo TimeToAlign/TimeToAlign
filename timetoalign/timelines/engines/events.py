@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -358,6 +358,36 @@ class EventsMixin(_Host):
         """The underlying EventData (read-only access)."""
         return self._events
 
+    @property
+    def _events(self) -> EventData:
+        """This timeline's own rows: a zero-copy slice of its tree's table.
+
+        The root of the timeline's tree holds the events of every timeline
+        of the tree in one table (``_tree_store``); this is the slice of this
+        timeline's rows, its axis declared in the field metadata. Rows change
+        only through the store (:meth:`_append_events`,
+        :meth:`_replace_events`).
+        """
+        return self._tree_store.events_of(self._id)
+
+    def _append_events(self, data: EventData) -> None:
+        """Add the rows of *data* to this timeline's, in its tree's store.
+
+        Raises:
+            ValueError: If an event ID of *data* is held in the tree or twice
+                in *data*, or *data* has another unit; nothing is added then.
+        """
+        self._tree_store.add(self._id, data)
+
+    def _replace_events(self, data: EventData) -> None:
+        """Make the rows of *data* this timeline's, in its tree's store.
+
+        Raises:
+            ValueError: If an event ID of *data* is held by another timeline
+                of the tree or twice in *data*; nothing changes then.
+        """
+        self._tree_store.replace(self._id, data)
+
     def _ensure_capacity(
         self,
         required_end: CoordinateValue,
@@ -525,7 +555,7 @@ class EventsMixin(_Host):
         # exact axis, so it is compared and grown to as it will be stored.
         max_coord = max(self._get_event_end_coordinate(row) for row in rows)
         self._ensure_capacity(max_coord, allow_expansion)
-        self._events.extend(added)
+        self._append_events(added)
         return [row["id"] for row in rows]
 
     def _refuse_boxes_off_their_shapes(
@@ -647,7 +677,7 @@ class EventsMixin(_Host):
         )
         added = self._event_data_of(rows)
         self._refuse_boxes_off_their_shapes(added, [row.get("id") for row in rows])
-        self._events.extend(added)
+        self._append_events(added)
 
     def add_projections(
         self,
@@ -942,7 +972,7 @@ class EventsMixin(_Host):
         """
         if not rows:
             return
-        self._events.extend(self._event_data_of(rows))
+        self._append_events(self._event_data_of(rows))
 
     def _event_data_of(self, rows: list[dict[str, Any]]) -> EventData:
         """The event table of *rows* on this timeline's axis, of the concrete
@@ -1034,6 +1064,7 @@ class EventsMixin(_Host):
         include_children: bool = True,
         min_coord: CoordinateSpec | None = None,
         max_coord: CoordinateSpec | None = None,
+        include_number_types: Collection[NumberType | str] | None = None,
         **field_filters: Any,
     ) -> EventData:
         """Filter and retrieve events.
@@ -1064,6 +1095,11 @@ class EventsMixin(_Host):
                 (converted via inverse C-Map).
             max_coord: Maximum coordinate (exclusive). Same conversion
                 rules as min_coord.
+            include_number_types: Keep the events of the timelines read in
+                one of these number types only (this timeline's own, and
+                each child's by ``source_timeline``), resolved from the
+                tree's map of timelines to their axes, never from a cell.
+                ``None`` keeps every number type.
             **field_filters: Additional field equality filters. Each
                 kwarg name is a field name, and the value is the
                 required value (or a list of values for OR logic).
@@ -1139,11 +1175,38 @@ class EventsMixin(_Host):
         if field_filters:
             result = result.filter(**field_filters)
 
+        if include_number_types is not None:
+            result = self._of_number_types(result, include_number_types)
+
         if result is self._events:
             # Never the timeline's own table: rows added to the result would
             # land on the timeline past every check of ``add_events``.
             result = result._derived(result.table)
         return result
+
+    def _of_number_types(
+        self, events: EventData, number_types: Collection[NumberType | str]
+    ) -> EventData:
+        """The rows of *events* whose timelines read them in *number_types*.
+
+        Each row's timeline is this one, or the one ``source_timeline``
+        names; its number type is the tree's map's entry for it.
+        """
+        wanted = {NumberType(number_type) for number_type in number_types}
+        kept = [
+            timeline_id
+            for timeline_id, (_, number_type) in self._tree_store.axes.items()
+            if number_type in wanted
+        ]
+        table = events.table
+        holders = (
+            pc.fill_null(table.column("source_timeline"), pa.scalar(self._id))
+            if "source_timeline" in table.column_names
+            else pa.array([self._id] * table.num_rows, pa.string())
+        )
+        mask = pc.is_in(holders, value_set=pa.array(kept, pa.string()))
+        assert isinstance(mask, (pa.BooleanArray, pa.ChunkedArray))
+        return events._derived(table.filter(mask))
 
     def _rebuilt(self, rows: Iterable[dict[str, Any]]) -> EventData:
         """An EventData of *rows*, read from this timeline's tables or its children's.

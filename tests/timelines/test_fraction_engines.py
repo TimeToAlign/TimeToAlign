@@ -258,7 +258,16 @@ class TestBoundariesInTheAxisType:
 
         assert _typed(timeline.get_child_offset(child.id).value) == _typed(1 * step)
         assert _typed(child.length.value) == _typed(2 * step)
-        assert _local_starts(child) == _expected_part(["n1", "n2"], step)
+        # The copies are new events of the tree: IDs of their own (event IDs
+        # are unique across a tree), the starts of n1 and n2.
+        copies = _local_starts(child)
+        assert [start for _, start in copies] == [
+            start for _, start in _expected_part(["n1", "n2"], step)
+        ]
+        assert [event_id[:5] for event_id, _ in copies] == ["note_"] * 2
+        assert not {event_id for event_id, _ in copies} & set(
+            timeline.events.column_values("id")
+        )
 
     def test_segment_line_by_splitting(self, axis: str) -> None:
         timeline, step = _ten_notes(axis)
@@ -588,7 +597,7 @@ class TestNonFinitePositions:
 class TestGetEventsIsACopy:
     """``get_events`` never hands out the timeline's own table."""
 
-    def test_extending_the_result_leaves_the_timeline(self) -> None:
+    def test_joining_onto_the_result_leaves_the_timeline(self) -> None:
         timeline = _fraction_timeline("short", Fraction(4))
         timeline.add_events([{"id": "n", "event_type": "Note", "start": 0, "end": 1}])
         late = type(timeline.events).from_dicts(
@@ -599,8 +608,9 @@ class TestGetEventsIsACopy:
 
         result = timeline.get_events()
         assert result is not timeline.events
-        result.extend(late)
+        joined = result.concat(late)
 
-        assert _ids(result) == ["n", "late"]
+        assert _ids(joined) == ["n", "late"]
+        assert _ids(result) == ["n"]
         assert _ids(timeline.get_events()) == ["n"]
         assert timeline.length.value == Fraction(4)

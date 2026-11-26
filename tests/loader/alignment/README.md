@@ -208,7 +208,9 @@ the loader gives each layer event an id minted from its minter at the parse
 (`{event type in lower case}_…`, one batch per type in document order:
 loaded with `seed=0`, animals' LOS timeline holds the 3rd to 10th ids of a
 fresh `IdMinter(0)` as `rest_…` and the 11th to 18th as `syllable_…`, the
-spine's and the LOS's timeline ids being the 1st and 2nd).
+spine's and the LOS's timeline ids being the 1st and 2nd; the timeline holds
+the 16 in the order of their starts, so the set of IDs is compared and the
+starts are checked to be ascending).
 For animals and khomus the test builds every timeline and checks, claim by
 claim: `(timeline_a_id, event_a_id)` is exactly one layer event (the set of
 claimed events equals the set of layer events, children included, so none is

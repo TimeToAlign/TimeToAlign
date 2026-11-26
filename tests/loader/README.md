@@ -212,7 +212,7 @@ is `float`, so an explicit choice is stated as given.
 | `test_field_parsers.py` | The :class:`FieldParser` hierarchy and `resolve_field_parser` universal-resolution dispatcher. Exercises the DataField blueprint mechanism: `IntField`, `FloatField`, `StringField`, `RedundantNumberField`, `DenominateNumberField`, and paired SemanticField subclasses all accept `name=` for blueprint construction and expose a uniform `emit(source, name=...)` materialisation. `CompositeFieldParser` (separator + regex strategies, dict + iterable parts) and `CallableFieldParser` (escape hatch) are exercised end-to-end. `CallableFieldParser` reads the callable's signature once: a callable with a `name` parameter or `**kwargs` is called with `name=` and one without is called with the column alone, each exactly once; a `TypeError` raised inside a callable that accepts `name` reaches the caller unchanged (same message) after one call, never a second call without `name`. Resolution-table assertions: every entry (Python type, `pa.DataType`, raw / paired `DataField` subclass, blueprint instance, `FieldParser` instance, callable) routes to the correct producer. |
 | `test_field_specs.py` | `field_specs` blueprint resolution (the second step of the tabular column → field pipeline). Builds a fixture `pa.Table` and a `TabularLoader` subclass with `field_specs = [...]`, verifies that each blueprint matches its declared `source_fields=` entry, that the resulting column receives the versioned metadata blob (`field_type` = paired class name), that atomic source columns are packed into single-field structs matching the target `pa_schema`, and that unresolvable references raise `KeyError`. Exercises the two currently-supported `source_fields=` shorthands (string for single-source promotion; explicit dict for multi-sub-field mapping) and the negative cases (list shorthand rejected by `resolve_source_fields` today; live-mode SemanticField instances rejected; multi-source dict spec raises `NotImplementedError` at loader-materialisation time; a target that cannot be built from a name alone — `CoordinateField` and its siblings carry a bound time unit — raises a `TypeError` naming that target and its storage shape, rather than letting the field's own constructor fail on an argument the caller never passed). |
 | `test_get_events_properties.py` | The four shapes accepted by `Loader.get_events(properties=...)` — `True`, `False`, a tuple of property names, and the single-string shorthand that normalises to a one-element tuple. |
-| `test_represent_pitch_once.py` | The **represent-pitch-once** contract across every pitch-bearing EventData and loader. Verifies (1) the keystone `from_dicts` / `add_events` struct-preservation fix (carried struct-dict columns become real `pa.struct` columns with `field_type` metadata, never JSON strings); (2) the uniform `_afforded_fields` mechanism that promotes a raw atomic column to its semantic view on request; (3) the per-source default pitch type (`get_pitch_field()` → SP for spelled, EP for number-only, EP for MSM with SPC additionally afforded); (4) represent-once (no EventData carries a redundant *default* pitch struct — score notes no longer afford a default EnharmonicPitch); (5) the scalar↔EventData contract for MIDI EventData; (6) on-request EP from a SP field via both routes (conversion + raw column); (7) the **multi-batch concat re-affordance** — the afforded pitch view survives `EventData.extend` / `Timeline.add_events` schema-promotion across batches (the cache is dropped so the affordance re-attaches over the concatenated table). See "Represent pitch once" below. |
+| `test_represent_pitch_once.py` | The **represent-pitch-once** contract across every pitch-bearing EventData and loader. Verifies (1) the keystone `from_dicts` / `add_events` struct-preservation fix (carried struct-dict columns become real `pa.struct` columns with `field_type` metadata, never JSON strings); (2) the uniform `_afforded_fields` mechanism that promotes a raw atomic column to its semantic view on request; (3) the per-source default pitch type (`get_pitch_field()` → SP for spelled, EP for number-only, EP for MSM with SPC additionally afforded); (4) represent-once (no EventData carries a redundant *default* pitch struct — score notes no longer afford a default EnharmonicPitch); (5) the scalar↔EventData contract for MIDI EventData; (6) on-request EP from a SP field via both routes (conversion + raw column); (7) the **multi-batch concat re-affordance** — the afforded pitch view survives `EventData.concat` / `Timeline.add_events` schema-promotion across batches (the joined table holds no field cache, so the affordance attaches over the concatenated table). See "Represent pitch once" below. |
 | `tabular/` | CSV / TSV / Parquet loader specifics |
 | `score/` | Music-notation loaders (Ms3, music21, Partitura) |
 | `midi/` | Score and performance MIDI loaders |
@@ -1029,19 +1029,19 @@ This validates the key represent-once model risk: a
 number-only source stores pitch as a bare `int64` and *affords* the
 `EnharmonicPitch` view over it on demand, rather than materialising a
 pitch struct.  The view must therefore survive the multi-batch ingestion
-path, where `EventData.extend` replaces the table in place with a
+path, where `EventData.concat` joins the batches into a new table, a
 `pa.concat_tables(..., promote_options="default")` result (schema
 promotion: extra columns null-fill).  A cached field wraps the array as
-it was at first access, so an interleaved query (afford → extend → query
-again) would otherwise expose only the pre-extend rows.  `extend` drops
-the field cache (`_invalidate_field_cache`) so the affordance re-attaches
-over the concatenated table.
+it was at first access, so an interleaved query (afford → concat → query
+again) must not reach a field cached over the first batch: the joined
+table is a new EventData without a field cache, so the affordance
+attaches over the concatenated table.
 
 The tests pin, with exact `midi_number` values and no ranges:
 
 - **EventData level.** Build a `MidiEventData` carrying a bare-int
   `pitch` (batch 1), query `get_field(EnharmonicPitch)` (populating the
-  cache), `extend` a second batch, query again — the field now spans
+  cache), `concat` a second batch, query again — the field now spans
   batches 1+2 with the exact values; a third, *heterogeneous* batch
   (a Control-Change row with no `pitch`, plus a brand-new column,
   exercising `promote_options="default"` null-fill) keeps the affordance
@@ -1056,7 +1056,7 @@ The tests pin, with exact `midi_number` values and no ranges:
   which preserves the concrete EventData class)
   receives note events with bare-int pitch across **multiple**
   `add_events` calls — each routing through `_add_events_unchecked` →
-  `from_dicts` → `extend`.  After each call the timeline's
+  `from_dicts` → the tree store's `add`.  After each call the timeline's
   `events.get_pitch_field()` / `get_field(EnharmonicPitch)` resolve with
   the exact accumulated `midi_number` values, proving "a pitch view
   survives ingestion into a timeline" across batches.

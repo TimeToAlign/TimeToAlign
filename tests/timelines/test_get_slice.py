@@ -478,17 +478,20 @@ class TestSegmentLineAssembly:
         assert sl.segment_type is ContinuousLogicalTimeline
         assert type(sl._children[sl._segment_order[0]]) is ContinuousLogicalTimeline
 
-    def test_repeated_section_assembly(self):
-        """Multiple slices from the same source range assemble correctly.
+    def test_a_repeated_section_is_refused_at_the_join(self):
+        """Two slices of one range hold the same events: the second is refused.
 
-        This simulates a simple repeat: the same [0, 40) section played twice.
+        This is a simple repeat, the same [0, 40) section played twice. Event
+        IDs are unique across a timeline tree and a collision is refused at
+        a join, nothing renamed: the second slice, holding the first's event
+        IDs, does not join the line, which keeps its one segment.
         """
         source = ContinuousLogicalTimeline(
             length=Fraction(40),
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
         )
-        source.add_events(
+        first_beat, _ = source.add_events(
             [
                 {"event_type": "Beat", "instant": Fraction(0)},
                 {"event_type": "Beat", "instant": Fraction(20)},
@@ -500,20 +503,22 @@ class TestSegmentLineAssembly:
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
         )
+        first = source.get_slice(Fraction(0), Fraction(40))
+        sl.append_segment(first)
+        second = source.get_slice(Fraction(0), Fraction(40))
 
-        # Two passes through the same range
-        for _ in range(2):
-            seg = source.get_slice(Fraction(0), Fraction(40))
-            sl.append_segment(seg)
+        with pytest.raises(ValueError) as refusal:
+            sl.append_segment(second)
 
-        assert sl.length.value == Fraction(80)
-        assert sl.n_segments == 2
-
-        # Each segment should have 2 beats
-        for seg_id in sl._segment_order:
-            child = sl._children[seg_id]
-            events = list(child.get_events())
-            assert len(events) == 2
+        assert str(refusal.value) == (
+            f"Event id '{first_beat}' of timeline '{second.id}' is already held "
+            f"by an event of timeline '{first.id}'; event ids are unique across "
+            "a timeline tree"
+        )
+        assert sl.length.value == Fraction(40)
+        assert sl.n_segments == 1
+        assert second._parent is None
+        assert len(list(first.get_events())) == 2
 
 
 # endregion

@@ -129,6 +129,20 @@ def _boxes(timeline: Timeline) -> dict[str, tuple[int, int, Any]]:
     }
 
 
+def _copies(child: Timeline, source: Timeline) -> dict[str, tuple[int, int, Any]]:
+    """*child*'s Boxes, each keyed by the ID of the Box of *source* it copies.
+
+    A child cut from a region holds copies, new events of the tree: each is
+    minted an ID of its own (event IDs are unique across a tree) and is
+    matched to the Box it copies by its shape, which a copy keeps.
+    """
+    held = _boxes(source)
+    by_shape = {repr(cells[2]): box_id for box_id, cells in held.items()}
+    copies = _boxes(child)
+    assert not set(copies) & set(held)
+    return {by_shape[repr(cells[2])]: cells for cells in copies.values()}
+
+
 def _shape_cell(source: Timeline, box_id: str) -> dict[str, Any]:
     """The shape cell of the Box *box_id* as *source* holds it."""
     return _boxes(source)[box_id][2]
@@ -168,7 +182,7 @@ class TestTheAreaMoves:
         assert page.get_child_offset(child.id).value == 1000
         assert child.length.value == 2000
         assert child.meta == _area(1000, 2000)
-        assert _boxes(child) == {
+        assert _copies(child, page) == {
             "b1": (221, 940, _shape_cell(page, "b1")),
             "b2": (1161, 800, _shape_cell(page, "b2")),
         }
@@ -316,7 +330,7 @@ class TestCrossing:
         child = page.create_child_from_region("r")
         assert child.length.value == 1461
         assert child.meta == _area(1500, 1461)
-        assert _boxes(child) == {"b2": (661, 800, _shape_cell(page, "b2"))}
+        assert _copies(child, page) == {"b2": (661, 800, _shape_cell(page, "b2"))}
         _round_trips(page)
 
     def test_segments_take_boxes_whole_and_grow(self) -> None:
@@ -414,7 +428,7 @@ class TestTheWholeExtentKeepsTheArea:
         system.create_region(0, 2880, id="all")
         child = system.create_child_from_region("all")
         assert child.meta == {"box": SYSTEM_1.to_dict()}
-        assert _boxes(child) == _boxes(system)
+        assert _copies(child, system) == _boxes(system)
 
 
 class TestKnownIssueAProperCutOfAQuadrilateral:
@@ -434,7 +448,7 @@ class TestKnownIssueAProperCutOfAQuadrilateral:
         assert child.meta == {
             "box": {"x": 2151, "y": 1589, "width": 1950, "height": 677}
         }
-        assert _boxes(child) == {"m2": (0, 624, _boxes(system)["m2"][2])}
+        assert _copies(child, system) == {"m2": (0, 624, _boxes(system)["m2"][2])}
 
 
 #: ``meta["box"]`` values a timeline without Boxes may hold: free-form data.
@@ -488,7 +502,10 @@ class TestFreeFormMetaWithoutBoxes:
         child = timeline.create_child_from_region("r")
         assert child.length.value == 10
         assert child.meta == {}
-        assert _notes(child) == [("n2", 2, 5)]
+        # The copy of n2, a new event of the tree with an ID of its own.
+        [(copy_id, *span)] = _notes(child)
+        assert span == [2, 5]
+        assert copy_id.startswith("note_")
         assert timeline.meta == {"box": box, "image": "scan.png"}
 
     @pytest.mark.parametrize("make", ["create_segment_line", "from_segmentation"])

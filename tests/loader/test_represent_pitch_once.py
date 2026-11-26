@@ -18,9 +18,10 @@ These tests pin, with exact expected values:
 5. the scalar↔EventData contract for the MIDI EventData classes;
 6. on-request EnharmonicPitch from a SpecificPitch field via both routes;
 7. the multi-batch concat re-affordance — the afforded pitch view
-   survives ``EventData.extend`` / ``Timeline.add_events`` schema
-   promotion across batches (raw column stays ``int64``; the field cache
-   is dropped so the affordance re-attaches over the concatenated table).
+   survives ``EventData.concat`` / ``Timeline.add_events`` schema
+   promotion across batches (raw column stays ``int64``; the joined table
+   holds no field cache, so the affordance attaches over the concatenated
+   table).
 8. blueprint resolution uses the same raw-column promotion as class lookup,
    including the Vienna Chopin notes fixture and its exact first MIDI value.
 
@@ -554,7 +555,7 @@ def _ep_numbers(field: EnharmonicPitchField) -> list[int | None]:
 
 
 class TestMultiBatchConcatAffordance:
-    """The bare-int pitch affordance survives ``extend`` / ``add_events``.
+    """The bare-int pitch affordance survives ``concat`` / ``add_events``.
 
     Represent-once stores a number-only pitch as a raw ``int64`` and
     affords ``EnharmonicPitch`` over it on demand.  The multi-batch
@@ -564,18 +565,20 @@ class TestMultiBatchConcatAffordance:
     specific risk a materialised pitch struct would have sidestepped.
     """
 
-    # -- EventData.extend level ---------------------------------------------
+    # -- EventData.concat level ---------------------------------------------
 
-    def test_extend_grows_afforded_field_with_interleaved_query(self) -> None:
-        # Afford -> extend -> query again: the field must span both batches
-        # (a stale cache would expose only the pre-extend rows).
+    def test_concat_grows_afforded_field_with_interleaved_query(self) -> None:
+        # Afford -> concat -> query again: the field must span both batches
+        # (a stale cache would expose only the first batch's rows).
         data = MidiEventData.from_dicts(
             [_midi_note(0, 60), _midi_note(480, 62)], TimeUnit.ticks
         )
         first = data.get_field(EnharmonicPitch)
         assert _ep_numbers(first) == [60, 62]
 
-        data.extend(MidiEventData.from_dicts([_midi_note(960, 64)], TimeUnit.ticks))
+        data = data.concat(
+            MidiEventData.from_dicts([_midi_note(960, 64)], TimeUnit.ticks)
+        )
         second = data.get_field(EnharmonicPitch)
         assert _ep_numbers(second) == [60, 62, 64]
         assert [s.midi_number for s in (second[0], second[1], second[2])] == [
@@ -591,9 +594,11 @@ class TestMultiBatchConcatAffordance:
             [_midi_note(0, 60), _midi_note(480, 62)], TimeUnit.ticks
         )
         data.get_field(EnharmonicPitch)  # prime the cache
-        data.extend(MidiEventData.from_dicts([_midi_note(960, 64)], TimeUnit.ticks))
+        data = data.concat(
+            MidiEventData.from_dicts([_midi_note(960, 64)], TimeUnit.ticks)
+        )
         data.get_field(EnharmonicPitch)  # prime again over the 3-row table
-        data.extend(
+        data = data.concat(
             MidiEventData.from_dicts(
                 [
                     {
@@ -617,7 +622,7 @@ class TestMultiBatchConcatAffordance:
         # struct nor stringified, and carries no field_type metadata.
         data = MidiEventData.from_dicts([_midi_note(0, 60)], TimeUnit.ticks)
         for start, pitch in ((480, 62), (960, 64)):
-            data.extend(
+            data = data.concat(
                 MidiEventData.from_dicts([_midi_note(start, pitch)], TimeUnit.ticks)
             )
             assert data.schema.field("pitch").type == pa.int64()

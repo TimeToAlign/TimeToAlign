@@ -57,7 +57,14 @@ import json
 import math
 import os
 import re
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
@@ -67,16 +74,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, ClassVar, Self
 from urllib.parse import unquote, urlsplit
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import timetoshare
 from timetoshare import FORMAT_CONTEXT, load_catalogue, loads
 from timetoshare.serialization import Serialization
-from timetoshare.tables import TableError, projection_problems
+from timetoshare.tables import (
+    TYPE_METADATA_KEY,
+    VERSION_METADATA_KEY,
+    TableError,
+    projection_problems,
+)
 
-from timetoalign.core import Coordinate, Event, NumberType, Projection, TimeUnit
-from timetoalign.core.fields import _null_column, derive_arrow_schema
+from timetoalign.core import Box, Coordinate, Event, NumberType, Projection, TimeUnit
+from timetoalign.core.fields import _filled, _null_column, derive_arrow_schema
 from timetoalign.core.ids import (
     RESOURCE_PREFIX,
     IdMinter,
@@ -346,14 +359,21 @@ INTEGRITY_ALGORITHMS: tuple[str, ...] = tuple(
 PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 """The media type of the Parquet tables a package holds."""
 
-TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection", "Box")
-"""The resource types the library reads and writes as a bundle's package tables.
+#: The table types every manifest reader knows by name, whatever their URL.
+_NAMED_TABLE_TYPES = frozenset({"MatchClaim", "Projection", "Box"})
 
-A manifest may name several resources of one of them, each listing other
-timelines (a timeline is listed by at most one resource of each type). An
-:class:`~timetoalign.alignment.AlignmentBundle` read from a file reads every
-one of them, and writes one table of each type (its
-:meth:`~timetoalign.alignment.AlignmentBundle.to_file`)."""
+
+def _names_table(type_: Any, url: Any, media_type: Any) -> bool:
+    """Whether a resource of *type_* at *url* in *media_type* is a table: one of
+    the table types the format names, a folder (a URL ending in ``/``), or a
+    Parquet file (by its media type or a URL ending in ``.parquet``)."""
+    if type_ in _NAMED_TABLE_TYPES or media_type == PARQUET_MEDIA_TYPE:
+        return True
+    if not isinstance(url, str):
+        return False
+    path = urlsplit(url).path
+    return path.endswith(("/", ".parquet"))
+
 
 _MEDIA_TYPE = re.compile(_RESOURCE_SCHEMA["media_type"]["pattern"])
 _DIGEST = re.compile(r"[0-9a-f]+")
@@ -637,6 +657,23 @@ class Resource(_OpenObject):
         """
         return urlsplit(self.url).path.endswith("/")
 
+    @property
+    def is_table(self) -> bool:
+        """Whether the resource names a table, which an
+        :class:`~timetoalign.alignment.AlignmentBundle` reads into its
+        timelines and writes from them: a MatchClaim, Projections or Box
+        table, a folder of files, or a Parquet file (its media type, or a URL
+        ending in ``.parquet``) holding the events of :attr:`type`. Any other
+        resource (a recording) is carried as it stands.
+
+        Examples:
+            >>> Resource("resource_1", "Note", (), "Note.parquet").is_table
+            True
+            >>> Resource("resource_1", "Audio", (), "take_1.flac").is_table
+            False
+        """
+        return _names_table(self.type, self.url, self.media_type)
+
     def path_in(self, directory: str | PathLike[str]) -> Path:
         """The path of the file or folder for a manifest lying in *directory*
         (:func:`resource_path`)."""
@@ -670,13 +707,43 @@ def resource_path(directory: str | PathLike[str], url: str) -> Path:
 # region The event tables
 
 PROJECTIONS_FILE_NAME = "projections.parquet"
-"""The file name of a package's Projections table beside its manifest."""
+"""The file name of a lone manifest's Projections table beside it."""
 
 BOXES_FILE_NAME = "boxes.parquet"
-"""The file name of a package's Box table beside its manifest."""
+"""The file name of a lone manifest's Box table beside it."""
 
 #: The columns an event table writes before the properties of its event type.
 _EVENT_TABLE_HEADER = ("id", "timeline_id", "unit", "number_type")
+
+#: The event types whose table holds the properties of their scalar; an
+#: event type of no scalar (``Note``, ``Beat``) writes its position alone
+#: and then the columns its rows hold.
+_SCALAR_EVENT_TYPES: dict[str, type[Event]] = {
+    "Event": Event,
+    "Projection": Projection,
+    "Box": Box,
+}
+
+#: The event types a timeline holds as structure, which the manifest states:
+#: a child's ``Segment`` row on its parent, which the manifest's children
+#: recreate. No event table is written of them.
+_STRUCTURE_EVENT_TYPES = frozenset({"Segment"})
+
+#: The most rows a row group of a package table holds.
+_ROW_GROUP_SIZE = 65_536
+
+
+def event_file_name(event_type: str) -> str:
+    """The file name of the event table of *event_type* beside a lone manifest.
+
+    Examples:
+        >>> event_file_name("Projection"), event_file_name("Box")
+        ('projections.parquet', 'boxes.parquet')
+        >>> event_file_name("Note")
+        'Note.parquet'
+    """
+    named = {"Projection": PROJECTIONS_FILE_NAME, "Box": BOXES_FILE_NAME}
+    return named.get(event_type, f"{event_type}.parquet")
 
 
 def _package_type(type_: pa.DataType) -> pa.DataType:
@@ -691,20 +758,49 @@ def _package_type(type_: pa.DataType) -> pa.DataType:
     return type_
 
 
-def event_table_schema(event_type: type[Event]) -> pa.Schema:
-    """The columns of the package table of *event_type*.
+def _further_type(type_: pa.DataType) -> pa.DataType:
+    """The package type of a further column of memory type *type_*: every
+    number struct in it, at whatever struct depth, as the package number
+    (in its row's number type), strings plain ``string``; anything else,
+    a coordinate cell naming its own axis included, as it stands."""
+    if type_ == RATIONAL_STRUCT_TYPE:
+        return PACKAGE_NUMBER_TYPE
+    if pa.types.is_dictionary(type_):
+        return _further_type(type_.value_type)
+    if pa.types.is_large_string(type_):
+        return pa.string()
+    if pa.types.is_struct(type_) and type_ != COORDINATE_CELL_TYPE:
+        return pa.struct(
+            [pa.field(field.name, _further_type(field.type)) for field in type_]
+        )
+    return type_
 
-    ``id``, ``timeline_id``, ``unit`` and ``number_type`` (strings), then
-    every property of the event type after ``id``, in field order, as the
-    type derives it, each number in it written as the package number
+
+def _event_type_name(event_type: type[Event] | str) -> str:
+    return event_type if isinstance(event_type, str) else event_type.__name__
+
+
+def event_table_schema(event_type: type[Event] | str) -> pa.Schema:
+    """The declared columns of the package table of *event_type*.
+
+    ``id``, ``timeline_id``, ``unit`` and ``number_type`` (strings), then,
+    for an event type with a scalar (:class:`~timetoalign.core.Event`,
+    :class:`~timetoalign.core.Projection`, :class:`~timetoalign.core.Box`,
+    or any class given), every property of the scalar after ``id``, in
+    field order, as the type derives it; for an event type named by a
+    string alone (``"Note"``, ``"Beat"``), ``start`` and ``duration``. Each
+    number in them is written as the package number
     (:data:`~timetoalign.core.time.PACKAGE_NUMBER_TYPE`): the unit and the
-    number type are stated once per row. For :class:`~timetoalign.core.Projection`
-    it is TimeToShare's Projections table
-    (:data:`timetoshare.tables.PROJECTION_SCHEMA`).
+    number type are stated once per row. For
+    :class:`~timetoalign.core.Projection` it is TimeToShare's Projections
+    table (:data:`timetoshare.tables.PROJECTION_SCHEMA`). The schema's
+    metadata names the type (``timetoshare:type``) and the format version
+    (``timetoshare:version``). A table of the type may hold further columns
+    after these (:func:`event_table`).
 
     Args:
         event_type: An event type (:class:`~timetoalign.core.Event` or a
-            subclass).
+            subclass), or the name an event's ``event_type`` holds.
 
     Returns:
         The schema.
@@ -713,8 +809,18 @@ def event_table_schema(event_type: type[Event]) -> pa.Schema:
         >>> from timetoalign.core import Box
         >>> event_table_schema(Box).names
         ['id', 'timeline_id', 'unit', 'number_type', 'start', 'duration', 'bounding_box', 'quadrilateral']
+        >>> event_table_schema("Beat").names
+        ['id', 'timeline_id', 'unit', 'number_type', 'start', 'duration']
+        >>> event_table_schema("Beat").metadata[b"timetoshare:type"]
+        b'Beat'
     """
-    derived = derive_arrow_schema(event_type)
+    kind = _event_type_name(event_type)
+    scalar = (
+        _SCALAR_EVENT_TYPES.get(event_type, Event)
+        if isinstance(event_type, str)
+        else event_type
+    )
+    derived = derive_arrow_schema(scalar)
     return pa.schema(
         [
             *(pa.field(name, pa.string()) for name in _EVENT_TABLE_HEADER),
@@ -723,8 +829,40 @@ def event_table_schema(event_type: type[Event]) -> pa.Schema:
                 for field in derived
                 if field.name != "id"
             ),
-        ]
+        ],
+        metadata={
+            TYPE_METADATA_KEY: kind,
+            VERSION_METADATA_KEY: timetoshare.SCHEMA_VERSION,
+        },
     )
+
+
+def event_types(timelines: Iterable[Timeline]) -> list[str]:
+    """The event types the timelines hold themselves, each once, sorted by name.
+
+    A child's ``Segment`` row on its parent is structure, which the
+    manifest's children state, and is not an event type here.
+
+    Examples:
+        >>> from timetoalign.timelines import ContinuousPhysicalTimeline
+        >>> take = ContinuousPhysicalTimeline(length=10.0)
+        >>> _ = take.add_events(
+        ...     [{"event_type": "Note", "start": 0.0}, {"event_type": "Beat", "start": 1.0}],
+        ...     seed=0,
+        ... )
+        >>> event_types([take])
+        ['Beat', 'Note']
+    """
+    found: set[str] = set()
+    for timeline in timelines:
+        table = timeline.events.table
+        if table.num_rows and "event_type" in table.column_names:
+            found.update(
+                value
+                for value in pc.unique(table.column("event_type")).to_pylist()
+                if isinstance(value, str)
+            )
+    return sorted(found - _STRUCTURE_EVENT_TYPES)
 
 
 def _packaged(
@@ -762,77 +900,124 @@ def _packaged(
 _IMPLIED_EVENT_COLUMNS = frozenset({"event_type", "temporal_type", "end"})
 
 
-def _refuse_unwritten_columns(
-    rows: pa.Table, schema: pa.Schema, event_type: type[Event], timeline_id: str
-) -> None:
-    """Refuse *rows* (one timeline's events of *event_type*) when one of them
-    gives a value in a column the event table of *schema* does not have.
+def _start_order(part: pa.Table, number_type: NumberType) -> np.ndarray:
+    """The order of one timeline's rows of an event table: by ``start``
+    compared exactly, then by ``id``.
 
-    Raises:
-        ValueError: Naming the first such event, its timeline, the column
-            and the value, and the members the event type holds.
+    An int's numerator and a float's value sort exactly as they stand. A
+    fraction is sorted by its float first, then by its ratio: where two
+    rows' floats are equal or a few units of the last place apart and their
+    ratios differ, the run of such rows is sorted again on the exact
+    ratios, so a float rounding two ratios alike or the wrong way round
+    never orders them. Vectorized but for those runs.
     """
-    kind = event_type.__name__
-    for name in rows.column_names:
-        if name in schema.names or name in _IMPLIED_EVENT_COLUMNS:
-            continue
-        column = rows.column(name)
-        if column.null_count == len(column):
-            continue
-        at = pc.index(column.is_valid(), True).as_py()
-        held = ", ".join(event_type.model_fields)
-        raise ValueError(
-            f"{kind} {quote_id(rows.column('id')[at].as_py())} of timeline "
-            f"{quote_id(timeline_id)} gives {name} {column[at].as_py()!r}, which "
-            f"the {kind} table has no column for: a {kind} holds {held}."
+    start = part.column("start").combine_chunks()
+    ids = part.column("id").combine_chunks()
+    numerator = pc.struct_field(start, "numerator")
+    if number_type is NumberType.float:
+        keys = pa.table({"key": pc.struct_field(start, "value"), "id": ids})
+        names = ["key", "id"]
+    elif number_type is NumberType.int:
+        keys = pa.table({"key": numerator, "id": ids})
+        names = ["key", "id"]
+    else:
+        denominator = pc.struct_field(start, "denominator")
+        # The nearest doubles of large terms: a first key only.
+        approximate = pc.divide(
+            pc.cast(numerator, pa.float64(), safe=False),
+            pc.cast(denominator, pa.float64(), safe=False),
         )
+        keys = pa.table(
+            {"key": approximate, "n": numerator, "d": denominator, "id": ids}
+        )
+        names = ["key", "n", "d", "id"]
+    # Nulls (a start a table lacks) sort last, Arrow's default.
+    order = (
+        pc.sort_indices(keys, sort_keys=[(name, "ascending") for name in names])
+        .to_numpy(zero_copy_only=False)
+        .copy()
+    )
+    if number_type is not NumberType.fraction or len(order) < 2:
+        return order
+    taken = keys.take(order)
+    key = taken.column("key").to_numpy(zero_copy_only=False).astype(np.float64)
+    n = _filled(taken.column("n"), pa.scalar(0)).to_numpy(zero_copy_only=False)
+    d = _filled(taken.column("d"), pa.scalar(1)).to_numpy(zero_copy_only=False)
+    with np.errstate(invalid="ignore"):
+        near = np.abs(np.diff(key)) <= 4 * np.spacing(
+            np.maximum(np.abs(key[:-1]), np.abs(key[1:]))
+        )
+    differ = (n[1:] != n[:-1]) | (d[1:] != d[:-1])
+    doubtful = near & differ
+    if not doubtful.any():
+        return order
+    runs = np.concatenate([[0], np.cumsum(~near)])
+    for run in np.unique(runs[1:][doubtful]):
+        members = np.flatnonzero(runs == run)
+        exact = sorted(
+            members,
+            key=lambda at: (
+                Fraction(int(n[at]), int(d[at])),
+                taken.column("id")[int(at)].as_py(),
+            ),
+        )
+        order[members] = order[np.array(exact)]
+    return order
 
 
-def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Table:
+def event_table(
+    timelines: Iterable[Timeline], event_type: type[Event] | str
+) -> pa.Table:
     """The package table of *event_type*: every such event each timeline holds itself.
 
-    One row per event, timeline by timeline in the order given and in each
-    timeline's event order, in the columns of :func:`event_table_schema`:
-    the event's ``id``, the ``timeline_id`` of the timeline holding it (a
-    child's event is the child's), the ``unit`` and ``number_type`` of that
-    timeline's axis, once for the row, then every property, each number
-    written once, in the member the number type names (the package form,
+    One row per event, in the columns of :func:`event_table_schema`: the
+    event's ``id``, the ``timeline_id`` of the timeline holding it (a
+    child's event is the child's, at its child-local position), the
+    ``unit`` and ``number_type`` of that timeline's axis, once for the row,
+    then every property, each number written once, in the member the number
+    type names (the package form,
     :func:`~timetoalign.core.time.package_numbers`), however deep it lies
     (a Box's shape). Nothing passes through a float that is not one.
 
-    The table holds what the event type holds, and nothing is dropped: a
-    row of a timeline's events giving a value in a column the table does
-    not have (an event's ``name``, a further column such as ``staff``) is
-    refused, naming the column, the event type and the timeline. The
-    columns the table states by being of one type (``event_type``) or
-    derives from ``start`` and ``duration`` (``temporal_type``, ``end``)
-    are not written.
+    Then every further column the rows hold a value in (an event's
+    ``name``, a source's ``staff``), in the order the timelines' tables
+    hold them, the first timeline holding a column placing it: nothing is
+    dropped, and a further column keeps the table's type. Its numbers are
+    written as the declared ones are, in the row's number type; its strings
+    as plain strings. The columns the table states by being of one type
+    (``event_type``) or derives from ``start`` and ``duration``
+    (``temporal_type``, ``end``) are not written.
+
+    The rows are sorted by ``timeline_id`` (by code point, which is UTF-8's
+    byte order), then by ``start`` compared exactly (one timeline has one
+    number type; :func:`_start_order`), then by ``id``, so equal content
+    gives equal rows in equal order. The table's metadata names its type
+    and the format version.
 
     Args:
-        timelines: The timelines, each once.
-        event_type: The event type whose rows are written (its class name is
-            the rows' ``event_type``).
+        timelines: The timelines, each once, in any order.
+        event_type: The event type whose rows are written, a class or the
+            name the rows' ``event_type`` holds.
 
     Returns:
-        The table, empty when no timeline holds such an event.
+        The table, in the declared columns without a row when no timeline
+        holds such an event.
 
     Raises:
-        ValueError: If a row gives a value in a column the table does not
-            have.
+        ValueError: If two timelines hold a further column of one name in
+            two types, naming the column, both timelines and both types.
     """
-    schema = event_table_schema(event_type)
-    parts = []
+    kind = _event_type_name(event_type)
+    declared = event_table_schema(event_type)
+    parts: list[tuple[str, pa.Table]] = []
     for timeline in timelines:
         events = timeline.events.table
         if events.num_rows == 0 or "event_type" not in events.column_names:
             continue
-        rows = events.filter(
-            pc.equal(events.column("event_type"), pa.scalar(event_type.__name__))
-        )
+        rows = events.filter(pc.equal(events.column("event_type"), pa.scalar(kind)))
         n = rows.num_rows
         if n == 0:
             continue
-        _refuse_unwritten_columns(rows, schema, event_type, timeline.id)
         number_type = NumberType(timeline.number_type)
         types = pa.array([number_type.name] * n, pa.string())
         header = {
@@ -840,29 +1025,83 @@ def event_table(timelines: Iterable[Timeline], event_type: type[Event]) -> pa.Ta
             "unit": pa.array([TimeUnit(timeline.unit).value] * n, pa.string()),
             "number_type": types,
         }
+        fields = [
+            *declared,
+            *(
+                pa.field(field.name, _further_type(field.type))
+                for field in rows.schema
+                if field.name not in declared.names
+                and field.name not in _IMPLIED_EVENT_COLUMNS
+                and rows.column(field.name).null_count < n
+            ),
+        ]
 
         def column(name: str, rows: pa.Table = rows) -> pa.ChunkedArray | None:
             """Return column *name* of the timeline's rows, ``None`` if they lack it."""
             return rows.column(name) if name in rows.column_names else None
 
-        parts.append(
+        part = pa.Table.from_arrays(
+            [
+                (
+                    header[field.name]
+                    if field.name in header
+                    else _packaged(column(field.name), field.type, number_type, types)
+                )
+                for field in fields
+            ],
+            schema=pa.schema(fields),
+        )
+        parts.append((timeline.id, part.take(_start_order(part, number_type))))
+    if not parts:
+        return declared.empty_table()
+    parts.sort(key=lambda item: item[0])
+    schema = _joined_schema(declared, parts, kind)
+    return pa.concat_tables(
+        [
             pa.Table.from_arrays(
                 [
                     (
-                        header[field.name]
-                        if field.name in header
-                        else _packaged(
-                            column(field.name), field.type, number_type, types
-                        )
+                        part.column(field.name)
+                        if field.name in part.column_names
+                        else _null_column(part.num_rows, field.type)
                     )
                     for field in schema
                 ],
                 schema=schema,
             )
-        )
-    if not parts:
-        return schema.empty_table()
-    return pa.concat_tables(parts)
+            for _, part in parts
+        ]
+    )
+
+
+def _joined_schema(
+    declared: pa.Schema, parts: list[tuple[str, pa.Table]], kind: str
+) -> pa.Schema:
+    """The columns of the timelines' parts of a table of *kind* in one: the
+    declared ones, then every further one in the order first met.
+
+    Raises:
+        ValueError: If two parts hold a column of one name in two types.
+    """
+    fields: dict[str, tuple[pa.Field, str | None]] = {
+        column.name: (column, None) for column in declared
+    }
+    for timeline_id, part in parts:
+        for column in part.schema:
+            held = fields.get(column.name)
+            if held is None:
+                fields[column.name] = (column, timeline_id)
+            elif held[0].type != column.type:
+                raise ValueError(
+                    f"The {kind} table cannot hold the column {column.name!r} of "
+                    f"timeline {quote_id(timeline_id)} ({column.type}): timeline "
+                    f"{quote_id(held[1] or '')} holds it as {held[0].type}, and a "
+                    f"column has one type in a table."
+                )
+    metadata: dict[bytes | str, bytes | str] = {
+        key: value for key, value in (declared.metadata or {}).items()
+    }
+    return pa.schema([column for column, _ in fields.values()], metadata=metadata)
 
 
 def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
@@ -873,7 +1112,8 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     (:data:`timetoshare.tables.PROJECTION_SCHEMA`): ``id``, the
     ``timeline_id`` of the timeline holding it, the ``unit`` and
     ``number_type`` of that timeline's axis, ``start`` and ``duration`` each
-    its number written once, and ``projection_of``.
+    its number written once, and ``projection_of``, sorted as every event
+    table is.
 
     A Projection's ID is unique among all Projections of the package, so
     two timelines holding one Projection ID (each minted it before they
@@ -904,10 +1144,61 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     return table
 
 
+def _write_package_file(
+    table: pa.Table, path: str | PathLike[str], sorted_by: Sequence[str]
+) -> Path:
+    """Write a package table to its Parquet file, replacing it whole.
+
+    Row groups of at most 65,536 rows, statistics of every column, the page
+    index, zstd, *sorted_by* declared as the sorting columns; the file's
+    metadata holds the table's, which names its type, and the format
+    version. A write that fails leaves the file as it was and no temporary
+    file.
+
+    Raises:
+        ValueError: If the table's metadata names no type.
+    """
+    metadata = dict(table.schema.metadata or {})
+    if TYPE_METADATA_KEY.encode() not in metadata:
+        raise ValueError(
+            f"A package table names its type in its metadata "
+            f"({TYPE_METADATA_KEY!r}), as event_table writes it."
+        )
+    metadata[VERSION_METADATA_KEY.encode()] = timetoshare.SCHEMA_VERSION.encode()
+    table = table.replace_schema_metadata(metadata)
+    target = Path(path)
+    temporary = target.with_name(f".{target.name}.writing")
+    try:
+        pq.write_table(
+            table,
+            temporary,
+            row_group_size=_ROW_GROUP_SIZE,
+            compression="zstd",
+            write_statistics=True,
+            write_page_index=True,
+            sorting_columns=pq.SortingColumn.from_ordering(
+                table.schema, [(name, "ascending") for name in sorted_by]
+            ),
+        )
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return target
+
+
 def write_event_table(table: pa.Table, path: str | PathLike[str]) -> Path:
     """Write an event table to its Parquet file, replacing it whole.
 
-    A write that fails leaves the file as it was and no temporary file.
+    The table's rows as they stand (:func:`event_table` sorts them by
+    ``timeline_id``, ``start`` and ``id``) in row groups of at most 65,536
+    rows, with statistics of every column and the page index, so that a
+    reader filtering on ``timeline_id`` skips what it does not keep;
+    compressed with zstd; ``timeline_id`` declared as the sorting column
+    (no column orders ``start`` across number types). The file's metadata
+    names the table's type (``timetoshare:type``) and the format version
+    (``timetoshare:version``). Equal tables give equal bytes for a given
+    version of the Parquet writer. A write that fails leaves the file as it
+    was and no temporary file.
 
     Args:
         table: The table, as :func:`event_table` builds it.
@@ -915,15 +1206,11 @@ def write_event_table(table: pa.Table, path: str | PathLike[str]) -> Path:
 
     Returns:
         The path written.
+
+    Raises:
+        ValueError: If the table's metadata names no type.
     """
-    target = Path(path)
-    temporary = target.with_name(f".{target.name}.writing")
-    try:
-        pq.write_table(table, temporary)
-        os.replace(temporary, target)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return target
+    return _write_package_file(table, path, ("timeline_id",))
 
 
 def _from_package(array: Any, number_types: pa.Array, where: str) -> pa.Array:
@@ -1773,7 +2060,10 @@ class FileForm(timetoshare.FileForm):
 
     Attributes:
         events: Whether any timeline object holds its event rows
-            (``events``).
+            (``events``), or a resource names a table of another event
+            type than Projection and Box (the event files an
+            :class:`~timetoalign.alignment.AlignmentBundle` writes with
+            ``events=True``).
         external_references: Whether any timeline object holds its
             external reference table (``external_references``).
     """
@@ -1788,16 +2078,26 @@ class FileForm(timetoshare.FileForm):
         The form, the styling and the serialization are the ones
         ``timetoshare.file_form`` reads off *text*; ``events`` and
         ``external_references`` are each written when a timeline object of
-        the manifest, at any depth, holds the key.
+        the manifest, at any depth, holds the key; ``events`` also when a
+        resource names a table of an event type other than Projection and
+        Box, so a bundle read with its event files writes them again.
 
         Args:
             text: The file's text.
             data: The manifest *text* holds.
         """
         keys = {key for timeline in _timeline_objects(data) for key in timeline}
+        event_files = any(
+            isinstance(entry, dict)
+            and entry.get("type") not in _NAMED_TABLE_TYPES
+            and _names_table(
+                entry.get("type"), entry.get("url"), entry.get("media_type")
+            )
+            for entry in data.get("resources") or ()
+        )
         return cls(
             **asdict(timetoshare.file_form(text)),
-            events="events" in keys,
+            events="events" in keys or event_files,
             external_references="external_references" in keys,
         )
 
@@ -1849,7 +2149,8 @@ class ManifestFileMixin:
     (:meth:`_read_tables`); writing one, it writes its tables beside the
     manifest first and names them (:meth:`_write_tables`). A timeline and a
     group hold no package table; the bundle holds its MatchClaim table and
-    the Projections of its timelines.
+    the events of its timelines (:class:`~timetoalign.alignment.Package`
+    writes bundles into a package of several manifests).
     """
 
     _file_form: FileForm | None = None
@@ -1869,11 +2170,13 @@ class ManifestFileMixin:
             data: The manifest as the file holds it.
         """
 
-    def _write_tables(self, directory: Path) -> bool:
+    def _write_tables(self, directory: Path, *, events: bool = False) -> bool:
         """Write the object's tables into *directory* and name them as resources.
 
         Args:
             directory: The manifest's directory.
+            events: Whether the file is written with its events (the form's
+                ``events``).
 
         Returns:
             Whether a table was written (none here), so that the manifest
@@ -1953,9 +2256,10 @@ class ManifestFileMixin:
         the object was read from had (see :meth:`from_file`); for an object
         not read from a file, the minimal form, the styling included, in
         canonical YAML, without event rows or external references. An
-        :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
-        or Projections writes its tables beside the manifest and names them
-        in its ``resources``: its manifest is written (validated and
+        :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims,
+        Projections or Boxes, or with ``events`` any events, writes its
+        tables beside the manifest and names them in its ``resources``, its
+        events never in the manifest: its manifest is written (validated and
         serialized) once before any table, and once more naming the tables
         written. The manifest validated is the one the file holds: without
         its styling where ``styling=False`` leaves the styling out, so a
@@ -1971,7 +2275,8 @@ class ManifestFileMixin:
                 one (True), or leave it out (False).
             serialization: ``"yaml"`` (canonical YAML), ``"json"`` (pretty
                 JSON) or ``"jcs"`` (RFC 8785 JSON).
-            events: Write every timeline's event rows (``events``).
+            events: Write every timeline's event rows (``events``); a
+                bundle writes them into its event files instead.
             external_references: Write every timeline's external reference
                 table (``external_references``).
 
@@ -2024,7 +2329,7 @@ class ManifestFileMixin:
         # differs from the first in its resources alone, so the serialization
         # refuses nothing in it that it accepted in the first.
         text = self._file_text(form)
-        if self._write_tables(path.parent):
+        if self._write_tables(path.parent, events=form.events):
             # The resources now name the tables written.
             text = self._file_text(form)
         path.write_text(text, encoding="utf-8", newline="")

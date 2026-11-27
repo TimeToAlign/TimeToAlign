@@ -779,14 +779,23 @@ tables are absent, is one more byte-identical round trip.
 - **Event rows and external references are kept as read.** A hand-written
   bundle of a recording holding two event rows (an instant and an interval)
   and one external-reference row naming the first, beside a score holding
-  both keys empty, is written back byte for byte in each of the three
-  serializations, and so are its two variants holding only one of the keys:
-  the file's keys decide what is written, each independently, so a writer
-  that dropped the rows, or wrote both keys whenever it found one, fails.
-  `to_file(events=False)` on the full literal writes it without `events`.
-  An object built in code with the same timelines, events and references
-  writes neither key by default (the literal without them) and, with
-  `events=True, external_references=True`, the full literal's bytes.
+  both keys empty, is written back in each of the three serializations,
+  and so are its two variants holding only one of the keys: the file's keys
+  decide what is written, each independently, so a writer that dropped the
+  rows, or wrote both keys whenever it found one, fails. A bundle's
+  manifest names no event, so its events go into event files beside it: a
+  variant holding `events` writes the manifest without `events`, in the
+  same serialization, byte for byte that variant's text without the key
+  apart from its `resources`, which name exactly `Beat.parquet` and
+  `Note.parquet` for `take_1`; read back, its timelines hold the same
+  event rows (`to_dict(events=True)` gives the literal's timelines). The
+  variant without `events` is written back byte for byte.
+  `to_file(events=False)` on the full literal writes it without `events`
+  and without event files. An object built in code with the same
+  timelines, events and references writes neither key by default (the
+  literal without them) and, with `events=True, external_references=True`,
+  the literal's external references inline and its events in the two event
+  files, as above.
 - **A drawing written is a drawing read.** A `points` page of length
   `932.2326510101616` holding a child at offset `76.70371459980326` of length
   `855.5289364103584` (built in code, accepted there because the child ends

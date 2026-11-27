@@ -209,9 +209,45 @@ def test_every_fixture_file_is_written_back_byte_for_byte(
 def test_event_rows_and_external_references_are_written_back(
     manifest: dict[str, Any], serialization: str, tmp_path: Path
 ) -> None:
-    """The keys a file's timeline objects hold are written back, each on its own."""
+    """The keys a file's timeline objects hold are written back, each on its own;
+    a bundle's events into event files beside its manifest."""
     text = dumps(manifest, serialization=serialization)
-    assert _round_trip(AlignmentBundle, text, tmp_path) == text
+    written = _round_trip(AlignmentBundle, text, tmp_path)
+    if "events" not in manifest["timelines"][1]:
+        assert written == text
+        return
+    _assert_events_in_files(
+        written, tmp_path / "target.txt", manifest, serialization=serialization
+    )
+
+
+def _assert_events_in_files(
+    written: str, path: Path, manifest: dict[str, Any], *, serialization: str
+) -> None:
+    """*written* is *manifest* without ``events``, naming its two event files,
+    and the bundle read from *path* holds the event rows of *manifest*."""
+    data = loads(written)
+    resources = data.pop("resources")
+    assert sorted((r["type"], r["timelines"], r["url"]) for r in resources) == [
+        ("Beat", ["#take_1"], "Beat.parquet"),
+        ("Note", ["#take_1"], "Note.parquet"),
+    ]
+    without = _without(manifest, "events")
+    assert dumps(data, serialization=serialization) == dumps(
+        without, serialization=serialization
+    )
+    assert sorted(p.name for p in path.parent.iterdir() if p.suffix == ".parquet") == [
+        "Beat.parquet",
+        "Note.parquet",
+    ]
+    read = AlignmentBundle.from_file(path)
+    keys = [key for key in ("external_references",) if key in manifest["timelines"][1]]
+    timelines = read.to_dict(events=True, external_references=bool(keys))["timelines"]
+    assert timelines == [
+        {key: value for key, value in timeline.items() if key != "events"}
+        | {"events": timeline.get("events", [])}
+        for timeline in manifest["timelines"]
+    ]
 
 
 # endregion
@@ -337,6 +373,7 @@ def test_event_rows_are_left_out_on_request(tmp_path: Path) -> None:
     source = _write(tmp_path / "bundle.yaml", dumps(WITH_TABLES))
     target = AlignmentBundle.from_file(source).to_file(tmp_path / "out", events=False)
     assert _read(target) == dumps(_without(WITH_TABLES, "events"))
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bundle.yaml", "out"]
 
 
 def test_an_object_built_in_code_writes_event_rows_on_request(
@@ -371,7 +408,7 @@ def test_an_object_built_in_code_writes_event_rows_on_request(
     tables = bundle.to_file(
         tmp_path / "tables.yaml", events=True, external_references=True
     )
-    assert _read(tables) == dumps(WITH_TABLES)
+    _assert_events_in_files(_read(tables), tables, WITH_TABLES, serialization="yaml")
 
 
 def test_a_drawing_written_is_a_drawing_read(tmp_path: Path) -> None:

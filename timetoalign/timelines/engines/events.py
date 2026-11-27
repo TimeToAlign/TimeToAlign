@@ -47,9 +47,11 @@ from timetoalign.core.time import (
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.storage import EventData
 from timetoalign.storage.events import (
+    _DECLARED_EXTRA_FIELDS,
     BOX_EVENT_TYPE,
     PROJECTION_EVENT_TYPE,
     SHAPE_FIELDS,
+    _build_extra_field_schema,
     _event_rows,
     box_rows_on_the_axis,
     mint_event_ids,
@@ -681,6 +683,91 @@ class EventsMixin(_Host):
         )
         added = self._event_data_of(rows)
         self._refuse_boxes_off_their_shapes(added, [row.get("id") for row in rows])
+        self._append_events(added)
+
+    def _add_event_table(self, rows: pa.Table, event_type: str) -> None:
+        """Add the rows of a package's event table of *event_type* lying on this timeline.
+
+        *rows* are this timeline's rows of the table as
+        :func:`~timetoalign.timelines.manifest.read_event_table` reads them
+        (``id``, ``unit``, ``number_type``, ``start``, ``duration`` and every
+        further column, each number as memory holds it). They are events a
+        source states, read as a table (:meth:`EventData.from_arrays
+        <timetoalign.storage.EventData.from_arrays>`), never row by row: as
+        :meth:`_add_stated_events` adds a manifest's event rows, no ID is
+        minted and the length is not grown, an ID the tree holds is refused
+        by the tree's store, and a Box is checked against its shape as
+        :meth:`add_events` checks it. A further column none of the rows
+        holds a value in is not added: the table spans timelines, and the
+        column is another timeline's. The rows' ``unit`` and
+        ``number_type`` must be the timeline's: an event in another unit or
+        number type reaches a timeline only as a Projection through a C-Map.
+
+        Args:
+            rows: The rows, every one lying on this timeline.
+            event_type: The table's type, every row's ``event_type``.
+
+        Raises:
+            ValueError: If a row states another axis than the timeline's (a
+                Box with the message :meth:`add_events` gives), a Box
+                contradicts its shape, or an ID is held in the tree or twice;
+                nothing is added then.
+        """
+        n = rows.num_rows
+        if n == 0:
+            return
+        unit, number_type = self._unit, self._number_type
+        off = pc.invert(
+            _filled(
+                pc.and_(
+                    pc.equal(rows.column("unit"), pa.scalar(unit.value)),
+                    pc.equal(rows.column("number_type"), pa.scalar(number_type.name)),
+                ),
+                pa.scalar(False),
+            )
+        )
+        if pc.any(off).as_py():
+            row = rows.slice(pc.index(off, True).as_py(), 1).to_pylist()[0]
+            if event_type == BOX_EVENT_TYPE:
+                box_rows_on_the_axis(
+                    [{**row, "event_type": event_type}],
+                    unit,
+                    number_type,
+                    timeline_id=self._id,
+                )
+            raise ValueError(
+                f"{event_type} {quote_id(row['id'])} of an event table lies on "
+                f"{row['unit']} as {row['number_type']}, but its timeline "
+                f"{quote_id(self._id)} is in {unit.value} as {number_type.name}: "
+                f"an event in another unit or number type reaches a timeline "
+                f"only as a Projection through a C-Map."
+            )
+        # A further column none of this timeline's rows holds a value in
+        # is another timeline's, which the table spanning them both holds.
+        fields: dict[str, Any] = {
+            name: rows.column(name)
+            for name in rows.column_names
+            if name not in ("unit", "number_type")
+            and (
+                name in ("id", "start", "duration")
+                or name in _DECLARED_EXTRA_FIELDS
+                or rows.column(name).null_count < n
+            )
+        }
+        fields["event_type"] = pa.repeat(pa.scalar(event_type, pa.string()), n)
+        declared = [name for name in fields if name in _DECLARED_EXTRA_FIELDS]
+        added = type(self._events).from_arrays(
+            fields,
+            unit,
+            number_type,
+            extra_fields=list(
+                _build_extra_field_schema(
+                    pa.schema([]), declared, [], unit, number_type
+                )
+            ),
+        )
+        if event_type == BOX_EVENT_TYPE:
+            self._refuse_boxes_off_their_shapes(added, rows.column("id").to_pylist())
         self._append_events(added)
 
     def add_projections(

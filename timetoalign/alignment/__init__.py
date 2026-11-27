@@ -6,6 +6,7 @@ synchronization. See the Conceptual Model documentation
 
 Public API:
 - AlignmentBundle: Primary entry point for alignment workflows
+- Package: A folder of manifests sharing their tables (package.yaml)
 - AlignmentAnchor: Atomic coordinate pair claim
 - MatchClaim: Low-level match between two events
 - MatchClaimField: The MatchClaim table, ``SemanticField[MatchClaim]``
@@ -34,11 +35,13 @@ from .matching import (
     prepare_eep_notes_for_matching,
 )
 from .matchline import MatchLine
+from .package import Package
 from .warpmap import WarpMap
 
 __all__ = [
     # Bundle (Primary Entry Point)
     "AlignmentBundle",
+    "Package",
     # Anchors and Claims
     "AlignmentAnchor",
     "Belief",

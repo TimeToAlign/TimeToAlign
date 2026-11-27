@@ -193,6 +193,16 @@ def _merged(b_claim: str = "claim_2") -> AlignmentBundle:
     return AlignmentBundle.from_bundles(sources, id="merged")
 
 
+def _timeline_objects(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every timeline object of a manifest, the children included."""
+    found, pending = [], list(manifest["timelines"])
+    while pending:
+        timeline = pending.pop()
+        found.append(timeline)
+        pending.extend(timeline.get("children", []))
+    return found
+
+
 def _bytes(directory: Path) -> dict[str, bytes]:
     return {path.name: path.read_bytes() for path in sorted(directory.iterdir())}
 
@@ -405,15 +415,6 @@ class TestWriting:
                 "projection_of": {"timeline_id": "score", "event_id": "n1"},
             },
             {
-                "id": n2,
-                "timeline_id": "pcm",
-                "unit": "samples",
-                "number_type": "int",
-                "start": _number(66150),
-                "duration": None,
-                "projection_of": {"timeline_id": "score", "event_id": "n2"},
-            },
-            {
                 "id": onset,
                 "timeline_id": "pcm",
                 "unit": "samples",
@@ -421,6 +422,15 @@ class TestWriting:
                 "start": _number(22050),
                 "duration": None,
                 "projection_of": None,
+            },
+            {
+                "id": n2,
+                "timeline_id": "pcm",
+                "unit": "samples",
+                "number_type": "int",
+                "start": _number(66150),
+                "duration": None,
+                "projection_of": {"timeline_id": "score", "event_id": "n2"},
             },
         ]
         manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
@@ -644,21 +654,26 @@ class TestWriting:
             ("resource_2", "Projection", ("take_1",), "projections.parquet")
         ]
 
-    def test_no_event_row_is_written_beside_the_tables(self, tmp_path: Path) -> None:
-        message = (
-            "A package's manifest names no event ID: the bundle writes its "
-            "MatchClaim table and its event tables beside the manifest, so its "
-            "event rows are not written into it; write it with events=False."
-        )
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            _bundle().to_file(tmp_path / "package.yaml", events=True)
+    def test_no_event_row_is_written_into_the_manifest(self, tmp_path: Path) -> None:
+        (tmp_path / "package").mkdir()
+        (tmp_path / "plain").mkdir()
+
+        path = _bundle().to_file(tmp_path / "package" / "package.yaml", events=True)
+
+        assert sorted(p.name for p in path.parent.iterdir()) == ["Note.parquet", *FILES]
+        manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
+        assert all("events" not in t for t in _timeline_objects(manifest))
         bundle = AlignmentBundle(id="plain")
         pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
         pcm.add_projections([Projection(start=Coordinate(22050, TimeUnit.samples))])
         bundle.add_timeline(pcm)
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            bundle.to_file(tmp_path / "plain.yaml", events=True)
-        assert list(tmp_path.iterdir()) == []
+        path = bundle.to_file(tmp_path / "plain" / "plain.yaml", events=True)
+        assert sorted(p.name for p in path.parent.iterdir()) == [
+            "plain.yaml",
+            "projections.parquet",
+        ]
+        manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
+        assert all("events" not in t for t in _timeline_objects(manifest))
 
     def test_event_rows_of_a_manifest_and_its_table_give_each_projection_once(
         self, tmp_path: Path
@@ -1139,6 +1154,21 @@ def _derived(bundle: AlignmentBundle, case: dict[str, Any]) -> tuple[str, str, i
     return _sorted_sets(anchors), _sorted_sets(stamps), graph.n_edges
 
 
+def _in_the_writer_s_order(table: pa.Table) -> list[dict[str, Any]]:
+    """The rows of an event table, sorted as the writer sorts them: by
+    ``timeline_id``, then ``start`` compared exactly, then ``id``."""
+
+    def start(row: dict[str, Any]) -> Fraction:
+        number = row["start"]
+        if row["number_type"] == "float":
+            return Fraction(number["value"])
+        return Fraction(number["numerator"], number["denominator"] or 1)
+
+    return sorted(
+        table.to_pylist(), key=lambda row: (row["timeline_id"], start(row), row["id"])
+    )
+
+
 class TestTimeToShareFixturePackage:
     @pytest.fixture(scope="class")
     def bundle(self) -> AlignmentBundle:
@@ -1155,7 +1185,9 @@ class TestTimeToShareFixturePackage:
             "cpt_1": 2,
             "dpt_1": 8,
         }
-        assert projection_table(known[tid] for tid in sorted(known)).equals(fixture)
+        assert projection_table(
+            known[tid] for tid in sorted(known)
+        ).to_pylist() == _in_the_writer_s_order(fixture)
 
     def test_a_projection_without_a_source_is_read(
         self, bundle: AlignmentBundle
@@ -1211,10 +1243,32 @@ class TestTimeToShareFixturePackage:
         assert (tmp_path / "match_claims.parquet").read_bytes() == (
             _TABLES / "match_claims.parquet"
         ).read_bytes()
-        assert (tmp_path / "projections.parquet").read_bytes() == (
-            _TABLES / "projections.parquet"
-        ).read_bytes()
-        assert written["resources"] == fixture["resources"]
+        assert pq.read_table(
+            tmp_path / "projections.parquet"
+        ).to_pylist() == _in_the_writer_s_order(
+            pq.read_table(_TABLES / "projections.parquet")
+        )
+        claims, projections = sorted(
+            fixture["resources"], key=lambda entry: entry["type"]
+        )
+        data = (tmp_path / "projections.parquet").read_bytes()
+        assert sorted(written["resources"], key=lambda entry: entry["type"]) == [
+            claims,
+            {
+                **projections,
+                "size": len(data),
+                "integrity": {
+                    "algorithm": "SHA-256",
+                    "digest": hashlib.sha256(data).hexdigest(),
+                },
+            },
+        ]
+        first = _bytes(tmp_path)
+        (tmp_path / "again").mkdir()
+        AlignmentBundle.from_file(tmp_path / "manifest.yaml").to_file(
+            tmp_path / "again" / "manifest.yaml"
+        )
+        assert _bytes(tmp_path / "again") == first
 
     @pytest.mark.parametrize(
         "index",
@@ -1522,14 +1576,14 @@ class TestBoxes:
         assert str(added.value) == str(read.value)
 
     def test_no_event_row_is_written_beside_the_box_table(self, tmp_path: Path) -> None:
-        message = (
-            "A package's manifest names no event ID: the bundle writes its "
-            "MatchClaim table and its event tables beside the manifest, so its "
-            "event rows are not written into it; write it with events=False."
-        )
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            _box_bundle().to_file(tmp_path / "package.yaml", events=True)
-        assert list(tmp_path.iterdir()) == []
+        path = _box_bundle().to_file(tmp_path / "package.yaml", events=True)
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "boxes.parquet",
+            "package.yaml",
+        ]
+        manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
+        assert all("events" not in t for t in _timeline_objects(manifest))
 
 
 def _seg_2() -> DiscreteGraphicalTimeline:
@@ -1666,25 +1720,22 @@ class TestBoxRowsAsTheBoxTableStatesThem:
         assert _read_back(seg_2, tmp_path) == seg_2.events.table.to_pylist()
 
     @pytest.mark.parametrize(
-        ("given", "named"),
-        [({"name": "crop"}, "name 'crop'"), ({"staff": 1}, "staff 1")],
+        ("given", "column", "type_"),
+        [({"name": "crop"}, "name", pa.string()), ({"staff": 1}, "staff", pa.int64())],
     )
-    def test_a_box_value_the_box_table_has_no_column_for_is_refused(
-        self, tmp_path: Path, given: dict[str, Any], named: str
+    def test_a_further_box_column_is_written_and_read_back(
+        self, tmp_path: Path, given: dict[str, Any], column: str, type_: pa.DataType
     ) -> None:
         seg_2 = _seg_2()
         seg_2.add_events([_rect_h2_row(id="rect_h2", **given)])
-        bundle = AlignmentBundle()
-        bundle.add_timeline(seg_2)
 
-        message = (
-            f"Box 'rect_h2' of timeline 'seg_2' gives {named}, which the Box table "
-            "has no column for: a Box holds id, start, duration, bounding_box, "
-            "quadrilateral."
-        )
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            bundle.to_file(tmp_path / "package.yaml")
-        assert list(tmp_path.iterdir()) == []
+        read = _read_back(seg_2, tmp_path)
+
+        table = pq.read_table(tmp_path / "boxes.parquet")
+        assert table.column_names == [*event_table_schema(Box).names, column]
+        assert table.schema.field(column).type == type_
+        assert table.column(column).to_pylist() == list(given.values())
+        assert read == seg_2.events.table.to_pylist()
 
 
 # Event tables of timelines holding other events: values in
@@ -2173,9 +2224,10 @@ class TestFolderResources:
 
         assert str(refused.value) == (
             "The resource 'resource_1' names the folder '../tables/MatchClaim/' "
-            "for its MatchClaim rows: the library writes a package's tables as "
-            "single files and does not write into a folder, whose files other "
-            "manifests may share."
+            "for its MatchClaim rows: AlignmentBundle.to_file writes a manifest's "
+            "tables as single files beside it and does not write into a folder, "
+            "whose files other manifests may share; write the bundle into its "
+            "package with Package.write_bundle."
         )
         assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
         assert list(target.iterdir()) == []
@@ -2186,8 +2238,9 @@ class TestFolderResources:
 
         assert str(refused.value) == (
             "The resource 'resource_2' names the folder '../tables/Projection/' "
-            "for its Projection rows: the library writes a package's tables as "
-            "single files and does not write into a folder, whose files other "
-            "manifests may share."
+            "for its Projection rows: AlignmentBundle.to_file writes a manifest's "
+            "tables as single files beside it and does not write into a folder, "
+            "whose files other manifests may share; write the bundle into its "
+            "package with Package.write_bundle."
         )
         assert list(target.iterdir()) == []

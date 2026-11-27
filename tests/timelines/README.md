@@ -4910,6 +4910,42 @@ unit, since the regions and children of a tree share the root's unit) is
 refused when read against its root; it is built as a manifest, which the
 format admits.
 
+**Which chunk a played position lies in.** A resolved FlowMap is a
+segment line of its chunks: every placed stretch carries the index of the
+entry of `chunks` it plays and the ID that entry names, and
+`get_chunk_at(at)` returns the placed chunk (or placed gap) covering a
+played position. What proves it is a FlowMap whose answer `fold` alone
+cannot give: the same chunk played twice, so that one root position is
+played in two entries, and a gap between them. On the quarters root,
+`first, trio, first, Gap(2), intro`:
+
+| Entry | Names | Root interval | Virtual interval |
+|---|---|---|---|
+| 0 | `first` | [0, 8) | [0, 8) |
+| 1 | `trio` | [12, 18) | [8, 14) |
+| 2 | `first` | [0, 8) | [14, 22) |
+| 3 | gap 2 | none | [22, 24) |
+| 4 | `intro` | [0, 3) | [24, 27) |
+
+Length 27. The played positions 3 and 17 both fold to the root position
+3, and the lookup tells them apart: 3 lies in entry 0, 17 in entry 2,
+both naming `first`. Boundaries follow the half-open rule of `fold`: 0 is
+in entry 0, 8 in entry 1 (not 0), 14 in entry 2, 22 in the gap (entry 3,
+a `PlacedGap`, where `fold` answers None), 24 in entry 4, 27/2 in entry 1;
+27 and -1 are refused as `fold` refuses them. The placed chunk returned is
+the very object of `chunks`, its `start` and `source` exact `Fraction`
+coordinates. The same lookup holds on a float axis (the seconds case:
+9.75 lies in entry 1, `verse`, starting at 9.75 as a float) and through a
+virtual timeline: `VirtualTimeline.get_chunk_at(at, root)` answers what
+its resolved FlowMap answers, takes an IdCoordinate naming the virtual
+timeline and refuses one naming another. A chunk that is itself a virtual
+timeline (`z, Gap(1), second` with `z` = `first, first`) gives two
+stretches that both carry entry 0 and name `z`; the gap is entry 1 and
+`second` entry 2: the entry is the one written in this FlowMap, never one
+of the FlowMap `z` applies. A flow played from flow control
+(`from_stretches`) names nothing: each run is its own entry, numbered
+from 0, its ID None.
+
 **The dictionary form** is the manifest's, IDs bare as in every object of
 the library: `{id, timeline, chunks, convention?, canonical?, name?,
 provenance?}`, a gap written `{gap: <Number>}`. The tests read literals

@@ -93,12 +93,12 @@ class TestQuarters:
             Q,
             NumberType.fraction,
             (
-                PlacedChunk(Interval(start=q(8), end=q(20)), q(0)),
-                PlacedGap(Duration(Fraction(4), Q), q(12)),
-                PlacedChunk(Interval(start=q(0), end=q(8)), q(16)),
-                PlacedChunk(Interval(start=q(12), end=q(18)), q(24)),
-                PlacedChunk(Interval(start=q(18), end=q(20)), q(30)),
-                PlacedChunk(Interval(start=q(0), end=q(3)), q(32)),
+                PlacedChunk(Interval(start=q(8), end=q(20)), q(0), 0, "second"),
+                PlacedGap(Duration(Fraction(4), Q), q(12), 1),
+                PlacedChunk(Interval(start=q(0), end=q(8)), q(16), 2, "first"),
+                PlacedChunk(Interval(start=q(12), end=q(18)), q(24), 3, "trio"),
+                PlacedChunk(Interval(start=q(18), end=q(20)), q(30), 4, "coda"),
+                PlacedChunk(Interval(start=q(0), end=q(3)), q(32), 5, "intro"),
             ),
         )
         assert [(chunk.start.value, chunk.end.value) for chunk in resolved.chunks] == [
@@ -193,10 +193,10 @@ class TestSeconds:
     ) -> None:
         resolved = audio.create_flow_map(self.ORDER).resolve(audio)
         assert resolved.chunks == (
-            PlacedChunk(Interval(start=s(10.25), end=s(20.0)), s(0.0)),
-            PlacedChunk(Interval(start=s(0.5), end=s(10.25)), s(9.75)),
-            PlacedGap(Duration(1.5, S), s(19.5)),
-            PlacedChunk(Interval(start=s(10.25), end=s(20.0)), s(21.0)),
+            PlacedChunk(Interval(start=s(10.25), end=s(20.0)), s(0.0), 0, "chorus"),
+            PlacedChunk(Interval(start=s(0.5), end=s(10.25)), s(9.75), 1, "verse"),
+            PlacedGap(Duration(1.5, S), s(19.5), 2),
+            PlacedChunk(Interval(start=s(10.25), end=s(20.0)), s(21.0), 3, "chorus"),
         )
         assert _exact([resolved.length]) == [(30.75, float, S)]
         assert resolved.number_type is NumberType.float
@@ -428,6 +428,167 @@ class TestChunkObjects:
         assert flow_map.chunks == ("intro", "second", "z", Gap(Fraction(2)))
         assert flow_map.timeline == "set"
         assert concert.get_flow_map(flow_map.id) is flow_map
+
+
+REPEATED = ["first", "trio", "first", Gap(2), "intro"]
+
+
+class TestChunkAtAPlayedPosition:
+    """The chunk a played position lies in tells the occurrences of a chunk
+    played twice apart (README, *Which chunk a played position lies in*)."""
+
+    @pytest.mark.parametrize(
+        ("position", "entry", "chunk_id", "root_position"),
+        [
+            (0, 0, "first", 0),
+            (3, 0, "first", 3),
+            (8, 1, "trio", 12),
+            (Fraction(27, 2), 1, "trio", Fraction(35, 2)),
+            (14, 2, "first", 0),
+            (17, 2, "first", 3),
+            (24, 4, "intro", 0),
+            (26, 4, "intro", 2),
+        ],
+    )
+    def test_the_entry_played_at_a_position(
+        self,
+        concert: ContinuousLogicalTimeline,
+        position: Any,
+        entry: int,
+        chunk_id: str,
+        root_position: Any,
+    ) -> None:
+        resolved = concert.create_flow_map(REPEATED).resolve(concert)
+        chunk = resolved.get_chunk_at(position)
+        assert isinstance(chunk, PlacedChunk)
+        assert chunk is resolved.chunks[entry]
+        assert (chunk.entry, chunk.chunk_id) == (entry, chunk_id)
+        assert _exact([resolved.fold(position)]) == [  # type: ignore[list-item]
+            (Fraction(root_position), Fraction, Q)
+        ]
+
+    def test_one_root_position_played_twice_lies_in_two_entries(
+        self, concert: ContinuousLogicalTimeline
+    ) -> None:
+        resolved = concert.create_flow_map(REPEATED).resolve(concert)
+        assert resolved.unfold(3) == [q(3), q(17)]
+        first, second = (resolved.get_chunk_at(c) for c in resolved.unfold(3))
+        assert first == PlacedChunk(Interval(start=q(0), end=q(8)), q(0), 0, "first")
+        assert second == PlacedChunk(Interval(start=q(0), end=q(8)), q(14), 2, "first")
+        assert _exact([second.start, second.source.start, second.source.end]) == [
+            (Fraction(14), Fraction, Q),
+            (Fraction(0), Fraction, Q),
+            (Fraction(8), Fraction, Q),
+        ]
+
+    @pytest.mark.parametrize("position", [22, 23, Fraction(47, 2)])
+    def test_a_position_in_a_gap_lies_in_the_gap(
+        self, concert: ContinuousLogicalTimeline, position: Any
+    ) -> None:
+        resolved = concert.create_flow_map(REPEATED).resolve(concert)
+        assert resolved.get_chunk_at(position) == PlacedGap(
+            Duration(Fraction(2), Q), q(22), 3
+        )
+        assert resolved.fold(position) is None
+
+    @pytest.mark.parametrize("position", [27, -1])
+    def test_a_position_outside_the_virtual_axis_is_refused(
+        self, concert: ContinuousLogicalTimeline, position: int
+    ) -> None:
+        resolved = concert.create_flow_map(REPEATED).resolve(concert)
+        with pytest.raises(ValueError) as raised:
+            resolved.get_chunk_at(position)
+        assert str(raised.value) == (
+            f"{position} quarters lies outside the virtual axis, which runs from 0 "
+            "to 27 quarters, its end excluded"
+        )
+
+    def test_every_form_of_one_position_gives_one_chunk(
+        self, concert: ContinuousLogicalTimeline
+    ) -> None:
+        resolved = concert.create_flow_map(REPEATED).resolve(concert)
+        for position in (
+            17,
+            17.0,
+            Fraction(17),
+            Coordinate(17, Q),
+            IdCoordinate(17, Q, timeline_id="clt_9"),
+        ):
+            assert resolved.get_chunk_at(position) is resolved.chunks[2]
+        with pytest.raises(ValueError, match="not of the virtual axis: unfold it"):
+            resolved.get_chunk_at(IdCoordinate(17, Q, timeline_id="set"))
+        with pytest.raises(
+            ValueError, match="is in seconds; the axis of timeline 'set'"
+        ):
+            resolved.get_chunk_at(Coordinate(17.0, S))
+
+    def test_on_a_float_axis(self, audio: ContinuousPhysicalTimeline) -> None:
+        resolved = audio.create_flow_map(TestSeconds.ORDER).resolve(audio)
+        chunk = resolved.get_chunk_at(9.75)
+        assert isinstance(chunk, PlacedChunk)
+        assert (chunk.entry, chunk.chunk_id) == (1, "verse")
+        assert _exact([chunk.start, chunk.source.start]) == [
+            (9.75, float, S),
+            (0.5, float, S),
+        ]
+        assert resolved.get_chunk_at(Coordinate(30.0, S)).entry == 3
+        assert resolved.get_chunk_at(20.0) == PlacedGap(Duration(1.5, S), s(19.5), 2)
+
+    def test_a_virtual_timeline_answers_as_its_flow_map(
+        self, concert: ContinuousLogicalTimeline
+    ) -> None:
+        played = concert.create_virtual_timeline(
+            concert.create_flow_map(REPEATED), id="played"
+        )
+        resolved = played.resolve(concert)
+        for position in (
+            17,
+            Coordinate(17, Q),
+            IdCoordinate(17, Q, timeline_id="played"),
+        ):
+            assert played.get_chunk_at(position, concert) == resolved.chunks[2]
+        assert played.get_chunk_at(22, concert) == PlacedGap(
+            Duration(Fraction(2), Q), q(22), 3
+        )
+        with pytest.raises(ValueError) as raised:
+            played.get_chunk_at(IdCoordinate(17, Q, timeline_id="set"), concert)
+        assert str(raised.value) == (
+            f"{IdCoordinate(17, Q, timeline_id='set')!r} is no position of virtual "
+            "timeline 'played'"
+        )
+
+    def test_a_virtual_timeline_chunk_carries_the_entry_that_names_it(
+        self, concert: ContinuousLogicalTimeline
+    ) -> None:
+        twice = concert.create_flow_map(["first", "first"], id="twice")
+        concert.create_virtual_timeline(twice, id="z")
+        resolved = concert.create_flow_map(["z", Gap(1), "second"]).resolve(concert)
+        assert resolved.chunks == (
+            PlacedChunk(Interval(start=q(0), end=q(8)), q(0), 0, "z"),
+            PlacedChunk(Interval(start=q(0), end=q(8)), q(8), 0, "z"),
+            PlacedGap(Duration(Fraction(1), Q), q(16), 1),
+            PlacedChunk(Interval(start=q(8), end=q(20)), q(17), 2, "second"),
+        )
+        assert resolved.get_chunk_at(9) is resolved.chunks[1]
+        assert resolved.get_chunk_at(17) is resolved.chunks[3]
+
+    def test_a_flow_from_stretches_names_nothing(self) -> None:
+        resolved = ResolvedFlowMap.from_stretches(
+            "score",
+            [
+                Interval(start=q(0), end=q(4)),
+                Duration(Fraction(2), Q),
+                Interval(start=q(0), end=q(4)),
+            ],
+            unit=Q,
+            number_type=NumberType.fraction,
+        )
+        assert resolved.chunks == (
+            PlacedChunk(Interval(start=q(0), end=q(4)), q(0), 0, None),
+            PlacedGap(Duration(Fraction(2), Q), q(4), 1),
+            PlacedChunk(Interval(start=q(0), end=q(4)), q(6), 2, None),
+        )
+        assert resolved.get_chunk_at(7) is resolved.chunks[2]
 
 
 class TestVirtualTimelineAsChunk:

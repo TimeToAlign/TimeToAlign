@@ -48,6 +48,8 @@
 #    built yourself
 # 7. Put the cut measures back as a gap, reading the performance against the
 #    page
+# 8. Ask which chunk is played at a performance position with
+#    `get_chunk_at()`, telling a repeated span's occurrences apart
 #
 # **Prerequisites:** `how01_manual_timeline_construction`, `how01_coordinate_math`
 
@@ -284,6 +286,44 @@ page = laid_out.resolve(played)
 # it, and the gap only keeps its place.
 
 # %% [markdown]
+# ## Which chunk is played where
+#
+# A resolved FlowMap is a segment line of its chunks: each placed stretch
+# knows the **entry** of the FlowMap it plays (its index in `chunks`) and the
+# ID that entry names. `get_chunk_at()` returns the placed chunk a performance
+# position lies in. This matters as soon as a span is played more than once:
+# `fold()` sends both occurrences to the same score position, the chunk tells
+# them apart.
+#
+# A performance that plays measures 1–41 twice before going on to measure 44
+# lists `before_cut` twice. Measure 11's downbeat is then played twice:
+
+# %%
+twice = score.create_flow_map(["before_cut", "before_cut", "after_cut"], id="twice")
+repeated = twice.resolve(score)
+heard_at = repeated.unfold(downbeat(11))
+{
+    "measure 11 is played at": heard_at,
+    "each plays": [repeated.fold(position) for position in heard_at],
+    "entries": [
+        (chunk.entry, chunk.chunk_id, str(chunk.start))
+        for chunk in (repeated.get_chunk_at(position) for position in heard_at)
+    ],
+}
+
+# %% [markdown]
+# A stretch is half-open, so a position at the end of one chunk lies in the
+# next: QB 123 starts the second pass. Inside a gap the answer is the placed
+# gap, which carries its entry too; on the page read above, QB 125 lies in
+# the reopened measures:
+
+# %%
+{
+    "QB 123 of the repeat": repeated.get_chunk_at(123),
+    "QB 125 of the page": page.get_chunk_at(125),
+}
+
+# %% [markdown]
 # ## Summary
 #
 # | Task | API |
@@ -296,7 +336,8 @@ page = laid_out.resolve(played)
 # | Coordinate folded → performance (1 → N) | `resolved.unfold(coord)` |
 # | A skipped coordinate | `unfold()` returns `[]` |
 # | Coordinate performance → folded (N → 1) | `resolved.fold(coord)`, None inside a gap |
-# | A virtual timeline | `timeline.create_virtual_timeline(flow_map)`, `unfold(x, timeline)`, `fold(x, timeline)` |
+# | The chunk played at a position | `resolved.get_chunk_at(coord)`: `entry`, `chunk_id` |
+# | A virtual timeline | `create_virtual_timeline(flow_map)`; `unfold`, `fold`, `get_chunk_at` take the timeline |
 #
 # The same {{< glossary FlowMap >}} also states *repeats*: a span listed twice
 # plays twice, and `unfold()` then returns two positions.

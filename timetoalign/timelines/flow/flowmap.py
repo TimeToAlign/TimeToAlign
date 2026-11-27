@@ -19,7 +19,10 @@ chunk, has the root's unit and number type, and is as long as the chunks and
 gaps together. A root position is played wherever a chunk covers it
 (:meth:`ResolvedFlowMap.unfold`, any number of positions); a virtual position
 is the root position played there (:meth:`ResolvedFlowMap.fold`), or none
-inside a gap.
+inside a gap. Read as a segment line of its chunks, the virtual axis tells
+which entry of the FlowMap is played at a position
+(:meth:`ResolvedFlowMap.get_chunk_at`), and so which occurrence of a chunk
+played several times.
 
 A :class:`VirtualTimeline` is the statement that a map was applied to a
 timeline, giving a timeline with an ID of its own of which nothing else is
@@ -383,13 +386,27 @@ def _read_chunk(data: Any, what: str) -> str | Gap:
 class PlacedChunk:
     """A stretch of the root timeline, placed on the virtual axis.
 
+    One segment of the segment line a resolved FlowMap is: it knows which
+    entry of the FlowMap's ``chunks`` it plays, so that a chunk played
+    several times is told apart occurrence by occurrence.
+
     Attributes:
         source: The stretch played, a half-open interval of the root's axis.
         start: Where it begins on the virtual axis.
+        entry: The index of the entry of the FlowMap's ``chunks`` it plays.
+            A chunk naming a virtual timeline gives one placed chunk per
+            stretch of the FlowMap that one applies, each carrying the same
+            entry. In a flow played from flow control (a :class:`PlayedFlow`)
+            each run is its own entry, numbered from 0.
+        chunk_id: The ID the entry names: a Region, a child timeline or a
+            virtual timeline. None in a flow played from flow control,
+            whose runs name nothing.
     """
 
     source: Interval
     start: Coordinate
+    entry: int
+    chunk_id: str | None
 
     @property
     def length(self) -> Duration:
@@ -409,10 +426,14 @@ class PlacedGap:
     Attributes:
         length: How long the gap is.
         start: Where it begins on the virtual axis.
+        entry: The index of the entry of the FlowMap's ``chunks`` it is; a
+            gap of a FlowMap a virtual-timeline chunk applies carries the
+            entry of that chunk.
     """
 
     length: Duration
     start: Coordinate
+    entry: int
 
     @property
     def end(self) -> Coordinate:
@@ -456,6 +477,10 @@ class ResolvedFlowMap:
     ) -> Self:
         """Place stretches one after the other on a virtual axis.
 
+        Each stretch is an entry of its own, numbered from 0 in the order
+        given, and names nothing (:attr:`PlacedChunk.chunk_id` None): the
+        runs of a flow played from flow control.
+
         Args:
             timeline: The ID of the timeline the intervals lie on.
             stretches: In the order played, an
@@ -467,13 +492,34 @@ class ResolvedFlowMap:
             **stated: What a subclass states beside the chunks (the
                 ``findings`` of a :class:`PlayedFlow`).
         """
+        return cls._from_entries(
+            timeline,
+            ((stretch, entry, None) for entry, stretch in enumerate(stretches)),
+            unit=unit,
+            number_type=number_type,
+            **stated,
+        )
+
+    @classmethod
+    def _from_entries(
+        cls,
+        timeline: str,
+        stretches: Iterable[tuple[Interval | Duration, int, str | None]],
+        *,
+        unit: TimeUnit,
+        number_type: NumberType,
+        **stated: Any,
+    ) -> Self:
+        """Place stretches one after the other, each with the entry it plays
+        and the ID that entry names (None for a gap, and for a stretch that
+        names nothing)."""
         position = Coordinate(0, unit, number_type=number_type)
         placed: list[PlacedChunk | PlacedGap] = []
-        for stretch in stretches:
+        for stretch, entry, chunk_id in stretches:
             chunk = (
-                PlacedChunk(stretch, position)
+                PlacedChunk(stretch, position, entry, chunk_id)
                 if isinstance(stretch, Interval)
-                else PlacedGap(stretch, position)
+                else PlacedGap(stretch, position, entry)
             )
             placed.append(chunk)
             position = chunk.end
@@ -522,34 +568,77 @@ class ResolvedFlowMap:
         """Return the root position played at a position of the virtual axis.
 
         Args:
-            coordinate: A position on the virtual axis: a bare value or a
-                Coordinate in its unit.
+            coordinate: A position on the virtual axis: a bare value, a
+                Coordinate in its unit, or an IdCoordinate naming another
+                timeline than the root.
 
         Returns:
             The position on the root's axis, or None inside a gap.
+
+        Raises:
+            ValueError: As :meth:`get_chunk_at`.
+        """
+        chunk, value = self._placed_at(coordinate)
+        if isinstance(chunk, PlacedGap):
+            return None
+        return self._coordinate(chunk.source.start.value + (value - chunk.start.value))
+
+    def get_chunk_at(self, at: CoordinateInput) -> PlacedChunk | PlacedGap:
+        """Return the placed chunk a position of the virtual axis lies in.
+
+        The virtual axis is a segment line of the chunks: which segment a
+        played position lies in tells which entry of the FlowMap is played
+        there (:attr:`PlacedChunk.entry`) and what it names, so that the
+        occurrences of a chunk played several times are told apart. Each
+        stretch is half-open: a position at the end of one lies in the next.
+
+        Args:
+            at: A position on the virtual axis: a bare value, a Coordinate in
+                its unit, or an IdCoordinate naming another timeline than
+                the root.
+
+        Returns:
+            The placed chunk of :attr:`chunks` covering the position, a
+            :class:`PlacedGap` inside a gap.
 
         Raises:
             ValueError: If the position lies outside the virtual axis, which
                 is half-open (``[0, length)``), a Coordinate is in another
                 unit, or an IdCoordinate names the root timeline, whose
                 positions are not virtual positions.
+
+        Examples:
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> score = ContinuousLogicalTimeline(length=24, uid="score")
+            >>> a = score.create_region(0, 16, id="a")
+            >>> b = score.create_region(16, 24, id="b")
+            >>> played = score.create_flow_map([a, a, b]).resolve(score)
+            >>> first, second = played.get_chunk_at(4), played.get_chunk_at(20)
+            >>> (first.entry, first.chunk_id), (second.entry, second.chunk_id)
+            ((0, 'a'), (1, 'a'))
+            >>> played.fold(4) == played.fold(20)
+            True
         """
-        if (
-            isinstance(coordinate, IdCoordinate)
-            and coordinate.timeline_id == self.timeline
-        ):
+        return self._placed_at(at)[0]
+
+    def _placed_at(
+        self, at: CoordinateInput
+    ) -> tuple[PlacedChunk | PlacedGap, _Number]:
+        """Return the placed chunk covering a virtual position, and the
+        position as a bare value in the axes' number type.
+
+        Raises:
+            ValueError: As :meth:`get_chunk_at`.
+        """
+        if isinstance(at, IdCoordinate) and at.timeline_id == self.timeline:
             raise ValueError(
-                f"{coordinate!r} is a position of timeline {quote_id(self.timeline)}, "
+                f"{at!r} is a position of timeline {quote_id(self.timeline)}, "
                 "not of the virtual axis: unfold it"
             )
-        value = self._value(coordinate)
+        value = self._value(at)
         for chunk in self.chunks:
             if chunk.start.value <= value < chunk.end.value:
-                if isinstance(chunk, PlacedGap):
-                    return None
-                return self._coordinate(
-                    chunk.source.start.value + (value - chunk.start.value)
-                )
+                return chunk, value
         raise ValueError(
             f"{self._coordinate(value)} lies outside the virtual axis, which runs "
             f"from 0 to {self.length}, its end excluded"
@@ -631,14 +720,14 @@ def _resolve(
             "chunks name"
         )
     visiting = (*visiting, flow_map.id)
-    stretches: list[Interval | Duration] = []
-    for chunk in flow_map.chunks:
+    stretches: list[tuple[Interval | Duration, int, str | None]] = []
+    for entry, chunk in enumerate(flow_map.chunks):
         if isinstance(chunk, Gap):
-            stretches.append(_gap_length(chunk, root, flow_map))
+            stretches.append((_gap_length(chunk, root, flow_map), entry, None))
             continue
         interval = _interval_in_tree(root, chunk)
         if interval is not None:
-            stretches.append(interval)
+            stretches.append((interval, entry, chunk))
             continue
         virtual = root._virtual_timelines.get(chunk)
         if virtual is None:
@@ -659,10 +748,14 @@ def _resolve(
                 f"axis than that of its root {quote_id(root.id)}"
             )
         stretches.extend(
-            placed.source if isinstance(placed, PlacedChunk) else placed.length
+            (
+                (placed.source, entry, chunk)
+                if isinstance(placed, PlacedChunk)
+                else (placed.length, entry, None)
+            )
             for placed in virtual._resolved(root, visiting).chunks
         )
-    return ResolvedFlowMap.from_stretches(
+    return ResolvedFlowMap._from_entries(
         root.id, stretches, unit=root.unit, number_type=root.number_type
     )
 
@@ -1085,10 +1178,7 @@ class VirtualTimeline(_IdentifiedElement):
             ValueError: As :meth:`resolve` and :meth:`ResolvedFlowMap.fold`,
                 or if an IdCoordinate names another timeline.
         """
-        if isinstance(coordinate, IdCoordinate) and coordinate.timeline_id != self.id:
-            raise ValueError(
-                f"{coordinate!r} is no position of virtual timeline {quote_id(self.id)}"
-            )
+        self._require_own(coordinate)
         if self.through is None:
             return self.resolve(root).fold(coordinate)
         group, flow_root = self._route(root)
@@ -1096,6 +1186,40 @@ class VirtualTimeline(_IdentifiedElement):
         if written is None:
             return None
         return _carry_through(group, written, flow_root.id, self.timeline)
+
+    def get_chunk_at(
+        self, at: CoordinateInput, root: Timeline
+    ) -> PlacedChunk | PlacedGap:
+        """Return the placed chunk a position of this virtual timeline lies in.
+
+        A virtual timeline applying a FlowMap is read as a segment line of
+        its chunks: see :meth:`ResolvedFlowMap.get_chunk_at`. The chunk's
+        ``source`` lies on the FlowMap's own root, which with ``through`` is
+        a member of the group, not ``timeline``.
+
+        Args:
+            at: A position on this virtual timeline's axis: a bare value, a
+                Coordinate, or an IdCoordinate naming this virtual timeline.
+            root: The root timeline holding the virtual timeline.
+
+        Raises:
+            ValueError: As :meth:`resolve` and
+                :meth:`ResolvedFlowMap.get_chunk_at`, or if an IdCoordinate
+                names another timeline.
+        """
+        self._require_own(at)
+        return self.resolve(root).get_chunk_at(at)
+
+    def _require_own(self, at: CoordinateInput) -> None:
+        """Refuse an IdCoordinate naming another timeline than this one.
+
+        Raises:
+            ValueError: If *at* is such an IdCoordinate.
+        """
+        if isinstance(at, IdCoordinate) and at.timeline_id != self.id:
+            raise ValueError(
+                f"{at!r} is no position of virtual timeline {quote_id(self.id)}"
+            )
 
     def _route(self, root: Timeline) -> tuple[TimelineGroup, Timeline]:
         """Return the group this virtual timeline goes through and the

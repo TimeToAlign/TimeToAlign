@@ -271,7 +271,14 @@ class VirtualMember(_MemberBase):
         return "VirtualTimeline"
 
     def _is_segment_line_instance(self) -> bool:
-        """A virtual timeline is no segment line."""
+        """False: a virtual timeline writes no ``is_segment_line`` and holds no
+        timelines as segments.
+
+        It is read as a segment line of its chunks all the same, each segment
+        a window onto the stretch its chunk plays
+        (:meth:`ResolvedFlowMap.get_chunk_at
+        <timetoalign.timelines.flow.flowmap.ResolvedFlowMap.get_chunk_at>`).
+        """
         return False
 
     def _tree_root(self) -> Timeline:

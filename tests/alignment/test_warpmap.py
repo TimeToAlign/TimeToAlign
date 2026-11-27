@@ -626,6 +626,34 @@ class TestMaterialise:
         # Children are keyed by new IDs, but we can check count
         assert len(children) == 2
 
+    def test_materialise_keeps_a_user_segment(
+        self,
+        source_timeline_with_children: Timeline,
+    ) -> None:
+        """A user's Segment row is warped; a child's own row is the child's."""
+        source_timeline_with_children.add_events(
+            [{"id": "s1", "event_type": "Segment", "start": 0.0, "duration": 5.0}]
+        )
+        warp = _warp_from_values(
+            "parent",
+            "target",
+            [0.0, 100.0],
+            [0.0, 200.0],
+            source_unit=TimeUnit.seconds,
+            target_unit=TimeUnit.seconds,
+        )
+
+        warped = warp.materialise(source_timeline_with_children)
+
+        segments = {
+            row["id"]: (row["start"]["value"], row["duration"]["value"])
+            for row in warped.events.table.to_pylist()
+            if row["event_type"] == "Segment"
+        }
+        assert segments.pop("s1") == (0.0, 10.0)
+        assert sorted(segments) == sorted(warped._children)
+        assert len(segments) == 2
+
     def test_materialise_nonlinear_durations(
         self,
         nonlinear_match_line: MatchLine,

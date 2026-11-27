@@ -3980,6 +3980,19 @@ need contents opt in.
      with the refusals and the manifest round trip; the strategy is in
      "Measure map slices" above
 
+12. **A user's `Segment` row survives a copy** (`TestUserSegmentCopied`)
+   - A child's own `Segment` row (its `id` the child's) records the
+     child's place, which the copy's children recreate; a `Segment` row of
+     any other ID is a user's event like every other. Evidence: an untyped
+     `Timeline` `t` (length 8.0) holding the child `c` (length 2.0 at 4.0),
+     the Note `n1` at 0.0 and the user's `Segment` `s1` (start 1.0,
+     duration 1.0): `to_typed()` holds exactly the rows `c`, `n1`, `s1`
+     (`s1` at 1.0 for 1.0), `c` still its child; a timeline tiled by `c1`
+     (0 to 2) and `c2` (2 to 4) holding `s1` (start 1, duration 1):
+     `as_segment_line()` and the line's `to_timeline()` each hold `c1`,
+     `c2` and `s1`. A copy dropping every `Segment` row loses `s1`; one
+     keeping every row holds a child's row twice.
+
 **Validity Rationale:**
 
 The TTA model specifies that timelines can contain nested "children" (segments)

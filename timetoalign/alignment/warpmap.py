@@ -746,7 +746,11 @@ class WarpMap:
         source: "Timeline",
         target: "Timeline",
     ) -> None:
-        """Warp all non-segment events from source to target.
+        """Warp every event from source to target but a child's own Segment row.
+
+        A child's ``Segment`` row (its ``id`` a child of *source*) records
+        the child's place, which :meth:`_warp_children` recreates; a
+        ``Segment`` row of any other ID is an event like every other.
 
         Args:
             source: Source timeline with original events.
@@ -756,7 +760,10 @@ class WarpMap:
 
         warped_events: list[dict[str, Any]] = []
         for event in source.events:
-            if event.get("event_type") == SEGMENT_EVENT_TYPE:
+            if (
+                event.get("event_type") == SEGMENT_EVENT_TYPE
+                and event.get("id") in source._children
+            ):
                 continue
 
             warped = dict(event)

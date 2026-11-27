@@ -832,6 +832,72 @@ class TestCreateChildrenFromBoundaries:
 # endregion
 
 
+# region A user's Segment row survives a copy
+
+
+def _segment_rows(timeline: Timeline) -> dict[str, tuple[object, object]]:
+    """Each event of *timeline* by ID, with its start and duration values."""
+    return {
+        row["id"]: (row["start"]["value"], (row["duration"] or {}).get("value"))
+        for row in timeline.events.table.to_pylist()
+    }
+
+
+class TestUserSegmentCopied:
+    """See README, "A user's Segment row survives a copy"."""
+
+    def test_to_typed_keeps_a_user_segment(self) -> None:
+        parent = Timeline(length=8.0, uid="t")
+        parent.add_child(Timeline(length=2.0, uid="c"), 4.0)
+        parent.add_events(
+            [
+                {"id": "n1", "event_type": "Note", "start": 0.0},
+                {
+                    "id": "s1",
+                    "event_type": SEGMENT_EVENT_TYPE,
+                    "start": 1.0,
+                    "duration": 1.0,
+                },
+            ]
+        )
+
+        typed = parent.to_typed()
+
+        assert typed is not parent
+        assert sorted(_segment_rows(typed)) == ["c", "n1", "s1"]
+        assert _segment_rows(typed)["s1"] == (1.0, 1.0)
+        assert typed.get_child("c").id == "c"
+
+    def test_a_segment_line_keeps_a_user_segment(self) -> None:
+        line = ContinuousLogicalTimeline(length=Fraction(4), uid="line")
+        line.add_child(
+            ContinuousLogicalTimeline(length=Fraction(2), uid="c1"), Fraction(0)
+        )
+        line.add_child(
+            ContinuousLogicalTimeline(length=Fraction(2), uid="c2"), Fraction(2)
+        )
+        line.add_events(
+            [
+                {
+                    "id": "s1",
+                    "event_type": SEGMENT_EVENT_TYPE,
+                    "start": Fraction(1),
+                    "duration": Fraction(1),
+                }
+            ]
+        )
+
+        cast = line.as_segment_line()
+        assert isinstance(cast, SegmentLine)
+        back = cast.to_timeline()
+
+        for copy in (cast, back):
+            assert sorted(_segment_rows(copy)) == ["c1", "c2", "s1"]
+
+
+# endregion
+
+
 # region Get Child Tests
 
 

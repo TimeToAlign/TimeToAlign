@@ -2380,10 +2380,13 @@ class Timeline(
             locked=False,
             meta=dict(self._meta) if self._meta else None,
         )
+        # A child's own Segment row (its id the child's) is recreated by
+        # embedding the child; a Segment row of any other id is an event.
         events = [
             dict(event)
             for event in self._events
             if event.get("event_type") != SEGMENT_EVENT_TYPE
+            or event.get("id") not in self._children
         ]
         if events:
             copied._add_events_unchecked(events)

@@ -178,14 +178,17 @@ def _refusal_of(error: ValidationError) -> ValueError:
 _PROJECTION_CELLS = ("start", "end", "duration")
 
 
-def _projection_keys(table: pa.Table) -> pa.Table:
+def _projection_keys(
+    table: pa.Table, cells: tuple[str, ...] = _PROJECTION_CELLS
+) -> pa.Table:
     """The columns that tell a timeline's Projections apart, without nulls.
 
-    Per row the ``projection_of`` reference and the exact ``start``, ``end``
-    and ``duration`` cells (each side of the number, so a float compares as
-    its value and an exact number as its ratio), every nullable column
-    beside a flag of its presence, so that a join matches a missing value
-    with a missing one. A column the table lacks is missing in every row.
+    Per row the ``projection_of`` reference and the exact *cells* (by
+    default ``start``, ``end`` and ``duration``; each side of the number, so
+    a float compares as its value and an exact number as its ratio), every
+    nullable column beside a flag of its presence, so that a join matches a
+    missing value with a missing one. A column the table lacks is missing
+    in every row.
     """
     n = table.num_rows
     columns: dict[str, pa.Array] = {}
@@ -212,7 +215,7 @@ def _projection_keys(table: pa.Table) -> pa.Table:
 
     number = {"value": pa.float64(), "numerator": pa.int64(), "denominator": pa.int64()}
     fills = {pa.float64(): 0.0, pa.int64(): 0, pa.string(): ""}
-    for name in _PROJECTION_CELLS:
+    for name in cells:
         present, *parts = struct(name, number)
         columns[f"{name}_present"] = present
         for key, part in zip(number, parts, strict=True):
@@ -242,6 +245,20 @@ def _held_by_key(
     a row is answered only by the Projection held under that ID with equal
     keys. One hash join, whatever the number of Projections held.
     """
+    match = _held_match(held, rows, with_id=with_id)
+    if not with_id:
+        return match.to_pylist()
+    given = rows.column("held_id").to_pylist()
+    return [
+        event_id if found else None
+        for event_id, found in zip(given, match.to_pylist(), strict=True)
+    ]
+
+
+def _held_match(held: pa.Table, rows: pa.Table, *, with_id: bool) -> pa.Array:
+    """Per row of *rows*, as :func:`_held_by_key` matches it, the held ID
+    (without ``with_id``) or ``True`` (with it), null where none matches;
+    in row order, one hash join."""
     keys = [name for name in held.column_names if name != "held_id"]
     if with_id:
         keys.append("held_id")
@@ -254,14 +271,7 @@ def _held_by_key(
         right = right.rename_columns([*keys, "match"])
     left = rows.append_column("row", pa.array(np.arange(rows.num_rows), pa.int64()))
     joined = left.join(right, keys=keys, join_type="left outer").sort_by("row")
-    match = joined.column("match").to_pylist()
-    if not with_id:
-        return match
-    given = joined.column("held_id").to_pylist()
-    return [
-        event_id if found else None
-        for event_id, found in zip(given, match, strict=True)
-    ]
+    return joined.column("match").combine_chunks()
 
 
 def _null_columns_typed_as(data: EventData, sources: list[pa.Schema]) -> EventData:
@@ -705,10 +715,11 @@ class EventsMixin(_Host):
         against its shape as :meth:`add_events` checks it. The length
         follows :meth:`add_events`' rule (:meth:`_fit_length`): an unlocked
         timeline grows to hold a row ending past it, a locked one refuses
-        it. A Projection the timeline holds under a row's ID already (a
-        manifest whose timelines state their event rows as well) is kept,
-        and the row passed over, as :meth:`add_projections` reuses a
-        Projection it holds. A further column none of the rows holds a value
+        it. A Projection the timeline holds under a row's ID already, of
+        the row's content (a manifest whose timelines state their event
+        rows as well), is kept, and the row passed over, as
+        :meth:`add_projections` reuses a Projection it holds; one of other
+        content is refused (:meth:`_projection_rows_not_held`). A further column none of the rows holds a value
         in is not added: the table spans timelines, and the column is
         another timeline's. The rows' ``unit`` and ``number_type`` must be
         the timeline's: an event in another unit or number type reaches a
@@ -721,9 +732,10 @@ class EventsMixin(_Host):
         Raises:
             ValueError: If a row states another axis than the timeline's (a
                 Box with the message :meth:`add_events` gives), a Box
-                contradicts its shape, an ID is held in the tree or twice,
-                or a row ends past the length of a locked timeline; nothing
-                is added then.
+                contradicts its shape, an ID is held in the tree or twice
+                (a Projection's by a Projection of other content), or a row
+                ends past the length of a locked timeline; nothing is added
+                then.
         """
         n = rows.num_rows
         if n == 0:
@@ -755,29 +767,7 @@ class EventsMixin(_Host):
                 f"only as a Projection through a C-Map."
             )
         if event_type == PROJECTION_EVENT_TYPE:
-            # Get-or-add: a Projection held under the row's ID stays.
-            table = self._events.table
-            held = (
-                table.filter(
-                    _filled(
-                        pc.equal(
-                            table.column("event_type"),
-                            pa.scalar(PROJECTION_EVENT_TYPE),
-                        ),
-                        pa.scalar(False),
-                    )
-                ).column("id")
-                if "event_type" in table.column_names
-                else pa.chunked_array([], pa.string())
-            )
-            rows = rows.filter(
-                pc.invert(
-                    _filled(
-                        pc.is_in(rows.column("id"), value_set=held.combine_chunks()),
-                        pa.scalar(False),
-                    )
-                )
-            )
+            rows = self._projection_rows_not_held(rows)
             n = rows.num_rows
             if n == 0:
                 return
@@ -810,6 +800,55 @@ class EventsMixin(_Host):
         self._tree_store.refuse_held_ids(self._id, added.table)
         self._fit_length(added)
         self._append_events(added, checked=True)
+
+    def _projection_rows_not_held(self, rows: pa.Table) -> pa.Table:
+        """The Projection *rows* of an event table this timeline does not hold.
+
+        Get-or-add, as :meth:`add_projections` takes a row with an ID: a
+        row whose ID the timeline holds as a Projection of the same content
+        (``projection_of``, both members, ``start`` and ``duration``, each
+        compared exactly) is that Projection, and is passed over; every
+        other row is returned. Compared by one join, never row by row.
+
+        Raises:
+            ValueError: If the timeline holds a row's ID as a Projection of
+                other content, naming the first such ID, as
+                :meth:`add_projections` refuses it; nothing is added then.
+        """
+        table = self._events.table
+        if "event_type" not in table.column_names:
+            return rows
+        held = table.filter(
+            _filled(
+                pc.equal(table.column("event_type"), pa.scalar(PROJECTION_EVENT_TYPE)),
+                pa.scalar(False),
+            )
+        )
+        hit = _filled(
+            pc.is_in(rows.column("id"), value_set=held.column("id").combine_chunks()),
+            pa.scalar(False),
+        )
+        if not pc.any(hit).as_py():
+            return rows
+        cells = ("start", "duration")
+        candidates = rows.filter(hit)
+        match = _held_match(
+            _projection_keys(held, cells).append_column(
+                "held_id", held.column("id").combine_chunks()
+            ),
+            _projection_keys(candidates, cells).append_column(
+                "held_id", candidates.column("id").combine_chunks()
+            ),
+            with_id=True,
+        )
+        differing = pc.is_null(match)
+        if pc.any(differing).as_py():
+            event_id = candidates.column("id")[pc.index(differing, True).as_py()]
+            raise ValueError(
+                f"Event id {quote_id(event_id.as_py())} is already held by "
+                f"another event of timeline {quote_id(self._id)}"
+            )
+        return rows.filter(pc.invert(hit))
 
     def _fit_length(self, added: EventData) -> None:
         """Hold the rows *added* within the length, as :meth:`add_events` does.

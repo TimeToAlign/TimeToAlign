@@ -43,8 +43,6 @@ if TYPE_CHECKING:
 else:
     _Host = object
 
-SEGMENT_EVENT_TYPE = SEGMENT_KIND
-
 
 class ConversionMapsMixin(_Host):
     """Provide coordinate conversion operations for timeline instances."""
@@ -313,7 +311,7 @@ class ConversionMapsMixin(_Host):
                 }
                 for index, event in enumerate(self._events):
                     # Skip segment events
-                    if event.get("event_type") == SEGMENT_EVENT_TYPE:
+                    if event.get("event_type") == SEGMENT_KIND:
                         continue
 
                     converted = dict(event)

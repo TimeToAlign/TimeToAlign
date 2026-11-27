@@ -33,6 +33,7 @@ from timetoalign.maps import (
     MeasureNumberMap,
     MeasureRecordMap,
 )
+from timetoalign.storage.registry import SEGMENT_KIND
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -44,7 +45,6 @@ from timetoalign.timelines import (
     SegmentLine,
     Timeline,
 )
-from timetoalign.timelines.base import SEGMENT_EVENT_TYPE
 
 # region Child Validation Tests
 
@@ -142,11 +142,11 @@ class TestAddChild:
         parent.add_child(child, offset=10.0)
 
         # Segment events are internal bookkeeping; verify via private access
-        segment_events = parent._events.filter(event_type=SEGMENT_EVENT_TYPE)
+        segment_events = parent._events.filter(event_type=SEGMENT_KIND)
         assert len(segment_events) == 1
 
         # Check segment event properties
-        segment_events = parent._events.filter(event_type=SEGMENT_EVENT_TYPE)
+        segment_events = parent._events.filter(event_type=SEGMENT_KIND)
         assert len(segment_events) == 1
 
     def test_add_child_auto_expands_parent(self):
@@ -854,7 +854,7 @@ class TestUserSegmentCopied:
                 {"id": "n1", "event_type": "Note", "start": 0.0},
                 {
                     "id": "s1",
-                    "event_type": SEGMENT_EVENT_TYPE,
+                    "event_type": SEGMENT_KIND,
                     "start": 1.0,
                     "duration": 1.0,
                 },
@@ -880,7 +880,7 @@ class TestUserSegmentCopied:
             [
                 {
                     "id": "s1",
-                    "event_type": SEGMENT_EVENT_TYPE,
+                    "event_type": SEGMENT_KIND,
                     "start": Fraction(1),
                     "duration": Fraction(1),
                 }

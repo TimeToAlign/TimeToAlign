@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -70,8 +70,6 @@ if TYPE_CHECKING:
     from .host import TimelineHost as _Host
 else:
     _Host = object
-
-SEGMENT_EVENT_TYPE = SEGMENT_KIND
 
 #: The keys a Projection row may hold a value under: its ID, its type, its
 #: position and the event it stands for.
@@ -340,7 +338,7 @@ class EventsMixin(_Host):
     def n_events(self) -> int:
         """Number of events (excluding segment events)."""
         # Filter out segment events from count
-        non_segment = self._events.filter(event_type=SEGMENT_EVENT_TYPE)
+        non_segment = self._events.filter(event_type=SEGMENT_KIND)
         return len(self._events) - len(non_segment)
 
     @property
@@ -357,8 +355,7 @@ class EventsMixin(_Host):
     def registry(self) -> EventRegistry:
         """The registry rows of this timeline's events and its descendants'.
 
-        A view of its family's registry: one row per event (its ``Segment``
-        rows, recording where each child lies, among them), positions on
+        A view of its family's registry: one row per event, positions on
         the axis of the family's root, read when asked.
 
         Examples:
@@ -370,7 +367,7 @@ class EventsMixin(_Host):
             ['b1']
         """
         timelines = [self._id, *(child_id for child_id, _ in self._iter_descendants())]
-        return self._registry.filter(timelines=timelines)
+        return self._registry.filter(within=timelines)
 
     @property
     def _events(self) -> EventData:
@@ -1243,6 +1240,7 @@ class EventsMixin(_Host):
         include_children: bool = True,
         min_coord: CoordinateSpec | None = None,
         max_coord: CoordinateSpec | None = None,
+        include_number_types: Collection[NumberType | str] | None = None,
         **field_filters: Any,
     ) -> EventData:
         """Filter and retrieve events.
@@ -1273,6 +1271,10 @@ class EventsMixin(_Host):
                 (converted via inverse C-Map).
             max_coord: Maximum coordinate (exclusive). Same conversion
                 rules as min_coord.
+            include_number_types: Keep the events read in one of these
+                number types only (``EventData.filter``). A timeline and its
+                descendants lie on one axis, so this keeps every event or
+                none. ``None`` keeps every number type.
             **field_filters: Additional field equality filters. Each
                 kwarg name is a field name, and the value is the
                 required value (or a list of values for OR logic).
@@ -1321,6 +1323,9 @@ class EventsMixin(_Host):
         if field_filters:
             result = result.filter(**field_filters)
 
+        if include_number_types is not None:
+            result = result.filter(include_number_types=include_number_types)
+
         if result is self._events:
             # Never the timeline's own table: rows added to the result would
             # land on the timeline past every check of ``add_events``.
@@ -1333,7 +1338,7 @@ class EventsMixin(_Host):
         return bool(
             len(table)
             and pc.any(
-                pc.equal(table.column("event_type"), pa.scalar(SEGMENT_EVENT_TYPE))
+                pc.equal(table.column("event_type"), pa.scalar(SEGMENT_KIND))
             ).as_py()
         )
 
@@ -1344,7 +1349,7 @@ class EventsMixin(_Host):
             return table
         return table.filter(
             _filled(
-                pc.not_equal(table.column("event_type"), pa.scalar(SEGMENT_EVENT_TYPE)),
+                pc.not_equal(table.column("event_type"), pa.scalar(SEGMENT_KIND)),
                 pa.scalar(True),
             )
         )
@@ -1378,7 +1383,7 @@ class EventsMixin(_Host):
                         self._number_type,
                     ),
                 )
-            held_by = pa.array(np.full(len(rows), child_id, dtype=object), pa.string())
+            held_by = pa.repeat(pa.scalar(child_id, pa.string()), len(rows))
             if "source_timeline" in rows.column_names:
                 index = rows.schema.get_field_index("source_timeline")
                 rows = rows.set_column(

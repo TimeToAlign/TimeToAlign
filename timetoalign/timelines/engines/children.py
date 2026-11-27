@@ -58,7 +58,6 @@ if TYPE_CHECKING:
 else:
     _Host = object
 
-SEGMENT_EVENT_TYPE = SEGMENT_KIND
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
 
 _MEASURE_VIEWS = (FloatingMeasureMap, MeasureNumberMap, MeasureBeatMap)
@@ -344,7 +343,7 @@ class ChildrenMixin(_Host):
             "id": child_id,
             "name": child_id,
             "temporal_type": "interval",
-            "event_type": SEGMENT_EVENT_TYPE,
+            "event_type": SEGMENT_KIND,
             "start": offset,
             "end": None if length is None else offset + length.value,
             "duration": None if length is None else length.value,
@@ -356,7 +355,7 @@ class ChildrenMixin(_Host):
         table = events.table
         is_row = _filled(
             pc.and_kleene(
-                pc.equal(table.column("event_type"), pa.scalar(SEGMENT_EVENT_TYPE)),
+                pc.equal(table.column("event_type"), pa.scalar(SEGMENT_KIND)),
                 pc.equal(table.column("id"), pa.scalar(child_id)),
             ),
             pa.scalar(False),
@@ -706,7 +705,7 @@ class ChildrenMixin(_Host):
         elif locked:
             child._locked = True
 
-        # Its ID was refused above where the tree holds it.
+        # Its ID was refused above where the family holds it.
         self._append_events(
             self._event_data_of([self._segment_row(child.id)]), checked=True
         )
@@ -1247,7 +1246,7 @@ class ChildrenMixin(_Host):
             region.start.value,
             region.end.value,
             copy_events=copy_events,
-            in_this_tree=True,
+            in_this_family=True,
         )
 
         self.add_child(child, offset=region.start)
@@ -1423,7 +1422,7 @@ class ChildrenMixin(_Host):
         end: Any,
         *,
         copy_events: bool = True,
-        in_this_tree: bool = False,
+        in_this_family: bool = False,
     ) -> None:
         """Copy the events starting in [start, end) onto *target*, cut there.
 
@@ -1454,7 +1453,7 @@ class ChildrenMixin(_Host):
             end: The cut's end, likewise.
             copy_events: Whether the events are copied; an area is stated
                 either way.
-            in_this_tree: Whether *target* joins this timeline's family, so
+            in_this_family: Whether *target* joins this timeline's family, so
                 that the copies take IDs of their own.
 
         Raises:
@@ -1481,9 +1480,9 @@ class ChildrenMixin(_Host):
                 rows.append(row)
                 origins.append(event_id if origin is None else origin)
         minted = self._move_rows_onto_cut(
-            target, rows, start, end, stated=False, new_ids=in_this_tree
+            target, rows, start, end, stated=False, new_ids=in_this_family
         )
-        if in_this_tree:
+        if in_this_family:
             copied = [
                 (copy, origin)
                 for copy, origin in zip(minted, origins, strict=True)
@@ -1634,7 +1633,7 @@ class ChildrenMixin(_Host):
             stated: Add as rows read from a source rather than through
                 ``add_events``.
             new_ids: Add the rows without their IDs, which ``add_events``
-                mints anew (copies joining this timeline's tree); a refusal
+                mints anew (copies joining this timeline's family); a refusal
                 names a row by the ID it was given.
 
         Returns:

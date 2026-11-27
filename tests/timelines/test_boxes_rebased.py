@@ -132,7 +132,7 @@ def _boxes(timeline: Timeline) -> dict[str, tuple[int, int, Any]]:
 def _copies(child: Timeline, source: Timeline) -> dict[str, tuple[int, int, Any]]:
     """*child*'s Boxes, each keyed by the ID of the Box of *source* it copies.
 
-    A child cut from a region holds copies, new events of the tree: each is
+    A child cut from a region holds copies, new events of the family: each is
     minted an ID of its own (event IDs are unique among a root and its descendants) and is
     matched to the Box it copies by its shape, which a copy keeps.
     """

@@ -130,6 +130,13 @@ def quote_id(element_id: str) -> str:
 #: so a minter of this length never repeats a suffix.
 ID_LENGTH = 13
 
+ID_MINTER = "splitmix64-base36-1"
+"""The algorithm of :class:`IdMinter`, as an extraction of events records it.
+
+SplitMix64's finalizer over a seeded counter, written in base 36; the
+number counts the version of that algorithm.
+"""
+
 _MASK64 = (1 << 64) - 1
 _MIX_FACTOR_1 = 0xBF58476D1CE4E5B9
 _MIX_FACTOR_2 = 0x94D049BB133111EB

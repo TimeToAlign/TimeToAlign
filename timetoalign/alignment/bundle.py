@@ -1132,10 +1132,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_a_id, event_b, timeline_b_id)`` names one side per
         timeline, each side one of:
 
-        - the ``id`` of an event its timeline (or a descendant of it) holds:
-          the timeline's own event answers for its ID; an ID the timeline does
-          not hold and two of its descendants do names no one event and is
-          refused (name the descendant holding the event instead);
+        - the ``id`` of an event its timeline (or a descendant of it) holds;
         - an event dict whose ``id`` its timeline holds: that event;
         - an event dict stating a position: ``start``, and ``end`` for a
           span, each a number on the timeline's axis or a
@@ -1213,11 +1210,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 ``CHUNK`` or a dict whose ``id`` is ``NOMATCH`` or ``CHUNK``
                 (a CHUNK side is a dict stating a position without ``id``,
                 a NOMATCH side is ``NOMATCH``), a pair with CHUNK on both
-                sides states an end on one side only, an event ID
-                names no one event (the timeline does not hold it and two
-                of its descendants do), a dict naming no held event states
-                no ``start``, a position is a float on a timeline counting
-                samples, a span runs backwards, a position lies past where
+                sides states an end on one side only, a dict naming no held
+                event states no ``start``, a position is a float on a
+                timeline counting samples, a span runs backwards, a position
+                lies past where
                 its timeline can reach (the end of a locked timeline, or an
                 end its parent cannot contain), an ``id`` the timeline holds
                 is given with a span not its own, a position cannot be placed

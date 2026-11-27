@@ -29,7 +29,7 @@ from timetoalign.core import (
     Projection,
     TimeUnit,
 )
-from timetoalign.core.fields import _compared, _filled, _struct_child
+from timetoalign.core.fields import _filled
 from timetoalign.core.ids import CHUNK, NOMATCH, SENTINELS, quote_id
 from timetoalign.core.provenance import Belief, Provenance
 from timetoalign.core.retrieval import coordinate_from_dict
@@ -133,60 +133,19 @@ def _held_events(timeline: Any, ids: list[str]) -> list[dict[str, Any] | None]:
     One lookup per call: the timeline's events, its descendants' at their
     positions on its axis, are read once and the ids found in the id column
     (:func:`pyarrow.compute.index_in`). An event of a descendant counts as an
-    event of the timeline, at the timeline's coordinate. An event ID is
-    unique on its own timeline only: the timeline's own event answers for
-    its ID, whatever its descendants hold; an ID the timeline does not hold
-    and two of its descendants do names no one event and is refused, never
-    resolved to the first that holds it.
+    event of the timeline, at the timeline's coordinate; an event ID is
+    unique among a root timeline and its descendants, so one row answers.
 
     Returns:
         Per id its event row, ``None`` where the timeline holds none.
-
-    Raises:
-        ValueError: If the timeline does not hold one of *ids* itself and
-            two events of its descendants do, naming the timelines holding
-            it.
     """
     if not ids:
         return []
     table = timeline.get_events(include_children=True).table
     if table.num_rows == 0 or "id" not in table.column_names:
         return [None] * len(ids)
-    wanted = pa.array(ids, type=pa.string())
     held = pc.cast(table.column("id").combine_chunks(), pa.string())
-    # A descendant's row names the timeline holding it; the timeline's own
-    # rows name none.
-    holders = (
-        table.column("source_timeline").combine_chunks()
-        if "source_timeline" in table.column_names
-        else pa.nulls(table.num_rows, pa.string())
-    )
-    own = holders.is_null()
-    # The rows that may answer: the timeline's own, and a descendant's whose
-    # ID the timeline does not hold itself.
-    answering = pc.and_(
-        pc.is_in(held, value_set=wanted),
-        pc.or_(own, pc.invert(pc.is_in(held, value_set=held.filter(own)))),
-    )
-    counts = pc.value_counts(held.filter(answering))
-    repeated = counts.filter(_compared("greater", _struct_child(counts, "counts"), 1))
-    if len(repeated):
-        event_id = repeated.field("values")[0].as_py()
-        spelled = ", ".join(
-            quote_id(str(holder))
-            for holder in holders.filter(pc.equal(held, event_id)).to_pylist()
-        )
-        raise ValueError(
-            f"The event ID {quote_id(event_id)} is held by "
-            f"{repeated.field('counts')[0].as_py()} events of descendants of "
-            f"timeline {quote_id(timeline.id)} (on {spelled}) and not by the "
-            f"timeline itself, so it names no one event: name the timeline "
-            f"holding the event instead."
-        )
-    table = table.filter(answering)
-    if table.num_rows == 0:
-        return [None] * len(ids)
-    positions = pc.index_in(wanted, value_set=held.filter(answering))
+    positions = pc.index_in(pa.array(ids, type=pa.string()), value_set=held)
     found = table.take(positions.fill_null(0)).to_pylist()
     return [
         row if valid else None

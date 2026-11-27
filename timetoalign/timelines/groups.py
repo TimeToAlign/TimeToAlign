@@ -199,6 +199,9 @@ class _IdScope:
 
     _scope_kind: ClassVar[str]
     """The kind a message names and a minted id carries: ``group``, ``bundle``."""
+    _registers_families: ClassVar[bool] = True
+    """Whether :attr:`registry` reads the members' whole families (a bundle's)
+    or the members and their descendants only (a group's)."""
     id: str
     """The scope's id, given or minted (a field of the subclass)."""
 
@@ -246,14 +249,21 @@ class _IdScope:
 
     @property
     def registry(self) -> EventRegistry:
-        """The registry rows of every family the members belong to.
+        """The registry rows of the scope's events, a view read when asked.
 
-        One view over the registries of the members' roots, each family
-        once, in member order: every event of the members' families, its
-        position on its own root's axis (the row's ``unit`` and
-        ``number_type`` name it).
+        A group's are its members' and their descendants' (each member's
+        :attr:`Timeline.registry <timetoalign.timelines.Timeline.registry>`);
+        a bundle's every event of the families its timelines belong to.
+        Each event once, families in member order, its position on its own
+        root's axis (the row's ``unit`` and ``number_type`` name it).
         """
-        return EventRegistry.concat(*(root._registry for root in self._member_roots()))
+        if self._registers_families:
+            return EventRegistry.concat(
+                *(root._registry for root in self._member_roots())
+            )
+        return EventRegistry.concat(
+            *(member.registry for member in self._scope_members())
+        )
 
     def _rename_member_references(self, old_id: str, new_id: str) -> None:
         """Make the statements of the members' trees and of the scope's own
@@ -371,6 +381,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
     _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "meta", "members")
     _manifest_path: ClassVar[tuple[str, ...]] = ("groups",)
     _scope_kind: ClassVar[str] = "group"
+    _registers_families: ClassVar[bool] = False
 
     id: str = field(default="")
     name: str | None = field(default=None)

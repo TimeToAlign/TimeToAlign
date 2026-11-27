@@ -112,9 +112,6 @@ module_logger = logging.getLogger(__name__)
 
 # region Constants
 
-# Event type name for segment events in the EventData
-SEGMENT_EVENT_TYPE = SEGMENT_KIND
-
 # Traversal order options for iterating children
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
 
@@ -1986,10 +1983,7 @@ class Timeline(
         """
         events = []
         for row in rows:
-            if (
-                row.get("event_type") == SEGMENT_EVENT_TYPE
-                and row.get("id") in children
-            ):
+            if row.get("event_type") == SEGMENT_KIND and row.get("id") in children:
                 continue
             event = dict(row)
             for coord_col in ("instant", "start", "end", "duration"):
@@ -2387,7 +2381,7 @@ class Timeline(
         events = [
             dict(event)
             for event in self._events
-            if event.get("event_type") != SEGMENT_EVENT_TYPE
+            if event.get("event_type") != SEGMENT_KIND
             or event.get("id") not in self._children
         ]
         if events:

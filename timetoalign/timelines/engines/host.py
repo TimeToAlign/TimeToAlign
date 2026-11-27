@@ -207,6 +207,7 @@ class TimelineHost(Protocol):
         include_children: bool = True,
         min_coord: CoordinateSpec | None = None,
         max_coord: CoordinateSpec | None = None,
+        include_number_types: Collection[NumberType | str] | None = None,
         **field_filters: Any,
     ) -> EventData:
         """Filter and retrieve events."""
@@ -255,7 +256,7 @@ class TimelineHost(Protocol):
         end: Any,
         *,
         copy_events: bool = True,
-        in_this_tree: bool = False,
+        in_this_family: bool = False,
     ) -> None:
         """Copy the events starting in [start, end) onto *target*, cut there."""
         ...

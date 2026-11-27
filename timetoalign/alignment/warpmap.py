@@ -756,12 +756,12 @@ class WarpMap:
             source: Source timeline with original events.
             target: Target timeline to receive warped events.
         """
-        from timetoalign.timelines.base import SEGMENT_EVENT_TYPE
+        from timetoalign.storage.registry import SEGMENT_KIND
 
         warped_events: list[dict[str, Any]] = []
         for event in source.events:
             if (
-                event.get("event_type") == SEGMENT_EVENT_TYPE
+                event.get("event_type") == SEGMENT_KIND
                 and event.get("id") in source._children
             ):
                 continue

@@ -12,8 +12,9 @@ Design principles:
 - Bulk operations are the primary API (from_dicts, from_arrays, from_dataframe)
 - Schema is fixed per class, with extension points for subclasses
 - Coordinates stored with both original precision and float representation
-- Unit metadata at the field level: a table declares one axis, its unit
-  and its number type
+- Unit metadata at the field level: a table standing alone declares one
+  axis; a table spanning timelines keys each row by its timeline
+  (``timeline_id``) and reads its unit and number type from its map
 """
 
 from __future__ import annotations
@@ -84,6 +85,7 @@ from timetoalign.core.ids import (
     table_seed_part,
 )
 from timetoalign.core.time import (
+    NUMBER_TYPE_CODES,
     RATIONAL_STRUCT_TYPE,
     _settled_cells,
     build_number_struct_array,
@@ -113,6 +115,8 @@ from .schema import (
 
 if TYPE_CHECKING:
     from timetoalign.timelines.base import Timeline
+
+    from .registry import Extraction
 
 module_logger = logging.getLogger(__name__)
 
@@ -853,6 +857,96 @@ def _is_number_column(field: pa.Field) -> bool:
     )
 
 
+TIMELINE_ID = "timeline_id"
+"""The column naming the timeline each row of a table spanning timelines lies on.
+
+A table whose rows lie on several timelines (a join of tables of
+different axes) keys each row by its timeline in this column,
+dictionary-encoded, and reads the row's unit and number type from the
+timeline's entry in the table's map, held once per timeline in memory,
+never in a column of its own.
+"""
+
+Axis = tuple[TimeUnit, NumberType]
+"""The unit and the number type a timeline reads its rows in."""
+
+
+def unbound_axis_key(unit: TimeUnit, number_type: NumberType) -> str:
+    """The key of rows bound to no timeline in a table spanning timelines.
+
+    A table standing alone that names no timeline (a loader's) joining a
+    table of another axis keeps its rows in their own number type, keyed by
+    its axis: ``<quarters fraction>``. No ID holds angle brackets, so the
+    key never names a timeline.
+    """
+    return f"<{unit.value} {number_type.name}>"
+
+
+def row_type_codes(table: pa.Table, axes: Mapping[str, Axis]) -> pa.Int8Array:
+    """The number-type code of every row of *table*, read from its timeline.
+
+    The row-type mask of a table spanning timelines: each row's
+    :data:`~timetoalign.core.time.NUMBER_TYPE_CODES` code is its timeline's
+    entry in *axes*, found through the dictionary indices of the
+    :data:`TIMELINE_ID` column, one ``take`` of a code array as long as the
+    dictionary per chunk; never read from a cell.
+
+    Raises:
+        ValueError: If a row names no timeline, or one *axes* does not hold.
+    """
+    column = table.column(TIMELINE_ID)
+    chunks: list[pa.Array] = []
+    for chunk in column.chunks:
+        if isinstance(chunk, pa.DictionaryArray):
+            keys, positions = chunk.dictionary, chunk.indices
+        else:
+            keys = pc.unique(chunk)
+            positions = pc.index_in(chunk, value_set=keys)
+        names = [str(name) for name in keys.to_pylist()]
+        unknown = [name for name in names if name not in axes]
+        if unknown:
+            raise ValueError(
+                f"rows name the timeline {quote_id(str(unknown[0]))}, which the "
+                f"table's map does not hold. Available timelines: {list(axes)}"
+            )
+        codes = pa.array(
+            [NUMBER_TYPE_CODES[axes[name][1]] for name in names], pa.int8()
+        )
+        taken = codes.take(positions)
+        if taken.null_count:
+            raise ValueError(
+                f"a row of a table spanning timelines names no timeline "
+                f"(column {TIMELINE_ID!r} is null)"
+            )
+        chunks.append(taken)
+    joined = pa.concat_arrays(chunks) if chunks else pa.array([], pa.int8())
+    assert isinstance(joined, pa.Int8Array)
+    return joined
+
+
+def keyed_by_timeline(table: pa.Table, key: str) -> pa.Table:
+    """*table* with a :data:`TIMELINE_ID` column naming *key* on every row.
+
+    Dictionary-encoded: one dictionary entry, one int32 index per row.
+    """
+    column = pa.DictionaryArray.from_arrays(
+        pa.array(np.zeros(table.num_rows, dtype=np.int32), pa.int32()),
+        pa.array([key], pa.string()),
+    )
+    return table.append_column(TIMELINE_ID, column)
+
+
+def _rekeyed(table: pa.Table, moved: Mapping[str, str]) -> pa.Table:
+    """*table* with the rows keyed by each key of *moved* keyed by its value."""
+    index = table.schema.get_field_index(TIMELINE_ID)
+    names = pc.cast(table.column(index), pa.string())
+    positions = pc.index_in(names, value_set=pa.array(list(moved), pa.string()))
+    renamed = pc.take(pa.array(list(moved.values()), pa.string()), positions)
+    names = pc.if_else(pc.is_null(positions), names, renamed)
+    encoded = pc.dictionary_encode(names)
+    return table.set_column(index, pa.field(TIMELINE_ID, encoded.type), encoded)
+
+
 # region Joining columns
 
 
@@ -864,7 +958,9 @@ def unified_type(held: pa.DataType, joining: pa.DataType) -> pa.DataType | None:
     nulls takes the other's type; a dictionary column reads as its values;
     a struct takes the members of both, each member unified likewise (a
     member one side lacks is null there, which changes no cell). Any other
-    pair (an ``int`` column beside a ``string`` one) has none: None.
+    pair (an ``int`` column beside a ``string`` one) has none: None. The
+    number type is no part of a column's type, so it never stands in the
+    way of a join.
     """
     if held == joining:
         return held
@@ -993,6 +1089,15 @@ def joined_tables(
     return pa.concat_tables(conformed)
 
 
+def _united(*groups: Iterable[Extraction]) -> tuple[Extraction, ...]:
+    """The extractions of *groups*, each ID once, in the order first given."""
+    united: dict[str, Extraction] = {}
+    for group in groups:
+        for extraction in group:
+            united.setdefault(extraction.id, extraction)
+    return tuple(united.values())
+
+
 def _column_refusal(column: str, held: pa.DataType, joining: pa.DataType) -> str:
     """The refusal of tables joining whose *column* no one type reads."""
     return (
@@ -1007,28 +1112,29 @@ def _column_refusal(column: str, held: pa.DataType, joining: pa.DataType) -> str
 
 def _cast_columns(
     table: pa.Table,
-    row_types: Mapping[str, NumberType],
+    row_types: Mapping[str, NumberType | pa.Int8Array],
     target: NumberType,
 ) -> pa.Table:
     """*table* with each column named in *row_types* written in *target*.
 
-    Each column's rows are read in the number type the column declares and
-    cast by :func:`~timetoalign.core.time.cast_number_column`; the column's
-    field declares *target*. ``start`` and ``duration`` are the stored pair
-    of an event and ``end`` is derived from them: on an ``int`` or
-    ``fraction`` target a row holding ``start`` and ``duration`` ends at
+    Each column's rows are read in their own number types (one for the
+    column, or one per row) and cast by
+    :func:`~timetoalign.core.time.cast_number_column`; the column's field
+    declares *target*. ``start`` and ``duration`` are the stored pair of an
+    event and ``end`` is derived from them: on an ``int`` or ``fraction``
+    target a row that was cast and holds ``start`` and ``duration`` ends at
     ``start + duration``, exactly (its cast end, rounded or the exact ratio
-    of a double, need not lie there). Vectorized, at most three kernel
-    passes per column.
+    of a double, need not lie there). A row already of *target* is kept as
+    it is. Vectorized, at most three kernel passes per column.
 
     Raises:
         ValueError: If an exact ratio does not fit int64 (a double below
             about ``2**-10`` on a ``fraction`` target).
     """
-    for name, source in row_types.items():
+    for name, types in row_types.items():
         index = table.schema.get_field_index(name)
         field = table.schema.field(index)
-        cells = cast_number_column(table.column(index), source, target)
+        cells = cast_number_column(table.column(index), types, target)
         declared = field_metadata(field)
         payload = {key: declared[key] for key in declared if key != "version"}
         payload["number_type"] = target.name
@@ -1040,13 +1146,19 @@ def _cast_columns(
     if target is not NumberType.float and {"start", "end", "duration"} <= set(
         row_types
     ):
+        types = row_types["start"]
+        cast_rows = (
+            pa.array(np.full(table.num_rows, types is not target))
+            if isinstance(types, NumberType)
+            else pc.not_equal(types, pa.scalar(NUMBER_TYPE_CODES[target], pa.int8()))
+        )
         start, duration = table.column("start"), table.column("duration")
         ends = combine_number_columns(
             start.combine_chunks(), duration.combine_chunks(), "add", target
         )
         index = names.index("end")
         end = pc.if_else(
-            pc.and_(start.is_valid(), duration.is_valid()),
+            pc.and_(cast_rows, pc.and_(start.is_valid(), duration.is_valid())),
             ends,
             table.column(index).combine_chunks(),
         )
@@ -1384,10 +1496,22 @@ class EventData(SemanticFieldAccessMixin):
     def _hold(
         self, table: pa.Table, unit: TimeUnit, number_type: NumberType | None
     ) -> None:
-        """Hold *table*, as it stands, on *unit* in *number_type*: one axis."""
+        """Hold *table*, as it stands, on *unit* in *number_type*.
+
+        The table stands alone: it declares one axis and lies on no timeline
+        (:meth:`concat` sets ``_axes``; a timeline's family sets
+        ``_timeline_id`` on the events it holds).
+        """
         self._table = table
         self._unit = unit
         self._number_type = unit.resolve_number_type(number_type)
+        # The map of a table spanning timelines (a :data:`TIMELINE_ID`
+        # column keys its rows); None for a table standing alone.
+        self._axes: dict[str, Axis] | None = None
+        # The timeline a table standing alone lies on, if it is one's.
+        self._timeline_id: str | None = None
+        # The extractions that made its rows (:attr:`extractions`).
+        self._extractions: tuple[Extraction, ...] = ()
 
     @classmethod
     def _of_reduced(
@@ -2332,6 +2456,17 @@ class EventData(SemanticFieldAccessMixin):
         """The number of events in the store."""
         return self._table.num_rows
 
+    @property
+    def extractions(self) -> tuple[Extraction, ...]:
+        """The extractions that made the rows, which their ``extraction_id`` names.
+
+        A loader gives its rows the column ``extraction_id`` and the table
+        the :class:`~timetoalign.storage.Extraction` of each source file
+        (:meth:`with_extractions`); a timeline made of the table records
+        them in its family's registry. Empty for a table made in code.
+        """
+        return self._extractions
+
     # endregion
 
     # region Magic Methods
@@ -2421,15 +2556,61 @@ class EventData(SemanticFieldAccessMixin):
 
     # region Extend/Merge
 
+    @property
+    def _axis(self) -> Axis:
+        """The unit and number type this table declares."""
+        return (self._unit, self._number_type)
+
+    def _keyed(self) -> tuple[pa.Table, dict[str, Axis]]:
+        """This table with every row keyed by its timeline, and its map.
+
+        A table spanning timelines is keyed already; a table standing alone
+        is keyed by the timeline it lies on or, lying on none, by its axis
+        (:func:`unbound_axis_key`).
+        """
+        if self._axes is not None:
+            index = self._table.schema.get_field_index(TIMELINE_ID)
+            column = self._table.column(index)
+            if pa.types.is_dictionary(column.type):
+                return self._table, dict(self._axes)
+            encoded = pc.dictionary_encode(column)
+            table = self._table.set_column(
+                index, pa.field(TIMELINE_ID, encoded.type), encoded
+            )
+            return table, dict(self._axes)
+        key = (
+            self._timeline_id
+            if self._timeline_id is not None
+            else unbound_axis_key(*self._axis)
+        )
+        return keyed_by_timeline(self._table, key), {key: self._axis}
+
+    def with_extractions(self, *extractions: Extraction) -> Self:
+        """This table carrying *extractions* too (:attr:`extractions`).
+
+        Each extraction once, by ID, the ones carried already first. The
+        rows are shared; this table is left as it is.
+        """
+        derived = self._derived(self._table)
+        derived._extractions = _united(self._extractions, extractions)
+        return derived
+
     def concat(self, *others: "EventData") -> Self:
         """Concatenate with other EventData, returning a new EventData.
 
-        A table lies on one axis, so the tables joined share their unit and
-        number type; a join never converts a value (cast a table first,
-        :meth:`to_number_type`, where that is what is wanted). This table and
-        *others* are left as they are.
+        Every row keeps its unit and its number type: a join never converts
+        a value. Tables of one axis give a table of that axis, as they
+        stand. Tables of different axes give a table spanning timelines:
+        each row keyed by its timeline in the column :data:`TIMELINE_ID`
+        (a table standing alone by the timeline it lies on, else by its
+        axis, :func:`unbound_axis_key`) and read in its timeline's unit and
+        number type, which the result maps once per timeline
+        (:meth:`to_number_type` casts it, ``filter(include_number_types=)``
+        selects by it). Its ``unit`` and ``number_type`` are this table's.
+        This table and *others* are left as they are.
 
-        Columns join by one rule (:func:`unified_type`): a field one table
+        Columns join by one rule, the rule a family of timelines joins its
+        timelines' columns by (:func:`unified_type`): a field one table
         lacks is null there, a column of nulls takes the other's type, a
         dictionary column beside a plain one reads as its values, a struct
         takes the members of both. A column holding values of two types no
@@ -2443,31 +2624,67 @@ class EventData(SemanticFieldAccessMixin):
             A new EventData containing all events, this table's first.
 
         Raises:
-            ValueError: If a table lies on another unit or number type, or a
-                column holds values of two types no type reads both in,
-                naming the column and the types.
+            ValueError: If a column holds values of two types no type reads
+                both in, naming the column and the types.
+
+        A key meeting two axes (timelines of two families sharing one ID,
+        on different axes) keys the rows that come later by their axis, so no
+        join is refused for the number type.
+        A reader of a column's field (``get_field("start")``,
+        ``column_values``) reads it in the type the column declares, this
+        table's: on a table spanning number types, cast first
+        (:meth:`to_number_type`) or select by type
+        (``filter(include_number_types=)``).
 
         Examples:
             >>> exact = EventData.from_dicts(
             ...     [{"id": "a", "event_type": "Beat", "start": Fraction(1, 10)}],
             ...     unit=TimeUnit.quarters, number_type=NumberType.fraction)
-            >>> more = EventData.from_dicts(
-            ...     [{"id": "b", "event_type": "Beat", "start": Fraction(1, 5)}],
-            ...     unit=TimeUnit.quarters, number_type=NumberType.fraction)
-            >>> exact.concat(more).column_values("id")
-            ['a', 'b']
+            >>> measured = EventData.from_dicts(
+            ...     [{"id": "b", "event_type": "Beat", "start": 0.1}],
+            ...     unit=TimeUnit.quarters, number_type=NumberType.float)
+            >>> joined = exact.concat(measured)
+            >>> [cell["value"] for cell in joined.table.column("start").to_pylist()]
+            [0.1, 0.1]
+            >>> joined.filter(include_number_types={NumberType.float}).column_values("id")
+            ['b']
         """
-        for part in others:
-            if (part._unit, part._number_type) != (self._unit, self._number_type):
-                raise ValueError(
-                    f"a table lies on one axis: this one on {self._unit} in "
-                    f"{self._number_type.name}, the one joining on {part._unit} in "
-                    f"{part._number_type.name}; cast it first (to_number_type) or "
-                    "keep the tables apart"
-                )
-        return self._derived(
-            joined_tables([part._table for part in (self, *others)], _column_refusal)
-        )
+        parts = (self, *others)
+        if all(part._axes is None and part._axis == self._axis for part in parts):
+            joined = self._derived(
+                joined_tables([part._table for part in parts], _column_refusal)
+            )
+            if any(part._timeline_id != self._timeline_id for part in others):
+                joined._timeline_id = None
+            joined._extractions = _united(*(part._extractions for part in parts))
+            return joined
+        axes: dict[str, Axis] = {}
+        tables: list[pa.Table] = []
+        for part in parts:
+            table, part_axes = part._keyed()
+            # A key held already on another axis (rows of a timeline cast
+            # since) names these rows no more: they are keyed by their axis.
+            moved = {
+                key: unbound_axis_key(*axis)
+                for key, axis in part_axes.items()
+                if axes.get(key, axis) != axis
+            }
+            if moved:
+                table = _rekeyed(table, moved)
+                part_axes = {
+                    moved.get(key, key): axis for key, axis in part_axes.items()
+                }
+            for key, axis in part_axes.items():
+                held = axes.setdefault(key, axis)
+                # An axis key names its own axis (to_number_type keys by it),
+                # so rows re-keyed by it never meet another axis there.
+                assert held == axis, (key, held, axis)
+            tables.append(table)
+        joined = self._derived(joined_tables(tables, _column_refusal))
+        joined._axes = axes
+        joined._timeline_id = None
+        joined._extractions = _united(*(part._extractions for part in parts))
+        return joined
 
     def to_number_type(
         self,
@@ -2480,25 +2697,35 @@ class EventData(SemanticFieldAccessMixin):
         Every coordinate column (or each of *columns*) is written in
         *number_type*, row by row as
         :func:`~timetoalign.core.time.express_as` writes one value, each
-        column read in the number type it declares: a column already of
-        *number_type* stays as it is; ``int`` → ``fraction`` re-declares a
-        cell; ``float`` → ``fraction`` is the double's exact ratio (a double
-        below about ``2**-10`` has none in int64 and raises); → ``float`` is
-        the nearest double; → ``int`` the nearest integer, ties to even. On
-        an ``int`` or ``fraction`` target a row holding ``start`` and
+        row read in its own number type (its timeline's, on a table
+        spanning timelines): rows already of *number_type* stay as they
+        are; ``int`` → ``fraction`` re-declares a cell; ``float`` →
+        ``fraction`` is the double's exact ratio (a double below about
+        ``2**-10`` has none in int64 and raises); → ``float`` is the
+        nearest double; → ``int`` the nearest integer, ties to even. On an
+        ``int`` or ``fraction`` target a cast row holding ``start`` and
         ``duration`` ends at their exact sum. The columns' fields declare
-        *number_type*, and so does the result when every column is cast.
+        *number_type*, and so does the result. On a table spanning
+        timelines every entry of its map is on *number_type*: rows of
+        another number type lie on their timeline no more and are keyed
+        by their new axis (:func:`unbound_axis_key`, keys landing on one
+        axis merged), rows already of it keep their key, so a cast joined
+        again with the table it came from keeps every row's type.
 
         Args:
             number_type: The number type to write in.
             columns: The coordinate columns to cast; every one by default.
+                On a table spanning timelines, whose rows read every
+                coordinate column in their timeline's number type, only
+                all of them.
 
         Returns:
             A new EventData; this one is left as it is.
 
         Raises:
-            ValueError: If a named column is no coordinate column, or a value
-                has no exact ratio in int64.
+            ValueError: If a named column is no coordinate column, *columns*
+                leaves a coordinate column of a table spanning timelines
+                out, or a value has no exact ratio in int64.
 
         Examples:
             >>> measured = EventData.from_dicts(
@@ -2522,20 +2749,58 @@ class EventData(SemanticFieldAccessMixin):
                     f"{off[0]!r} is no coordinate column of this table. "
                     f"Available coordinate columns: {number_columns}"
                 )
-        row_types: dict[str, NumberType] = {}
-        for name in names:
-            declared = field_metadata(self._table.schema.field(name))
-            source = (
-                NumberType(declared["number_type"])
-                if "number_type" in declared
-                else self._number_type
-            )
-            if source is not target:
-                row_types[name] = source
-        cast = self._derived(_cast_columns(self._table, row_types, target))
-        if columns is None:
+            left = [name for name in number_columns if name not in names]
+            if self._axes is not None and left:
+                raise ValueError(
+                    f"a table spanning timelines reads every coordinate column in "
+                    f"its rows' number types, so it casts all of them; {left} "
+                    "would be left out"
+                )
+        row_types: dict[str, NumberType | pa.Int8Array] = {}
+        if self._axes is not None:
+            codes = row_type_codes(self._table, self._axes)
+            row_types = dict.fromkeys(names, codes)
+        else:
+            for name in names:
+                declared = field_metadata(self._table.schema.field(name))
+                source = (
+                    NumberType(declared["number_type"])
+                    if "number_type" in declared
+                    else self._number_type
+                )
+                if source is not target:
+                    row_types[name] = source
+        table = _cast_columns(self._table, row_types, target)
+        axes: dict[str, Axis] | None = None
+        if self._axes is not None:
+            # Rows written in another number type lie on their timeline (or
+            # their old axis) no more: they are keyed by their new axis, and
+            # keys landing on one axis merge.
+            moved = {
+                key: unbound_axis_key(unit, target)
+                for key, (unit, source) in self._axes.items()
+                if source is not target
+            }
+            if moved:
+                table = _rekeyed(table, moved)
+            axes = {}
+            for key, (unit, _) in self._axes.items():
+                axes.setdefault(moved.get(key, key), (unit, target))
+        cast = self._derived(table)
+        if row_types:
+            # Rows written in another number type lie on their timeline no more.
+            cast._timeline_id = None
+        if columns is None or axes is not None:
             cast._number_type = target
+            if axes is not None:
+                cast._axes = axes
         return cast
+
+    def _row_types(self, table: pa.Table) -> NumberType | pa.Int8Array:
+        """The number type of every row of *table*, a selection of this table's."""
+        if self._axes is None:
+            return self._number_type
+        return row_type_codes(table, self._axes)
 
     def _with_segment_renamed(self, old_id: str, new_id: str) -> "EventData":
         """Return a copy whose segment row for child *old_id* names *new_id*.
@@ -2575,6 +2840,7 @@ class EventData(SemanticFieldAccessMixin):
         event_type: str | None = None,
         min_coord: CoordinateSpec | None = None,
         max_coord: CoordinateSpec | None = None,
+        include_number_types: Collection[NumberType | str] | None = None,
         **kwargs: Any,
     ) -> Self:
         """Filter events by criteria, returning a new EventData.
@@ -2586,6 +2852,10 @@ class EventData(SemanticFieldAccessMixin):
             event_type: Filter by event type name.
             min_coord: Minimum coordinate (inclusive), optionally with a unit.
             max_coord: Maximum coordinate (exclusive), optionally with a unit.
+            include_number_types: Keep the rows read in one of these number
+                types only, resolved from the table's axis (on a table
+                spanning timelines, each row's timeline's), never from a
+                cell. ``None`` keeps every number type.
             **kwargs: Exact match filters for other fields (e.g. event_category="note").
 
         Coordinate bounds are compared with each event's ``start``
@@ -2597,12 +2867,27 @@ class EventData(SemanticFieldAccessMixin):
         ``fraction`` table ``min_coord=0.1`` keeps a start at ``1/10``, and
         ``max_coord=math.inf`` keeps every row. A ``float`` table compares
         floats whatever the bound. The minimum is inclusive and the maximum
-        exclusive. A NaN bound is refused (``ValueError``).
+        exclusive. A NaN bound is refused (``ValueError``). On a table
+        spanning timelines each row is compared in its own number type.
 
         Returns:
             A new EventData with filtered events.
         """
         source = self
+        if include_number_types is not None:
+            wanted = {NumberType(number_type) for number_type in include_number_types}
+            if self._axes is None:
+                if self._number_type not in wanted:
+                    source = self._derived(self._table.slice(0, 0))
+            else:
+                codes = pa.array(
+                    sorted(NUMBER_TYPE_CODES[number_type] for number_type in wanted),
+                    pa.int8(),
+                )
+                kept = pc.is_in(
+                    row_type_codes(self._table, self._axes), value_set=codes
+                )
+                source = self._derived(self._table.filter(kept))
         mask = None
 
         if temporal_type is not None:
@@ -2618,9 +2903,15 @@ class EventData(SemanticFieldAccessMixin):
             if bound is None:
                 continue
             resolved = resolve_coordinate_spec(bound)
-            if resolved.unit is not None and resolved.unit != self.unit:
+            units = (
+                {self.unit}
+                if self._axes is None
+                else {unit for unit, _ in self._axes.values()}
+            )
+            if resolved.unit is not None and units != {resolved.unit}:
                 raise ValueError(
-                    f"Coordinate unit mismatch: {resolved.unit} vs {self.unit}"
+                    f"Coordinate unit mismatch: {resolved.unit} vs "
+                    f"{', '.join(str(unit) for unit in units)}"
                 )
             bounds.append((resolved.value, comparison))
 
@@ -2641,7 +2932,7 @@ class EventData(SemanticFieldAccessMixin):
                     filtered.column("start"),
                     value,
                     comparison,
-                    self._number_type,
+                    self._row_types(filtered),
                 )
             )
         return self._derived(filtered)
@@ -2732,8 +3023,9 @@ class EventData(SemanticFieldAccessMixin):
     def coordinate_range(self) -> tuple[float | Fraction, float | Fraction] | None:
         """Get the min and max coordinates across all events.
 
-        Each row is read in the table's number type, so an extreme comes
-        back in that type.
+        Each row is read in its own number type: the table's, or on a table
+        spanning timelines its timeline's, so an extreme comes back in the
+        type of the row holding it.
 
         Returns:
             Tuple of (min, max) coordinates, or None if store is empty.
@@ -2741,11 +3033,25 @@ class EventData(SemanticFieldAccessMixin):
         """
         if self.count == 0:
             return None
+        types = self._row_types(self._table)
+        kinds: list[tuple[NumberType, pa.BooleanArray | None]] = (
+            [(types, None)]
+            if isinstance(types, NumberType)
+            else [
+                (number_type, mask)
+                for number_type, code in NUMBER_TYPE_CODES.items()
+                for mask in (pc.equal(types, pa.scalar(code, pa.int8())),)
+                if pc.any(mask).as_py()
+            ]
+        )
         lows: list[int | float | Fraction] = []
         highs: list[int | float | Fraction] = []
-        number_type = self._number_type
-        for name in ("start", "end"):
+        for name, (number_type, mask) in (
+            (name, kind) for name in ("start", "end") for kind in kinds
+        ):
             cells = self._table.column(name)
+            if mask is not None:
+                cells = cells.filter(mask)
             if pa.types.is_dictionary(cells.type):
                 # The kernels read struct members, which a dictionary-encoded
                 # column does not offer: decode it, chunk by chunk.

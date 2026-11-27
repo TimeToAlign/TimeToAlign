@@ -297,7 +297,7 @@ class TestCast:
         ]
 
 
-class TestATableLiesOnOneAxis:
+class TestJoinNeverRefusesForTheNumberType:
     def test_a_value_only_cell_on_an_exact_table(self) -> None:
         fractions = EventData.from_arrays(
             {
@@ -313,16 +313,15 @@ class TestATableLiesOnOneAxis:
         floats = EventData.from_arrays(
             {"start": [0.25], "duration": [1.0]}, TimeUnit.quarters, FLOAT, seed=2
         )
-        with pytest.raises(ValueError) as refusal:
-            floats.concat(fractions)
-        assert str(refusal.value) == (
-            "a table lies on one axis: this one on quarters in float, the one "
-            "joining on quarters in fraction; cast it first (to_number_type) or "
-            "keep the tables apart"
-        )
-        # The cast on request reads the value-only cell from its float side,
-        # never refusing it.
-        assert fractions.to_number_type(FLOAT).table.column("start").to_pylist()[1] == (
+        joined = floats.concat(fractions)
+        # The join keeps every row as stored (T136); the cast on request
+        # reads the value-only cell from its float side, never refusing it.
+        assert joined.table.column("start").to_pylist() == [
+            _cell(1, 4, 0.25),
+            AS_FRACTION,
+            VALUE_ONLY,
+        ]
+        assert joined.to_number_type(FLOAT).table.column("start").to_pylist()[2] == (
             POINT_THREE
         )
 
@@ -338,9 +337,15 @@ class TestATableLiesOnOneAxis:
             INT,
             seed=3,
         )
+        floats = EventData.from_arrays(
+            {"start": [0.25], "duration": [1.0]}, TimeUnit.number, FLOAT, seed=2
+        )
+        joined = floats.concat(ints)
+        assert joined.table.column("start").to_pylist()[0] == _cell(1, 4, 0.25)
         # Cast to float, the int row is read from its float side: the measured
         # 2.7 survives.
-        assert ints.to_number_type(FLOAT).table.column("start").to_pylist() == [
+        assert joined.to_number_type(FLOAT).table.column("start").to_pylist() == [
+            _cell(1, 4, 0.25),
             TWO_POINT_SEVEN,
         ]
 

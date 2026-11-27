@@ -1433,10 +1433,11 @@ as they are:
   3, 1)`. Only a non-null cell holding neither side is refused, naming its
   row. **The join never refuses for the number type**: an `EventData`
   declared float joined with (`concat`) one declared fraction whose
-  `start` holds `(0.3, None, None)` gives that row `(0.3,
+  `start` holds `(0.3, None, None)` keeps that row as stored, each row in
+  its own number type, and the joined table cast to float gives it `(0.3,
   5404319552844595, 18014398509481984)`; the same join on the unit
   `number` with an int table built with `preserve_source_floats` from
-  `2.7` gives `(2.7, 3039929748475085, 1125899906842624)`.
+  `2.7`, cast to float, gives `(2.7, 3039929748475085, 1125899906842624)`.
 - **Ratios near the int64 limits round exactly**: the fraction cells
   `2**62 / (2**62 + 1)`, `(2**62 + 3) / (2**62 + 1)` and `-(2**63) / 3`
   cast to int give `1`, `1` and `-3074457345618258603` (`round` of the

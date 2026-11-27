@@ -313,11 +313,17 @@ class TestJoinNeverRefusesForTheNumberType:
         floats = EventData.from_arrays(
             {"start": [0.25], "duration": [1.0]}, TimeUnit.quarters, FLOAT, seed=2
         )
-        assert floats.concat(fractions).table.column("start").to_pylist() == [
+        joined = floats.concat(fractions)
+        # The join keeps every row as stored (T136); the cast on request
+        # reads the value-only cell from its float side, never refusing it.
+        assert joined.table.column("start").to_pylist() == [
             _cell(1, 4, 0.25),
             AS_FRACTION,
-            POINT_THREE,
+            VALUE_ONLY,
         ]
+        assert joined.to_number_type(FLOAT).table.column("start").to_pylist()[2] == (
+            POINT_THREE
+        )
 
     def test_an_int_table_keeps_its_measured_float(self) -> None:
         ints = EventData.from_arrays(
@@ -334,7 +340,11 @@ class TestJoinNeverRefusesForTheNumberType:
         floats = EventData.from_arrays(
             {"start": [0.25], "duration": [1.0]}, TimeUnit.number, FLOAT, seed=2
         )
-        assert floats.concat(ints).table.column("start").to_pylist() == [
+        joined = floats.concat(ints)
+        assert joined.table.column("start").to_pylist()[0] == _cell(1, 4, 0.25)
+        # Cast to float, the int row is read from its float side: the measured
+        # 2.7 survives.
+        assert joined.to_number_type(FLOAT).table.column("start").to_pylist() == [
             _cell(1, 4, 0.25),
             TWO_POINT_SEVEN,
         ]

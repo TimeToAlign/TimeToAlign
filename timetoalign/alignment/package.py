@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 from pydantic import ValidationError
+from timetoshare.tables import read_table
 
 from timetoalign.alignment.claim_store import _refuse_shared_claim_ids
 from timetoalign.alignment.claims import MatchClaimField
@@ -49,11 +51,13 @@ def _merged_resources(
     Every source's resources are carried as they stand, in source order,
     with one exception: the merge holds one table of each type (its
     MatchClaim table holds every source's MatchClaims, the Projections and
-    Boxes lie on the timelines they travel with), and a manifest names at
-    most one resource of each table type, so the first source's entry of a
-    type names the merged table and a later source's entry of that type is
-    not carried. :meth:`AlignmentBundle.to_file` writes the merged table at
-    that entry's URL under its ID.
+    Boxes lie on the timelines they travel with), and the library writes a
+    bundle's rows of a table type into one table, at the first entry of
+    that type (:func:`_write_tables`). So the first entry of a type, in
+    source order, names the merged table, and every later entry of that
+    type, of the same source or of a later one, is not carried.
+    :meth:`AlignmentBundle.to_file` writes the merged table at that entry's
+    URL under its ID.
 
     Raises:
         ValueError: If the id of a resource carried is held in the merge
@@ -157,44 +161,88 @@ def _from_bundles(
     return merged
 
 
+def _resource_table(resource: Resource, directory: Path) -> pa.Table | None:
+    """The rows a table resource names for its manifest, or None where
+    nothing lies at its URL.
+
+    A file is read whole: every row of it is the manifest's, and a row on
+    a timeline the manifest lacks is refused by the reading of its type. A
+    folder (:attr:`Resource.names_folder`) is read through
+    ``timetoshare.tables.read_table``, keeping the rows of the timelines
+    the resource lists (a MatchClaim's either of whose timelines it lists):
+    the files of a folder may hold the rows of other manifests of the
+    package.
+
+    Raises:
+        timetoshare.tables.TableError: If the folder's files state another
+            type than the resource's, or cannot be read as one table.
+    """
+    path = resource.path_in(directory)
+    if resource.names_folder:
+        if not path.is_dir():
+            return None
+        return read_table(path, timelines=resource.timelines, type=resource.type)
+    if not path.is_file():
+        return None
+    return pq.read_table(path)
+
+
 def _read_tables(
     self: AlignmentBundle, directory: Path, data: Mapping[str, Any]
 ) -> None:
     """Implement :meth:`AlignmentBundle._read_tables`."""
-    named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
-    if "Projection" in named:
-        path = named["Projection"].path_in(directory)
-        if path.is_file():
-            for timeline_id, projections in read_projection_table(path, data).items():
-                self._require_known_timeline(timeline_id).add_projections(projections)
-    if "Box" in named:
-        path = named["Box"].path_in(directory)
-        if path.is_file():
-            for timeline_id, rows in read_event_table(path).items():
-                try:
-                    boxes = [
-                        Box.from_row(
-                            row, unit=row["unit"], number_type=row["number_type"]
-                        )
-                        for row in rows.to_pylist()
-                    ]
-                except ValidationError as error:
-                    # The Box's own refusal, as add_events gives it.
-                    raise _refusal_of(error) from None
-                self._require_known_timeline(timeline_id).add_events(boxes)
-    if "MatchClaim" in named:
-        path = named["MatchClaim"].path_in(directory)
-        if path.is_file():
-            self.add_match_claim_field(MatchClaimField.from_parquet(path))
+    tables = [
+        (resource.type, table)
+        for resource in self.resources
+        if resource.type in TABLE_RESOURCE_TYPES
+        and (table := _resource_table(resource, directory)) is not None
+    ]
+    # Every resource of a type is read, in the order the manifest lists
+    # them: the Projections first, then the Boxes, then the MatchClaims,
+    # whose side B may name a Projection.
+    for table_type, table in tables:
+        if table_type != "Projection":
+            continue
+        for timeline_id, projections in read_projection_table(table, data).items():
+            self._require_known_timeline(timeline_id).add_projections(projections)
+    for table_type, table in tables:
+        if table_type != "Box":
+            continue
+        for timeline_id, rows in read_event_table(table).items():
+            try:
+                boxes = [
+                    Box.from_row(row, unit=row["unit"], number_type=row["number_type"])
+                    for row in rows.to_pylist()
+                ]
+            except ValidationError as error:
+                # The Box's own refusal, as add_events gives it.
+                raise _refusal_of(error) from None
+            self._require_known_timeline(timeline_id).add_events(boxes)
+    for table_type, table in tables:
+        if table_type == "MatchClaim":
+            self.add_match_claim_field(MatchClaimField.from_package_table(table))
 
 
 def _write_tables(self: AlignmentBundle, directory: Path) -> bool:
     """Implement :meth:`AlignmentBundle._write_tables`."""
+    for resource in self.resources:
+        if resource.type in TABLE_RESOURCE_TYPES and resource.names_folder:
+            raise NotImplementedError(
+                f"The resource {quote_id(resource.id)} names the folder "
+                f"{resource.url!r} for its {resource.type} rows: the library "
+                f"writes a package's tables as single files and does not write "
+                f"into a folder, whose files other manifests may share."
+            )
     claims = self.match_claim_table
     event_tables = self._event_tables()
     if len(claims) == 0 and not event_tables:
         return False
-    named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
+    # The first entry of each table type names its table; a later entry of
+    # a type written lists timelines whose rows that table now holds.
+    named: dict[str, Resource] = {}
+    for resource in self.resources:
+        if resource.type in TABLE_RESOURCE_TYPES:
+            named.setdefault(resource.type, resource)
     taken = {
         **self._scope_ids(),
         **{r.id: f"resource {quote_id(r.id)}" for r in self.resources},
@@ -248,10 +296,14 @@ def _write_tables(self: AlignmentBundle, directory: Path) -> bool:
                 lambda path, table=table: write_event_table(table, path),
             )
         )
+    written_types = {table_type for table_type, *_ in tables}
+    # An entry of a type not written stays where its file lies.
     kept = {
-        table_type
-        for table_type, held in named.items()
-        if resource_path(directory, held.url).is_file()
+        id(r)
+        for r in self.resources
+        if r.type in TABLE_RESOURCE_TYPES
+        and r.type not in written_types
+        and resource_path(directory, r.url).is_file()
     }
     # Every entry's id, refused where the manifest holds it, before the
     # first file is written. A held entry's id is reused, and its
@@ -277,15 +329,13 @@ def _write_tables(self: AlignmentBundle, directory: Path) -> bool:
         written[table_type] = Resource.of_file(
             path, id=resource_id, type=table_type, timelines=timelines, url=url
         )
-    resources = [
-        (
-            written.pop(r.type, r if r.type in kept else None)
-            if r.type in TABLE_RESOURCE_TYPES
-            else r
-        )
-        for r in self.resources
-    ]
-    self.resources = [r for r in resources if r is not None] + list(written.values())
+    resources: list[Resource] = []
+    for r in self.resources:
+        if r.type not in TABLE_RESOURCE_TYPES or id(r) in kept:
+            resources.append(r)
+        elif r is named.get(r.type) and r.type in written:
+            resources.append(written.pop(r.type))
+    self.resources = resources + list(written.values())
     return True
 
 

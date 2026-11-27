@@ -1935,8 +1935,11 @@ then fails to load. Each test pins one of these with exact values.
   and written back. A one-root manifest read by `Timeline.from_dict` writes
   its resource back. `Manifest.read` refuses, each with its exact message:
   a resource naming a timeline the manifest lacks, a second resource of the
-  type `MatchClaim`, an integrity algorithm outside PREMIS's five, a
-  resource ID a timeline holds too. A resource ID of any other shape
+  type `MatchClaim` listing `score` again (`resource_type` at
+  `#/resources/1/timelines/0`, `'score' is listed by the resource
+  'resource_1' of the type MatchClaim already`: several resources of one
+  type are valid, a timeline listed by two of them is not), an integrity
+  algorithm outside PREMIS's five, a resource ID a timeline holds too. A resource ID of any other shape
   (`table_1`) is an ID like any other: it reads and is written back as it
   stands (minted IDs will not be numbered, so nothing assumes
   `resource_N`). (The four
@@ -2344,6 +2347,78 @@ then fails to load. Each test pins one of these with exact values.
   would show it broken: a `ValueError` naming the column, a warning, a
   `notes.parquet` or a `Note` resource.
 
+### Several resources of one type, and folders (`TestSeveralResourcesOfAType`, `TestFolderResources`)
+
+A manifest may name several resources of one table type, each listing its
+own timelines (a timeline at most once per type), and a resource whose URL
+ends in `/` names a folder whose files the manifests of a package may
+share. The library reads every resource of a type and, from a folder, only
+the rows of the timelines the resource lists. It writes one table per type
+and writes nothing into a folder. What would show it broken: a reader that
+keeps one resource per type (the last or the first) and drops the other's
+rows; a reader that skips a folder (`is_file()` false) and loads the
+manifest without its rows; a folder read whole, so that the other
+manifest's rows reach the bundle (or are refused as foreign); a MatchClaim
+reaching outside the manifest passed over instead of refused; a writer that
+names the second resource beside a table holding its rows, or writes into
+a folder, or writes a file before refusing.
+
+- **Two Projection resources are both read.** The synthetic package
+  written, then its `projections.parquet` split by `timeline_id` into
+  `pcm.parquet` (the three rows on `pcm`) and `audio.parquet` (the two on
+  `audio`), the original file removed, and its manifest rewritten with the
+  MatchClaim entry as written and two Projection entries in this order:
+  `resource_p` (`["#pcm"]`, `pcm.parquet`), `resource_a` (`["#audio"]`,
+  `audio.parquet`). `from_file` holds every MatchClaim of the bundle
+  written (its `match_claim_table` equal to the writer's: a claim's side B
+  names a Projection of either file), and the bundle's Projections table
+  equals the original `projections.parquet` row for row; `resources` keeps
+  the three entries as read. Written into a fresh directory, the files are
+  exactly `package.yaml`, `match_claims.parquet` and `pcm.parquet`, whose
+  bytes are the original `projections.parquet`'s (one table of every
+  Projection at the first entry's URL); the Projection entry is the one
+  entry `resource_p`, URL `pcm.parquet`, timelines `["audio", "pcm"]`
+  (sorted: the entry read listed other timelines), size and SHA-256 its
+  file's; `resource_a` is not in `resources`. Read back, the Projections
+  table equals the original again. A reader that kept the last entry
+  alone would hold the two Projections on `audio`, one keeping the first
+  the three on `pcm`: either Projections table differs from the original.
+- **A folder holds the rows of two manifests; each reads its own.**
+  TimeToShare's package fixture `shared` (`packages/<version>/shared`,
+  found through `timetoshare.tables.package_fixture_path`): the manifests
+  `bach` and `handel` both name `../tables/MatchClaim/` and
+  `../tables/Projection/` (the Projection folder holds two files). Its
+  `expected.yaml` (hand-written in TimeToShare's emission script) states
+  each resource's row IDs, and the bundles read hold exactly those:
+  `bach` the MatchClaims `claim_1`, `claim_2`, `claim_5` (in the folder's
+  order) and, on `dpt_1`, the Projections `projection_1` (0),
+  `projection_2` (44100), `projection_7` (132300), `projection_9` (88200)
+  samples (`clt_1` holds none); `handel` `claim_3`, `claim_4`, on `dpt_2`
+  `projection_3` (0), `projection_4` (88200), `projection_6` (132300)
+  samples, and on its child
+  `clt_3` `projection_5` (1/2) and `projection_8` (3/2 quarters, on the
+  child's own axis). The test also checks the literal lists against
+  `expected.yaml`, so a re-emitted fixture shows up as a test failure, not
+  a silent change. Each bundle keeps its two resources as read.
+- **A MatchClaim reaching outside the manifest is refused.** The fixture
+  copied into `tmp_path`, with a third file added to its MatchClaim folder:
+  `part_c.parquet`, `claim_5`'s row with the ID `claim_10` and
+  `timeline_b_id` `clt_2` (Handel's score). Reading `bach` the row is kept
+  (its side A, `dpt_1`, is listed) and refused, as a file's row on a
+  timeline the bundle lacks is: a `KeyError` naming `clt_2`; reading
+  `handel` likewise, naming `dpt_1`. A reader dropping the row would load
+  both manifests silently without it.
+- **A bundle read with a folder resource is not written.** Each of the
+  two bundles read, written into a fresh directory, raises
+  `NotImplementedError` naming its first folder resource, `The resource
+  'resource_1' names the folder '../tables/MatchClaim/' for its MatchClaim
+  rows: the library writes a package's tables as single files and does
+  not write into a folder, whose files other manifests may share.`, and
+  the directory stays empty (also the folder the URL would name); so does
+  each after its MatchClaim resource is left out (`resources` naming the
+  Projection folder alone), the message naming `resource_2` and
+  `'../tables/Projection/'` for its Projection rows.
+
 ### Conformance with TimeToShare's fixture package
 
 TimeToShare's `fixtures/tables/<version>/` is a package: `manifest.yaml`
@@ -2410,14 +2485,16 @@ into the merged bundle. A resource is an element of the manifest with an
 ID, and a merge renames nothing, so each resource keeps its ID and every
 field as it stands, and an ID that two sources hold, or that a source's
 timeline, region or group or the merged bundle holds, is refused before
-anything is merged. The format names at most one resource per table type
-and the merge holds one table of each type — its MatchClaim table holds
-every source's MatchClaims, the Projections and Boxes lie on the timelines
-they travel with — so the first source's entry of a table type names the
-merged table, under its ID and at its URL, and a later source's entry of
-that type is not carried. What would show the feature broken: a merged
+anything is merged. The merge holds one table of each type — its
+MatchClaim table holds every source's MatchClaims, the Projections and
+Boxes lie on the timelines they travel with — and the library writes a
+bundle's rows of a table type as one table, at the first entry of that
+type (`test_bundle_package.py`, several resources of one type), so the
+first source's entry of a table type names the merged table, under its ID
+and at its URL, and a later entry of that type is not carried. What would show the feature broken: a merged
 bundle without the sources' resources, a resource whose ID or any field
-changed, two entries of one table type (a manifest the format refuses), a
+changed, two entries of one table type (the later one naming rows the
+first one's table holds once written), a
 merged table written under a new minted ID instead of the kept one, a
 resource ID held twice that is not refused or is refused only once the
 groups and timelines were joined, a resource lost on the way through the

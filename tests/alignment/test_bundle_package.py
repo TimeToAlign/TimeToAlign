@@ -7,6 +7,7 @@ section "A Package: the Manifest and Its Tables").
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
 import warnings
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 import timetoshare
@@ -26,6 +28,7 @@ from timetoshare.tables import (
     check_match_claims,
     fixture_path,
     match_claim_problems,
+    package_fixture_path,
     projection_problems,
 )
 
@@ -257,9 +260,9 @@ class TestResources:
             (
                 [_resource(), _resource(id="#resource_2")],
                 "resource_type",
-                "#/resources/1/type",
-                "a manifest names at most one resource of the type MatchClaim; "
-                "'resource_1' is one",
+                "#/resources/1/timelines/0",
+                "'score' is listed by the resource 'resource_1' of the type "
+                "MatchClaim already",
             ),
             (
                 [_resource(integrity={"algorithm": "CRC32", "digest": "ab"})],
@@ -274,7 +277,7 @@ class TestResources:
                 "'resource_1' is not unique in the manifest, first at #/resources/0/id",
             ),
         ],
-        ids=["timeline_unknown", "match_claim_twice", "algorithm", "id_twice"],
+        ids=["timeline_unknown", "timeline_listed_twice", "algorithm", "id_twice"],
     )
     def test_malformed_resources_are_refused(
         self, resources: list[dict[str, Any]], code: str, path: str, message: str
@@ -1955,3 +1958,236 @@ class TestLoadedNotesWriteNoTable:
         assert "resources" not in manifest
         read = AlignmentBundle.from_file(path)
         assert sorted(read.timeline_ids) == sorted(t.id for t in loaded)
+
+
+#: TimeToShare's package fixture of two manifests sharing their table folders.
+_SHARED = package_fixture_path("shared")
+
+
+def _resource_of(path: Path, resource_id: str, timelines: tuple[str, ...]) -> Resource:
+    """The entry the writer makes for the Projections table at *path*."""
+    data = path.read_bytes()
+    return Resource(
+        resource_id,
+        "Projection",
+        timelines,
+        path.name,
+        PARQUET_MEDIA_TYPE,
+        len(data),
+        Integrity("SHA-256", hashlib.sha256(data).hexdigest()),
+    )
+
+
+class TestSeveralResourcesOfAType:
+    def test_two_projection_resources_are_read_and_written_as_one(
+        self, tmp_path: Path
+    ) -> None:
+        bundle = _bundle()
+        first = tmp_path / "first"
+        first.mkdir()
+        path = bundle.to_file(first / "package.yaml")
+        original = pq.read_table(first / "projections.parquet")
+        original_bytes = (first / "projections.parquet").read_bytes()
+        timeline_ids = original.column("timeline_id")
+        for timeline_id in ("pcm", "audio"):
+            pq.write_table(
+                original.filter(pc.equal(timeline_ids, timeline_id)),
+                first / f"{timeline_id}.parquet",
+            )
+        (first / "projections.parquet").unlink()
+        manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
+        (claim_entry,) = [r for r in manifest["resources"] if r["type"] == "MatchClaim"]
+        manifest["resources"] = [
+            claim_entry,
+            {
+                "id": "#resource_p",
+                "type": "Projection",
+                "timelines": ["#pcm"],
+                "url": "pcm.parquet",
+            },
+            {
+                "id": "#resource_a",
+                "type": "Projection",
+                "timelines": ["#audio"],
+                "url": "audio.parquet",
+            },
+        ]
+        path.unlink()
+        (first / "package.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        read = AlignmentBundle.from_file(first / "package.json")
+
+        assert read.match_claim_table == bundle.match_claim_table
+        known = read._known_timelines()
+        assert projection_table(known[tid] for tid in sorted(known)).equals(original)
+        (claim_resource,) = [r for r in bundle.resources if r.type == "MatchClaim"]
+        assert read.resources == [
+            claim_resource,
+            Resource("resource_p", "Projection", ("pcm",), "pcm.parquet"),
+            Resource("resource_a", "Projection", ("audio",), "audio.parquet"),
+        ]
+
+        second = tmp_path / "second"
+        second.mkdir()
+        read.to_file(second / "package.yaml")
+
+        assert sorted(p.name for p in second.iterdir()) == [
+            "match_claims.parquet",
+            "package.yaml",
+            "pcm.parquet",
+        ]
+        assert (second / "pcm.parquet").read_bytes() == original_bytes
+        assert read.resources == [
+            claim_resource,
+            _resource_of(second / "pcm.parquet", "resource_p", ("audio", "pcm")),
+        ]
+        again = AlignmentBundle.from_file(second / "package.yaml")
+        known = again._known_timelines()
+        assert projection_table(known[tid] for tid in sorted(known)).equals(original)
+        assert again.match_claim_table == bundle.match_claim_table
+
+
+class TestFolderResources:
+    #: The rows each manifest of the fixture reads, as its expected.yaml states them.
+    EXPECTED = {
+        "bach/manifest.yaml": {
+            "resource_1": ["claim_1", "claim_2", "claim_5"],
+            "resource_2": [
+                "projection_1",
+                "projection_2",
+                "projection_7",
+                "projection_9",
+            ],
+        },
+        "handel/manifest.yaml": {
+            "resource_1": ["claim_3", "claim_4"],
+            "resource_2": [
+                "projection_3",
+                "projection_4",
+                "projection_5",
+                "projection_6",
+                "projection_8",
+            ],
+        },
+    }
+
+    @staticmethod
+    def _projections(bundle: AlignmentBundle, timeline_id: str) -> list[tuple]:
+        return [
+            (row["id"], struct_to_rational(row["start"]))
+            for row in bundle.get_timeline(timeline_id).get_events(
+                event_type="Projection"
+            )
+        ]
+
+    def test_the_expected_reads_are_the_fixture_s(self) -> None:
+        expected = timetoshare.loads(
+            (_SHARED / "expected.yaml").read_text(encoding="utf-8")
+        )
+        assert expected["read"] == self.EXPECTED
+
+    def test_each_manifest_reads_its_own_rows_of_the_shared_folders(self) -> None:
+        bach = AlignmentBundle.from_file(_SHARED / "bach" / "manifest.yaml")
+        handel = AlignmentBundle.from_file(_SHARED / "handel" / "manifest.yaml")
+
+        assert bach.match_claim_table.table.column("id").to_pylist() == [
+            "claim_1",
+            "claim_2",
+            "claim_5",
+        ]
+        assert self._projections(bach, "dpt_1") == [
+            ("projection_1", 0),
+            ("projection_2", 44100),
+            ("projection_7", 132300),
+            ("projection_9", 88200),
+        ]
+        assert self._projections(bach, "clt_1") == []
+        assert handel.match_claim_table.table.column("id").to_pylist() == [
+            "claim_3",
+            "claim_4",
+        ]
+        assert self._projections(handel, "dpt_2") == [
+            ("projection_3", 0),
+            ("projection_4", 88200),
+            ("projection_6", 132300),
+        ]
+        assert self._projections(handel, "clt_3") == [
+            ("projection_5", Fraction(1, 2)),
+            ("projection_8", Fraction(3, 2)),
+        ]
+        for bundle, timelines in (
+            (bach, (("clt_1", "dpt_1"), ("dpt_1",))),
+            (handel, (("clt_2", "dpt_2"), ("clt_3", "dpt_2"))),
+        ):
+            assert bundle.resources == [
+                Resource(
+                    "resource_1",
+                    "MatchClaim",
+                    timelines[0],
+                    "../tables/MatchClaim/",
+                    PARQUET_MEDIA_TYPE,
+                ),
+                Resource(
+                    "resource_2",
+                    "Projection",
+                    timelines[1],
+                    "../tables/Projection/",
+                    PARQUET_MEDIA_TYPE,
+                ),
+            ]
+
+    def test_a_match_claim_reaching_outside_the_manifest_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        package = tmp_path / "shared"
+        shutil.copytree(_SHARED, package)
+        claims = pq.read_table(package / "tables" / "MatchClaim" / "part_a.parquet")
+        row = claims.filter(pc.equal(claims.column("id"), "claim_5"))
+        for name, value in (("id", "claim_10"), ("timeline_b_id", "clt_2")):
+            row = row.set_column(
+                row.schema.get_field_index(name), name, pa.array([value])
+            )
+        pq.write_table(row, package / "tables" / "MatchClaim" / "part_c.parquet")
+
+        for manifest, outside, held in (
+            ("bach", "clt_2", ["clt_1", "dpt_1"]),
+            ("handel", "dpt_1", ["clt_2", "dpt_2", "clt_3"]),
+        ):
+            with pytest.raises(KeyError) as refused:
+                AlignmentBundle.from_file(package / manifest / "manifest.yaml")
+            assert refused.value.args[0] == (
+                f"MatchClaims name timeline(s) ['{outside}'] that this bundle "
+                f"does not hold. Available timelines: {held}"
+            )
+
+    @pytest.mark.parametrize("manifest", ["bach", "handel"])
+    def test_a_bundle_read_with_a_folder_is_not_written(
+        self, tmp_path: Path, manifest: str
+    ) -> None:
+        bundle = AlignmentBundle.from_file(_SHARED / manifest / "manifest.yaml")
+        target = tmp_path / "out"
+        target.mkdir()
+
+        with pytest.raises(NotImplementedError) as refused:
+            bundle.to_file(target / "manifest.yaml")
+
+        assert str(refused.value) == (
+            "The resource 'resource_1' names the folder '../tables/MatchClaim/' "
+            "for its MatchClaim rows: the library writes a package's tables as "
+            "single files and does not write into a folder, whose files other "
+            "manifests may share."
+        )
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
+        assert list(target.iterdir()) == []
+
+        bundle.resources = [r for r in bundle.resources if r.type == "Projection"]
+        with pytest.raises(NotImplementedError) as refused:
+            bundle.to_file(target / "manifest.yaml")
+
+        assert str(refused.value) == (
+            "The resource 'resource_2' names the folder '../tables/Projection/' "
+            "for its Projection rows: the library writes a package's tables as "
+            "single files and does not write into a folder, whose files other "
+            "manifests may share."
+        )
+        assert list(target.iterdir()) == []

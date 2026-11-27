@@ -334,7 +334,9 @@ def _leave_out_unwritten(
 
 # region Resources
 
-_RESOURCE_SCHEMA = timetoshare.load_schema()["$defs"]["Resource"]["properties"]
+_RESOURCE_SCHEMA = timetoshare.load_schema()["$defs"]["Descriptor"]["properties"]
+"""The members describing a resource's file or folder: its URL, media type, size
+and integrity."""
 
 INTEGRITY_ALGORITHMS: tuple[str, ...] = tuple(
     _RESOURCE_SCHEMA["integrity"]["properties"]["algorithm"]["enum"]
@@ -345,7 +347,13 @@ PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 """The media type of the Parquet tables a package holds."""
 
 TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection", "Box")
-"""The resource types a manifest names at most once: its package tables."""
+"""The resource types the library reads and writes as a bundle's package tables.
+
+A manifest may name several resources of one of them, each listing other
+timelines (a timeline is listed by at most one resource of each type). An
+:class:`~timetoalign.alignment.AlignmentBundle` read from a file reads every
+one of them, and writes one table of each type (its
+:meth:`~timetoalign.alignment.AlignmentBundle.to_file`)."""
 
 _MEDIA_TYPE = re.compile(_RESOURCE_SCHEMA["media_type"]["pattern"])
 _DIGEST = re.compile(r"[0-9a-f]+")
@@ -421,15 +429,16 @@ class Integrity(_OpenObject):
 
 @dataclass(frozen=True)
 class Resource(_OpenObject):
-    """A file the manifest names: one entry of its ``resources``.
+    """A file or a folder of files the manifest names: one entry of its ``resources``.
 
     A package is a manifest and the files it names. Each resource says what
     its rows are (``type``: ``"MatchClaim"`` for the MatchClaim table,
     ``"Projection"`` for the Projections table, or the type of the events
     an event table holds), for which timelines it holds data and where it
     lies, relative to the manifest, so that a bare file name lies beside
-    it; optionally its media type, size in bytes and the digest of its
-    bytes. IDs are bare, as the library holds them.
+    it (a URL ending in ``/`` names a folder, :attr:`names_folder`);
+    optionally its media type, size in bytes and the digest of its bytes.
+    IDs are bare, as the library holds them.
 
     Attributes:
         id: The resource's ID, held by no other element of the manifest
@@ -615,8 +624,22 @@ class Resource(_OpenObject):
             fields["integrity"] = self.integrity.to_dict()
         return self._dict_form(fields, minimal=False)
 
+    @property
+    def names_folder(self) -> bool:
+        """Whether the URL names a folder of files (its path ends in ``/``),
+        not a single file.
+
+        Examples:
+            >>> Resource("resource_1", "MidiNote", (), "tables/MidiNote/").names_folder
+            True
+            >>> Resource("resource_1", "Box", (), "boxes.parquet").names_folder
+            False
+        """
+        return urlsplit(self.url).path.endswith("/")
+
     def path_in(self, directory: str | PathLike[str]) -> Path:
-        """The file's path for a manifest lying in *directory* (:func:`resource_path`)."""
+        """The path of the file or folder for a manifest lying in *directory*
+        (:func:`resource_path`)."""
         return resource_path(directory, self.url)
 
 
@@ -925,7 +948,10 @@ def _event_tables_by_timeline(table: pa.Table, what: str) -> dict[str, pa.Table]
     """The rows of an event table in memory, by the ID of the timeline holding
     them, in row order: ``timeline_id`` dropped, every other column kept and
     each number read by its row's number type (*what* names the table in a
-    message)."""
+    message). A table without a row, which may lack every column (a folder
+    holding no file), holds no timeline's rows."""
+    if table.num_rows == 0:
+        return {}
     number_types = table.column("number_type").combine_chunks()
     memory = pa.table(
         {
@@ -941,7 +967,7 @@ def _event_tables_by_timeline(table: pa.Table, what: str) -> dict[str, pa.Table]
     }
 
 
-def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
+def read_event_table(path: str | PathLike[str] | pa.Table) -> dict[str, pa.Table]:
     """Read an event table: the rows of each timeline, in memory, in row order.
 
     The inverse of :func:`event_table`: per timeline ID, the table of its
@@ -953,15 +979,19 @@ def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
     number_type=row["number_type"])`` reads a row.
 
     Args:
-        path: The file.
+        path: The file, or the table read from it or from the files of a
+            folder (``timetoshare.tables.read_table``).
 
     Returns:
         The rows by the ID of the timeline holding them.
 
     Raises:
         ValueError: If a number does not hold its value as its row's number
-            type says, naming the file, the column and the row.
+            type says, naming the file (or "event table"), the column and
+            the row.
     """
+    if isinstance(path, pa.Table):
+        return _event_tables_by_timeline(path, "event table")
     return _event_tables_by_timeline(
         pq.read_table(os.fspath(path) if isinstance(path, PathLike) else path),
         Path(path).name,
@@ -969,7 +999,8 @@ def read_event_table(path: str | PathLike[str]) -> dict[str, pa.Table]:
 
 
 def read_projection_table(
-    path: str | PathLike[str] | pa.NativeFile | BinaryIO, manifest: Mapping[str, Any]
+    path: str | PathLike[str] | pa.NativeFile | BinaryIO | pa.Table,
+    manifest: Mapping[str, Any],
 ) -> dict[str, list[Projection]]:
     """Read a Projections table: the Projections of each timeline, in row order.
 
@@ -984,7 +1015,8 @@ def read_projection_table(
 
     Args:
         path: The file: its path, or a binary file object or Arrow file
-            Parquet reads it from.
+            Parquet reads it from; or the table read from it or from the
+            files of a folder (``timetoshare.tables.read_table``).
         manifest: The manifest naming it, as the file holds it.
 
     Returns:
@@ -996,7 +1028,11 @@ def read_projection_table(
         ValueError: If a ``start`` or ``duration`` does not hold its number
             as its row's number type says.
     """
-    table = pq.read_table(os.fspath(path) if isinstance(path, PathLike) else path)
+    table = (
+        path
+        if isinstance(path, pa.Table)
+        else pq.read_table(os.fspath(path) if isinstance(path, PathLike) else path)
+    )
     problems = projection_problems(table, manifest)
     if problems:
         raise TableError(problems[0])

@@ -3168,20 +3168,31 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         checked against its timeline's axis and image as any Box added is.
         Then the MatchClaim table, added as
         :meth:`add_match_claim_field` adds a field, every ID kept, its
-        further columns kept as read (:meth:`MatchClaimField.from_table`). A table
-        the manifest names that does not lie there is not read: the
-        manifest loads without it, and its entry stays in
-        :attr:`resources`. A table is read as it lies, whatever it was
-        when its entry's size and digest were stated.
+        further columns kept as read (:meth:`MatchClaimField.from_package_table`).
+        Every resource of a type is read, in the order :attr:`resources`
+        lists them: a manifest may keep the rows of one type in several
+        files, each listing its own timelines. A resource naming a single
+        file reads the whole file, every row of which is the manifest's; one
+        naming a folder (its URL ends in ``/``) reads the folder's files
+        through ``timetoshare.tables.read_table``, keeping the rows of the
+        timelines it lists (a MatchClaim's either of whose timelines it
+        lists), since a folder may hold other manifests' rows too; the rows
+        kept are then read as a file's are. A table the manifest names that
+        does not lie there is not read: the manifest loads without it, and
+        its entry stays in :attr:`resources`. A table is read as it lies,
+        whatever it was when its entry's size and digest were stated.
 
         Raises:
             ValueError: If a resource lies elsewhere than on disk relative
                 to the manifest, or a table breaks a rule (a
-                ``timetoshare.tables.TableError`` for the Projections table;
-                as :meth:`Timeline.add_events
+                ``timetoshare.tables.TableError`` for the Projections table
+                and for a folder whose files state another type or cannot be
+                read as one table; as :meth:`Timeline.add_events
                 <timetoalign.timelines.Timeline.add_events>` refuses a Box;
-                as :meth:`MatchClaimField.from_parquet` and
+                as :meth:`MatchClaimField.from_package_table` and
                 :meth:`add_match_claim_field` for the MatchClaim table).
+            KeyError: If a row of a file names a timeline the bundle does
+                not hold.
         """
         return package._read_tables(self, directory, data)
 
@@ -3235,6 +3246,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 :meth:`ManifestFileMixin.to_file
                 <timetoalign.timelines.manifest.ManifestFileMixin.to_file>`
                 and :meth:`_write_tables` refuse.
+            NotImplementedError: As :meth:`_write_tables` refuses a table
+                resource naming a folder, before any file is written.
         """
         writes_events = (
             events
@@ -3283,10 +3296,21 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         :attr:`resources` as they are: a manifest read without its tables
         names them still.
 
+        The bundle writes one table of each type. Where :attr:`resources`
+        holds several entries of one type (a manifest keeping that type's
+        rows in several files), the table, holding every row of the type,
+        lies at the first entry's URL under its ID, and the other entries
+        of that type are left out of the manifest written; their files are
+        neither read again nor removed. A table resource naming a folder is
+        refused: the library writes no table into a folder, whose files
+        other manifests of a package may share.
+
         Returns:
             Whether a table was written.
 
         Raises:
+            NotImplementedError: If an entry of a table type names a
+                folder, naming the entry, before any file is written.
             ValueError: As :meth:`MatchClaimField.to_parquet` refuses the
                 MatchClaim table, or as
                 :func:`~timetoalign.timelines.manifest.projection_table`

@@ -2345,18 +2345,23 @@ Write the package: the manifest and, beside it, the bundle's tables.
 
 As :meth:`ManifestFileMixin.to_file
 <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
-a manifest, with the MatchClaim table and the event tables, of
-Projections and of Boxes (:meth:`_write_tables`), written between a
-first writing of the manifest, which validates and serializes it
-before any file is written, and the writing that names them. A
-manifest never names an event's ID: where the bundle writes a table,
-its Projections and Boxes lie in their tables alone and the events
-of its timelines are not written into the manifest, so writing event
-rows (``events``, given or as read) is refused before any file is
-written.
+a manifest, with the MatchClaim table and the event tables
+(:meth:`_write_tables`), written between a first writing of the
+manifest, which validates and serializes it before any file is
+written, and the writing that names them. The tables of Projections
+and of Boxes are written always; with ``events`` (given, or as the
+file read had event rows or event files), the event table of every
+other event type the bundle's timelines hold as well, one file per
+type beside the manifest (``Note.parquet``), MatchClaims or none. A
+manifest never names an event's ID: the bundle's events lie in their
+tables alone, and ``events`` writes no event rows into the manifest.
+A bundle of a package's manifest (one whose resources name folders)
+is written into its package with :meth:`Package.write_bundle
+<timetoalign.alignment.Package.write_bundle>`.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                         |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If event rows would be written beside a table, or as :meth:`ManifestFileMixin.to_file <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` and :meth:`_write_tables` refuse. |
+| Name   | Type                                         | Description                                                                                                                       |
+|--------|----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`)                   | As :meth:`ManifestFileMixin.to_file <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` and :meth:`_write_tables` refuse. |
+|        | [NotImplementedError](`NotImplementedError`) | As :meth:`_write_tables` refuses a table resource naming a folder, before any file is written.                                    |

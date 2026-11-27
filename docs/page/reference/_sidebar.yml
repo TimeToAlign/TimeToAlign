@@ -134,6 +134,9 @@ website:
       - reference/EventReference.qmd
       - reference/Resource.qmd
       - reference/Integrity.qmd
+      - reference/Package.qmd
+      - reference/event_file_name.qmd
+      - reference/event_types.qmd
       - reference/MatchGraph.qmd
       - reference/MatchStamp.qmd
       - reference/MatchLine.qmd

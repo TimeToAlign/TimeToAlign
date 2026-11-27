@@ -596,8 +596,12 @@ stream.is_length_known, answers([broadcast.get_timestamp_at(Fraction(4), program
 # %% [markdown]
 # ## Next
 #
-# - Events: `to_dict(events=True)` writes every timeline's event rows; see
+# - Events: `to_dict(events=True)` writes every timeline's event rows into
+#   the dict; see
 #   [How to Construct Timelines Manually](how01_manual_timeline_construction.ipynb).
+#   A bundle's file names no event: `to_file(events=True)` writes its events
+#   into event files beside the manifest, one per event type; see
+#   [How to Write Event Files and Share Tables in a Package](how03_event_files_and_packages.ipynb).
 # - Groups in depth: the [Timeline Groups](../tutorials/tut05_timeline_groups.ipynb)
 #   tutorial.
 # - Alignments between groups: the

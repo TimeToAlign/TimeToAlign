@@ -116,6 +116,12 @@ documentation:
   `add_match_claim_belief`) and the belief filter, the MatchClaim and Projections tables beside the manifest and its
   `resources` through `to_file` and `from_file`, and why claims are added but
   never removed.
+- [How to Write Event Files and Share Tables in a Package](howto/how03_event_files_and_packages.ipynb) ---
+  A bundle's events written into event files beside its manifest
+  (`to_file(events=True)`), a package of two bundles sharing its tables
+  (`Package`, `write_bundle`, `to_file`), one manifest opened from
+  `package.yaml`, the package check (`timetoshare.tables.package_problems`),
+  IDs held once in a package, and one bundle written into the package again.
 
 ### In-depth Topics
 

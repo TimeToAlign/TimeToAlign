@@ -361,6 +361,27 @@ to the relevant section of the conceptual model.
     start and end coordinates.
     See [Foundations](concepts.qmd#foundations).
 
+**Event file**
+:   A Parquet table of the {{< glossary Event >}}s of one type, named by a
+    manifest as a {{< glossary "Table resource" >}} whose `type` is that
+    event type. Beside a lone manifest it is a file named by
+    `event_file_name()` (`Note.parquet`; `projections.parquet` and
+    `boxes.parquet` for {{< glossary Projection >}}s and
+    {{< glossary Box >}}es); in a {{< glossary Package >}} it is the folder
+    `tables/<Type>/`, shared by every manifest. One row per event: its
+    `id`, its `timeline_id`, the `unit` and `number_type` of the timeline's
+    axis, its `start` and, for a span, its `duration`, each number written
+    once in the member its number type names (the package form), then every
+    further column the rows hold a value in. The file's metadata states its
+    type and the format version. An {{< glossary AlignmentBundle >}}'s
+    `to_file(events=True)` writes one for every event type its timelines
+    hold (`event_types()`; a child's `Segment` row on its parent is
+    structure, not an event), and a bundle read with event files writes
+    them again; `from_file()` reads them back onto the timelines.
+    See the API reference ([event_file_name](reference/event_file_name.qmd),
+    [event_types](reference/event_types.qmd)) and
+    [How to Write Event Files and Share Tables in a Package](howto/how03_event_files_and_packages.ipynb).
+
 ## F
 
 **Finding**
@@ -748,6 +769,34 @@ to the relevant section of the conceptual model.
 
 ## P
 
+**Package**
+:   A {{< glossary "TimeToShare manifest" >}} and the tables its
+    `resources` name. A manifest alone with its files beside it is a package
+    of one manifest, which an {{< glossary AlignmentBundle >}}'s
+    `to_file()` writes and `from_file()` reads. Several manifests share
+    their tables in a folder whose `package.yaml` lists the manifests and
+    the tables, each table a file or a folder of Parquet files holding the
+    rows of one type of every manifest naming it. The `Package` class
+    writes and opens such a folder: `write_bundle(bundle, url)` adds a
+    bundle as the manifest at `url` (a new package stages it and
+    `to_file(path)` writes every bundle staged, then `package.yaml`; a
+    package on disk is written at once); each write adds one file per type
+    under `tables/<Type>/`, holding the rows of every bundle it writes,
+    every event type included, and named from its content.
+    `from_file(path)` opens a package, and `bundle(url)` reads one of its
+    manifests with every table filtered to the timelines its resources
+    list. In a package a timeline ID is held by one manifest, an event ID
+    once among the events of every type, and a {{< glossary MatchClaim >}}
+    ID once among its MatchClaims; a collision is refused before anything
+    is written. A manifest written again replaces the old one: its rows
+    leave the files holding them, and its MatchClaims obey the succession
+    rule. After each write the package is checked whole
+    (`timetoshare.tables.package_problems`), and a problem is raised with
+    every file restored.
+    See the API reference ([Package](reference/Package.qmd)),
+    [How to Write Event Files and Share Tables in a Package](howto/how03_event_files_and_packages.ipynb) and
+    [TimeToShare's README, "Packages"](https://github.com/TimeToAlign/TimeToShare#packages).
+
 **Parent**
 :   A {{< glossary Timeline >}} that contains one or more
     {{< glossary Child >}} timelines. The parent and all its children must
@@ -901,34 +950,39 @@ to the relevant section of the conceptual model.
     holds; an entry the library adds gets a minted `resource_…`, and an
     entry read keeps its own when written back), its `type` (what its rows are: `MatchClaim` for the
     MatchClaim table, a {{< glossary MatchClaimField >}}, `Projection` for
-    the Projections table, see {{< glossary Projection >}}, `Box` for the
-    Box table, see {{< glossary Box >}}), the IDs of the
+    the Projections table, see {{< glossary Projection >}}, or the type of
+    the events it holds, such as `Box` (see {{< glossary Box >}}) or `Note`,
+    an {{< glossary "Event file" >}}), the IDs of the
     `timelines` it holds data for, its `url` relative to the manifest (a
     folder when it ends in `/`, `Resource.names_folder`), and
     optionally its `media_type`, `size` in bytes and `integrity` (an
     `Integrity`: `algorithm` and `digest`; a file's only). A manifest may
-    name several resources of one type, each listing other timelines. A
-    manifest and the files it names make a package; the
+    name several resources of one type, each listing other timelines.
+    `Resource.is_table` tells a {{< glossary "Table resource" >}} from a
+    resource carried with the manifest, such as a recording. A
+    manifest and the files it names make a {{< glossary Package >}}; the
     manifest reads and draws without them, and names no event. An
     {{< glossary AlignmentBundle >}} keeps the entries as `Resource` objects
-    in its `resources`; `from_file()` reads every resource of the three
-    types: a file whole, a folder keeping the rows of the timelines the
-    resource lists (a MatchClaim's either timeline), since the files of a
-    folder may hold the rows of other manifests of a package. Its
-    `to_file()` writes the MatchClaim table when it
+    in its `resources`; `from_file()` reads every table resource holding
+    events or MatchClaims: a file whole, a folder keeping the rows of the
+    timelines the resource lists (a MatchClaim's either timeline), since the
+    files of a folder may hold the rows of other manifests of a package; a
+    table of other rows, and a folder holding no Parquet file, is carried as
+    it stands. Its `to_file()` writes the MatchClaim table when it
     holds MatchClaims, the Projections table when a timeline holds
     Projections and the Box table (`boxes.parquet`) when a timeline holds
-    Boxes, one table of each type with its entry (the type's first entry
-    names it, by its URL and ID, and the type's other entries are left
-    out), and refuses to write event rows into
-    the manifest beside them (`events=True`). It also refuses, with a
-    `NotImplementedError`, to write a bundle one of whose resources of the
-    three types names a folder: the library writes a package's tables as
-    single files and does not yet write into a folder.
+    Boxes, and with `events=True` an event file of every other event type
+    its timelines hold, one table of each type with its entry (the type's
+    first entry names it, by its URL and ID, and the type's other entries
+    are left out). It refuses, with a `NotImplementedError`, to write rows
+    of a type whose resource names a folder: the files of a folder are
+    shared by a package's manifests, and `Package.write_bundle()` writes
+    into them.
     A named file or folder that is absent is not read and its entry is kept.
     See the API reference ([Resource](reference/Resource.qmd),
     [Integrity](reference/Integrity.qmd)),
-    [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb) and
+    [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb),
+    [How to Write Event Files and Share Tables in a Package](howto/how03_event_files_and_packages.ipynb) and
     [TimeToShare's README, "Resources and tables"](https://github.com/TimeToAlign/TimeToShare#resources-and-tables).
 
 **Root**
@@ -1034,6 +1088,21 @@ to the relevant section of the conceptual model.
     See [Foundations](concepts.qmd#foundations).
 
 ## T
+
+**Table resource**
+:   A {{< glossary Resource >}} of a {{< glossary "TimeToShare manifest" >}}
+    that names a table, by the format's one rule
+    (`timetoshare.tables.is_table_resource`, which `Resource.is_table`
+    asks): its `type` is `MatchClaim` or `Projection`, its `url` names a
+    folder (ends in `/`) or a Parquet file (ends in `.parquet`), or its
+    `media_type` is `application/vnd.apache.parquet`. In a
+    {{< glossary Package >}} each names a table of `package.yaml` of its
+    type; any other resource (a recording, an image, a score file) is
+    carried with its manifest. An {{< glossary AlignmentBundle >}} reads a
+    table resource into its timelines where it holds events (the columns
+    `id`, `timeline_id`, `unit`, `number_type` and `start`) or MatchClaims;
+    a table of other rows is carried as it stands.
+    See [TimeToShare's README, "Packages"](https://github.com/TimeToAlign/TimeToShare#packages).
 
 **Time path**
 :   The line a reader follows through an image (`TimeAxisPath`). No image

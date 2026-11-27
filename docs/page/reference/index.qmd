@@ -160,8 +160,11 @@ Classes for connecting and aligning timelines.
 | [Belief](Belief.qmd#timetoalign.core.Belief) | One actor's belief in an item, at a date. |
 | [Projection](Projection.qmd#timetoalign.core.Projection) | An event standing on a timeline for an event not held there. |
 | [EventReference](EventReference.qmd#timetoalign.core.EventReference) | The address of one event: the timeline holding it and its ID there. |
-| [Resource](Resource.qmd#timetoalign.timelines.Resource) | A file the manifest names: one entry of its ``resources``. |
+| [Resource](Resource.qmd#timetoalign.timelines.Resource) | A file or a folder of files the manifest names: one entry of its ``resources``. |
 | [Integrity](Integrity.qmd#timetoalign.timelines.Integrity) | The digest of a resource's raw bytes and the hash function computing it. |
+| [Package](Package.qmd#timetoalign.alignment.Package) | A TimeToShare package: a folder of manifests sharing their tables. |
+| [event_file_name](event_file_name.qmd#timetoalign.timelines.manifest.event_file_name) | The file name of the event table of *event_type* beside a lone manifest. |
+| [event_types](event_types.qmd#timetoalign.timelines.manifest.event_types) | The event types the timelines hold themselves, each once, sorted by name. |
 | [MatchGraph](MatchGraph.qmd#timetoalign.alignment.MatchGraph) | A graph of MatchClaims connecting events across timelines/groups. |
 | [MatchStamp](MatchStamp.qmd#timetoalign.alignment.MatchStamp) | A synchronized timestamp across multiple timelines. |
 | [MatchLine](MatchLine.qmd#timetoalign.alignment.MatchLine) | Ordered sequence of MatchStamps for a source timeline. |

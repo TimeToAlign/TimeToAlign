@@ -668,10 +668,14 @@ what `MatchClaimField.package_table` gives and `from_package_table()`
 reads. Both lie beside the
 {{< glossary "TimeToShare manifest" >}}, which names each in its `resources`
 (see {{< glossary Resource >}}); a manifest and the files it names make a
-**package**. The manifest names no event: the claims name events by their
-IDs, the events stay with the sources they come from, and the package holds
-only the events it made itself, the Projections. `to_file()` writes the
-package and `from_file()` reads it back. Writing over a MatchClaim table
+{{< glossary Package >}}. The manifest names no event: the claims name events by their
+IDs, and by default the events stay with the sources they come from while
+the package holds the events it made itself, the Projections (and the
+Boxes of a page). `to_file(events=True)` writes every other event type as
+well, into {{< glossary "Event file" >}}s beside the manifest, one per
+type. `to_file()` writes the package and `from_file()` reads it back.
+Several manifests share their tables in a package whose `package.yaml`
+lists them, which the `Package` class writes and opens. Writing over a MatchClaim table
 obeys the **succession rule**: every claim of the old table is in the new
 one, with the same timelines, events and anchors; only the provenance may
 differ.

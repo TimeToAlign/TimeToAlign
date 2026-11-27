@@ -305,6 +305,21 @@ Event: |
   Anything associated with a timeline via Instants. An InstantEvent has zero
   duration; a TimeIntervalEvent has duration defined by start and end coordinates.
 
+Event file: |
+  A Parquet table of the events of one type, named by a manifest as a table
+  resource whose type is that event type. Beside a lone manifest it is a
+  file named by event_file_name() (Note.parquet; projections.parquet and
+  boxes.parquet for Projections and Boxes); in a package it is the folder
+  tables/<Type>/, shared by every manifest. One row per event: its id, its
+  timeline_id, the unit and number_type of the timeline's axis, its start
+  and, for a span, its duration, each number written once in the member its
+  number type names (the package form), then every further column the rows
+  hold a value in. The file's metadata states its type and the format
+  version. An AlignmentBundle's to_file(events=True) writes one for every
+  event type its timelines hold (event_types(); a child's Segment row on its
+  parent is structure, not an event), and a bundle read with event files
+  writes them again; from_file() reads them back onto the timelines.
+
 IdCoordinate: |
   A Coordinate that also names the timeline it belongs to. It is the default
   return of every coordinate getter in the library — stamps, timelines, groups,
@@ -550,6 +565,29 @@ NOMATCH: |
 
 Origin: "The zero coordinate of a timeline, from which all positions are measured."
 
+Package: |
+  A TimeToShare manifest and the tables its resources name. A manifest alone
+  with its files beside it is a package of one manifest, which an
+  AlignmentBundle's to_file() writes and from_file() reads. Several
+  manifests share their tables in a folder whose package.yaml lists the
+  manifests and the tables, each table a file or a folder of Parquet files
+  holding the rows of one type of every manifest naming it. The Package
+  class writes and opens such a folder: write_bundle(bundle, url) adds a
+  bundle as the manifest at url (a new package stages it and to_file(path)
+  writes every bundle staged, then package.yaml; a package on disk is
+  written at once); each write adds one file per type under tables/<Type>/,
+  holding the rows of every bundle it writes, every event type included,
+  and named from its content. from_file(path) opens a package, and
+  bundle(url) reads one of its manifests with every table filtered to the
+  timelines its resources list. In a package a timeline ID is held by one
+  manifest, an event ID once among the events of every type, and a
+  MatchClaim ID once among its MatchClaims; a collision is refused before
+  anything is written. A manifest written again replaces the old one: its
+  rows leave the files holding them, and its MatchClaims obey the
+  succession rule. After each write the package is checked whole
+  (timetoshare.tables.package_problems), and a problem is raised with every
+  file restored.
+
 PerformancePrecisionLoader: |
   Loader for audio-to-score alignment specimens: a directory bundling a .solo
   score, a Verovio timemap, and per-performer alignment files at the note, bar,
@@ -659,29 +697,33 @@ Region: |
 Resource: |
   An entry of a TimeToShare manifest's resources, naming a file, or a folder
   of Parquet files read as one table, that holds data for its timelines: its
-  id (any element id no other
-  element of the manifest holds; an entry the library adds gets a minted
-  resource_…, and an entry read keeps its own when written back), its type
-  (what its rows are: MatchClaim for the MatchClaim table, Projection for
-  the Projections table, Box for the Box table), the ids of the timelines it
-  holds data for, its url relative to the manifest (a folder when it ends in
-  /), and optionally its media type, size in bytes and integrity (an
-  Integrity: algorithm and digest; a file's only). A manifest may name
-  several resources of one type, each listing other timelines. A manifest
-  and the files it names make a package; the manifest reads and draws
-  without them, and names no event. An AlignmentBundle keeps the entries as
-  Resource objects in its resources; from_file() reads every resource of the
-  three types: a file whole, a folder keeping the rows of the timelines the
-  resource lists, since the files of a folder may hold the rows of other
-  manifests of a package. Its to_file() writes the MatchClaim table when it
+  id (any element id no other element of the manifest holds; an entry the
+  library adds gets a minted resource_…, and an entry read keeps its own
+  when written back), its type (what its rows are: MatchClaim for the
+  MatchClaim table, Projection for the Projections table, or the type of the
+  events it holds, such as Box or Note), the ids of the timelines it holds
+  data for, its url relative to the manifest (a folder when it ends in /),
+  and optionally its media type, size in bytes and integrity (an Integrity:
+  algorithm and digest; a file's only). A manifest may name several
+  resources of one type, each listing other timelines. Resource.is_table
+  tells a table resource from a resource carried with the manifest, such as
+  a recording. A manifest and the files it names make a package; the
+  manifest reads and draws without them, and names no event. An
+  AlignmentBundle keeps the entries as Resource objects in its resources;
+  from_file() reads every table resource holding events or MatchClaims: a
+  file whole, a folder keeping the rows of the timelines the resource lists,
+  since the files of a folder may hold the rows of other manifests of a
+  package; a table of other rows, and a folder holding no Parquet file, is
+  carried as it stands. Its to_file() writes the MatchClaim table when it
   holds MatchClaims, the Projections table when a timeline holds Projections
-  and the Box table (boxes.parquet) when a timeline holds Boxes, one table
-  of each type with its entry (the type's first entry names it, the type's
-  other entries are left out), and refuses to write event rows into the
-  manifest beside them. It also refuses to write a bundle one of whose
-  resources of the three types names a folder: the library writes a
-  package's tables as single files and does not yet write into a folder. A
-  named file or folder that is absent is not read and its entry is kept.
+  and the Box table (boxes.parquet) when a timeline holds Boxes, and with
+  events=True an event file of every other event type its timelines hold,
+  one table of each type with its entry (the type's first entry names it,
+  the type's other entries are left out). It refuses, with a
+  NotImplementedError, to write rows of a type whose resource names a
+  folder: the files of a folder are shared by a package's manifests, and
+  Package.write_bundle() writes into them. A named file or folder that is
+  absent is not read and its entry is kept.
 
 raw_quarters: |
   The conventional name for the ShiftMap attached to a score timeline. The
@@ -763,6 +805,18 @@ SupportPolicy: |
 Synchrony: |
   Strict synchrony: Instants sharing identical coordinates. Pragmatic synchrony:
   Instants binned together based on a threshold (e.g., for quantisation).
+
+Table resource: |
+  A resource of a TimeToShare manifest that names a table, by the format's
+  one rule (timetoshare.tables.is_table_resource, which Resource.is_table
+  asks): its type is MatchClaim or Projection, its url names a folder (ends
+  in /) or a Parquet file (ends in .parquet), or its media type is
+  application/vnd.apache.parquet. In a package each names a table of
+  package.yaml of its type; any other resource (a recording, an image, a
+  score file) is carried with its manifest. An AlignmentBundle reads a table
+  resource into its timelines where it holds events (the columns id,
+  timeline_id, unit, number_type and start) or MatchClaims; a table of other
+  rows is carried as it stands.
 
 Time path: |
   The line a reader follows through an image (TimeAxisPath). No image has a

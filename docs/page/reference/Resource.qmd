@@ -14,15 +14,16 @@ timelines.Resource(
 )
 ```
 
-A file the manifest names: one entry of its ``resources``.
+A file or a folder of files the manifest names: one entry of its ``resources``.
 
 A package is a manifest and the files it names. Each resource says what
 its rows are (``type``: ``"MatchClaim"`` for the MatchClaim table,
 ``"Projection"`` for the Projections table, or the type of the events
 an event table holds), for which timelines it holds data and where it
 lies, relative to the manifest, so that a bare file name lies beside
-it; optionally its media type, size in bytes and the digest of its
-bytes. IDs are bare, as the library holds them.
+it (a URL ending in ``/`` names a folder, :attr:`names_folder`);
+optionally its media type, size in bytes and the digest of its bytes.
+IDs are bare, as the library holds them.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
@@ -60,7 +61,7 @@ True
 | --- | --- |
 | [from_dict](#timetoalign.timelines.Resource.from_dict) | Read one entry of ``resources``, IDs bare, keeping its unknown keys. |
 | [of_file](#timetoalign.timelines.Resource.of_file) | Describe the file *path*: its size and SHA-256 digest from its bytes. |
-| [path_in](#timetoalign.timelines.Resource.path_in) | The file's path for a manifest lying in *directory* (:func:`resource_path`). |
+| [path_in](#timetoalign.timelines.Resource.path_in) | The path of the file or folder for a manifest lying in *directory* |
 | [to_dict](#timetoalign.timelines.Resource.to_dict) | Write the entry, IDs bare: the optional keys only with a value. |
 
 ### from_dict { #timetoalign.timelines.Resource.from_dict }
@@ -112,7 +113,8 @@ Describe the file *path*: its size and SHA-256 digest from its bytes.
 timelines.Resource.path_in(directory)
 ```
 
-The file's path for a manifest lying in *directory* (:func:`resource_path`).
+The path of the file or folder for a manifest lying in *directory*
+(:func:`resource_path`).
 
 ### to_dict { #timetoalign.timelines.Resource.to_dict }
 

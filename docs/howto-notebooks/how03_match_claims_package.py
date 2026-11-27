@@ -280,10 +280,12 @@ claim_rows(bundle.get_match_claims())
 # `to_file()` writes the MatchClaim table and the Projections table beside
 # the manifest, then the manifest naming them. A manifest names no event:
 # the claims name the score's notes and the recording's onsets by their
-# ids, and those events stay with the sources they came from, here the
-# score and the onset list. The package holds the events it made itself,
-# the Projections, in their own table. Writing event rows into the manifest
-# of a package (`events=True`) is therefore refused.
+# ids, and by default those events stay with the sources they came from,
+# here the score and the onset list. The package holds the events it made
+# itself, the Projections, in their own table. To ship the notes and
+# onsets as well, `to_file(events=True)` writes them into event files
+# beside the manifest, one per event type, never into the manifest itself:
+# see [How to Write Event Files and Share Tables in a Package](how03_event_files_and_packages.ipynb).
 
 # %%
 package = FILES / "song"
@@ -416,6 +418,8 @@ len(AlignmentBundle.from_file(manifest_path).get_match_claims())
 #   claims become MatchStamps: the
 #   [Alignment Bundles and MatchClaims](../tutorials/tut06_alignment_bundles.ipynb)
 #   tutorial.
+# - Events in event files, and several manifests sharing their tables in
+#   one package: [How to Write Event Files and Share Tables in a Package](how03_event_files_and_packages.ipynb).
 # - Manifests in depth (minimal and complete form, serializations, editing
 #   a file): [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).
 # - Beliefs on statements as well as claims:

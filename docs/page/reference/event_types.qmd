@@ -1,0 +1,24 @@
+# event_types { #timetoalign.timelines.manifest.event_types }
+
+```python
+timelines.manifest.event_types(timelines)
+```
+
+The event types the timelines hold themselves, each once, sorted by name.
+
+A child's ``Segment`` row on its parent records the child's place, which
+the manifest's children state, and counts for no event type here; a
+``Segment`` row of another ID is an event of the type ``Segment``.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.timelines import ContinuousPhysicalTimeline
+>>> take = ContinuousPhysicalTimeline(length=10.0)
+>>> _ = take.add_events(
+...     [{"event_type": "Note", "start": 0.0}, {"event_type": "Beat", "start": 1.0}],
+...     seed=0,
+... )
+>>> event_types([take])
+['Beat', 'Note']
+```

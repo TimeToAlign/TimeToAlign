@@ -1,0 +1,16 @@
+# event_file_name { #timetoalign.timelines.manifest.event_file_name }
+
+```python
+timelines.manifest.event_file_name(event_type)
+```
+
+The file name of the event table of *event_type* beside a lone manifest.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> event_file_name("Projection"), event_file_name("Box")
+('projections.parquet', 'boxes.parquet')
+>>> event_file_name("Note")
+'Note.parquet'
+```

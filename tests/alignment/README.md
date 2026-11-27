@@ -2490,8 +2490,10 @@ leaving its own behind, an ID collision found only after files were
 written, a package the format's own check refuses, a package of many
 bundles written as many files per type, a failed write leaving a changed
 package behind, a user's event dropped because of its type, a table of
-other rows read as events (or refused), a row beyond a timeline's length
-passed over by the length rule `add_events` applies. Every expected value is
+other rows read as events, refused, or left out of a package's manifest,
+a Projection of other content kept in silence under a held ID, a row
+beyond a timeline's length passed over by the length rule `add_events`
+applies. Every expected value is
 probed from the library once and then pinned literally; the oracle for the
 package as a whole is TimeToShare's `package_problems`, an independent
 implementation of the format's rules.
@@ -2546,7 +2548,14 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   by row on the reading path. A manifest that holds `a_score`'s event rows
   inline as well (`events` in its timeline object, the Projection among
   them) and names `projections.parquet` reads one Projection under its ID,
-  not two and no refusal: a Projection held under a row's ID is kept.
+  not two and no refusal: a Projection held under a row's ID is kept when
+  its content is the file row's (`projection_of`, both members, `start`
+  and `duration`, compared exactly). The same manifest whose inline
+  Projection lies at 7/2 for 1/2 (instead of 0 for 4) under the file row's
+  ID is refused
+  with `add_projections`' own message (`Event id '<its ID>' is already
+  held by another event of timeline 'a_score'`): neither of the two is
+  dropped in silence.
 - **A user's `Segment` events are events.** A timeline `seg_t` (quarters,
   fraction, length 8) holding the child `seg_c` (length 2 at 4) and the
   user's `Segment` row `s1` (start 1, duration 1) with a Note `n1` at 0:
@@ -2573,15 +2582,13 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   refusal, its timelines holding exactly their events, `resources` naming
   `features`; written again into another directory with `events=True`
   (the file copied beside it), the manifest names `features` unchanged
-  and the file keeps its bytes. Written into a package, the bundle is
-  refused before any file (`The resource 'features' of the bundle 'b'
-  names the table 'features.parquet' of the type Features, which holds no
-  events: …`), since a package lists every table resource's table.
-- **A folder is refused only where rows of its type are written.** `b`
-  given a resource `scans` of the type `Scan` at `scans/` (a folder, none
-  lying there): written with `to_file(events=True)` and read back, the
-  resource is carried as it stands and the rows are the same; a bundle read through a package (`../tables/Beat/` and
-  `../tables/Note/`) is refused (below).
+  and the file keeps its bytes.
+- **A folder of a type not written is carried.** `b` given a resource
+  `scans` of the type `Scan` at `scans/` (a folder, none lying there):
+  written with `to_file(events=True)` and read back, the resource is
+  carried as it stands and the rows are the same. The same folder lying
+  there, holding `page1.png` and no Parquet file, is carried as well and
+  never read as an event table: no file means no rows.
 - **Without `events`**, the same bundle writes exactly `a.yaml`,
   `match_claims.parquet`, `projections.parquet` and `boxes.parquet`.
 - **The sort is exact.** `event_table` of three timelines' Beats,
@@ -2721,6 +2728,56 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   `to_file` refuses a file not named `package.yaml`, a new package over a
   file lying there, and an opened package written elsewhere; `bundle`
   refuses a URL the package does not list, naming those it lists.
+- **A table of other rows is carried into the package and listed.** The
+  bundle `b` read with its `features` table (above), staged at
+  `b/manifest.yaml` in a new package and written: the file is copied, its
+  bytes kept, to `tables/Features/features.parquet`; `package.yaml` lists
+  exactly one entry for it, `{type: Features, url:
+  tables/Features/features.parquet}`, after the two type folders
+  (`tables/Beat/`, `tables/Note/`); the manifest's resource `features`
+  names `../tables/Features/features.parquet`, every other field as it
+  was, and `package_problems` reports nothing. Read through the package,
+  the bundle carries it again (`resources` naming it at that URL, the
+  timelines holding exactly their events). Written back through the
+  opened package at its URL, the table stays where it lies: the package
+  holds the same files, the one copy keeping its bytes, and lists it once.
+  The folder `scans/` holding `page1.png` likewise: copied to
+  `tables/Scan/scans/page1.png`, listed as the folder `tables/Scan/scans/`,
+  named `../tables/Scan/scans/` by the resource, the package check
+  reporting nothing, carried again when read through the package.
+- **A carried table's name taken.** `b` carrying `features.parquet` of
+  the column `x` [1, 2], `e` (`e_score`, the Note `e_n1` at 0) carrying a
+  `features.parquet` of the column `x` [3], and `f` (an empty `f_score`)
+  carrying a file of `b`'s bytes, each resource `features` of the type
+  `Features`, staged in this order in one new package: `b`'s copy keeps
+  the name; `e`'s takes the name seeded from its type and content
+  (`IdMinter(seed_from("Features", <its SHA-256>))` minting under the
+  stem), `tables/Features/features_0eyvk1ozczb0s.parquet` (probed once,
+  pinned), with `e`'s bytes; `f` shares `b`'s copy. The folder holds
+  exactly these two files, `package.yaml` lists each once, the manifests
+  of `b` and `f` name `../tables/Features/features.parquet` and `e`'s its
+  own copy, and `package_problems` reports nothing.
+- **A table the writer has no file of is refused before any file.** The
+  bundle `b` built in code with a resource `features` (`Features`,
+  `features.parquet`), which it never read: `write_bundle` is refused
+  (`The resource 'features' of the bundle 'b' names the table
+  'features.parquet' of the type Features, of which the bundle holds no
+  rows, and the bundle was not read from it (built in code, or its file
+  missing when it was read): the package writer copies such a table into
+  the package from the file the bundle was read with and has none to
+  copy; nothing is written.`). A bundle read with its `features` file,
+  that file then deleted, is refused (`The resource 'features' of the
+  bundle 'b' names the table 'features.parquet' of the type Features,
+  which the bundle carries from '<the file>', where no file lies any
+  more: the package writer has nothing to copy into the package; nothing
+  is written.`). The package then lists no manifest and stays unwritten
+  (`path` None).
+- **A write cut short leaves no hidden file once the package is opened.**
+  A package of `a` written; a hidden part `.part_<13>.parquet`, as a
+  process killed between removing the old rows and renaming the new files
+  leaves it, placed in `tables/Note/` and in a folder of a new type
+  `tables/Chord/`: `Package.from_file` removes both, every other file
+  keeps its bytes and the package check reports nothing.
 - **A bundle of the package is written through it.** A bundle read
   through `Package.bundle` and written with `to_file` alone is refused
   (`NotImplementedError`, naming its folder and `Package.write_bundle`).
@@ -3971,7 +4028,7 @@ exact pixel `2438` on `dgt_1` for all three coordinate forms.
 |-------|-------|---------|
 | `TestWarpMapConstruction` | 5 | Basic init, `from_match_line()`, `from_coordinate_pairs()`, rejection of <2 points |
 | `TestForwardInverse` | 5 | Linear mapping, identity, bounded-support errors, inverse round-trip |
-| `TestMaterialise` | 7 | Event warping (instant/interval), child warping, region warping, event count, empty timeline |
+| `TestMaterialise` | 8 | Event warping (instant/interval), child warping, region warping, event count, empty timeline, a user's `Segment` kept |
 | `TestMaterialiseTypeConversion` | 3 | CLT→CPT type conversion, unit propagation, region unit conversion |
 | `TestSerialization` | 4 | `to_dict()`/`from_dict()` round-trip, repr |
 | `TestMultiTarget` | 1 | Different WarpMaps from same MatchLine for different targets |
@@ -3986,6 +4043,7 @@ exact pixel `2438` on `dgt_1` for all three coordinate forms.
 | `test_materialise_warps_instant_events` | Instant event coordinates warped correctly (reads `start` struct dict, not `instant`) |
 | `test_materialise_warps_interval_events` | Start/end/duration all warped; duration uses `forward(start+dur) - forward(start)` for non-linear correctness |
 | `test_materialise_warps_children` | Child offsets converted, child count preserved |
+| `test_materialise_keeps_a_user_segment` | `parent` (the two children `child1` at 10, `child2` at 60) given the user's `Segment` `s1` (start 0, duration 5), warped by 2: `s1` lies at 0 for 10, beside one `Segment` row per warped child (its ID the child's); only a child's own row is left to the children (a skip of every `Segment` row loses `s1`) |
 | `test_materialise_warps_regions` | Region boundaries converted; each warped region keeps its source region's name (`Verse`, `Chorus`) and holds an id of its own (see "Warped copies" below) |
 | `test_type_conversion_clt_to_cpt` | Source CLT (quarters) → target CPT (seconds): correct type and unit |
 | `test_full_pipeline` | Three claims `score`↔`audio` at (0, 0), (100, 50), (200, 100) → MatchLine → WarpMap: forward 50 → 25.0, inverse 75 → 150.0 |

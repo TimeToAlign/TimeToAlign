@@ -414,6 +414,17 @@ class TestEventFiles:
 
         assert _rows(read) == _rows(bundle)
 
+        # The inline Projection of other content under the file row's ID.
+        (row,) = written["events"]
+        written["events"] = [{**row, "start": [7, 2], "duration": [1, 2]}]
+        (tmp_path / "a.yaml").write_text(timetoshare.dumps(data), encoding="utf-8")
+        with pytest.raises(ValueError) as refused:
+            AlignmentBundle.from_file(tmp_path / "a.yaml")
+        assert str(refused.value) == (
+            f"Event id '{row['id']}' is already held by another event of timeline "
+            "'a_score'"
+        )
+
     def test_a_user_segment_is_an_event(self, tmp_path: Path) -> None:
         line = ContinuousLogicalTimeline(length=Fraction(8), uid="seg_t")
         line.add_child(
@@ -521,16 +532,6 @@ class TestEventFiles:
         assert (tmp_path / "second" / "features.parquet").read_bytes() == (
             features.read_bytes()
         )
-        with pytest.raises(ValueError) as refused:
-            Package().write_bundle(read, "b/manifest.yaml")
-        assert str(refused.value) == (
-            "The resource 'features' of the bundle 'b' names the table "
-            "'features.parquet' of the type Features, which holds no events: a "
-            "package lists the table of every table resource of its manifests, "
-            "and the package writer writes only events and MatchClaims; remove "
-            "the resource from the bundle's resources to write the bundle into "
-            "the package."
-        )
 
     def test_a_folder_of_a_type_not_written_is_carried(self, tmp_path: Path) -> None:
         bundle = _b()
@@ -542,6 +543,15 @@ class TestEventFiles:
         read = AlignmentBundle.from_file(tmp_path / "b.yaml")
         assert scans in read.resources
         assert _rows(read) == _rows(bundle)
+        assert read._carried_tables == {}
+
+        # The folder lying there, holding no Parquet file: no rows.
+        (tmp_path / "scans").mkdir()
+        (tmp_path / "scans" / "page1.png").write_bytes(b"\x89PNG")
+        read = AlignmentBundle.from_file(tmp_path / "b.yaml")
+        assert scans in read.resources
+        assert _rows(read) == _rows(bundle)
+        assert list(read._carried_tables) == ["scans"]
 
     def test_the_file_declares_its_type_version_order_and_index(
         self, tmp_path: Path
@@ -652,6 +662,24 @@ def _two_bundle_package(
     package.write_bundle(a, "a/manifest.yaml")
     package.write_bundle(b, "b/manifest.yaml")
     return package.to_file(directory / "package.yaml"), a, b
+
+
+def _carrying(
+    directory: Path, bundle: AlignmentBundle, values: list[int]
+) -> AlignmentBundle:
+    """*bundle* given a resource ``features`` (``Features``) naming a Parquet
+    file of the column ``x`` (*values*), written into *directory* with its
+    events and read back: a bundle carrying that table."""
+    directory.mkdir(parents=True)
+    pq.write_table(pa.table({"x": values}), directory / "features.parquet")
+    (timeline,) = bundle.timelines
+    bundle.resources.append(
+        Resource("features", "Features", (timeline,), "features.parquet")
+    )
+    bundle.to_file(directory / "manifest.yaml", events=True)
+    read = AlignmentBundle.from_file(directory / "manifest.yaml")
+    assert list(read._carried_tables) == ["features"]
+    return read
 
 
 class TestPackage:
@@ -1129,6 +1157,176 @@ class TestPackage:
             "The package lists no manifest 'a/manifest.yaml'. Available "
             "manifests: []"
         )
+
+    def test_a_carried_table_is_copied_into_the_package_and_listed(
+        self, tmp_path: Path
+    ) -> None:
+        read = _carrying(tmp_path / "source", _b(), [1, 2])
+        source = tmp_path / "source" / "features.parquet"
+        package = Package()
+        package.write_bundle(read, "b/manifest.yaml")
+
+        path = package.to_file(tmp_path / "package" / "package.yaml")
+
+        copy = tmp_path / "package" / "tables" / "Features" / "features.parquet"
+        assert copy.read_bytes() == source.read_bytes()
+        assert [
+            (table["type"], table["url"])
+            for table in timetoshare.loads(path.read_text(encoding="utf-8"))["tables"]
+        ] == [
+            ("Beat", "tables/Beat/"),
+            ("Note", "tables/Note/"),
+            ("Features", "tables/Features/features.parquet"),
+        ]
+        manifest = timetoshare.loads(
+            (tmp_path / "package" / "b" / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        assert [r for r in manifest["resources"] if r["id"] == "#features"] == [
+            {
+                "id": "#features",
+                "type": "Features",
+                "timelines": ["#b_score"],
+                "url": "../tables/Features/features.parquet",
+            }
+        ]
+        assert package_problems(path) == []
+        again = Package.from_file(path).bundle("b/manifest.yaml")
+        (carried,) = [r for r in again.resources if r.id == "features"]
+        assert carried.url == "../tables/Features/features.parquet"
+        assert list(again._carried_tables) == ["features"]
+        assert _rows(again) == _rows(_b())
+
+        # Written back through the opened package, the copy stays.
+        before = _files(tmp_path / "package")
+        opened = Package.from_file(path)
+        opened.write_bundle(opened.bundle("b/manifest.yaml"), "b/manifest.yaml")
+        after = _files(tmp_path / "package")
+        assert [name for name in after if "Features" in name] == [
+            "tables/Features/features.parquet"
+        ]
+        assert after["tables/Features/features.parquet"] == source.read_bytes()
+        assert len(after) == len(before)
+        assert [table["url"] for table in opened.tables].count(
+            "tables/Features/features.parquet"
+        ) == 1
+        assert package_problems(path) == []
+
+    def test_a_folder_without_parquet_files_is_copied_and_listed(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "source" / "scans").mkdir(parents=True)
+        (tmp_path / "source" / "scans" / "page1.png").write_bytes(b"\x89PNG")
+        bundle = _b()
+        bundle.resources.append(Resource("scans", "Scan", ("b_score",), "scans/"))
+        bundle.to_file(tmp_path / "source" / "b.yaml", events=True)
+        read = AlignmentBundle.from_file(tmp_path / "source" / "b.yaml")
+        package = Package()
+        package.write_bundle(read, "b/manifest.yaml")
+
+        path = package.to_file(tmp_path / "package" / "package.yaml")
+
+        assert (
+            tmp_path / "package" / "tables" / "Scan" / "scans" / "page1.png"
+        ).read_bytes() == b"\x89PNG"
+        assert {"type": "Scan", "url": "tables/Scan/scans/"} in package.tables
+        (scans,) = [r for r in read.resources if r.id == "scans"]
+        assert scans.url == "../tables/Scan/scans/"
+        assert package_problems(path) == []
+        again = Package.from_file(path).bundle("b/manifest.yaml")
+        assert list(again._carried_tables) == ["scans"]
+        assert _rows(again) == _rows(_b())
+
+    def test_a_carried_table_s_name_taken(self, tmp_path: Path) -> None:
+        score = ContinuousLogicalTimeline(length=Fraction(4), uid="e_score")
+        score.add_events([{"id": "e_n1", "event_type": "Note", "start": Fraction(0)}])
+        e = AlignmentBundle(id="e")
+        e.add_timeline(score)
+        f = AlignmentBundle(id="f")
+        f.add_timeline(ContinuousLogicalTimeline(length=Fraction(4), uid="f_score"))
+        package = Package()
+        package.write_bundle(_carrying(tmp_path / "b", _b(), [1, 2]), "b/manifest.yaml")
+        package.write_bundle(_carrying(tmp_path / "e", e, [3]), "e/manifest.yaml")
+        package.write_bundle(_carrying(tmp_path / "f", f, [1, 2]), "f/manifest.yaml")
+
+        path = package.to_file(tmp_path / "package" / "package.yaml")
+
+        root = tmp_path / "package"
+        assert _parts(root, "Features") == [
+            "features.parquet",
+            "features_0eyvk1ozczb0s.parquet",
+        ]
+        assert (
+            root / "tables/Features/features_0eyvk1ozczb0s.parquet"
+        ).read_bytes() == ((tmp_path / "e" / "features.parquet").read_bytes())
+        urls = {
+            url: [
+                r["url"]
+                for r in timetoshare.loads((root / url).read_text(encoding="utf-8"))[
+                    "resources"
+                ]
+                if r["id"] == "#features"
+            ]
+            for url in package.manifests
+        }
+        assert urls == {
+            "b/manifest.yaml": ["../tables/Features/features.parquet"],
+            "e/manifest.yaml": ["../tables/Features/features_0eyvk1ozczb0s.parquet"],
+            "f/manifest.yaml": ["../tables/Features/features.parquet"],
+        }
+        assert [t["url"] for t in package.tables if t["type"] == "Features"] == [
+            "tables/Features/features.parquet",
+            "tables/Features/features_0eyvk1ozczb0s.parquet",
+        ]
+        assert package_problems(path) == []
+
+    def test_a_table_the_writer_has_no_file_of_is_refused(self, tmp_path: Path) -> None:
+        bundle = _b()
+        bundle.resources.append(
+            Resource("features", "Features", ("b_score",), "features.parquet")
+        )
+        package = Package()
+        with pytest.raises(ValueError) as refused:
+            package.write_bundle(bundle, "b/manifest.yaml")
+        assert str(refused.value) == (
+            "The resource 'features' of the bundle 'b' names the table "
+            "'features.parquet' of the type Features, of which the bundle holds no "
+            "rows, and the bundle was not read from it (built in code, or its file "
+            "missing when it was read): the package writer copies such a table "
+            "into the package from the file the bundle was read with and has none "
+            "to copy; nothing is written."
+        )
+        assert package.manifests == []
+
+        read = _carrying(tmp_path / "source", _b(), [1, 2])
+        source = tmp_path / "source" / "features.parquet"
+        source.unlink()
+        with pytest.raises(ValueError) as refused:
+            package.write_bundle(read, "b/manifest.yaml")
+        assert str(refused.value) == (
+            "The resource 'features' of the bundle 'b' names the table "
+            f"'features.parquet' of the type Features, which the bundle carries "
+            f"from '{source}', where no file lies any more: the package writer has "
+            "nothing to copy into the package; nothing is written."
+        )
+        assert (package.manifests, package.path) == ([], None)
+
+    def test_a_write_cut_short_leaves_no_hidden_file(self, tmp_path: Path) -> None:
+        package = Package()
+        package.write_bundle(_a(), "a/manifest.yaml")
+        path = package.to_file(tmp_path / "package.yaml")
+        before = _files(tmp_path)
+        hidden = [
+            tmp_path / "tables" / "Note" / ".part_0000000000001.parquet",
+            tmp_path / "tables" / "Chord" / ".part_0000000000002.parquet",
+        ]
+        for stray in hidden:
+            stray.parent.mkdir(parents=True, exist_ok=True)
+            stray.write_bytes(b"cut short")
+
+        Package.from_file(path)
+
+        assert _files(tmp_path) == before
+        assert package_problems(path) == []
 
     def test_a_bundle_of_the_package_is_written_through_it(
         self, tmp_path: Path

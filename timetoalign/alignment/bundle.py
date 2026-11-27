@@ -217,11 +217,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     # The files the manifest names; ``to_file`` rewrites the entries of the
     # MatchClaim table and the Projections table it writes.
     resources: list[Resource] = field(default_factory=list)
-    # The IDs of the table resources read as no table of events or
-    # MatchClaims (their files lack an event table's columns): carried as
-    # they stand, never written over.
-    _carried_tables: frozenset[str] = field(
-        default=frozenset(), init=False, repr=False, compare=False
+    # The table resources read as no table of events or MatchClaims (their
+    # files lack an event table's columns, or a folder holds no Parquet
+    # file), each ID with the file or folder it was read at: carried as
+    # they stand, never written over; a package copies them from there.
+    _carried_tables: dict[str, Path] = field(
+        default_factory=dict, init=False, repr=False, compare=False
     )
 
     # The manifest's statements and provenance as the file writes them, and
@@ -3181,8 +3182,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         <timetoalign.timelines.manifest.Resource.is_table>`) but one whose
         files hold no event table's columns (``id``, ``timeline_id``,
         ``unit``, ``number_type``, ``start``) and is neither a MatchClaim
-        nor a Projections table: that one holds other rows and is carried
-        as it stands, never read, never written over. Every
+        nor a Projections table, or a folder holding no Parquet file: that
+        one holds other rows (or none) and is carried as it stands, never
+        read, never written over, its place recorded so that
+        :meth:`Package.write_bundle
+        <timetoalign.alignment.Package.write_bundle>` can copy it. Every
         resource of a type in the order :attr:`resources` lists them: a
         manifest may keep the rows of one type in several files, each
         listing its own timelines. A resource naming a single file reads

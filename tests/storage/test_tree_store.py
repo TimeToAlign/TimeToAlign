@@ -10,6 +10,7 @@ import pytest
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.fields import field_metadata
 from timetoalign.storage import EventData
+from timetoalign.storage.events import row_type_codes
 from timetoalign.storage.tree import TreeStore
 from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
 
@@ -48,7 +49,7 @@ class TestOneTableForTheTree:
         store = root._tree_store
 
         assert a._tree_store is store and b._tree_store is store
-        table = store.table
+        (table,) = store.tables
         assert table.num_rows == 6
         assert pa.types.is_dictionary(table.schema.field("timeline_id").type)
         assert table.column("timeline_id").to_pylist() == [
@@ -97,14 +98,15 @@ class TestTheMapAndTheRowTypes:
             "clt_a": (TimeUnit.quarters, NumberType.fraction),
             "clt_b": (TimeUnit.quarters, NumberType.float),
         }
-        assert "number_type" not in store.table.column_names
-        assert store.row_types().to_pylist() == [1, 1, 1, 1, 1, 2]
+        (table,) = store.tables
+        assert "number_type" not in table.column_names
+        assert row_type_codes(table, store.axes).to_pylist() == [1, 1, 1, 1, 1, 2]
 
 
 class TestTheSlice:
     def test_a_timelines_rows_copy_nothing(self) -> None:
         root, _, b = _tree()
-        tree = root._tree_store.table.column("start")
+        tree = root._tree_store.tables[0].column("start")
         own = b.events.table.column("start")
 
         def buffers(column: pa.ChunkedArray) -> list[tuple[int, int]]:
@@ -164,7 +166,7 @@ class TestRowsChangeThroughTheStore:
 
         a.add_events([{"id": "a3", "event_type": "Beat", "start": 2}])
 
-        assert root._tree_store.table.num_rows == 7
+        assert root._tree_store.tables[0].num_rows == 7
         assert _ids(a.events.table) == ["a1", "a2", "a3"]
 
 
@@ -173,12 +175,12 @@ class TestAttach:
         root = _timeline("clt_root", 8, "fraction")
         b = _timeline("clt_b", 4, "float")
         b.add_events([{"id": "b1", "event_type": "Beat", "start": 0.1}])
-        assert _ids(b._tree_store.table) == ["b1"]
+        assert _ids(b._tree_store.tables[0]) == ["b1"]
         own = b._tree_store
 
         root.add_child(b, offset=4)
 
-        assert _ids(root._tree_store.table) == ["clt_b", "b1"]
+        assert _ids(root._tree_store.tables[0]) == ["clt_b", "b1"]
         assert own.timeline_ids == ()
 
     def test_columns_typed_differently_share_the_tree(self) -> None:
@@ -230,8 +232,96 @@ class TestAttach:
         assert first.column("velocity").to_pylist() == [80, None]
         assert second.column("timeline_id").to_pylist() == ["clt_a"]
         assert second.column("velocity").to_pylist() == ["ff"]
-        assert store.table is first
+        assert first.num_rows + second.num_rows == 3
+        assert not hasattr(store, "table") and not hasattr(store, "data")
         assert a.events.table.column("velocity").to_pylist() == ["ff"]
+
+
+class TestOneRuleJoinsColumns:
+    def test_concat_widens_a_struct_as_the_tree_does(self) -> None:
+        root = _timeline("clt_root", 8, "fraction")
+        root.add_events(
+            [{"id": "r1", "event_type": "Beat", "start": 0, "tag": {"midi": 60}}]
+        )
+        a = _timeline("clt_a", 4, "fraction")
+        a.add_events(
+            [
+                {
+                    "id": "a1",
+                    "event_type": "Beat",
+                    "start": 0,
+                    "tag": {"midi": 60, "name": "C4"},
+                }
+            ]
+        )
+        root.add_child(a, offset=0)
+
+        joined = root.events.concat(a.events)
+
+        (tree,) = root._tree_store.tables
+        widened = pa.struct(
+            [pa.field("midi", pa.int64()), pa.field("name", pa.string())]
+        )
+        assert joined.table.schema.field("tag").type == widened
+        assert tree.schema.field("tag").type == widened
+        assert joined.table.column("tag").to_pylist() == [
+            {"midi": 60, "name": None},
+            None,
+            {"midi": 60, "name": "C4"},
+        ]
+        assert tree.column("tag").to_pylist() == joined.table.column("tag").to_pylist()
+
+    @staticmethod
+    def _tagged(event_id: str, tag: str, number_type: NumberType) -> EventData:
+        return EventData.from_dicts(
+            [{"id": event_id, "event_type": "Beat", "start": 0, "tag": tag}],
+            unit=TimeUnit.quarters,
+            number_type=number_type,
+        )
+
+    def _encoded(self) -> EventData:
+        data = self._tagged("d1", "x", NumberType.fraction)
+        index = data.table.schema.get_field_index("tag")
+        encoded = pa.chunked_array([pa.array(["x"]).dictionary_encode()])
+        return data._derived(data.table.set_column(index, "tag", encoded))
+
+    def test_a_dictionary_column_beside_a_plain_one_reads_as_its_values(
+        self,
+    ) -> None:
+        encoded = self._encoded()
+        assert pa.types.is_dictionary(encoded.table.schema.field("tag").type)
+
+        joined = encoded.concat(self._tagged("e1", "y", NumberType.fraction))
+
+        assert joined.table.schema.field("tag").type == pa.string()
+        assert joined.table.column("tag").to_pylist() == ["x", "y"]
+
+    def test_so_it_does_on_a_table_spanning_number_types(self) -> None:
+        joined = self._encoded().concat(self._tagged("f1", "z", NumberType.float))
+
+        assert joined.table.schema.field("tag").type == pa.string()
+        assert joined.table.column("tag").to_pylist() == ["x", "z"]
+        assert joined.table.column("timeline_id").to_pylist() == [
+            "<quarters fraction>",
+            "<quarters float>",
+        ]
+
+    def test_an_int_beside_a_string_has_no_one_table(self) -> None:
+        root = _timeline("clt_root", 8, "fraction")
+        root.add_events(
+            [{"id": "r1", "event_type": "Beat", "start": 0, "velocity": 80}]
+        )
+        a = _timeline("clt_a", 4, "float")
+        a.add_events([{"id": "a1", "event_type": "Beat", "start": 0, "velocity": "ff"}])
+
+        with pytest.raises(ValueError) as refusal:
+            root.events.concat(a.events)
+
+        assert str(refusal.value) == (
+            "the column 'velocity' holds values of type int64 in one table and of "
+            "type string in another, which no one type reads; one table holds one "
+            "type per column"
+        )
 
 
 class TestARefusedChildChangesNothing:
@@ -239,7 +329,7 @@ class TestARefusedChildChangesNothing:
     def test_every_check_runs_before_a_change(self, held: str) -> None:
         root, a, b = _tree()
         store = root._tree_store
-        rows = store.table
+        (rows,) = store.tables
         c = _timeline("clt_c", 2, "fraction")
         c.add_events([{"id": held, "event_type": "Beat", "start": 0}])
         own = c._tree_store
@@ -251,7 +341,8 @@ class TestARefusedChildChangesNothing:
         assert list(root._children) == ["clt_a", "clt_b"]
         assert root._tree_store is store
         assert store.timeline_ids == ("clt_root", "clt_a", "clt_b")
-        assert store.table.equals(rows)
+        (after,) = store.tables
+        assert after.equals(rows)
         assert c._parent is None
         assert c._tree_store is own
         assert own.timeline_ids == ("clt_c",)
@@ -339,27 +430,32 @@ class TestAJoinIsNeverRefusedForTheNumberType:
             "clt_a",
         ]
 
-    def test_a_key_meeting_two_axes_is_keyed_by_its_axis(self) -> None:
+    def test_a_spanning_cast_keys_the_rows_it_changes_by_their_axis(self) -> None:
         _, a, b = _tree()
         cast = a.events.concat(b.events).to_number_type("float")
+        assert cast.table.column("timeline_id").to_pylist() == [
+            "<quarters float>",
+            "<quarters float>",
+            "clt_b",
+        ]
         assert cast._axes == {
-            "clt_a": (TimeUnit.quarters, NumberType.float),
+            "<quarters float>": (TimeUnit.quarters, NumberType.float),
             "clt_b": (TimeUnit.quarters, NumberType.float),
         }
 
         joined = cast.concat(a.events)
 
         assert joined.table.column("timeline_id").to_pylist() == [
-            "clt_a",
-            "clt_a",
+            "<quarters float>",
+            "<quarters float>",
             "clt_b",
-            "<quarters fraction>",
-            "<quarters fraction>",
+            "clt_a",
+            "clt_a",
         ]
         assert joined._axes == {
-            "clt_a": (TimeUnit.quarters, NumberType.float),
+            "<quarters float>": (TimeUnit.quarters, NumberType.float),
             "clt_b": (TimeUnit.quarters, NumberType.float),
-            "<quarters fraction>": (TimeUnit.quarters, NumberType.fraction),
+            "clt_a": (TimeUnit.quarters, NumberType.fraction),
         }
         assert _ids(
             joined.filter(include_number_types={NumberType.fraction}).table
@@ -376,6 +472,96 @@ class TestAJoinIsNeverRefusedForTheNumberType:
         assert "timeline_id" not in joined.table.column_names
         assert joined._timeline_id == "clt_b"
         assert _ids(joined.table) == ["b1", "b1"]
+
+
+_DOUBLE = (3602879701896397, 36028797018963968)
+"""The exact ratio of the double nearest 0.1."""
+
+
+def _starts(data: EventData) -> list[tuple[int, int]]:
+    return [
+        (cell["numerator"], cell["denominator"])
+        for cell in data.table.column("start").to_pylist()
+    ]
+
+
+class TestACastJoinedAgainKeepsEachRowsType:
+    def test_keys_of_axes(self) -> None:
+        exact = EventData.from_dicts(
+            [{"id": "a", "event_type": "Beat", "start": Fraction(1, 10)}],
+            unit=TimeUnit.quarters,
+            number_type=NumberType.fraction,
+        )
+        measured = EventData.from_dicts(
+            [{"id": "b", "event_type": "Beat", "start": 0.1}],
+            unit=TimeUnit.quarters,
+            number_type=NumberType.float,
+        )
+        span = exact.concat(measured)
+        cast = span.to_number_type("float")
+        assert cast.table.column("timeline_id").to_pylist() == [
+            "<quarters float>",
+            "<quarters float>",
+        ]
+        assert cast._axes == {"<quarters float>": (TimeUnit.quarters, NumberType.float)}
+
+        joined = cast.concat(span)
+
+        assert joined.table.column("timeline_id").to_pylist() == [
+            "<quarters float>",
+            "<quarters float>",
+            "<quarters fraction>",
+            "<quarters float>",
+        ]
+        assert joined._axes == {
+            "<quarters float>": (TimeUnit.quarters, NumberType.float),
+            "<quarters fraction>": (TimeUnit.quarters, NumberType.fraction),
+        }
+        fraction_rows = joined.filter(include_number_types={NumberType.fraction})
+        float_rows = joined.filter(include_number_types={NumberType.float})
+        assert fraction_rows.column_values("id") == ["a"]
+        assert float_rows.column_values("id") == ["a", "b", "b"]
+        assert _starts(joined.to_number_type("fraction")) == [
+            _DOUBLE,
+            _DOUBLE,
+            (1, 10),
+            _DOUBLE,
+        ]
+
+    def test_keys_of_timelines(self) -> None:
+        root = _timeline("R", 4, "fraction")
+        root.add_events([{"id": "a", "event_type": "Beat", "start": Fraction(1, 10)}])
+        child = _timeline("C", 4, "float")
+        child.add_events([{"id": "b", "event_type": "Beat", "start": 0.1}])
+        root.add_child(child, offset=0)
+        span = root.events.concat(child.events)
+        assert span.table.column("timeline_id").to_pylist() == ["R", "R", "C"]
+
+        joined = span.to_number_type("float").concat(span)
+
+        assert joined.table.column("timeline_id").to_pylist() == [
+            "<quarters float>",
+            "<quarters float>",
+            "C",
+            "R",
+            "R",
+            "C",
+        ]
+        assert joined._axes == {
+            "<quarters float>": (TimeUnit.quarters, NumberType.float),
+            "C": (TimeUnit.quarters, NumberType.float),
+            "R": (TimeUnit.quarters, NumberType.fraction),
+        }
+        fraction_rows = joined.filter(include_number_types={NumberType.fraction})
+        assert fraction_rows.column_values("id") == ["a", "C"]
+        assert _starts(joined.to_number_type("fraction")) == [
+            _DOUBLE,
+            (0, 1),
+            _DOUBLE,
+            (1, 10),
+            (0, 1),
+            _DOUBLE,
+        ]
 
 
 def test_the_extremes_of_a_spanning_table_are_read_row_by_row() -> None:
@@ -398,9 +584,9 @@ def test_the_extremes_of_a_spanning_table_are_read_row_by_row() -> None:
 
 
 class TestTheNumberTypeFilter:
-    def test_on_the_trees_table(self) -> None:
-        root, _, _ = _tree()
-        data = root._tree_store.data
+    def test_on_the_trees_timelines_joined(self) -> None:
+        root, a, b = _tree()
+        data = root.events.concat(a.events, b.events)
 
         assert _ids(data.filter(include_number_types={NumberType.float}).table) == [
             "b1"
@@ -469,7 +655,7 @@ class TestUniqueEventIds:
             "timeline tree"
         )
         assert root.n_children == 2
-        assert root._tree_store.table.num_rows == 6
+        assert root._tree_store.tables[0].num_rows == 6
         assert c._tree_store.timeline_ids == ("clt_c",)
         assert _ids(c.events.table) == ["r1"]
 
@@ -484,6 +670,22 @@ class TestRename:
         assert store.timeline_ids == ("clt_root", "clt_x", "clt_b")
         assert _ids(a.events.table) == ["a1", "a2"]
         assert store.holder_of("a1") == "clt_x"
+
+    @pytest.mark.parametrize("new_id", ["clt_b", "clt_root", "r1"])
+    def test_a_refused_id_changes_nothing(self, new_id: str) -> None:
+        root, a, _ = _tree()
+        store = root._tree_store
+
+        with pytest.raises(ValueError):
+            a._set_id(new_id)
+
+        assert list(root._children) == ["clt_a", "clt_b"]
+        assert list(root._child_offsets) == ["clt_a", "clt_b"]
+        assert [offset.value for offset in root._child_offsets.values()] == [0, 4]
+        assert root.get_child("clt_a") is a
+        assert _ids(root.events.table) == ["r1", "clt_a", "clt_b"]
+        assert store.timeline_ids == ("clt_root", "clt_a", "clt_b")
+        assert a.id == "clt_a"
 
 
 def test_a_store_refuses_a_timeline_it_does_not_hold() -> None:

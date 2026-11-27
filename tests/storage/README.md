@@ -639,6 +639,7 @@ offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
 - **The map and the row-type mask.** The store maps `clt_root` and `clt_a`
   to `(quarters, fraction)`, `clt_b` to `(quarters, float)`, once, in
   memory; no column of the table states a number type. The row-type mask
+  of the tree's one table (`row_type_codes(store.tables[0], store.axes)`)
   is `[1, 1, 1, 1, 1, 2]` (`NUMBER_TYPE_CODES`: fraction 1, float 2).
 - **A timeline's rows are copied by nothing.** The buffer holding the float
   side of `clt_b`'s `start` cells is the buffer of one chunk of the tree
@@ -667,8 +668,11 @@ offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
   `pitch` still has one member). A child whose `velocity` is a string
   under a root whose `velocity` is an integer is attached too: the tree
   then has two tables (`tables`), the root's rows in the first, the
-  child's in a second, each cell as it was written (`80`, `"ff"`); the
-  first table (`table`) holds the root's rows alone. No cell is rewritten.
+  child's in a second, each cell as it was written (`80`, `"ff"`), every
+  row of the tree in one of them (3 rows). The store offers no single
+  table or `EventData` of the tree (`table` and `data` are not attributes
+  of it), so no reader can take the first table for the tree and leave
+  the child's row out unnoticed. No cell is rewritten.
 - **A refused child changes nothing.** A child holding an event ID of the
   tree, and a child holding an event whose ID is the child's own (its
   `Segment` row, named by its ID, would join the parent), are refused
@@ -693,14 +697,69 @@ offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
   with their own `float` cast likewise give `clt_a` twice and the key
   `<quarters float>` twice, in the order joined, and so does the cast of
   `clt_a`'s rows read through `get_events` joined with them, the cast
-  first. Where a key still meets two axes (a table spanning `clt_a` and
-  `clt_b` cast to `float`, which keeps their keys, joined with `clt_a`'s
-  own `fraction` rows), the rows coming later are keyed by their axis: the
-  keys read `clt_a`, `clt_a`, `clt_b`, `<quarters fraction>`, `<quarters
-  fraction>`, the map holds `clt_a` and `clt_b` as `float` and the axis key
-  as `fraction`, and the fraction filter keeps `a1`, `a2`. A cast to the type the
-  rows have already keeps its timeline (`clt_b`'s rows cast to `float`
-  and joined with themselves are one axis, joined as they stand).
+  first. A table spanning timelines cast to a number type keys the rows
+  whose type changes by their new axis, as a table standing alone does:
+  the table spanning `clt_a` and `clt_b` cast to `float` is keyed
+  `<quarters float>`, `<quarters float>`, `clt_b` (`clt_b`'s rows were
+  `float` already and keep their timeline), its map `<quarters float>`
+  and `clt_b`, both `float`; joined with `clt_a`'s own `fraction` rows,
+  the keys read `<quarters float>`, `<quarters float>`, `clt_b`, `clt_a`,
+  `clt_a`, the map adds `clt_a` as `fraction`, and the fraction filter
+  keeps `a1`, `a2`. A cast to the type the rows have already keeps its
+  timeline (`clt_b`'s rows cast to `float` and joined with themselves are
+  one axis, joined as they stand).
+- **A cast of a spanning table joined again keeps every row's type**
+  (`TestACastJoinedAgainKeepsEachRowsType`). The defect this closes: the
+  cast kept a key whose axis it changed, mapped to the new type, so the
+  rows it named, joined again with the uncast table, were read in the
+  cast's type, and a `fraction` row at `1/10` came back from a cast to
+  `fraction` as `3602879701896397/36028797018963968`. Each key whose axis
+  changes is keyed by its new axis now, so every key of a table names
+  the axis its rows lie on, and the re-join cannot meet a key held on
+  another axis (`concat` asserts it). Two spellings, each joined as
+  `span.to_number_type("float").concat(span)`:
+  - **keys of axes:** a `fraction` table holding `a` at `1/10` joined with
+    a `float` table holding `b` at `0.1` (`span`, keyed `<quarters
+    fraction>`, `<quarters float>`). The cast is keyed `<quarters float>`
+    twice, its map `<quarters float>` alone, `float`. The re-join is keyed
+    `<quarters float>`, `<quarters float>`, `<quarters fraction>`,
+    `<quarters float>`, its map `<quarters float>` `float` and `<quarters
+    fraction>` `fraction`; the fraction filter keeps `a` alone, the float
+    filter `a`, `b`, `b`; cast to `fraction`, the rows read
+    `3602879701896397/36028797018963968` (the cast of `a`, a float now),
+    the same for `b`, `1/10` (`a` as it was), and
+    `3602879701896397/36028797018963968` (`b`).
+  - **keys of timelines:** a `fraction` quarters root `R` holding `a` at
+    `1/10` with a `float` child `C` at offset 0 holding `b` at `0.1`;
+    `span` is `R`'s rows (`a`, the `Segment` row `C` at `0`) joined with
+    `C`'s (`b`), keyed `R`, `R`, `C`. The re-join is keyed `<quarters
+    float>`, `<quarters float>`, `C`, `R`, `R`, `C`, its map `<quarters
+    float>` and `C` `float`, `R` `fraction`; the fraction filter keeps `a`,
+    `C` (`R`'s own rows); cast to `fraction`, the rows read
+    `3602879701896397/36028797018963968` (the cast of `a`), `0/1` (the
+    cast of the `Segment` row), `3602879701896397/36028797018963968`
+    (`b`), `1/10` (`a` as it was), `0/1`, and
+    `3602879701896397/36028797018963968` (`b`).
+- **One rule joins columns, in `concat` and in the tree**
+  (`TestOneRuleJoinsColumns`, `storage.events.unified_type`). The same two
+  timelines gave a tree and were refused by `concat`, which used Arrow's
+  own promotion; both now join by the one rule. A root whose `tag` is the
+  struct `{midi}` and a child whose `tag` is `{midi, name}`:
+  `root.events.concat(a.events)` types `tag` as the tree's table does
+  (`{midi: int64, name: string}`) and holds the same cells
+  (`{midi: 60, name: None}`, `None` for the `Segment` row,
+  `{midi: 60, name: "C4"}`). A table whose `tag` column is
+  dictionary-encoded (`"x"`) joined with one whose `tag` is plain
+  (`"y"`) gives a plain `string` column `["x", "y"]` (Arrow refused it);
+  so does that table joined with a `float` table whose `tag` is plain
+  (`"z"`), the two rows keyed `<quarters fraction>`, `<quarters float>`.
+  A column holding an `int` beside a `string` (a root's `velocity` 80, a
+  child's `"ff"`) has no one type: the tree keeps the child in a table of
+  its own (above), and `concat`, which returns one table, refuses it,
+  naming the column and the types (`the column 'velocity' holds values of
+  type int64 in one table and of type string in another, which no one type
+  reads; one table holds one type per column`), never for the number
+  type.
 - **The extremes of a spanning table are read row by row.** A `fraction`
   table holding a start at `1/2` joined with a `float` table holding a
   start at `0.7` spans both types; `coordinate_range()` answers
@@ -708,8 +767,9 @@ offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
   `float`), never the exact ratio of that double
   (`3152519739159347/4503599627370496`), which reading every row in the
   first table's type gave.
-- **The number-type filter resolves from the map.** On the tree's table
-  (`TreeStore.data`) `include_number_types={NumberType.float}` keeps `b1`,
+- **The number-type filter resolves from the map.** On the tree's
+  timelines' rows joined (`root.events.concat(a.events, b.events)`)
+  `include_number_types={NumberType.float}` keeps `b1`,
   `{NumberType.fraction}` every other row; `root.get_events(...)` with the
   same filter gives `["b1"]` and `["r1", "a1", "a2"]` (its own rows and its
   children's, each named by `source_timeline`, resolved through the map,
@@ -728,6 +788,14 @@ offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
   child `clt_a` takes the ID `clt_x`, the store's timelines read
   `clt_root`, `clt_x`, `clt_b`, the child reads its two rows, and the
   store names `clt_x` as the holder of `a1`.
+- **A refused new ID changes nothing.** The child `clt_a` given the ID of
+  another timeline of the tree (`clt_b`, `clt_root`), or of an event of
+  the tree (`r1`, which its parent's `Segment` row would then hold a
+  second time), is refused before its parent changes: the parent's
+  children read `clt_a`, `clt_b` with their offsets 0 and 4, its rows
+  read `r1`, `clt_a`, `clt_b`, the store's timelines `clt_root`, `clt_a`,
+  `clt_b`, and the child keeps its ID. Before, the parent's children
+  were re-keyed (a sibling's entry overwritten) before the store refused.
 
 ### `test_coordinate_range.py` - `EventData.coordinate_range()`
 

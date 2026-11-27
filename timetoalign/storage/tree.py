@@ -5,11 +5,12 @@ events of all its timelines in its root's :class:`TreeStore`. Each timeline's
 rows lie in that timeline's own coordinates, unit and number type: a child's
 rows are child-local, never shifted by its offset. A timeline reads its own
 rows as an ordinary :class:`EventData`, its axis declared in the field
-metadata; the tree's table is the zero-copy concatenation of those rows,
-each row named by its timeline in the dictionary-encoded column
-:data:`~timetoalign.storage.events.TIMELINE_ID`, the timelines in the order
-they joined the tree (the root first), each timeline's rows in the order they
-were added.
+metadata; the tree's tables (:attr:`TreeStore.tables`) are the
+concatenation of those rows, which shares every column whose type the
+timelines agree on, each row named by its timeline in the
+dictionary-encoded column :data:`~timetoalign.storage.events.TIMELINE_ID`,
+the timelines in the order they joined the tree (the root first), each
+timeline's rows in the order they were added.
 
 The store holds once, in memory, the map of every timeline to its unit and
 number type: a row's number type comes from its timeline, never from a
@@ -25,16 +26,16 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from timetoalign.core.fields import _null_column
 from timetoalign.core.ids import quote_id
 
 from .events import (
     TIMELINE_ID,
     Axis,
     EventData,
+    JoinedColumns,
     declaring_axis,
+    joined_tables,
     keyed_by_timeline,
-    row_type_codes,
 )
 
 __all__ = ["TreeStore"]
@@ -78,136 +79,6 @@ def _first_listed(candidates: pa.ChunkedArray, ids: pa.Array) -> str:
     return str(ids[at].as_py())
 
 
-def _unified(held: pa.DataType, joining: pa.DataType) -> pa.DataType | None:
-    """The type in which columns of *held* and of *joining* read every cell.
-
-    Equal types are that type; a dictionary column reads as its values; a
-    struct takes the members of both, each member unified likewise (a member
-    one side lacks is null there, which changes no cell). Any other pair has
-    none: None.
-    """
-    if held == joining:
-        return held
-    if pa.types.is_null(held):
-        return joining
-    if pa.types.is_null(joining):
-        return held
-    if pa.types.is_dictionary(held):
-        return _unified(held.value_type, joining)
-    if pa.types.is_dictionary(joining):
-        return _unified(held, joining.value_type)
-    if pa.types.is_struct(held) and pa.types.is_struct(joining):
-        names = [member.name for member in held]
-        members: list[pa.Field] = []
-        for member in held:
-            index = joining.get_field_index(member.name)
-            if index < 0:
-                members.append(member.with_nullable(True))
-                continue
-            unified = _unified(member.type, joining.field(index).type)
-            if unified is None:
-                return None
-            members.append(member.with_type(unified))
-        members.extend(
-            member.with_nullable(True) for member in joining if member.name not in names
-        )
-        return pa.struct(members)
-    return None
-
-
-def _array_as(array: pa.Array, type_: pa.DataType) -> pa.Array:
-    """*array* read in *type_*, a type :func:`_unified` gave for it."""
-    if array.type == type_:
-        return array
-    if array.null_count == len(array):
-        return _null_column(len(array), type_)
-    if isinstance(array, pa.DictionaryArray):
-        return _array_as(array.dictionary_decode(), type_)
-    if pa.types.is_struct(type_):
-        children = [
-            (
-                _array_as(pc.struct_field(array, [member.name]), member.type)
-                if array.type.get_field_index(member.name) >= 0
-                else _null_column(len(array), member.type)
-            )
-            for member in type_
-        ]
-        return pa.StructArray.from_arrays(
-            children,
-            fields=list(type_),
-            mask=array.is_null() if array.null_count else None,
-        )
-    return pc.cast(array, type_)
-
-
-class _Columns:
-    """The columns of tables joining one table: names, fields, unified types.
-
-    A column of nulls joins any other (it takes the other's type, which
-    changes no cell); columns holding values join where :func:`_unified`
-    gives them a type.
-    """
-
-    def __init__(self) -> None:
-        self.fields: dict[str, pa.Field] = {}
-        self.valued: set[str] = set()
-        self.metadata: dict[bytes | str, bytes | str] | None = None
-
-    def conflict(self, table: pa.Table) -> str | None:
-        """The first column of *table* whose values no unified type reads."""
-        for field in table.schema:
-            held = self.fields.get(field.name)
-            if held is None or held.name not in self.valued:
-                continue
-            column = table.column(field.name)
-            if column.null_count == len(column):
-                continue
-            if _unified(held.type, field.type) is None:
-                return field.name
-        return None
-
-    def take(self, table: pa.Table) -> None:
-        """Hold the columns of *table*, which joins without a conflict."""
-        held = table.schema.metadata
-        if self.metadata is None and held is not None:
-            self.metadata = {key: value for key, value in held.items()}
-        for field in table.schema:
-            column = table.column(field.name)
-            valued = column.null_count < len(column)
-            held = self.fields.get(field.name)
-            if held is None:
-                self.fields[field.name] = field
-            elif valued:
-                if held.name in self.valued:
-                    unified = _unified(held.type, field.type)
-                    assert unified is not None
-                else:
-                    unified = field.type
-                self.fields[field.name] = held.with_type(unified)
-            if valued:
-                self.valued.add(field.name)
-
-    def joined(self, tables: Sequence[pa.Table]) -> pa.Table:
-        """*tables*, all taken, as one table: a column one lacks null there."""
-        schema = pa.schema(list(self.fields.values()), metadata=self.metadata)
-        conformed = []
-        for table in tables:
-            columns = []
-            for field in schema:
-                if field.name not in table.column_names:
-                    columns.append(_null_column(table.num_rows, field.type))
-                    continue
-                column = table.column(field.name)
-                if column.type != field.type:
-                    column = pa.chunked_array(
-                        [_array_as(chunk, field.type) for chunk in column.chunks],
-                        type=field.type,
-                    )
-                columns.append(column)
-            conformed.append(pa.Table.from_arrays(columns, schema=schema))
-        return pa.concat_tables(conformed)
-
-
 def _joined(tables: Sequence[pa.Table], timeline_id: str) -> pa.Table:
     """The rows of one timeline, *tables*, as one table.
 
@@ -215,17 +86,14 @@ def _joined(tables: Sequence[pa.Table], timeline_id: str) -> pa.Table:
         ValueError: If a column holds values of two types no type reads both
             in: a timeline's column has one type.
     """
-    columns = _Columns()
-    for table in tables:
-        conflict = columns.conflict(table)
-        if conflict is not None:
-            raise ValueError(
-                f"the column {conflict!r} of timeline {quote_id(timeline_id)} would "
-                f"hold values of type {columns.fields[conflict].type} and of type "
-                f"{table.schema.field(conflict).type}"
-            )
-        columns.take(table)
-    return columns.joined(tables)
+
+    def refusal(column: str, held: pa.DataType, joining: pa.DataType) -> str:
+        return (
+            f"the column {column!r} of timeline {quote_id(timeline_id)} would "
+            f"hold values of type {held} and of type {joining}"
+        )
+
+    return joined_tables(tables, refusal)
 
 
 def _own(table: pa.Table) -> pa.Table:
@@ -248,8 +116,9 @@ class TreeStore:
     (a timeline's ID).
 
     Each timeline's rows are held as they were added, so a timeline's read
-    and every change of its rows touch its rows only; the tree's table
-    (:attr:`table`) is their concatenation, which copies no row.
+    and every change of its rows touch its rows only; the tree's tables
+    (:attr:`tables`) are their concatenation, which shares every column
+    whose type the timelines agree on.
 
     Args:
         timeline_id: The ID of the root timeline.
@@ -296,15 +165,23 @@ class TreeStore:
     def tables(self) -> tuple[pa.Table, ...]:
         """The tree's rows in tables, each row keyed by its timeline.
 
-        The timelines of a tree share their columns: a column one lacks is
-        null there, and a struct column takes the members of every timeline
-        that holds it. A timeline that holds a column in a type no other
-        type of it reads (an ``int`` column beside a ``string`` one) is put
-        in the first table it joins without a conflict, else in a table of
-        its own. Nothing is converted: a cell is never rewritten.
+        The timelines of a tree share their columns, joined by the one rule
+        of :meth:`EventData.concat`
+        (:func:`~timetoalign.storage.events.unified_type`): a column one
+        lacks is null there, a dictionary column beside a plain one reads
+        as its values, and a struct column takes the members of every
+        timeline that holds it. A timeline that holds a column in a type no
+        other type of it reads (an ``int`` column beside a ``string`` one)
+        is put in the first table it joins without a conflict, else in a
+        table of its own; every row of the tree is in exactly one of the
+        tables. No value is converted. A column whose type the timelines
+        agree on shares the timelines' buffers; one they type differently
+        is read anew in the unified type (a dictionary decoded, a struct
+        given the members it lacks as nulls), and every table allocates
+        its own ``timeline_id`` column.
         """
         if self._tables is None:
-            groups: list[tuple[_Columns, list[pa.Table]]] = []
+            groups: list[tuple[JoinedColumns, list[pa.Table]]] = []
             for timeline_id, part in self._parts.items():
                 table = keyed_by_timeline(part.table, timeline_id)
                 for columns, members in groups:
@@ -313,51 +190,14 @@ class TreeStore:
                         members.append(table)
                         break
                 else:
-                    columns = _Columns()
+                    columns = JoinedColumns()
                     columns.take(table)
                     groups.append((columns, [table]))
             self._tables = [columns.joined(members) for columns, members in groups]
         return tuple(self._tables)
 
-    @property
-    def table(self) -> pa.Table:
-        """The tree's table: the root's rows, then each timeline's, in order.
-
-        Where a timeline's columns conflict with the root's
-        (:attr:`tables`), its rows are in a table of their own and not in
-        this one.
-        """
-        return self.tables[0]
-
-    @property
-    def data(self) -> EventData:
-        """The tree's table (:attr:`table`) as an EventData spanning its timelines.
-
-        Each row is read in its timeline's unit and number type
-        (:meth:`EventData.to_number_type` casts it,
-        ``filter(include_number_types=)`` selects by it); its ``unit`` and
-        ``number_type`` are the root's.
-        """
-        table = self.table
-        unit, number_type = self._axes[self.timeline_ids[0]]
-        spanning = EventData._of_reduced(table, unit, number_type)
-        named = set(_timelines_named(table))
-        spanning._axes = {
-            timeline_id: axis
-            for timeline_id, axis in self._axes.items()
-            if timeline_id in named
-        }
-        return spanning
-
-    def row_types(self) -> pa.Int8Array:
-        """The number-type code of every row of :attr:`table`, from its timeline.
-
-        The row-type mask (:func:`~timetoalign.storage.events.row_type_codes`).
-        """
-        return row_type_codes(self.table, self._axes)
-
     def events_of(self, timeline_id: str) -> EventData:
-        """The rows of *timeline_id*, as the tree's table holds them.
+        """The rows of *timeline_id*, as the tree holds them.
 
         Its columns are the timeline's own, their field metadata declaring
         the timeline's unit and number type, in an EventData of the
@@ -582,12 +422,22 @@ class TreeStore:
         self._tables = None
         other._release()
 
-    def rename(self, old_id: str, new_id: str) -> None:
-        """Give the timeline *old_id* the ID *new_id*; no row is rewritten.
+    def refuse_rename(
+        self, old_id: str, new_id: str, *, parent: str | None = None
+    ) -> None:
+        """Refuse giving the timeline *old_id* the ID *new_id*, changing nothing.
+
+        Args:
+            old_id: The timeline's ID.
+            new_id: The ID it would take.
+            parent: The timeline whose ``Segment`` row records *old_id* and
+                takes the new ID with it, if *old_id* has a parent.
 
         Raises:
             KeyError: If the store holds no timeline *old_id*.
-            ValueError: If it holds a timeline *new_id*.
+            ValueError: If it holds a timeline *new_id*, or, the timeline
+                having a parent, an event *new_id* (its ``Segment`` row
+                would hold that ID a second time).
         """
         if old_id == new_id:
             return
@@ -600,6 +450,19 @@ class TreeStore:
             raise ValueError(
                 f"timeline {quote_id(new_id)} is held in this tree already"
             )
+        if parent is not None:
+            self.refuse_held_ids(parent, pa.array([new_id], pa.string()))
+
+    def rename(self, old_id: str, new_id: str) -> None:
+        """Give the timeline *old_id* the ID *new_id*; no row is rewritten.
+
+        Raises:
+            KeyError: If the store holds no timeline *old_id*.
+            ValueError: If it holds a timeline *new_id*.
+        """
+        self.refuse_rename(old_id, new_id)
+        if old_id == new_id:
+            return
 
         def renamed(mapping: dict[str, Any]) -> dict[str, Any]:
             """*mapping* with the key *old_id* replaced, in its place."""
@@ -686,17 +549,6 @@ class TreeStore:
         self._copies = {}
 
     # endregion
-
-
-def _timelines_named(table: pa.Table) -> list[str]:
-    """The timelines the rows of *table* name, in the order of its chunks."""
-    names: list[str] = []
-    for chunk in table.column(TIMELINE_ID).chunks:
-        keys = chunk.dictionary if isinstance(chunk, pa.DictionaryArray) else chunk
-        for name in pc.unique(keys).to_pylist():
-            if name is not None and name not in names:
-                names.append(str(name))
-    return names
 
 
 def _spanning_cast(data: EventData, axis: Axis) -> EventData:

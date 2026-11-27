@@ -1148,6 +1148,12 @@ class Timeline(
         """
         validate_id(new_id)
         old_id = self._id
+        # Refused before the parent's children or rows change.
+        self._tree_store.refuse_rename(
+            old_id,
+            new_id,
+            parent=self._parent._id if self._parent is not None else None,
+        )
         if self._parent is not None and new_id != old_id:
             self._parent._rename_child(old_id, new_id)
         self._tree_store.rename(old_id, new_id)

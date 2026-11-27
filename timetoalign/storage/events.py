@@ -67,6 +67,7 @@ from timetoalign.core.fields import (
     SemanticField,
     _filled,
     _member_fields,
+    _null_column,
     _struct_array,
     _struct_array_from,
     _struct_members,
@@ -937,10 +938,204 @@ def _rekeyed(table: pa.Table, moved: Mapping[str, str]) -> pa.Table:
     """*table* with the rows keyed by each key of *moved* keyed by its value."""
     index = table.schema.get_field_index(TIMELINE_ID)
     names = pc.cast(table.column(index), pa.string())
-    for old, new in moved.items():
-        names = pc.if_else(pc.equal(names, pa.scalar(old)), pa.scalar(new), names)
+    positions = pc.index_in(names, value_set=pa.array(list(moved), pa.string()))
+    renamed = pc.take(pa.array(list(moved.values()), pa.string()), positions)
+    names = pc.if_else(pc.is_null(positions), names, renamed)
     encoded = pc.dictionary_encode(names)
     return table.set_column(index, pa.field(TIMELINE_ID, encoded.type), encoded)
+
+
+# region Joining columns
+
+
+def unified_type(held: pa.DataType, joining: pa.DataType) -> pa.DataType | None:
+    """The type in which columns of *held* and of *joining* read every cell.
+
+    The one rule by which tables join their columns (:meth:`EventData.concat`,
+    the tables of a timeline tree): equal types are that type; a column of
+    nulls takes the other's type; a dictionary column reads as its values;
+    a struct takes the members of both, each member unified likewise (a
+    member one side lacks is null there, which changes no cell). Any other
+    pair (an ``int`` column beside a ``string`` one) has none: None. The
+    number type is no part of a column's type, so it never stands in the
+    way of a join.
+    """
+    if held == joining:
+        return held
+    if pa.types.is_null(held):
+        return joining
+    if pa.types.is_null(joining):
+        return held
+    if pa.types.is_dictionary(held):
+        return unified_type(held.value_type, joining)
+    if pa.types.is_dictionary(joining):
+        return unified_type(held, joining.value_type)
+    if pa.types.is_struct(held) and pa.types.is_struct(joining):
+        names = [member.name for member in held]
+        members: list[pa.Field] = []
+        for member in held:
+            index = joining.get_field_index(member.name)
+            if index < 0:
+                members.append(member.with_nullable(True))
+                continue
+            unified = unified_type(member.type, joining.field(index).type)
+            if unified is None:
+                return None
+            members.append(member.with_type(unified))
+        members.extend(
+            member.with_nullable(True) for member in joining if member.name not in names
+        )
+        return pa.struct(members)
+    return None
+
+
+def _read_as(array: pa.Array, type_: pa.DataType) -> pa.Array:
+    """*array* read in *type_*, a type :func:`unified_type` gave for it."""
+    if array.type == type_:
+        return array
+    if array.null_count == len(array):
+        return _null_column(len(array), type_)
+    if isinstance(array, pa.DictionaryArray):
+        return _read_as(array.dictionary_decode(), type_)
+    if pa.types.is_struct(type_):
+        children = [
+            (
+                _read_as(pc.struct_field(array, [member.name]), member.type)
+                if array.type.get_field_index(member.name) >= 0
+                else _null_column(len(array), member.type)
+            )
+            for member in type_
+        ]
+        return pa.StructArray.from_arrays(
+            children,
+            fields=list(type_),
+            mask=array.is_null() if array.null_count else None,
+        )
+    return pc.cast(array, type_)
+
+
+class JoinedColumns:
+    """The columns of tables joining one table: names, fields, unified types.
+
+    A column of nulls joins any other (it takes the other's type, which
+    changes no cell); columns holding values join where
+    :func:`unified_type` gives them a type. The first table's field, with
+    its metadata, names each column; a column some table lacks is null
+    there.
+    """
+
+    def __init__(self) -> None:
+        self.fields: dict[str, pa.Field] = {}
+        self.valued: set[str] = set()
+        self.metadata: dict[bytes | str, bytes | str] | None = None
+
+    def conflict(self, table: pa.Table) -> str | None:
+        """The first column of *table* whose values no unified type reads."""
+        for field in table.schema:
+            held = self.fields.get(field.name)
+            if held is None or held.name not in self.valued:
+                continue
+            column = table.column(field.name)
+            if column.null_count == len(column):
+                continue
+            if unified_type(held.type, field.type) is None:
+                return field.name
+        return None
+
+    def take(self, table: pa.Table) -> None:
+        """Hold the columns of *table*, which joins without a conflict."""
+        held = table.schema.metadata
+        if self.metadata is None and held is not None:
+            self.metadata = {key: value for key, value in held.items()}
+        for field in table.schema:
+            column = table.column(field.name)
+            valued = column.null_count < len(column)
+            held = self.fields.get(field.name)
+            if held is None:
+                self.fields[field.name] = field
+            elif valued:
+                if held.name in self.valued:
+                    unified = unified_type(held.type, field.type)
+                    assert unified is not None
+                else:
+                    unified = field.type
+                self.fields[field.name] = held.with_type(unified)
+            if valued:
+                self.valued.add(field.name)
+
+    def joined(self, tables: Sequence[pa.Table]) -> pa.Table:
+        """*tables*, all taken, as one table: a column one lacks null there.
+
+        A column read in its own type shares its buffers; only a column
+        whose type the tables disagree on is read anew.
+        """
+        fields = [
+            (
+                field
+                if all(field.name in table.column_names for table in tables)
+                else field.with_nullable(True)
+            )
+            for field in self.fields.values()
+        ]
+        schema = pa.schema(fields, metadata=self.metadata)
+        conformed = []
+        for table in tables:
+            columns = []
+            for field in schema:
+                if field.name not in table.column_names:
+                    columns.append(_null_column(table.num_rows, field.type))
+                    continue
+                column = table.column(field.name)
+                if column.type != field.type:
+                    column = pa.chunked_array(
+                        [_read_as(chunk, field.type) for chunk in column.chunks],
+                        type=field.type,
+                    )
+                columns.append(column)
+            conformed.append(pa.Table.from_arrays(columns, schema=schema))
+        return pa.concat_tables(conformed)
+
+
+def joined_tables(
+    tables: Sequence[pa.Table],
+    refusal: Callable[[str, pa.DataType, pa.DataType], str],
+) -> pa.Table:
+    """*tables* as one table, their columns joined by :func:`unified_type`.
+
+    Args:
+        tables: The tables, in order.
+        refusal: The message refusing a column, given its name, the type it
+            holds and the type joining it.
+
+    Raises:
+        ValueError: If a column holds values of two types no type reads both
+            in (:func:`unified_type`), with *refusal*'s message.
+    """
+    columns = JoinedColumns()
+    for table in tables:
+        conflict = columns.conflict(table)
+        if conflict is not None:
+            raise ValueError(
+                refusal(
+                    conflict,
+                    columns.fields[conflict].type,
+                    table.schema.field(conflict).type,
+                )
+            )
+        columns.take(table)
+    return columns.joined(tables)
+
+
+def _column_refusal(column: str, held: pa.DataType, joining: pa.DataType) -> str:
+    """The refusal of tables joining whose *column* no one type reads."""
+    return (
+        f"the column {column!r} holds values of type {held} in one table and of "
+        f"type {joining} in another, which no one type reads; one table holds "
+        "one type per column"
+    )
+
+
+# endregion
 
 
 def declaring_axis(
@@ -2454,16 +2649,28 @@ class EventData(SemanticFieldAccessMixin):
         selects by it). Its ``unit`` and ``number_type`` are this table's.
         This table and *others* are left as they are.
 
+        Columns join by one rule, the rule a timeline tree joins its
+        timelines' columns by (:func:`unified_type`): a field one table
+        lacks is null there, a column of nulls takes the other's type, a
+        dictionary column beside a plain one reads as its values, a struct
+        takes the members of both. A column holding values of two types no
+        type reads both in (an ``int`` column beside a ``string`` one) is
+        refused: one table holds one type per column (a timeline tree keeps
+        such timelines in tables of their own, ``TreeStore.tables``).
+
         Args:
-            *others: Other EventData (extra fields are allowed and merged by
-                schema promotion; a field one table lacks is null there).
+            *others: Other EventData.
 
         Returns:
             A new EventData containing all events, this table's first.
 
-        A key meeting two axes (a timeline's rows joined with a cast of
-        them, which lies on its timeline no more) keys the rows that come
-        later by their axis, so no join is refused for the number type.
+        Raises:
+            ValueError: If a column holds values of two types no type reads
+                both in, naming the column and the types.
+
+        A key meeting two axes (timelines of two trees sharing one ID, on
+        different axes) keys the rows that come later by their axis, so no
+        join is refused for the number type.
         A reader of a column's field (``get_field("start")``,
         ``column_values``) reads it in the type the column declares, this
         table's: on a table spanning number types, cast first
@@ -2485,10 +2692,9 @@ class EventData(SemanticFieldAccessMixin):
         """
         parts = (self, *others)
         if all(part._axes is None and part._axis == self._axis for part in parts):
-            table = pa.concat_tables(
-                [part._table for part in parts], promote_options="default"
+            joined = self._derived(
+                joined_tables([part._table for part in parts], _column_refusal)
             )
-            joined = self._derived(table)
             if any(part._timeline_id != self._timeline_id for part in others):
                 joined._timeline_id = None
             return joined
@@ -2509,9 +2715,12 @@ class EventData(SemanticFieldAccessMixin):
                     moved.get(key, key): axis for key, axis in part_axes.items()
                 }
             for key, axis in part_axes.items():
-                axes.setdefault(key, axis)
+                held = axes.setdefault(key, axis)
+                # An axis key names its own axis (to_number_type keys by it),
+                # so rows re-keyed by it never meet another axis there.
+                assert held == axis, (key, held, axis)
             tables.append(table)
-        joined = self._derived(pa.concat_tables(tables, promote_options="default"))
+        joined = self._derived(joined_tables(tables, _column_refusal))
         joined._axes = axes
         joined._timeline_id = None
         return joined
@@ -2535,8 +2744,12 @@ class EventData(SemanticFieldAccessMixin):
         nearest double; → ``int`` the nearest integer, ties to even. On an
         ``int`` or ``fraction`` target a cast row holding ``start`` and
         ``duration`` ends at their exact sum. The columns' fields declare
-        *number_type*, and so does the result, and on a table spanning
-        timelines every timeline of its map.
+        *number_type*, and so does the result. On a table spanning
+        timelines every entry of its map is on *number_type*: rows of
+        another number type lie on their timeline no more and are keyed
+        by their new axis (:func:`unbound_axis_key`, keys landing on one
+        axis merged), rows already of it keep their key, so a cast joined
+        again with the table it came from keeps every row's type.
 
         Args:
             number_type: The number type to write in.
@@ -2596,16 +2809,30 @@ class EventData(SemanticFieldAccessMixin):
                 )
                 if source is not target:
                     row_types[name] = source
-        cast = self._derived(_cast_columns(self._table, row_types, target))
+        table = _cast_columns(self._table, row_types, target)
+        axes: dict[str, Axis] | None = None
+        if self._axes is not None:
+            # Rows written in another number type lie on their timeline (or
+            # their old axis) no more: they are keyed by their new axis, and
+            # keys landing on one axis merge.
+            moved = {
+                key: unbound_axis_key(unit, target)
+                for key, (unit, source) in self._axes.items()
+                if source is not target
+            }
+            if moved:
+                table = _rekeyed(table, moved)
+            axes = {}
+            for key, (unit, _) in self._axes.items():
+                axes.setdefault(moved.get(key, key), (unit, target))
+        cast = self._derived(table)
         if row_types:
             # Rows written in another number type lie on their timeline no more.
             cast._timeline_id = None
-        if columns is None or self._axes is not None:
+        if columns is None or axes is not None:
             cast._number_type = target
-            if self._axes is not None:
-                cast._axes = {
-                    key: (unit, target) for key, (unit, _) in self._axes.items()
-                }
+            if axes is not None:
+                cast._axes = axes
         return cast
 
     def _onto(self, unit: TimeUnit, number_type: NumberType) -> Self:

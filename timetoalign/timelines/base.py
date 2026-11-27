@@ -1965,14 +1965,17 @@ class Timeline(
             event_rows.append(event)
         return event_rows
 
-    def _event_rows_from_json(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _event_rows_from_json(
+        self, rows: list[dict[str, Any]], children: Collection[str] = ()
+    ) -> list[dict[str, Any]]:
         """The event rows of a manifest with their numbers read.
 
         The inverse of :meth:`_event_rows_to_json`: each coordinate is read
         by the timeline's number type (``number_from_json``), and a Box's
         shape from its dict form (:meth:`~timetoalign.core.Shape.from_dict`),
-        the one form a manifest writes. A Segment row is left out: the
-        children recreate it.
+        the one form a manifest writes. A child's Segment row (its ``id``
+        one of *children*, the IDs of the timeline's children) is left out:
+        the children recreate it. Every other Segment row is an event.
 
         Raises:
             ValueError: If a Box's shape is not the dict form of the
@@ -1981,7 +1984,10 @@ class Timeline(
         """
         events = []
         for row in rows:
-            if row.get("event_type") == SEGMENT_EVENT_TYPE:
+            if (
+                row.get("event_type") == SEGMENT_EVENT_TYPE
+                and row.get("id") in children
+            ):
                 continue
             event = dict(row)
             for coord_col in ("instant", "start", "end", "duration"):
@@ -2205,8 +2211,10 @@ class Timeline(
 
         # Event numbers arrive as JSON numbers, a Box's shape as its dict
         # form; every Box is checked as add_events checks it.
-        timeline._add_stated_events(
-            timeline._event_rows_from_json(data.get("events", []))
+        stated = timeline._add_stated_events(
+            timeline._event_rows_from_json(
+                data.get("events", []), children={child.id for _, child in placed}
+            )
         )
         # Validation is skipped: references may legitimately come without events.
         references = data.get("external_references")
@@ -2250,6 +2258,10 @@ class Timeline(
 
         timeline._finalize_from_dict(length)
         timeline._locked = locked
+        if stated is not None:
+            # The rows stated are held within the length as add_events
+            # holds rows: an unlocked timeline grows, a locked one refuses.
+            timeline._fit_length(stated)
         if is_root and "offset" in data:
             timeline._root_offset = axis_value_from_json(
                 data["offset"],

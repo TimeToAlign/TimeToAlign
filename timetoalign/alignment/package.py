@@ -9,6 +9,7 @@ sharing their tables, which ``package.yaml`` lists.
 
 from __future__ import annotations
 
+import copy
 import os
 import posixpath
 from collections.abc import Iterator, Mapping, Sequence
@@ -34,7 +35,7 @@ from timetoshare.tables import (
 
 from timetoalign.alignment.claim_store import _refuse_shared_claim_ids
 from timetoalign.alignment.claims import MatchClaimField
-from timetoalign.core.fields import _filled
+from timetoalign.core.fields import _filled, _null_column
 from timetoalign.core.ids import (
     _refuse_held_ids,
     content_minter,
@@ -44,17 +45,19 @@ from timetoalign.core.ids import (
 from timetoalign.timelines import TimelineGroup
 from timetoalign.timelines.groups import _held_ids
 from timetoalign.timelines.manifest import (
+    _EVENT_ROW_COLUMNS,
     _NEW_FILE,
     PARQUET_MEDIA_TYPE,
     Integrity,
     Manifest,
     Resource,
+    _joined_schema,
+    _projection_tables,
     _timeline_ids,
     _validated_by_the_file,
     _write_package_file,
     event_file_name,
     read_event_table,
-    read_projection_table,
     resource_path,
     write_event_table,
 )
@@ -80,7 +83,8 @@ def _merged_resources(
     source order, names the merged table, and every later entry of that
     type, of the same source or of a later one, is not carried.
     :meth:`AlignmentBundle.to_file` writes the merged table at that entry's
-    URL under its ID.
+    URL under its ID. A table a source carries as it stands (it holds no
+    events) is carried like any other resource.
 
     Raises:
         ValueError: If the id of a resource carried is held in the merge
@@ -92,7 +96,7 @@ def _merged_resources(
     table_types: set[str] = set()
     for bundle in bundles:
         for resource in bundle.resources:
-            if resource.is_table:
+            if resource.is_table and resource.id not in bundle._carried_tables:
                 if resource.type in table_types:
                     continue
                 table_types.add(resource.type)
@@ -162,6 +166,9 @@ def _from_bundles(
     _refuse_shared_claim_ids(bundles)
     merged = cls(id=id, name=name, seed=seed)
     merged.resources = _merged_resources(bundles, merged)
+    merged._carried_tables = frozenset().union(
+        *(bundle._carried_tables for bundle in bundles)
+    )
     for bundle in bundles:
         for group in bundle.groups.values():
             rebuilt = TimelineGroup(
@@ -189,9 +196,23 @@ _FILTERED: ContextVar[bool] = ContextVar("_FILTERED", default=False)
 table is then read filtered, single files as folders are."""
 
 
-def _resource_table(resource: Resource, directory: Path) -> pa.Table | None:
-    """The rows a table resource names for its manifest, or None where
-    nothing lies at its URL.
+def _holds_rows(resource: Resource, path: Path) -> bool:
+    """Whether the table of *resource* lying at *path* holds rows a bundle
+    reads: MatchClaims or Projections, the format's table types, whatever
+    their files hold (their checks refuse a malformed one), or events, every
+    file holding the columns every event table holds (``id``,
+    ``timeline_id``, ``unit``, ``number_type``, ``start``). A table of other
+    rows is carried as it stands."""
+    if resource.type in ("MatchClaim", "Projection"):
+        return True
+    files = table_files(path) if resource.names_folder else [path]
+    return all(
+        set(_EVENT_ROW_COLUMNS) <= set(pq.read_schema(file).names) for file in files
+    )
+
+
+def _resource_table(resource: Resource, path: Path) -> pa.Table:
+    """The rows the table resource lying at *path* names for its manifest.
 
     A file of a lone manifest is read whole: every row of it is the
     manifest's, and a row on a timeline the manifest lacks is refused by the
@@ -205,9 +226,6 @@ def _resource_table(resource: Resource, directory: Path) -> pa.Table | None:
         timetoshare.tables.TableError: If the files state another type than
             the resource's, or cannot be read as one table.
     """
-    path = resource.path_in(directory)
-    if not (path.is_dir() if resource.names_folder else path.is_file()):
-        return None
     if resource.names_folder or _FILTERED.get():
         return read_table(path, timelines=resource.timelines, type=resource.type)
     return pq.read_table(path)
@@ -217,20 +235,28 @@ def _read_tables(
     self: AlignmentBundle, directory: Path, data: Mapping[str, Any]
 ) -> None:
     """Implement :meth:`AlignmentBundle._read_tables`."""
-    tables = [
-        (resource.type, table)
-        for resource in self.resources
-        if resource.is_table
-        and (table := _resource_table(resource, directory)) is not None
-    ]
+    tables: list[tuple[str, pa.Table]] = []
+    carried: set[str] = set()
+    for resource in self.resources:
+        if not resource.is_table:
+            continue
+        path = resource.path_in(directory)
+        if not (path.is_dir() if resource.names_folder else path.is_file()):
+            continue
+        if not _holds_rows(resource, path):
+            carried.add(resource.id)
+            continue
+        tables.append((resource.type, _resource_table(resource, path)))
+    self._carried_tables = frozenset(carried)
     # Every resource of a type is read, in the order the manifest lists
     # them: the Projections first, then every other event type, then the
-    # MatchClaims, whose side B may name a Projection.
+    # MatchClaims, whose side B may name a Projection. Each timeline's rows
+    # are added as a table.
     for table_type, table in tables:
-        if table_type != "Projection":
-            continue
-        for timeline_id, projections in read_projection_table(table, data).items():
-            self._require_known_timeline(timeline_id).add_projections(projections)
+        if table_type == "Projection":
+            for timeline_id, rows in _projection_tables(table, data).items():
+                timeline = self._require_known_timeline(timeline_id)
+                timeline._add_event_table(rows, table_type)
     for table_type, table in tables:
         if table_type in ("Projection", "MatchClaim"):
             continue
@@ -245,8 +271,17 @@ def _write_tables(
     self: AlignmentBundle, directory: Path, *, events: bool = False
 ) -> bool:
     """Implement :meth:`AlignmentBundle._write_tables`."""
-    for resource in self.resources:
-        if resource.is_table and resource.names_folder:
+    claims = self.match_claim_table
+    event_tables = self._event_tables(events=events)
+    kinds = {*event_tables, *(("MatchClaim",) if len(claims) else ())}
+    # A table carried as it stands (no events, no MatchClaims) names no table.
+    tabled = [
+        resource
+        for resource in self.resources
+        if resource.is_table and resource.id not in self._carried_tables
+    ]
+    for resource in tabled:
+        if resource.names_folder and resource.type in kinds:
             raise NotImplementedError(
                 f"The resource {quote_id(resource.id)} names the folder "
                 f"{resource.url!r} for its {resource.type} rows: "
@@ -255,16 +290,13 @@ def _write_tables(
                 f"other manifests may share; write the bundle into its package "
                 f"with Package.write_bundle."
             )
-    claims = self.match_claim_table
-    event_tables = self._event_tables(events=events)
-    if len(claims) == 0 and not event_tables:
+    if not kinds:
         return False
     # The first entry of each table type names its table; a later entry of
     # a type written lists timelines whose rows that table now holds.
     named: dict[str, Resource] = {}
-    for resource in self.resources:
-        if resource.is_table:
-            named.setdefault(resource.type, resource)
+    for resource in tabled:
+        named.setdefault(resource.type, resource)
     taken = {
         **self._scope_ids(),
         **{r.id: f"resource {quote_id(r.id)}" for r in self.resources},
@@ -301,14 +333,13 @@ def _write_tables(
                 lambda path, table=table: write_event_table(table, path),
             )
         )
-    written_types = {table_type for table_type, *_ in tables}
-    # An entry of a type not written stays where its file lies.
-    kept = {
+    # An entry of a type not written stays where its file lies; a folder
+    # of such a type, and a table carried, stay as they are.
+    kept = {id(r) for r in self.resources if r.id in self._carried_tables} | {
         id(r)
-        for r in self.resources
-        if r.is_table
-        and r.type not in written_types
-        and resource_path(directory, r.url).is_file()
+        for r in tabled
+        if r.type not in kinds
+        and (r.names_folder or resource_path(directory, r.url).is_file())
     }
     # Every entry's id, refused where the manifest holds it, before the
     # first file is written. A held entry's id is reused, and its
@@ -476,10 +507,53 @@ class _Written:
     removed: frozenset[str]
 
 
+def _collision(
+    what: str, held_id: str, timeline: str, url: str, holder: str, place: str
+) -> ValueError:
+    """The refusal of the *what* *held_id* of *timeline* of the manifest at
+    *url*, whose ID the *what* of timeline *holder* in *place* holds."""
+    return ValueError(
+        f"The {what} {quote_id(held_id)} of timeline {quote_id(timeline)} of the "
+        f"manifest {url!r} cannot join the package: its ID is held by the {what} "
+        f"of timeline {quote_id(holder)} in {place}; nothing is renamed."
+    )
+
+
+def _id_columns(written: _Written, claims: bool) -> tuple[pa.Array, pa.Array]:
+    """The IDs of *written*'s MatchClaims (with *claims*) or of its events,
+    each with the timeline it lies on (a MatchClaim's ``timeline_a_id``)."""
+    column = "timeline_a_id" if claims else "timeline_id"
+    tables = [
+        table.select(["id", column])
+        for kind, table in written.tables.items()
+        if (kind == "MatchClaim") == claims
+    ]
+    if not tables:
+        return pa.array([], pa.string()), pa.array([], pa.string())
+    joined = pa.concat_tables(tables)
+    return (
+        joined.column("id").combine_chunks(),
+        joined.column(column).combine_chunks(),
+    )
+
+
+def _id_pairs(written: _Written, claims: bool) -> list[tuple[str, str]]:
+    """Each ID of *written*'s MatchClaims (with *claims*) or of its events
+    with the timeline it lies on, in table order (no ID is null)."""
+    ids, timelines = _id_columns(written, claims)
+    return [
+        (held_id, timeline_id)
+        for held_id, timeline_id in zip(
+            ids.to_pylist(), timelines.to_pylist(), strict=True
+        )
+        if isinstance(held_id, str) and isinstance(timeline_id, str)
+    ]
+
+
 @dataclass(frozen=True)
 class _Ids:
-    """The IDs a package holds besides a bundle being written: its rows'
-    (``id`` and the timeline each lies on) and each holder's description."""
+    """The IDs a package holds on disk besides a bundle being written: its
+    rows' (``id`` and the timeline each lies on) and each holder's place."""
 
     ids: pa.Array
     timelines: pa.Array
@@ -517,25 +591,162 @@ class _Ids:
             if pc.any(twice).as_py():
                 at = pc.index(twice, True).as_py()
                 first, again = sorted((int(order[at]), int(order[at + 1])))
-                raise ValueError(
-                    f"The {what} {quote_id(ids[again].as_py())} of timeline "
-                    f"{quote_id(timelines[again].as_py())} cannot join the "
-                    f"package: its ID is held by the {what} of timeline "
-                    f"{quote_id(timelines[first].as_py())} of the same manifest "
-                    f"{url!r}; nothing is renamed."
+                raise _collision(
+                    what,
+                    ids[again].as_py(),
+                    timelines[again].as_py(),
+                    url,
+                    timelines[first].as_py(),
+                    f"the same manifest {url!r}",
                 )
+        if not len(self.ids):
+            return
         held = pc.is_in(ids, value_set=self.ids)
         if not pc.any(held).as_py():
             return
         at = pc.index(held, True).as_py()
         found = pc.index(self.ids, ids[at]).as_py()
-        raise ValueError(
-            f"The {what} {quote_id(ids[at].as_py())} of timeline "
-            f"{quote_id(timelines[at].as_py())} of the manifest {url!r} cannot "
-            f"join the package: its ID is held by the {what} of timeline "
-            f"{quote_id(self.timelines[found].as_py())} in "
-            f"{self.places[self.place[found].as_py()]}; nothing is renamed."
+        raise _collision(
+            what,
+            ids[at].as_py(),
+            timelines[at].as_py(),
+            url,
+            self.timelines[found].as_py(),
+            self.places[self.place[found].as_py()],
         )
+
+
+class _Staged:
+    """The IDs the bundles a package stages hold, kept as each is staged:
+    staging a bundle checks its own IDs alone, against these, never the
+    staged bundles' tables again.
+
+    Attributes:
+        owners: The manifest URL owning each timeline ID staged.
+        ids: Of the events (``False``) and of the MatchClaims (``True``),
+            the timeline and the manifest URL of each ID staged.
+    """
+
+    def __init__(self) -> None:
+        self.owners: dict[str, str] = {}
+        self.ids: dict[bool, dict[str, tuple[str, str]]] = {False: {}, True: {}}
+        self._staged: dict[str, _Written] = {}
+
+    def refuse(self, written: _Written) -> None:
+        """Refuse *written* where a timeline ID or an ID of its rows is held
+        by a bundle staged at another URL.
+
+        Raises:
+            ValueError: Naming the first such ID and both holders.
+        """
+        _refuse_held_ids(
+            [
+                (
+                    timeline_id,
+                    f"timeline {quote_id(timeline_id)} of the manifest {written.url!r}",
+                )
+                for timeline_id in sorted(written.timelines)
+            ],
+            {
+                timeline_id: f"a timeline of the manifest {self.owners[timeline_id]!r}"
+                for timeline_id in written.timelines
+                if self.owners.get(timeline_id, written.url) != written.url
+            },
+            scope="the package",
+        )
+        for claims in (False, True):
+            held = self.ids[claims]
+            pairs = _id_pairs(written, claims)
+            hits = held.keys() & {held_id for held_id, _ in pairs}
+            if not hits:
+                continue
+            for held_id, timeline_id in pairs:
+                if held_id in hits and held[held_id][1] != written.url:
+                    holder, url = held[held_id]
+                    raise _collision(
+                        "MatchClaim" if claims else "event",
+                        held_id,
+                        timeline_id,
+                        written.url,
+                        holder,
+                        f"the manifest {url!r}",
+                    )
+
+    def add(self, written: _Written) -> _Written | None:
+        """Stage *written*, in place of the bundle staged at its URL, which is
+        returned (None where none was)."""
+        previous = self.remove(written.url)
+        self._staged[written.url] = written
+        self.owners.update(dict.fromkeys(written.timelines, written.url))
+        for claims in (False, True):
+            self.ids[claims].update(
+                (held_id, (timeline_id, written.url))
+                for held_id, timeline_id in _id_pairs(written, claims)
+            )
+        return previous
+
+    def remove(self, url: str) -> _Written | None:
+        """Unstage the bundle staged at *url*, returned (None where none was)."""
+        previous = self._staged.pop(url, None)
+        if previous is None:
+            return None
+        for timeline_id in previous.timelines:
+            if self.owners.get(timeline_id) == url:
+                del self.owners[timeline_id]
+        for claims in (False, True):
+            held = self.ids[claims]
+            for held_id, _ in _id_pairs(previous, claims):
+                if held.get(held_id, ("", ""))[1] == url:
+                    del held[held_id]
+        return previous
+
+
+class _Undo:
+    """What writing a package changes on disk, restored where the write fails.
+
+    Every file is recorded before it is first changed: the bytes of one
+    lying there, else that it is new; every folder created is recorded.
+    """
+
+    def __init__(self) -> None:
+        self._kept: dict[Path, bytes] = {}
+        self._new: list[Path] = []
+        self._folders: list[Path] = []
+
+    def keep(self, path: Path) -> None:
+        """Record *path* before it is written, replaced or deleted."""
+        if path in self._kept or path in self._new:
+            return
+        if path.exists():
+            self._kept[path] = path.read_bytes()
+        else:
+            self._new.append(path)
+
+    def folder(self, path: Path) -> None:
+        """Create the folder *path*, recording every folder created."""
+        missing: list[Path] = []
+        at = path
+        while not at.exists():
+            missing.append(at)
+            at = at.parent
+        path.mkdir(parents=True, exist_ok=True)
+        self._folders.extend(reversed(missing))
+
+    def restore(self) -> None:
+        """Restore every file recorded: a new one removed, another written
+        again with its bytes; then every folder created and left empty
+        removed."""
+        for path in reversed(self._new):
+            path.unlink(missing_ok=True)
+        for path, data in self._kept.items():
+            temporary = path.with_name(f".{path.name}.restoring")
+            temporary.write_bytes(data)
+            os.replace(temporary, path)
+        for folder in reversed(self._folders):
+            try:
+                folder.rmdir()
+            except OSError:
+                pass
 
 
 class Package:
@@ -582,8 +793,10 @@ class Package:
     """
 
     def __init__(
-        self, id: str | None = None, name: str | None = None
-    ) -> None:  # noqa: A002
+        self,
+        id: str | None = None,  # noqa: A002
+        name: str | None = None,
+    ) -> None:
         document: dict[str, Any] = {
             "timetoshare": timetoshare.SCHEMA_VERSION,
             "manifests": [],
@@ -597,6 +810,7 @@ class Package:
         self._document = document
         self._path: Path | None = None
         self._pending: dict[str, _Written] = {}
+        self._staged = _Staged()
         self._on_disk: dict[str, frozenset[str]] = {}
 
     @classmethod
@@ -619,6 +833,7 @@ class Package:
         package._document = data
         package._path = path
         package._pending = {}
+        package._staged = _Staged()
         package._on_disk = {}
         return package
 
@@ -705,27 +920,49 @@ class Package:
         a resource that is no table (a recording) is kept. Its rows of every
         event type (:func:`~timetoalign.timelines.manifest.event_table`,
         Projections and Boxes among them) and its MatchClaims (each row with
-        its own provenance) go into one new file per type,
-        ``tables/<Type>/part_<13 base-36 characters>.parquet``, named from
-        its content through the library's ID minter, so that a rebuild names
-        its files again. A manifest the package holds at *url* already is
-        replaced: the rows of its timelines and of the bundle's leave the
-        files holding them, each such file rewritten whole (one left
-        without a row removed), the other manifests' rows kept, before the
-        new files are written; its MatchClaims must be kept by the bundle,
-        as :meth:`MatchClaimField.to_parquet
-        <timetoalign.alignment.MatchClaimField.to_parquet>` requires.
+        its own provenance) go into the package's files: each write adds one
+        new file per type, ``tables/<Type>/part_<13 base-36
+        characters>.parquet``, holding the rows of every bundle it writes
+        (:meth:`to_file` writes every bundle staged at once), sorted by
+        ``timeline_id`` with each timeline's rows in their order (the
+        MatchClaims by ``timeline_a_id``, ``timeline_b_id`` and ``id``),
+        named from its content through the library's ID minter, so that a
+        rebuild names its files again. A manifest the package holds at *url*
+        already is replaced: the rows of its timelines and of the bundle's
+        leave the files holding them, each such file rewritten whole (one
+        left without a row removed), the other manifests' rows kept, sorted
+        as they are declared; its MatchClaims must be kept by the bundle, as
+        :meth:`MatchClaimField.to_parquet
+        <timetoalign.alignment.MatchClaimField.to_parquet>` requires, so a
+        bundle holding none while the package holds MatchClaims of that
+        manifest is refused.
 
         Before anything is written, every ID is checked in memory: each
         event ID among every event of the package, every type; each
         MatchClaim ID among its MatchClaims; each timeline ID among the
         timelines of its other manifests. A collision is refused, naming
-        the ID and both holders; nothing is renamed. A package lying on
-        disk (:meth:`from_file`, or written by :meth:`to_file`) is written
-        at once, ``package.yaml`` with it; a new one is written by
+        the ID and both holders; nothing is renamed. A new package (not
+        written yet) stages the bundle, which :meth:`to_file` writes: the
+        bundle's own IDs are checked against an index of the IDs staged, so
+        staging N bundles costs in the number of their rows. A package lying
+        on disk (:meth:`from_file`, or written by :meth:`to_file`) is
+        written at once, ``package.yaml`` with it, and each call reads the
+        ``id`` and timeline columns of every file of the package, rewrites
+        every file holding a row of the manifest replaced, and checks the
+        package whole (:func:`timetoshare.tables.package_problems`): its
+        cost grows with the package, so a package of many manifests is
+        built new, staging every bundle and writing them with one
         :meth:`to_file`. Once written, the bundle's :attr:`resources
         <timetoalign.alignment.AlignmentBundle.resources>` are the
         manifest's.
+
+        A refusal leaves the package as it was, on disk and in memory: what
+        can be checked in memory is checked before any file is written (the
+        IDs, the bundle's resources, an opened package's format version);
+        the new files are written under names readers skip and renamed into
+        place once the old rows are removed; and where the write or the
+        package check after it fails, every file rewritten gets its bytes
+        back, every new file is removed.
 
         Args:
             bundle: The bundle.
@@ -735,27 +972,49 @@ class Package:
         Raises:
             ValueError: If *url* leaves the package's root or names no file
                 in it, an ID collides, the bundle cannot be written as a
-                manifest, or its MatchClaims do not keep the ones the
-                package holds for it, before anything is written; if the
-                package check refuses the package written
-                (:meth:`to_file`).
+                manifest, names a table the library carries without reading
+                (a package lists every table resource's table), or its
+                MatchClaims do not keep the ones the package holds for it,
+                or an opened package is of another format version, before
+                anything is written; if the package check refuses the
+                package written, with everything restored.
         """
         url = self._manifest_url(url)
         written = self._prepared(bundle, url)
-        self._pending[url] = written
         entries = self._document["manifests"]
-        if url not in self.manifests:
+        listed = url in self.manifests
+        previous = self._staged.add(written)
+        self._pending[url] = written
+        if not listed:
             entries.append({"url": url, "media_type": written.media_type})
-        if self._path is not None:
+        if self._path is None:
+            return
+        try:
             self._write()
+        except BaseException:
+            self._staged.remove(url)
+            del self._pending[url]
+            if previous is not None:
+                self._staged.add(previous)
+                self._pending[url] = previous
+            if not listed:
+                entries.pop()
+            raise
 
     def to_file(self, path: str | os.PathLike[str]) -> Path:
-        """Write the package: every bundle written into it, then ``package.yaml``.
+        """Write the package: every bundle staged, then ``package.yaml``.
 
         ``package.yaml`` is written in canonical YAML, every manifest listed
-        explicitly and one table entry per type folder. Once written, the
-        package is checked whole (:func:`timetoshare.tables.package_problems`),
-        and its first problem is raised.
+        explicitly and one table entry per type folder. Every bundle staged
+        is written in one go: one new file per type, holding the rows of
+        them all (:meth:`write_bundle`). Once written, the package is
+        checked whole (:func:`timetoshare.tables.package_problems`), and its
+        first problem is raised.
+
+        A refusal leaves the package as it was: on disk, every file
+        rewritten gets its bytes back and every file and folder created is
+        removed, ``package.yaml`` included; in memory, a new package stays
+        unwritten with its bundles staged.
 
         Args:
             path: The ``package.yaml`` of a new package, in a folder holding
@@ -768,8 +1027,9 @@ class Package:
         Raises:
             ValueError: If *path* is not named ``package.yaml``, a new package
                 would be written over a file lying there, a package lying
-                elsewhere would be written at *path*, or the package check
-                finds a problem.
+                elsewhere would be written at *path*, an opened package is
+                of another format version, or the package check finds a
+                problem.
         """
         path = Path(path)
         if self._path is None:
@@ -783,7 +1043,13 @@ class Package:
                     f"folder holding none; open that one with Package.from_file."
                 )
             self._path = path
-        elif os.path.abspath(path) != os.path.abspath(self._path):
+            try:
+                self._write()
+            except BaseException:
+                self._path = None
+                raise
+            return path
+        if os.path.abspath(path) != os.path.abspath(self._path):
             raise ValueError(
                 f"The package lies at '{self._path}' and is written there, not at "
                 f"'{path}': its manifests and tables lie beside it."
@@ -828,6 +1094,17 @@ class Package:
         if len(claims):
             tables["MatchClaim"] = _claim_file_table(claims)
         folder = posixpath.dirname(url) or "."
+        for resource in bundle.resources:
+            if resource.id in bundle._carried_tables:
+                raise ValueError(
+                    f"The resource {quote_id(resource.id)} of the bundle "
+                    f"{quote_id(bundle.id)} names the table {resource.url!r} of "
+                    f"the type {resource.type}, which holds no events: a package "
+                    f"lists the table of every table resource of its manifests, "
+                    f"and the package writer writes only events and MatchClaims; "
+                    f"remove the resource from the bundle's resources to write "
+                    f"the bundle into the package."
+                )
         resources = [resource for resource in bundle.resources if not resource.is_table]
         held: dict[str, str] = {}
         for resource in bundle.resources:
@@ -882,7 +1159,9 @@ class Package:
             removed=timelines | before,
         )
         self._refuse_held(written)
-        if before and len(claims):
+        if before:
+            # Every MatchClaim of the manifest replaced is kept, even by a
+            # bundle holding none.
             self._refuse_unless_succeeding(claims, before)
         return written
 
@@ -922,23 +1201,22 @@ class Package:
 
     def _refuse_held(self, written: _Written) -> None:
         """Refuse *written* where one of its IDs is held in the package by
-        another manifest, before anything is written.
+        another manifest, before anything is written: on disk, every file's
+        rows but those of the timelines the write removes; staged, the
+        index of the bundles staged (:class:`_Staged`).
 
         Raises:
             ValueError: Naming the ID and both holders.
         """
-        others = [w for url, w in self._pending.items() if url != written.url]
         owners: dict[str, str] = {}
-        for url in self.manifests:
-            if url == written.url or url in self._pending:
-                continue
-            for timeline_id in self._disk_manifest_timelines(url):
-                owners.setdefault(timeline_id, f"a timeline of the manifest {url!r}")
-        for other in others:
-            for timeline_id in other.timelines:
-                owners.setdefault(
-                    timeline_id, f"a timeline of the manifest {other.url!r}"
-                )
+        if self._path is not None:
+            for url in self.manifests:
+                if url == written.url or url in self._pending:
+                    continue
+                for timeline_id in self._disk_manifest_timelines(url):
+                    owners.setdefault(
+                        timeline_id, f"a timeline of the manifest {url!r}"
+                    )
         _refuse_held_ids(
             [
                 (
@@ -950,7 +1228,9 @@ class Package:
             owners,
             scope="the package",
         )
-        removed = frozenset().union(written.removed, *(w.removed for w in others))
+        removed = frozenset().union(
+            written.removed, *(w.removed for w in self._pending.values())
+        )
         for claims in (False, True):
             column = "timeline_a_id" if claims else "timeline_id"
             parts: list[tuple[pa.Table, str]] = []
@@ -970,30 +1250,11 @@ class Package:
                     _rows_of(rows, _CLAIM_TIMELINES if claims else (column,), removed)
                 )
                 parts.append((rows.filter(keep).select(["id", column]), f"'{name}'"))
-            for other in others:
-                for kind, table in other.tables.items():
-                    if (kind == "MatchClaim") == claims:
-                        parts.append(
-                            (
-                                table.select(["id", column]),
-                                f"the manifest {other.url!r}",
-                            )
-                        )
-            held = _Ids.of(parts, column)
-            new = [
-                table.select(["id", column])
-                for kind, table in written.tables.items()
-                if (kind == "MatchClaim") == claims
-            ]
-            if not new:
-                continue
-            joined = pa.concat_tables(new)
-            held.refuse(
-                joined.column("id").combine_chunks(),
-                joined.column(column).combine_chunks(),
-                "MatchClaim" if claims else "event",
-                written.url,
+            ids, timelines = _id_columns(written, claims)
+            _Ids.of(parts, column).refuse(
+                ids, timelines, "MatchClaim" if claims else "event", written.url
             )
+        self._staged.refuse(written)
 
     def _refuse_unless_succeeding(
         self, claims: MatchClaimField, before: frozenset[str]
@@ -1025,27 +1286,49 @@ class Package:
     # Writing.
 
     def _write(self) -> None:
-        """Write every bundle prepared, then ``package.yaml``, then check the
-        package whole.
+        """Write every bundle staged, then ``package.yaml``, then check the
+        package whole; restore the package where anything fails.
+
+        In order: the format version of an opened package is checked; the
+        new files (one per type, :func:`_joined_tables`) are written under
+        names starting with ``.``, which readers skip; the rows of the
+        timelines replaced leave the files holding them; the new files are
+        renamed into place; the manifests and ``package.yaml`` are written;
+        the package is checked. Where a step raises, every file changed
+        gets its bytes back, every file and folder created is removed, and
+        the package's document is as it was; the bundles stay staged.
 
         Raises:
-            ValueError: If the package check finds a problem, its first.
+            ValueError: If an opened package is of another format version
+                (before anything is written), or the package check finds a
+                problem, its first.
         """
         assert self._path is not None
+        version = self._document.get("timetoshare")
+        if version != timetoshare.SCHEMA_VERSION:
+            raise ValueError(
+                f"The package at '{self._path}' is of the format version "
+                f"{version!r}, and the library writes {timetoshare.SCHEMA_VERSION!r}: "
+                f"a package holds files of one version; nothing is written."
+            )
         root = self._path.parent
         pending = list(self._pending.values())
         removed = frozenset().union(*(written.removed for written in pending))
-        if removed:
-            self._remove_rows(removed)
-        entries = self._document["tables"]
-        for written in pending:
-            for kind, table in written.tables.items():
+        document = copy.deepcopy(self._document)
+        entries = document["tables"]
+        undo = _Undo()
+        try:
+            placed: list[tuple[Path, Path]] = []
+            for kind, table in _joined_tables(pending).items():
                 folder_url = f"{_TABLES_FOLDER}/{quote(kind)}/"
                 folder = resource_path(root, folder_url)
-                folder.mkdir(parents=True, exist_ok=True)
-                _write_package_file(
-                    table, folder / _file_name(kind, table, folder), _sorted_by(kind)
-                )
+                undo.folder(folder)
+                final = folder / _file_name(kind, table, folder)
+                hidden = folder / f".{final.name}"
+                undo.keep(hidden)
+                undo.keep(final)
+                _write_package_file(table, hidden, _sorted_by(kind))
+                placed.append((hidden, final))
                 if not any(
                     entry["type"] == kind and entry["url"] == folder_url
                     for entry in entries
@@ -1057,36 +1340,56 @@ class Package:
                             "media_type": PARQUET_MEDIA_TYPE,
                         }
                     )
-            target = resource_path(root, written.url)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(written.text, encoding="utf-8", newline="")
-            for entry in self._document["manifests"]:
-                if entry["url"] == written.url and {"size", "integrity"} & entry.keys():
-                    # A manifest rewritten states its new bytes.
-                    data = target.read_bytes()
-                    entry["size"] = len(data)
-                    entry["integrity"] = Integrity.of_bytes(data).to_dict()
+            if removed:
+                self._remove_rows(removed, undo)
+            for hidden, final in placed:
+                os.replace(hidden, final)
+            for written in pending:
+                target = resource_path(root, written.url)
+                undo.folder(target.parent)
+                undo.keep(target)
+                target.write_text(written.text, encoding="utf-8", newline="")
+                for entry in document["manifests"]:
+                    if (
+                        entry["url"] == written.url
+                        and {"size", "integrity"} & entry.keys()
+                    ):
+                        # A manifest rewritten states its new bytes.
+                        data = target.read_bytes()
+                        entry["size"] = len(data)
+                        entry["integrity"] = Integrity.of_bytes(data).to_dict()
+            undo.folder(root)
+            undo.keep(self._path)
+            self._path.write_text(
+                timetoshare.dumps(document), encoding="utf-8", newline=""
+            )
+            problems = package_problems(self._path)
+            if problems:
+                problem = problems[0]
+                row = "" if problem.row is None else f", row {problem.row}"
+                raise ValueError(
+                    f"The package check refuses the package written at "
+                    f"'{self._path}': {problem.code} in '{problem.file}'{row}: "
+                    f"{problem.message}; the package is restored as it was."
+                )
+        except BaseException:
+            undo.restore()
+            raise
+        self._document = document
+        for written in pending:
             self._on_disk[written.url] = written.timelines
             written.bundle.resources = list(written.resources)
         self._pending.clear()
-        self._path.write_text(
-            timetoshare.dumps(self._document), encoding="utf-8", newline=""
-        )
-        problems = package_problems(self._path)
-        if problems:
-            problem = problems[0]
-            row = "" if problem.row is None else f", row {problem.row}"
-            raise ValueError(
-                f"The package check refuses the package written at '{self._path}': "
-                f"{problem.code} in '{problem.file}'{row}: {problem.message}"
-            )
+        self._staged = _Staged()
 
-    def _remove_rows(self, removed: frozenset[str]) -> None:
+    def _remove_rows(self, removed: frozenset[str], undo: _Undo) -> None:
         """Remove the rows of the timelines *removed* from every file of the
-        package holding one, each such file rewritten whole and a file left
-        without a row deleted; every other row is kept as it stands. A
-        MatchClaim file stating a provenance its rows share is rewritten with
-        that provenance in each row kept, as the package writer writes
+        package holding one, each such file recorded in *undo*, rewritten
+        whole and a file left without a row deleted; every other row is
+        kept, stable-sorted by the columns the file declares
+        (:func:`_sorted_by`: each timeline's rows keep their order). A
+        MatchClaim file stating a provenance its rows share is rewritten
+        with that provenance in each row kept, as the package writer writes
         provenance."""
         for kind, file, _ in list(self._files()):
             columns = _CLAIM_TIMELINES if kind == "MatchClaim" else ("timeline_id",)
@@ -1097,6 +1400,7 @@ class Package:
             mask = _rows_of(pq.read_table(file, columns=present), present, removed)
             if not pc.any(mask).as_py():
                 continue
+            undo.keep(file)
             shared = PROVENANCE_METADATA_KEY.encode() in (
                 pq.read_schema(file).metadata or {}
             )
@@ -1112,18 +1416,68 @@ class Package:
             metadata = dict(table.schema.metadata or {})
             metadata.setdefault(TYPE_METADATA_KEY.encode(), kind.encode())
             _write_package_file(
-                kept.replace_schema_metadata(metadata), file, _sorted_by(kind)
+                _sorted(kept.replace_schema_metadata(metadata), kind),
+                file,
+                _sorted_by(kind),
             )
+
+
+def _sorted(table: pa.Table, kind: str) -> pa.Table:
+    """*table* stable-sorted by the columns a package file of *kind* declares
+    (:func:`_sorted_by`), so each timeline's rows keep their order."""
+    return table.take(
+        pc.sort_indices(
+            table, sort_keys=[(name, "ascending") for name in _sorted_by(kind)]
+        )
+    )
+
+
+def _joined_tables(pending: Sequence[_Written]) -> dict[str, pa.Table]:
+    """The table of each type a package writes for the bundles *pending*: the
+    rows of every bundle holding the type, in one table, sorted
+    (:func:`_sorted`). The timelines of two bundles are distinct, so each
+    timeline's rows keep the order its bundle's table gives them; a further
+    column joins the columns of the type in the order first met.
+
+    Raises:
+        ValueError: If two bundles hold a column of one name in two types,
+            naming the column and both manifests.
+    """
+    by_kind: dict[str, list[tuple[str, pa.Table]]] = {}
+    for written in pending:
+        for kind, table in written.tables.items():
+            by_kind.setdefault(kind, []).append((written.url, table))
+    joined: dict[str, pa.Table] = {}
+    for kind, parts in by_kind.items():
+        schema = _joined_schema(parts[0][1].schema, parts, kind, holder="manifest")
+        table = pa.concat_tables(
+            [
+                pa.Table.from_arrays(
+                    [
+                        (
+                            part.column(field.name)
+                            if field.name in part.column_names
+                            else _null_column(part.num_rows, field.type)
+                        )
+                        for field in schema
+                    ],
+                    schema=schema,
+                )
+                for _, part in parts
+            ]
+        )
+        joined[kind] = _sorted(table, kind)
+    return joined
 
 
 def _file_name(kind: str, table: pa.Table, folder: Path) -> str:
     """The name of a new file of *table* in *folder*: ``part_`` and 13 base-36
     characters minted from the table's content, drawn again where a file of
-    that name lies there."""
+    that name, or of that name being written, lies there."""
     minter = content_minter(_PART_PREFIX, kind, table_seed_part(table))
     while True:
         name = f"{minter.mint(_PART_PREFIX)}.parquet"
-        if not (folder / name).exists():
+        if not (folder / name).exists() and not (folder / f".{name}").exists():
             return name
 
 

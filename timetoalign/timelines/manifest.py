@@ -85,6 +85,7 @@ from timetoshare.tables import (
     TYPE_METADATA_KEY,
     VERSION_METADATA_KEY,
     TableError,
+    is_table_resource,
     projection_problems,
 )
 
@@ -101,13 +102,16 @@ from timetoalign.core.ids import (
 )
 from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
+    PACKAGE_COORDINATE_CELL_TYPE,
     PACKAGE_NUMBER_TYPE,
     RATIONAL_STRUCT_TYPE,
     build_number_struct_array,
+    cells_from_package,
     is_fraction_json,
     number_from_json,
     number_to_json,
     numbers_from_package,
+    package_cells,
     package_numbers,
 )
 from timetoalign.storage.events import refuse_shared_projection_ids
@@ -359,20 +363,9 @@ INTEGRITY_ALGORITHMS: tuple[str, ...] = tuple(
 PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 """The media type of the Parquet tables a package holds."""
 
-#: The table types every manifest reader knows by name, whatever their URL.
-_NAMED_TABLE_TYPES = frozenset({"MatchClaim", "Projection", "Box"})
-
-
-def _names_table(type_: Any, url: Any, media_type: Any) -> bool:
-    """Whether a resource of *type_* at *url* in *media_type* is a table: one of
-    the table types the format names, a folder (a URL ending in ``/``), or a
-    Parquet file (by its media type or a URL ending in ``.parquet``)."""
-    if type_ in _NAMED_TABLE_TYPES or media_type == PARQUET_MEDIA_TYPE:
-        return True
-    if not isinstance(url, str):
-        return False
-    path = urlsplit(url).path
-    return path.endswith(("/", ".parquet"))
+#: The table types a lone manifest's tables are written as by the library
+#: whatever ``events`` says: every other table type is an event file.
+_LONE_TABLE_TYPES = frozenset({"MatchClaim", "Projection", "Box"})
 
 
 _MEDIA_TYPE = re.compile(_RESOURCE_SCHEMA["media_type"]["pattern"])
@@ -659,12 +652,15 @@ class Resource(_OpenObject):
 
     @property
     def is_table(self) -> bool:
-        """Whether the resource names a table, which an
-        :class:`~timetoalign.alignment.AlignmentBundle` reads into its
-        timelines and writes from them: a MatchClaim, Projections or Box
-        table, a folder of files, or a Parquet file (its media type, or a URL
-        ending in ``.parquet``) holding the events of :attr:`type`. Any other
-        resource (a recording) is carried as it stands.
+        """Whether the resource names a table, by the format's one rule
+        (:func:`timetoshare.tables.is_table_resource`): a MatchClaim or
+        Projections table, a folder of files, or a Parquet file (its media
+        type, or a URL ending in ``.parquet``). An
+        :class:`~timetoalign.alignment.AlignmentBundle` reads such a table
+        into its timelines and writes it from them where it holds events
+        (its columns start with ``id``, ``timeline_id``, ``unit``,
+        ``number_type`` and ``start``) or MatchClaims; a table of other
+        rows, and any other resource (a recording), is carried as it stands.
 
         Examples:
             >>> Resource("resource_1", "Note", (), "Note.parquet").is_table
@@ -672,7 +668,9 @@ class Resource(_OpenObject):
             >>> Resource("resource_1", "Audio", (), "take_1.flac").is_table
             False
         """
-        return _names_table(self.type, self.url, self.media_type)
+        return is_table_resource(
+            {"type": self.type, "url": self.url, "media_type": self.media_type}
+        )
 
     def path_in(self, directory: str | PathLike[str]) -> Path:
         """The path of the file or folder for a manifest lying in *directory*
@@ -724,10 +722,11 @@ _SCALAR_EVENT_TYPES: dict[str, type[Event]] = {
     "Box": Box,
 }
 
-#: The event types a timeline holds as structure, which the manifest states:
-#: a child's ``Segment`` row on its parent, which the manifest's children
-#: recreate. No event table is written of them.
-_STRUCTURE_EVENT_TYPES = frozenset({"Segment"})
+#: The event type of the row a child's place on its parent is recorded by.
+_SEGMENT_EVENT_TYPE = "Segment"
+
+#: The columns every event table holds: a table lacking one holds no events.
+_EVENT_ROW_COLUMNS = (*_EVENT_TABLE_HEADER, "start")
 
 #: The most rows a row group of a package table holds.
 _ROW_GROUP_SIZE = 65_536
@@ -761,15 +760,18 @@ def _package_type(type_: pa.DataType) -> pa.DataType:
 def _further_type(type_: pa.DataType) -> pa.DataType:
     """The package type of a further column of memory type *type_*: every
     number struct in it, at whatever struct depth, as the package number
-    (in its row's number type), strings plain ``string``; anything else,
-    a coordinate cell naming its own axis included, as it stands."""
+    (in its row's number type), every coordinate cell naming its own axis
+    as the package's coordinate cell (its number in the number type it
+    names), strings plain ``string``; anything else as it stands."""
     if type_ == RATIONAL_STRUCT_TYPE:
         return PACKAGE_NUMBER_TYPE
+    if type_ == COORDINATE_CELL_TYPE:
+        return PACKAGE_COORDINATE_CELL_TYPE
     if pa.types.is_dictionary(type_):
         return _further_type(type_.value_type)
     if pa.types.is_large_string(type_):
         return pa.string()
-    if pa.types.is_struct(type_) and type_ != COORDINATE_CELL_TYPE:
+    if pa.types.is_struct(type_):
         return pa.struct(
             [pa.field(field.name, _further_type(field.type)) for field in type_]
         )
@@ -837,11 +839,38 @@ def event_table_schema(event_type: type[Event] | str) -> pa.Schema:
     )
 
 
+def _own_rows(timeline: Timeline, kind: str | None = None) -> pa.Table:
+    """The rows of *timeline* its event tables hold, of the event type *kind*
+    where one is given: every row but a child's ``Segment`` row (its ``id``
+    a child of the timeline), which records the child's place and which the
+    manifest's children state. A ``Segment`` row of any other ID is an event
+    like every other."""
+    events = timeline.events.table
+    if events.num_rows == 0 or "event_type" not in events.column_names:
+        return events.slice(0, 0)
+    types = events.column("event_type")
+    keep = (
+        None
+        if kind is None
+        else _filled(pc.equal(types, pa.scalar(kind)), pa.scalar(False))
+    )
+    children = list(timeline._children)
+    if children and kind in (None, _SEGMENT_EVENT_TYPE):
+        structure = pc.and_kleene(
+            pc.equal(types, pa.scalar(_SEGMENT_EVENT_TYPE)),
+            pc.is_in(events.column("id"), value_set=pa.array(children, pa.string())),
+        )
+        others = pc.invert(_filled(structure, pa.scalar(False)))
+        keep = others if keep is None else pc.and_(keep, others)
+    return events if keep is None else events.filter(keep)
+
+
 def event_types(timelines: Iterable[Timeline]) -> list[str]:
     """The event types the timelines hold themselves, each once, sorted by name.
 
-    A child's ``Segment`` row on its parent is structure, which the
-    manifest's children state, and is not an event type here.
+    A child's ``Segment`` row on its parent records the child's place, which
+    the manifest's children state, and counts for no event type here; a
+    ``Segment`` row of another ID is an event of the type ``Segment``.
 
     Examples:
         >>> from timetoalign.timelines import ContinuousPhysicalTimeline
@@ -855,14 +884,14 @@ def event_types(timelines: Iterable[Timeline]) -> list[str]:
     """
     found: set[str] = set()
     for timeline in timelines:
-        table = timeline.events.table
-        if table.num_rows and "event_type" in table.column_names:
+        table = _own_rows(timeline)
+        if table.num_rows:
             found.update(
                 value
                 for value in pc.unique(table.column("event_type")).to_pylist()
                 if isinstance(value, str)
             )
-    return sorted(found - _STRUCTURE_EVENT_TYPES)
+    return sorted(found)
 
 
 def _packaged(
@@ -872,7 +901,9 @@ def _packaged(
 
     Each number (where *type_* is the package number) is written once by
     the row's number type (:func:`~timetoalign.core.time.package_numbers`),
-    a struct member by member, by name, and anything else cast; a column
+    each coordinate cell (the package's coordinate cell) once by the number
+    type it names (:func:`~timetoalign.core.time.package_cells`), a struct
+    member by member, by name, and anything else cast; a column
     the memory table lacks (``None``) or holds untyped is null throughout.
     """
     if isinstance(array, pa.ChunkedArray):
@@ -882,6 +913,8 @@ def _packaged(
     if type_ == PACKAGE_NUMBER_TYPE:
         stored = build_number_struct_array(array, number_type=number_type)
         return package_numbers(stored, pc.if_else(stored.is_valid(), types, None))
+    if type_ == PACKAGE_COORDINATE_CELL_TYPE:
+        return package_cells(array)
     if not pa.types.is_struct(type_):
         return array.cast(type_)
     members = dict(
@@ -906,10 +939,23 @@ def _start_order(part: pa.Table, number_type: NumberType) -> np.ndarray:
 
     An int's numerator and a float's value sort exactly as they stand. A
     fraction is sorted by its float first, then by its ratio: where two
-    rows' floats are equal or a few units of the last place apart and their
-    ratios differ, the run of such rows is sorted again on the exact
-    ratios, so a float rounding two ratios alike or the wrong way round
-    never orders them. Vectorized but for those runs.
+    neighbours' floats are equal or at most 16 units of the last place
+    apart and their ratios differ, the run of such rows is sorted again on
+    the exact ratios, so a float rounding two ratios alike or the wrong way
+    round never orders them. Vectorized but for those runs.
+
+    The window is proven, not tuned. The float of ``n/d`` is ``n`` cast,
+    ``d`` cast and their quotient, each rounded to nearest: at most three
+    relative errors of ``u = 2**-53``, so it lies within ``3.01 u |n/d|``
+    of the ratio (below ``2**53`` the casts are exact and the division
+    alone rounds, monotonically: no two ratios are inverted, only made
+    equal). Two ratios ``x < y`` whose floats are inverted therefore lie
+    less than ``6.02 u M`` apart, ``M`` the larger float, which is less
+    than 7 units of the last place of ``M``; every float sorted between
+    them lies within that span, at most one binade below ``M``, where a
+    unit of the last place is half of ``M``'s. So every neighbour of the
+    span lies within 14 units of the last place of the larger of the two,
+    inside the window, and the span is one run.
     """
     start = part.column("start").combine_chunks()
     ids = part.column("id").combine_chunks()
@@ -944,7 +990,7 @@ def _start_order(part: pa.Table, number_type: NumberType) -> np.ndarray:
     n = _filled(taken.column("n"), pa.scalar(0)).to_numpy(zero_copy_only=False)
     d = _filled(taken.column("d"), pa.scalar(1)).to_numpy(zero_copy_only=False)
     with np.errstate(invalid="ignore"):
-        near = np.abs(np.diff(key)) <= 4 * np.spacing(
+        near = np.abs(np.diff(key)) <= 16 * np.spacing(
             np.maximum(np.abs(key[:-1]), np.abs(key[1:]))
         )
     differ = (n[1:] != n[:-1]) | (d[1:] != d[:-1])
@@ -1011,10 +1057,7 @@ def event_table(
     declared = event_table_schema(event_type)
     parts: list[tuple[str, pa.Table]] = []
     for timeline in timelines:
-        events = timeline.events.table
-        if events.num_rows == 0 or "event_type" not in events.column_names:
-            continue
-        rows = events.filter(pc.equal(events.column("event_type"), pa.scalar(kind)))
+        rows = _own_rows(timeline, kind)
         n = rows.num_rows
         if n == 0:
             continue
@@ -1075,10 +1118,14 @@ def event_table(
 
 
 def _joined_schema(
-    declared: pa.Schema, parts: list[tuple[str, pa.Table]], kind: str
+    declared: pa.Schema,
+    parts: list[tuple[str, pa.Table]],
+    kind: str,
+    holder: str = "timeline",
 ) -> pa.Schema:
-    """The columns of the timelines' parts of a table of *kind* in one: the
-    declared ones, then every further one in the order first met.
+    """The columns of the parts of a table of *kind* in one, each part held
+    by the *holder* (a timeline, a manifest) its ID names: the declared
+    columns, then every further one in the order first met.
 
     Raises:
         ValueError: If two parts hold a column of one name in two types.
@@ -1094,7 +1141,7 @@ def _joined_schema(
             elif held[0].type != column.type:
                 raise ValueError(
                     f"The {kind} table cannot hold the column {column.name!r} of "
-                    f"timeline {quote_id(timeline_id)} ({column.type}): timeline "
+                    f"{holder} {quote_id(timeline_id)} ({column.type}): {holder} "
                     f"{quote_id(held[1] or '')} holds it as {held[0].type}, and a "
                     f"column has one type in a table."
                 )
@@ -1216,7 +1263,9 @@ def write_event_table(table: pa.Table, path: str | PathLike[str]) -> Path:
 def _from_package(array: Any, number_types: pa.Array, where: str) -> pa.Array:
     """A package column of an event table in memory: every number in it
     (a struct of ``numerator``, ``denominator`` and ``value``) read by the
-    row's number type, at whatever depth; anything else as it stands."""
+    row's number type, every coordinate cell (those and ``unit`` and
+    ``number_type``) by the number type it names, at whatever depth;
+    anything else as it stands."""
     if isinstance(array, pa.ChunkedArray):
         array = array.combine_chunks()
     if not pa.types.is_struct(array.type):
@@ -1224,6 +1273,8 @@ def _from_package(array: Any, number_types: pa.Array, where: str) -> pa.Array:
     names = [field.name for field in array.type]
     if sorted(names) == sorted(PACKAGE_NUMBER_TYPE.names):
         return numbers_from_package(array, number_types, where=f"{where}'")
+    if sorted(names) == sorted(PACKAGE_COORDINATE_CELL_TYPE.names):
+        return cells_from_package(array, where=f"{where}'")
     members = [
         _from_package(member, number_types, f"{where}.{name}")
         for name, member in zip(names, array.flatten(), strict=True)
@@ -1320,9 +1371,6 @@ def read_projection_table(
         if isinstance(path, pa.Table)
         else pq.read_table(os.fspath(path) if isinstance(path, PathLike) else path)
     )
-    problems = projection_problems(table, manifest)
-    if problems:
-        raise TableError(problems[0])
     return {
         timeline_id: [
             Projection.from_row(
@@ -1334,10 +1382,31 @@ def read_projection_table(
             )
             for row in rows.to_pylist()
         ]
-        for timeline_id, rows in _event_tables_by_timeline(
-            table, "Projections table"
-        ).items()
+        for timeline_id, rows in _projection_tables(table, manifest).items()
     }
+
+
+def _projection_tables(
+    table: pa.Table, manifest: Mapping[str, Any]
+) -> dict[str, pa.Table]:
+    """The rows of a Projections table checked against its manifest, by timeline.
+
+    The table is checked as :func:`read_projection_table` checks it, then
+    read as :func:`read_event_table` reads an event table: per timeline ID,
+    its rows as a table, each number in the number type its row states.
+    The reader of a bundle's tables adds them as a table
+    (``Timeline._add_event_table``), never row by row.
+
+    Raises:
+        timetoshare.tables.TableError: A ``ValueError``, the first problem
+            of the table.
+        ValueError: If a ``start`` or ``duration`` does not hold its number
+            as its row's number type says.
+    """
+    problems = projection_problems(table, manifest)
+    if problems:
+        raise TableError(problems[0])
+    return _event_tables_by_timeline(table, "Projections table")
 
 
 def _coordinate_cell(
@@ -2089,10 +2158,10 @@ class FileForm(timetoshare.FileForm):
         keys = {key for timeline in _timeline_objects(data) for key in timeline}
         event_files = any(
             isinstance(entry, dict)
-            and entry.get("type") not in _NAMED_TABLE_TYPES
-            and _names_table(
-                entry.get("type"), entry.get("url"), entry.get("media_type")
-            )
+            and isinstance(entry.get("type"), str)
+            and entry["type"] not in _LONE_TABLE_TYPES
+            and isinstance(entry.get("url"), str)
+            and is_table_resource(entry)
             for entry in data.get("resources") or ()
         )
         return cls(

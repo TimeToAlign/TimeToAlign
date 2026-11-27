@@ -664,26 +664,32 @@ class EventsMixin(_Host):
             pc.invert(compare_number_column(duration, extent, "equal", number_type))
         )
 
-    def _add_stated_events(self, rows: list[dict[str, Any]]) -> None:
+    def _add_stated_events(self, rows: list[dict[str, Any]]) -> EventData | None:
         """Add the event rows a source states, every Box checked.
 
         For rows read as a source writes them (a manifest's event rows,
-        :meth:`from_events`): no ID is minted or compared and the length is
-        not grown, but a Box row is refused as :meth:`add_events` refuses it
-        (:meth:`_refuse_boxes_off_their_shapes`), so the library reads no
-        Box it would not add.
+        :meth:`from_events`, a cut's rows): no ID is minted or compared and
+        the length is not grown here, but a Box row is refused as
+        :meth:`add_events` refuses it (:meth:`_refuse_boxes_off_their_shapes`),
+        so the library reads no Box it would not add. A reader of a
+        manifest holds the rows within the length once the timeline is
+        whole (:meth:`_fit_length`).
+
+        Returns:
+            The rows added, None where there are none.
 
         Raises:
             ValueError: As :meth:`add_events` refuses a Box; nothing is added.
         """
         if not rows:
-            return
+            return None
         rows = box_rows_on_the_axis(
             rows, self._unit, self._number_type, timeline_id=self._id
         )
         added = self._event_data_of(rows)
         self._refuse_boxes_off_their_shapes(added, [row.get("id") for row in rows])
         self._append_events(added)
+        return added
 
     def _add_event_table(self, rows: pa.Table, event_type: str) -> None:
         """Add the rows of a package's event table of *event_type* lying on this timeline.
@@ -695,13 +701,18 @@ class EventsMixin(_Host):
         source states, read as a table (:meth:`EventData.from_arrays
         <timetoalign.storage.EventData.from_arrays>`), never row by row: as
         :meth:`_add_stated_events` adds a manifest's event rows, no ID is
-        minted and the length is not grown, an ID the tree holds is refused
-        by the tree's store, and a Box is checked against its shape as
-        :meth:`add_events` checks it. A further column none of the rows
-        holds a value in is not added: the table spans timelines, and the
-        column is another timeline's. The rows' ``unit`` and
-        ``number_type`` must be the timeline's: an event in another unit or
-        number type reaches a timeline only as a Projection through a C-Map.
+        minted, an ID the tree holds is refused, and a Box is checked
+        against its shape as :meth:`add_events` checks it. The length
+        follows :meth:`add_events`' rule (:meth:`_fit_length`): an unlocked
+        timeline grows to hold a row ending past it, a locked one refuses
+        it. A Projection the timeline holds under a row's ID already (a
+        manifest whose timelines state their event rows as well) is kept,
+        and the row passed over, as :meth:`add_projections` reuses a
+        Projection it holds. A further column none of the rows holds a value
+        in is not added: the table spans timelines, and the column is
+        another timeline's. The rows' ``unit`` and ``number_type`` must be
+        the timeline's: an event in another unit or number type reaches a
+        timeline only as a Projection through a C-Map.
 
         Args:
             rows: The rows, every one lying on this timeline.
@@ -710,8 +721,9 @@ class EventsMixin(_Host):
         Raises:
             ValueError: If a row states another axis than the timeline's (a
                 Box with the message :meth:`add_events` gives), a Box
-                contradicts its shape, or an ID is held in the tree or twice;
-                nothing is added then.
+                contradicts its shape, an ID is held in the tree or twice,
+                or a row ends past the length of a locked timeline; nothing
+                is added then.
         """
         n = rows.num_rows
         if n == 0:
@@ -742,6 +754,33 @@ class EventsMixin(_Host):
                 f"an event in another unit or number type reaches a timeline "
                 f"only as a Projection through a C-Map."
             )
+        if event_type == PROJECTION_EVENT_TYPE:
+            # Get-or-add: a Projection held under the row's ID stays.
+            table = self._events.table
+            held = (
+                table.filter(
+                    _filled(
+                        pc.equal(
+                            table.column("event_type"),
+                            pa.scalar(PROJECTION_EVENT_TYPE),
+                        ),
+                        pa.scalar(False),
+                    )
+                ).column("id")
+                if "event_type" in table.column_names
+                else pa.chunked_array([], pa.string())
+            )
+            rows = rows.filter(
+                pc.invert(
+                    _filled(
+                        pc.is_in(rows.column("id"), value_set=held.combine_chunks()),
+                        pa.scalar(False),
+                    )
+                )
+            )
+            n = rows.num_rows
+            if n == 0:
+                return
         # A further column none of this timeline's rows holds a value in
         # is another timeline's, which the table spanning them both holds.
         fields: dict[str, Any] = {
@@ -768,7 +807,26 @@ class EventsMixin(_Host):
         )
         if event_type == BOX_EVENT_TYPE:
             self._refuse_boxes_off_their_shapes(added, rows.column("id").to_pylist())
-        self._append_events(added)
+        self._tree_store.refuse_held_ids(self._id, added.table)
+        self._fit_length(added)
+        self._append_events(added, checked=True)
+
+    def _fit_length(self, added: EventData) -> None:
+        """Hold the rows *added* within the length, as :meth:`add_events` does.
+
+        The rule of :meth:`add_events` without ``allow_expansion``, for rows
+        a source states (an event file, a manifest's event rows): where a
+        row ends past a known length, an unlocked timeline grows to its end
+        and a locked one refuses it; a timeline of unknown length is bounded
+        by its parent's structure alone (:meth:`_ensure_capacity`).
+
+        Raises:
+            ValueError: As :meth:`add_events` refuses rows ending past the
+                length of a locked timeline; nothing changes then.
+        """
+        extent = added.coordinate_range()
+        if extent is not None:
+            self._ensure_capacity(extent[1])
 
     def add_projections(
         self,

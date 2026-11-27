@@ -2487,7 +2487,11 @@ depends on a float where the ratio decides, a file without its type or
 version, a manifest of a package reading another manifest's rows (or
 refusing them), a re-written bundle dropping another manifest's rows or
 leaving its own behind, an ID collision found only after files were
-written, a package the format's own check refuses. Every expected value is
+written, a package the format's own check refuses, a package of many
+bundles written as many files per type, a failed write leaving a changed
+package behind, a user's event dropped because of its type, a table of
+other rows read as events (or refused), a row beyond a timeline's length
+passed over by the length rule `add_events` applies. Every expected value is
 probed from the library once and then pinned literally; the oracle for the
 package as a whole is TimeToShare's `package_problems`, an independent
 implementation of the format's rules.
@@ -2536,6 +2540,48 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   (`==`, which compares each row's provenance). The bundle read records
   `events` (its file names event files), so written again by default into
   a fresh directory, every file is byte for byte the first write's.
+- **Read back, the Projections are added as a table.** With
+  `Projection.from_row` made to raise, `AlignmentBundle.from_file` of the
+  file still reads it, the same rows as above: no Projection is built row
+  by row on the reading path. A manifest that holds `a_score`'s event rows
+  inline as well (`events` in its timeline object, the Projection among
+  them) and names `projections.parquet` reads one Projection under its ID,
+  not two and no refusal: a Projection held under a row's ID is kept.
+- **A user's `Segment` events are events.** A timeline `seg_t` (quarters,
+  fraction, length 8) holding the child `seg_c` (length 2 at 4) and the
+  user's `Segment` row `s1` (start 1, duration 1) with a Note `n1` at 0:
+  `to_file(events=True)` writes `Segment.parquet` holding exactly `s1`
+  (the child's own `Segment` row, ID `seg_c`, is not written: the
+  manifest's child states it); read back, `seg_t` holds `s1`, `n1` and
+  the child's row, `seg_c` still its child. The inline form
+  (`Timeline.to_dict(events=True)`, `Timeline.from_dict`) keeps `s1` too.
+- **Rows read obey the length rule of `add_events`.** `b` written with
+  `events=True`, its manifest's length of `b_score` changed to 1/4: read
+  back, the timeline, unlocked, has grown to 1/2, the end of `b_b1`;
+  stated `locked: true` as well, the read is refused with `add_events`'
+  own message (`Adding content ending at 1/2 exceeds timeline length 1/4.
+  Timeline is locked. Use allow_expansion=True to override.`). The same
+  for a timeline object's inline rows: `t` (quarters, length 8, the Note
+  `n1` at 3) as `to_dict(events=True)` writes it, its length set to 1,
+  reads with the length 3, and locked is refused (`Adding content ending
+  at 3 exceeds timeline length 1. Timeline is locked. Use
+  allow_expansion=True to override.`).
+- **A table of other rows is carried untouched.** `b` written to a file
+  whose manifest names, beside it, a resource `features` of the type
+  `Features` at `features.parquet` (a Parquet file of one column `x`, no
+  event table's columns): `AlignmentBundle.from_file` reads it without a
+  refusal, its timelines holding exactly their events, `resources` naming
+  `features`; written again into another directory with `events=True`
+  (the file copied beside it), the manifest names `features` unchanged
+  and the file keeps its bytes. Written into a package, the bundle is
+  refused before any file (`The resource 'features' of the bundle 'b'
+  names the table 'features.parquet' of the type Features, which holds no
+  events: …`), since a package lists every table resource's table.
+- **A folder is refused only where rows of its type are written.** `b`
+  given a resource `scans` of the type `Scan` at `scans/` (a folder, none
+  lying there): written with `to_file(events=True)` and read back, the
+  resource is carried as it stands and the rows are the same; a bundle read through a package (`../tables/Beat/` and
+  `../tables/Note/`) is refused (below).
 - **Without `events`**, the same bundle writes exactly `a.yaml`,
   `match_claims.parquet`, `projections.parquet` and `boxes.parquet`.
 - **The sort is exact.** `event_table` of three timelines' Beats,
@@ -2544,7 +2590,18 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   nearest 1/3 and below it, `c` 1/3, `d` 0) and `t_int` (ticks, int: `z`
   480, `y` 0, `x` 480), lists `p`, `q`, `d`, `b`, `a`, `c`, `y`, `x`, `z`:
   timelines by ID, `b` before `a` although both floats are equal (a sort
-  on the float, then the numerator, gives `a`, `c`, `b`), ties by ID.
+  on the float, then the numerator, gives `a`, `c`, `b`), ties by ID. A
+  fourth timeline `t_big` (quarters, fraction) holds `n`
+  2431060582285925452/1165837368502584049 and `m`
+  4862121164571850412/2331674737005167863, terms above 2^61 whose floats
+  are inverted (the float of `m`'s ratio lies a unit of the last place
+  above `n`'s, though `m` is the smaller): `m` comes first, the window of
+  the exact sort being proven (`_start_order`).
+- **A further coordinate cell is written once.** A Note holding a
+  further column `alt` of coordinate cells (0.5 seconds as a float, 3/4
+  quarters as a fraction) is written as the package's coordinate cell,
+  `{null, null, 0.5, "seconds", "float"}` and `{3, 4, null, "quarters",
+  "fraction"}`, and `read_event_table` gives both sides back.
 - **The file declares itself.** `write_event_table` of `a`'s Note table
   (`event_table`) writes a file whose schema metadata is exactly
   `timetoshare:type` `Note` and
@@ -2568,8 +2625,8 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   name="Pieces")`, `write_bundle(a, "a/manifest.yaml")`,
   `write_bundle(b, "b/manifest.yaml")`, `to_file(dir/"package.yaml")`:
   the folder holds exactly `package.yaml`, both manifests and one file
-  per bundle and type, `tables/<Type>/part_<13 base-36 characters>.parquet`
-  (`a` five, `b` a Beat and a Note file). `package_problems` reports
+  per type, `tables/<Type>/part_<13 base-36 characters>.parquet`, five in
+  all, the Beat and the Note file holding both bundles' rows. `package_problems` reports
   nothing. `package.yaml` lists the two manifests (YAML) and one folder
   entry per type, in the order first written, Parquet; `Package.from_file`
   reads the same `manifests` and `tables`. Each manifest's resources name
@@ -2579,11 +2636,21 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   `0.2.0`; the MatchClaim file states no shared provenance and its row its
   own. Read through `Package.bundle`, each manifest's timelines hold the
   rows written (keyed by ID, as above) and `a` its MatchClaim.
+- **One file per type, however many bundles.** `e` (`e_score`,
+  quarters, fraction, length 4, the Note `e_n1` at 0 and the Beat `e_b1`
+  at 1/4), `a` and `b` staged in this order into a new package: exactly
+  one file per type (`Beat`, `Box`, `MatchClaim`, `Note`, `Projection`).
+  The Note file's rows are sorted by `timeline_id`, each timeline's rows in
+  their own order: `a_n3` (`a_bar`), `a_o1` (`a_pcm`), `a_n1`, `a_n2`
+  (`a_score`), `b_n1` (`b_score`), `e_n1` (`e_score`); the Beat file's
+  `a_b1`, `b_b1`, `e_b1`. Staging `a` again at its URL replaces it (its
+  own IDs held by nothing else).
 - **Re-writing one bundle keeps the other's rows.** The package opened
   from its file; `a` read through it, a Note `a_n4` (start 2) added to
   `a_score`, written back at `a/manifest.yaml` (at once: the package lies
-  on disk): `b`'s files keep their bytes, none of `a`'s former files is
-  left, `a`'s new files replace them, `package_problems` reports nothing,
+  on disk): the Beat and the Note file keep their names and hold `b`'s
+  rows alone (`b_b1`; `b_n1`), the other three former files (`a`'s rows
+  alone) are gone, `a`'s five new files beside them, `package_problems` reports nothing,
   `b` reads as before and `a` holds `a_n4`. `a`'s entry in `package.yaml`,
   given a size and a digest by hand before, states the new manifest's
   byte count and SHA-256.
@@ -2592,10 +2659,13 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   through the package and written back at its URL: the fixture's files
   keep only `handel`'s rows (`tables/Projection/part_a.parquet`
   `projection_5`, `projection_3`, `projection_4` and
-  `part_b.parquet` `projection_6`, `projection_8`; the MatchClaim file
+  `part_b.parquet` `projection_8`, `projection_6`; the MatchClaim file
   `claim_3`, `claim_4`, the provenance the fixture's file states once for
   every row now in each of the two rows, the file stating none: a package
-  writer writes provenance per row), `bach`'s rows lie in its new files, the
+  writer writes provenance per row; the kept rows sorted by the declared
+  `timeline_id`, so `part_b.parquet`'s `projection_8` on `clt_3` now
+  precedes `projection_6` on `dpt_2`, and the fixture's `projection_5`,
+  `projection_3`, `projection_4` keep theirs), `bach`'s rows lie in its new files, the
   package check reports nothing, and both manifests read through the
   package give the rows `expected.yaml` states.
 - **The fixture opened as a package.** `Package.from_file` of the
@@ -2623,6 +2693,27 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   every file of the package keeps its bytes and `manifests` is unchanged.
   In a new package, `b` given `a`'s Note ID is refused naming `the
   manifest 'a/manifest.yaml'` as the holder, and nothing is written.
+- **A manifest's MatchClaims are kept.** With `a` and `b` written, a
+  bundle of `a`'s three timelines without MatchClaims written at
+  `a/manifest.yaml` is refused (`The new MatchClaim table lacks the
+  MatchClaim '<a's ID>' of the existing one: a MatchClaim is never
+  removed; record the belief 'false' in it instead
+  (AlignmentBundle.add_match_claim_belief).`), every file keeping its
+  bytes.
+- **A refused write restores the package.** The package check made to
+  report a problem: `write_bundle` of `a` with a new Note into the opened
+  package raises it (`The package check refuses the package written at
+  '…': …; the package is restored as it was.`), every file keeps its
+  bytes and no other file is left (no part being written), and the
+  package's `manifests` and `tables` are as before; `to_file` of a new
+  package of `a` and `b` raises it too, the folder then empty, the
+  package's `path` None, and once the check is restored, the same
+  `to_file` writes the package. An opened package of another format
+  version than the library's (its document read set to `0.1.0` in
+  memory, since the reader refuses such a file today) is refused before
+  any file (`The package at '…' is of the format version '0.1.0', and the
+  library writes '0.2.0': a package holds files of one version; nothing
+  is written.`).
 - **Where a package and its manifests lie.** `write_bundle` refuses the
   URLs `../a.yaml`, `tables/a.yaml`, `package.yaml`, `a/` and
   `https://example.org/a.yaml` (`A manifest of a package lies at a file

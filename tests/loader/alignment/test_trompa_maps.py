@@ -263,38 +263,30 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         for xml_id in ids
     ]
     aligned.append(("n7", Fraction(15, 2), 5.5))
-    # The timeline holds its rows in the order of their starts, so the two
-    # Projections of the inserted notes (at 2.75 and 4.75 s) lie among the
-    # others; each claim is checked against the Projection it names.
     projections = performance.events.table.to_pylist()
-    by_id = {row["id"]: row for row in projections}
-    assert shapes(list(by_id)) == ["projection"] * 16
-    for claim, (xml_id, quarter, seconds) in zip(claims[1:15], aligned, strict=True):
+    ids = [row["id"] for row in projections]
+    assert shapes(ids) == ["projection"] * 16
+    for n, (claim, (xml_id, quarter, seconds)) in enumerate(
+        zip(claims[1:15], aligned, strict=True), start=1
+    ):
         assert claim.is_synchronous
-        assert claim.event_a_id == xml_id
-        assert by_id[claim.event_b_id]["projection_of"] == {
-            "timeline_id": score.id,
-            "event_id": xml_id,
-        }
+        assert (claim.event_a_id, claim.event_b_id) == (xml_id, ids[n - 1])
         assert claim.start_anchor.coordinate_a == Coordinate(quarter, TimeUnit.quarters)
         assert claim.start_anchor.coordinate_b == Coordinate(seconds, TimeUnit.seconds)
 
     # The file gives both inserted notes one id, so each Projection is minted
     # its own and the claim keeps the file's id as the event's name.
-    inserted = []
-    for claim in claims[15:]:
+    for n, claim in enumerate(claims[15:], start=15):
         assert claim.is_synchronous is False
         assert (claim.start_anchor, claim.end_anchor) == (None, None)
         assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)
-        assert claim.event_b_id == NOMATCH
+        assert (claim.event_a_id, claim.event_b_id) == (ids[n - 1], NOMATCH)
         assert claim.event_a_name == INSERTED
-        inserted.append(by_id[claim.event_a_id])
 
     # One Projection per performed note: 14 of score notes, 2 of none.
     assert len(projections) == 16
-    assert len({claim.event_a_id for claim in claims[15:]}) == 2
-    assert [row["projection_of"] for row in inserted] == [None, None]
-    assert [row["start"]["value"] for row in inserted] == [2.75, 4.75]
+    assert [row["projection_of"] for row in projections[14:]] == [None, None]
+    assert [row["start"]["value"] for row in projections[14:]] == [2.75, 4.75]
 
 
 def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) -> None:
@@ -306,9 +298,7 @@ def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) ->
     ).create_match_claims(score, performance)
     inserted = claims[-1]
     assert (inserted.event_a_id, inserted.event_a_name) == (INSERTED, None)
-    (row,) = [
-        row for row in performance.events.table.to_pylist() if row["id"] == INSERTED
-    ]
+    row = performance.events.table.to_pylist()[-1]
     assert (row["id"], row["projection_of"], row["start"]["numerator"]) == (
         INSERTED,
         None,

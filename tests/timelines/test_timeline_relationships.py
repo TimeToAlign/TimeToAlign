@@ -2083,6 +2083,30 @@ class TestCreateChildrenFromRegions:
         assert not set(minted) & {"f1", "f2"}
         assert tl.n_events == 2
 
+    def test_a_descendants_own_event_is_no_copy(self):
+        """A child's event equal to one of the timeline's but its ID is copied."""
+        tl = ContinuousLogicalTimeline(length=16, uid="clt_1")
+        tl.add_events(
+            [
+                {"event_type": "Fast", "id": "f1", "start": 0, "end": 2},
+                {"event_type": "Fast", "id": "f2", "start": 6, "end": 7},
+            ]
+        )
+        child = ContinuousLogicalTimeline(length=4, uid="clt_c")
+        child.add_events([{"event_type": "Fast", "id": "own", "start": 2, "end": 3}])
+        tl.add_child(child, offset=4)
+        tl.create_region(4, 12)
+
+        (cut,) = tl.create_children_from_regions()
+
+        events = self._own_events(cut)
+        assert [(start, end) for _, start, end in events] == [(2, 3), (2, 3)]
+        store = tl._tree_store
+        assert [store.origin_of(event_id) for event_id, _, _ in events] == [
+            "f2",
+            "own",
+        ]
+
 
 class TestGetRegionsAt:
     """Test Timeline.get_regions_at()."""

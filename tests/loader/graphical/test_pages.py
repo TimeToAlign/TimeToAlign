@@ -8,7 +8,6 @@ zones); every expected value is exact.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import pytest
@@ -532,12 +531,12 @@ class TestIdentity:
             (
                 {"box_ids": "m"},
                 "The id 'm' is given to two Boxes of accolade 'accolade_1' of page "
-                "'15': every Box of an accolade has its own id.",
+                "'15': every Box of a page has its own id.",
             ),
             (
                 {"box_ids": ["a", "b", "a", "d", "e", "f", "g", "h", "i"]},
                 "The id 'a' is given to two Boxes of accolade 'accolade_1' of page "
-                "'15': every Box of an accolade has its own id.",
+                "'15': every Box of a page has its own id.",
             ),
         ],
     )
@@ -574,25 +573,68 @@ class TestIdentity:
         with pytest.raises(ValueError) as error:
             build_pages(loader, [line])
         assert str(error.value) == (
-            "The id 'z' is given to two Boxes of page 'p': every Box of an "
-            "accolade has its own id."
+            "The id 'z' is given to two Boxes of page 'p': every Box of a page "
+            "has its own id."
         )
         _assert_nothing_minted(loader)
 
         # The accolades of a page are timelines of one tree, across which
-        # event IDs are unique: numbering the Boxes per accolade is refused.
+        # event IDs are unique: numbering the Boxes per accolade is refused
+        # before anything is built.
+        loader = _Loader()
         with pytest.raises(ValueError) as error:
-            build_pages(_Loader(), [_chorale_page()], box_ids="m{box}")
-        assert re.fullmatch(
-            r"Event id 'm1' of timeline 'dgt_\w+' is already held by an event of "
-            r"timeline 'dgt_\w+'; event ids are unique across a timeline tree",
-            str(error.value),
+            build_pages(loader, [_chorale_page()], box_ids="m{box}")
+        assert str(error.value) == (
+            "The id 'm1' is given to a Box of accolade 'accolade_1' of page '15' "
+            "and to a Box of accolade 'accolade_2' of page '15': every Box of a "
+            "page has its own id."
         )
+        _assert_nothing_minted(loader)
+
+        # A Box is an event of its accolade, and the Segment row naming an
+        # accolade one of its page: they cannot share an id either.
+        loader = _Loader()
+        with pytest.raises(ValueError) as error:
+            build_pages(
+                loader, [_chorale_page()], accolade_ids=["m1", "s2"], box_ids="m{n}"
+            )
+        assert str(error.value) == (
+            "The id 'm1' is given to a Box of accolade 'accolade_1' of page '15' "
+            "and to accolade 'accolade_1' of page '15': the Boxes and the "
+            "timelines of a page have ids of their own."
+        )
+        _assert_nothing_minted(loader)
 
         (page,) = build_pages(loader, [_chorale_page()], box_ids="m{n}")
         (_, first), (_, second) = _segments(page)
         assert [box[0] for box in _boxes(first)] == ["m1", "m2", "m3", "m4", "m5"]
         assert [box[0] for box in _boxes(second)] == ["m6", "m7", "m8", "m9"]
+
+    def test_a_box_id_is_unique_in_its_volume(self) -> None:
+        loader = _Loader()
+        pages = [_chorale_page(), _chorale_page()]
+        arguments: dict[str, Any] = {
+            "page_ids": ["p1", "p2"],
+            "box_ids": "a{accolade}b{box}",
+        }
+
+        # A volume is one tree: a Box id repeated on two of its pages is
+        # refused, before anything is built.
+        with pytest.raises(ValueError) as error:
+            build_volume(loader, pages, uid="v", **arguments)
+        assert str(error.value) == (
+            "The id 'a1b1' is given to a Box of accolade 'accolade_1' of page '15' "
+            "and to a Box of accolade 'accolade_1' of page '15': every Box of a "
+            "volume has its own id."
+        )
+        _assert_nothing_minted(loader)
+
+        # Each page of build_pages is a tree of its own.
+        loader = _Loader()
+        first, second = build_pages(loader, pages, **arguments)
+        assert [box[0] for box in _boxes(_segments(first)[0][1])] == [
+            box[0] for box in _boxes(_segments(second)[0][1])
+        ]
 
     def test_given_accolade_ids_draw_no_id(self) -> None:
         loader = _Loader()

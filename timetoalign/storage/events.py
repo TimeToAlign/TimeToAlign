@@ -933,6 +933,16 @@ def keyed_by_timeline(table: pa.Table, key: str) -> pa.Table:
     return table.append_column(TIMELINE_ID, column)
 
 
+def _rekeyed(table: pa.Table, moved: Mapping[str, str]) -> pa.Table:
+    """*table* with the rows keyed by each key of *moved* keyed by its value."""
+    index = table.schema.get_field_index(TIMELINE_ID)
+    names = pc.cast(table.column(index), pa.string())
+    for old, new in moved.items():
+        names = pc.if_else(pc.equal(names, pa.scalar(old)), pa.scalar(new), names)
+    encoded = pc.dictionary_encode(names)
+    return table.set_column(index, pa.field(TIMELINE_ID, encoded.type), encoded)
+
+
 def declaring_axis(
     table: pa.Table, unit: TimeUnit, number_type: NumberType
 ) -> pa.Table:
@@ -2451,9 +2461,14 @@ class EventData(SemanticFieldAccessMixin):
         Returns:
             A new EventData containing all events, this table's first.
 
-        Raises:
-            ValueError: If one timeline's rows come on two axes; a timeline
-                has one unit and one number type.
+        A key meeting two axes (a timeline's rows joined with a cast of
+        them, which lies on its timeline no more) keys the rows that come
+        later by their axis, so no join is refused for the number type.
+        A reader of a column's field (``get_field("start")``,
+        ``column_values``) reads it in the type the column declares, this
+        table's: on a table spanning number types, cast first
+        (:meth:`to_number_type`) or select by type
+        (``filter(include_number_types=)``).
 
         Examples:
             >>> exact = EventData.from_dicts(
@@ -2481,14 +2496,20 @@ class EventData(SemanticFieldAccessMixin):
         tables: list[pa.Table] = []
         for part in parts:
             table, part_axes = part._keyed()
+            # A key held already on another axis (rows of a timeline cast
+            # since) names these rows no more: they are keyed by their axis.
+            moved = {
+                key: unbound_axis_key(*axis)
+                for key, axis in part_axes.items()
+                if axes.get(key, axis) != axis
+            }
+            if moved:
+                table = _rekeyed(table, moved)
+                part_axes = {
+                    moved.get(key, key): axis for key, axis in part_axes.items()
+                }
             for key, axis in part_axes.items():
-                held = axes.setdefault(key, axis)
-                if held != axis:
-                    raise ValueError(
-                        f"the rows of timeline {quote_id(key)} come on two axes, "
-                        f"{held[0]} in {held[1].name} and {axis[0]} in "
-                        f"{axis[1].name}; a timeline has one unit and one number type"
-                    )
+                axes.setdefault(key, axis)
             tables.append(table)
         joined = self._derived(pa.concat_tables(tables, promote_options="default"))
         joined._axes = axes
@@ -2576,6 +2597,9 @@ class EventData(SemanticFieldAccessMixin):
                 if source is not target:
                     row_types[name] = source
         cast = self._derived(_cast_columns(self._table, row_types, target))
+        if row_types:
+            # Rows written in another number type lie on their timeline no more.
+            cast._timeline_id = None
         if columns is None or self._axes is not None:
             cast._number_type = target
             if self._axes is not None:
@@ -2583,6 +2607,27 @@ class EventData(SemanticFieldAccessMixin):
                     key: (unit, target) for key, (unit, _) in self._axes.items()
                 }
         return cast
+
+    def _onto(self, unit: TimeUnit, number_type: NumberType) -> Self:
+        """This table written on one axis, *unit* in *number_type*.
+
+        Rows of another number type are cast (:meth:`to_number_type`); a
+        table spanning timelines is cast whole.
+
+        Raises:
+            ValueError: If a row lies on another unit.
+        """
+        units = (
+            [self._unit]
+            if self._axes is None
+            else [axis_unit for axis_unit, _ in self._axes.values()]
+        )
+        off = [axis_unit for axis_unit in units if axis_unit != unit]
+        if off:
+            raise ValueError(f"Unit mismatch: {unit} vs {off[0]}")
+        if self._axes is not None or self._number_type is not number_type:
+            return self.to_number_type(number_type)
+        return self
 
     def _row_types(self, table: pa.Table) -> NumberType | pa.Int8Array:
         """The number type of every row of *table*, a selection of this table's."""
@@ -2811,16 +2856,35 @@ class EventData(SemanticFieldAccessMixin):
     def coordinate_range(self) -> tuple[float | Fraction, float | Fraction] | None:
         """Get the min and max coordinates across all events.
 
+        Each row is read in its own number type: the table's, or on a table
+        spanning timelines its timeline's, so an extreme comes back in the
+        type of the row holding it.
+
         Returns:
             Tuple of (min, max) coordinates, or None if store is empty.
-            Returns Fraction values when number_type is fraction.
+            Returns Fraction values for rows of number type fraction.
         """
         if self.count == 0:
             return None
+        types = self._row_types(self._table)
+        kinds: list[tuple[NumberType, pa.BooleanArray | None]] = (
+            [(types, None)]
+            if isinstance(types, NumberType)
+            else [
+                (number_type, mask)
+                for number_type, code in NUMBER_TYPE_CODES.items()
+                for mask in (pc.equal(types, pa.scalar(code, pa.int8())),)
+                if pc.any(mask).as_py()
+            ]
+        )
         lows: list[int | float | Fraction] = []
         highs: list[int | float | Fraction] = []
-        for name in ("start", "end"):
+        for name, (number_type, mask) in (
+            (name, kind) for name in ("start", "end") for kind in kinds
+        ):
             cells = self._table.column(name)
+            if mask is not None:
+                cells = cells.filter(mask)
             if pa.types.is_dictionary(cells.type):
                 # The kernels read struct members, which a dictionary-encoded
                 # column does not offer: decode it, chunk by chunk.
@@ -2837,14 +2901,10 @@ class EventData(SemanticFieldAccessMixin):
                 continue
             extremes = pc.min_max(values)
             lows.append(
-                _extreme_coordinate(
-                    cells, values, extremes["min"], self._number_type, min
-                )
+                _extreme_coordinate(cells, values, extremes["min"], number_type, min)
             )
             highs.append(
-                _extreme_coordinate(
-                    cells, values, extremes["max"], self._number_type, max
-                )
+                _extreme_coordinate(cells, values, extremes["max"], number_type, max)
             )
         if not lows:
             return None

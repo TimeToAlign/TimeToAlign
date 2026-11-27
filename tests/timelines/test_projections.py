@@ -321,8 +321,9 @@ class TestIdsAcrossTheManifest:
         with pytest.raises(ValueError) as raised:
             parent.add_child(part, 0)
         assert str(raised.value) == (
-            f"Event id '{shared}' of timeline 'part' is already held by an event "
-            "of timeline 'dpt_1'; event ids are unique across a timeline tree"
+            f"Event id '{shared}' is already held by an event of timeline 'dpt_1', "
+            "so it cannot join timeline 'part': event ids are unique across a "
+            "timeline tree"
         )
         assert parent.n_children == 0
         assert part._parent is None

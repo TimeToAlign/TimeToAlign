@@ -580,19 +580,18 @@ class TestTypesNotHeld:
         page.add_events([NOTE_ROW])
         page.add_events([{"event_type": "Measure", "id": "m1", "start": 30}])
         events = page.get_events()
-        # A timeline's rows are held in the order of their starts (0, 10, 30,
-        # then the three at 378 in the order they were added).
-        ids = events.column_values("id")
-        assert ids == ["b1", "e1", "m1", "rect_h2", "p1", "n_378"]
-        served = {
-            Box: (box, "rect_h2"),
-            Projection: (projection, "p1"),
-            Event: (event, "e1"),
-            Note: (note, "n_378"),
-        }
-        for event_type, (expected, event_id) in served.items():
+        assert events.column_values("id") == [
+            "b1",
+            "rect_h2",
+            "p1",
+            "e1",
+            "n_378",
+            "m1",
+        ]
+        served = {Box: box, Projection: projection, Event: event, Note: note}
+        for row, (event_type, expected) in enumerate(served.items(), start=1):
             nulls: list[Any] = [None] * 6
-            nulls[ids.index(event_id)] = expected
+            nulls[row] = expected
             assert list(events.get_field(event_type)) == nulls, event_type.__name__
         assert box.quadrilateral is None
         assert projection.projection_of is None

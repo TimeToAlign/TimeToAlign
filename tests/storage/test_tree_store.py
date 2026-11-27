@@ -9,6 +9,7 @@ import pytest
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.fields import field_metadata
+from timetoalign.storage import EventData
 from timetoalign.storage.tree import TreeStore
 from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
 
@@ -42,7 +43,7 @@ def _ids(table: pa.Table) -> list[str]:
 
 
 class TestOneTableForTheTree:
-    def test_the_root_holds_every_row_sorted_by_timeline_and_start(self) -> None:
+    def test_the_root_holds_every_row_in_the_order_it_came(self) -> None:
         root, a, b = _tree()
         store = root._tree_store
 
@@ -58,8 +59,8 @@ class TestOneTableForTheTree:
             "clt_a",
             "clt_b",
         ]
-        assert _ids(table) == ["clt_a", "r1", "clt_b", "a2", "a1", "b1"]
-        assert _ids(a.events.table) == ["a2", "a1"]
+        assert _ids(table) == ["r1", "clt_a", "clt_b", "a1", "a2", "b1"]
+        assert _ids(a.events.table) == ["a1", "a2"]
 
     def test_positions_stay_child_local(self) -> None:
         _, _, b = _tree()
@@ -106,12 +107,12 @@ class TestTheSlice:
         tree = root._tree_store.table.column("start")
         own = b.events.table.column("start")
 
-        (tree_chunk,) = tree.chunks
-        (own_chunk,) = own.chunks
-        held = tree_chunk.field("value").buffers()[1]
-        sliced = own_chunk.field("value").buffers()[1]
-        assert held.address <= sliced.address
-        assert sliced.address + sliced.size <= held.address + held.size
+        def buffers(column: pa.ChunkedArray) -> list[tuple[int, int]]:
+            held = [chunk.field("value").buffers()[1] for chunk in column.chunks]
+            return [(buffer.address, buffer.size) for buffer in held if buffer]
+
+        (sliced,) = buffers(own)
+        assert sliced in buffers(tree)
 
     def test_the_slice_declares_its_timelines_axis(self) -> None:
         _, a, b = _tree()
@@ -135,7 +136,18 @@ class TestTheSlice:
         assert a.events is first
         a.add_events([{"id": "a3", "event_type": "Beat", "start": 2}])
         assert a.events is not first
-        assert _ids(a.events.table) == ["a2", "a1", "a3"]
+        assert _ids(a.events.table) == ["a1", "a2", "a3"]
+
+    def test_another_timelines_change_leaves_the_rows_as_they_are(self) -> None:
+        root, a, _ = _tree()
+        first = a.events
+
+        root.add_events([{"id": "r2", "event_type": "Beat", "start": 3}])
+        c = _timeline("clt_c", 2, "fraction")
+        c.add_events([{"id": "c1", "event_type": "Beat", "start": 0}])
+        root.add_child(c, offset=6)
+
+        assert a.events is first
 
 
 class TestRowsChangeThroughTheStore:
@@ -153,9 +165,10 @@ class TestRowsChangeThroughTheStore:
         a.add_events([{"id": "a3", "event_type": "Beat", "start": 2}])
 
         assert root._tree_store.table.num_rows == 7
+        assert _ids(a.events.table) == ["a1", "a2", "a3"]
 
 
-class TestAttachAndSplit:
+class TestAttach:
     def test_attaching_moves_the_rows(self) -> None:
         root = _timeline("clt_root", 8, "fraction")
         b = _timeline("clt_b", 4, "float")
@@ -168,28 +181,81 @@ class TestAttachAndSplit:
         assert _ids(root._tree_store.table) == ["clt_b", "b1"]
         assert own.timeline_ids == ()
 
-    def test_a_split_gives_the_subtree_a_store_of_its_own(self) -> None:
-        root, _, _ = _tree()
-        store = root._tree_store
-
-        split = store.split(["clt_b"])
-
-        assert split.timeline_ids == ("clt_b",)
-        assert split.axes == {"clt_b": (TimeUnit.quarters, NumberType.float)}
-        assert _ids(split.table) == ["b1"]
-        assert _ids(split.events_of("clt_b").table) == ["b1"]
-        assert store.timeline_ids == ("clt_root", "clt_a")
-        assert store.table.num_rows == 5
-
-    def test_the_root_does_not_split_off(self) -> None:
-        root, _, _ = _tree()
-
-        with pytest.raises(ValueError) as refusal:
-            root._tree_store.split(["clt_root"])
-
-        assert str(refusal.value) == (
-            "the root 'clt_root' holds the tree; only a subtree leaves it"
+    def test_columns_typed_differently_share_the_tree(self) -> None:
+        root = _timeline("clt_root", 8, "fraction")
+        root.add_events(
+            [{"id": "r1", "event_type": "Beat", "start": 0, "tag": {"midi": 60}}]
         )
+        a = _timeline("clt_a", 4, "fraction")
+        a.add_events(
+            [
+                {
+                    "id": "a1",
+                    "event_type": "Beat",
+                    "start": 0,
+                    "tag": {"midi": 60, "name": "C4"},
+                }
+            ]
+        )
+
+        root.add_child(a, offset=0)
+
+        store = root._tree_store
+        (table,) = store.tables
+        assert table.schema.field("tag").type == pa.struct(
+            [pa.field("midi", pa.int64()), pa.field("name", pa.string())]
+        )
+        assert table.column("tag").to_pylist() == [
+            {"midi": 60, "name": None},
+            None,
+            {"midi": 60, "name": "C4"},
+        ]
+        assert root.events.table.schema.field("tag").type == pa.struct(
+            [pa.field("midi", pa.int64())]
+        )
+
+    def test_a_plain_column_of_another_type_keeps_a_table_of_its_own(self) -> None:
+        root = _timeline("clt_root", 8, "fraction")
+        root.add_events(
+            [{"id": "r1", "event_type": "Beat", "start": 0, "velocity": 80}]
+        )
+        a = _timeline("clt_a", 4, "fraction")
+        a.add_events([{"id": "a1", "event_type": "Beat", "start": 0, "velocity": "ff"}])
+
+        root.add_child(a, offset=0)
+
+        store = root._tree_store
+        first, second = store.tables
+        assert first.column("timeline_id").to_pylist() == ["clt_root", "clt_root"]
+        assert first.column("velocity").to_pylist() == [80, None]
+        assert second.column("timeline_id").to_pylist() == ["clt_a"]
+        assert second.column("velocity").to_pylist() == ["ff"]
+        assert store.table is first
+        assert a.events.table.column("velocity").to_pylist() == ["ff"]
+
+
+class TestARefusedChildChangesNothing:
+    @pytest.mark.parametrize("held", ["r1", "clt_c"])
+    def test_every_check_runs_before_a_change(self, held: str) -> None:
+        root, a, b = _tree()
+        store = root._tree_store
+        rows = store.table
+        c = _timeline("clt_c", 2, "fraction")
+        c.add_events([{"id": held, "event_type": "Beat", "start": 0}])
+        own = c._tree_store
+
+        with pytest.raises(ValueError):
+            root.add_child(c, offset=6)
+
+        assert root.n_children == 2
+        assert list(root._children) == ["clt_a", "clt_b"]
+        assert root._tree_store is store
+        assert store.timeline_ids == ("clt_root", "clt_a", "clt_b")
+        assert store.table.equals(rows)
+        assert c._parent is None
+        assert c._tree_store is own
+        assert own.timeline_ids == ("clt_c",)
+        assert _ids(c.events.table) == [held]
 
 
 class TestAJoinKeepsEachRowsType:
@@ -224,6 +290,113 @@ class TestAJoinKeepsEachRowsType:
         assert cast.number_type is NumberType.fraction
 
 
+class TestAJoinIsNeverRefusedForTheNumberType:
+    @pytest.mark.parametrize("cast_first", [False, True])
+    def test_rows_meet_their_own_cast(self, cast_first: bool) -> None:
+        _, _, b = _tree()
+        cast = b.events.to_number_type("fraction")
+        joined = cast.concat(b.events) if cast_first else b.events.concat(cast)
+
+        keys = (
+            ["<quarters fraction>", "clt_b"]
+            if cast_first
+            else ["clt_b", "<quarters fraction>"]
+        )
+        assert joined.table.column("timeline_id").to_pylist() == keys
+        assert joined._axes == {
+            "clt_b": (TimeUnit.quarters, NumberType.float),
+            "<quarters fraction>": (TimeUnit.quarters, NumberType.fraction),
+        }
+        float_rows = joined.filter(include_number_types={NumberType.float})
+        fraction_rows = joined.filter(include_number_types={NumberType.fraction})
+        assert float_rows.table.column("timeline_id").to_pylist() == ["clt_b"]
+        assert fraction_rows.table.column("timeline_id").to_pylist() == [
+            "<quarters fraction>"
+        ]
+
+    def test_a_fraction_timeline_meets_its_float_cast(self) -> None:
+        _, a, _ = _tree()
+
+        joined = a.events.concat(a.events.to_number_type("float"))
+
+        assert joined.table.column("timeline_id").to_pylist() == [
+            "clt_a",
+            "clt_a",
+            "<quarters float>",
+            "<quarters float>",
+        ]
+        assert _ids(joined.table) == ["a1", "a2", "a1", "a2"]
+
+    def test_the_cast_read_through_get_events_joins_too(self) -> None:
+        _, a, _ = _tree()
+
+        joined = a.get_events().to_number_type("float").concat(a.events)
+
+        assert joined.table.column("timeline_id").to_pylist() == [
+            "<quarters float>",
+            "<quarters float>",
+            "clt_a",
+            "clt_a",
+        ]
+
+    def test_a_key_meeting_two_axes_is_keyed_by_its_axis(self) -> None:
+        _, a, b = _tree()
+        cast = a.events.concat(b.events).to_number_type("float")
+        assert cast._axes == {
+            "clt_a": (TimeUnit.quarters, NumberType.float),
+            "clt_b": (TimeUnit.quarters, NumberType.float),
+        }
+
+        joined = cast.concat(a.events)
+
+        assert joined.table.column("timeline_id").to_pylist() == [
+            "clt_a",
+            "clt_a",
+            "clt_b",
+            "<quarters fraction>",
+            "<quarters fraction>",
+        ]
+        assert joined._axes == {
+            "clt_a": (TimeUnit.quarters, NumberType.float),
+            "clt_b": (TimeUnit.quarters, NumberType.float),
+            "<quarters fraction>": (TimeUnit.quarters, NumberType.fraction),
+        }
+        assert _ids(
+            joined.filter(include_number_types={NumberType.fraction}).table
+        ) == [
+            "a1",
+            "a2",
+        ]
+
+    def test_a_cast_to_the_rows_own_type_keeps_its_timeline(self) -> None:
+        _, _, b = _tree()
+
+        joined = b.events.concat(b.events.to_number_type("float"))
+
+        assert "timeline_id" not in joined.table.column_names
+        assert joined._timeline_id == "clt_b"
+        assert _ids(joined.table) == ["b1", "b1"]
+
+
+def test_the_extremes_of_a_spanning_table_are_read_row_by_row() -> None:
+    exact = EventData.from_dicts(
+        [{"id": "e", "event_type": "Beat", "start": Fraction(1, 2)}],
+        unit=TimeUnit.quarters,
+        number_type=NumberType.fraction,
+    )
+    measured = EventData.from_dicts(
+        [{"id": "m", "event_type": "Beat", "start": 0.7}],
+        unit=TimeUnit.quarters,
+        number_type=NumberType.float,
+    )
+
+    low, high = exact.concat(measured).coordinate_range()
+
+    assert (low, high) == (Fraction(1, 2), 0.7)
+    assert type(low) is Fraction and type(high) is float
+    assert Fraction(0.7) == Fraction(3152519739159347, 4503599627370496)
+
+
 class TestTheNumberTypeFilter:
     def test_on_the_trees_table(self) -> None:
         root, _, _ = _tree()
@@ -233,11 +406,11 @@ class TestTheNumberTypeFilter:
             "b1"
         ]
         assert _ids(data.filter(include_number_types={NumberType.fraction}).table) == [
-            "clt_a",
             "r1",
+            "clt_a",
             "clt_b",
-            "a2",
             "a1",
+            "a2",
         ]
 
     def test_on_get_events(self) -> None:
@@ -248,7 +421,7 @@ class TestTheNumberTypeFilter:
         ) == ["b1"]
         assert root.get_events(
             include_number_types={NumberType.fraction}
-        ).column_values("id") == ["r1", "a2", "a1"]
+        ).column_values("id") == ["r1", "a1", "a2"]
 
 
 class TestUniqueEventIds:
@@ -263,7 +436,24 @@ class TestUniqueEventIds:
             "it cannot join timeline 'clt_a': event ids are unique across a "
             "timeline tree"
         )
-        assert _ids(a.events.table) == ["a2", "a1"]
+        assert _ids(a.events.table) == ["a1", "a2"]
+
+    def test_an_id_given_twice_is_refused(self) -> None:
+        _, a, _ = _tree()
+
+        with pytest.raises(ValueError) as refusal:
+            a.add_events(
+                [
+                    {"id": "x", "event_type": "Beat", "start": 1},
+                    {"id": "x", "event_type": "Beat", "start": 2},
+                ]
+            )
+
+        assert str(refusal.value) == (
+            "Event id 'x' is given to 2 events joining timeline 'clt_a'; event ids "
+            "are unique across a timeline tree"
+        )
+        assert _ids(a.events.table) == ["a1", "a2"]
 
     def test_a_child_holding_an_id_of_the_tree_is_refused(self) -> None:
         root, _, _ = _tree()
@@ -274,8 +464,9 @@ class TestUniqueEventIds:
             root.add_child(c, offset=6)
 
         assert str(refusal.value) == (
-            "Event id 'r1' of timeline 'clt_c' is already held by an event of "
-            "timeline 'clt_root'; event ids are unique across a timeline tree"
+            "Event id 'r1' is already held by an event of timeline 'clt_root', so "
+            "it cannot join timeline 'clt_c': event ids are unique across a "
+            "timeline tree"
         )
         assert root.n_children == 2
         assert root._tree_store.table.num_rows == 6
@@ -291,7 +482,7 @@ class TestRename:
         a._set_id("clt_x")
 
         assert store.timeline_ids == ("clt_root", "clt_x", "clt_b")
-        assert _ids(a.events.table) == ["a2", "a1"]
+        assert _ids(a.events.table) == ["a1", "a2"]
         assert store.holder_of("a1") == "clt_x"
 
 

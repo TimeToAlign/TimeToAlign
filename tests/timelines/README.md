@@ -2851,8 +2851,10 @@ store.
      start in its own unit; nothing is added (the table length is
      unchanged);
    - an ID already held by an event of the timeline is refused naming the ID
-     and the timeline, and so is one given twice in one call; nothing is
-     added either time, so the refusal is atomic;
+     and the timeline, and so is one given twice in one call (`Event id 'n1'
+     is given to 2 events joining timeline 'dpt_1'; event ids are unique
+     across a timeline tree`, the tree store's one check); nothing is added
+     either time, so the refusal is atomic;
    - two calls without IDs mint two distinct `note` IDs, never the same ID
      twice (a per-call counter minted the first ID twice);
    - a minted ID the timeline holds is refused like a given one, never
@@ -2993,8 +2995,9 @@ write fractions):
   are unique across a timeline tree and a collision is refused at a join,
   nothing renamed: `dpt_1` holding a Projection added with `seed=7` refuses
   a free `part` whose own Projection was added with `seed=7` too (`Event id
-  '<the ID>' of timeline 'part' is already held by an event of timeline
-  'dpt_1'; event ids are unique across a timeline tree`); `dpt_1` keeps no
+  '<the ID>' is already held by an event of timeline 'dpt_1', so it cannot
+  join timeline 'part': event ids are unique across a timeline tree`);
+  `dpt_1` keeps no
   child, `part` no parent and its one event. Across the trees of a bundle
   the join refuses nothing: `dpt_1` takes `part` although `clt_6`, another
   root of the bundle, holds the same ID (the package writer refuses it,
@@ -3540,10 +3543,8 @@ data as absent, so these are the cases that would show it broken:
 - *Side by side, one table*: a `pixels` timeline holding, in this order, a
   Beat (`b1` at 0), the Box `rect_h2`, the Projection `p1` at 378, an Event
   `e1` at 10 lasting 5, the Note `n_378` and a Measure `m1` at 30.
-  The timeline holds its rows in the order of their starts: `b1`, `e1`,
-  `m1`, then the three at 378 in the order they were added (`rect_h2`,
-  `p1`, `n_378`). `get_field(T)` for `Box`, `Projection`, `Event`, `Note`
-  is a field of 6 rows, the event added on its own row (equal to the event
+  `get_field(T)` for `Box`, `Projection`, `Event`, `Note` is a field of 6
+  rows, the event added on its own row (index 1 to 4, equal to the event
   added) and `None` on every other; on the same table `get_field(Beat)`
   and `get_field(Measure)` raise the `KeyError` above. The Box holds a
   bounding box and no quadrilateral, the Projection no `projection_of`:
@@ -4605,9 +4606,13 @@ measures.
      two events. Event IDs are unique across a timeline tree, so each copy
      is a new event minted an ID of its own (`fast_…`, all distinct, none
      `f1` or `f2`). The second child's cut also meets the first child's
-     copy of an event: a descendant's row equal to a row taken in all but
-     its ID and `source_timeline` is a copy and is taken once, so the
-     second child holds one copy of `f2`, not two.
+     copy of an event: the tree's store records which event each copy
+     copies, so a copy of an event taken is not taken again and the
+     second child holds one copy of `f2`, not two. A descendant's own
+     event is no copy and is taken whatever it holds: a child added at 4
+     holding an event `own` [2, 3) (child-local) equal in every column to
+     `f2` but its ID gives a region [4, 12) a copy of `f2` and a copy of
+     `own`.
 
 9. **Children and regions — get_regions_at() / get_children_at()** (6 tests)
    - `get_regions_at(coord)` returns all regions containing that coordinate
@@ -5523,10 +5528,11 @@ the IDs come from the content minter of the data, so two calls on equal data
 in one test give distinct IDs and, after `reset_content_minters()`, the
 first call's IDs again. `mint_timeline_id(unit, minter, role=)` leads with
 the role (`score:clt_…`). Events keep their IDs on the timeline (no store
-name or timeline ID is prefixed; the timeline holds them in the order of
-their starts, `n1`, `m1`, `n2`), so two stores merged by `flatten=True`
-holding one event ID are refused, naming the ID and the timeline, with
-`ValueError`.
+name or timeline ID is prefixed; the timeline holds them in the order they
+were added, `n1`, `n2`, `m1`), so two stores merged by `flatten=True`
+holding one event ID are refused, naming the ID, the number of events
+holding it and the timeline (`Event id 'x' is given to 2 events joining
+timeline 'flat'`), with `ValueError`.
 
 Stores of one unit and two number types make one timeline
 (`TestStoresOfTwoNumberTypes`): a store holding a `fraction` quarters table
@@ -5534,9 +5540,21 @@ Stores of one unit and two number types make one timeline
 with `flatten=True`, a `fraction` timeline `t` of length `3/4` holding
 `a` at `1/3` and `b` at `3/4` (the double `0.75` as its exact ratio),
 and with `group_by="event_type"` a `fraction` timeline whose children
-`Beat` and `Note` hold `b` at `3/4` and `a` at `1/3`. Both joins pass
-through `EventData.concat`, which re-expresses the second table's rows in
-the first's number type (`tests/storage/README.md`, "One axis per table").
+`Beat` and `Note` hold `b` at `3/4` and `a` at `1/3`. Both joins cast the
+second table's rows to the first's number type before the join (which
+itself converts nothing, `tests/storage/README.md`). Without `flatten` or
+`group_by` no rows are joined: each store becomes a child on its own
+store's axis, so the child `thirds` is a `fraction` timeline holding `a` at
+`1/3` and the child `decimals` a `float` timeline whose rows declare
+`float` and hold `b`'s cell as it was stored (`{value: 0.75, numerator: 3,
+denominator: 4}`), and the tree's map gives each child the number type the child
+declares (`fraction`, `float`); the parent, holding only the children's
+`Segment` rows, keeps the first store's (`fraction`). Before, every child
+declared the first store's type while `decimals` held float rows. A
+timeline's rows given on another axis than the timeline's are refused
+(`replace` of the tree store: `the rows of timeline 'clt_x' lie on its
+axis, quarters in fraction; these lie on quarters in float`): no path of
+the library gives them so any more.
 
 A timeline made from an `EventData` holds its events in an `EventData` of
 its own, over the same table (tables are immutable, so sharing one costs

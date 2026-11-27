@@ -656,6 +656,12 @@ class ChildrenMixin(_Host):
         joining = child._tree_store.timeline_ids[:1] == (child.id,)
         if joining:
             self._tree_store.refuse_shared_events(child._tree_store)
+        # The child's Segment row, named by the child's ID, is an event of
+        # this timeline: its ID is refused here too, where the tree holds it.
+        segment_id = pa.array([child.id], pa.string())
+        self._tree_store.refuse_held_ids(self._id, segment_id)
+        if joining:
+            child._tree_store.refuse_held_ids(self._id, segment_id)
         # One Jump per position of the root's axis, over the root's tree.
         _, start = self._root_start()
         self._refuse_repeated_jumps(
@@ -684,7 +690,10 @@ class ChildrenMixin(_Host):
         elif locked:
             child._locked = True
 
-        self._add_events_unchecked([self._segment_row(child.id)])
+        # Its ID was refused above where the tree holds it.
+        self._append_events(
+            self._event_data_of([self._segment_row(child.id)]), checked=True
+        )
 
         self._logger.debug(
             f"Added child '{child.id}' at offset "
@@ -1416,10 +1425,12 @@ class ChildrenMixin(_Host):
         A copy for a timeline joining this one's tree (a child cut from a
         region) is a new event of the tree, whose event IDs are unique: it
         is minted an ID of its own (``add_events``' minting), the event it
-        copies keeping its own. A child cut earlier from an overlapping
-        region holds such copies; a descendant's row equal to a row taken
-        in everything but its ID and ``source_timeline`` is a copy, and is
-        taken once, from the first row.
+        copies keeping its own, and the tree's store records which event it
+        copies (``TreeStore.record_copies``). A child cut earlier from an
+        overlapping region holds such copies: a row recorded as a copy of an
+        event taken is not taken again, so each event is copied once, from
+        the event itself. A descendant's own event is taken whatever it
+        holds.
 
         Args:
             target: The new timeline, standing at *start* of this one.
@@ -1435,35 +1446,38 @@ class ChildrenMixin(_Host):
                 ``add_events`` refuses a row; *target* is then incomplete.
         """
         rows: list[dict[str, Any]] = []
+        origins: list[str | None] = []
         if copy_events:
+            store = self._tree_store
             taken: set[str] = set()
-            contents: set[str] = set()
             for event in self.get_events(min_coord=start, max_coord=end):
                 # The timeline's own row comes first and is the one taken.
                 event_id = event.get("id")
+                origin = None if event_id is None else store.origin_of(event_id)
                 if event_id is not None:
-                    if event_id in taken:
+                    if event_id in taken or origin in taken:
                         continue
-                    taken.add(event_id)
-                if in_this_tree:
-                    content = repr(
-                        sorted(
-                            (key, value)
-                            for key, value in event.items()
-                            if key not in ("id", "source_timeline")
-                        )
-                    )
-                    if event.get("source_timeline") is not None and content in contents:
-                        continue
-                    contents.add(content)
+                    taken.add(event_id if origin is None else origin)
                 row = dict(event)
                 for key in ("instant", "start", "end"):
                     if row.get(key) is not None:
                         row[key] = shift_coordinate(row[key], start, subtract=True)
                 rows.append(row)
-        self._move_rows_onto_cut(
+                origins.append(event_id if origin is None else origin)
+        minted = self._move_rows_onto_cut(
             target, rows, start, end, stated=False, new_ids=in_this_tree
         )
+        if in_this_tree:
+            copied = [
+                (copy, origin)
+                for copy, origin in zip(minted, origins, strict=True)
+                if origin is not None
+            ]
+            target._tree_store.record_copies(
+                target.id,
+                [copy for copy, _ in copied],
+                [origin for _, origin in copied],
+            )
 
     def _holds_boxes(self) -> bool:
         """Whether this timeline holds a Box: among its own events or a
@@ -1571,7 +1585,7 @@ class ChildrenMixin(_Host):
         *,
         stated: bool,
         new_ids: bool = False,
-    ) -> None:
+    ) -> list[str]:
         """Add *rows*, moved from [start, end) of this timeline, onto *target*.
 
         The rows are added through ``add_events``, or, with *stated*, as a
@@ -1607,6 +1621,10 @@ class ChildrenMixin(_Host):
                 mints anew (copies joining this timeline's tree); a refusal
                 names a row by the ID it was given.
 
+        Returns:
+            The IDs ``add_events`` gave the rows, in their order; none for
+            *stated* rows.
+
         Raises:
             ValueError: If this timeline holds Boxes and its ``meta["box"]``
                 is no shape (:meth:`_stated_area`); if this timeline states
@@ -1630,11 +1648,12 @@ class ChildrenMixin(_Host):
         extent = end - start
         if holds_boxes:
             target._meta.update(self._image_area_of_cut(area, start, extent))
+        added: list[str] = []
         if rows:
             if stated:
                 target._add_stated_events(rows)
             else:
-                target.add_events(
+                added = target.add_events(
                     [{**row, "id": None} for row in rows] if new_ids else rows
                 )
         grown = target.length
@@ -1645,6 +1664,7 @@ class ChildrenMixin(_Host):
             and grown.value > extent
         ):
             target._meta.update(self._image_area_of_cut(area, start, grown.value))
+        return added
 
     def _slice_bounds(
         self, start: CoordinateSpec, end: CoordinateSpec

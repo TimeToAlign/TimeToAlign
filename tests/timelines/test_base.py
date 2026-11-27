@@ -461,8 +461,8 @@ class TestAddEventsAxisAndIds:
                 ]
             )
         assert str(refused.value) == (
-            "Event id 'n1' is given twice in one call to add_events on timeline "
-            "'dpt_1'"
+            "Event id 'n1' is given to 2 events joining timeline 'dpt_1'; event "
+            "ids are unique across a timeline tree"
         )
         assert len(timeline.events) == 0
 

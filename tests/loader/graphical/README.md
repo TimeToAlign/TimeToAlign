@@ -682,18 +682,26 @@ against the hand-derived numbers above:
    `accolade`, `box`, `n` (`m{n}` numbers the scan's measures through the
    pages; with zones given in an order that alternates between accolades, a
    sequence still names the zones in the order given).
-   *A Box id is unique in its page.* The Boxes of one accolade are the
+   *A Box id is unique in its tree.* The Boxes of one accolade are the
    events of one timeline, so two of them cannot share an id; the accolades
    of a page are timelines of one tree, across which event IDs are unique,
-   so two accolades cannot share one either. Both are pinned: a template
-   without a position (`box_ids="m"`) and a sequence naming the chorale's
-   zones 1 and 3 alike are refused, naming the id and accolade
+   so two accolades cannot share one either, nor a Box and an accolade (the
+   page holds a `Segment` row named by each accolade); a volume is one tree
+   too. All is checked before anything is built or minted. Pinned: a
+   template without a position (`box_ids="m"`) and a sequence naming the
+   chorale's zones 1 and 3 alike are refused, naming the id and accolade
    `accolade_1` of page `15` (a page along one line is named itself);
-   `box_ids="m{box}"`, numbering each accolade from 1, is refused where the
-   second accolade joins the page (`Event id 'm1' of timeline '<second>' is
-   already held by an event of timeline '<first>'; event ids are unique
-   across a timeline tree`), while `box_ids="m{n}"` gives `m1`–`m5` on the
-   first accolade and `m6`–`m9` on the second.
+   `box_ids="m{box}"`, numbering each accolade from 1, is refused naming
+   both accolades (`The id 'm1' is given to a Box of accolade 'accolade_1'
+   of page '15' and to a Box of accolade 'accolade_2' of page '15': every
+   Box of a page has its own id.`); accolade ids `m1`, `s2` with
+   `box_ids="m{n}"` are refused naming the Box and the accolade; each
+   refusal leaves the loader's minter untouched (its next id is the
+   minter's first). `box_ids="m{n}"` gives `m1`–`m5` on the first accolade
+   and `m6`–`m9` on the second. Two chorale pages named `p1`, `p2` with
+   `box_ids="a{accolade}b{box}"` are refused as one volume (`a1b1` on both
+   pages, `every Box of a volume has its own id.`, nothing minted), and
+   built by `build_pages`, one tree each, with the same Box ids on both.
    *Given ids draw nothing.* A call naming every timeline mints nothing
    (the loader's next id is the minter's first); with page ids given, the
    volume is the 1st id and the accolades of the four pages the 2nd–5th,
@@ -701,7 +709,7 @@ against the hand-derived numbers above:
    named page would be off by one from page 2 on.
 6. *Nothing happens on a refusal*: each refusal (wrong sequence length,
    unknown template field, invalid id, one id for two timelines, one id for
-   two Boxes of an accolade, a Box on no
+   two Boxes of a page, a Box on no
    piece, a Box leaving its accolade, a stated area that is not its piece's x
    extent, a length that is no whole pixel, pages of two kinds in one volume,
    no page) is asserted whole, and after it the next id minted from the

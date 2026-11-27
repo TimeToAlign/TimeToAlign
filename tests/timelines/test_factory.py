@@ -334,8 +334,9 @@ class TestCreateTimelineFromStore:
 class TestStoresOfTwoNumberTypes:
     """Stores of one unit and two number types make one timeline.
 
-    The first table's number type is the timeline's; the other table's rows
-    join re-expressed in it (a float as its double's exact ratio).
+    Merged (``flatten``, ``group_by``), the first table's number type is the
+    timeline's and the other table's rows are cast to it (a float as its
+    double's exact ratio); each store a child, each child keeps its own.
     """
 
     @pytest.fixture
@@ -382,6 +383,37 @@ class TestStoresOfTwoNumberTypes:
         assert _child_names(timeline) == ["Beat", "Note"]
         assert self._starts(_child_named(timeline, "Beat")) == [("b", Fraction(3, 4))]
         assert self._starts(_child_named(timeline, "Note")) == [("a", Fraction(1, 3))]
+
+    def test_each_child_on_its_own_stores_axis(self, store: DictStore) -> None:
+        timeline = create_timeline(store, uid="t")
+
+        assert timeline.number_type is NumberType.fraction
+        thirds = _child_named(timeline, "thirds")
+        decimals = _child_named(timeline, "decimals")
+        assert thirds.number_type is NumberType.fraction
+        assert decimals.number_type is NumberType.float
+        assert self._starts(thirds) == [("a", Fraction(1, 3))]
+        assert decimals.events.number_type is NumberType.float
+        assert decimals.events.table.column("start").to_pylist() == [
+            {"value": 0.75, "numerator": 3, "denominator": 4}
+        ]
+        axes = timeline._tree_store.axes
+        assert axes[thirds.id] == (TimeUnit.quarters, NumberType.fraction)
+        assert axes[decimals.id] == (TimeUnit.quarters, NumberType.float)
+
+    def test_rows_on_another_axis_are_refused(self, store: DictStore) -> None:
+        timeline = ContinuousLogicalTimeline(
+            length=1, unit="quarters", number_type="fraction", uid="clt_x"
+        )
+
+        with pytest.raises(ValueError) as refusal:
+            timeline._replace_events(store["decimals"])
+
+        assert str(refusal.value) == (
+            "the rows of timeline 'clt_x' lie on its axis, quarters in fraction; "
+            "these lie on quarters in float"
+        )
+        assert len(timeline.events) == 0
 
 
 class TestFactoryMinting:
@@ -469,13 +501,13 @@ class TestFactoryMinting:
             "n2",
         ]
         flat = create_timeline(self._store(), uid="flat", flatten=True)
-        # A timeline's rows are held in the order of their starts.
-        assert flat.get_events().column_values("id") == ["n1", "m1", "n2"]
+        assert flat.get_events().column_values("id") == ["n1", "n2", "m1"]
 
     def test_one_event_id_in_two_merged_stores_is_refused(self) -> None:
         store = DictStore({"a": self._data("x"), "b": self._data("x")})
         with pytest.raises(
-            ValueError, match=r"Event id 'x' is held by 2 events of timeline 'flat'"
+            ValueError,
+            match=r"Event id 'x' is given to 2 events joining timeline 'flat'",
         ):
             create_timeline(store, uid="flat", flatten=True)
 

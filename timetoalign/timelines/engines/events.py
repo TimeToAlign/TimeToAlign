@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Collection, Iterable, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
@@ -360,24 +359,29 @@ class EventsMixin(_Host):
 
     @property
     def _events(self) -> EventData:
-        """This timeline's own rows: a zero-copy slice of its tree's table.
+        """This timeline's own rows, as its tree's table holds them.
 
         The root of the timeline's tree holds the events of every timeline
-        of the tree in one table (``_tree_store``); this is the slice of this
-        timeline's rows, its axis declared in the field metadata. Rows change
-        only through the store (:meth:`_append_events`,
-        :meth:`_replace_events`).
+        of the tree (``_tree_store``), whose table is their concatenation;
+        these are this timeline's rows, copied by nothing, its axis declared
+        in the field metadata. Rows change only through the store
+        (:meth:`_append_events`, :meth:`_replace_events`).
         """
         return self._tree_store.events_of(self._id)
 
-    def _append_events(self, data: EventData) -> None:
+    def _append_events(self, data: EventData, *, checked: bool = False) -> None:
         """Add the rows of *data* to this timeline's, in its tree's store.
+
+        Args:
+            data: The rows.
+            checked: Their event IDs were refused already where the tree
+                holds them (``TreeStore.refuse_held_ids``).
 
         Raises:
             ValueError: If an event ID of *data* is held in the tree or twice
                 in *data*, or *data* has another unit; nothing is added then.
         """
-        self._tree_store.add(self._id, data)
+        self._tree_store.add(self._id, data, checked=checked)
 
     def _replace_events(self, data: EventData) -> None:
         """Make the rows of *data* this timeline's, in its tree's store.
@@ -509,7 +513,7 @@ class EventsMixin(_Host):
 
         Raises:
             ValueError: If an ID, given or minted, is already held by an
-                event of this timeline or given twice, a Projection row holds a key a Projection does
+                event of this timeline's tree or given twice, a Projection row holds a key a Projection does
                 not have or names an event of this timeline, a Box's shape is
                 off the timeline's axis (or its row's ``unit``,
                 ``number_type`` or ``timeline_id`` names another), a number of
@@ -555,7 +559,7 @@ class EventsMixin(_Host):
         # exact axis, so it is compared and grown to as it will be stored.
         max_coord = max(self._get_event_end_coordinate(row) for row in rows)
         self._ensure_capacity(max_coord, allow_expansion)
-        self._append_events(added)
+        self._append_events(added, checked=True)
         return [row["id"] for row in rows]
 
     def _refuse_boxes_off_their_shapes(
@@ -823,7 +827,8 @@ class EventsMixin(_Host):
         ``IdMinter(seed)``, or without a seed from the content minter of
         this timeline's ID, the number of events it holds and the event
         types of the rows without an ID. An ID, given or minted, already
-        held by an event of this timeline, or held by two rows, is refused.
+        held by an event of this timeline's tree (event IDs are unique
+        across a tree), or held by two rows, is refused.
         A Projection's ID is unique in the timeline's manifest
         (:meth:`_manifest_projection_ids`): a Projection ID another timeline
         of the manifest holds as a Projection is refused, naming the first
@@ -838,13 +843,12 @@ class EventsMixin(_Host):
                 :data:`~timetoalign.core.ids.CHUNK`), or a Projection ID
                 names a Projection of another timeline of the manifest.
         """
-        held = self._events.table.column("id")
         missing = [row.get("event_type") for row in rows if row.get("id") is None]
         if missing:
             minter = (
                 IdMinter(seed)
                 if seed is not None
-                else content_minter("event", self._id, len(held), missing)
+                else content_minter("event", self._id, len(self._events), missing)
             )
             minted = iter(mint_event_ids(missing, minter).to_pylist())
             rows = [
@@ -879,20 +883,8 @@ class EventsMixin(_Host):
                     [holders.take(hits), pa.array([self._id] * len(hits), pa.string())]
                 ),
             )
-        repeated = sorted(
-            event_id for event_id, count in Counter(row_ids).items() if count > 1
-        )
-        if repeated:
-            raise ValueError(
-                f"Event id {quote_id(repeated[0])} is given twice in one "
-                f"call to add_events on timeline {quote_id(self._id)}"
-            )
-        clash = pc.filter(ids, pc.is_in(ids, value_set=pc.cast(held, pa.string())))
-        if len(clash):
-            raise ValueError(
-                f"Event id {quote_id(clash[0].as_py())} is already held by an "
-                f"event of timeline {quote_id(self._id)}"
-            )
+        # Event IDs are unique across the timeline's tree.
+        self._tree_store.refuse_held_ids(self._id, ids)
         return rows
 
     def _resolve_row_coordinates(self, row: dict[str, Any]) -> dict[str, Any]:
@@ -1199,10 +1191,13 @@ class EventsMixin(_Host):
             if number_type in wanted
         ]
         table = events.table
-        holders = (
-            pc.fill_null(table.column("source_timeline"), pa.scalar(self._id))
-            if "source_timeline" in table.column_names
-            else pa.array([self._id] * table.num_rows, pa.string())
+        holders = pc.fill_null(
+            (
+                table.column("source_timeline")
+                if "source_timeline" in table.column_names
+                else pa.nulls(table.num_rows, pa.string())
+            ),
+            pa.scalar(self._id),
         )
         mask = pc.is_in(holders, value_set=pa.array(kept, pa.string()))
         assert isinstance(mask, (pa.BooleanArray, pa.ChunkedArray))

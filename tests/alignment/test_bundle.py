@@ -1490,10 +1490,19 @@ class TestCreateMatchClaims:
 
     @staticmethod
     def _nested() -> tuple[AlignmentBundle, Timeline, Timeline, Timeline]:
-        """``score`` with children ``c`` (0) and ``d`` (4), both holding ``n1``."""
+        """``score`` with children ``c`` (0) and ``d`` (4), both holding ``n1``.
+
+        Event IDs are unique across a timeline tree, so two timelines of one
+        tree never hold one ID. Two descendants of ``score`` hold one only
+        where they lie in two trees: ``c`` and ``d`` are each the child of a
+        root of their own first (``c_tree``, ``d_tree``), where their rows
+        stay, and then of ``score``.
+        """
         score = ContinuousLogicalTimeline(length=8, uid="score")
         c = ContinuousLogicalTimeline(length=4, uid="c")
         d = ContinuousLogicalTimeline(length=4, uid="d")
+        ContinuousLogicalTimeline(length=4, uid="c_tree").add_child(c, 0)
+        ContinuousLogicalTimeline(length=4, uid="d_tree").add_child(d, 0)
         score.add_child(c, 0)
         score.add_child(d, 4)
         c.add_events([{"id": "n1", "start": 1}])
@@ -1557,10 +1566,18 @@ class TestCreateMatchClaims:
 
     @staticmethod
     def _deep() -> tuple[AlignmentBundle, Timeline, Timeline, Timeline, Timeline]:
-        """``score`` ⊃ ``c`` (at 2) ⊃ ``g`` (at 1 in ``c``), and ``audio``."""
+        """``score`` ⊃ ``c`` (at 2) ⊃ ``g`` (at 1 in ``c``), and ``audio``.
+
+        ``score``, ``c`` and ``g`` lie in three trees (``c`` and ``g`` each
+        the child of a root of their own first, where their rows stay), so
+        each may hold an event ID another holds: event IDs are unique across
+        a timeline tree.
+        """
         score = ContinuousLogicalTimeline(length=8, uid="score")
         c = ContinuousLogicalTimeline(length=4, uid="c")
         g = ContinuousLogicalTimeline(length=2, uid="g")
+        ContinuousLogicalTimeline(length=2, uid="g_tree").add_child(g, 0)
+        ContinuousLogicalTimeline(length=4, uid="c_tree").add_child(c, 0)
         c.add_child(g, 1)
         score.add_child(c, 2)
         audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")

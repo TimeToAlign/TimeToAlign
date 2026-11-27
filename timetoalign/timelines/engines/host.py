@@ -169,10 +169,10 @@ class TimelineHost(Protocol):
 
     @property
     def _events(self) -> EventData:
-        """This timeline's own rows, a slice of its tree's table."""
+        """This timeline's own rows, as its tree's table holds them."""
         ...
 
-    def _append_events(self, data: EventData) -> None:
+    def _append_events(self, data: EventData, *, checked: bool = False) -> None:
         """Add the rows of *data* to this timeline's."""
         ...
 
@@ -186,6 +186,10 @@ class TimelineHost(Protocol):
         allow_expansion: bool = False,
     ) -> None:
         """Ensure timeline is long enough, expanding if permitted."""
+        ...
+
+    def _event_data_of(self, rows: list[dict[str, Any]]) -> EventData:
+        """The event table of *rows* on this timeline's axis."""
         ...
 
     def _add_events_unchecked(self, rows: list[dict[str, Any]]) -> None:

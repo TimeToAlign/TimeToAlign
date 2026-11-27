@@ -613,46 +613,68 @@ and holds one spelling of each value, whatever way its rows came in.
 ### `test_tree_store.py` - The tree store: one table per timeline tree
 
 **Purpose:** The root of a timeline tree holds the events of itself and every
-descendant in one table (`TreeStore`, `storage/tree.py`), each row naming its
-timeline and lying in that timeline's own coordinates, unit and number type;
-a timeline reads its own rows as a zero-copy slice of that table.
+descendant (`TreeStore`, `storage/tree.py`), each row lying in its own
+timeline's coordinates, unit and number type; the tree's table is the
+concatenation of every timeline's rows, each row naming its timeline, and a
+timeline reads its own rows as they lie in that table, copying nothing.
 
 **Contract and what proves it** (one tree: a `fraction` quarters root
 `clt_root` of length 8 holding `r1` at `1/2`; a `fraction` child `clt_a` at
 offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
 `float` child `clt_b` at offset 4 holding `b1` at `0.1`):
 
-- **One table for the tree.** The three timelines refer to one store, and
-  the children's own stores are emptied when they are attached (their
-  `timeline_ids` read `()`). The table holds 6 rows: the root's `r1` and the
-  two `Segment` rows recording its children (still among its events), `a1`,
-  `a2`, `b1`. Its `timeline_id` column is dictionary-encoded and reads
-  `clt_root` three times, `clt_a` twice, `clt_b` once: the rows are sorted
-  by `(timeline_id, start)`, so `clt_a`'s rows read `a2`, `a1` (starts `0`,
-  `1/3`, the reverse of the order they were added in) and the root's the
-  segment of `clt_a` (at 0), `r1` (`1/2`), the segment of `clt_b` (at 4).
-  Positions stay child-local: `b1`'s start is the float cell `0.1`, not
-  `4.1`.
+- **One table for the tree, in the order rows came.** The three timelines
+  refer to one store, and the children's own stores are emptied when they
+  are attached (their `timeline_ids` read `()`). The table holds 6 rows: the
+  root's `r1` and the two `Segment` rows recording its children (still
+  among its events), `a1`, `a2`, `b1`. Its `timeline_id` column is
+  dictionary-encoded and reads `clt_root` three times, `clt_a` twice,
+  `clt_b` once: the timelines in the order they joined the tree, the root
+  first, and each timeline's rows in the order they were added, never
+  re-sorted by start. So the IDs read `r1`, `clt_a`, `clt_b`, `a1`, `a2`,
+  `b1` (`a1` before `a2` although it starts later), and `clt_a`'s own rows
+  `a1`, `a2`. A format round trip depends on it: rows read from a file come
+  back in the file's order. Positions stay child-local: `b1`'s start is the
+  float cell `0.1`, not `4.1`.
 - **The map and the row-type mask.** The store maps `clt_root` and `clt_a`
   to `(quarters, fraction)`, `clt_b` to `(quarters, float)`, once, in
   memory; no column of the table states a number type. The row-type mask
   is `[1, 1, 1, 1, 1, 2]` (`NUMBER_TYPE_CODES`: fraction 1, float 2).
-- **A timeline's rows are a zero-copy slice.** The buffer holding the float
-  side of `clt_b`'s `start` cells lies inside the buffer of the tree
-  table's `start` column (address and size compared), so the slice copied
-  nothing. The slice's `start` field declares `quarters` and `float`,
-  `clt_a`'s `fraction`, and their `EventData` say so (`number_type`); the
-  slice holds the timeline's own columns, never `timeline_id`. The slice is
-  the same object until the timeline's rows change.
+- **A timeline's rows are copied by nothing.** The buffer holding the float
+  side of `clt_b`'s `start` cells is the buffer of one chunk of the tree
+  table's `start` column (same address, same size): the tree's table is
+  built from the timelines' rows without a copy. The rows' `start` field
+  declares `quarters` and `float`, `clt_a`'s `fraction`, and their
+  `EventData` say so (`number_type`); they hold the timeline's own columns,
+  never `timeline_id`. A timeline's rows are the same object until they
+  change; rows added to the root or a child attached to it leave `clt_a`'s
+  object as it was (the identity is the proof that no other timeline's
+  change rebuilds or re-sorts them, so no old copy of the tree is held by
+  a timeline's rows).
 - **Rows change only through the store.** `Timeline._events` and
   `Timeline.events` are read-only (assigning either raises
   `AttributeError`); `add_events` on a child adds its rows to the root's
-  table (7 rows after one more event on `clt_a`).
-- **Attaching moves rows, splitting gives a subtree a store of its own.**
-  Before `add_child`, `clt_b`'s rows are in its own store; after it they are
-  in the root's, and its own store holds none. `TreeStore.split(["clt_b"])`
-  moves `clt_b`'s rows to a new store holding that timeline alone, with its
-  axis; the tree keeps its other 5 rows.
+  table (7 rows after one more event on `clt_a`, which reads `a1`, `a2`,
+  `a3`).
+- **Attaching moves rows.** Before `add_child`, `clt_b`'s rows are in its
+  own store; after it they are in the root's (`clt_b`'s segment row, then
+  `b1`), and its own store holds none.
+- **Timelines typing one column differently share the tree.** A child
+  whose `pitch` is the struct `{midi_number, name}` under a root whose
+  `pitch` is `{midi_number}` is attached, and the tree's table types
+  `pitch` with both members: the root's cell reads `name` null, the child's
+  keeps `C4`; each timeline reads its own rows in its own type (the root's
+  `pitch` still has one member). A child whose `velocity` is a string
+  under a root whose `velocity` is an integer is attached too: the tree
+  then has two tables (`tables`), the root's rows in the first, the
+  child's in a second, each cell as it was written (`80`, `"ff"`); the
+  first table (`table`) holds the root's rows alone. No cell is rewritten.
+- **A refused child changes nothing.** A child holding an event ID of the
+  tree, and a child holding an event whose ID is the child's own (its
+  `Segment` row, named by its ID, would join the parent), are refused
+  before anything changes: the parent keeps its children, the tree's rows
+  and its store, and the child keeps its parent (none), its store and its
+  rows.
 - **A join keeps each row's type** (the join converts nothing):
   `clt_a`'s events concatenated with `clt_b`'s key the rows by their
   timelines (`clt_a`, `clt_a`, `clt_b`), `b1`'s start stays the float cell
@@ -660,24 +682,52 @@ offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
   alone; `to_number_type("fraction")` gives `b1` the exact ratio of the
   double, `3602879701896397/36028797018963968`, its field declaring
   `fraction`.
+- **A join is never refused for the number type**, even where a timeline's
+  rows meet a cast of themselves. A cast that changes the type no longer
+  lies on its timeline: it is keyed by its axis. `clt_b`'s rows joined
+  with their own `fraction` cast (both orders: rows first, cast first)
+  give a table of 2 rows, keyed `clt_b` and `<quarters fraction>` (or
+  `<quarters fraction>` and `clt_b`), its map holding `clt_b` as `float`
+  and the key `<quarters fraction>` as `fraction`; the float filter keeps
+  the row of `clt_b`, the fraction filter the cast. `clt_a`'s rows joined
+  with their own `float` cast likewise give `clt_a` twice and the key
+  `<quarters float>` twice, in the order joined, and so does the cast of
+  `clt_a`'s rows read through `get_events` joined with them, the cast
+  first. Where a key still meets two axes (a table spanning `clt_a` and
+  `clt_b` cast to `float`, which keeps their keys, joined with `clt_a`'s
+  own `fraction` rows), the rows coming later are keyed by their axis: the
+  keys read `clt_a`, `clt_a`, `clt_b`, `<quarters fraction>`, `<quarters
+  fraction>`, the map holds `clt_a` and `clt_b` as `float` and the axis key
+  as `fraction`, and the fraction filter keeps `a1`, `a2`. A cast to the type the
+  rows have already keeps its timeline (`clt_b`'s rows cast to `float`
+  and joined with themselves are one axis, joined as they stand).
+- **The extremes of a spanning table are read row by row.** A `fraction`
+  table holding a start at `1/2` joined with a `float` table holding a
+  start at `0.7` spans both types; `coordinate_range()` answers
+  `(Fraction(1, 2), 0.7)`, the high end the `float` the row holds (type
+  `float`), never the exact ratio of that double
+  (`3152519739159347/4503599627370496`), which reading every row in the
+  first table's type gave.
 - **The number-type filter resolves from the map.** On the tree's table
   (`TreeStore.data`) `include_number_types={NumberType.float}` keeps `b1`,
   `{NumberType.fraction}` every other row; `root.get_events(...)` with the
-  same filter gives `["b1"]` and `["r1", "a2", "a1"]` (its own rows and its
+  same filter gives `["b1"]` and `["r1", "a1", "a2"]` (its own rows and its
   children's, each named by `source_timeline`, resolved through the map,
   never from a cell).
-- **Event IDs are unique across the tree**, with nothing renamed: `r1`
-  added to `clt_a` is refused naming both timelines (`Event id 'r1' is
-  already held by an event of timeline 'clt_root', so it cannot join
-  timeline 'clt_a': event ids are unique across a timeline tree`); a child
-  `clt_c` holding `r1` attached to the root is refused naming both (`Event
-  id 'r1' of timeline 'clt_c' is already held by an event of timeline
-  'clt_root'; event ids are unique across a timeline tree`), and the tree is
-  as it was: two children, 6 rows, `clt_c` holding its row in its own store.
+- **Event IDs are unique across the tree**, with nothing renamed, and one
+  message names the ID, its holder and the timeline it would join:
+  `r1` added to `clt_a` is refused (`Event id 'r1' is already held by an
+  event of timeline 'clt_root', so it cannot join timeline 'clt_a': event
+  ids are unique across a timeline tree`); a child `clt_c` holding `r1`
+  attached to the root is refused with the same message for `clt_c`, and
+  the tree is as it was: two children, 6 rows, `clt_c` holding its row in
+  its own store. Two rows given one ID are refused naming the ID, their
+  number and the timeline (`Event id 'x' is given to 2 events joining
+  timeline 'clt_a'; event ids are unique across a timeline tree`).
 - **A timeline's new ID renames its rows without rewriting one.** After the
   child `clt_a` takes the ID `clt_x`, the store's timelines read
   `clt_root`, `clt_x`, `clt_b`, the child reads its two rows, and the
-  index names `clt_x` as the holder of `a1`.
+  store names `clt_x` as the holder of `a1`.
 
 ### `test_coordinate_range.py` - `EventData.coordinate_range()`
 

@@ -511,9 +511,9 @@ class TestSegmentLineAssembly:
             sl.append_segment(second)
 
         assert str(refusal.value) == (
-            f"Event id '{first_beat}' of timeline '{second.id}' is already held "
-            f"by an event of timeline '{first.id}'; event ids are unique across "
-            "a timeline tree"
+            f"Event id '{first_beat}' is already held by an event of timeline "
+            f"'{first.id}', so it cannot join timeline '{second.id}': event ids "
+            "are unique across a timeline tree"
         )
         assert sl.length.value == Fraction(40)
         assert sl.n_segments == 1

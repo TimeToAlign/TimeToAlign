@@ -72,10 +72,13 @@ in their order, then the unassigned ones in the order given.
 
 Everything is checked before anything is built or minted: a sequence of
 another length, a template field that does not exist, an invalid id, one id
-given to two timelines of the call or to two Boxes of one accolade (two
-accolades may each hold a Box of one id), a Box outside its accolade, an
-accolade area that is not its piece's x extent, pages of one volume of two
-kinds.
+given to two timelines of the call, to two Boxes of one timeline tree (a
+page of :func:`build_pages`, the volume of :func:`build_volume`: event IDs
+are unique across a tree, so ``box_ids="m{box}"``, numbering each
+accolade's Boxes from 1, is refused on a page of two accolades, and
+``"m{n}"`` is not), or to a Box and a timeline the tree holds as a child, a
+Box outside its accolade, an accolade area that is not its piece's x
+extent, pages of one volume of two kinds.
 
 Examples:
     One scanned page with two systems, the first holding two measures::
@@ -458,6 +461,7 @@ def _plan(
     pages: Iterable[Page],
     *,
     uid: str | None,
+    volume: bool,
     page_ids: Ids,
     accolade_ids: Ids,
     box_ids: Ids,
@@ -511,7 +515,16 @@ def _plan(
             plan.line.uid = plan.uid
 
     holders_of: dict[str, str] = {} if uid is None else {uid: "the volume"}
+    # Event IDs are unique across a timeline tree: a page's for one root per
+    # page, the volume's for a volume. A Box is an event of its accolade (or
+    # of its page along one line), and so is the Segment row naming each
+    # child timeline of the tree.
+    scope = "volume" if volume else "page"
+    boxes_of: dict[str, tuple[object, str]] = {}
+    children: dict[str, str] = {}
     for plan in plans:
+        if scope == "page":
+            boxes_of, children = {}, {}
         named = [(plan.uid, f"page {plan.name!r}")] + [
             (accolade.uid, f"accolade {accolade.name!r} of page {plan.name!r}")
             for accolade in plan.accolades or ()
@@ -525,20 +538,38 @@ def _plan(
                     f"and to {holder_name}: every timeline of a call has its own id."
                 )
             holders_of[timeline_id] = holder_name
-        # The Boxes of one timeline are its events: an id names one of them.
-        # The holders are the accolades, or the page itself along one line.
+        # The holders of Boxes are the accolades, or the page itself along
+        # one line.
         box_holders = named if plan.accolades is None else named[1:]
+        child_timelines = named[1:] if scope == "page" else named
+        children.update(
+            (timeline_id, holder_name)
+            for timeline_id, holder_name in child_timelines
+            if timeline_id is not None
+        )
         for holder, (_, holder_name) in zip(plan.holders, box_holders):
-            seen: set[str] = set()
             for box_id in holder.box_ids:
                 if box_id is None:
                     continue
-                if box_id in seen:
+                first = boxes_of.get(box_id)
+                if first is not None and first[0] is holder:
                     raise ValueError(
                         f"The id {box_id!r} is given to two Boxes of {holder_name}: "
-                        "every Box of an accolade has its own id."
+                        f"every Box of a {scope} has its own id."
                     )
-                seen.add(box_id)
+                if first is not None:
+                    raise ValueError(
+                        f"The id {box_id!r} is given to a Box of {first[1]} and to a "
+                        f"Box of {holder_name}: every Box of a {scope} has its own id."
+                    )
+                boxes_of[box_id] = (holder, holder_name)
+        for box_id, (_, holder_name) in boxes_of.items():
+            if box_id in children:
+                raise ValueError(
+                    f"The id {box_id!r} is given to a Box of {holder_name} and to "
+                    f"{children[box_id]}: the Boxes and the timelines of a {scope} "
+                    "have ids of their own."
+                )
     return plans
 
 
@@ -651,7 +682,8 @@ def build_pages(
 
     Raises:
         ValueError: If an ids argument does not fit the call, one id is given
-            to two timelines or to two Boxes of one accolade, a path or an
+            to two timelines, to two Boxes of one page or to a Box and an
+            accolade of its page, a path or an
             area holds a number the pixel axis cannot hold exactly, a stated
             accolade area is not its piece's x extent, or a Box lies on no
             piece of its page's path or leaves its accolade. Nothing is
@@ -661,7 +693,12 @@ def build_pages(
         See the module docstring.
     """
     plans = _plan(
-        pages, uid=None, page_ids=page_ids, accolade_ids=accolade_ids, box_ids=box_ids
+        pages,
+        uid=None,
+        volume=False,
+        page_ids=page_ids,
+        accolade_ids=accolade_ids,
+        box_ids=box_ids,
     )
     timelines = []
     for plan in plans:
@@ -713,7 +750,12 @@ def build_volume(
         See the module docstring.
     """
     plans = _plan(
-        pages, uid=uid, page_ids=page_ids, accolade_ids=accolade_ids, box_ids=box_ids
+        pages,
+        uid=uid,
+        volume=True,
+        page_ids=page_ids,
+        accolade_ids=accolade_ids,
+        box_ids=box_ids,
     )
     if not plans:
         raise ValueError("A volume needs at least one page.")

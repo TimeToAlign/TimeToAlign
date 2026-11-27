@@ -23,7 +23,6 @@ from timetoalign.core import Domain, NumberType, TimeUnit
 from timetoalign.core.ids import (
     IdMinter,
     content_minter,
-    quote_id,
     table_seed_part,
     timeline_id_prefix,
 )
@@ -84,22 +83,6 @@ def _content_minter_of(
     )
 
 
-def _refuse_repeated_event_ids(data: EventData, timeline_id: str) -> None:
-    """Refuse an event ID held by two rows of *data*, one timeline's events.
-
-    Raises:
-        ValueError: Naming the first such ID and the timeline.
-    """
-    counts = pc.value_counts(data.table.column("id"))
-    repeated = counts.filter(pc.greater(counts.field("counts"), pa.scalar(1)))
-    if len(repeated):
-        raise ValueError(
-            f"Event id {quote_id(repeated.field('values')[0].as_py())} is held by "
-            f"{repeated.field('counts')[0].as_py()} events of timeline "
-            f"{quote_id(timeline_id)}"
-        )
-
-
 def create_timeline_from_event_data(
     data: EventData,
     uid: str | None = None,
@@ -155,11 +138,7 @@ def _merged(merged: EventData, data: EventData) -> EventData:
     Raises:
         ValueError: If *data* has another unit.
     """
-    if data.unit != merged.unit:
-        raise ValueError(f"Unit mismatch: {merged.unit} vs {data.unit}")
-    if data.number_type is not merged.number_type:
-        data = data.to_number_type(merged.number_type)
-    return merged.concat(data)
+    return merged.concat(data._onto(merged.unit, merged.number_type))
 
 
 def _infer_timeline_class_and_number_type(
@@ -452,8 +431,6 @@ def create_timeline_from_bundle(
             number_type=effective_number_type,
             uid=uid,
         )
-        if len(data_to_use) > 1:
-            _refuse_repeated_event_ids(merged_data, timeline.id)
         timeline._replace_events(merged_data)
 
         module_logger.debug(
@@ -479,16 +456,17 @@ def create_timeline_from_bundle(
             uid=uid,
         )
 
-        # Add each data as a child at offset 0
+        # Add each data as a child at offset 0, on its own data's axis
         for name, data in data_to_use:
-            # Create child with corrected number_type
             child_coord_range = data.coordinate_range()
             child_length = child_coord_range[1] if child_coord_range else 0
             # The store name is the child's label; its id is minted.
             child = timeline_class(
                 length=child_length,
                 unit=data.unit,
-                number_type=effective_number_type,
+                number_type=_infer_timeline_class_and_number_type(
+                    data.unit, data.number_type
+                )[1],
                 uid=mint_timeline_id(data.unit, minter),
                 name=name,
             )
